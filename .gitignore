@@ -1,0 +1,3 @@
+# Overlord local scratch
+.overlord/tmp/
+.overlord/logs/
