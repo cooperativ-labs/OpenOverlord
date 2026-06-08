@@ -34,7 +34,7 @@ The key product invariant to preserve from Overlord is:
 - [Agent Protocol](03-agent-protocol.md): `ovld protocol` lifecycle, context assembly, updates, delivery, attachments, and shared context.
 - [Runner And Launch Execution](04-runner-and-launch-execution.md): execution requests, local runner, launch command generation, working directory resolution, and auto-advance.
 - [Connectors And Agent Plugins](05-connectors-and-agent-plugins.md): connector core, plugins, adapters, hooks, setup, doctor, and launch mapping.
-- [Review, Artifacts, And Change Tracking](06-review-artifacts-and-change-tracking.md): delivery review records, artifacts, checkpoints, rationale coverage, and local diff support.
+- [Review, Artifacts, And Change Tracking](06-review-artifacts-and-change-tracking.md): delivery review records, artifacts, rationale coverage, and local diff support.
 - [USER_TOKEN Authentication Module](07-user-token-authentication.md): user-owned API/CLI tokens, creation, rotation, revocation, current full-user permission behavior, and future scoped permissions.
 - [Web App Requirements](web-app.md): deferred UI/control-center requirements kept separate from CLI-first implementation.
 
@@ -69,8 +69,8 @@ The key product invariant to preserve from Overlord is:
 
 ### Phase 4: Review Features
 
-- Implement artifacts, objective attachments, shared context, checkpoint metadata, and hunk-level change rationale links.
-- Implement local diff/current changes support in CLI form first.
+- Implement artifacts, objective attachments, shared context, and hunk-level change rationale links.
+- Implement read-only VCS change views scoped by ticket/objective in CLI form first.
 - Add file-change review output suitable for a later web app.
 
 ### Phase 5: Expansion

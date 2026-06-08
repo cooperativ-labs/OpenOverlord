@@ -2,7 +2,7 @@
 
 ## Goal
 
-Port the review record that makes Overlord useful after an agent finishes: delivery summaries, artifacts, shared context, checkpoints, and file-level change rationales.
+Port the review record that makes Overlord useful after an agent finishes: delivery summaries, artifacts, shared context, and file-level change rationales.
 
 ## Delivery Review Requirements
 
@@ -85,32 +85,30 @@ Rules:
 - Record rationales during `update`, via `record-change-rationales`, or during `deliver`.
 - Delivery should validate rationale coverage unless explicitly skipped.
 
-## Checkpoint Requirements
+## Update-Time Changed File Tracking
 
-Checkpoints anchor file-change review to local Git state.
+Agents should be able to make changed files visible before delivery without increasing protocol call volume:
 
-Requirements:
+- `ovld protocol update` may include changed-file tracking in the same call already used for progress.
+- The CLI may populate changed files from local VCS status, but it must persist only metadata such as normalized path, status, session, objective, and optional rationale fields.
+- Full diffs, patch bodies, and file contents must not be persisted as update-time changed-file records.
+- Each changed file should be stored once per session/objective/path and updated in place on later updates.
+- Rationale fields can be added or revised over time, but delivery must still enforce complete rationales for meaningful tracked changes.
+- A changed-file record can exist before a rationale exists; this lets live review show what is changing while the work is still in progress.
+- If a file disappears from the current local diff, keep enough history to explain that it was observed earlier, but do not require final delivery coverage unless the final workspace state still contains a meaningful tracked change or a retained rationale should be reviewed.
 
-- On attach, create an objective-start checkpoint when the working directory is a Git repository with a valid `HEAD`.
-- Store checkpoint metadata with objective/session, not as a schema design here.
-- Support checkpoint kinds: `objective`, `delivery`, and `manual`.
-- Capture head SHA, hidden ref name when created, summary, and optional diff stat.
-- Allow attach to proceed with a clear warning when checkpoint creation is impossible, such as a repository with no initial commit.
-- Support `--skip-checkpoint`.
-- Support `revert` later by restoring from an objective checkpoint with a safety snapshot first.
-
-MVP note:
-
-- Repositories without an initial commit cannot create Git checkpoints. The CLI should explain that and continue when `--skip-checkpoint` is passed.
-
-## Local Diff And Current Changes Requirements
+## Local VCS Read And Current Changes Requirements
 
 CLI-first requirements:
 
-- `ovld changes status`: summarize changed files for the linked project.
-- `ovld changes diff [path]`: show local diffs.
-- `ovld changes rationales --ticket-id <id>`: show rationale coverage by file.
+- Overlord may read VCS status and diffs for a linked project, but it must not create commits, refs, branches, stashes, checkpoints, tags, resets, checkouts, patches, or any other VCS mutation.
+- Change views should be scoped around Overlord review units first: ticket, objective, and delivery.
+- `ovld changes status --ticket-id <id> [--objective-id <id>]`: summarize changed files and rationale coverage for the ticket or objective.
+- `ovld changes diff --ticket-id <id> [--objective-id <id>] [--path <path>]`: show read-only local VCS diffs grouped by objective context where possible.
+- `ovld changes rationales --ticket-id <id> [--objective-id <id>]`: show rationale coverage grouped by objective and file.
 - `ovld protocol deliver` should warn when tracked changes lack rationales.
+- Diffs should be annotated with recorded rationale labels and hunk headers when available.
+- Changes that cannot be associated with a specific objective should be shown as unassigned/current workspace changes, not silently attached to the wrong objective.
 
 Future web/desktop requirements are documented in [web-app.md](web-app.md).
 
@@ -139,6 +137,7 @@ CLI review commands can be added before UI:
 Requirements:
 
 - Linking a repository must not automatically store repository contents.
+- Reading local VCS state is allowed only for explicit status, diff, rationale coverage, delivery validation, or review views.
 - Terminal output should only be persisted when a user or agent records it.
 - Secrets should not be pasted into tickets, artifacts, updates, or shared context.
 - Attachments are explicit uploads/imports.
@@ -150,4 +149,3 @@ Requirements:
 - Missing change rationales are detected before or during delivery.
 - A later objective can read shared context written by an earlier objective.
 - Artifacts and attachments are distinguishable.
-- Checkpoint failure in a no-commit repository does not block work when skipped intentionally.

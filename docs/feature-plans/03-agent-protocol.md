@@ -104,7 +104,7 @@ Delete operations can be added once project/resource lifecycle semantics are set
 - Attachments visible to the active objective.
 - Shared context.
 - Assembled `promptContext`.
-- Pending checkpoint/objective information when relevant.
+- Pending objective information when relevant.
 
 The assembled prompt context should include:
 
@@ -137,7 +137,18 @@ The assembled prompt context should include:
 - `external-session-id`
 - `begin-follow-up-work`
 - `follow-up-intent`
+- `track-changed-files`
+- `changed-files-json` or `changed-files-file`
 - `change-rationales-json` or `change-rationales-file`
+
+Changed-file tracking requirements:
+
+- `update` should support posting changed-file metadata during normal progress updates, without requiring extra agent calls.
+- The CLI should be able to read local VCS status when `track-changed-files` is set and include only changed file paths/statuses, not full diffs or file contents.
+- Agents may include rationale fields for changed files in the same update payload when useful, but incomplete rationales are allowed before delivery.
+- Changed files should be upserted by session, objective, and normalized file path so repeated updates revise the same file record instead of creating duplicates.
+- Changed-file records should distinguish mechanically observed file changes from agent-authored rationales.
+- Files that can no longer be observed in the local diff should not be silently deleted from history; they should be marked resolved/no-current-diff or excluded from final coverage according to review rules.
 
 Supported phases:
 
@@ -166,13 +177,14 @@ Supported event types:
 - `changeRationales`
 - `payload-json`
 - `payload-file`
-- optional snapshot/checkpoint metadata
 - optional file-change coverage checks
 
 Delivery rules:
 
 - Every meaningful tracked file change should have a rationale.
 - Do not store generic `file_changes` artifacts as a substitute for structured rationales.
+- Delivery should validate final rationale coverage against current changed-file records and local VCS status when available.
+- Delivery is the final review boundary, but it should not be the first time Overlord learns which files changed during the session.
 - Delivery moves the active objective to `complete`.
 - Delivery moves the ticket to review unless another explicit status is requested later.
 - Delivery may trigger auto-advance for the next objective.

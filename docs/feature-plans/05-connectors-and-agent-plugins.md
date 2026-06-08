@@ -28,6 +28,7 @@ Required content:
 - Attach first.
 - Treat ticket prompt/context as authoritative.
 - Post meaningful progress updates.
+- Include changed-file tracking with normal progress updates when the CLI/runtime can do so without extra agent calls.
 - Use heartbeat during long mechanical work with no meaningful update.
 - Ask exactly one blocking question and stop when blocked.
 - Deliver last with summary, artifacts, and change rationales.

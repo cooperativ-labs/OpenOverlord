@@ -88,7 +88,8 @@ Requirements:
 - Created by `ovld protocol attach`, `prompt`, or `connect`.
 - Stores a session key used by subsequent protocol commands.
 - Tracks agent identifier, model identifier, connection method, native external session ID when available, start/end timestamps, phase, liveness heartbeat, and delivery state.
-- Can record progress updates, blocking questions, permission requests, artifacts, change rationales, shared context writes, and final delivery.
+- Can record progress updates, blocking questions, permission requests, artifacts, update-time changed-file metadata, change rationales, shared context writes, and final delivery.
+- Changed-file metadata is keyed by session, objective, and normalized file path so repeated progress updates can refresh the same file record without duplication.
 - Attach should be idempotent enough for agent retries and re-attachments.
 
 ### Shared Context

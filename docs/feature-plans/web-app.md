@@ -86,7 +86,7 @@ Requirements:
 - Delivery summary visible at top of review state.
 - Artifacts grouped by type.
 - Human action/follow-up section.
-- Change rationales grouped by file.
+- Change rationales grouped by objective and file.
 - Objective completion history.
 - Redelivery indicator for `pending_delivery`.
 - Buttons/actions to complete, reopen, add follow-up objective, or ask for changes.
@@ -95,13 +95,14 @@ Requirements:
 
 Requirements:
 
-- Show local Git status for linked project directory.
-- Show changed file list and diff hunks.
+- Show read-only local VCS status for linked project directory.
+- Show changed file list and diff hunks grouped by ticket/objective when available.
 - Link hunks to recorded change rationales where possible.
 - Filter by ticket/objective.
+- Show unassigned/current workspace changes when a local diff cannot be associated with a specific objective.
 - Show unavailable state if no local directory is linked or the browser cannot access local diffs.
 
-For a browser-only local web app, this may need a local backend process to read Git state. It should not upload repository contents unless the user explicitly requests an artifact/attachment.
+For a browser-only local web app, this may need a local backend process to read VCS state. It should not upload repository contents unless the user explicitly requests an artifact/attachment, and it must not perform VCS mutations.
 
 ### Settings
 
@@ -140,6 +141,7 @@ These are upstream Overlord features that should not block CLI-first OpenOverlor
 - Protocol APIs should stay agent-safe and machine-readable.
 - UI-only endpoints should not become the source of truth for lifecycle transitions.
 - No repository contents should be read or displayed unless the local backend has an explicit linked directory and the user requested local changes/diff views.
+- VCS access is read-only; the web app must not create commits, refs, branches, stashes, checkpoints, tags, resets, checkouts, patches, or any other VCS mutation.
 
 ## UX Requirements
 
