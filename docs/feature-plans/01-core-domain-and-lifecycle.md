@@ -24,10 +24,12 @@ A user is the human identity that owns tickets, creates credentials, and receive
 Requirements:
 
 - Reserve a user concept for future auth, roles, permissions, and audit attribution.
+- Support both human users and persistent service-style users for agents or runners without creating a separate identity primitive.
 - Attribute created tickets, sessions, events, deliveries, and `USER_TOKEN` records to a user once auth is enabled.
 - User-owned `USER_TOKEN` credentials initially inherit all current permissions of the creating user.
 - Future scoped token permissions should restrict the creating user's permissions, not create a separate agent identity.
 - Disabling or removing a user should also invalidate that user's effective token access.
+- Future role-based access control should use default `ADMIN` and `MEMBER` roles, with only administrators able to add, remove, or change roles for other users unless a custom authorization provider says otherwise.
 
 ### Project
 

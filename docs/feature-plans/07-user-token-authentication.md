@@ -24,6 +24,7 @@ Initial behavior:
 - A `USER_TOKEN` confers all permissions of the user who created it.
 - Authorization checks should resolve the token to its creating user, then evaluate the same permissions that user would have.
 - The token itself does not have independent permission scope in the first implementation.
+- When role-based access control is enabled, token requests should pass through the same authorization provider as interactive user requests.
 
 Future behavior:
 
@@ -194,6 +195,7 @@ Requirements for future readiness:
 - Permission evaluation should be able to ask, "does this token further restrict this user's permission?"
 - Scope absence in v1 means "no token-level restriction" rather than "unknown".
 - Revocation and expiration must apply before scope evaluation.
+- Token scopes should reuse the canonical permission names defined by the RBAC module.
 
 ## Acceptance Criteria
 

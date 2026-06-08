@@ -36,6 +36,7 @@ The key product invariant to preserve from Overlord is:
 - [Connectors And Agent Plugins](05-connectors-and-agent-plugins.md): connector core, plugins, adapters, hooks, setup, doctor, and launch mapping.
 - [Review, Artifacts, And Change Tracking](06-review-artifacts-and-change-tracking.md): delivery review records, artifacts, rationale coverage, and local diff support.
 - [USER_TOKEN Authentication Module](07-user-token-authentication.md): user-owned API/CLI tokens, creation, rotation, revocation, current full-user permission behavior, and future scoped permissions.
+- [Role-Based Access Control](08-role-based-access-control.md): default `ADMIN`/`MEMBER` roles, capability grants, config-backed policy, and replaceable authorization providers.
 - [Web App Requirements](web-app.md): deferred UI/control-center requirements kept separate from CLI-first implementation.
 
 ## Suggested Phases
@@ -77,7 +78,7 @@ The key product invariant to preserve from Overlord is:
 
 - Add auth and multi-user support.
 - Add the modular `USER_TOKEN` feature for user-owned CLI/API tokens, including create/list/rotate/revoke flows.
-- Add role-based permissions.
+- Add role-based permissions with default `ADMIN` and `MEMBER` roles.
 - Add remote/SSH execution targets.
 - Add MCP surface.
 - Add web app.
