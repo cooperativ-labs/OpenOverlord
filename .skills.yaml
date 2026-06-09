@@ -7,6 +7,6 @@ skills:
   - slug: "code-review"
   - slug: "drift-review"
   - slug: "component-contract"
-    description: "Enforce the OpenOverlord component interaction contract. Invoke before any cross-module implementation or change that touches a component interface."
+    description: "Enforce the Overlord component interaction contract. Invoke before any cross-module implementation or change that touches a component interface."
   - slug: "security-audit"
   - slug: "zod-v4-patterns"

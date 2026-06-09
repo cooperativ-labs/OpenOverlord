@@ -1,6 +1,6 @@
 slug: component-contract
 name: component-contract
-description: Enforce the OpenOverlord component interaction contract. Invoke
+description: Enforce the Overlord component interaction contract. Invoke
   before any cross-module implementation or change that touches a component
   interface.
 tags: []

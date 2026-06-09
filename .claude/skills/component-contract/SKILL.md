@@ -1,11 +1,11 @@
 ---
 name: component-contract
-description: Enforce the OpenOverlord component interaction contract. Invoke before any cross-module implementation or change that touches a component interface.
+description: Enforce the Overlord component interaction contract. Invoke before any cross-module implementation or change that touches a component interface.
 ---
 
 # Component Contract
 
-**You MUST invoke this skill — and read `CONTRACT.md` — before implementing any change that crosses module boundaries or modifies OpenOverlord's component interfaces.**
+**You MUST invoke this skill — and read `CONTRACT.md` — before implementing any change that crosses module boundaries or modifies Overlord's component interfaces.**
 
 This is not optional. The contract is the single source of truth for how components interact. Code follows from the contract, never the other way around.
 
@@ -20,7 +20,7 @@ Invoke this skill whenever you are about to:
 - Add a new connector (agent harness adapter)
 - Modify connector capabilities or hook types
 - Create or modify a REST API endpoint
-- Implement an extension that uses OpenOverlord extension points
+- Implement an extension that uses Overlord extension points
 - Add a new value to any controlled vocabulary
 - Add a new interaction surface between two components
 - Create a conformance manifest for a shipped component

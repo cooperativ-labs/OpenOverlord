@@ -2,7 +2,7 @@
 
 ## Recommendation
 
-Build the first OpenOverlord web interface as a **client-rendered React SPA**
+Build the first Overlord web interface as a **client-rendered React SPA**
 using:
 
 - Vite
@@ -13,7 +13,7 @@ using:
 - Shadcn/UI
 - Tailwind CSS
 
-## Why This Fits OpenOverlord
+## Why This Fits Overlord
 
 The current requirements point toward an internal, operational application:
 
@@ -27,7 +27,7 @@ That profile favors a SPA with a clean browser/runtime split from the backend.
 
 ### 1. It matches the product shape
 
-OpenOverlord's web UI is a control plane for projects, tickets, objectives,
+Overlord's web UI is a control plane for projects, tickets, objectives,
 runner state, and review. This is more like Linear, GitHub Projects, or a local
 ops console than a content site. Client-side routing, cached server state, and
 realtime subscriptions are a better default fit than server rendering.
@@ -65,7 +65,7 @@ are straightforward in the Vite path.
 
 ### 5. It keeps local-first development cheaper
 
-OpenOverlord is explicitly CLI-first and local-first today. A Vite-based SPA:
+Overlord is explicitly CLI-first and local-first today. A Vite-based SPA:
 
 - has less framework/runtime surface area
 - is easier to run beside a local API process
@@ -82,7 +82,7 @@ Next.js is a strong framework, but it is optimized for a different default:
 - server/client component boundaries
 
 Those are useful when the product needs them, but they are not the primary
-constraints in this ticket. For OpenOverlord right now, Next.js would likely add
+constraints in this ticket. For Overlord right now, Next.js would likely add
 complexity faster than it adds value.
 
 ## Practical Initial Shape

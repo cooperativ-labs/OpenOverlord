@@ -7,7 +7,7 @@ description: Claude Code adapter overlay for the shared Overlord ticket workflow
 
 This Claude Code skill is the adapter-specific entrypoint for the shared Connector Core at `connectors/core/overlord-ticket/SKILL.md`.
 
-When working inside an OpenOverlord source checkout, read and follow that core before using the Claude-specific notes below. When this plugin is packaged for installation, the setup/build step must materialize the same core files into the installed plugin so the Claude skill remains self-contained.
+When working inside an Overlord source checkout, read and follow that core before using the Claude-specific notes below. When this plugin is packaged for installation, the setup/build step must materialize the same core files into the installed plugin so the Claude skill remains self-contained.
 
 ## Claude Adapter Notes
 
@@ -16,7 +16,7 @@ When working inside an OpenOverlord source checkout, read and follow that core b
 - Follow-up capture: the installed `UserPromptSubmit` hook records ordinary post-delivery user messages. Do not manually publish `user_follow_up` unless the hook is unavailable.
 - Permission capture: the installed `PermissionRequest` hook publishes permission activity through `ovld protocol`.
 - Stop hook: the installed `Stop` hook may print pending-delivery guidance but does not deliver for you.
-- Authentication: the plugin `user_token` config is passed to child `ovld protocol` calls as `OPENOVERLORD_USER_TOKEN`, after preserving existing `OPENOVERLORD_USER_TOKEN` / `OVLD_USER_TOKEN` environment fallback behavior.
+- Authentication: the plugin `user_token` config is passed to child `ovld protocol` calls as `Overlord_USER_TOKEN`, after preserving existing `Overlord_USER_TOKEN` / `OVLD_USER_TOKEN` environment fallback behavior.
 
 ## Claude Command Mapping
 

@@ -56,13 +56,13 @@ Roles                                                       [ View RBAC config ]
 │ Role     Description                Grants (summary)         Members        │
 │ ADMIN    Full instance admin        *                         1             │
 │ MEMBER   Standard user / agent      ticket:* objective:* …    3             │
-│ (custom roles from openoverlord.rbac.toml appear here)                      │
+│ (custom roles from Overlord.rbac.toml appear here)                      │
 └──────────────────────────────────────────────────────────────────────────┘
    role → grants detail (read-only mirror of the config-backed provider)
 ```
 
 - Renders the roles from the config-backed RBAC provider
-  (`openoverlord.rbac.toml` / `[rbac]`). Default `ADMIN` (grants `*`) and `MEMBER`
+  (`Overlord.rbac.toml` / `[rbac]`). Default `ADMIN` (grants `*`) and `MEMBER`
   (project/ticket/objective/session/event/artifact + `user_token:self:*` +
   execution-request create/read/claim) plus any custom roles.
 - **Grants are domain capabilities** (`ticket:create`, `role:assign`,
@@ -100,8 +100,8 @@ Your API tokens                                              [ + Create token ]
 Token created — copy it now, it won't be shown again
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  out_3f9a8c2b1d…full-secret…                              [ Copy ] [ Done ]│
-│  Store it like a password. Use as OPENOVERLORD_USER_TOKEN.                 │
-│  export OPENOVERLORD_USER_TOKEN=out_…                          [ Copy ]    │
+│  Store it like a password. Use as Overlord_USER_TOKEN.                 │
+│  export Overlord_USER_TOKEN=out_…                          [ Copy ]    │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -117,7 +117,7 @@ Hard rules the UI enforces (from the auth spec & security boundaries):
 
 - Raw secrets are displayed **exactly once** at create/rotate and **never**
   re-fetchable. The list view shows only the non-secret prefix.
-- Show the env-var usage (`OPENOVERLORD_USER_TOKEN`, alias `OVLD_USER_TOKEN`) on
+- Show the env-var usage (`Overlord_USER_TOKEN`, alias `OVLD_USER_TOKEN`) on
   reveal so the user knows how to use it headlessly.
 - A token stops working when revoked/expired or when the creating user is
   disabled/removed — the status column reflects this.

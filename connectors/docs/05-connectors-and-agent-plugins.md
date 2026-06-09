@@ -2,11 +2,11 @@
 
 ## Goal
 
-Port Overlord's connector model so OpenOverlord can launch different AI coding agents while giving each one the same ticket protocol, lifecycle rules, hooks, and context.
+Port Overlord's connector model so Overlord can launch different AI coding agents while giving each one the same ticket protocol, lifecycle rules, hooks, and context.
 
 ## Connector Model
 
-OpenOverlord should keep four layers distinct:
+Overlord should keep four layers distinct:
 
 - Connector core: canonical Markdown workflow instructions and protocol rules.
 - Connector plugins: per-agent files that extend the core for a specific harness.
@@ -53,7 +53,7 @@ Requirements:
 - Include `UserPromptSubmit` hook to record follow-up messages.
 - Include permission hook to record tool permission requests.
 - Install protocol permission rules for `ovld protocol`.
-- Avoid generating or relying on a repository-local `AGENTS.md` for OpenOverlord itself.
+- Avoid generating or relying on a repository-local `AGENTS.md` for Overlord itself.
 - Detect or receive Codex native session/thread IDs when possible.
 - Launch with model and reasoning effort mapping:
   - `--model <model>`
@@ -120,7 +120,7 @@ Requirements:
 
 Custom harness extension storage:
 
-- Built-in packaged harnesses such as Codex and Claude Code live in the OpenOverlord connector registry.
+- Built-in packaged harnesses such as Codex and Claude Code live in the Overlord connector registry.
 - User-authored custom harnesses live in `user_harness_extensions` as personal extension definitions and versions.
 - Workspace-approved custom harnesses live in `workspace_harness_extensions` as snapshot catalog entries.
 - `connector_installations` tracks local setup/doctor state only; it must not be the source of truth for authored custom harness definitions.
@@ -179,7 +179,7 @@ Future requirement:
 - Merge user settings safely.
 - Write executable hook scripts.
 - Write a manifest of managed files.
-- Remove obsolete legacy files only when clearly owned by OpenOverlord.
+- Remove obsolete legacy files only when clearly owned by Overlord.
 - Be idempotent.
 
 `ovld doctor`:

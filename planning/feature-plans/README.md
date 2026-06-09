@@ -1,4 +1,4 @@
-# OpenOverlord Feature Plans — Redirect Index
+# Overlord Feature Plans — Redirect Index
 
 > **The feature-plan documents have moved.** Each plan now lives inside the
 > module that owns it, under `<module>/docs/`, so every module owns its own code,
@@ -45,7 +45,7 @@ extension points — must update the contract before updating other code. See
 
 ## Port Strategy
 
-OpenOverlord should start as a local, CLI-first system:
+Overlord should start as a local, CLI-first system:
 
 - No auth required for the first version.
 - One local instance, one default organization/workspace, and local trust boundaries.
@@ -53,7 +53,7 @@ OpenOverlord should start as a local, CLI-first system:
 - CLI parity before web parity.
 - Local runner before remote or cloud runners.
 - Agent connectors installed locally and launched by the CLI.
-- Web app requirements documented separately because OpenOverlord may not use Next.js.
+- Web app requirements documented separately because Overlord may not use Next.js.
 
 The key product invariant to preserve from Overlord is:
 
@@ -105,7 +105,7 @@ The key product invariant to preserve from Overlord is:
 - Add remote/SSH execution targets.
 - Add MCP surface.
 - Add web app.
-- Reconsider feed generation after the core workflow is stable. The current OpenOverlord README marks the Feed out of scope.
+- Reconsider feed generation after the core workflow is stable. The current Overlord README marks the Feed out of scope.
 
 ## Explicit Non-Goals For The First Implementation
 

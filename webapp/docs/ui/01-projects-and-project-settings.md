@@ -45,7 +45,7 @@ Reached from "Manage projects…". A denser management view of all projects.
 Projects                                              [ + New project ]
 ┌────────────────────────────────────────────────────────────────────┐
 │ Name        Repo / primary dir            Tickets   Default agent    │
-│ Open0       ~/dev/OpenOverlord  ●primary   12 / 40   claude · opus    │
+│ Open0       ~/dev/Overlord  ●primary   12 / 40   claude · opus    │
 │ Billing-svc ~/dev/billing       ●primary    3 / 9    codex · gpt-…    │
 │ Infra       ⚠ no linked directory           0 / 2    claude           │  ← warning row
 └────────────────────────────────────────────────────────────────────┘
@@ -67,7 +67,7 @@ New project
 │ Name*           [ ______________________ ]     │
 │ Description     [ ______________________ ]     │
 │ Link directory  (•) This directory  ( ) None   │
-│                 /Users/jake/dev/OpenOverlord   │  ← detected cwd of local backend
+│                 /Users/jake/dev/Overlord   │  ← detected cwd of local backend
 │                 [x] Mark primary               │
 │ Default agent   [ claude ▾ ]  Model [ opus ▾ ] │
 │ Default effort  [ high ▾ ]                      │
@@ -100,8 +100,8 @@ Project: Open0                                           [ Archive project ]
 └──────────────────────────────────────────────────────────────────────────┘
 ┌─ Resource directories ───────────────────────────────────────────────────┐
 │ Path                          Target/device      Primary   State          │
-│ ~/dev/OpenOverlord            this-mac           ●          ✓ linked       │
-│ ~/work/OpenOverlord (mirror)  this-mac           ○ [set]    ✓ linked       │
+│ ~/dev/Overlord            this-mac           ●          ✓ linked       │
+│ ~/work/Overlord (mirror)  this-mac           ○ [set]    ✓ linked       │
 │ ⚠ /old/path                   this-mac           ○          ✗ missing      │
 │                                                  [ + Link a directory ]    │
 └──────────────────────────────────────────────────────────────────────────┘

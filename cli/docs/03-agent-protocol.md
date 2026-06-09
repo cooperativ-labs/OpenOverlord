@@ -2,7 +2,7 @@
 
 ## Goal
 
-Port the `ovld protocol` lifecycle so every agent interacts with OpenOverlord through one stable contract, regardless of connector or UI.
+Port the `ovld protocol` lifecycle so every agent interacts with Overlord through one stable contract, regardless of connector or UI.
 
 ## Design Requirements
 

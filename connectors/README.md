@@ -1,6 +1,6 @@
 # Agent Connectors Module
 
-How OpenOverlord plugs into AI coding harnesses (Claude Code, Codex, Cursor,
+How Overlord plugs into AI coding harnesses (Claude Code, Codex, Cursor,
 OpenCode, Antigravity, and others). A connector is what lets an agent speak the
 `ovld protocol` and inherit ticket context inside its native harness.
 

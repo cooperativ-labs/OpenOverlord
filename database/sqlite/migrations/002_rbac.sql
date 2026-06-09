@@ -1,4 +1,4 @@
--- OpenOverlord SQLite RBAC schema.
+-- Overlord SQLite RBAC schema.
 -- Implements Group 1 (Multi-User Access and API Tokens) from
 -- planning/feature-plans/10-database-table-groups.md.
 -- See planning/feature-plans/08-role-based-access-control.md and

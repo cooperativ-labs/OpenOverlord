@@ -6,7 +6,7 @@ This file tells agents how to extend the MCP module to add new capabilities for 
 
 ## What "extending MCP" means
 
-The MCP module will expose OpenOverlord capabilities (tickets, objectives, protocol operations) to MCP-aware clients. Once implemented, extensions will fall into:
+The MCP module will expose Overlord capabilities (tickets, objectives, protocol operations) to MCP-aware clients. Once implemented, extensions will fall into:
 
 | Extension type | Example user request |
 | --- | --- |

@@ -28,7 +28,7 @@ permission check).
 ### Authorization (RBAC)
 - Spec: [08 — Role-Based Access Control](docs/08-role-based-access-control.md)
 - Default `ADMIN` / `MEMBER` roles, capability grants, config-backed policy, replaceable authorization provider.
-- Default policy config: [`../openoverlord.rbac.toml`](../openoverlord.rbac.toml)
+- Default policy config: [`../Overlord.rbac.toml`](../Overlord.rbac.toml)
 
 ## Code & Tests
 
@@ -42,6 +42,12 @@ The RBAC authorizer is the first implemented slice. It currently lives under
 The authorization logic deliberately lives **above** the database layer; the DB
 (`002_rbac.sql`) only provides `role_assignments`, `user_tokens`, and
 `user_token_scopes`. See [`database/`](../database/README.md).
+
+`src/auth/createAuth` accepts either the existing SQLite database path or an
+explicit database configuration. Shared/private-network deployments should pass
+`{ database: { type: 'postgres', connectionString: process.env.DATABASE_URL } }`
+so Better Auth sessions and Overlord identity-bridge reads use the same
+PostgreSQL database as the domain schema.
 
 ## Interaction Boundaries
 

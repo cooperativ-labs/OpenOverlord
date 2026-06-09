@@ -1,5 +1,5 @@
-# OpenOverlord Conformance Manifest Schema
-# JSON Schema (YAML format) — every component that ships against OpenOverlord
+# Overlord Conformance Manifest Schema
+# JSON Schema (YAML format) — every component that ships against Overlord
 # must provide a conformance-manifest.yaml in its root that validates against this schema.
 #
 # Validate with: ovld contract check <manifest-file>
@@ -9,10 +9,10 @@
 
 "$schema": "https://json-schema.org/draft/2020-12/schema"
 "$id": "openoverllord/conformance-manifest/v1"
-title: "OpenOverlord Conformance Manifest"
+title: "Overlord Conformance Manifest"
 description: >
   Every connector, extension, database adapter, auth provider, or REST module that ships
-  against OpenOverlord must provide a conformance-manifest.yaml at its root.
+  against Overlord must provide a conformance-manifest.yaml at its root.
   The manifest declares which contract version the component was validated against,
   what kind of component it is, and which extension points and vocabulary values it uses.
 
@@ -29,7 +29,7 @@ properties:
 
   contractVersion:
     type: string
-    description: "The OpenOverlord contract version this component was validated against (e.g. '0.1-draft')"
+    description: "The Overlord contract version this component was validated against (e.g. '0.1-draft')"
     examples:
       - "0.1-draft"
 

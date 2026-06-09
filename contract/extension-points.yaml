@@ -1,4 +1,4 @@
-# OpenOverlord Extension Points
+# Overlord Extension Points
 # Machine-readable counterpart to CONTRACT.md "Extension Points" section
 #
 # This file is the source of truth for:
@@ -11,7 +11,7 @@
 
 contractVersion: "0.1-draft"
 
-# Sanctioned extension points — the only ways to extend OpenOverlord
+# Sanctioned extension points — the only ways to extend Overlord
 extensionPoints:
 
   customConnector:

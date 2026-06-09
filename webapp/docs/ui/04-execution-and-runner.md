@@ -41,7 +41,7 @@ Run objective 3 · Implement runtime
 ┌──────────────────────────────────────────────────────────┐
 │ Agent   [ claude ▾ ]   Model [ opus ▾ ]   Effort [ high ▾]│
 │ Flags   [ --append-system-prompt-file (auto) ] [+ flag]   │
-│ Target  [ this-mac ▾ ]   Dir [ ~/dev/OpenOverlord ●prim ] │
+│ Target  [ this-mac ▾ ]   Dir [ ~/dev/Overlord ●prim ] │
 │ ⚠ No runner is currently polling this target.             │  ← live runner check
 │   It will queue and launch when a runner runs.            │
 │      [ Copy: ovld runner once ]                            │
@@ -82,7 +82,7 @@ Runner · Open0                                   Local device: this-mac · ◍ 
 └────────────────────────────────────────────────────────────────────────────────────┘
    [ Clear all ]                                       failed → shows last_error + fix
 ┌─ This device ──────────────────────────────────────────────────────────────────────┐
-│ Fingerprint  7f2a…   Label [ this-mac ✎ ]   Targets: local → ~/dev/OpenOverlord     │
+│ Fingerprint  7f2a…   Label [ this-mac ✎ ]   Targets: local → ~/dev/Overlord     │
 │ Runner state: polling every 3s · last claim 2s ago                                   │
 │ Not running?  [ Copy: ovld runner start ]                                            │
 └────────────────────────────────────────────────────────────────────────────────────┘
@@ -117,7 +117,7 @@ Runner · Open0                                   Local device: this-mac · ◍ 
 
 ## Auto-advance & approval gates
 
-After a delivery, OpenOverlord inspects the next draft objective and either queues
+After a delivery, Overlord inspects the next draft objective and either queues
 it (`auto_advance=true`) or stops for human approval (`auto_advance=false` →
 `awaiting_approval`). The UI surfaces both:
 

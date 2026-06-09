@@ -1,7 +1,7 @@
 # Web App Module
 
 The optional web control center (`ovld serve`, default `http://localhost:8010`)
-and the REST/realtime API that backs it. OpenOverlord is CLI-first: the web app
+and the REST/realtime API that backs it. Overlord is CLI-first: the web app
 is deferred, but the current recommended starting point is a **Vite-powered
 React SPA** instead of a server-rendered React framework.
 

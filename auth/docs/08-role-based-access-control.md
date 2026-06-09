@@ -2,9 +2,9 @@
 
 ## Goal
 
-Add a modular role-based access control model for multi-user OpenOverlord instances. The default model should support at least `ADMIN` and `MEMBER` roles, let administrators manage users, and provide a practical foundation for customers and developers to customize permissions without rewriting the core auth and token lifecycle.
+Add a modular role-based access control model for multi-user Overlord instances. The default model should support at least `ADMIN` and `MEMBER` roles, let administrators manage users, and provide a practical foundation for customers and developers to customize permissions without rewriting the core auth and token lifecycle.
 
-RBAC is not required for the first local-only CLI MVP. The local MVP can continue to run as one implicit trusted user. Once OpenOverlord supports real users, hosted access, shared instances, remote runners, HTTP APIs, MCP, or persistent service users for agents, every protected operation should go through the authorization layer.
+RBAC is not required for the first local-only CLI MVP. The local MVP can continue to run as one implicit trusted user. Once Overlord supports real users, hosted access, shared instances, remote runners, HTTP APIs, MCP, or persistent service users for agents, every protected operation should go through the authorization layer.
 
 ## Design Principles
 
@@ -22,7 +22,7 @@ Requirements:
 
 ## Default Roles
 
-OpenOverlord should ship with two default roles.
+Overlord should ship with two default roles.
 
 ### ADMIN
 
@@ -100,7 +100,7 @@ Non-CRUD operations should stay explicit because they often carry different risk
 
 ## Default RBAC Config
 
-The default policy provider should be backed by a config file, for example `openoverlord.rbac.toml` or an `[rbac]` section in `overlord.toml`. The final location can be chosen during implementation, but the format should support roles, groups, grants, and metadata.
+The default policy provider should be backed by a config file, for example `Overlord.rbac.toml` or an `[rbac]` section in `overlord.toml`. The final location can be chosen during implementation, but the format should support roles, groups, grants, and metadata.
 
 Example:
 

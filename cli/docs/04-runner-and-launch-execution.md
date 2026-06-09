@@ -2,14 +2,14 @@
 
 ## Goal
 
-Port the execution-request queue, local runner, and agent launch path so OpenOverlord can execute objectives from the CLI without requiring a desktop app or web browser.
+Port the execution-request queue, local runner, and agent launch path so Overlord can execute objectives from the CLI without requiring a desktop app or web browser.
 
 ## Execution Pipeline
 
 The same pipeline should power manual run and auto-advance:
 
 1. A user or system requests execution for an objective.
-2. OpenOverlord writes a durable execution request.
+2. Overlord writes a durable execution request.
 3. `ovld runner start` or `ovld runner once` claims the request.
 4. The runner resolves a working directory.
 5. The runner calls `ovld launch <agent>`.

@@ -45,7 +45,7 @@ Core schema changes modify the shared contract. They require a contract update b
 5. **Seed deterministic rows** only when the data is required for the system to function (e.g. default workspace, implicit user). Use fixed UUIDs so tests can rely on them.
 6. **Apply locally to verify**:
    ```sh
-   sqlite3 .overlord/openoverlord.sqlite < database/sqlite/migrations/<NNN>_<description>.sql
+   sqlite3 .overlord/Overlord.sqlite < database/sqlite/migrations/<NNN>_<description>.sql
    ```
 
 ---

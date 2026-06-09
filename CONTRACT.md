@@ -1,15 +1,15 @@
-# OpenOverlord Component Interaction Contract
+# Overlord Component Interaction Contract
 
 Contract Version: `0.2-draft`
 
 ## Purpose
 
-This is the normative specification for how OpenOverlord's components interact. It defines:
+This is the normative specification for how Overlord's components interact. It defines:
 
 - The **component registry** — what each component owns and is responsible for
 - **Interaction surfaces** — the only sanctioned communication paths between components
 - **Stable interfaces** — what cannot change without a contract version bump
-- **Extension points** — the only sanctioned ways to extend OpenOverlord
+- **Extension points** — the only sanctioned ways to extend Overlord
 - **Conformance requirements** — what a shipped component must satisfy before integration
 - **Maintenance rules** — when and how to update this document
 
@@ -25,7 +25,7 @@ The contract version is incremented when any stable interface changes. All confo
 
 | Version | Changes |
 | --- | --- |
-| `0.2-draft` | Adds `authToDatabase` interaction surface and Better Auth implementation tables. |
+| `0.2-draft` | Adds `authToDatabase` interaction surface and Better Auth implementation tables; clarifies Better Auth uses the configured database adapter. |
 | `0.1-draft` | Initial component interaction contract. |
 
 ---
@@ -211,9 +211,9 @@ These are the **only sanctioned paths** between components. Bypassing these surf
 
 ### Auth → Database (Identity Bridge)
 
-- **Transport**: Better Auth's built-in SQLite adapter for auth tables; direct SQL queries for identity bridging
+- **Transport**: Better Auth's configured database adapter for auth tables; direct service-layer/database adapter queries for identity bridging
 - **Auth tables owned**: `user`, `session`, `account`, `verification`, `apikey` — auth-internal; no other component accesses them directly
-- **Identity bridge**: Auth Layer reads `workspace_users` and `users` (via `users.external_subject` / `users.auth_provider = 'better-auth'`) to resolve an authenticated identity to an OpenOverlord `Actor`
+- **Identity bridge**: Auth Layer reads `workspace_users` and `users` (via `users.external_subject` / `users.auth_provider = 'better-auth'`) to resolve an authenticated identity to an Overlord `Actor`
 - **Role resolution**: Auth Layer reads `role_assignments` for the resolved workspace user to build the `Actor`'s role list
 - **Rule**: Auth Layer must not write to core domain tables (tickets, projects, etc.)
 
@@ -228,7 +228,7 @@ These are the **only sanctioned paths** between components. Bypassing these surf
 
 ## Conformance Requirements
 
-Any component, connector, or extension that ships against OpenOverlord must:
+Any component, connector, or extension that ships against Overlord must:
 
 1. **Provide a conformance manifest** (`conformance-manifest.yaml`) at its root declaring:
    - `contractVersion`: the version this component was validated against
@@ -251,7 +251,7 @@ See [`contract/conformance-manifest.schema.yaml`](contract/conformance-manifest.
 
 ## Extension Points
 
-The only sanctioned ways to extend OpenOverlord:
+The only sanctioned ways to extend Overlord:
 
 | Extension Point | Mechanism | Boundary |
 | --- | --- | --- |
@@ -263,7 +263,7 @@ The only sanctioned ways to extend OpenOverlord:
 | REST extension | Namespaced endpoint prefix (`/ext/<name>/`) | REST API Layer |
 | Open vocabulary values | Namespaced values declared in manifest | Database/Protocol Layer |
 
-Attempting to extend OpenOverlord through any other path — patching core tables directly, adding undeclared hook types, using closed vocabulary values — is a contract violation that must be resolved before the component ships.
+Attempting to extend Overlord through any other path — patching core tables directly, adding undeclared hook types, using closed vocabulary values — is a contract violation that must be resolved before the component ships.
 
 See [`contract/extension-points.yaml`](contract/extension-points.yaml) for machine-readable declarations and the approved capability flag list.
 

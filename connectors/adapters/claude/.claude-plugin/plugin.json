@@ -9,7 +9,14 @@
   "homepage": "https://www.ovld.ai",
   "repository": "https://github.com/cooperativ/overlord",
   "license": "UNLICENSED",
-  "keywords": ["overlord", "tickets", "agents", "workflow", "protocol", "claude-code"],
+  "keywords": [
+    "overlord",
+    "tickets",
+    "agents",
+    "workflow",
+    "protocol",
+    "claude-code"
+  ],
   "userConfig": {
     "overlord_url": {
       "type": "string",
@@ -20,7 +27,7 @@
     "user_token": {
       "type": "string",
       "title": "User token",
-      "description": "OpenOverlord USER_TOKEN for non-interactive CLI authentication. Create one with `ovld user-token create`; the raw `out_...` secret is shown once. The connector passes this value to `ovld protocol` as OPENOVERLORD_USER_TOKEN.",
+      "description": "Overlord USER_TOKEN for non-interactive CLI authentication. Create one with `ovld user-token create`; the raw `out_...` secret is shown once. The connector passes this value to `ovld protocol` as Overlord_USER_TOKEN.",
       "sensitive": true
     }
   }

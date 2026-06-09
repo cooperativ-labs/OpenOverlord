@@ -1,6 +1,6 @@
 # Contract Directory — Agent Extension Guide
 
-This file tells agents how to update the contract when extending any OpenOverlord module. The `contract/` directory holds the machine-readable counterparts to [`CONTRACT.md`](../CONTRACT.md). Read `CONTRACT.md` first — it is the authoritative narrative contract.
+This file tells agents how to update the contract when extending any Overlord module. The `contract/` directory holds the machine-readable counterparts to [`CONTRACT.md`](../CONTRACT.md). Read `CONTRACT.md` first — it is the authoritative narrative contract.
 
 ---
 

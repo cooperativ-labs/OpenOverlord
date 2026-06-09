@@ -1,11 +1,12 @@
 {
-  "name": "openoverlord",
+  "name": "overlord",
   "version": "0.1.0",
   "description": "Open-source coordination layer for AI coding agents",
   "type": "module",
   "engines": {
     "node": ">=20"
   },
+  "packageManager": "yarn@4.16.0",
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
@@ -13,10 +14,13 @@
   },
   "dependencies": {
     "better-auth": "^1.2.7",
-    "better-sqlite3": "^12.0.0"
+    "better-sqlite3": "^12.0.0",
+    "kysely": "^0.29.2",
+    "pg": "^8.21.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/pg": "^8.20.0",
     "typescript": "^5.7.0"
   },
   "license": "MIT"

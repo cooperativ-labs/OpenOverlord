@@ -4,11 +4,11 @@
 
 Add a modular `USER_TOKEN` feature that lets each user create, inspect, rotate, and revoke long-lived tokens for CLI, agent, runner, and future API use. This feature should be designed as a separable authentication module so the database design can reserve the right ownership, lifecycle, and future permission-scoping concepts without forcing auth into the local unauthenticated MVP.
 
-Use the name `USER_TOKEN` for this concept. Do not use agent-specific token naming in OpenOverlord planning or implementation unless a migration note explicitly requires it.
+Use the name `USER_TOKEN` for this concept. Do not use agent-specific token naming in Overlord planning or implementation unless a migration note explicitly requires it.
 
 ## Position In The Roadmap
 
-`USER_TOKEN` is not required for the first local-only CLI MVP. The local MVP can run as an implicit trusted user. Once OpenOverlord supports real users, remote runners, HTTP APIs, MCP, or multi-device workflows, `USER_TOKEN` becomes the preferred non-interactive credential type.
+`USER_TOKEN` is not required for the first local-only CLI MVP. The local MVP can run as an implicit trusted user. Once Overlord supports real users, remote runners, HTTP APIs, MCP, or multi-device workflows, `USER_TOKEN` becomes the preferred non-interactive credential type.
 
 Requirements:
 
@@ -125,16 +125,16 @@ ovld user-token rename <token-id-or-prefix> "office workstation"
 Requirements:
 
 - The CLI should accept a `USER_TOKEN` through an environment variable for non-interactive use.
-- Prefer `OPENOVERLORD_USER_TOKEN` for OpenOverlord-specific configuration.
+- Prefer `Overlord_USER_TOKEN` for Overlord-specific configuration.
 - Optionally support `OVLD_USER_TOKEN` as a short alias.
-- Avoid reusing upstream agent-specific token environment variable naming in new OpenOverlord docs.
+- Avoid reusing upstream agent-specific token environment variable naming in new Overlord docs.
 - `ovld auth status` should report whether a user token is present and usable without printing it.
 - `ovld doctor` should detect malformed or revoked token configuration and suggest repair steps.
 
 Example:
 
 ```bash
-export OPENOVERLORD_USER_TOKEN=out_...
+export Overlord_USER_TOKEN=out_...
 ovld protocol attach --ticket-id 1:1204
 ovld runner start
 ```
@@ -168,7 +168,7 @@ Potential protocol commands:
 ## Security Requirements
 
 - Store only token hashes, never raw secrets.
-- Generate high-entropy secrets with a recognizable prefix such as `out_` for OpenOverlord user token.
+- Generate high-entropy secrets with a recognizable prefix such as `out_` for Overlord user token.
 - Store a non-secret lookup prefix long enough to avoid routine collisions but short enough not to leak the secret; prefix collisions should fail safely at create/rotate time.
 - Show the raw secret exactly once.
 - Allow immediate revocation.

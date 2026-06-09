@@ -1,4 +1,4 @@
--- OpenOverlord SQLite core schema.
+-- Overlord SQLite core schema.
 -- Contract: planning/feature-plans/09-database-schema-contract.md
 
 PRAGMA foreign_keys = ON;

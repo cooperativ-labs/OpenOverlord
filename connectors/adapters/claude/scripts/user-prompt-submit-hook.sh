@@ -84,11 +84,11 @@ if session_key:
 env = dict(os.environ)
 user_token = (
     env.get('CLAUDE_PLUGIN_OPTION_USER_TOKEN')
-    or env.get('OPENOVERLORD_USER_TOKEN')
+    or env.get('Overlord_USER_TOKEN')
     or env.get('OVLD_USER_TOKEN')
 )
 if user_token:
-    env['OPENOVERLORD_USER_TOKEN'] = user_token
+    env['Overlord_USER_TOKEN'] = user_token
 
 args = [
     'ovld', 'protocol', 'hook-event',

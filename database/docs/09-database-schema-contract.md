@@ -4,15 +4,17 @@ Contract Version: `0.2-draft`
 
 ## Goal
 
-Define the first-pass persistence contract for OpenOverlord so local CLI, REST APIs, future web UI, runners, workers, and optional sync clients all operate on the same durable model.
+Define the first-pass persistence contract for Overlord so local CLI, REST APIs, future web UI, runners, workers, and optional sync clients all operate on the same durable model.
 
-This document is a schema contract, not a one-database implementation. SQLite should be the default local database, but the logical schema must be portable enough for Postgres and other adapters.
+This document is a schema contract, not a one-database implementation. PostgreSQL should be the authoritative database for shared deployments, SQLite should remain available for local development, and the logical schema must stay portable enough for both adapters.
 
-## Recommendation: Default To SQLite, Support Postgres As First-Class
+## Recommendation: PostgreSQL For Shared Deployments, SQLite For Local Development
 
-OpenOverlord should ship with SQLite as the default database for the CLI-first MVP.
+Overlord should use PostgreSQL as the authoritative database for shared
+organization, hosted, private-network, or remote-runner deployments. SQLite
+remains useful as the default local development and single-workstation database.
 
-Reasons:
+Reasons to keep SQLite for local development:
 
 - The first product surface is local and CLI-first.
 - SQLite has no separate service to install, configure, secure, or back up before `ovld init`.
@@ -20,16 +22,14 @@ Reasons:
 - Attachments and local repository metadata already have a local filesystem boundary.
 - A single-user local instance does not need Postgres operational complexity.
 
-Postgres should be a first-class adapter before hosted, multi-user, or remote-worker deployments become primary.
-
-Reasons:
+Reasons to use PostgreSQL for shared deployments:
 
 - Hosted REST APIs, edge functions, and remote workers need a network-addressable database.
 - Postgres has stronger concurrent writer behavior for shared instances.
 - `LISTEN/NOTIFY`, logical replication, and mature JSON/indexing are useful for realtime UI and sync.
 - Managed Postgres is a common deployment target for open-source web apps.
 
-This choice should not change the logical schema. It does affect implementation details:
+This choice does not change the logical schema. It does affect implementation details:
 
 - SQLite stores logical JSON as text, optionally validated with JSON functions. Postgres should use `jsonb`.
 - SQLite uses `INTEGER` booleans and text timestamps. Postgres can use native `boolean` and `timestamptz`.
@@ -295,19 +295,19 @@ Token rotation stores `predecessor_token_id` only. The successor is derived by q
 
 ### Better Auth Implementation Tables
 
-Better Auth (the embedded authentication library) manages its own tables in the same SQLite database. These tables are **owned by the Auth Layer** and must not be read or written by other components directly.
+Better Auth (the embedded authentication library) manages its own tables in the same configured adapter database. These tables are **owned by the Auth Layer** and must not be read or written by other components directly.
 
-Schema is managed by Better Auth's internal adapter. Migration `003_better_auth.sql` creates these tables at initialization time. Column names follow Better Auth's camelCase conventions (different from OpenOverlord's snake_case domain tables).
+Schema is managed by Better Auth's configured database adapter. Adapter migration `003_better_auth.sql` creates these tables at initialization time. Column names follow Better Auth's camelCase conventions (different from Overlord's snake_case domain tables).
 
 | Table | Purpose |
 | --- | --- |
-| `user` | Better Auth user identity (email, name, emailVerified). Linked to OpenOverlord `users` via `users.external_subject = user.id` and `users.auth_provider = 'better-auth'`. |
+| `user` | Better Auth user identity (email, name, emailVerified). Linked to Overlord `users` via `users.external_subject = user.id` and `users.auth_provider = 'better-auth'`. |
 | `session` | Active browser/client sessions issued by Better Auth. |
 | `account` | OAuth2 / credential accounts linked to a Better Auth user. |
 | `verification` | Email verification and magic-link tokens. |
 | `apikey` | USER_TOKEN credentials managed by Better Auth's apiKey plugin. `key` column stores the hashed value; the `start` prefix is the non-secret display prefix. |
 
-These tables are created by migration `003_better_auth.sql`. They do not carry OpenOverlord's `workspace_id`, `revision`, or `deleted_at` fields — lifecycle is managed entirely by Better Auth.
+These tables are created by each adapter's migration `003_better_auth.sql`. They do not carry Overlord's `workspace_id`, `revision`, or `deleted_at` fields — lifecycle is managed entirely by Better Auth.
 
 ### `user_token_scopes`
 
@@ -431,7 +431,7 @@ Indexes:
 
 ### `workspace_user_execution_targets`
 
-Represents a user's access and local preferences for an execution target. Overlord's hosted schema separates target identity from per-user access/config; OpenOverlord can keep the local MVP simpler, but this contract should preserve the same concept.
+Represents a user's access and local preferences for an execution target. Overlord's hosted schema separates target identity from per-user access/config; Overlord can keep the local MVP simpler, but this contract should preserve the same concept.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1426,7 +1426,7 @@ Seed values should be deterministic enough for tests but should still use stable
 
 ## Extension Points
 
-OpenOverlord should be extensible without making core upgrades fragile.
+Overlord should be extensible without making core upgrades fragile.
 
 - Extension-owned database objects use the `ext_<extension_name>_` prefix.
 - Extension migrations are tracked by `schema_migrations.component`.

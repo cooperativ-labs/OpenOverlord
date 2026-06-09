@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make OpenOverlord usable from the terminal before the web app exists. Every core workflow should have a CLI path, and later UI work should call the same underlying operations.
+Make Overlord usable from the terminal before the web app exists. Every core workflow should have a CLI path, and later UI work should call the same underlying operations.
 
 ## Command Groups
 
@@ -135,7 +135,7 @@ Requirements:
 
 ## MVP CLI Acceptance Criteria
 
-- A user can initialize OpenOverlord locally and create a project from an existing repository.
+- A user can initialize Overlord locally and create a project from an existing repository.
 - A user can create a ticket with ordered objectives from the CLI.
 - A user can list and inspect tickets.
 - A user can launch an agent on a ticket from the CLI.

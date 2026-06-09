@@ -1,6 +1,6 @@
-# OpenOverlord Web Interface — UI Design Documents
+# Overlord Web Interface — UI Design Documents
 
-This directory is the detailed design specification for the OpenOverlord web
+This directory is the detailed design specification for the Overlord web
 control center: the **realtime React interface** that sits on top of the REST +
 realtime boundary owned by the [webapp module](../../README.md) (contract
 component `rest`).
@@ -9,7 +9,7 @@ These documents describe the **ideal** UI in detail. They are design specs, not
 implementation. They assume the stack already recommended for this module —
 **Vite + React + TypeScript + TanStack Router + TanStack Query + Serwist** (see
 [framework-recommendation.md](../framework-recommendation.md)) — and they map
-every screen, component, and action back to a real OpenOverlord capability
+every screen, component, and action back to a real Overlord capability
 defined in the module specs and the [schema contract](../../../database/docs/09-database-schema-contract.md).
 
 ## How to read this set
@@ -48,7 +48,7 @@ because they constrain every screen below:
   rationale coverage, but it must never create commits, branches, resets, or any
   other VCS mutation, and it must not upload repository contents unless the user
   explicitly attaches a file.
-- **Capability gating is first-class.** OpenOverlord installs in
+- **Capability gating is first-class.** Overlord installs in
   [core + à-la-carte table groups](../../../database/docs/10-database-table-groups.md).
   Pages and panels that depend on a group (auth, tags, search, connector
   monitoring) must degrade gracefully when that group is absent.
@@ -58,7 +58,7 @@ because they constrain every screen below:
 
 ## Source material
 
-These designs were derived from the OpenOverlord specs current in the repo:
+These designs were derived from the Overlord specs current in the repo:
 the root [README](../../../README.md) and [CONTRACT](../../../CONTRACT.md);
 the CLI/protocol/runner/review specs under [`cli/docs/`](../../../cli/docs/);
 the connector spec under [`connectors/docs/`](../../../connectors/docs/);

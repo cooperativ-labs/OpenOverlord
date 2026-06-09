@@ -48,7 +48,7 @@ Requirements:
 - Attachments belong to a specific objective.
 - Agents see active objective attachments in attach/load-context responses.
 - CLI supports list, upload, and download/open commands.
-- Local MVP can store files on disk under an OpenOverlord-managed attachment directory.
+- Local MVP can store files on disk under an Overlord-managed attachment directory.
 - Future hosted mode can swap in signed upload/download URLs without changing command names.
 - Soft-deleting attachment metadata should enqueue storage cleanup for the underlying bytes instead of deleting them inside the same database write.
 

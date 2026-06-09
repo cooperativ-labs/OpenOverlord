@@ -1,6 +1,6 @@
 # Database Table Groups: Core and A La Carte
 
-This document categorizes OpenOverlord's database tables into a **core set** that every installation needs and **a la carte groups** that can be added later as requirements grow. The goal is to let a solo developer start with the minimum viable schema and adopt additional capabilities without migration-level rewrites.
+This document categorizes Overlord's database tables into a **core set** that every installation needs and **a la carte groups** that can be added later as requirements grow. The goal is to let a solo developer start with the minimum viable schema and adopt additional capabilities without migration-level rewrites.
 
 The authoritative column and index definitions live in [09-database-schema-contract.md](09-database-schema-contract.md). This document focuses on which tables to install and when.
 
@@ -14,7 +14,7 @@ Core tables are self-contained: they work without any a la carte table. A la car
 
 ## Core Tables
 
-Every OpenOverlord installation needs these. They cover the fundamental workflow: create a project, file a ticket, attach an agent, record progress, and deliver results.
+Every Overlord installation needs these. They cover the fundamental workflow: create a project, file a ticket, attach an agent, record progress, and deliver results.
 
 ### Identity and Workspace
 

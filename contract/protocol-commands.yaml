@@ -1,4 +1,4 @@
-# OpenOverlord Protocol Command Surface
+# Overlord Protocol Command Surface
 # Machine-readable counterpart to planning/feature-plans/03-agent-protocol.md
 #
 # This file defines the stable command names, required flags, response shape versions,

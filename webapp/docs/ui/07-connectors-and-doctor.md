@@ -53,7 +53,7 @@ backend may offer to run setup, but the canonical path is the CLI).
 | Capabilities | connector capability flags | native-resume, model-flag, effort-flag, follow-up-hook, permission-hook, context-file-prompt |
 
 ### Detail / repair panel
-- Lists concrete issues and the **managed file manifest** OpenOverlord owns for that
+- Lists concrete issues and the **managed file manifest** Overlord owns for that
   agent (so the user sees what setup touches and trusts it won't clobber settings).
 - The exact repair: `CopyCommand: ovld setup <agent>` (idempotent) and
   `ovld doctor`. "Run doctor" re-runs the checks and refreshes the page.

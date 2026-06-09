@@ -1,4 +1,4 @@
-# OpenOverlord default RBAC configuration.
+# Overlord default RBAC configuration.
 #
 # This file defines the default ADMIN and MEMBER roles.
 # Copy and edit this file to customize permissions for your instance.

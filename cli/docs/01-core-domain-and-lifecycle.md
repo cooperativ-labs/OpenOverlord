@@ -2,13 +2,13 @@
 
 ## Goal
 
-Port the core Overlord work model into OpenOverlord so tickets, objectives, sessions, context, and review history behave consistently before any web app or auth layer exists.
+Port the core Overlord work model into Overlord so tickets, objectives, sessions, context, and review history behave consistently before any web app or auth layer exists.
 
 ## Required Concepts
 
 ### Instance
 
-The local OpenOverlord installation. For the MVP, one local instance can act as one implicit organization/workspace.
+The local Overlord installation. For the MVP, one local instance can act as one implicit organization/workspace.
 
 Requirements:
 
@@ -19,7 +19,7 @@ Requirements:
 
 ### User
 
-A user is the human identity that owns tickets, creates credentials, and receives permissions once authentication is enabled. For the local MVP, OpenOverlord can use one implicit trusted user.
+A user is the human identity that owns tickets, creates credentials, and receives permissions once authentication is enabled. For the local MVP, Overlord can use one implicit trusted user.
 
 Requirements:
 
@@ -128,7 +128,7 @@ Required event types:
 
 ## Ticket Status Requirements
 
-OpenOverlord should separate ticket statuses from objective states.
+Overlord should separate ticket statuses from objective states.
 
 Ticket status types:
 
@@ -170,7 +170,7 @@ Requirements:
 6. Agent asks a blocking question if needed and stops.
 7. Agent delivers summary, artifacts, and change rationales.
 8. Objective moves to `complete`; ticket moves to `review`.
-9. If another draft objective exists and auto-advance is enabled, OpenOverlord queues it for runner execution.
+9. If another draft objective exists and auto-advance is enabled, Overlord queues it for runner execution.
 
 ### Follow-Up Flow
 

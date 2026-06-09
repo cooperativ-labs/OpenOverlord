@@ -35,7 +35,7 @@ An auth provider replaces or supplements the built-in `USER_TOKEN` mechanism. Th
 **Steps:**
 
 1. **Create a conformance manifest** at `auth/providers/<name>/conformance-manifest.yaml` declaring `componentType: auth-provider` and `contractVersion: 0.2-draft`.
-2. **Implement the `AuthenticationProvider` interface** (define the interface in `src/auth/` if it does not exist yet). The provider must accept a credential and resolve it to an OpenOverlord `Actor` or reject it.
+2. **Implement the `AuthenticationProvider` interface** (define the interface in `src/auth/` if it does not exist yet). The provider must accept a credential and resolve it to an Overlord `Actor` or reject it.
 3. **Do not read Better Auth tables directly** (`user`, `session`, `account`, `verification`, `apikey`). Only the Auth Layer's own identity bridge code may read those.
 4. **Wire the identity bridge**: read `workspace_users` and `users` (via `users.external_subject` / `users.auth_provider`) to resolve the external identity to an `Actor`.
 5. **Update the migration if needed**: if your provider needs a new schema column (e.g. `users.external_subject`), add a numbered migration in `database/sqlite/migrations/` following the [database extension procedure](../database/AGENTS.md).
@@ -45,12 +45,12 @@ An auth provider replaces or supplements the built-in `USER_TOKEN` mechanism. Th
 
 ## Adding a New Role
 
-Default roles (`ADMIN`, `MEMBER`) are defined in `src/rbac/roles.ts` and enforced by the RBAC policy in [`openoverlord.rbac.toml`](../openoverlord.rbac.toml).
+Default roles (`ADMIN`, `MEMBER`) are defined in `src/rbac/roles.ts` and enforced by the RBAC policy in [`Overlord.rbac.toml`](../Overlord.rbac.toml).
 
 **Steps:**
 
 1. Add the role name constant to `src/rbac/roles.ts`.
-2. Declare the role's default capability grants in `openoverlord.rbac.toml`. Follow the existing `[role.ADMIN]` / `[role.MEMBER]` blocks.
+2. Declare the role's default capability grants in `Overlord.rbac.toml`. Follow the existing `[role.ADMIN]` / `[role.MEMBER]` blocks.
 3. Update the RBAC authorizer tests in `src/rbac/authorizer.test.ts` to cover the new role's permissions.
 4. If the new role is meant to be workspace-configurable (not just code-defined), note it in [`auth/docs/08-role-based-access-control.md`](docs/08-role-based-access-control.md).
 5. No contract update needed unless you are adding this role to a closed vocabulary (roles are an open vocabulary — see `CONTRACT.md`).
@@ -64,7 +64,7 @@ Permissions are domain-capability strings (e.g. `project:create`, `ticket:read`)
 **Steps:**
 
 1. Define the permission name string in `src/rbac/permissions.ts` (create the file if it does not exist, following the pattern in `src/rbac/`).
-2. Add the permission to the relevant role grant blocks in `openoverlord.rbac.toml`.
+2. Add the permission to the relevant role grant blocks in `Overlord.rbac.toml`.
 3. Add a `can(actor, action, resource)` call wherever the permission is enforced in the service layer. **Do not gate access in database queries or CLI handlers directly** — always call through the `AuthorizationProvider` interface.
 4. Write a test in `src/rbac/authorizer.test.ts` covering the new permission for each role that should (and should not) hold it.
 5. If this permission is being promoted from an extension-namespace value to a core value, update the "RBAC permission names" open vocabulary section in `database/docs/09-database-schema-contract.md`.

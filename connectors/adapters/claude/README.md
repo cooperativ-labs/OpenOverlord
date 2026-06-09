@@ -2,7 +2,7 @@
 
 Claude Code plugin that exposes the Overlord local ticket workflow to any Claude Code surface (CLI, VS Code extension, Claude Code desktop app).
 
-## OpenOverlord layer map
+## Overlord layer map
 
 This connector is intentionally reviewable against the four connector layers in `connectors/README.md`:
 
@@ -18,8 +18,8 @@ This connector is intentionally reviewable against the four connector layers in 
 - `skills/overlord-ticket/SKILL.md` — Claude-specific overlay that points to the shared Connector Core.
 - `commands/*.md` — slash commands for session routing, objective discussion, ticket creation, and work recording.
 - `hooks/hooks.json` + `scripts/*.sh` — hook-driven follow-up, permission, and stop-event capture.
-- `userConfig` for `overlord_url` and `user_token`; the hook scripts use the `ovld protocol` CLI and pass the plugin's USER_TOKEN to that CLI as `OPENOVERLORD_USER_TOKEN`.
-- `conformance-manifest.yaml` — connector conformance declaration for the OpenOverlord contract.
+- `userConfig` for `overlord_url` and `user_token`; the hook scripts use the `ovld protocol` CLI and pass the plugin's USER_TOKEN to that CLI as `Overlord_USER_TOKEN`.
+- `conformance-manifest.yaml` — connector conformance declaration for the Overlord contract.
 - `prompt-wrapper.md` — Claude launch context-file guidance.
 
 The shared Connector Core source is outside this adapter at `connectors/core/overlord-ticket`. A setup/build step that installs the plugin into Claude must materialize that core into the installed plugin bundle so the runtime package is self-contained.
@@ -35,7 +35,7 @@ The shared Connector Core source is outside this adapter at `connectors/core/ove
 ## Install (local dev)
 
 ```bash
-claude --plugin-dir /absolute/path/to/OpenOverlord/connectors/adapters/claude
+claude --plugin-dir /absolute/path/to/Overlord/connectors/adapters/claude
 ```
 
 ## Install (marketplace)
@@ -52,7 +52,7 @@ claude plugin install overlord@cooperativ
 ```
 
 
-The plugin prompts for `overlord_url` and, when needed for non-interactive use, `user_token` at install time. Create the token with `ovld user-token create`; the raw `out_...` secret is shown once and should be pasted into the Claude plugin config. Authentication can also come from `ovld auth repair` first when a shared session already exists, then `ovld auth login`, Overlord Desktop, or `OPENOVERLORD_USER_TOKEN` / `OVLD_USER_TOKEN` in the launched shell.
+The plugin prompts for `overlord_url` and, when needed for non-interactive use, `user_token` at install time. Create the token with `ovld user-token create`; the raw `out_...` secret is shown once and should be pasted into the Claude plugin config. Authentication can also come from `ovld auth repair` first when a shared session already exists, then `ovld auth login`, Overlord Desktop, or `Overlord_USER_TOKEN` / `OVLD_USER_TOKEN` in the launched shell.
 
 
 

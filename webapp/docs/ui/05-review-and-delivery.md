@@ -1,6 +1,6 @@
 # 05 — Review & Delivery
 
-The screen that makes OpenOverlord useful *after* an agent finishes. When a
+The screen that makes Overlord useful *after* an agent finishes. When a
 delivery moves a ticket to `review`, this surface lets a human evaluate what was
 asked, what happened, what was delivered, what changed and why, and what still
 needs follow-up — **without opening the original agent chat**. It must be easier to

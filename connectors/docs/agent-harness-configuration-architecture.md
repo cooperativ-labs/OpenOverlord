@@ -2,13 +2,13 @@
 
 ## Decision
 
-OpenOverlord should split agent and harness configuration by ownership boundary. The
+Overlord should split agent and harness configuration by ownership boundary. The
 configuration model should not use one user-level or project-level blob as the canonical source
 for every launch decision.
 
 The project-specific model is:
 
-1. Built-in connector metadata defines which agent keys OpenOverlord knows how to launch.
+1. Built-in connector metadata defines which agent keys Overlord knows how to launch.
 2. Workspace configuration defines which agents, models, and shared harnesses are available in the
    workspace by default.
 3. Users may create personal custom harness extensions, then install or publish them into one or
@@ -23,7 +23,7 @@ This means `agent_flags_json` should be treated as a temporary name. The durable
 rename it to `agent_configs_json` where it stores more than raw flags, and the canonical per-user
 launch mechanics should move to `workspace_user_execution_targets.agent_configs_json`.
 
-## Current OpenOverlord Shape
+## Current Overlord Shape
 
 The current schema already has most of the right boundaries:
 
@@ -46,9 +46,9 @@ behavior for that target.
 
 ## Ownership Boundaries
 
-| Concern | Owner | OpenOverlord storage | Notes |
+| Concern | Owner | Overlord storage | Notes |
 | --- | --- | --- | --- |
-| Built-in agent connector capabilities | OpenOverlord | Connector registry or static config | Examples: `codex`, `claude`, `cursor`. |
+| Built-in agent connector capabilities | Overlord | Connector registry or static config | Examples: `codex`, `claude`, `cursor`. |
 | Agents and models available by default | Workspace | `workspaces.settings_json`, future `workspace_agent_catalog` | Model config is workspace-level, not project-level. |
 | Personal custom harness extensions | User | `user_harness_extensions` | User-owned source of truth for draft/private custom connectors. |
 | Workspace custom harness extensions | Workspace admin/member with permission | `workspace_harness_extensions` | Workspace-installed catalog entries, optionally copied from a personal extension version. |
@@ -144,7 +144,7 @@ flowchart TD
 
 The sources answer different questions:
 
-- Built-in connector metadata answers: "What can OpenOverlord launch without custom templates?"
+- Built-in connector metadata answers: "What can Overlord launch without custom templates?"
 - Workspace catalog answers: "What agents, models, and shared harnesses are available by default?"
 - Personal custom extensions answer: "What draft/private harnesses has this user built?"
 - Workspace-installed extensions answer: "What custom harnesses are approved for this workspace?"
@@ -195,7 +195,7 @@ The storage split should be:
 
 | Layer | Storage | Purpose |
 | --- | --- | --- |
-| Packaged harnesses | Code-level registry bundled with OpenOverlord | Immutable definitions for built-in agents such as `codex` and `claude`. |
+| Packaged harnesses | Code-level registry bundled with Overlord | Immutable definitions for built-in agents such as `codex` and `claude`. |
 | Personal extension definitions | `user_harness_extensions` plus local bundle files or hosted blobs | User-authored draft/private custom connectors. |
 | Workspace extension catalog | `workspace_harness_extensions` | Workspace-approved installed extensions available to members. |
 | Local connector installation state | `connector_installations` | Doctor/setup state for files installed into a specific local agent runtime. |

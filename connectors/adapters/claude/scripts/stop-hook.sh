@@ -38,9 +38,9 @@ fi
 log_hook "checking delivery status session_key=${SESSION_KEY:0:8}..."
 
 RESPONSE_FILE=$(mktemp "${TMPDIR:-/tmp}/overlord-stop-hook.XXXXXX")
-USER_TOKEN="${CLAUDE_PLUGIN_OPTION_USER_TOKEN:-${OPENOVERLORD_USER_TOKEN:-${OVLD_USER_TOKEN:-}}}"
+USER_TOKEN="${CLAUDE_PLUGIN_OPTION_USER_TOKEN:-${Overlord_USER_TOKEN:-${OVLD_USER_TOKEN:-}}}"
 if [ -n "$USER_TOKEN" ]; then
-  export OPENOVERLORD_USER_TOKEN="$USER_TOKEN"
+  export Overlord_USER_TOKEN="$USER_TOKEN"
 fi
 ovld protocol hook-event \
   --hook-type Stop \

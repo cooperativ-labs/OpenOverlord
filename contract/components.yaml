@@ -1,4 +1,4 @@
-# OpenOverlord Component Registry
+# Overlord Component Registry
 # Machine-readable counterpart to CONTRACT.md "Component Registry" and "Interaction Surfaces"
 #
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
@@ -209,10 +209,10 @@ interactionSurfaces:
       - "Response shapes use camelCase logical field names"
 
   authToDatabase:
-    description: "Auth layer accesses auth tables via Better Auth adapter; reads role_assignments and workspace_users for identity bridging"
+    description: "Auth layer accesses auth tables via the configured Better Auth database adapter; reads role_assignments and workspace_users for identity bridging"
     from: auth
     to: database
-    transport: better-auth-internal-adapter-and-direct-query
+    transport: configured-better-auth-adapter-and-direct-query
     rules:
       - "Auth tables (user, session, account, verification, apikey) are auth-internal; no other component reads them directly"
       - "Identity bridge reads workspace_users and users where users.auth_provider = 'better-auth' and users.external_subject matches the Better Auth user id"

@@ -1,6 +1,6 @@
 # 00 — Structure & Information Architecture
 
-This is the structural foundation for the OpenOverlord web interface. It defines
+This is the structural foundation for the Overlord web interface. It defines
 the app shell, navigation model, route map, realtime data model, design-system
 foundations, capability gating, and the cross-cutting patterns (loading, empty,
 error, offline) that every page document inherits. Read this before any page doc.
@@ -9,7 +9,7 @@ error, offline) that every page document inherits. Read this before any page doc
 
 ## 1. Product framing
 
-OpenOverlord's web app is an **operational control plane**, not a content site.
+Overlord's web app is an **operational control plane**, not a content site.
 Its closest analogues are Linear, GitHub Projects, and a local ops console. The
 mental model the UI must make obvious:
 
@@ -49,7 +49,7 @@ A persistent three-region shell wraps all authenticated/operational routes.
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
 │ TOPBAR                                                                       │
-│ [≡] OpenOverlord   [Project ▾]     ⌘K Search…     ◍ Runner: idle   ⚠ 3      │  ← global status cluster
+│ [≡] Overlord   [Project ▾]     ⌘K Search…     ◍ Runner: idle   ⚠ 3      │  ← global status cluster
 ├──────────────┬────────────────────────────────────────────────────────────┤
 │ SIDEBAR      │ MAIN (router outlet)                                         │
 │              │                                                              │
@@ -229,7 +229,7 @@ The topbar status cluster shows the realtime link state:
 
 ## 5. Capability gating
 
-OpenOverlord is modular: a solo CLI user runs **core only**; teams and hosted
+Overlord is modular: a solo CLI user runs **core only**; teams and hosted
 deployments add à-la-carte groups. The UI must **detect installed capabilities**
 (via a `GET /capabilities` describing installed groups / REST features) and
 adapt. Default to hiding rather than disabling surfaces a deployment cannot serve.

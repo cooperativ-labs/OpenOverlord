@@ -61,7 +61,7 @@ Settings
 ```
 ┌─ Execution targets ─────────────────────────────────────────────────────┐
 │ Target     Type    Device fp   Directories                Default        │
-│ this-mac   local   7f2a…       ~/dev/OpenOverlord ●prim    ●              │
+│ this-mac   local   7f2a…       ~/dev/Overlord ●prim    ●              │
 │ (remote-ssh targets: display-only, future)                               │
 │   [ Rename label ]   linked dirs managed per project (doc 01)            │
 └──────────────────────────────────────────────────────────────────────────┘

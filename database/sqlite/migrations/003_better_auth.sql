@@ -1,7 +1,7 @@
 -- Better Auth implementation tables (migration 003).
 -- These tables are owned by the Auth Layer (src/auth/) and managed via Better Auth's
 -- internal adapter. Column names follow Better Auth's camelCase conventions (intentionally
--- different from OpenOverlord's snake_case domain tables).
+-- different from Overlord's snake_case domain tables).
 -- No other component should read or write these tables directly.
 -- See planning/feature-plans/09-database-schema-contract.md → Better Auth Implementation Tables.
 
@@ -9,7 +9,7 @@ PRAGMA foreign_keys = ON;
 
 BEGIN;
 
--- Better Auth user identity. Linked to OpenOverlord users via:
+-- Better Auth user identity. Linked to Overlord users via:
 --   users.auth_provider = 'better-auth' AND users.external_subject = "user".id
 CREATE TABLE "user" (
   "id"            TEXT    NOT NULL PRIMARY KEY,

@@ -1,9 +1,10 @@
 # Database Module
 
-OpenOverlord's persistence layer. SQLite is the default local database; the
-schema is defined as a portable contract so other adapters (e.g. Postgres) can
-implement it and pass conformance tests. This module also hosts the **extension
-system** — the sanctioned ways to extend the schema without forking it.
+Overlord's persistence layer. PostgreSQL is the authoritative database for
+shared/private-network deployments; SQLite remains the default local development
+database. The schema is defined as a portable contract so adapters can implement
+it and pass conformance tests. This module also hosts the **extension system** —
+the sanctioned ways to extend the schema without forking it.
 
 ## Contract Components
 
@@ -23,17 +24,24 @@ response shapes (→ [webapp module](../webapp/README.md)).
 - [09 — Database Schema Contract](docs/09-database-schema-contract.md): column/index/FK definitions, default-DB recommendation, core tables, realtime/sync, migration discipline, REST API Boundary, and Extension Points.
 - [09 — Schema Contract Review](docs/09-database-schema-contract-review.md): review notes on the schema contract.
 - [10 — Database Table Groups](docs/10-database-table-groups.md): which tables are core vs. à la carte, grouped optional sets, and the agent setup decision tree.
+- [11 — SQLite Vs PostgreSQL For Multi-Agent Use](docs/11-sqlite-vs-postgresql-multi-agent.md): database tradeoffs for local agents, hosted deployments, remote runners, queue claiming, and write concurrency.
+- [12 — Private-Network PostgreSQL Deployment Plan](docs/12-private-network-postgresql-deployment-plan.md): recommended architecture when shared organization state starts on a private-network database with multiple clients and distributed runners.
 
 ## Code & Tests (colocated)
 
 Migrations live here, numbered sequentially:
 
-### `sqlite/migrations/001_initial_core.sql`
+### `sqlite/migrations/001_initial_core.sql` and `postgres/migrations/001_initial_core.sql`
 Core MVP slice: all tables for the local ticket/objective/session workflow, the
 change feed, and idempotency. Seeds deterministic rows for the default local
 workspace, implicit user, workspace membership, and workspace-scoped ticket sequence.
 
-### `sqlite/migrations/002_rbac.sql`
+The PostgreSQL migration uses native `jsonb`, `boolean`, `timestamptz`, and a
+`bigint` identity cursor for `entity_changes.seq`. It also adds a claimable
+queue index for `execution_requests` so service-layer runner claims can use
+`FOR UPDATE SKIP LOCKED` efficiently.
+
+### `sqlite/migrations/002_rbac.sql` and `postgres/migrations/002_rbac.sql`
 Group 1 (Multi-User Access and API Tokens):
 - `role_assignments` — durable workspace-user-to-role membership. Empty-string sentinels for `resource_type`/`resource_id` represent workspace-level scope so the unique-active-assignment index works on both SQLite and Postgres.
 - `user_tokens` — USER_TOKEN metadata and hashes only; raw secrets are never stored.
@@ -43,11 +51,21 @@ Seeds an `ADMIN` role assignment for the implicit local workspace user. This
 provides the schema foundation for the [Auth module](../auth/README.md); the
 authorization logic itself lives above the database layer.
 
+### `sqlite/migrations/003_better_auth.sql` and `postgres/migrations/003_better_auth.sql`
+Auth-owned Better Auth implementation tables (`user`, `session`, `account`,
+`verification`) in the same adapter database. No other component should read or
+write these tables directly.
+
 ## Applying Locally
 
 ```sh
-sqlite3 .overlord/openoverlord.sqlite < database/sqlite/migrations/001_initial_core.sql
-sqlite3 .overlord/openoverlord.sqlite < database/sqlite/migrations/002_rbac.sql
+sqlite3 .overlord/Overlord.sqlite < database/sqlite/migrations/001_initial_core.sql
+sqlite3 .overlord/Overlord.sqlite < database/sqlite/migrations/002_rbac.sql
+sqlite3 .overlord/Overlord.sqlite < database/sqlite/migrations/003_better_auth.sql
+
+psql "$DATABASE_URL" -f database/postgres/migrations/001_initial_core.sql
+psql "$DATABASE_URL" -f database/postgres/migrations/002_rbac.sql
+psql "$DATABASE_URL" -f database/postgres/migrations/003_better_auth.sql
 ```
 
 Each migration enables SQLite foreign-key checks for the connection. A future

@@ -1,6 +1,6 @@
 # MCP Module — PLANNED / DEFERRED
 
-A Model Context Protocol (MCP) server surface that would expose OpenOverlord
+A Model Context Protocol (MCP) server surface that would expose Overlord
 capabilities (tickets, objectives, protocol operations) to MCP-aware clients.
 
 > **Status: not yet implemented.** MCP is a Phase 5 expansion item (see "Phase 5:

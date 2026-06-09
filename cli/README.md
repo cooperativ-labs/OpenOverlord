@@ -1,6 +1,6 @@
 # CLI Module
 
-The `ovld` command-line surface — OpenOverlord's primary, CLI-first product.
+The `ovld` command-line surface — Overlord's primary, CLI-first product.
 This module is the home for everything a user or agent invokes as `ovld …`.
 
 ## Contract Components

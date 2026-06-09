@@ -14,4 +14,4 @@ Rules:
 - The visible user prompt should point Claude at the context file and name the active ticket ID; for normal execution this is a short instruction such as `Begin working on this ticket.`
 - `--model` is passed only when the execution target has a model configured.
 - `--effort` is passed only when the installed Claude binary supports it and the execution target has an effort level configured.
-- Do not embed secrets in the prompt wrapper. Authentication comes from shared `ovld auth` credentials, Overlord-launched environment variables, `OPENOVERLORD_USER_TOKEN` / `OVLD_USER_TOKEN`, or the Claude plugin `user_token` config passed to `ovld protocol` as `OPENOVERLORD_USER_TOKEN`.
+- Do not embed secrets in the prompt wrapper. Authentication comes from shared `ovld auth` credentials, Overlord-launched environment variables, `Overlord_USER_TOKEN` / `OVLD_USER_TOKEN`, or the Claude plugin `user_token` config passed to `ovld protocol` as `Overlord_USER_TOKEN`.
