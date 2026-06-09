@@ -28,7 +28,7 @@ Requirements:
 - Attribute created tickets, sessions, events, deliveries, and `USER_TOKEN` records to a user once auth is enabled.
 - User-owned `USER_TOKEN` credentials initially inherit all current permissions of the creating user.
 - Future scoped token permissions should restrict the creating user's permissions, not create a separate agent identity.
-- Disabling or removing a user should also invalidate that user's effective token access.
+- Disabling or soft-deleting a user should also invalidate that user's effective token access.
 - Future role-based access control should use default `ADMIN` and `MEMBER` roles, with only administrators able to add, remove, or change roles for other users unless a custom authorization provider says otherwise.
 
 ### Project
@@ -52,6 +52,7 @@ A ticket is the durable goal and review record.
 Requirements:
 
 - Human-readable ticket identifier such as `1:1204` can be retained for compatibility, but MVP can also support a simple local sequence.
+- The default human-readable ticket sequence is workspace-scoped. If project-scoped sequences are introduced later, treat that as a schema migration rather than a config-only change.
 - Fields should cover title, objective summary, status, priority, project, constraints, acceptance criteria, available tools, output format, creator, timestamps, and execution target intent.
 - Tickets contain ordered objectives.
 - Tickets retain activity history, delivery records, artifacts, attachments, shared context, and change rationales.
@@ -135,6 +136,8 @@ Ticket status types:
 - `execute`: active work.
 - `review`: delivered or needs human review.
 - `complete`: finished.
+- `blocked`: blocked or waiting for human resolution.
+- `cancelled`: intentionally stopped.
 
 Default status names can start with:
 
@@ -148,9 +151,12 @@ Default status names can start with:
 
 Requirements:
 
+- `next-up` is a default status name mapped to the stable `draft` status type.
 - Status names should be configurable per project later, but status type semantics should remain stable.
 - Only one project status should have the exclusive `execute` type and one should have the exclusive `review` type.
+- Only one active default status should exist per project.
 - CLI update phases can include `draft`, `execute`, `review`, `deliver`, `complete`, `blocked`, and `cancelled` for protocol compatibility.
+- Soft deletion is represented by `deleted_at` in the schema, not by adding `deleted` or `removed` lifecycle statuses.
 
 ## Lifecycle Requirements
 

@@ -1,5 +1,9 @@
 // Syncthing ignore patterns (gitignore syntax)
-// Keep node_modules local — run yarn install on each machine instead.
 
+// Standard
 node_modules/
 **/node_modules/
+.next/
+release/
+**/release/
+**/ios/Pods/

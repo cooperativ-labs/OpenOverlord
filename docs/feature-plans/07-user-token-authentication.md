@@ -99,7 +99,7 @@ Requirements:
 - Rotation should create a replacement secret and invalidate the old secret.
 - The replacement secret is shown exactly once.
 - Rotation should preserve useful metadata such as label unless explicitly changed.
-- Rotation should record predecessor/successor relationship for audit and troubleshooting.
+- Rotation should record the predecessor relationship for audit and troubleshooting. The successor is derived by querying replacement tokens rather than stored as a second pointer.
 
 Suggested commands:
 
@@ -169,6 +169,7 @@ Potential protocol commands:
 
 - Store only token hashes, never raw secrets.
 - Generate high-entropy secrets with a recognizable prefix such as `out_` for OpenOverlord user token.
+- Store a non-secret lookup prefix long enough to avoid routine collisions but short enough not to leak the secret; prefix collisions should fail safely at create/rotate time.
 - Show the raw secret exactly once.
 - Allow immediate revocation.
 - Record last-used timestamp and, when safe, coarse client metadata.

@@ -20,7 +20,7 @@ Requirements:
 - Delivery summary is a narrative, not a command log.
 - Delivery moves the ticket to review.
 - Delivery stores artifacts and change rationales as first-class records.
-- Delivery is linked to the session and objective.
+- Delivery is linked to the objective and, when work happened through an attached agent, the session. `record-work` deliveries may have no session.
 - Follow-up deliveries should not destroy previous delivery history.
 
 ## Artifact Requirements
@@ -50,6 +50,7 @@ Requirements:
 - CLI supports list, upload, and download/open commands.
 - Local MVP can store files on disk under an OpenOverlord-managed attachment directory.
 - Future hosted mode can swap in signed upload/download URLs without changing command names.
+- Soft-deleting attachment metadata should enqueue storage cleanup for the underlying bytes instead of deleting them inside the same database write.
 
 ## Shared Context Requirements
 
@@ -93,6 +94,7 @@ Agents should be able to make changed files visible before delivery without incr
 - The CLI may populate changed files from local VCS status, but it must persist only metadata such as normalized path, status, session, objective, and optional rationale fields.
 - Full diffs, patch bodies, and file contents must not be persisted as update-time changed-file records.
 - Each changed file should be stored once per session/objective/path and updated in place on later updates.
+- Delivery coverage is objective-scoped: it should aggregate changed-file observations across all sessions for the objective and any no-session `record-work` records.
 - Rationale fields can be added or revised over time, but delivery must still enforce complete rationales for meaningful tracked changes.
 - A changed-file record can exist before a rationale exists; this lets live review show what is changing while the work is still in progress.
 - If a file disappears from the current local diff, keep enough history to explain that it was observed earlier, but do not require final delivery coverage unless the final workspace state still contains a meaningful tracked change or a retained rationale should be reviewed.

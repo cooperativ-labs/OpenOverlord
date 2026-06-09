@@ -200,6 +200,7 @@ Requirements:
 - Create a completed objective.
 - Store a delivery summary.
 - Store artifacts and change rationales if provided.
+- Store delivery and changed-file records without requiring an `agent_sessions` row; session attribution is null for `record-work`.
 - Do not use it for in-progress work.
 
 ## Acceptance Criteria

@@ -17,6 +17,7 @@ Requirements:
 - Evaluate authorization by asking whether an actor can perform an action on a resource in context.
 - Keep role definitions configurable and replaceable by developers.
 - Store role assignments durably so user membership survives config reloads and policy provider changes.
+- Store role assignment scope fields as non-null values. Instance/workspace-level assignments should use empty string scope sentinels so the database can enforce one active assignment per user/role/scope on both SQLite and Postgres.
 - Prefer allow-only grants in the first implementation. Defer deny rules until there is a concrete need.
 
 ## Default Roles

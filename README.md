@@ -24,7 +24,7 @@ These need to be well-documented and cleanly organized so that users and agents 
 
 ### Database
 
-The package includes a SQLite database that is used to store projects, tickets, objectives, events, and other data. Data architecture will be discussed below, but users should be able to extend/customize the schema: 
+The package includes a SQLite database by default to store projects, tickets, objectives, events, and other data. The first-pass portable schema proposal is documented in [docs/feature-plans/09-database-schema-contract.md](docs/feature-plans/09-database-schema-contract.md). The schema should be generated from one machine-readable source for SQLite/Postgres DDL, docs, and adapter conformance tests. Users should be able to extend/customize the schema through component-scoped migrations, namespaced metadata, and documented extension points:
 **Authentication:** Users should be able to attach their own authentication mechanisms to OpenOverlord, so the schema should facilitate this and documentation should be provided for how to do so.
 **Role-Based Access Control:** We want users to be able to define roles and permissions. 
 
@@ -104,7 +104,7 @@ The top-level container. A project is mapped to a git repository and a local wor
 
 ### Ticket 🎫
 
-A unit of work, identified like `1:1204` (`<org>:<sequence>`). A ticket represents a feature, bug, or goal that may take one or many steps to complete. Tickets hold the shared state that every objective beneath them can read and contribute to: history, attachments, artifacts, acceptance criteria, and recorded change rationales.
+A unit of work, identified like `1:1204` (`<workspace>:<sequence>`). A ticket represents a feature, bug, or goal that may take one or many steps to complete. Tickets hold the shared state that every objective beneath them can read and contribute to: history, attachments, artifacts, acceptance criteria, and recorded change rationales.
 
 ### Objective 🎯
 

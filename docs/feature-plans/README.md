@@ -9,7 +9,7 @@ This directory captures the feature requirements needed to port the working part
 - Upstream connector plugin templates and connector surface notes
 - Upstream web route/component inventory for the separate web app plan
 
-These plans are intentionally requirements documents, not database schema drafts. They describe entities, behaviors, command contracts, state transitions, and acceptance criteria. Concrete tables, indexes, migrations, and storage design should be handled in the next step.
+These plans are primarily requirements documents. They describe entities, behaviors, command contracts, state transitions, and acceptance criteria. The first-pass persistence proposal now lives in the database schema contract.
 
 ## Port Strategy
 
@@ -37,6 +37,8 @@ The key product invariant to preserve from Overlord is:
 - [Review, Artifacts, And Change Tracking](06-review-artifacts-and-change-tracking.md): delivery review records, artifacts, rationale coverage, and local diff support.
 - [USER_TOKEN Authentication Module](07-user-token-authentication.md): user-owned API/CLI tokens, creation, rotation, revocation, current full-user permission behavior, and future scoped permissions.
 - [Role-Based Access Control](08-role-based-access-control.md): default `ADMIN`/`MEMBER` roles, capability grants, config-backed policy, and replaceable authorization providers.
+- [Database Schema Contract](09-database-schema-contract.md): portable persistence contract, default database recommendation, core tables, realtime/sync support, and migration discipline.
+- [Database Table Groups: Core and A La Carte](10-database-table-groups.md): which tables are required for every install versus optional, grouped a la carte sets with guidance on when to adopt each, and decision-tree for the agent-based setup flow.
 - [Web App Requirements](web-app.md): deferred UI/control-center requirements kept separate from CLI-first implementation.
 
 ## Suggested Phases
@@ -46,11 +48,13 @@ The key product invariant to preserve from Overlord is:
 - Define `overlord.toml` loading and defaults.
 - Define `.overlord/project.json`, `.overlord/tmp/`, and `.overlord/logs/`.
 - Add a local SQLite connection layer.
+- Define the machine-readable schema source that will generate SQLite/Postgres DDL, documentation tables, and adapter conformance fixtures.
 - Add a minimal `ovld` command with `version`, `help`, `init`, and config inspection.
 
 ### Phase 1: CLI Ticket Management
 
 - Implement local projects, tickets, objectives, statuses, events, and sessions.
+- Seed the default local workspace, implicit user, project statuses, and workspace-scoped ticket sequence.
 - Implement `ovld create-project`, `ovld add-cwd`, `ovld create`, `ovld tickets list`, and `ovld ticket context`.
 - Implement objective ordering and ticket status movement.
 
@@ -79,6 +83,7 @@ The key product invariant to preserve from Overlord is:
 - Add auth and multi-user support.
 - Add the modular `USER_TOKEN` feature for user-owned CLI/API tokens, including create/list/rotate/revoke flows.
 - Add role-based permissions with default `ADMIN` and `MEMBER` roles.
+- Add extension migration support, namespaced metadata conventions, and adapter conformance tests before accepting community database adapters.
 - Add remote/SSH execution targets.
 - Add MCP surface.
 - Add web app.

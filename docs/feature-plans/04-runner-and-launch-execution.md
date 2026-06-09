@@ -21,12 +21,13 @@ The same pipeline should power manual run and auto-advance:
 Requirements:
 
 - Store objective ID, ticket ID, project ID, requested agent, model, thinking/effort, launch flags, requested source, idempotency key, status, timestamps, last error, and resolved working directory/resource details.
-- Statuses: `queued`, `claimed`, `launching`, `launched`, `failed`, and `cleared`.
+- Statuses: `queued`, `claimed`, `launching`, `launched`, `failed`, `cleared`, `cancelled`, and `expired`.
 - Active statuses: `queued`, `claimed`, `launching`.
 - A request must be claimable only when its objective is launchable: `draft`, `submitted`, or `launching`.
 - Duplicate auto-advance requests for the same objective should be prevented by an idempotency key.
 - Manual run should allow repeat requests with distinct client request IDs.
 - Stale claims should expire and become retryable or failed with a clear event.
+- Queue claiming must be atomic. Competing runners should not be able to claim the same active execution request.
 
 ## Runner Requirements
 
