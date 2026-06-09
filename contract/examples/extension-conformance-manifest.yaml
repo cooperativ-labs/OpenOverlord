@@ -1,0 +1,24 @@
+# Example: Database extension conformance manifest
+# This shows how a third-party extension that adds its own tables would declare conformance.
+
+contractVersion: "0.1-draft"
+componentType: extension
+componentKey: my-analytics
+label: "My Analytics Extension"
+description: "Adds aggregate analytics tables for ticket throughput tracking"
+
+extension:
+  tablePrefix: "ext_myanalytics_"
+  migrationComponent: "ext:my-analytics"
+  metadataKeyPrefix: "com.example.myanalytics"
+  usesExtensionPoints:
+    - database-extension
+    - open-vocabulary-value
+
+vocabularyExtensions:
+  - vocabulary: "artifacts.type"
+    value: "com.example.myanalytics.throughput-report"
+    description: "Artifact type for generated throughput analysis reports"
+  - vocabulary: "worker_jobs.type"
+    value: "com.example.myanalytics.aggregate"
+    description: "Background job type for computing aggregate metrics"

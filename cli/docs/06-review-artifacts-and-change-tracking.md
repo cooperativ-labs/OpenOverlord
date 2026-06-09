@@ -112,7 +112,7 @@ CLI-first requirements:
 - Diffs should be annotated with recorded rationale labels and hunk headers when available.
 - Changes that cannot be associated with a specific objective should be shown as unassigned/current workspace changes, not silently attached to the wrong objective.
 
-Future web/desktop requirements are documented in [web-app.md](web-app.md).
+Future web/desktop requirements are documented in [web-app.md](../../webapp/docs/web-app.md).
 
 ## Review Workflow Requirements
 

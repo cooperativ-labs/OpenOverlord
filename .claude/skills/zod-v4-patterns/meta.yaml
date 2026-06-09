@@ -1,0 +1,8 @@
+slug: zod-v4-patterns
+name: zod-v4-patterns
+description: Ensures Zod v4 patterns are used correctly throughout the codebase.
+  Apply when creating or modifying validation schemas, form schemas, or any Zod
+  validators. Enforces v4 syntax and prevents deprecated v3 patterns.
+tags: []
+compat: []
+sha256: e43ec9383a90fb3cca3a0fcdbebbd7e3f28e504948e721dfb2b39462eb715804

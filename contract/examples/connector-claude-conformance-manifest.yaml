@@ -1,0 +1,31 @@
+# Example: Claude Code connector conformance manifest
+# This shows how a built-in connector would declare conformance.
+# Copy this as a starting point for new connectors.
+#
+# Validate with: ovld contract check conformance-manifest.yaml
+
+contractVersion: "0.1-draft"
+componentType: connector
+componentKey: claude
+label: "Claude Code Connector"
+description: "Connector adapter for Anthropic Claude Code CLI agent"
+
+connector:
+  agentIdentifier: claude
+  capabilities:
+    - followUpHook
+    - permissionHook
+    - stopHook
+    - modelFlag
+    - effortFlag
+    - contextFilePrompt
+    - permissionRules
+    - slashCommands
+  hookTypes:
+    - UserPromptSubmit
+    - PermissionRequest
+    - Stop
+  installPath: "~/.claude"
+  managedFiles:
+    - "~/.claude/plugins/overlord/overlord-ticket.md"
+    - "~/.claude/settings.json"  # merged, not replaced

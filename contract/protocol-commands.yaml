@@ -1,0 +1,309 @@
+# OpenOverlord Protocol Command Surface
+# Machine-readable counterpart to planning/feature-plans/03-agent-protocol.md
+#
+# This file defines the stable command names, required flags, response shape versions,
+# and declared side effects. Full parameter detail is in the reference spec.
+#
+# IMPORTANT: Any addition, rename, or flag change to a command in this file requires
+# a contract version update in CONTRACT.md and components.yaml.
+
+contractVersion: "0.1-draft"
+referenceSpec: "planning/feature-plans/03-agent-protocol.md"
+
+sessionLifecycle:
+
+  attach:
+    description: "Start a working session; return full ticket context including prompt context"
+    requiredFlags:
+      - --ticket-id
+    optionalFlags:
+      - --session-key
+    returnsSessionKey: true
+    responseShape: attach-response-v1
+    sideEffects:
+      - creates-agent-session
+      - objective-state-to-executing
+
+  update:
+    description: "Post progress event; optionally record changed files and rationales"
+    requiredFlags:
+      - --ticket-id
+    requiresSessionKey: true
+    optionalFlags:
+      - --summary
+      - --summary-file
+      - --phase
+      - --event-type
+      - --payload-json
+      - --payload-file
+      - --external-url
+      - --external-session-id
+      - --track-changed-files
+      - --changed-files-json
+      - --changed-files-file
+      - --change-rationales-json
+      - --change-rationales-file
+      - --begin-follow-up-work
+      - --follow-up-intent
+    validPhases:
+      - draft
+      - execute
+      - review
+      - deliver
+      - complete
+      - blocked
+      - cancelled
+    validEventTypes:
+      - update
+      - user_follow_up
+      - alert
+      - discussion_summary
+      - decision
+    sideEffects:
+      - appends-ticket-event
+      - upserts-changed-files-by-session-objective-path
+
+  heartbeat:
+    description: "Update session liveness without creating a ticket event"
+    requiredFlags:
+      - --ticket-id
+    requiresSessionKey: true
+    optionalFlags:
+      - --phase
+      - --percent
+      - --note
+    sideEffects:
+      - updates-session-last-heartbeat-only
+      # Does NOT create a ticket_events row
+
+  ask:
+    description: "Post a single blocking question and stop work"
+    requiredFlags:
+      - --ticket-id
+    requiresSessionKey: true
+    questionInput:
+      flag: --question
+      fileAlternative: --question-file
+    rules:
+      - "Agent MUST stop after calling ask"
+      - "Ask exactly one blocking question per call"
+    sideEffects:
+      - appends-ticket-event-type-ask
+
+  deliver:
+    description: "Final delivery — mark objective complete and move ticket to review"
+    requiredFlags:
+      - --ticket-id
+    requiresSessionKey: true
+    summaryInput:
+      flag: --summary
+      fileAlternative: --summary-file
+    optionalFlags:
+      - --artifacts
+      - --change-rationales-json
+      - --change-rationales-file
+      - --payload-json
+      - --payload-file
+      - --verification-summary
+      - --follow-up-notes
+    validationRules:
+      - "Meaningful tracked changed files require rationales"
+      - "Delivery is the final work boundary — no implementation after delivery without explicit follow-up"
+    sideEffects:
+      - stores-delivery-record
+      - objective-state-to-complete
+      - ticket-status-to-review
+      - may-trigger-auto-advance-for-next-objective
+
+ticketDiscovery:
+
+  create:
+    description: "Create a draft ticket and objective without attaching"
+    sideEffects:
+      - creates-ticket
+      - creates-objective-in-draft-state
+
+  prompt:
+    description: "Create a ticket and immediately attach or queue execution"
+    sideEffects:
+      - creates-ticket
+      - attaches-or-queues-execution
+
+  loadContext:
+    description: "Read ticket context without creating a session"
+    readOnly: true
+
+  connect:
+    description: "Create a lightweight session key without full context assembly"
+    sideEffects:
+      - creates-session-key
+
+  searchTickets:
+    description: "Search by query, status, project, creator, and update dates"
+    readOnly: true
+
+  discussObjective:
+    description: "Mark a draft objective submitted (signals in active discussion)"
+    sideEffects:
+      - objective-state-draft-to-submitted
+
+  addObjectives:
+    description: "Append ordered objectives to an existing ticket"
+    sideEffects:
+      - creates-objectives-in-draft-state
+
+  recordWork:
+    description: "Record already-completed chat work as a review ticket without an attached session"
+    rules:
+      - "For work already done in chat, not for in-progress work"
+    sideEffects:
+      - creates-ticket-in-review-status
+      - creates-completed-objective
+      - creates-delivery-record-without-session-attribution
+
+sharedContext:
+
+  readContext:
+    readOnly: true
+
+  writeContext:
+    sideEffects:
+      - upserts-shared-context-entry-by-ticket-and-key
+
+  attachmentList:
+    readOnly: true
+
+  attachmentPrepareUpload:
+    sideEffects:
+      - creates-objective-attachment-record-in-prepared-state
+
+  attachmentFinalizeUpload:
+    sideEffects:
+      - updates-attachment-upload-status-to-available
+
+  attachmentDownloadUrl:
+    readOnly: true
+
+  attachmentUploadFile:
+    description: "One-command local attachment upload (prepare + upload + finalize)"
+    sideEffects:
+      - creates-and-finalizes-attachment
+
+runnerProtocol:
+
+  getDevice:
+    description: "Identify or register the local device"
+    sideEffects:
+      - creates-or-returns-device-record
+
+  updateDevice:
+    description: "Update local device label"
+    sideEffects:
+      - updates-device-label
+
+  requestExecution:
+    description: "Queue an objective for runner execution"
+    sideEffects:
+      - creates-execution-request-in-queued-state
+
+  claimExecution:
+    description: "Runner atomically claims a queued execution request"
+    rules:
+      - "Must be atomic — use compare-and-set in one transaction"
+      - "Verify objective is in launchable state before claiming"
+      - "Append ticket_events and entity_changes in same claim transaction"
+    sideEffects:
+      - execution-request-status-claimed
+      - appends-ticket-event-execution-claimed
+      - appends-entity-changes
+
+  listExecutionRequests:
+    readOnly: true
+
+  clearExecutionRequests:
+    sideEffects:
+      - execution-request-status-cleared
+
+  completeExecutionLaunch:
+    sideEffects:
+      - execution-request-status-launched
+      - sets-launched-session-id
+
+  failExecutionLaunch:
+    sideEffects:
+      - execution-request-status-failed
+      - sets-last-error
+
+  listExecutionTargets:
+    readOnly: true
+
+projectResources:
+
+  createProject:
+    sideEffects:
+      - creates-project-record
+      - seeds-default-project-statuses
+
+  listProjectResources:
+    readOnly: true
+
+  addProjectResource:
+    sideEffects:
+      - creates-project-resource-record
+
+  updateProjectResource:
+    sideEffects:
+      - updates-project-resource-record
+
+authAndDiscovery:
+
+  authStatus:
+    description: "Report local runtime readiness and auth mode without printing secrets"
+    readOnly: true
+
+  discoverProject:
+    description: "Resolve project from CWD, explicit directory, or project identifier"
+    readOnly: true
+
+  listOrganizations:
+    description: "List workspace (MVP: returns local instance workspace)"
+    readOnly: true
+
+# Stable response shape versions
+# Add a new version key here when the shape changes in a backward-incompatible way
+
+responseShapes:
+
+  attach-response-v1:
+    description: "Response shape returned by the attach command"
+    requiredTopLevelFields:
+      - history
+      - artifacts
+      - attachments
+      - objectives
+      - session
+      - sharedState
+      - promptContext
+    sessionRequiredFields:
+      - sessionKey
+      - state
+    objectivesRequiredFields:
+      - id
+      - objective
+      - state
+      - position
+    promptContextRequiredContent:
+      - task title
+      - ticket ID
+      - objective ID
+      - objective instruction text
+      - recent activity/history
+      - required protocol workflow instructions
+    promptContextOptionalContent:
+      - constraints
+      - acceptance criteria
+      - available tools
+      - output format
+      - attachments
+      - artifacts
+      - shared context

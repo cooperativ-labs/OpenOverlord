@@ -1,3 +1,6 @@
 # Overlord local scratch
 .overlord/tmp/
 .overlord/logs/
+
+node_modules/
+**/node_modules/

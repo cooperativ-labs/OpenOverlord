@@ -1,0 +1,8 @@
+slug: drift-review
+name: Drift Review
+description: Reviews product surface alignment across API routes, CLI commands,
+  MCP tools, agent plugins, docs/public, and the CLI README to identify drift in
+  functions, parameters, and capabilities.
+tags: []
+compat: []
+sha256: d07eabdc4599372602a11e56fcd02e0703bba323a1c71d5c376f6650779584e9

@@ -23,6 +23,13 @@ Requirements:
 
 ## Canonical Connector Core
 
+Source location:
+
+- `connectors/core/overlord-ticket/SKILL.md`
+- `connectors/core/overlord-ticket/reference/`
+
+This is the single source of truth for durable Overlord workflow behavior. Connector adapters may include a thin harness-specific skill or command wrapper, but should not duplicate the core lifecycle rules. Packaging/setup can copy or render the core into an installable plugin bundle when the target harness needs a self-contained directory.
+
 Required content:
 
 - Attach first.
@@ -60,6 +67,7 @@ Setup/managed files should be documented once implementation paths are chosen. U
 Requirements:
 
 - Install a Claude plugin/skill bundle.
+- Extend the shared Connector Core with a Claude-specific overlay instead of owning copied protocol workflow rules.
 - Include `UserPromptSubmit` hook.
 - Include permission hook.
 - Optionally include Stop hook for pending-delivery checks.
@@ -99,7 +107,7 @@ Requirements:
 
 Requirements:
 
-- Support command templates in `overlord.toml`.
+- Support command templates from built-in connector metadata and custom harness extension records.
 - Allow custom agent identifiers and command arguments.
 - Provide a generic prompt wrapper when no native plugin exists.
 - Mark connector capability support, such as:
@@ -109,6 +117,15 @@ Requirements:
   - supports follow-up hook
   - supports permission hook
   - supports context-file prompt
+
+Custom harness extension storage:
+
+- Built-in packaged harnesses such as Codex and Claude Code live in the OpenOverlord connector registry.
+- User-authored custom harnesses live in `user_harness_extensions` as personal extension definitions and versions.
+- Workspace-approved custom harnesses live in `workspace_harness_extensions` as snapshot catalog entries.
+- `connector_installations` tracks local setup/doctor state only; it must not be the source of truth for authored custom harness definitions.
+- Local extension bundle files can live under `~/.ovld/extensions/<extension-key>/<version>/`; hosted or synced deployments should store bundle files in managed blob storage and keep only URIs, manifests, and checksums in the database.
+- Adding a personal extension to a workspace should snapshot a specific version so later personal edits do not silently change workspace behavior.
 
 ## Slash Commands
 

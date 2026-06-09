@@ -1,0 +1,228 @@
+# OpenOverlord Extension Points
+# Machine-readable counterpart to CONTRACT.md "Extension Points" section
+#
+# This file is the source of truth for:
+#   - Sanctioned extension points and their constraints
+#   - Approved connector capability flags (closed set)
+#   - Open and closed controlled vocabulary lists
+#
+# IMPORTANT: Adding a new capability flag, extension point, or vocabulary change
+# requires a contract version update in CONTRACT.md and components.yaml.
+
+contractVersion: "0.1-draft"
+
+# Sanctioned extension points — the only ways to extend OpenOverlord
+extensionPoints:
+
+  customConnector:
+    id: custom-connector
+    description: "Add support for a new AI agent harness (e.g. a new IDE or CLI tool)"
+    mechanism: "New adapter files + conformance-manifest.yaml"
+    ownedBy: connector
+    manifestRequirements:
+      componentType: connector
+      requiredFields:
+        - componentKey
+        - contractVersion
+        - connector.agentIdentifier
+        - connector.capabilities
+    constraints:
+      - "Must not duplicate connector core protocol rules — extend the core, don't replace it"
+      - "Capability flags must be from the approvedConnectorCapabilities list below"
+      - "Hook types must be from the approvedHookTypes list below"
+      - "Adding a new capability flag requires a contract update first"
+
+  customHarness:
+    id: custom-harness
+    description: "User-authored or workspace-installed custom agent harness definition"
+    mechanism: "user_harness_extensions record + optional workspace_harness_extensions promotion"
+    ownedBy: extension
+    constraints:
+      - "Personal extensions (user_harness_extensions) must not affect workspace behavior until explicitly promoted"
+      - "Workspace promotion snapshots a specific version — later personal edits require a new version and re-promotion"
+      - "Extension key must be stable lowercase (pattern: [a-z][a-z0-9-_]*)"
+
+  databaseAdapter:
+    id: database-adapter
+    description: "Alternative database backend implementing the full logical schema"
+    mechanism: "Implement every required table, column, index, and constraint + pass adapter conformance tests"
+    ownedBy: database
+    manifestRequirements:
+      componentType: database-adapter
+      requiredFields:
+        - database.adapterKey
+        - database.schemaContractVersion
+    constraints:
+      - "Must implement ALL required tables, columns, indexes, and constraints from the schema contract"
+      - "Must pass the full adapter conformance test suite"
+      - "Must implement commit-safe entity_changes visibility (not raw sequence exposure for multi-writer)"
+      - "Adapter-specific optimizations (triggers, generated columns, NOTIFY) are allowed but must not break the logical contract"
+
+  databaseExtension:
+    id: database-extension
+    description: "Add extension-owned tables and migrations alongside core tables"
+    mechanism: "ext_<name>_ table prefix + schema_migrations with component = 'ext:<name>'"
+    ownedBy: database
+    constraints:
+      - "All extension tables must use the ext_<name>_ prefix"
+      - "Must not modify core table columns, constraints, or indexes"
+      - "Must not write to core tables directly — use service APIs or react via entity_changes/outbox_messages"
+      - "Metadata stored in core table JSON columns must use namespaced keys"
+      - "Migration component must be 'ext:<name>' (pattern: ext:[a-z][a-z0-9-_]*)"
+
+  authProvider:
+    id: auth-provider
+    description: "Custom authentication or RBAC authorization provider"
+    mechanism: "Implement the auth/RBAC service boundary"
+    ownedBy: auth
+    manifestRequirements:
+      componentType: auth-provider
+    constraints:
+      - "Must preserve core audit_log actor attribution (actor_workspace_user_id, actor_token_id)"
+      - "Must not bypass token hash storage rules (raw secrets must never be persisted)"
+      - "Must implement role assignment CRUD through the same service boundary as the default provider"
+      - "Permission checks must return the same result shape as the default RBAC service"
+
+  restExtension:
+    id: rest-extension
+    description: "Add additional REST API endpoints under a namespaced prefix"
+    mechanism: "Namespaced endpoint prefix /ext/<name>/"
+    ownedBy: rest
+    manifestRequirements:
+      componentType: rest-module
+      requiredFields:
+        - restModule.endpointPrefix
+    constraints:
+      - "All endpoints must be under /ext/<name>/ prefix"
+      - "Must not override or shadow core endpoint paths"
+      - "Must use the service layer for database access — no direct table writes"
+      - "Must use Auth Layer for authentication and authorization"
+
+  openVocabularyValue:
+    id: open-vocabulary-value
+    description: "Add new values to open controlled vocabularies"
+    mechanism: "Declare value in conformance manifest; use namespaced value in code"
+    ownedBy: database
+    constraints:
+      - "Values must be namespaced (e.g. com.example.my-type or mypackage:custom-source)"
+      - "Cannot add to closed vocabularies — those require a contract version bump"
+      - "Declare all new vocabulary values in the component's conformance manifest"
+      - "Values can be promoted to core by updating CONTRACT.md and the schema contract"
+
+# Approved connector capability flags — closed set
+# Add here (with contract version bump) before declaring a new capability in a manifest
+approvedConnectorCapabilities:
+  - followUpHook        # Has a UserPromptSubmit hook that records follow-up messages
+  - permissionHook      # Has a PermissionRequest hook that records tool permission prompts
+  - stopHook            # Has a Stop hook for pending-delivery checks (future)
+  - nativeResume        # Can detect and report native harness session/thread IDs
+  - modelFlag           # Supports --model <model> launch flag
+  - effortFlag          # Supports --effort or equivalent thinking/reasoning flag
+  - contextFilePrompt   # Supports --append-system-prompt-file or equivalent context file flag
+  - permissionRules     # Supports declarative protocol permission rules (no interactive approval)
+  - slashCommands       # Supports slash commands for protocol operations
+
+# Approved hook types — closed set
+# Add here (with contract version bump) before implementing a new hook type
+approvedHookTypes:
+  - UserPromptSubmit    # Captures human follow-up messages after initial ticket
+  - PermissionRequest   # Records tool permission prompts
+  - Stop                # Checks pending delivery after agent turn (future)
+
+# Controlled vocabularies
+# "closed" = only the values listed are valid; adding requires a contract version bump
+# "open"   = extensions may add namespaced values (declare in conformance manifest)
+
+closedVocabularies:
+  objectives.state:
+    values:
+      - future
+      - draft
+      - submitted
+      - launching
+      - executing
+      - pending_delivery
+      - complete
+    transitions:
+      normal: "future → draft → submitted → launching → executing → complete"
+      followUp: "executing → pending_delivery (only after a prior delivery starts follow-up execution)"
+      reopen: "complete → executing or pending_delivery via explicit follow-up or admin transition with ticket_events record"
+
+  project_statuses.type:
+    values:
+      - draft
+      - execute
+      - review
+      - complete
+      - blocked
+      - cancelled
+    constraints:
+      - "Exactly one active status per project must have type=execute"
+      - "Exactly one active status per project must have type=review"
+      - "Exactly one active default status per project"
+
+  execution_requests.status:
+    values:
+      - queued
+      - claimed
+      - launching
+      - launched
+      - failed
+      - cleared
+      - cancelled
+      - expired
+    transitions: "queued → claimed → launching → launched (normal); → failed | cleared | cancelled | expired (terminal)"
+
+  agent_sessions.delivery_state:
+    values:
+      - not_delivered
+      - delivered
+      - pending_redelivery
+
+  ticket_events.type:
+    values:
+      - update
+      - user_follow_up
+      - alert
+      - discussion_summary
+      - decision
+      - ask
+      - permission_request
+      - delivery
+      - execution_requested
+      - awaiting_approval
+      - status_change
+
+  permission_requests.status:
+    values:
+      - requested
+      - approved
+      - denied
+      - expired
+      - not_required
+
+  idempotency_keys.status:
+    values:
+      - in_progress
+      - completed
+      - failed
+
+  audit_log.result:
+    values:
+      - allowed
+      - denied
+      - failed
+
+openVocabularies:
+  - workspaces.kind            # e.g. local, hosted, or adapter-defined
+  - users.kind                 # e.g. human, service, or adapter-defined
+  - execution_targets.type     # e.g. local, ssh, or adapter-defined
+  - project_resources.type     # e.g. local_directory, remote_directory, or adapter-defined
+  - artifacts.type             # e.g. test_results, next_steps, note, url, decision, migration, or namespaced extension
+  - ticket_events.source       # e.g. cli, api, hook, runner, web, or namespaced extension
+  - entity_changes.entity_type # e.g. ticket, objective, session, or namespaced extension
+  - entity_changes.source      # e.g. cli, api, runner, worker, hook, migration, or namespaced extension
+  - outbox_messages.topic      # e.g. attachment.delete_blob, or namespaced extension
+  - worker_jobs.type           # job kind; namespaced extension
+  - rbac.permission_names      # RBAC capability/permission names; namespaced extension
+  - connector.agent_identifiers # e.g. codex, claude, cursor, or custom connector key

@@ -1,0 +1,40 @@
+contractVersion: "0.2-draft"
+componentType: connector
+componentKey: claude
+label: "Claude Code Connector"
+description: "Claude Code plugin adapter for the OpenOverlord ticket protocol workflow."
+
+connector:
+  agentIdentifier: claude
+  capabilities:
+    - followUpHook
+    - permissionHook
+    - stopHook
+    - modelFlag
+    - effortFlag
+    - contextFilePrompt
+    - permissionRules
+    - slashCommands
+  hookTypes:
+    - UserPromptSubmit
+    - PermissionRequest
+    - Stop
+  installPath: "~/.claude/plugins/overlord"
+  managedFiles:
+    - ".claude-plugin/plugin.json"
+    - "README.md"
+    - "commands/add-objectives.md"
+    - "commands/attach.md"
+    - "commands/connect.md"
+    - "commands/create.md"
+    - "commands/discuss-objective.md"
+    - "commands/load.md"
+    - "commands/prompt.md"
+    - "commands/record-work.md"
+    - "commands/spawn.md"
+    - "hooks/hooks.json"
+    - "scripts/permission-hook.sh"
+    - "scripts/stop-hook.sh"
+    - "scripts/user-prompt-submit-hook.sh"
+    - "skills/overlord-ticket/SKILL.md"
+    - "prompt-wrapper.md"

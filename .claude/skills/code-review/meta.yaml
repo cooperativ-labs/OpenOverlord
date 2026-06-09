@@ -1,0 +1,9 @@
+slug: code-review
+name: code-review
+description: Conducts comprehensive code reviews identifying poor practices,
+  inefficiencies, potential bugs, security vulnerabilities, and provides
+  recommendations for making code DRYer and more maintainable. Use when
+  reviewing files, PRs, or code quality.
+tags: []
+compat: []
+sha256: 0e076a7f11a50ccf46bfefec1654346ae0e443022a3fba91ef5ecc0b8b49e732

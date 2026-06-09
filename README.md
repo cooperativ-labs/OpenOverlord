@@ -8,6 +8,33 @@ Overlord is a coordination layer for AI coding agents (Claude Code, Codex, Curso
 
 The result is a Kanban-style workflow where humans plan and agents execute, with every session producing artifacts, change rationales, and history that the next session inherits.
 
+## Modules
+
+OpenOverlord is organized as **independent modules connected via the contract**.
+Each module owns its code, tests, and documentation; this README is the table of
+contents. The normative spec for how modules interact is
+[`CONTRACT.md`](CONTRACT.md) — read it before any change that crosses a module
+boundary.
+
+| Module | Purpose | Contract component(s) |
+| --- | --- | --- |
+| [database/](database/README.md) | SQLite-default portable persistence + schema extension system | `database`, `extension` |
+| [cli/](cli/README.md) | The `ovld` command surface: management, agent protocol, and runner | `cli`, `protocol`, `runner` |
+| [auth/](auth/README.md) | Mix-and-match authentication (tokens) and RBAC authorization | `auth` |
+| [webapp/](webapp/README.md) | Deferred web control center + REST/realtime API | `rest` |
+| [mcp/](mcp/README.md) | Planned MCP server surface (Phase 5, not yet implemented) | _(future)_ |
+| [connectors/](connectors/README.md) | Agent harness connectors: core, plugins, adapters, hooks | `connector` |
+| [contract/](contract/README.md) | The connecting spec — machine-readable counterparts to `CONTRACT.md` | _(spec)_ |
+
+> The contract defines eight fine-grained components; the six modules above are
+> friendlier developer-facing groupings, and each module's README maps to the
+> contract component(s) it contains. Behavior specs are colocated with their
+> owning module under `<module>/docs/`; each module README links to its relevant
+> plans, and [planning/feature-plans/](planning/feature-plans/README.md) is now a
+> redirect index pointing at those module homes. **Convention:** colocate new code and tests inside
+> the owning module (as `src/rbac/authorizer.ts` + `authorizer.test.ts` and
+> `database/sqlite/migrations/` already do).
+
 ## Surfaces and Interfaces
 
 ### Agent Connectors
@@ -24,7 +51,7 @@ These need to be well-documented and cleanly organized so that users and agents 
 
 ### Database
 
-The package includes a SQLite database by default to store projects, tickets, objectives, events, and other data. The first-pass portable schema proposal is documented in [docs/feature-plans/09-database-schema-contract.md](docs/feature-plans/09-database-schema-contract.md). The schema should be generated from one machine-readable source for SQLite/Postgres DDL, docs, and adapter conformance tests. Users should be able to extend/customize the schema through component-scoped migrations, namespaced metadata, and documented extension points:
+The package includes a SQLite database by default to store projects, tickets, objectives, events, and other data. The first-pass portable schema proposal is documented in the [database module's schema contract](database/docs/09-database-schema-contract.md) (see the [database module](database/README.md)). The schema should be generated from one machine-readable source for SQLite/Postgres DDL, docs, and adapter conformance tests. Users should be able to extend/customize the schema through component-scoped migrations, namespaced metadata, and documented extension points:
 **Authentication:** Users should be able to attach their own authentication mechanisms to OpenOverlord, so the schema should facilitate this and documentation should be provided for how to do so.
 **Role-Based Access Control:** We want users to be able to define roles and permissions. 
 
@@ -144,8 +171,12 @@ sequenceDiagram
 
 ## Feature Plans
 
-Detailed requirements for the OpenOverlord port are documented in [docs/feature-plans](docs/feature-plans/README.md). The web app requirements live in a separate [web app feature plan](docs/feature-plans/web-app.md) so the CLI-first implementation can proceed without committing to Next.js or any specific UI stack.
+Detailed requirements for the OpenOverlord port are documented in [planning/feature-plans](planning/feature-plans/README.md). The web app requirements live in a separate [web app feature plan](webapp/docs/web-app.md), and the current stack recommendation lives in [webapp/docs/framework-recommendation.md](webapp/docs/framework-recommendation.md), so the CLI-first implementation can proceed without turning the UI into the source of truth.
 
 ## Out of Scope
+
 * The Feed
-* MCP
+
+## Planned / Deferred
+
+* **MCP** — a Model Context Protocol server surface is planned but not yet implemented (Phase 5). The module slot is reserved at [mcp/](mcp/README.md), and it will be added to the contract before any implementation lands.

@@ -1,0 +1,239 @@
+# OpenOverlord Conformance Manifest Schema
+# JSON Schema (YAML format) — every component that ships against OpenOverlord
+# must provide a conformance-manifest.yaml in its root that validates against this schema.
+#
+# Validate with: ovld contract check <manifest-file>
+# (or the equivalent script until 'ovld contract' is implemented)
+#
+# Example manifests live in contract/examples/
+
+"$schema": "https://json-schema.org/draft/2020-12/schema"
+"$id": "openoverllord/conformance-manifest/v1"
+title: "OpenOverlord Conformance Manifest"
+description: >
+  Every connector, extension, database adapter, auth provider, or REST module that ships
+  against OpenOverlord must provide a conformance-manifest.yaml at its root.
+  The manifest declares which contract version the component was validated against,
+  what kind of component it is, and which extension points and vocabulary values it uses.
+
+type: object
+required:
+  - contractVersion
+  - componentType
+  - componentKey
+  - label
+
+additionalProperties: false
+
+properties:
+
+  contractVersion:
+    type: string
+    description: "The OpenOverlord contract version this component was validated against (e.g. '0.1-draft')"
+    examples:
+      - "0.1-draft"
+
+  componentType:
+    type: string
+    enum:
+      - connector
+      - extension
+      - database-adapter
+      - auth-provider
+      - rest-module
+    description: "The kind of component being shipped"
+
+  componentKey:
+    type: string
+    pattern: "^[a-z][a-z0-9_-]*$"
+    description: "Stable lowercase identifier for this component (e.g. claude, my-custom-harness)"
+
+  label:
+    type: string
+    description: "Human-readable display name"
+
+  description:
+    type: string
+    description: "Optional description of what this component does"
+
+  # ── Connector-specific fields ────────────────────────────────────────────────
+
+  connector:
+    type: object
+    description: "Required when componentType is 'connector'"
+    required:
+      - agentIdentifier
+      - capabilities
+    additionalProperties: false
+    properties:
+      agentIdentifier:
+        type: string
+        description: "The stable agent identifier used by this connector (e.g. claude, codex, cursor)"
+      capabilities:
+        type: array
+        description: "Capability flags this connector supports — must be from the approvedConnectorCapabilities list in contract/extension-points.yaml"
+        items:
+          type: string
+          enum:
+            - followUpHook
+            - permissionHook
+            - stopHook
+            - nativeResume
+            - modelFlag
+            - effortFlag
+            - contextFilePrompt
+            - permissionRules
+            - slashCommands
+        uniqueItems: true
+      hookTypes:
+        type: array
+        description: "Hook types this connector uses — must be from approvedHookTypes in contract/extension-points.yaml"
+        items:
+          type: string
+          enum:
+            - UserPromptSubmit
+            - PermissionRequest
+            - Stop
+        uniqueItems: true
+      managedFiles:
+        type: array
+        description: "Paths of files this connector installs and manages (relative to install location)"
+        items:
+          type: string
+      installPath:
+        type: string
+        description: "Default install location for connector files (e.g. ~/.codex/plugins/overlord)"
+
+  # ── Extension-specific fields ────────────────────────────────────────────────
+
+  extension:
+    type: object
+    description: "Required when componentType is 'extension'"
+    additionalProperties: false
+    properties:
+      tablePrefix:
+        type: string
+        pattern: "^ext_[a-z][a-z0-9_]*_$"
+        description: "Database table prefix — must follow ext_<name>_ pattern"
+        examples:
+          - "ext_myfeature_"
+      migrationComponent:
+        type: string
+        pattern: "^ext:[a-z][a-z0-9_-]*$"
+        description: "schema_migrations.component value — must follow ext:<name> pattern"
+        examples:
+          - "ext:myfeature"
+      metadataKeyPrefix:
+        type: string
+        description: "Namespace prefix for JSON metadata keys stored in core table columns (e.g. com.example or mypackage)"
+      usesExtensionPoints:
+        type: array
+        description: "Extension points from contract/extension-points.yaml that this extension uses"
+        items:
+          type: string
+          enum:
+            - database-extension
+            - custom-harness
+            - open-vocabulary-value
+        uniqueItems: true
+
+  # ── Database adapter-specific fields ─────────────────────────────────────────
+
+  databaseAdapter:
+    type: object
+    description: "Required when componentType is 'database-adapter'"
+    required:
+      - adapterKey
+      - schemaContractVersion
+    additionalProperties: false
+    properties:
+      adapterKey:
+        type: string
+        description: "Adapter identifier (e.g. sqlite, postgres)"
+        examples:
+          - sqlite
+          - postgres
+      schemaContractVersion:
+        type: string
+        description: "Database schema contract version this adapter implements (from 09-database-schema-contract.md)"
+      conformanceTestStatus:
+        type: string
+        enum:
+          - passing
+          - partial
+          - pending
+        description: "Current status of adapter conformance test suite"
+      conformanceTestPath:
+        type: string
+        description: "Path to adapter conformance test results or test suite"
+
+  # ── Auth provider-specific fields ────────────────────────────────────────────
+
+  authProvider:
+    type: object
+    description: "Required when componentType is 'auth-provider'"
+    additionalProperties: false
+    properties:
+      authMechanisms:
+        type: array
+        items:
+          type: string
+        description: "Auth mechanisms this provider supports (e.g. user-token, oauth, passkey)"
+        examples:
+          - - user-token
+          - - oauth
+          - - passkey
+      preservesAuditAttribution:
+        type: boolean
+        description: "Declares that this provider writes actor_workspace_user_id and actor_token_id to audit_log correctly"
+      preservesTokenHashRules:
+        type: boolean
+        description: "Declares that raw token secrets are never persisted — hash and prefix only"
+
+  # ── REST module-specific fields ───────────────────────────────────────────────
+
+  restModule:
+    type: object
+    description: "Required when componentType is 'rest-module'"
+    required:
+      - endpointPrefix
+    additionalProperties: false
+    properties:
+      endpointPrefix:
+        type: string
+        pattern: "^/ext/[a-z][a-z0-9/_-]*$"
+        description: "Namespaced URL prefix for all endpoints this module adds — must start with /ext/<name>/"
+        examples:
+          - "/ext/my-integration"
+      usesServiceLayer:
+        type: boolean
+        description: "Declares that this module uses the service layer for database access (no direct table writes)"
+
+  # ── Shared: vocabulary extensions ────────────────────────────────────────────
+
+  vocabularyExtensions:
+    type: array
+    description: "Open vocabulary values this component adds — must be namespaced (reverse-DNS or package-style)"
+    items:
+      type: object
+      required:
+        - vocabulary
+        - value
+      additionalProperties: false
+      properties:
+        vocabulary:
+          type: string
+          description: "The open vocabulary column being extended (e.g. artifacts.type)"
+          examples:
+            - artifacts.type
+            - ticket_events.source
+            - entity_changes.entity_type
+        value:
+          type: string
+          description: "The namespaced value being added (e.g. com.example.my-artifact-type)"
+          examples:
+            - "com.example.custom-artifact"
+            - "mypackage:review-event"
+        description:
+          type: string
+          description: "Optional human description of what this vocabulary value represents"

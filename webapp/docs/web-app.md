@@ -1,6 +1,33 @@
 # Web App Requirements
 
-This file intentionally contains the web app requirements separately from the CLI/core feature plans. OpenOverlord should get the CLI working first and can later implement this surface in Next.js or another stack.
+This file intentionally contains the web app requirements separately from the CLI/core feature plans. OpenOverlord should get the CLI working first and can later implement this surface in a separate UI stack.
+
+## Recommended Framework Direction
+
+For the first implementation, prefer a **client-rendered React app built with Vite** rather than Next.js.
+
+Recommended stack:
+
+- Vite + React + TypeScript
+- TanStack Router for route/stateful navigation
+- TanStack Query for server-state caching and realtime invalidation
+- Serwist via `@serwist/vite`
+
+Why this is the best fit for the current requirements:
+
+- SEO is explicitly not important, so SSR and React Server Components add complexity without enough product value.
+- The app is primarily an operational UI, so stable client-side interactivity and fast incremental updates matter more than server-rendered first paint.
+- OpenOverlord already wants a shared service layer and explicit REST/realtime boundary; a Vite SPA maps cleanly onto that architecture.
+- Serwist has a first-party Vite integration, which keeps PWA setup direct and avoids framework-specific indirection.
+- Realtime ticket/session updates fit naturally into a client cache fed by SSE/WebSocket events and REST catch-up reads.
+
+Why not make Next.js the default recommendation:
+
+- Next.js is strongest when SSR, static generation, and server-first routing are important. Those are not the primary constraints here.
+- Its full-stack conventions would blur the module boundary between the browser UI and the OpenOverlord REST/protocol-backed service layer.
+- The extra server/runtime surface would increase implementation and debugging cost for a local-first control plane.
+
+This is a recommendation, not a hard contract commitment. If later requirements shift toward hosted deployment, SEO, or mixed server-rendered/public routes, the project can reevaluate that choice.
 
 ## Goal
 

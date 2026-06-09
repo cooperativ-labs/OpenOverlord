@@ -172,7 +172,7 @@ Represents the local instance workspace now and a hosted organization/workspace 
 | `slug` | text | yes | Unique human/config key. |
 | `name` | text | yes | Human-readable name from `overlord.toml` by default. |
 | `kind` | text | yes | `local`, `hosted`, or future adapter-defined kind. |
-| `settings_json` | Json | yes | Instance defaults and feature flags. |
+| `settings_json` | Json | yes | Instance defaults, feature flags, and workspace default agent/model/harness catalog for the CLI-first MVP. |
 | `created_at` | TimestampUTC | yes |  |
 | `updated_at` | TimestampUTC | yes |  |
 | `deleted_at` | TimestampUTC | no | Tombstone. |
@@ -293,6 +293,22 @@ Indexes:
 
 Token rotation stores `predecessor_token_id` only. The successor is derived by querying rows whose predecessor points at the current token, which avoids maintaining two linked-list directions in one transaction.
 
+### Better Auth Implementation Tables
+
+Better Auth (the embedded authentication library) manages its own tables in the same SQLite database. These tables are **owned by the Auth Layer** and must not be read or written by other components directly.
+
+Schema is managed by Better Auth's internal adapter. Migration `003_better_auth.sql` creates these tables at initialization time. Column names follow Better Auth's camelCase conventions (different from OpenOverlord's snake_case domain tables).
+
+| Table | Purpose |
+| --- | --- |
+| `user` | Better Auth user identity (email, name, emailVerified). Linked to OpenOverlord `users` via `users.external_subject = user.id` and `users.auth_provider = 'better-auth'`. |
+| `session` | Active browser/client sessions issued by Better Auth. |
+| `account` | OAuth2 / credential accounts linked to a Better Auth user. |
+| `verification` | Email verification and magic-link tokens. |
+| `apikey` | USER_TOKEN credentials managed by Better Auth's apiKey plugin. `key` column stores the hashed value; the `start` prefix is the non-secret display prefix. |
+
+These tables are created by migration `003_better_auth.sql`. They do not carry OpenOverlord's `workspace_id`, `revision`, or `deleted_at` fields — lifecycle is managed entirely by Better Auth.
+
 ### `user_token_scopes`
 
 Reserved for future token-level restrictions.
@@ -324,10 +340,7 @@ Absence of scope rows means "no token-level restriction" in v1.
 | `name` | text | yes |  |
 | `description` | text | no |  |
 | `status` | text | yes | `active`, `archived`. Deletion is represented by `deleted_at`. |
-| `default_agent` | text | no |  |
-| `default_model` | text | no |  |
-| `default_reasoning_effort` | text | no |  |
-| `settings_json` | Json | yes | Project-level defaults. |
+| `settings_json` | Json | yes | Project behavior settings. Do not store model availability or shared model defaults here. |
 | `created_by_workspace_user_id` | Id | no | FK to `workspace_users`. |
 | `created_at` | TimestampUTC | yes |  |
 | `updated_at` | TimestampUTC | yes |  |
@@ -477,7 +490,7 @@ Stores user-specific project preferences without overloading project resource di
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `project_id` | Id | yes | FK to `projects`. |
 | `workspace_user_id` | Id | yes | FK to `workspace_users`. |
-| `preferences_json` | Json | yes | UI/project defaults, recently used options, local hints. |
+| `preferences_json` | Json | yes | UI preferences, recently used options, and local hints. |
 | `created_at` | TimestampUTC | yes |  |
 | `updated_at` | TimestampUTC | yes |  |
 | `deleted_at` | TimestampUTC | no | Tombstone. |
@@ -1010,6 +1023,71 @@ Indexes:
 
 ## Connector And Hook Records
 
+### `user_harness_extensions`
+
+Stores user-authored custom harness extension definitions. These are personal draft/private
+definitions and are not automatically available to every workspace member.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `owner_user_id` | Id | yes | FK to `users`. |
+| `extension_key` | text | yes | Stable user-owned key, for example `my-local-review-agent`. |
+| `version` | text | yes | User-managed extension version. |
+| `visibility` | text | yes | `private`, `workspace_candidate`, or future adapter-defined value. |
+| `display_name` | text | yes | Human label. |
+| `description` | text | no |  |
+| `bundle_uri` | text | no | Local path or hosted blob URI for extension files. No credentials. |
+| `manifest_json` | Json | yes | Entrypoint, file checksums, managed files, and package metadata. |
+| `connector_config_json` | Json | yes | Command templates, capabilities, hook support, and model flag mapping. No secrets. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `deleted_at` | TimestampUTC | no | Tombstone. |
+| `revision` | integer | yes |  |
+
+Indexes:
+
+- Unique active `(owner_user_id, extension_key, version)`.
+- `(owner_user_id, extension_key, updated_at)`.
+
+Personal extension records are the source for authoring and iteration. Promoting one into a
+workspace should snapshot a specific version into `workspace_harness_extensions`; workspace behavior
+must not depend on mutable personal draft state.
+
+### `workspace_harness_extensions`
+
+Stores custom harness extensions installed into a workspace catalog.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `source_user_harness_extension_id` | Id | no | FK to `user_harness_extensions`; null for imported bundles. |
+| `installed_by_workspace_user_id` | Id | no | FK to `workspace_users`. |
+| `extension_key` | text | yes | Workspace catalog key. |
+| `version` | text | yes | Installed extension version. |
+| `status` | text | yes | `enabled`, `disabled`, `stale`, `error`. |
+| `display_name` | text | yes | Human label. |
+| `bundle_uri` | text | no | Local path or hosted blob URI for installed bundle. No credentials. |
+| `manifest_json` | Json | yes | Snapshot of the installed version's manifest and checksums. |
+| `connector_config_json` | Json | yes | Snapshot of command templates and connector capabilities. No secrets. |
+| `policy_json` | Json | yes | Availability defaults and optional workspace-user restrictions. |
+| `installed_at` | TimestampUTC | yes |  |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `deleted_at` | TimestampUTC | no | Tombstone. |
+| `revision` | integer | yes |  |
+
+Indexes:
+
+- Unique active `(workspace_id, extension_key)`.
+- `(workspace_id, status)`.
+- `(source_user_harness_extension_id)` where present.
+
+Workspace extension rows are catalog entries. They answer "what custom harnesses are available to
+this workspace?" and should be resolved alongside built-in packaged harnesses when constructing the
+agent/model selector.
+
 ### `connector_installations`
 
 Tracks setup/doctor state for agent connectors.
@@ -1326,6 +1404,8 @@ JSON columns are either extension space or contracted structures:
 - `terminal_profile_json`: terminal application/profile/command template metadata for local launches.
 - `capabilities_json`: object of connector or target capability booleans and version hints.
 - `manifest_json`: connector-managed file manifest and checksums.
+- `connector_config_json`: custom harness command templates, launch argument mapping, hook support, and connector capabilities. Must not contain secrets.
+- `policy_json`: workspace extension availability policy, such as default availability and optional workspace-user restrictions.
 - `hunks_json`: rationale hunk headers/metadata only, as defined in the review plan.
 - `metadata_json` and `settings_json`: namespaced extension/core metadata unless a table note defines a stricter structure.
 
@@ -1497,7 +1577,7 @@ Operational expansion can then add:
 
 - Human `display_id` should remain workspace-scoped as `1:1204` for MVP. Per-project IDs require an explicit migration.
 - Session keys should be treated like tokens from day one: one-time display, hash-only storage, and non-secret prefix lookup.
-- `project_statuses` should be stored as rows, seeded from defaults at project creation.
+- `project_statuses` should be stored as rows, seeded from defaults at project creation. ANSWER: keep it by workspace.
 - A central machine-readable schema source should emit SQLite/Postgres DDL, REST DTO field names, documentation tables, and adapter conformance tests.
 - Hosted deployments should start with database-backed queue claiming. If an external queue is added later, drive it from `outbox_messages` instead of coupling domain tables to a broker.
 

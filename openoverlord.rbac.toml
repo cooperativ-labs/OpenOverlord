@@ -1,0 +1,49 @@
+# OpenOverlord default RBAC configuration.
+#
+# This file defines the default ADMIN and MEMBER roles.
+# Copy and edit this file to customize permissions for your instance.
+# Supported wildcards: * (all), ticket:* (namespace), user_token:self:* (self-scoped).
+
+[roles.ADMIN]
+description = "Full instance administrator"
+grants = ["*"]
+
+[roles.MEMBER]
+description = "Standard user or persistent agent account"
+grants = [
+  "project:read",
+  "ticket:*",
+  "objective:*",
+  "session:*",
+  "event:create",
+  "event:read",
+  "artifact:*",
+  "user_token:self:*",
+  "execution_request:create",
+  "execution_request:read",
+  "execution_request:claim",
+]
+
+# Permission groups are named sets of grants that can be referenced in custom
+# role definitions. They are not grants themselves — include them explicitly
+# in a role's grants list if needed.
+
+[permission_groups.user_management]
+description = "Full user lifecycle management"
+grants = [
+  "user:create",
+  "user:update",
+  "user:disable",
+  "user:delete",
+  "role:assign",
+  "role:revoke",
+]
+
+[permission_groups.ticket_crud]
+description = "Standard ticket read/write"
+grants = [
+  "ticket:create",
+  "ticket:read",
+  "ticket:update",
+  "ticket:delete",
+]

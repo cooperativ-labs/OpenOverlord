@@ -1,15 +1,47 @@
-# OpenOverlord Feature Plans
+# OpenOverlord Feature Plans — Redirect Index
 
-This directory captures the feature requirements needed to port the working parts of Overlord into OpenOverlord. The source material reviewed for this plan was:
+> **The feature-plan documents have moved.** Each plan now lives inside the
+> module that owns it, under `<module>/docs/`, so every module owns its own code,
+> tests, **and** documentation (see the root [README](../../README.md#modules)).
+> This file is now a redirect index — it no longer holds the plans themselves.
 
-- Local [README.md](../../README.md)
-- Upstream `cooperativ-labs/Overlord` README
-- Upstream `docs/` and `docs/public/`
-- Upstream `packages/overlord-cli`
-- Upstream connector plugin templates and connector surface notes
-- Upstream web route/component inventory for the separate web app plan
+The source material reviewed for these plans was the local [README.md](../../README.md),
+the upstream `cooperativ-labs/Overlord` README, upstream `docs/` and `docs/public/`,
+`packages/overlord-cli`, and the upstream connector plugin templates and web
+route/component inventory. The plans are requirements documents: they describe
+entities, behaviors, command contracts, state transitions, and acceptance
+criteria.
 
-These plans are primarily requirements documents. They describe entities, behaviors, command contracts, state transitions, and acceptance criteria. The first-pass persistence proposal now lives in the database schema contract.
+## Where each plan lives now
+
+| Plan | New home | Owning module |
+| --- | --- | --- |
+| Core Domain and Lifecycle | [`cli/docs/01-core-domain-and-lifecycle.md`](../../cli/docs/01-core-domain-and-lifecycle.md) | [cli/](../../cli/README.md) |
+| CLI-First Product Surface | [`cli/docs/02-cli-first-product-surface.md`](../../cli/docs/02-cli-first-product-surface.md) | [cli/](../../cli/README.md) |
+| Agent Protocol | [`cli/docs/03-agent-protocol.md`](../../cli/docs/03-agent-protocol.md) | [cli/](../../cli/README.md) |
+| Runner and Launch Execution | [`cli/docs/04-runner-and-launch-execution.md`](../../cli/docs/04-runner-and-launch-execution.md) | [cli/](../../cli/README.md) |
+| Connectors and Agent Plugins | [`connectors/docs/05-connectors-and-agent-plugins.md`](../../connectors/docs/05-connectors-and-agent-plugins.md) | [connectors/](../../connectors/README.md) |
+| Review, Artifacts, and Change Tracking | [`cli/docs/06-review-artifacts-and-change-tracking.md`](../../cli/docs/06-review-artifacts-and-change-tracking.md) | [cli/](../../cli/README.md) |
+| USER_TOKEN Authentication | [`auth/docs/07-user-token-authentication.md`](../../auth/docs/07-user-token-authentication.md) | [auth/](../../auth/README.md) |
+| Role-Based Access Control | [`auth/docs/08-role-based-access-control.md`](../../auth/docs/08-role-based-access-control.md) | [auth/](../../auth/README.md) |
+| Database Schema Contract | [`database/docs/09-database-schema-contract.md`](../../database/docs/09-database-schema-contract.md) | [database/](../../database/README.md) |
+| Schema Contract Review | [`database/docs/09-database-schema-contract-review.md`](../../database/docs/09-database-schema-contract-review.md) | [database/](../../database/README.md) |
+| Database Table Groups | [`database/docs/10-database-table-groups.md`](../../database/docs/10-database-table-groups.md) | [database/](../../database/README.md) |
+| Agent and Harness Configuration Architecture | [`connectors/docs/agent-harness-configuration-architecture.md`](../../connectors/docs/agent-harness-configuration-architecture.md) | [connectors/](../../connectors/README.md) |
+| Web App Requirements | [`webapp/docs/web-app.md`](../../webapp/docs/web-app.md) | [webapp/](../../webapp/README.md) |
+
+The [webapp module](../../webapp/README.md) also depends on the "REST API
+Boundary" section of the database schema contract, and the [mcp module](../../mcp/README.md)
+is a reserved Phase 5 slot with no plan yet.
+
+## Component Interaction Contract
+
+The normative specification for how all components interact lives in
+[`CONTRACT.md`](../../CONTRACT.md) at the project root, with machine-readable
+counterparts in [`contract/`](../../contract/). Any change that crosses module
+boundaries — new protocol commands, new database columns, new connectors, new
+extension points — must update the contract before updating other code. See
+`.claude/skills/component-contract/SKILL.md` for the enforced agent workflow.
 
 ## Port Strategy
 
@@ -26,20 +58,6 @@ OpenOverlord should start as a local, CLI-first system:
 The key product invariant to preserve from Overlord is:
 
 > One ticket holds the durable goal and shared context. One objective maps to one agent session.
-
-## Feature Plan Map
-
-- [Core Domain And Lifecycle](01-core-domain-and-lifecycle.md): projects, tickets, objectives, sessions, events, statuses, and state transitions.
-- [CLI First Product Surface](02-cli-first-product-surface.md): human commands, management commands, configuration, local project linking, and output contracts.
-- [Agent Protocol](03-agent-protocol.md): `ovld protocol` lifecycle, context assembly, updates, delivery, attachments, and shared context.
-- [Runner And Launch Execution](04-runner-and-launch-execution.md): execution requests, local runner, launch command generation, working directory resolution, and auto-advance.
-- [Connectors And Agent Plugins](05-connectors-and-agent-plugins.md): connector core, plugins, adapters, hooks, setup, doctor, and launch mapping.
-- [Review, Artifacts, And Change Tracking](06-review-artifacts-and-change-tracking.md): delivery review records, artifacts, rationale coverage, and local diff support.
-- [USER_TOKEN Authentication Module](07-user-token-authentication.md): user-owned API/CLI tokens, creation, rotation, revocation, current full-user permission behavior, and future scoped permissions.
-- [Role-Based Access Control](08-role-based-access-control.md): default `ADMIN`/`MEMBER` roles, capability grants, config-backed policy, and replaceable authorization providers.
-- [Database Schema Contract](09-database-schema-contract.md): portable persistence contract, default database recommendation, core tables, realtime/sync support, and migration discipline.
-- [Database Table Groups: Core and A La Carte](10-database-table-groups.md): which tables are required for every install versus optional, grouped a la carte sets with guidance on when to adopt each, and decision-tree for the agent-based setup flow.
-- [Web App Requirements](web-app.md): deferred UI/control-center requirements kept separate from CLI-first implementation.
 
 ## Suggested Phases
 
