@@ -16,9 +16,8 @@
  *   export type ActiveTicket = TicketRow & { deleted_at: null };
  */
 
-export type { Generated } from "./db.js";
-export type { DB } from "./db.js";
-
+export type { Generated } from './db.js';
+export type { DB } from './db.js';
 export type {
   Account,
   AgentSessions,
@@ -45,11 +44,11 @@ export type {
   Tickets,
   TicketSequences,
   User,
+  Users,
   UserTokens,
   UserTokenScopes,
-  Users,
   Verification,
   Workspaces,
   WorkspaceUserExecutionTargets,
-  WorkspaceUsers,
-} from "./db.js";
+  WorkspaceUsers
+} from './db.js';

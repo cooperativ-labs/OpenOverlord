@@ -1,14 +1,10 @@
-import { Archive, FolderKanban, LayoutGrid, Plus, Settings } from 'lucide-react';
 import { Link, useParams } from '@tanstack/react-router';
+import { Archive, FolderKanban, LayoutGrid, Plus, Settings } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
+import { SettingsModal, type SettingsNavSection } from '@/components/modals/SettingsModal';
 import { NavUser } from '@/components/nav-user';
 import { ProjectCreatorModal } from '@/components/projects/ProjectCreatorModal';
-import {
-  SettingsModal,
-  type SettingsNavSection
-} from '@/components/modals/SettingsModal';
-import { WorkspaceSwitcher } from '@/components/workspace-switcher';
 import {
   Sidebar,
   SidebarContent,
@@ -24,8 +20,10 @@ import {
   SidebarRail,
   SidebarSeparator
 } from '@/components/ui/sidebar';
+import { WorkspaceSwitcher } from '@/components/workspace-switcher';
 import { useMeta, useProjects } from '@/lib/queries';
-import { useRealtime, type LinkState } from '@/lib/realtime';
+import { type LinkState, useRealtime } from '@/lib/realtime';
+
 import type { ProjectDto } from '../../shared/contract.ts';
 
 function RealtimeStatus() {
@@ -126,10 +124,7 @@ export function AppSidebar() {
 
           <SidebarGroup>
             <SidebarGroupLabel>Projects</SidebarGroupLabel>
-            <SidebarGroupAction
-              title="New project"
-              onClick={() => setProjectCreatorOpen(true)}
-            >
+            <SidebarGroupAction title="New project" onClick={() => setProjectCreatorOpen(true)}>
               <Plus />
               <span className="sr-only">New project</span>
             </SidebarGroupAction>

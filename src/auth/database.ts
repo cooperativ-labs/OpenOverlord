@@ -23,7 +23,7 @@ function toPostgresSql(sql: string): string {
 export async function queryOne<Row>(
   db: AuthDomainDatabase,
   sql: string,
-  params: readonly unknown[] = [],
+  params: readonly unknown[] = []
 ): Promise<Row | undefined> {
   if (isPostgresDatabase(db)) {
     const result = await db.query<Row>(toPostgresSql(sql), params);
@@ -36,7 +36,7 @@ export async function queryOne<Row>(
 export async function queryAll<Row>(
   db: AuthDomainDatabase,
   sql: string,
-  params: readonly unknown[] = [],
+  params: readonly unknown[] = []
 ): Promise<Row[]> {
   if (isPostgresDatabase(db)) {
     const result = await db.query<Row>(toPostgresSql(sql), params);
@@ -49,7 +49,7 @@ export async function queryAll<Row>(
 export async function execute(
   db: AuthDomainDatabase,
   sql: string,
-  params: readonly unknown[] = [],
+  params: readonly unknown[] = []
 ): Promise<void> {
   if (isPostgresDatabase(db)) {
     await db.query(toPostgresSql(sql), params);

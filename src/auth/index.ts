@@ -1,12 +1,12 @@
-export { createAuth } from './config.js';
 export type { Auth, AuthDatabaseConfig, CreateAuthOptions } from './config.js';
+export { createAuth } from './config.js';
 export type { AuthDomainDatabase, PostgresQueryExecutor } from './database.js';
 export { getActorForSession } from './session.js';
+export type { CreateTokenParams, UserTokenMeta } from './token.js';
 export {
   createUserToken,
+  getActorForToken,
   listUserTokens,
   revokeUserToken,
-  verifyUserToken,
-  getActorForToken,
+  verifyUserToken
 } from './token.js';
-export type { CreateTokenParams, UserTokenMeta } from './token.js';

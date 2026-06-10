@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 
 const STORAGE_KEY = 'ticket-drawer-width';
 const DEFAULT_WIDTH = 420;
@@ -16,36 +16,39 @@ export function TicketDrawer({ children }: { children: ReactNode }) {
     if (parsed >= MIN_WIDTH && parsed <= MAX_WIDTH) setWidth(parsed);
   }, []);
 
-  const onResizePointerDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    isDragging.current = true;
-    const startX = e.clientX;
-    const startWidth = width;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
+  const onResizePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      isDragging.current = true;
+      const startX = e.clientX;
+      const startWidth = width;
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
 
-    const onPointerMove = (ev: PointerEvent) => {
-      if (!isDragging.current) return;
-      const delta = ev.clientX - startX;
-      const nextWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth - delta));
-      setWidth(nextWidth);
-    };
+      const onPointerMove = (ev: PointerEvent) => {
+        if (!isDragging.current) return;
+        const delta = ev.clientX - startX;
+        const nextWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth - delta));
+        setWidth(nextWidth);
+      };
 
-    const onPointerUp = () => {
-      isDragging.current = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      setWidth(current => {
-        localStorage.setItem(STORAGE_KEY, String(current));
-        return current;
-      });
-      document.removeEventListener('pointermove', onPointerMove);
-      document.removeEventListener('pointerup', onPointerUp);
-    };
+      const onPointerUp = () => {
+        isDragging.current = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        setWidth(current => {
+          localStorage.setItem(STORAGE_KEY, String(current));
+          return current;
+        });
+        document.removeEventListener('pointermove', onPointerMove);
+        document.removeEventListener('pointerup', onPointerUp);
+      };
 
-    document.addEventListener('pointermove', onPointerMove);
-    document.addEventListener('pointerup', onPointerUp);
-  }, [width]);
+      document.addEventListener('pointermove', onPointerMove);
+      document.addEventListener('pointerup', onPointerUp);
+    },
+    [width]
+  );
 
   return (
     <aside

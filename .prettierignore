@@ -1,0 +1,6 @@
+.overlord/
+node_modules/
+**/dist/
+**/build/
+coverage/
+src/types/db.ts

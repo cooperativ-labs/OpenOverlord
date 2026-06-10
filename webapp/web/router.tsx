@@ -7,13 +7,9 @@ import {
 } from '@tanstack/react-router';
 
 import { AppSidebar } from './components/app-sidebar.tsx';
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger
-} from './components/ui/sidebar.tsx';
-import { ProjectsPage } from './pages/ProjectsPage.tsx';
+import { SidebarInset, SidebarProvider, SidebarTrigger } from './components/ui/sidebar.tsx';
 import { ProjectBoardShell } from './pages/ProjectBoardShell.tsx';
+import { ProjectsPage } from './pages/ProjectsPage.tsx';
 import { TicketPanelRoute } from './pages/TicketPage.tsx';
 
 function RootLayout() {

@@ -1,15 +1,10 @@
-import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
+import { useState } from 'react';
 
 import { ProjectCreatorModal } from '@/components/projects/ProjectCreatorModal';
+
+import { Badge, Button, Card, EmptyState, Spinner } from '../components/ui.tsx';
 import { useProjects } from '../lib/queries.ts';
-import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Spinner
-} from '../components/ui.tsx';
 
 export function ProjectsPage() {
   const projects = useProjects();

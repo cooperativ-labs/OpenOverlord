@@ -1,7 +1,8 @@
-import { makeActor } from "../rbac/authorizer.js";
-import type { Actor, Role } from "../rbac/types.js";
-import type { Auth } from "./config.js";
-import { queryAll, queryOne, type AuthDomainDatabase } from "./database.js";
+import { makeActor } from '../rbac/authorizer.js';
+import type { Actor, Role } from '../rbac/types.js';
+
+import type { Auth } from './config.js';
+import { type AuthDomainDatabase, queryAll, queryOne } from './database.js';
 
 /**
  * Resolve a Better Auth session token to an Overlord Actor.
@@ -19,7 +20,7 @@ export async function getActorForSession(
   auth: Auth,
   db: AuthDomainDatabase,
   sessionToken: string,
-  workspaceId: string,
+  workspaceId: string
 ): Promise<Actor | null> {
   const headers = new Headers({ authorization: `Bearer ${sessionToken}` });
   const result = await auth.api.getSession({ headers });
@@ -39,7 +40,7 @@ export async function getActorForSession(
        AND u.deleted_at IS NULL
        AND wu.deleted_at IS NULL
      LIMIT 1`,
-    [baUserId, workspaceId],
+    [baUserId, workspaceId]
   );
 
   if (!row) return null;
@@ -51,9 +52,9 @@ export async function getActorForSession(
      WHERE workspace_user_id = ?
        AND workspace_id = ?
        AND deleted_at IS NULL`,
-    [row.workspace_user_id, workspaceId],
+    [row.workspace_user_id, workspaceId]
   );
 
-  const roles = roleRows.map((r) => r.role_key as Role);
+  const roles = roleRows.map(r => r.role_key as Role);
   return makeActor(row.workspace_user_id, roles);
 }

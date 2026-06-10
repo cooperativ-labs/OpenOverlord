@@ -1,10 +1,6 @@
 import { Globe } from 'lucide-react';
 
-import {
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem
-} from '@/components/ui/sidebar';
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { useMeta } from '@/lib/queries';
 
 export function WorkspaceSwitcher() {

@@ -1,13 +1,14 @@
-import type { Response } from "express";
+import type { Response } from 'express';
 
-import type { EntityChangeDto } from "../shared/contract.ts";
-import { currentMaxSeq, dataVersion, db } from "./db.ts";
+import type { EntityChangeDto } from '../shared/contract.ts';
+
+import { currentMaxSeq, dataVersion, db } from './db.ts';
 
 interface ChangeRow {
   seq: number;
   entity_type: string;
   entity_id: string;
-  operation: EntityChangeDto["operation"];
+  operation: EntityChangeDto['operation'];
   project_id: string | null;
   ticket_id: string | null;
   objective_id: string | null;
@@ -47,14 +48,14 @@ class RealtimeHub {
 
   addClient(res: Response): void {
     res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no'
     });
-    res.write("retry: 2000\n\n");
+    res.write('retry: 2000\n\n');
     this.clients.add(res);
-    this.send(res, "hello", { type: "hello", cursor: this.cursor });
+    this.send(res, 'hello', { type: 'hello', cursor: this.cursor });
   }
 
   removeClient(res: Response): void {
@@ -77,7 +78,7 @@ class RealtimeHub {
 
     const rows = selectChangesStmt.all(this.cursor) as ChangeRow[];
     if (rows.length > 0) {
-      const changes: EntityChangeDto[] = rows.map((r) => ({
+      const changes: EntityChangeDto[] = rows.map(r => ({
         seq: r.seq,
         entityType: r.entity_type,
         entityId: r.entity_id,
@@ -85,10 +86,10 @@ class RealtimeHub {
         projectId: r.project_id,
         ticketId: r.ticket_id,
         objectiveId: r.objective_id,
-        occurredAt: r.occurred_at,
+        occurredAt: r.occurred_at
       }));
       this.cursor = rows[rows.length - 1]!.seq;
-      this.broadcast("change", { type: "change", changes, cursor: this.cursor });
+      this.broadcast('change', { type: 'change', changes, cursor: this.cursor });
     }
 
     const version = dataVersion();
@@ -96,13 +97,13 @@ class RealtimeHub {
       this.lastDataVersion = version;
       if (rows.length === 0) {
         // External write that did not (or has not yet) produced feed rows.
-        this.broadcast("refresh", { type: "refresh" });
+        this.broadcast('refresh', { type: 'refresh' });
       }
     }
   }
 
   private heartbeat(): void {
-    for (const res of this.clients) res.write(": ping\n\n");
+    for (const res of this.clients) res.write(': ping\n\n');
   }
 
   private broadcast(event: string, data: unknown): void {

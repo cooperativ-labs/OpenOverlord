@@ -1,5 +1,5 @@
-import { Actor, AuthorizationResult, Permission, Role, RoleDefinition } from './types.js';
 import { DEFAULT_ROLE_DEFINITIONS } from './roles.js';
+import { Actor, AuthorizationResult, Permission, Role, RoleDefinition } from './types.js';
 
 /**
  * Check whether a single grant pattern covers the requested action.
@@ -25,7 +25,7 @@ function grantCoversAction(grant: string, action: string): boolean {
  * Check whether a role's grants cover the requested action.
  */
 function roleAllows(roleDef: RoleDefinition, action: string): boolean {
-  return roleDef.grants.some((g) => grantCoversAction(g, action));
+  return roleDef.grants.some(g => grantCoversAction(g, action));
 }
 
 /**
@@ -49,9 +49,7 @@ export interface AuthorizationProvider {
 export class Authorizer implements AuthorizationProvider {
   private readonly roleDefs: Readonly<Record<string, RoleDefinition>>;
 
-  constructor(
-    roleDefs: Readonly<Record<string, RoleDefinition>> = DEFAULT_ROLE_DEFINITIONS,
-  ) {
+  constructor(roleDefs: Readonly<Record<string, RoleDefinition>> = DEFAULT_ROLE_DEFINITIONS) {
     this.roleDefs = roleDefs;
   }
 
@@ -68,14 +66,14 @@ export class Authorizer implements AuthorizationProvider {
       if (roleAllows(def, action)) {
         return {
           allowed: true,
-          reason: `Role ${role} grants ${action}`,
+          reason: `Role ${role} grants ${action}`
         };
       }
     }
 
     return {
       allowed: false,
-      reason: `None of [${actor.roles.join(', ')}] grant ${action}`,
+      reason: `None of [${actor.roles.join(', ')}] grant ${action}`
     };
   }
 }

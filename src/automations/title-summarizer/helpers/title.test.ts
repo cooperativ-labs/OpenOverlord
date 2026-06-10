@@ -5,7 +5,10 @@ import { deriveTitleFromInstructionText } from './title.js';
 
 describe('deriveTitleFromInstructionText', () => {
   it('returns short instruction text unchanged', () => {
-    assert.equal(deriveTitleFromInstructionText('Add retry logic to API client'), 'Add retry logic to API client');
+    assert.equal(
+      deriveTitleFromInstructionText('Add retry logic to API client'),
+      'Add retry logic to API client'
+    );
   });
 
   it('truncates long instruction text with an ellipsis', () => {

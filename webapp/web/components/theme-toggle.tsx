@@ -22,7 +22,7 @@ export function ThemeToggle() {
 
   useEffect(() => setMounted(true), []);
 
-  const active = THEMES.find((item) => item.value === theme) ?? THEMES[1];
+  const active = THEMES.find(item => item.value === theme) ?? THEMES[1];
   const Icon = mounted && resolvedTheme === 'light' ? Sun : Moon;
 
   return (

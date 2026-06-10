@@ -1,8 +1,8 @@
+import { deriveTitleFromInstructionText } from '../helpers/title.js';
 import {
   AI_TITLE_THRESHOLD,
   summarizeObjectiveTitleWithGemini
 } from '../tools/summarize-objective-title.js';
-import { deriveTitleFromInstructionText } from '../helpers/title.js';
 
 export type ObjectiveTitleStore = {
   updateObjectiveTitle: (params: { objectiveId: string; title: string }) => Promise<void>;

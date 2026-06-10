@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { AI_TITLE_THRESHOLD } from '../tools/summarize-objective-title.js';
-import { generateAndSetObjectiveTitle, generateObjectiveTitle } from './generate-objective-title.js';
+
+import {
+  generateAndSetObjectiveTitle,
+  generateObjectiveTitle
+} from './generate-objective-title.js';
 
 describe('generateObjectiveTitle', () => {
   it('uses local derivation for short instruction text', async () => {

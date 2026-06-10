@@ -1,7 +1,4 @@
-import {
-  summarizeObjectiveTitleTool,
-  summarizeTextTool
-} from './title-summarizer/index.js';
+import { summarizeObjectiveTitleTool, summarizeTextTool } from './title-summarizer/index.js';
 import type { Automation, AutomationRunContext } from './types.js';
 
 export type RegisteredAutomation = {

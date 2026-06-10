@@ -12,30 +12,24 @@
 
 // ---- Closed status vocabularies (from the schema CHECK constraints) ----
 
-export type ProjectLifecycle = "active" | "archived";
+export type ProjectLifecycle = 'active' | 'archived';
 
-export type StatusType =
-  | "draft"
-  | "execute"
-  | "review"
-  | "complete"
-  | "blocked"
-  | "cancelled";
+export type StatusType = 'draft' | 'execute' | 'review' | 'complete' | 'blocked' | 'cancelled';
 
-export type TicketPriority = "low" | "normal" | "high" | "urgent";
+export type TicketPriority = 'low' | 'normal' | 'high' | 'urgent';
 
 export type ObjectiveState =
-  | "future"
-  | "draft"
-  | "submitted"
-  | "launching"
-  | "executing"
-  | "pending_delivery"
-  | "complete";
+  | 'future'
+  | 'draft'
+  | 'submitted'
+  | 'launching'
+  | 'executing'
+  | 'pending_delivery'
+  | 'complete';
 
-export type EntityType = "project" | "ticket" | "objective";
+export type EntityType = 'project' | 'ticket' | 'objective';
 
-export type ChangeOperation = "insert" | "update" | "delete" | "restore";
+export type ChangeOperation = 'insert' | 'update' | 'delete' | 'restore';
 
 // ---- Resource DTOs ----
 
@@ -66,8 +60,8 @@ export interface ProjectStatusDto {
   isTerminal: boolean;
 }
 
-export type ProjectResourceType = "local_directory" | "remote_directory";
-export type ProjectResourceStatus = "active" | "missing" | "archived";
+export type ProjectResourceType = 'local_directory' | 'remote_directory';
+export type ProjectResourceStatus = 'active' | 'missing' | 'archived';
 
 export interface ProjectResourceDto {
   id: string;
@@ -84,7 +78,7 @@ export interface ProjectResourceDto {
   revision: number;
 }
 
-export type RepositoryEntryType = "file" | "directory";
+export type RepositoryEntryType = 'file' | 'directory';
 
 export interface RepositoryEntryDto {
   path: string;
@@ -95,11 +89,11 @@ export interface RepositoryEntryDto {
 }
 
 export type ProjectRepositoryStatus =
-  | "ready"
-  | "no_resource"
-  | "not_git_repository"
-  | "unsupported_resource"
-  | "unreadable";
+  | 'ready'
+  | 'no_resource'
+  | 'not_git_repository'
+  | 'unsupported_resource'
+  | 'unreadable';
 
 export interface ProjectRepositoryDto {
   projectId: string;
@@ -181,9 +175,9 @@ export interface EntityChangeDto {
 
 /** Named SSE events emitted by `GET /api/stream`. */
 export type RealtimeEvent =
-  | { type: "hello"; cursor: number }
-  | { type: "change"; changes: EntityChangeDto[]; cursor: number }
-  | { type: "refresh" };
+  | { type: 'hello'; cursor: number }
+  | { type: 'change'; changes: EntityChangeDto[]; cursor: number }
+  | { type: 'refresh' };
 
 // ---- Request bodies ----
 

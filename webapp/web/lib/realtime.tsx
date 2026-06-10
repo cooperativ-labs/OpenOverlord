@@ -1,14 +1,14 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from '@tanstack/react-query';
+import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
 
-export type LinkState = "connecting" | "live" | "reconnecting";
+export type LinkState = 'connecting' | 'live' | 'reconnecting';
 
 interface RealtimeValue {
   state: LinkState;
   lastSeq: number;
 }
 
-const RealtimeContext = createContext<RealtimeValue>({ state: "connecting", lastSeq: 0 });
+const RealtimeContext = createContext<RealtimeValue>({ state: 'connecting', lastSeq: 0 });
 
 /**
  * Holds one SSE connection to `GET /api/stream` for the whole app. Every delta
@@ -17,17 +17,17 @@ const RealtimeContext = createContext<RealtimeValue>({ state: "connecting", last
  */
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const [state, setState] = useState<LinkState>("connecting");
+  const [state, setState] = useState<LinkState>('connecting');
   const [lastSeq, setLastSeq] = useState(0);
 
   useEffect(() => {
-    const source = new EventSource("/api/stream");
+    const source = new EventSource('/api/stream');
 
-    const onLive = () => setState("live");
+    const onLive = () => setState('live');
     const invalidateAll = () => queryClient.invalidateQueries();
 
-    source.addEventListener("open", onLive);
-    source.addEventListener("hello", (event) => {
+    source.addEventListener('open', onLive);
+    source.addEventListener('hello', event => {
       onLive();
       try {
         setLastSeq(JSON.parse((event as MessageEvent).data).cursor ?? 0);
@@ -35,7 +35,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         /* ignore */
       }
     });
-    source.addEventListener("change", (event) => {
+    source.addEventListener('change', event => {
       onLive();
       try {
         setLastSeq(JSON.parse((event as MessageEvent).data).cursor ?? 0);
@@ -44,23 +44,19 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       }
       invalidateAll();
     });
-    source.addEventListener("refresh", () => {
+    source.addEventListener('refresh', () => {
       onLive();
       invalidateAll();
     });
-    source.addEventListener("error", () => {
+    source.addEventListener('error', () => {
       // EventSource auto-reconnects; reflect the gap in the UI meanwhile.
-      setState("reconnecting");
+      setState('reconnecting');
     });
 
     return () => source.close();
   }, [queryClient]);
 
-  return (
-    <RealtimeContext.Provider value={{ state, lastSeq }}>
-      {children}
-    </RealtimeContext.Provider>
-  );
+  return <RealtimeContext.Provider value={{ state, lastSeq }}>{children}</RealtimeContext.Provider>;
 }
 
 export function useRealtime(): RealtimeValue {

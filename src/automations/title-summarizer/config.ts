@@ -5,9 +5,7 @@ export type GeminiConfig = {
   model: string;
 };
 
-export function readGeminiConfigFromEnv(
-  env: NodeJS.ProcessEnv = process.env
-): GeminiConfig | null {
+export function readGeminiConfigFromEnv(env: NodeJS.ProcessEnv = process.env): GeminiConfig | null {
   const apiKey = env.GEMINI_API_KEY?.trim() ?? '';
   if (!apiKey) {
     return null;

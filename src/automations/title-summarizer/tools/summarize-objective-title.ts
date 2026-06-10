@@ -1,4 +1,5 @@
 import type { Automation } from '../../types.js';
+
 import { summarizeTextWithGemini } from './summarize-text.js';
 
 export const OBJECTIVE_TITLE_MAX_LENGTH = 60;

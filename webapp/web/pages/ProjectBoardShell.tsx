@@ -1,6 +1,7 @@
 import { Outlet, useParams } from '@tanstack/react-router';
 
 import { ProjectRepositoryProvider } from '../components/projects/ProjectRepositoryContext.tsx';
+
 import { BoardPage } from './BoardPage.tsx';
 
 export function ProjectBoardShell() {

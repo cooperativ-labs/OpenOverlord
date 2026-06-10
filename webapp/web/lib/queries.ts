@@ -1,9 +1,4 @@
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type QueryClient,
-} from "@tanstack/react-query";
+import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type {
   CreateObjectiveBody,
@@ -13,20 +8,21 @@ import type {
   TicketDto,
   UpdateObjectiveBody,
   UpdateProjectBody,
-  UpdateTicketBody,
-} from "../../shared/contract.ts";
-import { api } from "./api.ts";
+  UpdateTicketBody
+} from '../../shared/contract.ts';
+
+import { api } from './api.ts';
 
 export const keys = {
-  meta: ["meta"] as const,
-  projects: ["projects"] as const,
-  project: (id: string) => ["project", id] as const,
-  projectStatuses: (id: string) => ["project", id, "statuses"] as const,
-  projectResources: (id: string) => ["project", id, "resources"] as const,
+  meta: ['meta'] as const,
+  projects: ['projects'] as const,
+  project: (id: string) => ['project', id] as const,
+  projectStatuses: (id: string) => ['project', id, 'statuses'] as const,
+  projectResources: (id: string) => ['project', id, 'resources'] as const,
   projectRepository: (id: string, executionTargetId: string | null) =>
-    ["project", id, "repository", executionTargetId ?? "primary"] as const,
-  tickets: (projectId: string) => ["project", projectId, "tickets"] as const,
-  ticket: (id: string) => ["ticket", id] as const,
+    ['project', id, 'repository', executionTargetId ?? 'primary'] as const,
+  tickets: (projectId: string) => ['project', projectId, 'tickets'] as const,
+  ticket: (id: string) => ['ticket', id] as const
 };
 
 // Realtime invalidation is global, but mutations also invalidate eagerly so the
@@ -39,8 +35,7 @@ function invalidateAll(qc: QueryClient) {
 
 export const useMeta = () => useQuery({ queryKey: keys.meta, queryFn: api.meta });
 
-export const useProjects = () =>
-  useQuery({ queryKey: keys.projects, queryFn: api.listProjects });
+export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: api.listProjects });
 
 export const useProject = (id: string) =>
   useQuery({ queryKey: keys.project(id), queryFn: () => api.getProject(id) });
@@ -54,7 +49,7 @@ export const useProjectResources = (id: string) =>
 export const useProjectRepository = (id: string, executionTargetId: string | null) =>
   useQuery({
     queryKey: keys.projectRepository(id, executionTargetId),
-    queryFn: () => api.getProjectRepository(id, executionTargetId),
+    queryFn: () => api.getProjectRepository(id, executionTargetId)
   });
 
 export const useTickets = (projectId: string) =>
@@ -69,7 +64,7 @@ export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateProjectBody) => api.createProject(body),
-    onSuccess: () => invalidateAll(qc),
+    onSuccess: () => invalidateAll(qc)
   });
 }
 
@@ -77,7 +72,7 @@ export function useUpdateProject(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: UpdateProjectBody) => api.updateProject(id, body),
-    onSuccess: () => invalidateAll(qc),
+    onSuccess: () => invalidateAll(qc)
   });
 }
 
@@ -85,7 +80,7 @@ export function useCreateTicket() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateTicketBody) => api.createTicket(body),
-    onSuccess: () => invalidateAll(qc),
+    onSuccess: () => invalidateAll(qc)
   });
 }
 
@@ -93,7 +88,7 @@ export function useUpdateTicket(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: UpdateTicketBody) => api.updateTicket(id, body),
-    onSuccess: () => invalidateAll(qc),
+    onSuccess: () => invalidateAll(qc)
   });
 }
 
@@ -101,7 +96,7 @@ export function useDeleteTicket() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.deleteTicket(id),
-    onSuccess: () => invalidateAll(qc),
+    onSuccess: () => invalidateAll(qc)
   });
 }
 
@@ -136,10 +131,10 @@ export function useReorderBoardColumn() {
       const previous = qc.getQueryData<TicketDto[]>(keys.tickets(vars.projectId));
       if (previous) {
         const positionById = new Map(
-          vars.orderedTicketIds.map((id, index) => [id, (index + 1) * 100]),
+          vars.orderedTicketIds.map((id, index) => [id, (index + 1) * 100])
         );
         const next = previous
-          .map((ticket) => {
+          .map(ticket => {
             const position = positionById.get(ticket.id);
             return position === undefined
               ? ticket
@@ -147,7 +142,7 @@ export function useReorderBoardColumn() {
                   ...ticket,
                   statusId: vars.statusId,
                   statusType: vars.statusType,
-                  boardPosition: position,
+                  boardPosition: position
                 };
           })
           .sort(byBoardOrder);
@@ -162,7 +157,7 @@ export function useReorderBoardColumn() {
     },
     onSettled: (_data, _err, vars) => {
       void qc.invalidateQueries({ queryKey: keys.tickets(vars.projectId) });
-    },
+    }
   });
 }
 
@@ -170,7 +165,7 @@ export function useCreateObjective() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateObjectiveBody) => api.createObjective(body),
-    onSuccess: () => invalidateAll(qc),
+    onSuccess: () => invalidateAll(qc)
   });
 }
 
@@ -179,7 +174,7 @@ export function useUpdateObjective() {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateObjectiveBody }) =>
       api.updateObjective(id, body),
-    onSuccess: () => invalidateAll(qc),
+    onSuccess: () => invalidateAll(qc)
   });
 }
 
@@ -187,6 +182,6 @@ export function useDeleteObjective() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.deleteObjective(id),
-    onSuccess: () => invalidateAll(qc),
+    onSuccess: () => invalidateAll(qc)
   });
 }

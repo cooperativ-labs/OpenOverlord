@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { ArrowRightToLine } from 'lucide-react';
+import { useState } from 'react';
 
 import type {
   ObjectiveDto,
@@ -17,6 +17,7 @@ import {
   useUpdateObjective,
   useUpdateTicket
 } from '../lib/queries.ts';
+
 import {
   Badge,
   Button,
@@ -95,9 +96,7 @@ function ObjectiveItem({ objective }: { objective: ObjectiveDto }) {
           value={objective.instructionText}
           className="block whitespace-pre-wrap"
           inputClassName="text-sm"
-          onSave={instructionText =>
-            update.mutate({ id: objective.id, body: { instructionText } })
-          }
+          onSave={instructionText => update.mutate({ id: objective.id, body: { instructionText } })}
         />
       </div>
     </Card>

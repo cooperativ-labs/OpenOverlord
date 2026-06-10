@@ -1,32 +1,24 @@
 import {
-  useEffect,
-  useState,
   type ButtonHTMLAttributes,
   type ComponentProps,
+  type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
-  type InputHTMLAttributes,
-  type TextareaHTMLAttributes
+  type TextareaHTMLAttributes,
+  useEffect,
+  useState
 } from 'react';
 
-import type {
-  ObjectiveState,
-  StatusType,
-  TicketPriority
-} from '../../shared/contract.ts';
 import { Badge as ShadcnBadge } from '@/components/ui/badge';
 import { Button as ShadcnButton } from '@/components/ui/button';
 import { Card as ShadcnCard } from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+
+import type { ObjectiveState, StatusType, TicketPriority } from '../../shared/contract.ts';
 
 // ---- Status / priority vocab → presentation ------------------------------
 
@@ -102,13 +94,7 @@ export function priorityClasses(priority: TicketPriority | null): string {
 
 // ---- Primitives (shadcn-backed app wrappers) ------------------------------
 
-export function Badge({
-  children,
-  className = ''
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
+export function Badge({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
     <ShadcnBadge variant="outline" className={cn('rounded-full ring-1 ring-inset', className)}>
       {children}
@@ -130,13 +116,7 @@ export function Button({
   className = '',
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
-  return (
-    <ShadcnButton
-      variant={buttonVariantMap[variant]}
-      className={className}
-      {...props}
-    />
-  );
+  return <ShadcnButton variant={buttonVariantMap[variant]} className={className} {...props} />;
 }
 
 export function Card({
@@ -204,7 +184,7 @@ export function Modal({
   children: ReactNode;
 }) {
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog open={open} onOpenChange={next => !next && onClose()}>
       <DialogContent className="gap-0 p-0 sm:max-w-lg" showCloseButton>
         <DialogHeader className="border-b px-5 py-3">
           <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
@@ -293,9 +273,9 @@ export function EditableText({
         rows={4}
         value={draft}
         className={inputClassName}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={e => setDraft(e.target.value)}
         onBlur={commit}
-        onKeyDown={(e) => {
+        onKeyDown={e => {
           if (e.key === 'Escape') {
             setDraft(value);
             setEditing(false);
@@ -311,9 +291,9 @@ export function EditableText({
       autoFocus
       value={draft}
       className={inputClassName}
-      onChange={(e) => setDraft(e.target.value)}
+      onChange={e => setDraft(e.target.value)}
       onBlur={commit}
-      onKeyDown={(e) => {
+      onKeyDown={e => {
         if (e.key === 'Escape') {
           setDraft(value);
           setEditing(false);

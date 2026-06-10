@@ -1,37 +1,28 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useMatch, useNavigate, useParams } from "@tanstack/react-router";
 import {
   closestCorners,
   DndContext,
+  type DragEndEvent,
+  type DragOverEvent,
   DragOverlay,
+  type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
   useDroppable,
   useSensor,
-  useSensors,
-  type DragEndEvent,
-  type DragOverEvent,
-  type DragStartEvent,
-} from "@dnd-kit/core";
+  useSensors
+} from '@dnd-kit/core';
 import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { Link, useMatch, useNavigate, useParams } from '@tanstack/react-router';
+import { useEffect, useMemo, useState } from 'react';
 
-import type { ProjectStatusDto, TicketDto, TicketPriority } from "../../shared/contract.ts";
-import {
-  useCreateTicket,
-  useProject,
-  useProjectStatuses,
-  useReorderBoardColumn,
-  useTickets,
-  useUpdateProject,
-  useUpdateTicket,
-} from "../lib/queries.ts";
+import type { ProjectStatusDto, TicketDto, TicketPriority } from '../../shared/contract.ts';
 import {
   Badge,
   Button,
@@ -43,18 +34,27 @@ import {
   priorityClasses,
   Select,
   Spinner,
-  statusClasses,
   STATUS_LABEL,
-  TextArea,
-} from "../components/ui.tsx";
+  statusClasses,
+  TextArea
+} from '../components/ui.tsx';
+import {
+  useCreateTicket,
+  useProject,
+  useProjectStatuses,
+  useReorderBoardColumn,
+  useTickets,
+  useUpdateProject,
+  useUpdateTicket
+} from '../lib/queries.ts';
 
-const PRIORITIES: TicketPriority[] = ["low", "normal", "high", "urgent"];
+const PRIORITIES: TicketPriority[] = ['low', 'normal', 'high', 'urgent'];
 
 function NewTicketModal({
   open,
   onClose,
   projectId,
-  statuses,
+  statuses
 }: {
   open: boolean;
   onClose: () => void;
@@ -62,9 +62,9 @@ function NewTicketModal({
   statuses: ProjectStatusDto[];
 }) {
   const create = useCreateTicket();
-  const [instruction, setInstruction] = useState("");
-  const [priority, setPriority] = useState<TicketPriority>("normal");
-  const [statusId, setStatusId] = useState("");
+  const [instruction, setInstruction] = useState('');
+  const [priority, setPriority] = useState<TicketPriority>('normal');
+  const [statusId, setStatusId] = useState('');
 
   const submit = () => {
     const text = instruction.trim();
@@ -74,16 +74,16 @@ function NewTicketModal({
         projectId,
         firstObjective: text,
         priority,
-        statusId: statusId || undefined,
+        statusId: statusId || undefined
       },
       {
         onSuccess: () => {
-          setInstruction("");
-          setPriority("normal");
-          setStatusId("");
+          setInstruction('');
+          setPriority('normal');
+          setStatusId('');
           onClose();
-        },
-      },
+        }
+      }
     );
   };
 
@@ -96,9 +96,9 @@ function NewTicketModal({
             rows={3}
             value={instruction}
             placeholder="Describe the work to be executed…"
-            onChange={(e) => setInstruction(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
+            onChange={e => setInstruction(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit();
             }}
           />
         </Field>
@@ -107,9 +107,9 @@ function NewTicketModal({
             <Select
               className="w-full"
               value={priority}
-              onChange={(e) => setPriority(e.target.value as TicketPriority)}
+              onChange={e => setPriority(e.target.value as TicketPriority)}
             >
-              {PRIORITIES.map((p) => (
+              {PRIORITIES.map(p => (
                 <option key={p} value={p}>
                   {p}
                 </option>
@@ -117,13 +117,9 @@ function NewTicketModal({
             </Select>
           </Field>
           <Field label="Status">
-            <Select
-              className="w-full"
-              value={statusId}
-              onChange={(e) => setStatusId(e.target.value)}
-            >
-              <option value="">Default ({statuses.find((s) => s.isDefault)?.name ?? "—"})</option>
-              {statuses.map((s) => (
+            <Select className="w-full" value={statusId} onChange={e => setStatusId(e.target.value)}>
+              <option value="">Default ({statuses.find(s => s.isDefault)?.name ?? '—'})</option>
+              {statuses.map(s => (
                 <option key={s.id} value={s.id}>
                   {s.name}
                 </option>
@@ -138,8 +134,12 @@ function NewTicketModal({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={submit} disabled={!instruction.trim() || create.isPending}>
-            {create.isPending ? "Creating…" : "Create ticket"}
+          <Button
+            variant="primary"
+            onClick={submit}
+            disabled={!instruction.trim() || create.isPending}
+          >
+            {create.isPending ? 'Creating…' : 'Create ticket'}
           </Button>
         </div>
       </div>
@@ -157,7 +157,7 @@ function TicketCardBody({
   projectId,
   statuses,
   dragging,
-  selected,
+  selected
 }: {
   ticket: TicketDto;
   projectId: string;
@@ -171,12 +171,12 @@ function TicketCardBody({
   return (
     <Card
       className={`space-y-2 p-3 ${
-        dragging ? "cursor-grabbing shadow-lg" : "cursor-pointer"
-      } ${selected ? "ring-2 ring-[var(--color-accent)] ring-offset-1 ring-offset-[var(--color-surface-0)]" : ""}`}
+        dragging ? 'cursor-grabbing shadow-lg' : 'cursor-pointer'
+      } ${selected ? 'ring-2 ring-[var(--color-accent)] ring-offset-1 ring-offset-[var(--color-surface-0)]' : ''}`}
       onClick={() =>
         navigate({
-          to: "/projects/$projectId/tickets/$ticketId",
-          params: { projectId, ticketId: ticket.id },
+          to: '/projects/$projectId/tickets/$ticketId',
+          params: { projectId, ticketId: ticket.id }
         })
       }
     >
@@ -189,20 +189,20 @@ function TicketCardBody({
       <p className="text-sm font-medium leading-snug">{ticket.title}</p>
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-[var(--color-ink-dim)]">
-          {ticket.objectiveCount} obj{ticket.objectiveCount === 1 ? "" : "s"}
+          {ticket.objectiveCount} obj{ticket.objectiveCount === 1 ? '' : 's'}
         </span>
         <Select
           className="text-xs"
           value={ticket.statusId}
           // Keep dropdown interaction from starting a drag or navigating.
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-          onChange={(e) => {
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => e.stopPropagation()}
+          onChange={e => {
             e.stopPropagation();
             update.mutate({ statusId: e.target.value });
           }}
         >
-          {statuses.map((s) => (
+          {statuses.map(s => (
             <option key={s.id} value={s.id}>
               {s.name}
             </option>
@@ -218,7 +218,7 @@ function SortableTicketCard({
   ticket,
   projectId,
   statuses,
-  selected,
+  selected
 }: {
   ticket: TicketDto;
   projectId: string;
@@ -226,7 +226,7 @@ function SortableTicketCard({
   selected?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: ticket.id,
+    id: ticket.id
   });
 
   return (
@@ -235,7 +235,7 @@ function SortableTicketCard({
       style={{ transform: CSS.Transform.toString(transform), transition }}
       // While dragging, the real card rides in the DragOverlay; this slot becomes
       // a faint placeholder marking where it will land.
-      className={`cursor-grab touch-none active:cursor-grabbing ${isDragging ? "opacity-40" : ""}`}
+      className={`cursor-grab touch-none active:cursor-grabbing ${isDragging ? 'opacity-40' : ''}`}
       {...attributes}
       {...listeners}
     >
@@ -256,7 +256,7 @@ function BoardColumn({
   count,
   projectId,
   statuses,
-  selectedTicketId,
+  selectedTicketId
 }: {
   status: ProjectStatusDto;
   tickets: TicketDto[];
@@ -276,14 +276,16 @@ function BoardColumn({
         </Badge>
         <span className="text-xs text-[var(--color-ink-dim)]">{count}</span>
       </div>
-      <SortableContext items={tickets.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+      <SortableContext items={tickets.map(t => t.id)} strategy={verticalListSortingStrategy}>
         <div
           ref={setNodeRef}
           className={`flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-1 transition-colors ${
-            isOver ? "bg-[var(--color-surface-2)]/40 ring-1 ring-inset ring-[var(--color-accent)]/30" : ""
+            isOver
+              ? 'bg-[var(--color-surface-2)]/40 ring-1 ring-inset ring-[var(--color-accent)]/30'
+              : ''
           }`}
         >
-          {tickets.map((t) => (
+          {tickets.map(t => (
             <SortableTicketCard
               key={t.id}
               ticket={t}
@@ -303,7 +305,7 @@ type ColumnMap = Record<string, string[]>;
 function columnMapsEqual(a: ColumnMap, b: ColumnMap): boolean {
   const keys = Object.keys(a);
   if (keys.length !== Object.keys(b).length) return false;
-  return keys.every((k) => {
+  return keys.every(k => {
     const av = a[k];
     const bv = b[k];
     return bv !== undefined && av.length === bv.length && av.every((id, i) => id === bv[i]);
@@ -311,10 +313,10 @@ function columnMapsEqual(a: ColumnMap, b: ColumnMap): boolean {
 }
 
 export function BoardPage() {
-  const { projectId } = useParams({ from: "/projects/$projectId" });
+  const { projectId } = useParams({ from: '/projects/$projectId' });
   const ticketMatch = useMatch({
-    from: "/projects/$projectId/tickets/$ticketId",
-    shouldThrow: false,
+    from: '/projects/$projectId/tickets/$ticketId',
+    shouldThrow: false
   });
   const selectedTicketId = ticketMatch?.params.ticketId;
   const project = useProject(projectId);
@@ -360,7 +362,7 @@ export function BoardPage() {
     // A small activation distance lets plain clicks (navigate / open dropdown)
     // through while still capturing deliberate drags.
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   if (project.isLoading || statusesQ.isLoading) {
@@ -384,7 +386,7 @@ export function BoardPage() {
   // column id (dropping onto an empty column targets the column itself).
   const findColumn = (id: string): string | undefined => {
     if (id in columns) return id;
-    return Object.keys(columns).find((statusId) => columns[statusId].includes(id));
+    return Object.keys(columns).find(statusId => columns[statusId].includes(id));
   };
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -403,7 +405,7 @@ export function BoardPage() {
     const toCol = findColumn(overId);
     if (!fromCol || !toCol || fromCol === toCol) return;
 
-    setOverride((prev) => {
+    setOverride(prev => {
       const source = prev ?? baseColumns;
       const fromItems = source[fromCol];
       const toItems = source[toCol];
@@ -412,8 +414,8 @@ export function BoardPage() {
       const insertAt = overIndex >= 0 ? overIndex : toItems.length;
       return {
         ...source,
-        [fromCol]: fromItems.filter((id) => id !== activeId),
-        [toCol]: [...toItems.slice(0, insertAt), activeId, ...toItems.slice(insertAt)],
+        [fromCol]: fromItems.filter(id => id !== activeId),
+        [toCol]: [...toItems.slice(0, insertAt), activeId, ...toItems.slice(insertAt)]
       };
     });
   };
@@ -433,7 +435,8 @@ export function BoardPage() {
     const source = override ?? baseColumns;
     const items = source[dropColumn];
     const fromIndex = items.indexOf(id);
-    const overIndex = over && String(over.id) !== dropColumn ? items.indexOf(String(over.id)) : items.length - 1;
+    const overIndex =
+      over && String(over.id) !== dropColumn ? items.indexOf(String(over.id)) : items.length - 1;
     const finalItems =
       fromIndex !== -1 && overIndex !== -1 && fromIndex !== overIndex
         ? arrayMove(items, fromIndex, overIndex)
@@ -443,14 +446,12 @@ export function BoardPage() {
     setOverride(finalColumns);
 
     // Nothing actually moved within this column and it didn't change membership.
-    if (
-      columnMapsEqual(finalColumns, baseColumns)
-    ) {
+    if (columnMapsEqual(finalColumns, baseColumns)) {
       setOverride(null);
       return;
     }
 
-    const status = statuses.find((s) => s.id === dropColumn);
+    const status = statuses.find(s => s.id === dropColumn);
     if (!status) {
       setOverride(null);
       return;
@@ -460,7 +461,7 @@ export function BoardPage() {
       projectId,
       statusId: dropColumn,
       statusType: status.type,
-      orderedTicketIds: finalItems,
+      orderedTicketIds: finalItems
     });
   };
 
@@ -480,15 +481,15 @@ export function BoardPage() {
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-lg font-semibold">
               <EditableText
-                value={project.data?.name ?? ""}
-                onSave={(name) => updateProject.mutate({ name })}
+                value={project.data?.name ?? ''}
+                onSave={name => updateProject.mutate({ name })}
               />
             </h1>
             <div className="mt-0.5 text-sm text-[var(--color-ink-dim)]">
               <EditableText
-                value={project.data?.description ?? ""}
+                value={project.data?.description ?? ''}
                 placeholder="Add a description…"
-                onSave={(description) => updateProject.mutate({ description })}
+                onSave={description => updateProject.mutate({ description })}
               />
             </div>
           </div>
@@ -497,11 +498,11 @@ export function BoardPage() {
               variant="ghost"
               onClick={() =>
                 updateProject.mutate({
-                  status: project.data?.status === "archived" ? "active" : "archived",
+                  status: project.data?.status === 'archived' ? 'active' : 'archived'
                 })
               }
             >
-              {project.data?.status === "archived" ? "Unarchive" : "Archive"}
+              {project.data?.status === 'archived' ? 'Unarchive' : 'Archive'}
             </Button>
             <Button variant="primary" onClick={() => setModalOpen(true)}>
               + New ticket
@@ -534,10 +535,10 @@ export function BoardPage() {
             }}
           >
             <div className="flex h-full min-h-0 items-stretch gap-4">
-              {statuses.map((status) => {
+              {statuses.map(status => {
                 const ids = columns[status.id] ?? [];
                 const colTickets = ids
-                  .map((id) => ticketById.get(id))
+                  .map(id => ticketById.get(id))
                   .filter((t): t is TicketDto => t !== undefined);
                 return (
                   <BoardColumn

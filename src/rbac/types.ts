@@ -2,7 +2,7 @@ export type Permission = string;
 
 export enum Role {
   ADMIN = 'ADMIN',
-  MEMBER = 'MEMBER',
+  MEMBER = 'MEMBER'
 }
 
 export interface RoleDefinition {

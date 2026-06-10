@@ -16,7 +16,8 @@ export function UserProfilePage({ open }: UserProfilePageProps) {
   if (meta.isError || !meta.data) {
     return (
       <p className="text-sm text-destructive">
-        {(meta.error as Error | undefined)?.message ?? 'Profile settings are unavailable right now.'}
+        {(meta.error as Error | undefined)?.message ??
+          'Profile settings are unavailable right now.'}
       </p>
     );
   }
@@ -52,8 +53,8 @@ export function UserProfilePage({ open }: UserProfilePageProps) {
       </dl>
 
       <p className="max-w-lg text-xs text-muted-foreground">
-        This build runs as a single trusted local user. Full account profile editing, passkeys,
-        and API tokens will appear here when multi-user auth is enabled.
+        This build runs as a single trusted local user. Full account profile editing, passkeys, and
+        API tokens will appear here when multi-user auth is enabled.
       </p>
     </div>
   );

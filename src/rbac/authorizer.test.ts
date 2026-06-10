@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+
 import { Authorizer, makeActor } from './authorizer.js';
 import { PERMISSIONS } from './permissions.js';
 import { Role } from './types.js';

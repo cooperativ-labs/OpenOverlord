@@ -1,14 +1,7 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 
-import type { ProjectRepositoryDto, ProjectResourceDto } from "../../../shared/contract.ts";
-import { useProjectRepository, useProjectResources } from "../../lib/queries.ts";
+import type { ProjectRepositoryDto, ProjectResourceDto } from '../../../shared/contract.ts';
+import { useProjectRepository, useProjectResources } from '../../lib/queries.ts';
 
 interface ProjectRepositoryContextValue {
   projectId: string;
@@ -25,7 +18,7 @@ const ProjectRepositoryContext = createContext<ProjectRepositoryContextValue | n
 
 export function ProjectRepositoryProvider({
   projectId,
-  children,
+  children
 }: {
   projectId: string;
   children: ReactNode;
@@ -55,33 +48,20 @@ export function ProjectRepositoryProvider({
       refetch: () => {
         void resources.refetch();
         void repository.refetch();
-      },
+      }
     }),
-    [
-      projectId,
-      repository.data,
-      repository.error,
-      repository.isLoading,
-      repository.refetch,
-      resources.data,
-      resources.error,
-      resources.isLoading,
-      resources.refetch,
-      selectedExecutionTargetId,
-    ],
+    [projectId, repository, resources, selectedExecutionTargetId]
   );
 
   return (
-    <ProjectRepositoryContext.Provider value={value}>
-      {children}
-    </ProjectRepositoryContext.Provider>
+    <ProjectRepositoryContext.Provider value={value}>{children}</ProjectRepositoryContext.Provider>
   );
 }
 
 export function useProjectRepositoryContext(): ProjectRepositoryContextValue {
   const value = useContext(ProjectRepositoryContext);
   if (!value) {
-    throw new Error("useProjectRepositoryContext must be used within ProjectRepositoryProvider.");
+    throw new Error('useProjectRepositoryContext must be used within ProjectRepositoryProvider.');
   }
   return value;
 }

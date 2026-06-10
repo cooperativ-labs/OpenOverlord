@@ -1,5 +1,5 @@
-import { generateGeminiText } from '../gemini-client.js';
 import type { Automation } from '../../types.js';
+import { generateGeminiText } from '../gemini-client.js';
 
 export type SummarizeTextInput = {
   text: string;

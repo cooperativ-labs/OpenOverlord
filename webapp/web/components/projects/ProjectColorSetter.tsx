@@ -72,7 +72,9 @@ export function ProjectColorSetter({ value, onSelect, className }: ProjectColorS
               aria-pressed={isActive}
               className={cn(
                 'h-6 w-6 rounded-full border transition-transform hover:scale-110',
-                isActive ? 'ring-2 ring-ring ring-offset-2 ring-offset-background' : 'border-border/60'
+                isActive
+                  ? 'ring-2 ring-ring ring-offset-2 ring-offset-background'
+                  : 'border-border/60'
               )}
               style={{ backgroundColor: color }}
               onClick={() => onSelect(color)}

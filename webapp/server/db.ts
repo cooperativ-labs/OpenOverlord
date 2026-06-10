@@ -1,20 +1,15 @@
-import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import Database from 'better-sqlite3';
+import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import Database from "better-sqlite3";
-
-import type { ChangeOperation } from "../shared/contract.ts";
+import type { ChangeOperation } from '../shared/contract.ts';
 
 // webapp/server/db.ts -> repo root is two levels up from server/.
-const repoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-);
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-const DEFAULT_DATABASE_PATH = ".overlord/Overlord.sqlite";
+const DEFAULT_DATABASE_PATH = '.overlord/Overlord.sqlite';
 
 export function resolveDatabasePath(): string {
   const explicit = process.env.OVERLORD_SQLITE_PATH ?? DEFAULT_DATABASE_PATH;
@@ -26,7 +21,7 @@ const databasePath = resolveDatabasePath();
 if (!existsSync(databasePath)) {
   throw new Error(
     `Overlord SQLite database not found at ${databasePath}.\n` +
-      "Run `yarn db:launch:local` from the repo root to create and migrate it first.",
+      'Run `yarn db:launch:local` from the repo root to create and migrate it first.'
   );
 }
 
@@ -35,9 +30,9 @@ if (!existsSync(databasePath)) {
 // web server reads/writes; foreign_keys enforces the referential integrity the
 // schema relies on.
 export const db = new Database(databasePath);
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
-db.pragma("busy_timeout = 5000");
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+db.pragma('busy_timeout = 5000');
 
 export const DATABASE_PATH = databasePath;
 
@@ -61,28 +56,26 @@ interface WorkspaceRow {
 
 const workspace = db
   .prepare(
-    `SELECT id, slug, name FROM workspaces WHERE deleted_at IS NULL ORDER BY created_at ASC LIMIT 1`,
+    `SELECT id, slug, name FROM workspaces WHERE deleted_at IS NULL ORDER BY created_at ASC LIMIT 1`
   )
   .get() as WorkspaceRow | undefined;
 
 if (!workspace) {
-  throw new Error(
-    "No workspace found in the database. Initialise it with `yarn db:launch:local`.",
-  );
+  throw new Error('No workspace found in the database. Initialise it with `yarn db:launch:local`.');
 }
 
 const actorRow = db
   .prepare(
     `SELECT id FROM workspace_users
        WHERE workspace_id = ? AND status = 'active' AND deleted_at IS NULL
-       ORDER BY created_at ASC LIMIT 1`,
+       ORDER BY created_at ASC LIMIT 1`
   )
   .get(workspace.id) as { id: string } | undefined;
 
 export const WORKSPACE = {
   id: workspace.id,
   slug: workspace.slug,
-  name: workspace.name,
+  name: workspace.name
 };
 
 /** The workspace user changes are attributed to (the local user for a local install). */
@@ -131,7 +124,7 @@ export function recordChange(input: RecordChangeInput): void {
     entity_revision: input.entityRevision ?? null,
     changed_fields_json: JSON.stringify(input.changedFields ?? []),
     actor_workspace_user_id: ACTOR_WORKSPACE_USER_ID,
-    occurred_at: nowIso(),
+    occurred_at: nowIso()
   });
 }
 
@@ -143,6 +136,6 @@ export function currentMaxSeq(): number {
 }
 
 export function dataVersion(): number {
-  const row = db.pragma("data_version", { simple: true });
-  return typeof row === "number" ? row : Number(row);
+  const row = db.pragma('data_version', { simple: true });
+  return typeof row === 'number' ? row : Number(row);
 }

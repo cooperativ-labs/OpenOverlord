@@ -57,7 +57,7 @@ export const PERMISSIONS = {
   USER_TOKEN_SELF_CREATE: 'user_token:self:create',
   USER_TOKEN_SELF_LIST: 'user_token:self:list',
   USER_TOKEN_SELF_ROTATE: 'user_token:self:rotate',
-  USER_TOKEN_SELF_REVOKE: 'user_token:self:revoke',
+  USER_TOKEN_SELF_REVOKE: 'user_token:self:revoke'
 } as const;
 
 export type KnownPermission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

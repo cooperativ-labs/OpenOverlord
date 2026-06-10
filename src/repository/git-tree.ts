@@ -1,7 +1,7 @@
-import { execFileSync } from "node:child_process";
-import path from "node:path";
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 
-export type RepositoryTreeEntryType = "file" | "directory";
+export type RepositoryTreeEntryType = 'file' | 'directory';
 
 export interface RepositoryTreeEntry {
   path: string;
@@ -25,9 +25,9 @@ export interface ReadRepositoryTreeOptions {
 }
 
 export class RepositoryReadError extends Error {
-  code: "not_git_repository" | "unreadable";
+  code: 'not_git_repository' | 'unreadable';
 
-  constructor(code: "not_git_repository" | "unreadable", message: string) {
+  constructor(code: 'not_git_repository' | 'unreadable', message: string) {
     super(message);
     this.code = code;
   }
@@ -37,15 +37,15 @@ const DEFAULT_MAX_ENTRIES = 5_000;
 
 function runGit(cwd: string, args: string[]): string {
   try {
-    return execFileSync("git", args, {
+    return execFileSync('git', args, {
       cwd,
-      encoding: "utf8",
+      encoding: 'utf8',
       maxBuffer: 10 * 1024 * 1024,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ['ignore', 'pipe', 'pipe']
     }).trim();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new RepositoryReadError("unreadable", message);
+    throw new RepositoryReadError('unreadable', message);
   }
 }
 
@@ -60,7 +60,7 @@ function gitPath(cwd: string, args: string[]): string | null {
 
 function addDirectoryAncestors(paths: Set<string>, filePath: string): void {
   let parent = path.posix.dirname(filePath);
-  while (parent !== "." && parent !== "/") {
+  while (parent !== '.' && parent !== '/') {
     paths.add(parent);
     parent = path.posix.dirname(parent);
   }
@@ -72,8 +72,8 @@ function toEntry(entryPath: string, type: RepositoryTreeEntryType): RepositoryTr
     path: entryPath,
     name: path.posix.basename(entryPath),
     type,
-    parentPath: parentPath === "." ? null : parentPath,
-    depth: entryPath.split("/").length - 1,
+    parentPath: parentPath === '.' ? null : parentPath,
+    depth: entryPath.split('/').length - 1
   };
 }
 
@@ -84,34 +84,34 @@ function compareEntries(a: RepositoryTreeEntry, b: RepositoryTreeEntry): number 
 
 export function readRepositoryTree(
   rootPath: string,
-  options: ReadRepositoryTreeOptions = {},
+  options: ReadRepositoryTreeOptions = {}
 ): RepositoryTree {
   const resolvedRoot = path.resolve(rootPath);
-  const gitRoot = gitPath(resolvedRoot, ["rev-parse", "--show-toplevel"]);
+  const gitRoot = gitPath(resolvedRoot, ['rev-parse', '--show-toplevel']);
   if (!gitRoot) {
     throw new RepositoryReadError(
-      "not_git_repository",
-      `${resolvedRoot} is not inside a git repository.`,
+      'not_git_repository',
+      `${resolvedRoot} is not inside a git repository.`
     );
   }
 
   const trackedAndUntracked = runGit(gitRoot, [
-    "ls-files",
-    "--cached",
-    "--others",
-    "--exclude-standard",
+    'ls-files',
+    '--cached',
+    '--others',
+    '--exclude-standard'
   ]);
   const filePaths = trackedAndUntracked
-    .split("\n")
-    .map((line) => line.trim())
+    .split('\n')
+    .map(line => line.trim())
     .filter(Boolean);
 
   const directoryPaths = new Set<string>();
   for (const filePath of filePaths) addDirectoryAncestors(directoryPaths, filePath);
 
   const entries = [
-    ...Array.from(directoryPaths, (directoryPath) => toEntry(directoryPath, "directory")),
-    ...filePaths.map((filePath) => toEntry(filePath, "file")),
+    ...Array.from(directoryPaths, directoryPath => toEntry(directoryPath, 'directory')),
+    ...filePaths.map(filePath => toEntry(filePath, 'file'))
   ].sort(compareEntries);
 
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
@@ -120,9 +120,9 @@ export function readRepositoryTree(
   return {
     rootPath: resolvedRoot,
     gitRoot: path.resolve(gitRoot),
-    branch: gitPath(gitRoot, ["branch", "--show-current"]),
-    commit: gitPath(gitRoot, ["rev-parse", "--short", "HEAD"]),
+    branch: gitPath(gitRoot, ['branch', '--show-current']),
+    commit: gitPath(gitRoot, ['rev-parse', '--short', 'HEAD']),
     entries: truncated ? entries.slice(0, maxEntries) : entries,
-    truncated,
+    truncated
   };
 }

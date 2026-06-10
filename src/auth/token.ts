@@ -1,17 +1,14 @@
-import { createHash, randomBytes } from "node:crypto";
-import { makeActor } from "../rbac/authorizer.js";
-import type { Actor, Role } from "../rbac/types.js";
-import {
-  execute,
-  queryAll,
-  queryOne,
-  type AuthDomainDatabase,
-} from "./database.js";
+import { createHash, randomBytes } from 'node:crypto';
+
+import { makeActor } from '../rbac/authorizer.js';
+import type { Actor, Role } from '../rbac/types.js';
+
+import { type AuthDomainDatabase, execute, queryAll, queryOne } from './database.js';
 
 // Raw tokens are prefixed with "out_" to make them identifiable as Overlord
 // user tokens (vs session tokens, API keys from other systems, etc.).
-const TOKEN_PREFIX = "out_";
-const HASH_ALGORITHM = "sha256";
+const TOKEN_PREFIX = 'out_';
+const HASH_ALGORITHM = 'sha256';
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -23,16 +20,16 @@ function normalizeTimestamp(value: Date | string | null): string | null {
 }
 
 function hashToken(rawToken: string): string {
-  return createHash(HASH_ALGORITHM).update(rawToken).digest("hex");
+  return createHash(HASH_ALGORITHM).update(rawToken).digest('hex');
 }
 
 function generateRawToken(): string {
-  return TOKEN_PREFIX + randomBytes(32).toString("base64url");
+  return TOKEN_PREFIX + randomBytes(32).toString('base64url');
 }
 
 // Prefix stored in the DB for display: "out_" + first 8 chars of the random part.
 function displayPrefix(rawToken: string): string {
-  return rawToken.slice(0, TOKEN_PREFIX.length + 8) + "…";
+  return rawToken.slice(0, TOKEN_PREFIX.length + 8) + '…';
 }
 
 export interface CreateTokenParams {
@@ -50,7 +47,7 @@ export interface UserTokenMeta {
   workspaceUserId: string;
   label: string;
   tokenPrefix: string;
-  status: "active" | "revoked" | "expired" | "rotated";
+  status: 'active' | 'revoked' | 'expired' | 'rotated';
   expiresAt: string | null;
   lastUsedAt: string | null;
   createdAt: string;
@@ -62,7 +59,7 @@ export interface UserTokenMeta {
  */
 export async function createUserToken(
   db: AuthDomainDatabase,
-  params: CreateTokenParams,
+  params: CreateTokenParams
 ): Promise<{ meta: UserTokenMeta; rawToken: string }> {
   const rawToken = generateRawToken();
   const tokenHash = hashToken(rawToken);
@@ -93,8 +90,8 @@ export async function createUserToken(
       HASH_ALGORITHM,
       params.expiresAt ?? null,
       now,
-      now,
-    ],
+      now
+    ]
   );
 
   const meta: UserTokenMeta = {
@@ -103,10 +100,10 @@ export async function createUserToken(
     workspaceUserId: params.workspaceUserId,
     label: params.label,
     tokenPrefix,
-    status: "active",
+    status: 'active',
     expiresAt: params.expiresAt ?? null,
     lastUsedAt: null,
-    createdAt: now,
+    createdAt: now
   };
 
   return { meta, rawToken };
@@ -116,7 +113,7 @@ export async function createUserToken(
 export async function listUserTokens(
   db: AuthDomainDatabase,
   workspaceUserId: string,
-  workspaceId: string,
+  workspaceId: string
 ): Promise<UserTokenMeta[]> {
   const rows = await queryAll<{
     id: string;
@@ -137,19 +134,19 @@ export async function listUserTokens(
        AND workspace_id = ?
        AND deleted_at IS NULL
      ORDER BY created_at DESC`,
-    [workspaceUserId, workspaceId],
+    [workspaceUserId, workspaceId]
   );
 
-  return rows.map((r) => ({
+  return rows.map(r => ({
     id: r.id,
     workspaceId: r.workspace_id,
     workspaceUserId: r.workspace_user_id,
     label: r.label,
     tokenPrefix: r.token_prefix,
-    status: r.status as UserTokenMeta["status"],
+    status: r.status as UserTokenMeta['status'],
     expiresAt: normalizeTimestamp(r.expires_at),
     lastUsedAt: normalizeTimestamp(r.last_used_at),
-    createdAt: normalizeTimestamp(r.created_at) ?? "",
+    createdAt: normalizeTimestamp(r.created_at) ?? ''
   }));
 }
 
@@ -157,7 +154,7 @@ export async function listUserTokens(
 export async function revokeUserToken(
   db: AuthDomainDatabase,
   tokenId: string,
-  revokedByWorkspaceUserId: string,
+  revokedByWorkspaceUserId: string
 ): Promise<void> {
   const now = isoNow();
   await execute(
@@ -171,7 +168,7 @@ export async function revokeUserToken(
      WHERE id = ?
        AND status = 'active'
        AND deleted_at IS NULL`,
-    [now, revokedByWorkspaceUserId, now, tokenId],
+    [now, revokedByWorkspaceUserId, now, tokenId]
   );
 }
 
@@ -190,7 +187,7 @@ interface VerifiedToken {
 export async function verifyUserToken(
   db: AuthDomainDatabase,
   rawToken: string,
-  workspaceId: string,
+  workspaceId: string
 ): Promise<VerifiedToken | null> {
   const tokenHash = hashToken(rawToken);
   const now = isoNow();
@@ -210,7 +207,7 @@ export async function verifyUserToken(
        AND status = 'active'
        AND deleted_at IS NULL
      LIMIT 1`,
-    [tokenHash, workspaceId],
+    [tokenHash, workspaceId]
   );
 
   if (!row) return null;
@@ -224,7 +221,7 @@ export async function verifyUserToken(
     `UPDATE user_tokens
      SET last_used_at = ?, updated_at = ?, revision = revision + 1
      WHERE id = ?`,
-    [now, now, row.id],
+    [now, now, row.id]
   );
 
   return {
@@ -232,7 +229,7 @@ export async function verifyUserToken(
     workspaceId: row.workspace_id,
     workspaceUserId: row.workspace_user_id,
     status: row.status,
-    expiresAt,
+    expiresAt
   };
 }
 
@@ -243,7 +240,7 @@ export async function verifyUserToken(
 export async function getActorForToken(
   db: AuthDomainDatabase,
   rawToken: string,
-  workspaceId: string,
+  workspaceId: string
 ): Promise<Actor | null> {
   const verified = await verifyUserToken(db, rawToken, workspaceId);
   if (!verified) return null;
@@ -255,9 +252,9 @@ export async function getActorForToken(
      WHERE workspace_user_id = ?
        AND workspace_id = ?
        AND deleted_at IS NULL`,
-    [verified.workspaceUserId, workspaceId],
+    [verified.workspaceUserId, workspaceId]
   );
 
-  const roles = roleRows.map((r) => r.role_key as Role);
+  const roles = roleRows.map(r => r.role_key as Role);
   return makeActor(verified.workspaceUserId, roles);
 }
