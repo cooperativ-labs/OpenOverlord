@@ -193,6 +193,8 @@ export interface UpdateProjectBody {
   name?: string;
   description?: string | null;
   status?: ProjectLifecycle;
+  /** Optional 6-digit hex color (e.g. `#fecdd3`). */
+  color?: string;
 }
 
 export interface CreateTicketBody {

@@ -106,6 +106,26 @@ function buildProjectSettingsJson({ color }: { color?: string }): string {
   return JSON.stringify({ [PROJECT_COLOR_SETTINGS_KEY]: color });
 }
 
+function mergeProjectSettingsJson(
+  existingJson: string,
+  updates: { color?: string | null }
+): string {
+  let parsed: Record<string, unknown> = {};
+  try {
+    parsed = JSON.parse(existingJson) as Record<string, unknown>;
+  } catch {
+    parsed = {};
+  }
+  if (updates.color !== undefined) {
+    if (updates.color) {
+      parsed[PROJECT_COLOR_SETTINGS_KEY] = updates.color;
+    } else {
+      delete parsed[PROJECT_COLOR_SETTINGS_KEY];
+    }
+  }
+  return JSON.stringify(parsed);
+}
+
 interface ProjectStatusRow {
   id: string;
   project_id: string;
@@ -523,6 +543,15 @@ export const updateProject = db.transaction((id: string, body: UpdateProjectBody
     fields.push('status = @status');
     params.status = body.status;
     changed.push('status');
+  }
+  if (body.color !== undefined) {
+    const color = body.color ? normalizeHexColor(body.color) : null;
+    if (body.color && !color) {
+      throw new ApiError(400, 'Use a valid 6-digit hex color, like #d4d4d8.');
+    }
+    fields.push('settings_json = @settings_json');
+    params.settings_json = mergeProjectSettingsJson(existing.settings_json, { color });
+    changed.push('settings_json');
   }
   if (fields.length === 0) return getProject(id);
 

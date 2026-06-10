@@ -19,15 +19,15 @@ import {
   verticalListSortingStrategy
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Link, useMatch, useNavigate, useParams } from '@tanstack/react-router';
+import { useMatch, useNavigate, useParams } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 
 import type { ProjectStatusDto, TicketDto, TicketPriority } from '../../shared/contract.ts';
+import { ProjectSettingsSection } from '../components/projects/ProjectSettingsSection.tsx';
 import {
   Badge,
   Button,
   Card,
-  EditableText,
   EmptyState,
   Field,
   Modal,
@@ -44,7 +44,6 @@ import {
   useProjectStatuses,
   useReorderBoardColumn,
   useTickets,
-  useUpdateProject,
   useUpdateTicket
 } from '../lib/queries.ts';
 
@@ -322,7 +321,6 @@ export function BoardPage() {
   const project = useProject(projectId);
   const statusesQ = useProjectStatuses(projectId);
   const ticketsQ = useTickets(projectId);
-  const updateProject = useUpdateProject(projectId);
   const reorder = useReorderBoardColumn();
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -469,45 +467,16 @@ export function BoardPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <header className="shrink-0 min-w-0 border-b border-[var(--color-border)] px-6 py-4">
-        <div className="mb-1 flex items-center gap-2 text-xs text-[var(--color-ink-dim)]">
-          <Link to="/projects" className="hover:text-[var(--color-ink)]">
-            Projects
-          </Link>
-          <span>/</span>
-          <span>{project.data?.slug}</span>
-        </div>
-        <div className="flex min-w-0 items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-lg font-semibold">
-              <EditableText
-                value={project.data?.name ?? ''}
-                onSave={name => updateProject.mutate({ name })}
-              />
-            </h1>
-            <div className="mt-0.5 text-sm text-[var(--color-ink-dim)]">
-              <EditableText
-                value={project.data?.description ?? ''}
-                placeholder="Add a description…"
-                onSave={description => updateProject.mutate({ description })}
-              />
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Button
-              variant="ghost"
-              onClick={() =>
-                updateProject.mutate({
-                  status: project.data?.status === 'archived' ? 'active' : 'archived'
-                })
-              }
-            >
-              {project.data?.status === 'archived' ? 'Unarchive' : 'Archive'}
-            </Button>
-            <Button variant="primary" onClick={() => setModalOpen(true)}>
-              + New ticket
-            </Button>
-          </div>
+      <header className="shrink-0 min-w-0">
+        <ProjectSettingsSection
+          projectId={projectId}
+          initialName={project.data?.name ?? ''}
+          initialColor={project.data?.color ?? null}
+        />
+        <div className="flex items-center justify-end gap-2 border-b border-[var(--color-border)] px-5 py-3">
+          <Button variant="primary" onClick={() => setModalOpen(true)}>
+            + New ticket
+          </Button>
         </div>
       </header>
 
