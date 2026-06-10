@@ -23,7 +23,7 @@ export default [
     languageOptions: {
       parser: tsParser,
       parserOptions: {
-        project: ['tsconfig.json', 'webapp/tsconfig.json'],
+        project: ['tsconfig.json', 'webapp/tsconfig.json', 'cli/tsconfig.json'],
         ecmaVersion: 2022,
         sourceType: 'module',
         ecmaFeatures: {

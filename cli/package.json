@@ -1,0 +1,31 @@
+{
+  "name": "overlord-cli",
+  "version": "0.1.0",
+  "description": "Overlord CLI — management, agent protocol, and runner for OpenOverlord",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "ovld": "bin/ovld.mjs",
+    "overlord": "bin/ovld.mjs"
+  },
+  "files": [
+    "bin/",
+    "dist/"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types 'test/**/*.test.ts'",
+    "prepack": "tsc --project tsconfig.build.json"
+  },
+  "keywords": [
+    "overlord",
+    "ai",
+    "agents",
+    "cli"
+  ],
+  "license": "MIT"
+}

@@ -9,11 +9,14 @@
   "packageManager": "yarn@4.16.0",
   "scripts": {
     "dev": "yarn --cwd webapp dev",
-    "build": "tsc",
+    "build": "tsc && yarn build:cli",
+    "build:cli": "tsc --project cli/tsconfig.build.json",
+    "pack:cli": "yarn build:cli && sh -c 'cd cli && npm pack'",
     "db:launch:local": "node --experimental-strip-types src/database/launch-local.ts",
     "generate": "yarn db:launch:local && kysely-codegen --dialect sqlite --url .overlord/Overlord.sqlite --out-file src/types/db.ts",
-    "typecheck": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types 'src/**/*.test.ts'",
+    "typecheck": "tsc --noEmit && tsc --project cli/tsconfig.build.json --noEmit",
+    "test": "node --test --experimental-strip-types 'src/**/*.test.ts' 'cli/test/**/*.test.ts'",
+    "test:cli": "node --test --experimental-strip-types 'cli/test/**/*.test.ts'",
     "lint": "eslint .",
     "fix": "eslint --fix ."
   },

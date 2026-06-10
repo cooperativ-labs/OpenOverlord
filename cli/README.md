@@ -33,9 +33,29 @@ colocation convention):
 
 ## Code & Tests
 
-No implementation has landed in this module yet. When it does, colocate source
-and tests here (e.g. `cli/<area>/foo.ts` + `cli/<area>/foo.test.ts`), following
-the pattern established in [`auth/`](../auth/README.md) / `src/rbac`.
+The packaged CLI lives in this module as a self-contained Yarn sub-project:
+
+```bash
+yarn build:cli            # compile TypeScript to cli/dist/
+yarn test:cli             # unit + subprocess smoke tests
+yarn pack:cli             # produce an installable tarball
+node cli/bin/ovld.mjs version
+```
+
+Layout:
+
+```
+cli/
+  bin/ovld.mjs            # published bin entry (imports compiled dist/)
+  src/                    # TypeScript implementation
+  dist/                   # build output (gitignored)
+  test/                   # colocated tests, including cli/test/e2e/
+  package.json            # bin map, build scripts, pack metadata
+```
+
+Phase 0 currently ships `version` and `help`. Additional management, protocol,
+and runner commands should colocate as `cli/<area>/` or `cli/protocol/` +
+`cli/runner/` following the pattern in [`AGENTS.md`](AGENTS.md).
 
 ## Interaction Boundaries
 
