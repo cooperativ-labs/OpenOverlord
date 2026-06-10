@@ -37,6 +37,10 @@ The RBAC authorizer is the first implemented slice. It currently lives under
 
 - `src/rbac/authorizer.ts` — `can(actor, action, resource)` evaluation + `AuthorizationProvider` interface
 - `src/rbac/roles.ts`, `permissions.ts`, `types.ts`
+
+The full auth/RBAC/token test plan — tokens (hash-only storage), session keys,
+identity bridging, audit attribution, and auth-provider conformance — is in
+[`docs/testing.md`](docs/testing.md), part of the root [TEST_PLAN.md](../TEST_PLAN.md).
 - `src/rbac/authorizer.test.ts` — colocated unit test
 
 The authorization logic deliberately lives **above** the database layer; the DB

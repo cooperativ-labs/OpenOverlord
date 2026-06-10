@@ -60,7 +60,7 @@ This choice does not change the logical schema. It does affect implementation de
 - `revision` starts at `1` for inserted mutable rows and increments by exactly one for each service-layer mutation.
 - `metadata_json` and `settings_json` are extension space, but extension keys must be namespaced. Use reverse-DNS or package-style keys such as `com.example.plugin`, with a nested `schemaVersion` where the extension stores structured data.
 - Tables without `created_at`, `updated_at`, `deleted_at`, and `revision` are intentional operational or append-only tables. Current exemptions are `ticket_sequences`, `ticket_events`, `shared_context_tags`, `entity_changes`, `sync_cursors`, `outbox_messages`, `search_documents`, `audit_log`, and `schema_migrations`.
-- Columns named `position` must use a reorder strategy that does not violate active uniqueness mid-transaction. Services should use gap-based integer positions by default, for example `100`, `200`, `300`; compacting positions is a maintenance operation.
+- Columns named `position` (and the ticket board ordering column `board_position`) must use a reorder strategy that does not violate active uniqueness mid-transaction. Services should use gap-based integer positions by default, for example `100`, `200`, `300`; compacting positions is a maintenance operation. `board_position` is not uniqueness-constrained, so services may renumber a whole board column densely on each reorder.
 
 ## Logical Types
 
@@ -580,9 +580,9 @@ Durable work unit and review record.
 | `display_id` | DisplayId | yes | Example: `1:1204`. |
 | `sequence_number` | BigCount | yes | Human sequence. |
 | `title` | text | yes |  |
-| `objective_summary` | text | no |  |
 | `status_id` | Id | yes | FK to `project_statuses`. |
 | `status_type` | text | yes | Cached semantic type for fast filters. |
+| `board_position` | integer | yes | Ordering of the ticket within its board column (the `(project_id, status_id)` group). Gap-based; lower sorts first. See Conventions on reorder strategy. |
 | `priority` | text | no | Example: `low`, `normal`, `high`, `urgent`. |
 | `constraints_text` | text | no | Human-readable constraints. |
 | `acceptance_criteria_text` | text | no |  |
@@ -602,6 +602,7 @@ Indexes:
 - Unique `(workspace_id, display_id)`.
 - Unique `(workspace_id, sequence_number)` while `ticket_sequences.scope_type = 'workspace'`.
 - `(project_id, status_type, updated_at)`.
+- `(project_id, status_id, board_position)` — ordered reads of a board column.
 - `(workspace_id, created_by_workspace_user_id, updated_at)`.
 
 The default human ID format is workspace-scoped, for example `1:1204`, and `sequence_number` uniqueness must match that scope. If a future deployment introduces project-scoped display IDs, it must add a new `ticket_sequences.scope_type = 'project'` migration and adjust the unique index at the same time.
@@ -1474,7 +1475,7 @@ The REST API should be the primary remote access path. It should expose domain r
 
 Recommended boundary:
 
-- `/projects`, `/tickets`, `/tickets/:id/objectives`, `/tickets/:id/events`, `/tickets/:id/context`, `/tickets/:id/deliveries`.
+- `/projects`, `/projects/:id/resources`, `/projects/:id/repository`, `/tickets`, `/tickets/:id/objectives`, `/tickets/:id/events`, `/tickets/:id/context`, `/tickets/:id/deliveries`.
 - `/protocol/*` endpoints mirroring `ovld protocol`.
 - `/execution-requests` for runner queue operations.
 - `/sync/changes?after=<seq>` for realtime catch-up and local DB sync.

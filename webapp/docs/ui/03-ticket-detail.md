@@ -5,12 +5,118 @@ record; this page is where humans plan objectives, watch agents execute them liv
 and read the accumulating shared context and history. It is the web equivalent of
 `ovld ticket context`, `ovld attach`, and the activity timeline combined.
 
-**Route:** `/p/:projectId/tickets/:ticketId` with `?tab=activity|objectives|context|artifacts|changes`.
+**Route (target):** `/p/:projectId/tickets/:ticketId` with `?tab=activity|objectives|context|artifacts|changes`.
 Opens as a full route (deep-linkable, reload-safe), never a modal.
+
+> **Status — target vs. as-built.** Most of this document describes the *target*
+> ticket-detail screen (objective rail, tabs, live activity timeline). The first
+> realtime slice ships a much simpler presentation. The [As-built](#as-built-ticket-presentation-current-slice)
+> section below documents exactly what renders today and the deviations that need
+> ratifying; everything from [Target layout](#target-layout) onward is the design
+> we are building toward.
 
 ---
 
-## Layout
+## As-built ticket presentation (current slice)
+
+What `webapp/web/pages/TicketPage.tsx` renders today: a single full-route screen
+(`/projects/:projectId/tickets/:ticketId`) with a **header** and a centred,
+single-column **objective list** — no rail, no tabs, no activity timeline. Every
+text field is inline click-to-edit (`EditableText`); every change is a REST
+mutation that the global realtime feed reconciles. There is no execution, review,
+context, artifacts, or changes surface yet — those stay CLI-only for this slice.
+
+```
+┌─ Projects / board / 1:1429 ──────────────────────────────────────────────┐
+│ Build Realtime React Web Interface              [ execute ● ]  [ Delete ] │
+│                                                                            │
+│ STATUS   [ Execute          ▾ ]     PRIORITY  [ high ▾ ]  ◆ high           │
+│                                                                            │
+│ OBJECTIVE SUMMARY                                                          │
+│ [ One-line summary of this ticket's goal…                              ]   │
+├────────────────────────────────────────────────────────────────────────────┤
+│ OBJECTIVES (3)                                                             │
+│ ┌ #1  Plan IA ─────────────────────────────  [ Complete  ▾ ]  ✕ ┐         │
+│ │ Survey every surface and draft the information architecture…   │         │
+│ └────────────────────────────────────────────────────────────────┘        │
+│ ┌ #2  Write docs ──────────────────────────  [ Executing ▾ ]  ✕ ┐         │
+│ │ Write the structure doc and one spec per page…                │         │
+│ └────────────────────────────────────────────────────────────────┘        │
+│ [ + Add objective ]                                                        │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Header (`TicketHeader`)
+
+| Element | Source DTO | Behaviour |
+| --- | --- | --- |
+| Breadcrumb | route params | Projects / board (→ `/projects/:projectId`) / `displayId` (mono) |
+| Title | `title` | inline `EditableText` → `PATCH /api/tickets/:id { title }` |
+| Status badge | `statusType` → `statusClasses` | read-only colour chip of the current status |
+| Delete | — | `confirm()` → `DELETE /api/tickets/:id` (soft-deletes ticket + objectives) → navigate to board |
+| Status field | `statusId` + project `statuses` | `Select` → `PATCH … { statusId }` |
+| Priority field | `priority` | `Select` (`low/normal/high/urgent`) → `PATCH … { priority }` + colour `Badge` |
+
+### Objective list (`ObjectiveItem`)
+
+A flat, ordered list of `Card`s — one per objective — with an `+ Add objective`
+affordance below. Each card:
+
+| Element | Source | Behaviour |
+| --- | --- | --- |
+| Position | `position` | `#{position + 1}` mono pill |
+| Title | `title` | inline `EditableText` → `PATCH /api/objectives/:id { title }` |
+| State | `state` | `Select` over all seven `ObjectiveState`s → `PATCH … { state }` **directly** |
+| Delete | — | `confirm()` → `DELETE /api/objectives/:id` |
+| Instruction | `instructionText` | multiline `EditableText` → `PATCH … { instructionText }` |
+
+**Add objective** is a button that expands into a textarea; submitting issues
+`POST /api/objectives { ticketId, instructionText }`. New objectives take the
+server's defaults — there are no agent / model / effort / auto-advance / attachment
+controls in the UI yet.
+
+### Data + realtime (as-built)
+
+- The page reads `GET /api/tickets/:id` → `TicketDetailDto` (ticket + `objectives`
+  + project `statuses`) under the `['ticket', id]` query key.
+- Realtime is **not** ticket-scoped. The app holds one global SSE connection
+  (`GET /api/stream`); any `entity_changes` delta triggers a broad TanStack Query
+  invalidation, so the open ticket re-fetches. Mutations also invalidate eagerly so
+  the originating user sees their edit immediately. The connection's
+  Live / Connecting / Reconnecting state shows in the sidebar, not on this page.
+
+### Gap to target
+
+Deferred (and CLI-only) for this slice: the left **objective rail**, the
+**Activity / Objectives / Context / Artifacts / Changes tabs**, the
+**`AgentSessionStrip` + `ActivityTimeline`** (no `ticket_events` rendering at all),
+**attention banners** (ask / permission_request / failed launch), **Run objective**
+and **Review** actions, the **shared-context / artifacts / changes** panels, the
+per-objective **agent / model / effort / flags / auto-advance / attachment** editor,
+and all **capability gating** (this is a single-user local console).
+
+### Deviations to ratify
+
+1. **Route shape.** Ships as `/projects/:projectId/tickets/:ticketId` (board
+   `/projects/:projectId`), not the `/p/:projectId/...` paths in this spec. Pick one
+   convention and align the router and these docs.
+2. **Objective state is directly editable.** The card writes `objectives.state`
+   straight from a `Select`, contradicting this doc's invariant that *"the UI never
+   advances an objective state itself."* With no runner/protocol surface yet, this is
+   a deliberate manual override (it lets the local console set e.g. `executing` /
+   `complete` by hand); it must become a request-and-reconcile transition once
+   execution lands.
+3. **Status & priority are plain `Select`s**, not the status-menu / inline-priority
+   affordances the target describes.
+4. **Add objective uses `POST /api/objectives`** (direct REST create), not
+   `POST /protocol/add-objectives`; converge when the protocol-backed service layer
+   lands.
+5. **Destructive deletes** for both ticket and objective are exposed via `confirm()`
+   dialogs; the target only offers *archive* in the ⋯ menu.
+
+---
+
+## Target layout
 
 A persistent header, a left objective rail, and a tabbed main panel.
 
@@ -191,7 +297,9 @@ supports) drives all of the above. Heartbeats update the session strip age but d
 | Move ticket status | `PATCH /tickets/:id` status |
 
 The UI **never** advances an objective state itself; it requests the transition
-and reflects the authoritative result from the change feed.
+and reflects the authoritative result from the change feed. (The current slice
+temporarily violates this — see [As-built deviation 2](#deviations-to-ratify) — by
+writing `objectives.state` directly until the execution/protocol surface exists.)
 
 ---
 

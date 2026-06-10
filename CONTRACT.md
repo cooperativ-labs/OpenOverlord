@@ -1,6 +1,6 @@
 # Overlord Component Interaction Contract
 
-Contract Version: `0.2-draft`
+Contract Version: `0.3-draft`
 
 ## Purpose
 
@@ -19,13 +19,14 @@ See `.claude/skills/component-contract.md` for the enforced agent workflow.
 
 ## Contract Version
 
-Current version: `0.2-draft`
+Current version: `0.3-draft`
 
 The contract version is incremented when any stable interface changes. All conformance manifests must declare the contract version they were validated against.
 
 | Version | Changes |
 | --- | --- |
-| `0.2-draft` | Adds `authToDatabase` interaction surface and Better Auth implementation tables; clarifies Better Auth uses the configured database adapter. |
+| `0.3-draft` | Renames the AI Tools Layer (`ai-tools`) to the Automations Layer (`automations`); renames `serviceToAiTools` to `serviceToAutomations`; renames `AiTool` interface to `Automation`. |
+| `0.2-draft` | Adds `authToDatabase` interaction surface and Better Auth implementation tables; clarifies Better Auth uses the configured database adapter. Adds the AI Tools Layer (`ai-tools`) and `serviceToAiTools` interaction surface. |
 | `0.1-draft` | Initial component interaction contract. |
 
 ---
@@ -146,7 +147,23 @@ Does NOT own:
 - User identity schema (co-owned with Database Layer via schema contract)
 - Application business logic gating (callers act on the result of a permission check)
 
-### 8. Extension System
+### 8. Automations Layer
+
+**Stable identifier**: `automations`
+**Reference spec**: [`automations/docs/01-automations-overview.md`](automations/docs/01-automations-overview.md)
+
+Owns:
+- Pluggable automation interface (`Automation`) and built-in automation registry
+- Provider configuration for optional Gemini-backed tools (`GEMINI_API_KEY`, model selection)
+- Reference summarization tools (text summarization, objective title generation)
+- Fire-and-forget automation helpers that callers invoke through injected persistence callbacks
+
+Does NOT own:
+- Database schema (→ Database Layer)
+- Ticket/objective lifecycle state machines (→ CLI / service layer callers)
+- Agent protocol or connector behavior (→ Protocol / Connector Layers)
+
+### 9. Extension System
 
 **Stable identifier**: `extension`
 **Reference specs**: `database/docs/09-database-schema-contract.md` → Extension Points section; [`connectors/docs/agent-harness-configuration-architecture.md`](connectors/docs/agent-harness-configuration-architecture.md)
@@ -216,6 +233,13 @@ These are the **only sanctioned paths** between components. Bypassing these surf
 - **Identity bridge**: Auth Layer reads `workspace_users` and `users` (via `users.external_subject` / `users.auth_provider = 'better-auth'`) to resolve an authenticated identity to an Overlord `Actor`
 - **Role resolution**: Auth Layer reads `role_assignments` for the resolved workspace user to build the `Actor`'s role list
 - **Rule**: Auth Layer must not write to core domain tables (tickets, projects, etc.)
+
+### Service → Automations (Automation Surface)
+
+- **Transport**: Service-layer function calls to the automations module's exported API (`src/automations/`)
+- **Configuration**: Environment variables documented in `.env.example` (`GEMINI_API_KEY`, optional model override)
+- **Rule**: Automations must not read or write domain tables directly; persistence goes through caller-supplied store interfaces (e.g. `ObjectiveTitleStore`)
+- **Fallback**: When a provider is unavailable or a call fails, automations return `null` and callers use deterministic local fallbacks
 
 ### Extension → Core (Extension Surface)
 

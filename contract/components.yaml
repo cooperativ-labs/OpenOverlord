@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: "0.2-draft"
+contractVersion: "0.3-draft"
 
 components:
   protocol:
@@ -122,6 +122,19 @@ components:
     interactionSurfaces:
       - authToDatabase
 
+  automations:
+    label: "Automations Layer"
+    stableIdentifier: automations
+    referenceSpec: "automations/docs/01-automations-overview.md"
+    owns:
+      - "Automation interface and built-in automation registry"
+      - "Gemini provider configuration and client lifecycle"
+      - "reference summarization automations and objective title automation"
+      - "fire-and-forget automation helpers with caller-supplied persistence callbacks"
+    dependsOn: []
+    interactionSurfaces:
+      - serviceToAutomations
+
   extension:
     label: "Extension System"
     stableIdentifier: extension
@@ -218,6 +231,17 @@ interactionSurfaces:
       - "Identity bridge reads workspace_users and users where users.auth_provider = 'better-auth' and users.external_subject matches the Better Auth user id"
       - "Role resolution reads role_assignments by workspace_user_id and workspace_id"
       - "Auth Layer must not write to core domain tables (tickets, projects, etc.)"
+
+  serviceToAutomations:
+    description: "Service-layer callers invoke automations through exported functions; persistence via injected callbacks only"
+    from: service
+    to: automations
+    transport: function-calls
+    rules:
+      - "Automations must not read or write domain tables directly"
+      - "Provider secrets come from environment variables documented in .env.example"
+      - "Automations return null on provider unavailability or failure; callers supply deterministic fallbacks"
+      - "New built-in automations register through the automations registry, not ad hoc imports from other modules"
 
   extensionToCore:
     description: "Extensions interact with core only through service APIs and change feed"

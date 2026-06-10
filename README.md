@@ -24,6 +24,7 @@ boundary.
 | [webapp/](webapp/README.md) | Deferred web control center + REST/realtime API | `rest` |
 | [mcp/](mcp/README.md) | Planned MCP server surface (Phase 5, not yet implemented) | _(future)_ |
 | [connectors/](connectors/README.md) | Agent harness connectors: core, plugins, adapters, hooks | `connector` |
+| [automations/](automations/README.md) | Optional AI automations (Gemini summarization, objective titles) | `automations` |
 | [contract/](contract/README.md) | The connecting spec — machine-readable counterparts to `CONTRACT.md` | _(spec)_ |
 
 > The contract defines eight fine-grained components; the six modules above are
@@ -172,6 +173,16 @@ sequenceDiagram
 ## Feature Plans
 
 Detailed requirements for the Overlord port are documented in [planning/feature-plans](planning/feature-plans/README.md). The web app requirements live in a separate [web app feature plan](webapp/docs/web-app.md), and the current stack recommendation lives in [webapp/docs/framework-recommendation.md](webapp/docs/framework-recommendation.md), so the CLI-first implementation can proceed without turning the UI into the source of truth.
+
+## Operations
+
+If you run a customized OpenOverlord distribution and need to keep adopting
+changes from upstream, use the contract-first workflow in
+[Adopting Upstream Changes in Customized Instances](docs/upstream-adoption.md).
+
+## Testing
+
+The master test strategy is [`TEST_PLAN.md`](TEST_PLAN.md): a five-layer test pyramid whose centerpiece is a cross-module **contract conformance suite** that proves every module adheres to [`CONTRACT.md`](CONTRACT.md). Per-module test plans are colocated under each module's `docs/testing.md` (database, cli, auth, connectors, webapp), following the same code-and-tests colocation convention as the rest of the repo.
 
 ## Out of Scope
 

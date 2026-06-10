@@ -224,9 +224,9 @@ CREATE TABLE tickets (
   display_id TEXT NOT NULL CHECK (length(trim(display_id)) > 0),
   sequence_number INTEGER NOT NULL CHECK (sequence_number >= 1),
   title TEXT NOT NULL CHECK (length(trim(title)) > 0),
-  objective_summary TEXT,
   status_id TEXT NOT NULL REFERENCES project_statuses (id) ON DELETE RESTRICT,
   status_type TEXT NOT NULL CHECK (status_type IN ('draft', 'execute', 'review', 'complete', 'blocked', 'cancelled')),
+  board_position INTEGER NOT NULL DEFAULT 0,
   priority TEXT CHECK (priority IS NULL OR priority IN ('low', 'normal', 'high', 'urgent')),
   constraints_text TEXT,
   acceptance_criteria_text TEXT,
@@ -248,6 +248,7 @@ CREATE UNIQUE INDEX idx_tickets_workspace_sequence_number ON tickets (workspace_
 CREATE UNIQUE INDEX idx_tickets_workspace_id ON tickets (workspace_id, id);
 CREATE UNIQUE INDEX idx_tickets_project_id ON tickets (project_id, id);
 CREATE INDEX idx_tickets_project_status_updated ON tickets (project_id, status_type, updated_at);
+CREATE INDEX idx_tickets_project_status_board ON tickets (project_id, status_id, board_position);
 CREATE INDEX idx_tickets_workspace_creator_updated ON tickets (workspace_id, created_by_workspace_user_id, updated_at);
 
 CREATE TABLE objectives (

@@ -29,6 +29,7 @@ or the harness extension catalog (→ Extension System, see [Database module](..
 - [Connector Core](core/README.md): shared workflow instructions and protocol references consumed by connector plugins.
 - [05 — Connectors and Agent Plugins](docs/05-connectors-and-agent-plugins.md): connector core, plugins, adapters, hooks, setup, doctor, launch mapping.
 - [Agent and Harness Configuration Architecture](docs/agent-harness-configuration-architecture.md): ownership boundaries for agent catalogs, user harnesses, execution-target launch settings, objective launch overrides.
+- [Test Plan](docs/testing.md): structural + behavioral test plan for connectors — manifest/capability conformance, managed-files integrity, hook-script protocol-only boundary, setup/doctor, and the new-connector admission gate. Part of the root [TEST_PLAN.md](../TEST_PLAN.md).
 
 ## Extension Point
 

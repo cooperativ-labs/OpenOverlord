@@ -1,6 +1,14 @@
 # Overlord local scratch
 .overlord/tmp/
 .overlord/logs/
+.overlord/*.sqlite
+.overlord/*.sqlite-*
 
 node_modules/
 **/node_modules/
+
+.env*
+!.env.example
+
+dist/
+**/dist/

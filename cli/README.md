@@ -29,6 +29,7 @@ colocation convention):
 - [03 — Agent Protocol](docs/03-agent-protocol.md): `ovld protocol` lifecycle, context assembly, updates, delivery, attachments.
 - [04 — Runner and Launch Execution](docs/04-runner-and-launch-execution.md): execution requests, local runner, launch command generation, auto-advance.
 - [06 — Review, Artifacts, and Change Tracking](docs/06-review-artifacts-and-change-tracking.md): delivery review records, artifacts, rationale coverage, local diff support.
+- [Test Plan](docs/testing.md): test plan for the `cli`, `protocol`, and `runner` components — management commands, protocol lifecycle/attach-shape/validation conformance, runner queue atomicity, and surface smoke tests. Part of the root [TEST_PLAN.md](../TEST_PLAN.md).
 
 ## Code & Tests
 

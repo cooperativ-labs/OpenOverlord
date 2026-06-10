@@ -2,7 +2,9 @@
 
 This file tells agents how to extend the Web App module to add new capabilities for users. The Web App module covers the **REST API Layer** (`rest`) in the contract. Read [`CONTRACT.md`](../CONTRACT.md) and the [component-contract skill](../.claude/skills/component-contract/SKILL.md) before making any cross-module change.
 
-> **Status note:** The web app is deferred (Phase 5). No implementation has landed yet. This guide describes the intended patterns so that when work begins, it lands consistently.
+> **Status note:** A first realtime slice has landed — projects/tickets/objectives CRUD with live updates. It lives in `server/` (Express REST + SSE realtime over `better-sqlite3`), `web/` (the React SPA), and `shared/` (the typed DTO contract). The remaining surfaces are still deferred; this guide describes the intended patterns so they land consistently.
+>
+> **Temporary deviation:** the landed `server/` reads/writes the SQLite tables directly because the shared **service layer** does not exist in `src/` yet. The rule below (REST handlers call the service layer, never tables directly) still holds — when that layer lands, move `server/repository.ts` onto it. Do not add new direct-table writers in the meantime without recording the same caveat.
 
 ---
 
@@ -81,20 +83,27 @@ Third-party REST extensions use a namespaced endpoint prefix so they cannot conf
 
 ```
 webapp/
-  docs/                   ← spec docs (web-app.md)
-  <area>/                 ← one directory per resource domain
-    routes.ts
-    routes.test.ts
-  realtime/               ← SSE / WebSocket event emitters
-  ext/
-    <name>/               ← namespaced extension routes
+  docs/                   ← spec docs (web-app.md, ui/, implementation-plan.md)
+  shared/                 ← the typed API contract (camelCase DTOs) shared by server + web
+  server/                 ← the `rest` contract component (REST + realtime backend)
+    db.ts                 ← better-sqlite3 connection + entity_changes writer
+    repository.ts         ← per-resource reads/mutations (one place per domain)
+    realtime.ts           ← SSE emitter driven by the entity_changes feed
+    index.ts              ← Express app entry
+    <area>/               ← (as the surface grows) one dir per resource domain
       routes.ts
-      conformance-manifest.yaml
+      routes.test.ts
+    ext/
+      <name>/             ← namespaced extension routes
+        routes.ts
+        conformance-manifest.yaml
+  web/                    ← the React SPA (pure consumer of the rest surface)
+    main.tsx router.tsx lib/ components/ pages/
   AGENTS.md               ← this file
   README.md               ← architectural overview
 ```
 
-The REST layer shares the service layer with `cli/` — do not duplicate business logic here.
+The REST layer shares the service layer with `cli/` — do not duplicate business logic here. (See the temporary-deviation note above while that layer is still being built.)
 
 ---
 

@@ -1,9 +1,90 @@
 # Web App Module
 
-The optional web control center (`ovld serve`, default `http://localhost:8010`)
-and the REST/realtime API that backs it. Overlord is CLI-first: the web app
-is deferred, but the current recommended starting point is a **Vite-powered
-React SPA** instead of a server-rendered React framework.
+The web control center and the REST/realtime API that backs it. Overlord is
+CLI-first; the web app is a **Vite-powered React SPA** over a small Express
+REST + realtime layer that reads and writes the local SQLite database directly
+through `better-sqlite3`.
+
+A first slice has landed: a realtime console for **projects, tickets, and
+objectives** — list/create/edit each, with the UI reflecting database changes
+(including writes made by the CLI) live over Server-Sent Events. Configuring
+execution targets and launching agents from the UI remain CLI-only for now.
+
+## Running the web app
+
+The module is a self-contained Yarn sub-project (its own `package.json`):
+
+```bash
+cd webapp
+yarn install           # first time only
+yarn dev               # server (:8787) + Vite dev server (:5173) together
+# open http://localhost:5173
+```
+
+`yarn dev` runs the REST/realtime server (`server/index.ts`) and the Vite
+dev server (which proxies `/api` to it). For a production-style run:
+
+```bash
+yarn build && yarn start   # builds the SPA, serves it + the API on :8787
+```
+
+The server opens `.overlord/Overlord.sqlite` by default (override with
+`OVERLORD_SQLITE_PATH`). Initialise that database first with
+`yarn db:launch:local` from the repo root.
+
+## Module Layout
+
+```
+webapp/
+  server/     ← the `rest` contract component: Express REST routes + SSE realtime,
+              ← opening the SQLite DB via better-sqlite3 (db.ts, repository.ts,
+              ← realtime.ts, index.ts)
+  web/        ← the React SPA (pure consumer of the REST surface)
+  shared/     ← the typed API contract (camelCase DTOs) shared by server + web
+  docs/       ← design + planning specs (below)
+```
+
+Realtime works off the `entity_changes` feed: every mutation appends a row in
+the same transaction, and the server polls that feed (with a `PRAGMA
+data_version` safety net for external table writes) and streams compact deltas
+to the browser, which invalidates its TanStack Query cache.
+
+## REST surface (as built)
+
+All under an `/api` prefix so the SPA can own the root path-space. DTO fields are
+camelCase per the [REST API Boundary](../database/docs/09-database-schema-contract.md#rest-api-boundary).
+
+| Method & path | Purpose |
+| --- | --- |
+| `GET /api/meta` | Workspace + capability flags (what this build supports) |
+| `GET /api/stream` | SSE realtime feed of `entity_changes` deltas |
+| `GET/POST /api/projects`, `GET/PATCH /api/projects/:id` | Projects (PATCH covers rename / describe / archive) |
+| `GET /api/projects/:id/statuses` | Project workflow statuses (for board columns) |
+| `GET /api/projects/:id/resources` | Linked project resources, including execution-target-specific working directories |
+| `GET /api/projects/:id/repository?executionTargetId=...` | Git repository metadata and file tree for the selected linked resource |
+| `GET /api/projects/:id/tickets` | Tickets in a project |
+| `POST /api/tickets`, `GET/PATCH/DELETE /api/tickets/:id` | Tickets (DELETE soft-deletes ticket + objectives) |
+| `GET /api/tickets/:id/objectives` | Objectives of a ticket |
+| `POST /api/objectives`, `PATCH/DELETE /api/objectives/:id` | Objectives |
+
+### AI title summarization
+
+Ticket and objective titles are derived from instruction text via the
+[`automations`](../automations/README.md) module (`serviceToAutomations`):
+
+- On create (and when an objective's instruction changes without an explicit
+  title edit), the server sets an immediate local title, then asynchronously
+  refines it with Gemini when `GEMINI_API_KEY` is set in the repo-root `.env`.
+- Title updates are written through the same `entity_changes` feed, so the
+  board and ticket panel refresh live.
+
+**Deviations from the recommended boundary, to ratify:** the realtime endpoint
+is `GET /api/stream` (vs the doc's `/realtime` + `/sync/changes`) and pushes the
+compact deltas inline; `/api/meta` and `/api/projects/:id/statuses` are new
+reads the board needs. As a local single-user console it does **not** yet do
+per-request auth/authorization or use idempotency keys — both are required
+before any multi-user/hosted deployment and before the shared service layer
+lands.
 
 ## Contract Component
 
@@ -22,15 +103,31 @@ or the protocol CLI surface (→ [CLI module](../cli/README.md)).
 - [Web App Requirements](docs/web-app.md): deferred UI / control-center requirements, kept separate from the CLI-first implementation.
 - [Framework Recommendation](docs/framework-recommendation.md): why the first implementation should prefer Vite + React + TanStack Router/Query + Serwist over Next.js.
 - [UI Design Documents](docs/ui/README.md): the detailed design specification for the realtime React interface — a structure/information-architecture document followed by one detailed spec per page (projects, board, ticket detail, execution/runner, review, changes, connectors, settings, users/tokens, search).
+- [Implementation Plan](docs/implementation-plan.md): the dependency-ordered build plan that turns the framework recommendation and UI design docs into phased milestones (contract-first API, realtime spine first, vertical slice, then breadth, then gated surfaces).
 - REST API Boundary: see the "REST API Boundary" section of [09 — Database Schema Contract](../database/docs/09-database-schema-contract.md) (owned by the [Database module](../database/README.md)).
+- [Test Plan](docs/testing.md): REST API conformance (routing, camelCase DTO shape, auth/authorization, idempotency, realtime/sync) plus the framework-agnostic web-UI test plan. Part of the root [TEST_PLAN.md](../TEST_PLAN.md).
 
 ## Status
 
-Deferred to a later phase (see "Phase 5: Expansion" in the
-[feature-plans README](../planning/feature-plans/README.md)). The REST layer
-shares the **same service layer** as the CLI and protocol surfaces, so any UI
-stack can sit on top of it.
+A first realtime slice has landed (projects / tickets / objectives CRUD +
+live updates). The remaining surfaces described in the [UI design
+docs](docs/ui/README.md) and [implementation plan](docs/implementation-plan.md)
+— execution & runner, review & delivery, current changes, connectors, settings,
+users/roles/tokens — are still deferred and remain CLI-only.
+
+> **Scope note for this slice:** the current server reads and writes the SQLite
+> database directly through `better-sqlite3` rather than calling a shared
+> service layer (that layer is not yet present in `src/`). When the service
+> layer lands, the REST handlers in `server/` should be moved onto it per
+> `AGENTS.md` so business logic is not duplicated.
 
 ## Code & Tests
 
-No implementation yet. Colocate web/REST source and tests here when work starts.
+- `server/` — Express REST + SSE realtime over `better-sqlite3` (`db.ts`,
+  `repository.ts`, `realtime.ts`, `index.ts`).
+- `web/` — the React SPA (`main.tsx`, `router.tsx`, `lib/`, `components/`, `pages/`).
+- `shared/contract.ts` — the typed DTO contract.
+
+`yarn typecheck` and `yarn build` both pass. The realtime path is verified
+end-to-end (a write from a separate process is reflected in the UI without a
+reload).

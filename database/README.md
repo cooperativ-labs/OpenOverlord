@@ -26,6 +26,8 @@ response shapes (→ [webapp module](../webapp/README.md)).
 - [10 — Database Table Groups](docs/10-database-table-groups.md): which tables are core vs. à la carte, grouped optional sets, and the agent setup decision tree.
 - [11 — SQLite Vs PostgreSQL For Multi-Agent Use](docs/11-sqlite-vs-postgresql-multi-agent.md): database tradeoffs for local agents, hosted deployments, remote runners, queue claiming, and write concurrency.
 - [12 — Private-Network PostgreSQL Deployment Plan](docs/12-private-network-postgresql-deployment-plan.md): recommended architecture when shared organization state starts on a private-network database with multiple clients and distributed runners.
+- [13 — Database Seeding Framework](docs/13-database-seeding-framework.md): recommendation for how to seed development/test data — a first-party Kysely + faker seed runner over the service layer, and why a third-party seeding framework (Prisma/Drizzle/Snaplet) is the wrong fit.
+- [Test Plan](docs/testing.md): adapter-parity test plan implementing the schema contract's Adapter Conformance Suite (DDL, concurrency, change feed, uniqueness, queue claiming, soft delete, extension migrations) across SQLite and Postgres. Part of the root [TEST_PLAN.md](../TEST_PLAN.md).
 
 ## Code & Tests (colocated)
 
@@ -58,6 +60,20 @@ write these tables directly.
 
 ## Applying Locally
 
+Use the Node-based local launcher for the default SQLite development database:
+
+```sh
+yarn db:launch:local
+```
+
+This creates `.overlord/Overlord.sqlite`, enables SQLite foreign keys, WAL mode,
+and a short busy timeout for the launch connection, applies the core SQLite
+migrations in order, and records each applied migration in `schema_migrations`
+with a SHA-256 checksum. Set `OVERLORD_SQLITE_PATH=/path/to/Overlord.sqlite` to
+launch a database file outside the default location.
+
+Manual SQL application remains useful for adapter experiments:
+
 ```sh
 sqlite3 .overlord/Overlord.sqlite < database/sqlite/migrations/001_initial_core.sql
 sqlite3 .overlord/Overlord.sqlite < database/sqlite/migrations/002_rbac.sql
@@ -68,11 +84,11 @@ psql "$DATABASE_URL" -f database/postgres/migrations/002_rbac.sql
 psql "$DATABASE_URL" -f database/postgres/migrations/003_better_auth.sql
 ```
 
-Each migration enables SQLite foreign-key checks for the connection. A future
-migration runner should insert the corresponding `schema_migrations` row with
-its computed checksum after each migration commits. Real initialization code may
-replace the seed IDs with generated stable IDs, but tests can rely on the
-deterministic values from these migrations.
+Each migration enables SQLite foreign-key checks for the connection. The local
+launcher records the corresponding `schema_migrations` row with its computed
+checksum after each migration commits. Real initialization code may replace the
+seed IDs with generated stable IDs, but tests can rely on the deterministic
+values from these migrations.
 
 ## Extension Surface
 

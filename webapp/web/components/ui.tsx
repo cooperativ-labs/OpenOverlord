@@ -1,0 +1,325 @@
+import {
+  useEffect,
+  useState,
+  type ButtonHTMLAttributes,
+  type ComponentProps,
+  type ReactNode,
+  type SelectHTMLAttributes,
+  type InputHTMLAttributes,
+  type TextareaHTMLAttributes
+} from 'react';
+
+import type {
+  ObjectiveState,
+  StatusType,
+  TicketPriority
+} from '../../shared/contract.ts';
+import { Badge as ShadcnBadge } from '@/components/ui/badge';
+import { Button as ShadcnButton } from '@/components/ui/button';
+import { Card as ShadcnCard } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
+
+// ---- Status / priority vocab → presentation ------------------------------
+
+export const STATUS_LABEL: Record<StatusType, string> = {
+  draft: 'Draft',
+  execute: 'Execute',
+  review: 'Review',
+  complete: 'Complete',
+  blocked: 'Blocked',
+  cancelled: 'Cancelled'
+};
+
+export function statusClasses(type: StatusType): string {
+  switch (type) {
+    case 'draft':
+      return 'bg-slate-500/15 text-slate-600 ring-slate-400/30 dark:text-slate-300';
+    case 'execute':
+      return 'bg-blue-500/15 text-blue-700 ring-blue-400/30 dark:text-blue-300';
+    case 'review':
+      return 'bg-amber-500/15 text-amber-700 ring-amber-400/30 dark:text-amber-300';
+    case 'complete':
+      return 'bg-emerald-500/15 text-emerald-700 ring-emerald-400/30 dark:text-emerald-300';
+    case 'blocked':
+      return 'bg-red-500/15 text-red-700 ring-red-400/30 dark:text-red-300';
+    case 'cancelled':
+      return 'bg-zinc-500/15 text-zinc-600 ring-zinc-400/30 dark:text-zinc-400';
+  }
+}
+
+export const OBJECTIVE_STATE_LABEL: Record<ObjectiveState, string> = {
+  future: 'Future',
+  draft: 'Draft',
+  submitted: 'Submitted',
+  launching: 'Launching',
+  executing: 'Executing',
+  pending_delivery: 'Pending delivery',
+  complete: 'Complete'
+};
+
+export function objectiveStateClasses(state: ObjectiveState): string {
+  switch (state) {
+    case 'future':
+      return 'bg-zinc-500/15 text-zinc-600 ring-zinc-400/30 dark:text-zinc-400';
+    case 'draft':
+      return 'bg-slate-500/15 text-slate-600 ring-slate-400/30 dark:text-slate-300';
+    case 'submitted':
+      return 'bg-indigo-500/15 text-indigo-700 ring-indigo-400/30 dark:text-indigo-300';
+    case 'launching':
+      return 'bg-cyan-500/15 text-cyan-700 ring-cyan-400/30 dark:text-cyan-300';
+    case 'executing':
+      return 'bg-blue-500/15 text-blue-700 ring-blue-400/30 dark:text-blue-300';
+    case 'pending_delivery':
+      return 'bg-amber-500/15 text-amber-700 ring-amber-400/30 dark:text-amber-300';
+    case 'complete':
+      return 'bg-emerald-500/15 text-emerald-700 ring-emerald-400/30 dark:text-emerald-300';
+  }
+}
+
+export function priorityClasses(priority: TicketPriority | null): string {
+  switch (priority) {
+    case 'urgent':
+      return 'bg-red-500/15 text-red-700 ring-red-400/30 dark:text-red-300';
+    case 'high':
+      return 'bg-orange-500/15 text-orange-700 ring-orange-400/30 dark:text-orange-300';
+    case 'normal':
+      return 'bg-slate-500/15 text-slate-600 ring-slate-400/30 dark:text-slate-300';
+    case 'low':
+      return 'bg-zinc-500/15 text-zinc-600 ring-zinc-400/30 dark:text-zinc-400';
+    default:
+      return 'bg-zinc-500/15 text-zinc-600 ring-zinc-400/30 dark:text-zinc-400';
+  }
+}
+
+// ---- Primitives (shadcn-backed app wrappers) ------------------------------
+
+export function Badge({
+  children,
+  className = ''
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <ShadcnBadge variant="outline" className={cn('rounded-full ring-1 ring-inset', className)}>
+      {children}
+    </ShadcnBadge>
+  );
+}
+
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+
+const buttonVariantMap: Record<ButtonVariant, ComponentProps<typeof ShadcnButton>['variant']> = {
+  primary: 'default',
+  secondary: 'secondary',
+  ghost: 'ghost',
+  danger: 'destructive'
+};
+
+export function Button({
+  variant = 'secondary',
+  className = '',
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
+  return (
+    <ShadcnButton
+      variant={buttonVariantMap[variant]}
+      className={className}
+      {...props}
+    />
+  );
+}
+
+export function Card({
+  children,
+  className = '',
+  onClick
+}: {
+  children: ReactNode;
+  className?: string;
+  onClick?: () => void;
+}) {
+  return (
+    <ShadcnCard
+      onClick={onClick}
+      className={cn(onClick && 'cursor-pointer transition hover:ring-primary/50', className)}
+    >
+      {children}
+    </ShadcnCard>
+  );
+}
+
+export function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
+  const { className = '', ...rest } = props;
+  return <Input className={className} {...rest} />;
+}
+
+export function TextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const { className = '', ...rest } = props;
+  return <Textarea className={className} {...rest} />;
+}
+
+export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
+  const { className = '', ...rest } = props;
+  return (
+    <select
+      className={cn(
+        'h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30',
+        className
+      )}
+      {...rest}
+    />
+  );
+}
+
+export function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </Label>
+      {children}
+    </div>
+  );
+}
+
+export function Modal({
+  title,
+  open,
+  onClose,
+  children
+}: {
+  title: string;
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="gap-0 p-0 sm:max-w-lg" showCloseButton>
+        <DialogHeader className="border-b px-5 py-3">
+          <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
+        </DialogHeader>
+        <div className="p-5">{children}</div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function EmptyState({
+  title,
+  hint,
+  action
+}: {
+  title: string;
+  hint?: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border px-6 py-12 text-center">
+      <p className="text-sm font-medium text-foreground">{title}</p>
+      {hint && <p className="max-w-sm text-xs text-muted-foreground">{hint}</p>}
+      {action}
+    </div>
+  );
+}
+
+export function Spinner({ label }: { label?: string }) {
+  return (
+    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-border border-t-primary" />
+      {label ?? 'Loading…'}
+    </div>
+  );
+}
+
+/** Inline click-to-edit text. Renders a value that becomes an input/textarea on click. */
+export function EditableText({
+  value,
+  onSave,
+  multiline = false,
+  className = '',
+  placeholder = 'Click to edit',
+  inputClassName = ''
+}: {
+  value: string;
+  onSave: (next: string) => void;
+  multiline?: boolean;
+  className?: string;
+  placeholder?: string;
+  inputClassName?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => setDraft(value), [value]);
+
+  if (!editing) {
+    return (
+      <span
+        className={cn(
+          'cursor-text rounded hover:bg-muted',
+          className,
+          value ? '' : 'text-muted-foreground italic'
+        )}
+        onClick={() => setEditing(true)}
+        title="Click to edit"
+      >
+        {value || placeholder}
+      </span>
+    );
+  }
+
+  const commit = () => {
+    setEditing(false);
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== value) onSave(trimmed);
+    else setDraft(value);
+  };
+
+  if (multiline) {
+    return (
+      <TextArea
+        autoFocus
+        rows={4}
+        value={draft}
+        className={inputClassName}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            setDraft(value);
+            setEditing(false);
+          }
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) commit();
+        }}
+      />
+    );
+  }
+
+  return (
+    <TextInput
+      autoFocus
+      value={draft}
+      className={inputClassName}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          setDraft(value);
+          setEditing(false);
+        }
+        if (e.key === 'Enter') commit();
+      }}
+    />
+  );
+}

@@ -8,11 +8,15 @@
   },
   "packageManager": "yarn@4.16.0",
   "scripts": {
+    "dev": "yarn --cwd webapp dev",
     "build": "tsc",
+    "db:launch:local": "node --experimental-strip-types src/database/launch-local.ts",
+    "generate": "yarn db:launch:local && kysely-codegen --dialect sqlite --url .overlord/Overlord.sqlite --out-file src/types/db.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types 'src/**/*.test.ts'"
   },
   "dependencies": {
+    "@google/genai": "^2.8.0",
     "better-auth": "^1.2.7",
     "better-sqlite3": "^12.0.0",
     "kysely": "^0.29.2",
@@ -21,6 +25,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/pg": "^8.20.0",
+    "kysely-codegen": "^0.20.0",
     "typescript": "^5.7.0"
   },
   "license": "MIT"

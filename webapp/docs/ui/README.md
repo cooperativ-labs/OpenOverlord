@@ -6,11 +6,19 @@ realtime boundary owned by the [webapp module](../../README.md) (contract
 component `rest`).
 
 These documents describe the **ideal** UI in detail. They are design specs, not
-implementation. They assume the stack already recommended for this module —
+implementation — with one exception: [03 — Ticket Detail](03-ticket-detail.md) now
+also carries an **As-built** section that documents how individual tickets are
+actually presented in the first shipped slice and the deviations from this spec
+that need ratifying. They assume the stack already recommended for this module —
 **Vite + React + TypeScript + TanStack Router + TanStack Query + Serwist** (see
 [framework-recommendation.md](../framework-recommendation.md)) — and they map
 every screen, component, and action back to a real Overlord capability
 defined in the module specs and the [schema contract](../../../database/docs/09-database-schema-contract.md).
+
+Once you have read this set, the [Implementation Plan](../implementation-plan.md)
+turns these designs into a dependency-ordered build sequence (contract-first API,
+realtime spine first, a vertical slice, then breadth, then capability-gated
+surfaces).
 
 ## How to read this set
 
@@ -24,7 +32,7 @@ gating, acceptance criteria).
 | 00 | [Structure & Information Architecture](00-structure-and-information-architecture.md) | App shell, navigation, route map, realtime model, design system, capability gating, cross-cutting patterns |
 | 01 | [Projects & Project Settings](01-projects-and-project-settings.md) | Project switcher, project list, project settings, resource directories |
 | 02 | [Ticket Board](02-ticket-board.md) | Kanban + list board, filters, search, create-ticket, quick run |
-| 03 | [Ticket Detail](03-ticket-detail.md) | The core screen: header, objectives, editor, activity timeline, context, artifacts |
+| 03 | [Ticket Detail](03-ticket-detail.md) | The core screen: target header, objectives, editor, activity timeline, context, artifacts — **plus an As-built section documenting the shipped single-column ticket presentation and the deviations to ratify** |
 | 04 | [Execution & Runner](04-execution-and-runner.md) | Run controls, execution-request queue, runner status, approval gates |
 | 05 | [Review & Delivery](05-review-and-delivery.md) | Delivery summary, artifacts, change-rationale coverage, review actions |
 | 06 | [Current Changes](06-current-changes.md) | Read-only VCS status, diffs, rationale linking |
