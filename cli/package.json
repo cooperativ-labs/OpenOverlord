@@ -13,13 +13,17 @@
   },
   "files": [
     "bin/",
-    "dist/"
+    "dist/",
+    "database/sqlite/migrations/"
   ],
   "scripts": {
-    "build": "tsc --project tsconfig.build.json",
+    "build": "node scripts/stage-migrations.mjs && tsc --project tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types 'test/**/*.test.ts'",
-    "prepack": "tsc --project tsconfig.build.json"
+    "prepack": "node scripts/stage-migrations.mjs && tsc --project tsconfig.build.json"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.0.0"
   },
   "keywords": [
     "overlord",

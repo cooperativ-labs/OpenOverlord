@@ -110,7 +110,7 @@ function mergeProjectSettingsJson(
   existingJson: string,
   updates: { color?: string | null }
 ): string {
-  let parsed: Record<string, unknown> = {};
+  let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(existingJson) as Record<string, unknown>;
   } catch {

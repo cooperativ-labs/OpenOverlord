@@ -82,9 +82,7 @@ export function GeneralPage({ open, project }: GeneralPageProps) {
       setDescriptionSaveState('success');
     } catch (error) {
       setDescriptionSaveState('error');
-      setDescriptionError(
-        error instanceof Error ? error.message : 'Failed to update description.'
-      );
+      setDescriptionError(error instanceof Error ? error.message : 'Failed to update description.');
     }
   }
 

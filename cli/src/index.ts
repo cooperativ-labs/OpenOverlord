@@ -4,13 +4,36 @@ import { runVersionCommand } from './version.js';
 
 const MIN_NODE_MAJOR = 20;
 
+const DB_FREE_COMMANDS = new Set([
+  'help',
+  '--help',
+  '-h',
+  'version',
+  '--version',
+  '-v',
+  'init',
+  'doctor',
+  'setup'
+]);
+
+const KNOWN_COMMANDS = new Set([
+  ...DB_FREE_COMMANDS,
+  'protocol',
+  'create-project',
+  'add-cwd',
+  'create',
+  'prompt',
+  'tickets',
+  'ticket',
+  'config'
+]);
+
 function assertSupportedNodeVersion(): void {
   const major = Number.parseInt(process.versions.node.split('.')[0] ?? '', 10);
 
   if (Number.isNaN(major) || major < MIN_NODE_MAJOR) {
     throw new CliError({
-      message:
-        `Overlord CLI requires Node.js ${MIN_NODE_MAJOR} or newer. Found ${process.version}.`
+      message: `Overlord CLI requires Node.js ${MIN_NODE_MAJOR} or newer. Found ${process.version}.`
     });
   }
 }
@@ -19,17 +42,17 @@ function wantsJsonOutput(args: string[]): boolean {
   return args.includes('--json');
 }
 
-function dispatchCommand({
+async function dispatchCommand({
   primaryCommand,
   command,
-  args
+  args,
+  stdin
 }: {
   primaryCommand: string;
   command: string | undefined;
   args: string[];
-}): void {
-  const json = wantsJsonOutput(args);
-
+  stdin?: string;
+}): Promise<void> {
   switch (command) {
     case undefined:
     case 'help':
@@ -40,29 +63,78 @@ function dispatchCommand({
     case 'version':
     case '--version':
     case '-v':
-      runVersionCommand({ json });
+      runVersionCommand({ json: wantsJsonOutput(args) });
       return;
-    default:
-      throw new CliError({
-        message: `Unknown command: ${command}\nRun \`${primaryCommand} help\` for usage.`
-      });
+    case 'init':
+    case 'doctor':
+    case 'setup': {
+      const { runLocalCommand } = await import('./management.js');
+      await runLocalCommand({ command, rest: args });
+      return;
+    }
+    case 'protocol': {
+      const [subcommand, ...rest] = args;
+      if (!subcommand) {
+        throw new CliError({ message: 'Usage: ovld protocol <subcommand> [flags]' });
+      }
+      const { openCliRuntime } = await import('./runtime.js');
+      const { runProtocolCommand } = await import('./commands.js');
+      const runtime = openCliRuntime({ source: 'protocol' });
+      try {
+        await runProtocolCommand({ runtime, subcommand, args: rest, stdin });
+      } finally {
+        runtime.close();
+      }
+      return;
+    }
+    default: {
+      if (!KNOWN_COMMANDS.has(command)) {
+        throw new CliError({
+          message: `Unknown command: ${command}\nRun \`${primaryCommand} help\` for usage.`
+        });
+      }
+      const { openCliRuntime } = await import('./runtime.js');
+      const { runManagementCommand } = await import('./commands.js');
+      const runtime = openCliRuntime({ source: 'cli' });
+      try {
+        await runManagementCommand({ runtime, command, rest: args });
+      } finally {
+        runtime.close();
+      }
+    }
   }
 }
 
 export async function runCli({
   primaryCommand,
-  argv = process.argv.slice(2)
+  argv = process.argv.slice(2),
+  stdin
 }: {
   primaryCommand: string;
   argv?: string[];
+  stdin?: string;
 }): Promise<void> {
   assertSupportedNodeVersion();
 
   const [command, ...rest] = argv;
 
   try {
-    dispatchCommand({ primaryCommand, command, args: rest });
+    await dispatchCommand({ primaryCommand, command, args: rest, stdin });
   } catch (error) {
+    if (error instanceof CliError) {
+      throw error;
+    }
+    try {
+      const { ServiceError } = await import('../../src/service/errors.js');
+      if (error instanceof ServiceError) {
+        throw new CliError({ message: error.message });
+      }
+    } catch (importError) {
+      if (importError instanceof CliError) {
+        throw importError;
+      }
+      // Service layer import failed; fall through to the generic error formatter.
+    }
     throw new CliError({ message: formatCliError(error) });
   }
 }

@@ -42,7 +42,11 @@ export function WorkflowPage({ statuses }: WorkflowPageProps) {
                     </Badge>
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">
-                    {status.isDefault ? 'Default' : status.type === 'execute' || status.type === 'review' ? 'Exclusive' : '—'}
+                    {status.isDefault
+                      ? 'Default'
+                      : status.type === 'execute' || status.type === 'review'
+                        ? 'Exclusive'
+                        : '—'}
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">{status.position}</td>
                 </tr>

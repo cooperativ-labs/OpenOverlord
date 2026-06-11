@@ -24,7 +24,9 @@ function resourceStatusLabel(status: string): string {
 export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
   const resources = useProjectResources(projectId);
   const rows = open ? (resources.data ?? []) : [];
-  const hasMissingPrimary = rows.some(resource => resource.isPrimary && resource.status === 'missing');
+  const hasMissingPrimary = rows.some(
+    resource => resource.isPrimary && resource.status === 'missing'
+  );
 
   return (
     <div className="space-y-6">
@@ -53,8 +55,8 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
           <p className="mb-2">No directories linked yet.</p>
           <p>
             From a checkout directory, run{' '}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">ovld add-cwd</code> to link it
-            to this project.
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">ovld add-cwd</code> to link it to
+            this project.
           </p>
         </div>
       ) : (
@@ -71,7 +73,10 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
             <tbody>
               {rows.map(resource => (
                 <tr key={resource.id} className="border-t">
-                  <td className="max-w-xs truncate px-3 py-2 font-mono text-xs" title={resource.path}>
+                  <td
+                    className="max-w-xs truncate px-3 py-2 font-mono text-xs"
+                    title={resource.path}
+                  >
                     {resource.path}
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">{resource.type}</td>
@@ -83,9 +88,7 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    <Badge
-                      variant={resource.status === 'missing' ? 'destructive' : 'secondary'}
-                    >
+                    <Badge variant={resource.status === 'missing' ? 'destructive' : 'secondary'}>
                       {resourceStatusLabel(resource.status)}
                     </Badge>
                   </td>

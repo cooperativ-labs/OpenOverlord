@@ -53,9 +53,9 @@ cli/
   package.json            # bin map, build scripts, pack metadata
 ```
 
-Phase 0 currently ships `version` and `help`. Additional management, protocol,
-and runner commands should colocate as `cli/<area>/` or `cli/protocol/` +
-`cli/runner/` following the pattern in [`AGENTS.md`](AGENTS.md).
+Phase 0–3 ship the core service layer, management commands, and agent
+protocol through docs 01–03. Runner commands (doc 04) are not yet implemented.
+Run `yarn build` before using the compiled CLI (`node cli/bin/ovld.mjs …`).
 
 ## Interaction Boundaries
 

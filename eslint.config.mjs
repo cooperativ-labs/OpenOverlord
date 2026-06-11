@@ -19,6 +19,27 @@ export default [
   },
   js.configs.recommended,
   {
+    files: ['**/*.mjs', '**/*.cjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        Buffer: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        console: 'readonly',
+        exports: 'readonly',
+        global: 'readonly',
+        module: 'readonly',
+        process: 'readonly',
+        require: 'readonly'
+      }
+    },
+    rules: {
+      'no-console': ['warn', { allow: ['warn', 'error'] }]
+    }
+  },
+  {
     files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       parser: tsParser,

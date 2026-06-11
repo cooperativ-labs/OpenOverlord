@@ -1,5 +1,5 @@
 import {
-  closestCorners,
+  closestCenter,
   DndContext,
   type DragEndEvent,
   type DragOverEvent,
@@ -7,6 +7,7 @@ import {
   type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
+  pointerWithin,
   useDroppable,
   useSensor,
   useSensors
@@ -20,7 +21,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useMatch, useNavigate, useParams } from '@tanstack/react-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { ProjectStatusDto, TicketDto, TicketPriority } from '../../shared/contract.ts';
 import { ProjectSettingsSection } from '../components/projects/ProjectSettingsSection.tsx';
@@ -278,7 +279,7 @@ function BoardColumn({
       <SortableContext items={tickets.map(t => t.id)} strategy={verticalListSortingStrategy}>
         <div
           ref={setNodeRef}
-          className={`flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-1 transition-colors ${
+          className={`flex min-h-16 flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-1 transition-colors ${
             isOver
               ? 'bg-[var(--color-surface-2)]/40 ring-1 ring-inset ring-[var(--color-accent)]/30'
               : ''
@@ -355,6 +356,14 @@ export function BoardPage() {
       setOverride(null);
     }
   }, [activeId, override, baseColumns]);
+
+  // pointerWithin switches columns the moment the pointer crosses a boundary,
+  // avoiding the overshooting required by closestCorners. closestCenter is used
+  // as a fallback for keyboard navigation where no pointer position is available.
+  const collisionDetection = useCallback((...args: Parameters<typeof pointerWithin>) => {
+    const hits = pointerWithin(...args);
+    return hits.length > 0 ? hits : closestCenter(...args);
+  }, []);
 
   const sensors = useSensors(
     // A small activation distance lets plain clicks (navigate / open dropdown)
@@ -494,7 +503,7 @@ export function BoardPage() {
         ) : (
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCorners}
+            collisionDetection={collisionDetection}
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}

@@ -6,6 +6,7 @@ import { GeneralPage } from '@/components/modals/project-settings/GeneralPage';
 import { ResourcesPage } from '@/components/modals/project-settings/ResourcesPage';
 import { WorkflowPage } from '@/components/modals/project-settings/WorkflowPage';
 import { SettingsDialogShell, type SettingsNavItem } from '@/components/modals/SettingsDialogShell';
+
 import type { ProjectDto, ProjectStatusDto } from '../../../shared/contract.ts';
 
 const navItems: SettingsNavItem[] = [

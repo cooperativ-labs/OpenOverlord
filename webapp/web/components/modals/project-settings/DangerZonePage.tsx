@@ -1,5 +1,5 @@
-import { Archive } from 'lucide-react';
 import { useNavigate } from '@tanstack/react-router';
+import { Archive } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';

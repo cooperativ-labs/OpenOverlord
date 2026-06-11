@@ -1,0 +1,10 @@
+# Overlord local instance configuration
+instance_name = "Local Overlord"
+database_path = ".overlord/Overlord.sqlite"
+web_port = 4310
+default_agent = "claude"
+# default_model = ""
+
+# Common terminal launchers (examples):
+# terminal_launcher = "open -a Ghostty --args"
+# terminal_launcher = "wezterm start"

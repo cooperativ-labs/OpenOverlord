@@ -1,0 +1,113 @@
+import Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { CONTRACT_VERSION } from './constants.js';
+
+const MIGRATIONS = ['001_initial_core.sql', '002_rbac.sql', '003_better_auth.sql'] as const;
+
+export type OverlordDatabase = Database.Database;
+
+function resolveRepoRoot(): string {
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.resolve(moduleDir, '../../..'),
+    path.resolve(moduleDir, '../../../..'),
+    path.resolve(moduleDir, '../..')
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(path.join(candidate, 'database', 'sqlite', 'migrations'))) {
+      return candidate;
+    }
+  }
+
+  throw new Error('Cannot locate Overlord SQLite migrations.');
+}
+
+function checksum(sql: string): string {
+  return createHash('sha256').update(sql).digest('hex');
+}
+
+function loadMigrationSql(fileName: string): { version: string; sql: string; checksum: string } {
+  const version = fileName.split('_', 1)[0] ?? fileName;
+  const repoRoot = resolveRepoRoot();
+  const filePath = path.join(repoRoot, 'database', 'sqlite', 'migrations', fileName);
+  const sql = readFileSync(filePath, 'utf8');
+  return { version, sql, checksum: checksum(sql) };
+}
+
+function applyMigration(
+  db: OverlordDatabase,
+  migration: ReturnType<typeof loadMigrationSql>
+): void {
+  const applied = db
+    .prepare(
+      `SELECT checksum FROM schema_migrations
+       WHERE adapter = 'sqlite' AND component = 'core' AND version = ?`
+    )
+    .get(migration.version) as { checksum: string } | undefined;
+
+  if (applied) {
+    if (applied.checksum !== migration.checksum) {
+      throw new Error(`Migration ${migration.version} checksum mismatch.`);
+    }
+    return;
+  }
+
+  db.exec(migration.sql);
+  db.prepare(
+    `INSERT INTO schema_migrations (version, adapter, component, contract_version, checksum, applied_at)
+     VALUES (?, 'sqlite', 'core', ?, ?, ?)`
+  ).run(migration.version, CONTRACT_VERSION, migration.checksum, new Date().toISOString());
+}
+
+export function openDatabase({ databasePath }: { databasePath: string }): OverlordDatabase {
+  mkdirSync(path.dirname(databasePath), { recursive: true });
+  const db = new Database(databasePath);
+  db.pragma('foreign_keys = ON');
+  db.pragma('busy_timeout = 5000');
+  try {
+    db.pragma('journal_mode = WAL');
+  } catch {
+    db.pragma('journal_mode = DELETE');
+  }
+  return db;
+}
+
+export function migrateDatabase(db: OverlordDatabase): void {
+  for (const fileName of MIGRATIONS) {
+    const migration = loadMigrationSql(fileName);
+    if (migration.version === '001') {
+      const hasSchema = db
+        .prepare(`SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'schema_migrations'`)
+        .get();
+      if (!hasSchema) {
+        db.exec(migration.sql);
+        db.prepare(
+          `INSERT INTO schema_migrations (version, adapter, component, contract_version, checksum, applied_at)
+           VALUES (?, 'sqlite', 'core', ?, ?, ?)`
+        ).run(migration.version, CONTRACT_VERSION, migration.checksum, new Date().toISOString());
+        continue;
+      }
+    }
+    applyMigration(db, migration);
+  }
+}
+
+export function openInMemoryDatabase(): OverlordDatabase {
+  const db = new Database(':memory:');
+  db.pragma('foreign_keys = ON');
+  migrateDatabase(db);
+  return db;
+}
+
+export function resolveDefaultDatabasePath(startDir = process.cwd()): string {
+  const explicit = process.env.OVERLORD_SQLITE_PATH;
+  if (explicit) {
+    return path.isAbsolute(explicit) ? explicit : path.resolve(startDir, explicit);
+  }
+  return path.resolve(startDir, '.overlord', 'Overlord.sqlite');
+}
