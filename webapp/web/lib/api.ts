@@ -1,8 +1,14 @@
 import type {
+  AgentCatalogDto,
   CreateObjectiveBody,
   CreateProjectBody,
   CreateTicketBody,
+  ExecutionRequestDto,
+  LaunchObjectiveBody,
+  LaunchPreferenceDto,
+  LaunchSettingsDto,
   ObjectiveDto,
+  ObjectivePromptDto,
   ProjectDto,
   ProjectRepositoryDto,
   ProjectResourceDto,
@@ -13,6 +19,8 @@ import type {
   SqliteBrowserTablesDto,
   TicketDetailDto,
   TicketDto,
+  UpdateAgentLaunchConfigBody,
+  UpdateLaunchPreferenceBody,
   UpdateObjectiveBody,
   UpdateProjectBody,
   UpdateTicketBody
@@ -83,6 +91,24 @@ export const api = {
   updateObjective: (id: string, body: UpdateObjectiveBody) =>
     request<ObjectiveDto>('PATCH', `/api/objectives/${id}`, body),
   deleteObjective: (id: string) => request<{ ok: true }>('DELETE', `/api/objectives/${id}`),
+  launchObjective: (id: string, body: LaunchObjectiveBody) =>
+    request<ExecutionRequestDto>('POST', `/api/objectives/${id}/launch`, body),
+  getObjectivePrompt: (id: string) =>
+    request<ObjectivePromptDto>('GET', `/api/objectives/${id}/prompt`),
+
+  getAgentCatalog: () => request<AgentCatalogDto>('GET', '/api/agent-catalog'),
+  refreshAgentCatalog: () => request<AgentCatalogDto>('POST', '/api/agent-catalog/refresh'),
+  getLaunchSettings: () => request<LaunchSettingsDto>('GET', '/api/launch-settings'),
+  updateAgentLaunchConfig: (agentKey: string, body: UpdateAgentLaunchConfigBody) =>
+    request<LaunchSettingsDto>(
+      'PATCH',
+      `/api/launch-settings/agents/${encodeURIComponent(agentKey)}`,
+      body
+    ),
+  getLaunchPreference: (projectId: string) =>
+    request<LaunchPreferenceDto>('GET', `/api/projects/${projectId}/launch-preference`),
+  updateLaunchPreference: (projectId: string, body: UpdateLaunchPreferenceBody) =>
+    request<LaunchPreferenceDto>('PUT', `/api/projects/${projectId}/launch-preference`, body),
 
   listSqliteTables: () => request<SqliteBrowserTablesDto>('GET', '/api/sqlite-browser/tables'),
   getSqliteTableData: (tableName: string, limit = 100, offset = 0) =>

@@ -6,7 +6,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadConfig, resolveProjectRoot } from '../../cli/src/config.ts';
+
 import { DATABASE_PATH, WORKSPACE } from './db.ts';
+import {
+  getAgentCatalog,
+  getLaunchPreference,
+  getLaunchSettings,
+  getObjectivePrompt,
+  launchObjective,
+  refreshAgentCatalog,
+  updateAgentLaunchConfig,
+  updateLaunchPreference
+} from './launch.ts';
 import { realtime } from './realtime.ts';
 import {
   ApiError,
@@ -73,15 +84,16 @@ app.get(
       port: bindPort,
       url: `http://${bindHost === '0.0.0.0' ? '127.0.0.1' : bindHost}:${bindPort}`
     },
-    // Capabilities scoped to what this build supports. Execution-target config
-    // and click-to-launch are deliberately CLI-only for now.
+    // Capabilities scoped to what this build supports. Launching queues
+    // execution requests for a runner; execution-target management remains
+    // CLI-only.
     capabilities: {
       projects: true,
       tickets: true,
       objectives: true,
       realtime: true,
       sqliteBrowser: true,
-      launchAgents: false,
+      launchAgents: true,
       executionTargets: false
     }
   }))
@@ -175,6 +187,41 @@ app.patch(
 app.delete(
   '/api/objectives/:id',
   handle(req => deleteObjective(req.params.id), { mutates: true })
+);
+app.post(
+  '/api/objectives/:id/launch',
+  handle(req => launchObjective(req.params.id, req.body), { mutates: true })
+);
+app.get(
+  '/api/objectives/:id/prompt',
+  handle(req => getObjectivePrompt(req.params.id))
+);
+
+// ---- Agent catalog and launch configuration -------------------------------
+
+app.get(
+  '/api/agent-catalog',
+  handle(() => getAgentCatalog())
+);
+app.post(
+  '/api/agent-catalog/refresh',
+  handle(() => refreshAgentCatalog(), { mutates: true })
+);
+app.get(
+  '/api/launch-settings',
+  handle(() => getLaunchSettings())
+);
+app.patch(
+  '/api/launch-settings/agents/:agentKey',
+  handle(req => updateAgentLaunchConfig(req.params.agentKey, req.body), { mutates: true })
+);
+app.get(
+  '/api/projects/:id/launch-preference',
+  handle(req => getLaunchPreference(req.params.id))
+);
+app.put(
+  '/api/projects/:id/launch-preference',
+  handle(req => updateLaunchPreference(req.params.id, req.body), { mutates: true })
 );
 
 // ---- SQLite browser ------------------------------------------------------

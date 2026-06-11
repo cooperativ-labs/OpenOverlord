@@ -2,22 +2,10 @@ import { useNavigate } from '@tanstack/react-router';
 import { ArrowRightToLine } from 'lucide-react';
 import { useState } from 'react';
 
-import type {
-  ObjectiveDto,
-  ObjectiveState,
-  ProjectStatusDto,
-  TicketDetailDto,
-  TicketPriority
-} from '../../shared/contract.ts';
-import {
-  useCreateObjective,
-  useDeleteObjective,
-  useDeleteTicket,
-  useTicket,
-  useUpdateObjective,
-  useUpdateTicket
-} from '../lib/queries.ts';
+import type { ProjectStatusDto, TicketDetailDto, TicketPriority } from '../../shared/contract.ts';
+import { useCreateObjective, useDeleteTicket, useTicket, useUpdateTicket } from '../lib/queries.ts';
 
+import { DraftObjective } from './objectives/DraftObjective.tsx';
 import { RepositoryMentionTextarea } from './RepositoryMentionTextarea.tsx';
 import {
   Badge,
@@ -25,7 +13,6 @@ import {
   Card,
   EditableText,
   Field,
-  OBJECTIVE_STATE_LABEL,
   priorityClasses,
   Select,
   Spinner,
@@ -33,75 +20,6 @@ import {
 } from './ui.tsx';
 
 const PRIORITIES: TicketPriority[] = ['low', 'normal', 'high', 'urgent'];
-const OBJECTIVE_STATES: ObjectiveState[] = [
-  'future',
-  'draft',
-  'submitted',
-  'launching',
-  'executing',
-  'pending_delivery',
-  'complete'
-];
-
-function ObjectiveItem({ objective }: { objective: ObjectiveDto }) {
-  const update = useUpdateObjective();
-  const remove = useDeleteObjective();
-
-  return (
-    <Card className="p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="rounded bg-[var(--color-surface-3)] px-1.5 py-0.5 font-mono text-xs text-[var(--color-ink-dim)]">
-            #{objective.position + 1}
-          </span>
-          <span className="truncate text-sm font-medium">
-            <EditableText
-              value={objective.title ?? ''}
-              placeholder="Untitled objective"
-              onSave={title => update.mutate({ id: objective.id, body: { title } })}
-            />
-          </span>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Select
-            className="text-xs"
-            value={objective.state}
-            onChange={e =>
-              update.mutate({
-                id: objective.id,
-                body: { state: e.target.value as ObjectiveState }
-              })
-            }
-          >
-            {OBJECTIVE_STATES.map(s => (
-              <option key={s} value={s}>
-                {OBJECTIVE_STATE_LABEL[s]}
-              </option>
-            ))}
-          </Select>
-          <Button
-            variant="ghost"
-            aria-label="Delete objective"
-            onClick={() => {
-              if (confirm('Delete this objective?')) remove.mutate(objective.id);
-            }}
-          >
-            ✕
-          </Button>
-        </div>
-      </div>
-      <div className="mt-2 text-sm text-[var(--color-ink-dim)]">
-        <EditableText
-          multiline
-          value={objective.instructionText}
-          className="block whitespace-pre-wrap"
-          inputClassName="text-sm"
-          onSave={instructionText => update.mutate({ id: objective.id, body: { instructionText } })}
-        />
-      </div>
-    </Card>
-  );
-}
 
 function AddObjective({ ticketId, projectId }: { ticketId: string; projectId: string }) {
   const create = useCreateObjective();
@@ -292,7 +210,12 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
             Objectives ({ticket.objectives.length})
           </h2>
           {ticket.objectives.map(o => (
-            <ObjectiveItem key={o.id} objective={o} />
+            <DraftObjective
+              key={o.id}
+              objective={o}
+              siblings={ticket.objectives}
+              executionRequests={ticket.executionRequests}
+            />
           ))}
           <AddObjective ticketId={ticket.id} projectId={projectId} />
         </div>

@@ -18,22 +18,15 @@ import type {
 } from '../shared/contract.ts';
 
 import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
+import { ApiError } from './errors.ts';
+import { listTicketExecutionRequests } from './launch.ts';
 import {
   initialTitleFromInstruction,
   scheduleObjectiveTitleGeneration,
   scheduleTicketTitleGeneration
 } from './title-automation.ts';
 
-/** A user-facing validation / not-found error that maps to a 4xx response. */
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-    public detail?: string
-  ) {
-    super(message);
-  }
-}
+export { ApiError } from './errors.ts';
 
 // The default workflow seeded for every new project. The schema enforces (via
 // partial unique indexes) at most one default, one `execute`, and one `review`
@@ -181,6 +174,7 @@ interface ObjectiveRow {
   auto_advance: number;
   assigned_agent: string | null;
   model: string | null;
+  reasoning_effort: string | null;
   created_at: string;
   updated_at: string;
   revision: number;
@@ -266,6 +260,7 @@ function toObjectiveDto(r: ObjectiveRow): ObjectiveDto {
     autoAdvance: r.auto_advance === 1,
     assignedAgent: r.assigned_agent,
     model: r.model,
+    reasoningEffort: r.reasoning_effort,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     revision: r.revision
@@ -624,7 +619,8 @@ export function getTicketDetail(id: string): TicketDetailDto {
   const ticket = toTicketDto(getTicketRow(id));
   const objectives = listObjectives(id);
   const statuses = listProjectStatuses(ticket.projectId);
-  return { ...ticket, objectives, statuses };
+  const executionRequests = listTicketExecutionRequests(id);
+  return { ...ticket, objectives, statuses, executionRequests };
 }
 
 function nextTicketSequence(): number {
@@ -1084,6 +1080,21 @@ const updateObjectiveTx = db.transaction(
       fields.push('position = @position');
       params.position = body.position;
       changed.push('position');
+    }
+    if (body.assignedAgent !== undefined) {
+      fields.push('assigned_agent = @assigned_agent');
+      params.assigned_agent = body.assignedAgent?.trim() || null;
+      changed.push('assigned_agent');
+    }
+    if (body.model !== undefined) {
+      fields.push('model = @model');
+      params.model = body.model?.trim() || null;
+      changed.push('model');
+    }
+    if (body.reasoningEffort !== undefined) {
+      fields.push('reasoning_effort = @reasoning_effort');
+      params.reasoning_effort = body.reasoningEffort?.trim() || null;
+      changed.push('reasoning_effort');
     }
     if (fields.length === 0) {
       return { objective: toObjectiveDto(existing), regenerateTitle: false };

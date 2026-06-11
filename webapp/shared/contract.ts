@@ -6,8 +6,10 @@
  * dependency.
  *
  * Scope note: this build covers projects, tickets, and objectives — the entities
- * the web interface lets users add and modify. Execution targets, runner launch,
- * deliveries, etc. remain CLI-only for now and are intentionally absent here.
+ * the web interface lets users add and modify — plus the objective launch
+ * surface: the workspace agent catalog, per-user launch configs, project launch
+ * preferences, and execution-request queueing. Runner claiming/launching and
+ * deliveries remain CLI-only and are intentionally absent here.
  */
 
 // ---- Closed status vocabularies (from the schema CHECK constraints) ----
@@ -185,6 +187,7 @@ export interface ObjectiveDto {
   autoAdvance: boolean;
   assignedAgent: string | null;
   model: string | null;
+  reasoningEffort: string | null;
   createdAt: string;
   updatedAt: string;
   revision: number;
@@ -193,6 +196,100 @@ export interface ObjectiveDto {
 export interface TicketDetailDto extends TicketDto {
   objectives: ObjectiveDto[];
   statuses: ProjectStatusDto[];
+  /** Active (queued/claimed/launching) execution requests for this ticket's objectives. */
+  executionRequests: ExecutionRequestDto[];
+}
+
+// ---- Agent catalog and launch configuration ----
+//
+// Shapes follow connectors/docs/agent-harness-configuration-architecture.md:
+// the workspace catalog (workspaces.settings_json.agentCatalog) answers "what
+// agents and models are offered"; per-user launch mechanics live on the user's
+// workspace_user_execution_targets row; project_user_preferences remember the
+// last selection; objectives.launch_config_json holds explicit per-objective
+// overrides keyed by execution target and agent.
+
+export interface AgentCatalogModelDto {
+  id: string;
+  displayName: string;
+  /** Reasoning/thinking levels selectable for this model (empty = none). */
+  reasoningOptions: string[];
+}
+
+export interface AgentCatalogAgentDto {
+  /** Stable connector key (`claude`, `codex`, `cursor`, …). */
+  key: string;
+  label: string;
+  availableByDefault: boolean;
+  models: AgentCatalogModelDto[];
+  defaultModel: string | null;
+  defaultReasoningEffort: string | null;
+  /** Column heading for the reasoning options ("Thinking" vs "Effort"). */
+  reasoningLabel: string;
+}
+
+export interface AgentCatalogDto {
+  agents: AgentCatalogAgentDto[];
+  /** Instance defaults from overlord.toml, used when no preference is stored. */
+  defaultAgent: string;
+  defaultModel: string | null;
+}
+
+/** Per-agent launch mechanics: shell pre-command and extra CLI flags. */
+export interface AgentLaunchConfigDto {
+  preCommand: string;
+  flags: string[];
+}
+
+export interface LaunchSettingsDto {
+  /** The local execution target launches queue against (provisioned on demand). */
+  executionTargetId: string;
+  deviceLabel: string;
+  /** Per-user launch configs keyed by agent key. */
+  agentConfigs: Record<string, AgentLaunchConfigDto>;
+}
+
+/** Last agent/model/reasoning the user selected within a project. */
+export interface LaunchPreferenceDto {
+  selectedAgent: string | null;
+  selectedModel: string | null;
+  selectedReasoningEffort: string | null;
+}
+
+export type ExecutionRequestStatus =
+  | 'queued'
+  | 'claimed'
+  | 'launching'
+  | 'launched'
+  | 'failed'
+  | 'cleared'
+  | 'cancelled'
+  | 'expired';
+
+export interface ExecutionRequestDto {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  ticketId: string;
+  objectiveId: string;
+  executionTargetId: string | null;
+  requestedAgent: string | null;
+  requestedModel: string | null;
+  requestedReasoningEffort: string | null;
+  /** Resolved launch-config snapshot written at queue time. */
+  launchConfig: AgentLaunchConfigDto;
+  status: ExecutionRequestStatus;
+  requestedSource: string;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Copyable prompt for running an objective through an agent manually. */
+export interface ObjectivePromptDto {
+  objectiveId: string;
+  ticketId: string;
+  prompt: string;
 }
 
 // ---- Realtime feed ----
@@ -279,7 +376,34 @@ export interface UpdateObjectiveBody {
   state?: ObjectiveState;
   autoAdvance?: boolean;
   position?: number;
+  assignedAgent?: string | null;
+  model?: string | null;
+  reasoningEffort?: string | null;
 }
+
+/**
+ * Queue an execution request for an objective. The server persists the
+ * selection onto the objective, resolves the launch config (objective override
+ * → user target config → workspace default → empty), snapshots it into the
+ * request, and moves a draft objective to `submitted`.
+ */
+export interface LaunchObjectiveBody {
+  agent: string;
+  model?: string | null;
+  reasoningEffort?: string | null;
+  /**
+   * Explicit per-objective override stored in `objectives.launch_config_json`
+   * keyed by execution target + agent. Omit to inherit per the resolution order.
+   */
+  launchConfigOverride?: AgentLaunchConfigDto | null;
+}
+
+export interface UpdateAgentLaunchConfigBody {
+  preCommand?: string;
+  flags?: string[];
+}
+
+export type UpdateLaunchPreferenceBody = Partial<LaunchPreferenceDto>;
 
 export interface ApiError {
   error: string;

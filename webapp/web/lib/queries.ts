@@ -4,9 +4,13 @@ import type {
   CreateObjectiveBody,
   CreateProjectBody,
   CreateTicketBody,
+  LaunchObjectiveBody,
+  LaunchPreferenceDto,
   SqliteBrowserQueryResultDto,
   StatusType,
   TicketDto,
+  UpdateAgentLaunchConfigBody,
+  UpdateLaunchPreferenceBody,
   UpdateObjectiveBody,
   UpdateProjectBody,
   UpdateTicketBody
@@ -24,6 +28,9 @@ export const keys = {
     ['project', id, 'repository', executionTargetId ?? 'primary'] as const,
   tickets: (projectId: string) => ['project', projectId, 'tickets'] as const,
   ticket: (id: string) => ['ticket', id] as const,
+  agentCatalog: ['agent-catalog'] as const,
+  launchSettings: ['launch-settings'] as const,
+  launchPreference: (projectId: string) => ['project', projectId, 'launch-preference'] as const,
   sqliteTables: ['sqlite-browser', 'tables'] as const,
   sqliteTableData: (tableName: string, limit: number, offset: number) =>
     ['sqlite-browser', 'table', tableName, limit, offset] as const
@@ -197,6 +204,69 @@ export function useDeleteObjective() {
   return useMutation({
     mutationFn: (id: string) => api.deleteObjective(id),
     onSuccess: () => invalidateAll(qc)
+  });
+}
+
+// ---- Agent launch ----------------------------------------------------------
+
+export const useAgentCatalog = () =>
+  useQuery({ queryKey: keys.agentCatalog, queryFn: api.getAgentCatalog, staleTime: 60_000 });
+
+export const useLaunchSettings = () =>
+  useQuery({ queryKey: keys.launchSettings, queryFn: api.getLaunchSettings, staleTime: 60_000 });
+
+export const useLaunchPreference = (projectId: string) =>
+  useQuery({
+    queryKey: keys.launchPreference(projectId),
+    queryFn: () => api.getLaunchPreference(projectId),
+    staleTime: 60_000
+  });
+
+export function useLaunchObjective() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: LaunchObjectiveBody }) =>
+      api.launchObjective(id, body),
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
+export function useUpdateAgentLaunchConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ agentKey, body }: { agentKey: string; body: UpdateAgentLaunchConfigBody }) =>
+      api.updateAgentLaunchConfig(agentKey, body),
+    onSuccess: data => qc.setQueryData(keys.launchSettings, data)
+  });
+}
+
+export function useUpdateLaunchPreference(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateLaunchPreferenceBody) => api.updateLaunchPreference(projectId, body),
+    onMutate: async body => {
+      // Optimistic: selection changes should feel instant in the selector.
+      await qc.cancelQueries({ queryKey: keys.launchPreference(projectId) });
+      const previous = qc.getQueryData<LaunchPreferenceDto>(keys.launchPreference(projectId));
+      if (previous) {
+        qc.setQueryData(keys.launchPreference(projectId), { ...previous, ...body });
+      }
+      return { previous };
+    },
+    onError: (_err, _body, context) => {
+      if (context?.previous) {
+        qc.setQueryData(keys.launchPreference(projectId), context.previous);
+      }
+    },
+    onSuccess: data => qc.setQueryData(keys.launchPreference(projectId), data)
+  });
+}
+
+export function useRefreshAgentCatalog() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.refreshAgentCatalog(),
+    onSuccess: data => qc.setQueryData(keys.agentCatalog, data)
   });
 }
 
