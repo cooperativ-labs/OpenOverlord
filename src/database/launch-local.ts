@@ -1,4 +1,3 @@
-import Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -7,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 const CONTRACT_VERSION = '0.2-draft';
 const DEFAULT_DATABASE_PATH = '.overlord/Overlord.sqlite';
 const MIGRATIONS = ['001_initial_core.sql', '002_rbac.sql', '003_better_auth.sql'] as const;
+
+type BetterSqlite3Constructor = typeof import('better-sqlite3');
+type DatabaseInstance = import('better-sqlite3').Database;
 
 type Migration = {
   version: string;
@@ -43,7 +45,7 @@ function loadMigration(fileName: string): Migration {
   };
 }
 
-function applyMigration(db: Database.Database, migration: Migration): 'applied' | 'skipped' {
+function applyMigration(db: DatabaseInstance, migration: Migration): 'applied' | 'skipped' {
   const applied = db
     .prepare(
       `
@@ -77,10 +79,45 @@ function applyMigration(db: Database.Database, migration: Migration): 'applied' 
   return 'applied';
 }
 
-function main(): void {
+function describeNativeModuleError(error: unknown): string | null {
+  if (!(error instanceof Error)) {
+    return null;
+  }
+
+  if ('code' in error && error.code === 'ERR_DLOPEN_FAILED') {
+    return [
+      'Failed to load `better-sqlite3` for the current runtime.',
+      `Current runtime: ${process.platform}/${process.arch} on Node ${process.version}.`,
+      'This usually means `node_modules` was installed on a different OS or CPU architecture and then reused here.',
+      'Reinstall dependencies inside the same environment where you run Overlord.',
+      'Suggested fix:',
+      '  rm -rf node_modules',
+      '  yarn install',
+      'Then rerun `yarn start:local`.'
+    ].join('\n');
+  }
+
+  return null;
+}
+
+async function loadBetterSqlite3(): Promise<BetterSqlite3Constructor> {
+  try {
+    const module = (await import('better-sqlite3')) as { default: BetterSqlite3Constructor };
+    return module.default;
+  } catch (error) {
+    const message = describeNativeModuleError(error);
+    if (message) {
+      throw new Error(message, { cause: error });
+    }
+    throw error;
+  }
+}
+
+async function main(): Promise<void> {
   const databasePath = resolveDatabasePath();
   mkdirSync(path.dirname(databasePath), { recursive: true });
 
+  const Database = await loadBetterSqlite3();
   const db = new Database(databasePath);
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
@@ -118,7 +155,7 @@ function main(): void {
   }
 }
 
-function applyInitialMigration(db: Database.Database, migration: Migration): 'applied' | 'skipped' {
+function applyInitialMigration(db: DatabaseInstance, migration: Migration): 'applied' | 'skipped' {
   const hasSchemaMigrations = db
     .prepare(
       `
@@ -145,4 +182,4 @@ function applyInitialMigration(db: Database.Database, migration: Migration): 'ap
   return applyMigration(db, migration);
 }
 
-main();
+void main();
