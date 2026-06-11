@@ -30,7 +30,7 @@ yarn build && yarn start   # builds the SPA, serves it + the API on :8787
 
 The server opens `.overlord/Overlord.sqlite` by default (override with
 `OVERLORD_SQLITE_PATH`). Initialise that database first with
-`yarn db:launch:local` from the repo root.
+`yarn start:local` from the repo root.
 
 ## Module Layout
 

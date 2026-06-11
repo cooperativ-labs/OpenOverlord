@@ -24,7 +24,7 @@ export function openCliRuntime({ source }: { source: ServiceContext['source'] })
     throw new CliError({
       message:
         `Overlord database not found at ${databasePath}.\n` +
-        'Run `ovld init` then `yarn db:launch:local` from the repo root.'
+        'Run `ovld init` then `yarn start:local` from the repo root.'
     });
   }
 

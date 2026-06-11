@@ -1,0 +1,38 @@
+contractVersion: "0.2-draft"
+componentType: connector
+componentKey: codex
+label: "Codex Connector"
+description: "Codex plugin adapter for the Overlord ticket protocol workflow."
+
+connector:
+  agentIdentifier: codex
+  capabilities:
+    - followUpHook
+    - permissionHook
+    - nativeResume
+    - modelFlag
+    - effortFlag
+    - contextFilePrompt
+    - permissionRules
+  hookTypes:
+    - UserPromptSubmit
+    - PermissionRequest
+  installPath: "~/.codex/plugins/overlord"
+  managedFiles:
+    - ".codex-plugin/plugin.json"
+    - ".codex-plugin/hooks.json"
+    - ".mcp.json"
+    - "README.md"
+    - "assets/icon.png"
+    - "assets/logo.png"
+    - "assets/screenshot.svg"
+    - "prompt-wrapper.md"
+    - "scripts/overlord-mcp.mjs"
+    - "scripts/permission-hook.sh"
+    - "scripts/user-prompt-submit-hook.sh"
+    - "skills/overlord-ticket/SKILL.md"
+    - "skills/overlord-ticket/reference/cli.md"
+    - "skills/overlord-ticket/reference/context.md"
+    - "skills/overlord-ticket/reference/devices.md"
+    - "skills/overlord-ticket/reference/mcp.md"
+    - "skills/overlord-ticket/reference/shell-escaping.md"

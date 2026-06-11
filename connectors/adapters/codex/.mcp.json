@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "overlord": {
+      "command": "node",
+      "args": ["./scripts/overlord-mcp.mjs"],
+      "note": "Local MCP bridge for the Overlord `ovld protocol` CLI. Requires `ovld` on PATH plus valid auth credentials when talking to a live server."
+    }
+  }
+}

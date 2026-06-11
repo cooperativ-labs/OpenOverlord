@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/sh -c 'exec \"${CODEX_PLUGIN_ROOT:-$HOME/.codex/plugins/overlord}/scripts/permission-hook.sh\"'"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/sh -c 'exec \"${CODEX_PLUGIN_ROOT:-$HOME/.codex/plugins/overlord}/scripts/user-prompt-submit-hook.sh\"'"
+          }
+        ]
+      }
+    ]
+  }
+}

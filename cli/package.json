@@ -4,12 +4,13 @@
   "description": "Overlord CLI — management, agent protocol, and runner for OpenOverlord",
   "type": "module",
   "private": true,
+  "packageManager": "yarn@4.16.0",
   "engines": {
     "node": ">=20"
   },
   "bin": {
-    "ovld": "bin/ovld.mjs",
-    "overlord": "bin/ovld.mjs"
+    "overlord": "bin/ovld.mjs",
+    "ovld": "bin/ovld.mjs"
   },
   "files": [
     "bin/",

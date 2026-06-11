@@ -1,0 +1,36 @@
+{
+  "name": "overlord",
+  "version": "0.2.3",
+  "description": "Chat-driven access to Overlord ticket protocol workflows with hook-driven activity capture.",
+  "author": {
+    "name": "Cooperativ",
+    "url": "https://github.com/cooperativ"
+  },
+  "homepage": "https://www.ovld.ai",
+  "repository": "https://github.com/cooperativ/overlord",
+  "license": "UNLICENSED",
+  "keywords": ["overlord", "tickets", "agents", "workflow", "protocol", "mcp", "codex-plugin"],
+  "skills": "./skills/",
+  "hooks": "./.codex-plugin/hooks.json",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Overlord",
+    "shortDescription": "Run Overlord ticket workflows from Codex chat",
+    "longDescription": "Connect Codex to Overlord's local ticket workflow through the existing `ovld protocol` CLI. The plugin bundles workflow skills plus MCP tools for ticket attachment, progress updates, shared context, artifacts, delivery, and follow-up ticket creation.",
+    "developerName": "Cooperativ",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "websiteURL": "https://www.ovld.ai/docs",
+    "privacyPolicyURL": "https://www.ovld.ai/privacy",
+    "termsOfServiceURL": "https://www.ovld.ai/terms",
+    "defaultPrompt": [
+      "Attach to Overlord ticket 123 and summarize the context before editing code",
+      "Post an execute update to this Overlord ticket after a meaningful implementation step",
+      "Deliver this Overlord ticket with artifacts and change rationales"
+    ],
+    "brandColor": "#1E6B5C",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png",
+    "screenshots": ["./assets/screenshot.svg"]
+  }
+}

@@ -63,7 +63,7 @@ write these tables directly.
 Use the Node-based local launcher for the default SQLite development database:
 
 ```sh
-yarn db:launch:local
+yarn start:local
 ```
 
 This creates `.overlord/Overlord.sqlite`, enables SQLite foreign keys, WAL mode,
@@ -72,7 +72,7 @@ migrations in order, and records each applied migration in `schema_migrations`
 with a SHA-256 checksum. Set `OVERLORD_SQLITE_PATH=/path/to/Overlord.sqlite` to
 launch a database file outside the default location.
 
-If `yarn db:launch:local` or `yarn start:local` fails with `ERR_DLOPEN_FAILED`
+If `yarn start:local` fails with `ERR_DLOPEN_FAILED`
 or `invalid ELF header` while loading `better-sqlite3`, the repo is using a
 `node_modules` tree built for a different OS or CPU architecture. Reinstall
 dependencies inside the same environment where you run Overlord:

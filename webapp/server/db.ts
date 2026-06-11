@@ -21,7 +21,7 @@ const databasePath = resolveDatabasePath();
 if (!existsSync(databasePath)) {
   throw new Error(
     `Overlord SQLite database not found at ${databasePath}.\n` +
-      'Run `yarn db:launch:local` from the repo root to create and migrate it first.'
+      'Run `yarn start:local` from the repo root to create and migrate it first.'
   );
 }
 
@@ -61,7 +61,7 @@ const workspace = db
   .get() as WorkspaceRow | undefined;
 
 if (!workspace) {
-  throw new Error('No workspace found in the database. Initialise it with `yarn db:launch:local`.');
+  throw new Error('No workspace found in the database. Initialise it with `yarn start:local`.');
 }
 
 const actorRow = db
