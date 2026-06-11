@@ -14,7 +14,9 @@ export default [
       '**/dist/**',
       '**/build/**',
       'coverage/**',
-      'src/types/db.ts'
+      'src/types/db.ts',
+      '**/*.d.ts',
+      '**/*.js'
     ]
   },
   js.configs.recommended,

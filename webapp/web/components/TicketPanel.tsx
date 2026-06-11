@@ -5,10 +5,10 @@ import { useState } from 'react';
 import type { ProjectStatusDto, TicketDetailDto, TicketPriority } from '../../shared/contract.ts';
 import { useCreateObjective, useDeleteTicket, useTicket, useUpdateTicket } from '../lib/queries.ts';
 
-import { LiveActivityFeed } from './LiveActivityFeed.tsx';
 import { TicketObjectivesSection } from './objectives/TicketObjectivesSection.tsx';
-import { TicketTools } from './TicketTools.tsx';
+import { LiveActivityFeed } from './LiveActivityFeed.tsx';
 import { RepositoryMentionTextarea } from './RepositoryMentionTextarea.tsx';
+import { TicketTools } from './TicketTools.tsx';
 import {
   Badge,
   Button,
@@ -199,32 +199,39 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
   const ticket = ticketQ.data;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--color-surface-0)]">
+    <div className="flex h-full min-h-0 min-w-[320px] flex-col bg-[var(--color-surface-1)]">
       <TicketPanelHeader
         ticket={ticket}
         statuses={ticket.statuses}
         projectId={projectId}
         onClose={closePanel}
       />
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <div className="mb-6">
+
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[var(--color-surface-0)] pb-10">
+        {/* Card section — primary work surface: objectives */}
+        <section className="border-b border-[var(--color-border)] bg-[var(--color-surface-1)] py-5">
+          <div className="mb-3 px-5">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
+              Objectives ({ticket.objectives.length})
+            </h2>
+          </div>
+          <div className="flex flex-col gap-3 px-5 pb-1">
+            <TicketObjectivesSection ticket={ticket} />
+            <AddObjective ticketId={ticket.id} projectId={projectId} />
+          </div>
+        </section>
+
+        {/* Subtle section — supporting context: tools and activity */}
+        <section className="flex flex-col gap-6 px-5 pt-5">
           <TicketTools ticketId={ticket.id} availableTools={ticket.availableTools} />
-        </div>
 
-        <div className="space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
-            Objectives ({ticket.objectives.length})
-          </h2>
-          <TicketObjectivesSection ticket={ticket} />
-          <AddObjective ticketId={ticket.id} projectId={projectId} />
-        </div>
-
-        <div className="mt-6 space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
-            Activity
-          </h2>
-          <LiveActivityFeed ticketId={ticket.id} />
-        </div>
+          <div className="space-y-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
+              Activity
+            </h2>
+            <LiveActivityFeed ticketId={ticket.id} />
+          </div>
+        </section>
       </div>
     </div>
   );

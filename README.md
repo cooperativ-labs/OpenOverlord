@@ -2,39 +2,22 @@
 
 This is a project to create a open source version of the Overlord project.
 
-## Overview
+## What it is
 
 Overlord is a coordination layer for AI coding agents (Claude Code, Codex, Cursor, OpenCode, Antigravity, and others). Instead of treating each agent session as a one-shot, throwaway interaction, Overlord persists work as **tickets** with structured **objectives**, accumulates **shared context** as work progresses, and routes execution to the right **device** for the job — your laptop, a remote workstation, or a cloud runner.
 
 The result is a Kanban-style workflow where humans plan and agents execute, with every session producing artifacts, change rationales, and history that the next session inherits.
 
-## Modules
+### What Problem Does This Solve?
 
-Overlord is organized as **independent modules connected via the contract**.
-Each module owns its code, tests, and documentation; this README is the table of
-contents. The normative spec for how modules interact is
-[`CONTRACT.md`](CONTRACT.md) — read it before any change that crosses a module
-boundary.
+| Challenge                                                    | Overlord Solution                                            |
+|--------------------------------------------------------------|--------------------------------------------------------------|
+| Users lose track of context between prompts                  | Structured Kanban workflow lets you thoroughly plan prompts and prompt sequences |
+| Agent sessions lose context between runs                     | Tickets persist objectives, history, attachments, and shared state in Postgres |
+| Hard to track what an agent actually changed and why         | Agents record `changeRationales` per file as part of the deliver step |
+| Agent lock-in: hard to switch between different agents between each turn | Assign any agent you want to each objective.                 |
+| Plans, tickets, and code drift apart                         | One ticket holds many ordered objectives sharing the same context and artifacts |
 
-| Module | Purpose | Contract component(s) |
-| --- | --- | --- |
-| [database/](database/README.md) | SQLite-default portable persistence + schema extension system | `database`, `extension` |
-| [cli/](cli/README.md) | The `ovld` command surface: management, agent protocol, and runner | `cli`, `protocol`, `runner` |
-| [auth/](auth/README.md) | Mix-and-match authentication (tokens) and RBAC authorization | `auth` |
-| [webapp/](webapp/README.md) | Deferred web control center + REST/realtime API | `rest` |
-| [mcp/](mcp/README.md) | Planned MCP server surface (Phase 5, not yet implemented) | _(future)_ |
-| [connectors/](connectors/README.md) | Agent harness connectors: core, plugins, adapters, hooks | `connector` |
-| [automations/](automations/README.md) | Optional AI automations (Gemini summarization, objective titles) | `automations` |
-| [contract/](contract/README.md) | The connecting spec — machine-readable counterparts to `CONTRACT.md` | _(spec)_ |
-
-> The contract defines eight fine-grained components; the six modules above are
-> friendlier developer-facing groupings, and each module's README maps to the
-> contract component(s) it contains. Behavior specs are colocated with their
-> owning module under `<module>/docs/`; each module README links to its relevant
-> plans, and [planning/feature-plans/](planning/feature-plans/README.md) is now a
-> redirect index pointing at those module homes. **Convention:** colocate new code and tests inside
-> the owning module (as `src/rbac/authorizer.ts` + `authorizer.test.ts` and
-> `database/sqlite/migrations/` already do).
 
 ## Surfaces and Interfaces
 
@@ -84,16 +67,6 @@ Open Overlord should be CLI-first from the beginning. Any functionality availabl
 ### Web App
 
 Users will use `ovld serve` to start the web app at their chosen host/port. The current local config defaults are `http://127.0.0.1:4310`.
-
-### overlord.toml
-
-The `overlord.toml` file is used to configure the Open Overlord system. It is a TOML file that is located in the root of the project. It is used to configure the project, including:
-* The instance/organization name
-* The the database location
-* The host and port the web app will run on
-* The default agent/model options (for the run button in the web app)
-* An optional `[agent_catalog]` section to customize which agents and models are offered
-* Default terminal configuration (should include popular terminals commented out)
 
 
 ## Core Concepts
@@ -171,24 +144,64 @@ sequenceDiagram
     Overlord->>Human: Ticket advances to next objective or done
 ```
 
-## Feature Plans
+### overlord.toml
 
-Detailed requirements for the Overlord port are documented in [planning/feature-plans](planning/feature-plans/README.md). The web app requirements live in a separate [web app feature plan](webapp/docs/web-app.md), and the current stack recommendation lives in [webapp/docs/framework-recommendation.md](webapp/docs/framework-recommendation.md), so the CLI-first implementation can proceed without turning the UI into the source of truth.
+The `overlord.toml` file is used to configure the Open Overlord system. It is a TOML file that is located in the root of the project. It is used to configure the project, including:
+* The instance/organization name
+* The the database location
+* The host and port the web app will run on
+* The default agent/model options (for the run button in the web app)
+* An optional `[agent_catalog]` section to customize which agents and models are offered
+* Default terminal configuration (should include popular terminals commented out)
 
-## Operations
+## How to build on top of Overlord
+### Principles
+* **CLI-first**: The CLI is the primary interface for users and agents. The web app is a secondary interface.
+* **Contract-first**: The contract is the primary source of truth for how modules interact.
+* **Modular**: The system is organized as independent modules connected via the contract. Each module is self-contained and includes its own tests and documentation to help agents and users understand how to use the system.
+* **Extensible**: The system is designed to be extensible and can be extended with new modules.
+
+### Modules
+
+Overlord is organized as **independent modules connected via the contract**.
+Each module owns its code, tests, and documentation; this README is the table of
+contents. The normative spec for how modules interact is
+[`CONTRACT.md`](CONTRACT.md) — read it before any change that crosses a module
+boundary.
+
+| Module | Purpose | Contract component(s) |
+| --- | --- | --- |
+| [database/](database/README.md) | SQLite-default portable persistence + schema extension system | `database`, `extension` |
+| [cli/](cli/README.md) | The `ovld` command surface: management, agent protocol, and runner | `cli`, `protocol`, `runner` |
+| [auth/](auth/README.md) | Mix-and-match authentication (tokens) and RBAC authorization | `auth` |
+| [webapp/](webapp/README.md) | Deferred web control center + REST/realtime API | `rest` |
+| [mcp/](mcp/README.md) | Planned MCP server surface (Phase 5, not yet implemented) | _(future)_ |
+| [connectors/](connectors/README.md) | Agent harness connectors: core, plugins, adapters, hooks | `connector` |
+| [automations/](automations/README.md) | Optional AI automations (Gemini summarization, objective titles) | `automations` |
+| [contract/](contract/README.md) | The connecting spec — machine-readable counterparts to `CONTRACT.md` | _(spec)_ |
+
+> The contract defines eight fine-grained components; the six modules above are
+> friendlier developer-facing groupings, and each module's README maps to the
+> contract component(s) it contains. Behavior specs are colocated with their
+> owning module under `<module>/docs/`; each module README links to its relevant
+> plans, and [planning/feature-plans/](planning/feature-plans/README.md) is now a
+> redirect index pointing at those module homes. **Convention:** colocate new code and tests inside
+> the owning module (as `src/rbac/authorizer.ts` + `authorizer.test.ts` and
+> `database/sqlite/migrations/` already do).
+
+
+### Operations
 
 If you run a customized OpenOverlord distribution and need to keep adopting
 changes from upstream, use the contract-first workflow in
 [Adopting Upstream Changes in Customized Instances](docs/upstream-adoption.md).
 
-## Testing
+### Testing
 
 The master test strategy is [`TEST_PLAN.md`](TEST_PLAN.md): a five-layer test pyramid whose centerpiece is a cross-module **contract conformance suite** that proves every module adheres to [`CONTRACT.md`](CONTRACT.md). Per-module test plans are colocated under each module's `docs/testing.md` (database, cli, auth, connectors, webapp), following the same code-and-tests colocation convention as the rest of the repo.
 
-## Out of Scope
-
-* The Feed
 
 ## Planned / Deferred
 
 * **MCP** — a Model Context Protocol server surface is planned but not yet implemented (Phase 5). The module slot is reserved at [mcp/](mcp/README.md), and it will be added to the contract before any implementation lands.
+

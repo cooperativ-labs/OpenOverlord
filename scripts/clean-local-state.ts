@@ -2,6 +2,7 @@ import { existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
 import { loadConfig, resolveDatabasePath, resolveProjectRoot } from '../cli/src/config.ts';
+
 import { stopLocalDev } from './stop-local-dev.ts';
 
 stopLocalDev();

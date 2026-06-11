@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   chmodSync,
   copyFileSync,
@@ -405,7 +405,11 @@ function rewriteCodexHookCommands({
     const entries = (group as Record<string, unknown>).hooks;
     if (!Array.isArray(entries)) continue;
     for (const hook of entries) {
-      if (hook && typeof hook === 'object' && (hook as Record<string, unknown>).type === 'command') {
+      if (
+        hook &&
+        typeof hook === 'object' &&
+        (hook as Record<string, unknown>).type === 'command'
+      ) {
         (hook as Record<string, unknown>).command = targetCommand;
       }
     }
@@ -445,7 +449,10 @@ function configureCodexHarness({
     category: 'Productivity'
   };
   const existingIndex = nextPlugins.findIndex(
-    plugin => plugin && typeof plugin === 'object' && (plugin as Record<string, unknown>).name === 'overlord'
+    plugin =>
+      plugin &&
+      typeof plugin === 'object' &&
+      (plugin as Record<string, unknown>).name === 'overlord'
   );
   if (existingIndex === -1) nextPlugins.push(entry);
   else nextPlugins[existingIndex] = entry;
@@ -457,7 +464,9 @@ function configureCodexHarness({
     if (existsSync(legacyAgentsPath)) {
       warnings.push(`Would remove legacy Codex bundle at ${legacyAgentsPath}.`);
     }
-    warnings.push(`Would run \`codex plugin add ${CODEX_PLUGIN_KEY}\` when the Codex CLI is available.`);
+    warnings.push(
+      `Would run \`codex plugin add ${CODEX_PLUGIN_KEY}\` when the Codex CLI is available.`
+    );
     return warnings;
   }
 
@@ -485,8 +494,16 @@ function configureCodexHarness({
 
   const hooks = readJsonObject(hooksPath);
   if (hooks) {
-    rewriteCodexHookCommands({ hooks, eventName: 'PermissionRequest', targetCommand: permissionHook });
-    rewriteCodexHookCommands({ hooks, eventName: 'UserPromptSubmit', targetCommand: userPromptHook });
+    rewriteCodexHookCommands({
+      hooks,
+      eventName: 'PermissionRequest',
+      targetCommand: permissionHook
+    });
+    rewriteCodexHookCommands({
+      hooks,
+      eventName: 'UserPromptSubmit',
+      targetCommand: userPromptHook
+    });
     writeFileSync(hooksPath, `${JSON.stringify(hooks, null, 2)}\n`);
   } else {
     warnings.push(`Codex hook manifest missing or invalid at ${hooksPath}.`);
@@ -584,9 +601,7 @@ export function setupConnector({
   }
 
   if (agentKey === 'codex') {
-    warnings.push(
-      ...configureCodexHarness({ home: resolvedHome, installPath, dryRun })
-    );
+    warnings.push(...configureCodexHarness({ home: resolvedHome, installPath, dryRun }));
   }
 
   if (!dryRun) {

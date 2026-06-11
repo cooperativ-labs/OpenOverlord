@@ -3,12 +3,12 @@ import { useEffect, useState } from 'react';
 
 import { AboutPage } from '@/components/settings/AboutPage';
 import { ApplicationPage } from '@/components/settings/ApplicationPage';
-import { UserProfilePage } from '@/components/settings/UserProfilePage';
 import {
   SettingsDialogShell,
   type SettingsNavGroup,
   type SettingsNavItem
 } from '@/components/settings/SettingsDialogShell';
+import { UserProfilePage } from '@/components/settings/UserProfilePage';
 
 type SettingsModalProps = {
   open: boolean;

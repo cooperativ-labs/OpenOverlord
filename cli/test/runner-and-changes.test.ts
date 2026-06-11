@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { migrateDatabase } from '../dist/src/database/connection.js';
+import { listChangedFilesForReview, listRationalesForReview } from '../dist/src/service/changes.js';
 import { createServiceContext } from '../dist/src/service/context.js';
 import {
   claimNextExecutionRequest,
@@ -14,7 +15,6 @@ import {
 } from '../dist/src/service/execution-requests.js';
 import { addProjectResource, createProject } from '../dist/src/service/projects.js';
 import { attachSession, deliverSession, updateSession } from '../dist/src/service/protocol.js';
-import { listChangedFilesForReview, listRationalesForReview } from '../dist/src/service/changes.js';
 import { createTicketWithObjectives } from '../dist/src/service/tickets.js';
 
 function createContext() {

@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-
 import { parse } from 'smol-toml';
 
 import { parseAgentCatalogFromToml } from './agent-catalog.ts';

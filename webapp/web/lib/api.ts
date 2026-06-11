@@ -95,8 +95,7 @@ export const api = {
   updateTicket: (id: string, body: UpdateTicketBody) =>
     request<TicketDetailDto>('PATCH', `/api/tickets/${id}`, body),
   deleteTicket: (id: string) => request<{ ok: true }>('DELETE', `/api/tickets/${id}`),
-  listTicketEvents: (id: string) =>
-    request<TicketEventDto[]>('GET', `/api/tickets/${id}/events`),
+  listTicketEvents: (id: string) => request<TicketEventDto[]>('GET', `/api/tickets/${id}/events`),
 
   reorderFutureObjectives: (ticketId: string, body: ReorderFutureObjectivesBody) =>
     request<ObjectiveDto[]>('PATCH', `/api/tickets/${ticketId}/objectives/reorder`, body),

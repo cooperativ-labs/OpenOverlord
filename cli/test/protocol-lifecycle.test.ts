@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { migrateDatabase } from '../dist/src/database/connection.js';
+import { listSqliteMigrationFiles, migrateDatabase } from '../dist/src/database/connection.js';
 import { createServiceContext } from '../dist/src/service/context.js';
 import { addProjectResource, createProject } from '../dist/src/service/projects.js';
 import { attachSession, deliverSession, updateSession } from '../dist/src/service/protocol.js';
@@ -95,5 +95,40 @@ test('attach response includes attach-response-v1 fields', () => {
   assert.ok(attached.session.sessionKey);
   assert.ok(attached.promptContext.includes('Required protocol workflow'));
 
+  db.close();
+});
+
+test('migrateDatabase applies every discovered SQLite migration without resetting data', () => {
+  const db = new Database(':memory:');
+  db.pragma('foreign_keys = ON');
+  migrateDatabase(db);
+
+  db.prepare(
+    `INSERT INTO workspaces (
+      id, slug, name, kind, settings_json, created_at, updated_at, revision
+    ) VALUES (
+      'workspace-migration-smoke', 'migration-smoke', 'Migration smoke test', 'local', '{}',
+      '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1
+    )`
+  ).run();
+  migrateDatabase(db);
+
+  const applied = db
+    .prepare(
+      `SELECT version
+       FROM schema_migrations
+       WHERE adapter = 'sqlite' AND component = 'core'
+       ORDER BY version`
+    )
+    .all() as Array<{ version: string }>;
+  const workspace = db
+    .prepare(`SELECT name FROM workspaces WHERE id = 'workspace-migration-smoke'`)
+    .get() as { name: string } | undefined;
+
+  assert.deepEqual(
+    applied.map(row => row.version),
+    listSqliteMigrationFiles().map(fileName => fileName.split('_', 1)[0])
+  );
+  assert.equal(workspace?.name, 'Migration smoke test');
   db.close();
 });

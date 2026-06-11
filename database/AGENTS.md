@@ -41,7 +41,8 @@ Core schema changes modify the shared contract. They require a contract update b
    - Enable foreign-key checks: `PRAGMA foreign_keys = ON;`
    - Use `CREATE TABLE IF NOT EXISTS` for new tables.
    - Use `ALTER TABLE … ADD COLUMN` for new columns on existing tables (SQLite does not support `ADD COLUMN NOT NULL` without a default; add a default or make nullable).
-   - Insert a `schema_migrations` row at the end of the migration with `component = 'core'` and the migration checksum.
+   - Do not edit applied migrations. Add a new forward-only migration for follow-up schema/data changes.
+   - Do not insert a `schema_migrations` row inside the SQL file. The Node migration launcher computes the checksum and records the row after the migration commits.
 5. **Seed deterministic rows** only when the data is required for the system to function (e.g. default workspace, implicit user). Use fixed UUIDs so tests can rely on them.
 6. **Apply locally to verify**:
    ```sh
@@ -85,7 +86,7 @@ Additive migrations that do not change the public contract (new indexes, new opt
 **Steps:**
 
 1. Confirm the migration number is the next in sequence (`ls database/sqlite/migrations/`).
-2. Write the `.sql` file following the conventions above (foreign-key pragma, `IF NOT EXISTS`, `schema_migrations` row).
+2. Write the `.sql` file following the conventions above (foreign-key pragma, `IF NOT EXISTS`, forward-only changes).
 3. If the migration adds a new index that changes query semantics, document it in `database/docs/09-database-schema-contract.md`.
 
 ---

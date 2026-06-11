@@ -2,12 +2,7 @@ import { Database, Play, Table2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { Badge, Button, Card, EmptyState, Spinner, TextArea } from '@/components/ui.tsx';
-import {
-  useMeta,
-  useRunSqliteQuery,
-  useSqliteTableData,
-  useSqliteTables
-} from '@/lib/queries.ts';
+import { useMeta, useRunSqliteQuery, useSqliteTableData, useSqliteTables } from '@/lib/queries.ts';
 import { cn } from '@/lib/utils';
 
 import type { SqliteBrowserQueryResultDto } from '../../shared/contract.ts';
@@ -107,8 +102,8 @@ export function DatabasePage() {
                 <h1 className="text-lg font-semibold">SQLite Browser</h1>
               </div>
               <p className="max-w-3xl text-sm text-muted-foreground">
-                Read-only browser for the local Overlord database. Table browsing and custom SQL
-                are limited to reader statements.
+                Read-only browser for the local Overlord database. Table browsing and custom SQL are
+                limited to reader statements.
               </p>
             </div>
             <div className="text-right text-xs text-muted-foreground">
@@ -187,7 +182,9 @@ export function DatabasePage() {
                 {selectedTable && tableData.isError && (
                   <EmptyState
                     title="Could not load rows"
-                    hint={tableData.error instanceof Error ? tableData.error.message : 'Unknown error'}
+                    hint={
+                      tableData.error instanceof Error ? tableData.error.message : 'Unknown error'
+                    }
                   />
                 )}
                 {tableData.data && (

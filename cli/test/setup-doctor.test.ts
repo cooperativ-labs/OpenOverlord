@@ -124,11 +124,7 @@ test('codex setup merges marketplace, rules, and hook commands', () => {
     const marketplace = JSON.parse(
       readFileSync(path.join(home, '.agents', 'plugins', 'marketplace.json'), 'utf8')
     );
-    assert.ok(
-      marketplace.plugins.some(
-        (plugin: { name: string }) => plugin.name === 'overlord'
-      )
-    );
+    assert.ok(marketplace.plugins.some((plugin: { name: string }) => plugin.name === 'overlord'));
 
     const rules = readFileSync(path.join(home, '.codex', 'rules', 'default.rules'), 'utf8');
     assert.ok(rules.includes('pattern = ["ovld", "protocol"]'));
@@ -139,9 +135,7 @@ test('codex setup merges marketplace, rules, and hook commands', () => {
     assert.ok(
       hooks.hooks.UserPromptSubmit[0].hooks[0].command.includes('user-prompt-submit-hook.sh')
     );
-    assert.ok(
-      hooks.hooks.PermissionRequest[0].hooks[0].command.includes('permission-hook.sh')
-    );
+    assert.ok(hooks.hooks.PermissionRequest[0].hooks[0].command.includes('permission-hook.sh'));
 
     inspectAndAssertHealthy(home, 'codex');
   } finally {

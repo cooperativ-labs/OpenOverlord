@@ -12,7 +12,13 @@ import { useState } from 'react';
 import type { ObjectiveDto, ObjectiveState } from '../../../shared/contract.ts';
 import { useDeleteObjective, useUpdateObjective } from '../../lib/queries.ts';
 import { cn } from '../../lib/utils.ts';
-import { Badge, Button, EditableText, OBJECTIVE_STATE_LABEL, objectiveStateClasses } from '../ui.tsx';
+import {
+  Badge,
+  Button,
+  EditableText,
+  OBJECTIVE_STATE_LABEL,
+  objectiveStateClasses
+} from '../ui.tsx';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible.tsx';
 import {
   DropdownMenu,

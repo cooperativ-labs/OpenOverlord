@@ -261,9 +261,7 @@ export function useReorderFutureObjectives() {
         // lowest position it currently occupies, then re-sort by position.
         const orderIndex = new Map(vars.orderedObjectiveIds.map((id, index) => [id, index]));
         const basePosition = Math.min(
-          ...previous.objectives
-            .filter(o => orderIndex.has(o.id))
-            .map(o => o.position)
+          ...previous.objectives.filter(o => orderIndex.has(o.id)).map(o => o.position)
         );
         const next = {
           ...previous,

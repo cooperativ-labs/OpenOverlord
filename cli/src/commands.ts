@@ -1,3 +1,8 @@
+import {
+  listChangedFilesForReview,
+  listRationalesForReview,
+  readCurrentDiff
+} from '../../src/service/changes.js';
 import { getDevice, updateDevice } from '../../src/service/devices.js';
 import { ServiceError } from '../../src/service/errors.js';
 import {
@@ -34,11 +39,6 @@ import {
   updateSession,
   writeSharedContext
 } from '../../src/service/protocol.js';
-import {
-  listChangedFilesForReview,
-  listRationalesForReview,
-  readCurrentDiff
-} from '../../src/service/changes.js';
 import { listTickets } from '../../src/service/tickets.js';
 
 import {
@@ -51,11 +51,11 @@ import {
   requireFlag
 } from './args.js';
 import { CliError } from './errors.js';
+import { launchAgent } from './launch.js';
 import { promptWithMentions } from './mention-prompt.js';
 import { printJson, printKeyValue } from './output.js';
 import { listMentionableFiles } from './repository-files.js';
 import type { CliRuntime } from './runtime.js';
-import { launchAgent } from './launch.js';
 
 function handleServiceError(error: unknown): never {
   if (error instanceof ServiceError) {

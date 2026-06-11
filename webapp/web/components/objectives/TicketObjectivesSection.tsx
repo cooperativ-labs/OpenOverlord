@@ -98,9 +98,7 @@ export function TicketObjectivesSection({ ticket }: { ticket: TicketDetailDto })
     () =>
       objectives.filter(
         o =>
-          (o.state === 'executing' ||
-            o.state === 'pending_delivery' ||
-            o.state === 'complete') &&
+          (o.state === 'executing' || o.state === 'pending_delivery' || o.state === 'complete') &&
           o.instructionText.trim().length > 0
       ),
     [objectives]
@@ -140,9 +138,7 @@ export function TicketObjectivesSection({ ticket }: { ticket: TicketDetailDto })
 
   const orderedFutureObjectives = useMemo(() => {
     const byId = new Map(futureObjectivesFromServer.map(o => [o.id, o]));
-    return futureOrder
-      .map(id => byId.get(id))
-      .filter((o): o is ObjectiveDto => Boolean(o));
+    return futureOrder.map(id => byId.get(id)).filter((o): o is ObjectiveDto => Boolean(o));
   }, [futureObjectivesFromServer, futureOrder]);
 
   const sensors = useSensors(

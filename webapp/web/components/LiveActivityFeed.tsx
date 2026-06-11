@@ -37,9 +37,7 @@ const EVENT_META: Record<TicketEventType, { icon: LucideIcon; label: string }> =
 };
 
 function eventMeta(type: string): { icon: LucideIcon | null; label: string } {
-  return (
-    EVENT_META[type as TicketEventType] ?? { icon: null, label: type.replace(/_/g, ' ') }
-  );
+  return EVENT_META[type as TicketEventType] ?? { icon: null, label: type.replace(/_/g, ' ') };
 }
 
 function formatTimestamp(iso: string): string {

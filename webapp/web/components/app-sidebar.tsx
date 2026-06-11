@@ -2,9 +2,9 @@ import { Link, useLocation, useParams } from '@tanstack/react-router';
 import { Archive, Database, FolderKanban, LayoutGrid, Plus, Settings } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
-import { SettingsModal, type SettingsNavSection } from '@/components/settings/SettingsModal.tsx';
 import { NavUser } from '@/components/nav-user';
 import { ProjectCreatorModal } from '@/components/projects/ProjectCreatorModal';
+import { SettingsModal, type SettingsNavSection } from '@/components/settings/SettingsModal.tsx';
 import {
   Sidebar,
   SidebarContent,

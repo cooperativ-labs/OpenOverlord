@@ -237,7 +237,7 @@ function parseAvailableTools(json: string): string[] {
     const arr = JSON.parse(json);
     if (!Array.isArray(arr)) return [];
     return arr
-      .map(item => (typeof item === 'string' ? item : (item as { name?: string })?.name ?? ''))
+      .map(item => (typeof item === 'string' ? item : ((item as { name?: string })?.name ?? '')))
       .filter(Boolean);
   } catch {
     return [];
@@ -656,7 +656,7 @@ interface TicketEventRow {
 }
 
 /**
- * Returns a ticket's workflow history oldest-first for the live activity feed.
+ * Returns a ticket's workflow history newest-first for the live activity feed.
  * `ticket_events` is append-only, so there is no soft-delete filter; the
  * workspace scope guards against cross-workspace reads.
  */
@@ -668,7 +668,7 @@ export function listTicketEvents(ticketId: string, limit = 200): TicketEventDto[
       `SELECT id, ticket_id, objective_id, type, phase, summary, source, external_url, created_at
          FROM ticket_events
         WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id
-        ORDER BY created_at ASC, id ASC
+        ORDER BY created_at DESC, id DESC
         LIMIT @limit`
     )
     .all({ ticket_id: ticketId, workspace_id: WORKSPACE.id, limit }) as TicketEventRow[];
@@ -876,7 +876,8 @@ export const updateTicket = db.transaction(
       changed.push('acceptance_criteria_text');
     }
     if (body.availableTools !== undefined) {
-      if (!Array.isArray(body.availableTools)) throw new ApiError(400, 'availableTools must be an array');
+      if (!Array.isArray(body.availableTools))
+        throw new ApiError(400, 'availableTools must be an array');
       const toolsJson = JSON.stringify(body.availableTools.map(name => ({ name })));
       fields.push('available_tools_json = @available_tools_json');
       params.available_tools_json = toolsJson;

@@ -59,9 +59,7 @@ function normalizeCell(value: unknown): string | number | boolean | null {
 function normalizeRow(
   row: Record<string, unknown>
 ): Record<string, string | number | boolean | null> {
-  return Object.fromEntries(
-    Object.entries(row).map(([key, value]) => [key, normalizeCell(value)])
-  );
+  return Object.fromEntries(Object.entries(row).map(([key, value]) => [key, normalizeCell(value)]));
 }
 
 function toColumnDto(column: TableInfoRow): SqliteBrowserColumnDto {
@@ -97,7 +95,7 @@ function collectRows(
   const rows: Array<Record<string, string | number | boolean | null>> = [];
   let truncated = false;
   let seen = 0;
-  const iterate = statement.iterate as (...params: unknown[]) => Iterable<Record<string, unknown>>;
+  const iterate = statement.iterate.bind(statement) as () => Iterable<Record<string, unknown>>;
 
   for (const row of iterate()) {
     seen += 1;
@@ -148,9 +146,7 @@ export function getSqliteTableData({
   const safeLimit = parseLimit(limit);
   const safeOffset = parseOffset(offset);
   const tableRef = quoteIdentifier(tableName);
-  const statement = db.prepare(
-    `SELECT * FROM ${tableRef} LIMIT ${safeLimit} OFFSET ${safeOffset}`
-  );
+  const statement = db.prepare(`SELECT * FROM ${tableRef} LIMIT ${safeLimit} OFFSET ${safeOffset}`);
   const { columns, rows } = collectRows(statement, safeLimit);
 
   return {

@@ -1,17 +1,12 @@
 import Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { CONTRACT_VERSION } from './constants.js';
 
-const MIGRATIONS = [
-  '001_initial_core.sql',
-  '002_rbac.sql',
-  '003_better_auth.sql',
-  '004_storage.sql'
-] as const;
+const MIGRATION_FILE_PATTERN = /^\d+_[a-z0-9_]+\.sql$/;
 
 export type OverlordDatabase = Database.Database;
 
@@ -42,6 +37,14 @@ function loadMigrationSql(fileName: string): { version: string; sql: string; che
   const filePath = path.join(repoRoot, 'database', 'sqlite', 'migrations', fileName);
   const sql = readFileSync(filePath, 'utf8');
   return { version, sql, checksum: checksum(sql) };
+}
+
+export function listSqliteMigrationFiles(): string[] {
+  const repoRoot = resolveRepoRoot();
+  const migrationDir = path.join(repoRoot, 'database', 'sqlite', 'migrations');
+  return readdirSync(migrationDir)
+    .filter(fileName => MIGRATION_FILE_PATTERN.test(fileName))
+    .sort((left, right) => left.localeCompare(right));
 }
 
 function applyMigration(
@@ -83,7 +86,7 @@ export function openDatabase({ databasePath }: { databasePath: string }): Overlo
 }
 
 export function migrateDatabase(db: OverlordDatabase): void {
-  for (const fileName of MIGRATIONS) {
+  for (const fileName of listSqliteMigrationFiles()) {
     const migration = loadMigrationSql(fileName);
     if (migration.version === '001') {
       const hasSchema = db

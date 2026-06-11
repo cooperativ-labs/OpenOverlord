@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { BUNDLED_AGENT_CATALOG } from '../src/agent-catalog-defaults.ts';
 import { parseAgentCatalogFromToml, resolveInstanceAgentCatalog } from '../src/agent-catalog.ts';
+import { BUNDLED_AGENT_CATALOG } from '../src/agent-catalog-defaults.ts';
 import { loadConfig } from '../src/config.ts';
 
 test('loadConfig parses scalar keys from overlord.toml', () => {

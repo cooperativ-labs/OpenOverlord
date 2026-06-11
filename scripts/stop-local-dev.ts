@@ -92,15 +92,7 @@ function extractPidsForPort({ output, port }: { output: string; port: number }):
   return [...pids];
 }
 
-function killPids({
-  pids,
-  port,
-  via
-}: {
-  pids: number[];
-  port: number;
-  via: string;
-}): void {
+function killPids({ pids, port, via }: { pids: number[]; port: number; via: string }): void {
   for (const pid of pids) {
     try {
       if (via === 'local') {
@@ -160,8 +152,7 @@ function shellQuote(value: string): string {
 }
 
 const isDirectRun =
-  process.argv[1] &&
-  path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1]);
+  process.argv[1] && path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1]);
 
 if (isDirectRun) {
   stopLocalDev();

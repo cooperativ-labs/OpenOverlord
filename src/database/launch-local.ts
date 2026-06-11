@@ -1,16 +1,11 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const CONTRACT_VERSION = '0.2-draft';
 const DEFAULT_DATABASE_PATH = '.overlord/Overlord.sqlite';
-const MIGRATIONS = [
-  '001_initial_core.sql',
-  '002_rbac.sql',
-  '003_better_auth.sql',
-  '004_storage.sql'
-] as const;
+const MIGRATION_FILE_PATTERN = /^\d+_[a-z0-9_]+\.sql$/;
 
 type BetterSqlite3Constructor = typeof import('better-sqlite3');
 type DatabaseInstance = import('better-sqlite3').Database;
@@ -48,6 +43,13 @@ function loadMigration(fileName: string): Migration {
     sql,
     checksum: checksum(sql)
   };
+}
+
+function listMigrationFiles(): string[] {
+  const migrationDir = path.join(repoRoot, 'database', 'sqlite', 'migrations');
+  return readdirSync(migrationDir)
+    .filter(fileName => MIGRATION_FILE_PATTERN.test(fileName))
+    .sort((left, right) => left.localeCompare(right));
 }
 
 function applyMigration(db: DatabaseInstance, migration: Migration): 'applied' | 'skipped' {
@@ -140,7 +142,7 @@ async function main(): Promise<void> {
   db.pragma('busy_timeout = 5000');
   db.pragma('journal_mode = WAL');
 
-  const migrations = MIGRATIONS.map(loadMigration);
+  const migrations = listMigrationFiles().map(loadMigration);
   const results: string[] = [];
 
   try {

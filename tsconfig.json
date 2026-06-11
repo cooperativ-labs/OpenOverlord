@@ -7,7 +7,10 @@
     "exactOptionalPropertyTypes": true,
     "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "types": ["node"]
   },
-  "include": ["src", "test", "database/test"]
+  "include": ["src", "test", "database/test", "scripts"]
 }

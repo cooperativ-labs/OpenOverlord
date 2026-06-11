@@ -67,10 +67,19 @@ yarn start:local
 ```
 
 This creates `.overlord/Overlord.sqlite`, enables SQLite foreign keys, WAL mode,
-and a short busy timeout for the launch connection, applies the core SQLite
-migrations in order, and records each applied migration in `schema_migrations`
-with a SHA-256 checksum. Set `OVERLORD_SQLITE_PATH=/path/to/Overlord.sqlite` to
-launch a database file outside the default location.
+and a short busy timeout for the launch connection, discovers
+`database/sqlite/migrations/*.sql`, applies any unapplied core SQLite migrations
+in lexical version order, and records each applied migration in
+`schema_migrations` with a SHA-256 checksum. Set
+`OVERLORD_SQLITE_PATH=/path/to/Overlord.sqlite` to launch a database file
+outside the default location.
+
+Do not edit a migration after it has been applied to a database you care about.
+Create a new forward-only migration such as `005_add_ticket_labels.sql`; the
+next `yarn start:local`, `ovld init`, or DB-backed `ovld` command will apply it
+without wiping existing rows. If the checksum of an already-applied migration
+changes, startup fails so the mismatch can be fixed instead of silently
+rewriting history.
 
 If `yarn start:local` fails with `ERR_DLOPEN_FAILED`
 or `invalid ELF header` while loading `better-sqlite3`, the repo is using a
@@ -88,10 +97,12 @@ Manual SQL application remains useful for adapter experiments:
 sqlite3 .overlord/Overlord.sqlite < database/sqlite/migrations/001_initial_core.sql
 sqlite3 .overlord/Overlord.sqlite < database/sqlite/migrations/002_rbac.sql
 sqlite3 .overlord/Overlord.sqlite < database/sqlite/migrations/003_better_auth.sql
+sqlite3 .overlord/Overlord.sqlite < database/sqlite/migrations/004_storage.sql
 
 psql "$DATABASE_URL" -f database/postgres/migrations/001_initial_core.sql
 psql "$DATABASE_URL" -f database/postgres/migrations/002_rbac.sql
 psql "$DATABASE_URL" -f database/postgres/migrations/003_better_auth.sql
+psql "$DATABASE_URL" -f database/postgres/migrations/004_storage.sql
 ```
 
 Each migration enables SQLite foreign-key checks for the connection. The local

@@ -5,7 +5,10 @@ import { DangerZonePage } from '@/components/projects/project-settings/DangerZon
 import { GeneralPage } from '@/components/projects/project-settings/GeneralPage.tsx';
 import { ResourcesPage } from '@/components/projects/project-settings/ResourcesPage.tsx';
 import { WorkflowPage } from '@/components/projects/project-settings/WorkflowPage.tsx';
-import { SettingsDialogShell, type SettingsNavItem } from '@/components/settings/SettingsDialogShell.tsx';
+import {
+  SettingsDialogShell,
+  type SettingsNavItem
+} from '@/components/settings/SettingsDialogShell.tsx';
 
 import type { ProjectDto, ProjectStatusDto } from '../../../shared/contract.ts';
 
