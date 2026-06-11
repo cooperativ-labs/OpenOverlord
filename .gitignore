@@ -14,3 +14,5 @@ dist/
 **/dist/
 *.tgz
 .yarn
+webapp/.yarn/install-state.gz
+.yarn/install-state.gz
