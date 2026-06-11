@@ -8,6 +8,9 @@ import type {
   ProjectResourceDto,
   ProjectStatusDto,
   ReorderBoardColumnBody,
+  SqliteBrowserQueryResultDto,
+  SqliteBrowserTableDataDto,
+  SqliteBrowserTablesDto,
   TicketDetailDto,
   TicketDto,
   UpdateObjectiveBody,
@@ -18,6 +21,7 @@ import type {
 export interface Meta {
   workspace: { id: string; slug: string; name: string };
   databasePath: string;
+  web: { host: string; port: number; url: string };
   capabilities: Record<string, boolean>;
 }
 
@@ -78,5 +82,14 @@ export const api = {
     request<ObjectiveDto>('POST', '/api/objectives', body),
   updateObjective: (id: string, body: UpdateObjectiveBody) =>
     request<ObjectiveDto>('PATCH', `/api/objectives/${id}`, body),
-  deleteObjective: (id: string) => request<{ ok: true }>('DELETE', `/api/objectives/${id}`)
+  deleteObjective: (id: string) => request<{ ok: true }>('DELETE', `/api/objectives/${id}`),
+
+  listSqliteTables: () => request<SqliteBrowserTablesDto>('GET', '/api/sqlite-browser/tables'),
+  getSqliteTableData: (tableName: string, limit = 100, offset = 0) =>
+    request<SqliteBrowserTableDataDto>(
+      'GET',
+      `/api/sqlite-browser/tables/${encodeURIComponent(tableName)}?limit=${limit}&offset=${offset}`
+    ),
+  runSqliteQuery: (sql: string) =>
+    request<SqliteBrowserQueryResultDto>('POST', '/api/sqlite-browser/query', { sql })
 };

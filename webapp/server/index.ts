@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { loadConfig, resolveProjectRoot } from '../../cli/src/config.ts';
 import { DATABASE_PATH, WORKSPACE } from './db.ts';
 import { realtime } from './realtime.ts';
 import {
@@ -27,13 +28,18 @@ import {
   updateProject,
   updateTicket
 } from './repository.ts';
+import { getSqliteTableData, listSqliteTables, runSqliteQuery } from './sqlite-browser.ts';
 
-const PORT = Number(process.env.OVERLORD_WEB_PORT ?? 8787);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..', '..');
 const distDir = path.resolve(here, '..', 'dist');
 
 loadEnv({ path: path.join(repoRoot, '.env') });
+
+const config = loadConfig();
+const bindHost = process.env.OVERLORD_WEB_HOST ?? config.webHost;
+const bindPort = Number(process.env.OVERLORD_WEB_PORT ?? config.webPort);
+const projectRoot = resolveProjectRoot(repoRoot);
 
 const app = express();
 app.use(cors());
@@ -62,6 +68,11 @@ app.get(
   handle(() => ({
     workspace: WORKSPACE,
     databasePath: DATABASE_PATH,
+    web: {
+      host: bindHost,
+      port: bindPort,
+      url: `http://${bindHost === '0.0.0.0' ? '127.0.0.1' : bindHost}:${bindPort}`
+    },
     // Capabilities scoped to what this build supports. Execution-target config
     // and click-to-launch are deliberately CLI-only for now.
     capabilities: {
@@ -69,6 +80,7 @@ app.get(
       tickets: true,
       objectives: true,
       realtime: true,
+      sqliteBrowser: true,
       launchAgents: false,
       executionTargets: false
     }
@@ -165,6 +177,33 @@ app.delete(
   handle(req => deleteObjective(req.params.id), { mutates: true })
 );
 
+// ---- SQLite browser ------------------------------------------------------
+
+app.get(
+  '/api/sqlite-browser/tables',
+  handle(() => ({
+    databasePath: DATABASE_PATH,
+    workspaceRoot: projectRoot,
+    tables: listSqliteTables()
+  }))
+);
+
+app.get(
+  '/api/sqlite-browser/tables/:tableName',
+  handle(req =>
+    getSqliteTableData({
+      tableName: req.params.tableName,
+      limit: req.query.limit,
+      offset: req.query.offset
+    })
+  )
+);
+
+app.post(
+  '/api/sqlite-browser/query',
+  handle(req => runSqliteQuery(String(req.body?.sql ?? '')))
+);
+
 // ---- Static SPA (production: `yarn build` then `yarn start`) ------------
 
 if (existsSync(distDir)) {
@@ -190,8 +229,10 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
 realtime.start();
 
-app.listen(PORT, () => {
-  console.log(`[webapp] Overlord web server listening on http://localhost:${PORT}`);
+app.listen(bindPort, bindHost, () => {
+  console.log(
+    `[webapp] Overlord web server listening on http://${bindHost === '0.0.0.0' ? '127.0.0.1' : bindHost}:${bindPort}`
+  );
   console.log(`[webapp] workspace: ${WORKSPACE.name} (${WORKSPACE.slug})`);
   console.log(`[webapp] database: ${DATABASE_PATH}`);
 });

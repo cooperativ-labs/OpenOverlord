@@ -1,5 +1,5 @@
-import { Link, useParams } from '@tanstack/react-router';
-import { Archive, FolderKanban, LayoutGrid, Plus, Settings } from 'lucide-react';
+import { Link, useLocation, useParams } from '@tanstack/react-router';
+import { Archive, Database, FolderKanban, LayoutGrid, Plus, Settings } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 import { SettingsModal, type SettingsNavSection } from '@/components/settings/SettingsModal.tsx';
@@ -77,6 +77,7 @@ function ProjectMenuItem({ project, isActive }: ProjectMenuItemProps) {
 export function AppSidebar() {
   const meta = useMeta();
   const projects = useProjects();
+  const location = useLocation();
   const params = useParams({ strict: false }) as { projectId?: string };
   const [projectCreatorOpen, setProjectCreatorOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -96,6 +97,7 @@ export function AppSidebar() {
   }, [projects.data]);
 
   const isProjectsActive = !params.projectId;
+  const isDatabaseActive = location.pathname.startsWith('/database');
 
   return (
     <>
@@ -108,6 +110,12 @@ export function AppSidebar() {
             <SidebarGroupLabel>Workspace</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton render={<Link to="/database" />} isActive={isDatabaseActive}>
+                    <Database />
+                    <span>SQLite Browser</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     render={<Link to="/projects" />}

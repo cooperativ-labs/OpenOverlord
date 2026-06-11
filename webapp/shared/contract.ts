@@ -110,6 +110,46 @@ export interface ProjectRepositoryDto {
   message: string | null;
 }
 
+export interface SqliteBrowserColumnDto {
+  name: string;
+  type: string;
+  notNull: boolean;
+  defaultValue: string | null;
+  primaryKeyPosition: number;
+}
+
+export interface SqliteBrowserTableDto {
+  name: string;
+  type: 'table' | 'view';
+  columns: SqliteBrowserColumnDto[];
+  rowCount: number | null;
+  sql: string | null;
+}
+
+export interface SqliteBrowserTablesDto {
+  databasePath: string;
+  workspaceRoot: string;
+  tables: SqliteBrowserTableDto[];
+}
+
+export interface SqliteBrowserTableDataDto {
+  table: SqliteBrowserTableDto;
+  columns: string[];
+  rows: Array<Record<string, string | number | boolean | null>>;
+  limit: number;
+  offset: number;
+  totalRows: number | null;
+}
+
+export interface SqliteBrowserQueryResultDto {
+  sql: string;
+  columns: string[];
+  rows: Array<Record<string, string | number | boolean | null>>;
+  rowCount: number;
+  truncated: boolean;
+  durationMs: number;
+}
+
 export interface TicketDto {
   id: string;
   workspaceId: string;
