@@ -1,3 +1,4 @@
+import { manageObjectiveLifecycleTool } from './objective-manager/index.js';
 import { summarizeObjectiveTitleTool, summarizeTextTool } from './title-summarizer/index.js';
 import type { Automation, AutomationRunContext } from './types.js';
 
@@ -24,6 +25,7 @@ function asRegisteredAutomation<TInput, TOutput>(
 }
 
 const builtInAutomations: RegisteredAutomation[] = [
+  asRegisteredAutomation(manageObjectiveLifecycleTool),
   asRegisteredAutomation(summarizeTextTool),
   asRegisteredAutomation(summarizeObjectiveTitleTool)
 ];

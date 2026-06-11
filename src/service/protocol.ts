@@ -249,6 +249,46 @@ export function attachSession({
       )
       .run(now, objective.id, context.ticket.id);
 
+    const existingDraft = ctx.db
+      .prepare(
+        `SELECT id FROM objectives
+         WHERE ticket_id = ? AND state = 'draft' AND deleted_at IS NULL
+         LIMIT 1`
+      )
+      .get(context.ticket.id) as { id: string } | undefined;
+
+    if (!existingDraft) {
+      const nextFuture = ctx.db
+        .prepare(
+          `SELECT id, revision FROM objectives
+           WHERE ticket_id = ? AND state = 'future' AND deleted_at IS NULL
+           ORDER BY position ASC, created_at ASC LIMIT 1`
+        )
+        .get(context.ticket.id) as { id: string; revision: number } | undefined;
+
+      if (nextFuture) {
+        const nextRevision = nextFuture.revision + 1;
+        ctx.db
+          .prepare(
+            `UPDATE objectives SET state = 'draft', updated_at = ?, revision = ?
+             WHERE id = ? AND ticket_id = ?`
+          )
+          .run(now, nextRevision, nextFuture.id, context.ticket.id);
+
+        recordChange({
+          ctx,
+          entityType: 'objective',
+          entityId: nextFuture.id,
+          operation: 'update',
+          entityRevision: nextRevision,
+          projectId: context.ticket.projectId,
+          ticketId: context.ticket.id,
+          objectiveId: nextFuture.id,
+          changedFields: ['state']
+        });
+      }
+    }
+
     moveTicketToExecute({ ctx, ticketId: context.ticket.id });
 
     ctx.db

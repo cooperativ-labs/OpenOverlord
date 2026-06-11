@@ -1116,8 +1116,17 @@ function insertObjective(body: CreateObjectiveBody): ObjectiveDto {
     .get(body.ticketId, WORKSPACE.id) as { id: string; project_id: string } | undefined;
   if (!ticket) throw new ApiError(404, 'Ticket not found');
 
-  const state = body.state ?? 'draft';
-  if (!VALID_STATES.includes(state)) throw new ApiError(400, 'Invalid objective state');
+  const requestedState = body.state ?? 'draft';
+  if (!VALID_STATES.includes(requestedState)) throw new ApiError(400, 'Invalid objective state');
+
+  const draftRow = db
+    .prepare(
+      `SELECT id FROM objectives
+       WHERE ticket_id = ? AND workspace_id = ? AND state = 'draft' AND deleted_at IS NULL
+       LIMIT 1`
+    )
+    .get(body.ticketId, WORKSPACE.id) as { id: string } | undefined;
+  const state = requestedState === 'draft' && draftRow ? 'future' : requestedState;
 
   const maxRow = db
     .prepare(
@@ -1252,6 +1261,40 @@ const updateObjectiveTx = db.transaction(
 
     const now = nowIso();
     const revision = existing.revision + 1;
+    if (body.state === 'draft') {
+      const otherDrafts = db
+        .prepare(
+          `SELECT id, revision FROM objectives
+           WHERE ticket_id = ? AND workspace_id = ? AND state = 'draft'
+             AND id <> ? AND deleted_at IS NULL`
+        )
+        .all(existing.ticket_id, WORKSPACE.id, id) as Array<{ id: string; revision: number }>;
+
+      for (const draft of otherDrafts) {
+        const draftRevision = draft.revision + 1;
+        db.prepare(
+          `UPDATE objectives SET state = 'future', updated_at = @now, revision = @revision
+           WHERE id = @id AND workspace_id = @workspace_id`
+        ).run({
+          id: draft.id,
+          workspace_id: WORKSPACE.id,
+          now,
+          revision: draftRevision
+        });
+
+        recordChange({
+          entityType: 'objective',
+          entityId: draft.id,
+          operation: 'update',
+          entityRevision: draftRevision,
+          projectId: existing.project_id,
+          ticketId: existing.ticket_id,
+          objectiveId: draft.id,
+          changedFields: ['state']
+        });
+      }
+    }
+
     db.prepare(
       `UPDATE objectives SET ${fields.join(', ')}, updated_at = @now, revision = @revision
          WHERE id = @id AND workspace_id = @workspace_id`

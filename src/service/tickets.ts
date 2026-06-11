@@ -206,7 +206,7 @@ export function insertObjective({
   ticketId,
   instructionText,
   title,
-  state = 'draft',
+  state,
   autoAdvance = false
 }: {
   ctx: ServiceContext;
@@ -220,11 +220,22 @@ export function insertObjective({
   if (!instruction) {
     throw new ServiceError('Objective instruction is required', 'validation_error');
   }
-  if (!OBJECTIVE_STATES.includes(state as (typeof OBJECTIVE_STATES)[number])) {
-    throw new ServiceError(`Invalid objective state: ${state}`, 'validation_error');
-  }
 
   const ticket = resolveTicketId(ctx, ticketId);
+  const requestedState = state ?? 'draft';
+  if (!OBJECTIVE_STATES.includes(requestedState as (typeof OBJECTIVE_STATES)[number])) {
+    throw new ServiceError(`Invalid objective state: ${requestedState}`, 'validation_error');
+  }
+
+  const draftRow = ctx.db
+    .prepare(
+      `SELECT id FROM objectives
+       WHERE ticket_id = ? AND state = 'draft' AND deleted_at IS NULL
+       LIMIT 1`
+    )
+    .get(ticket.id) as { id: string } | undefined;
+  const resolvedState = requestedState === 'draft' && draftRow ? 'future' : requestedState;
+
   const maxRow = ctx.db
     .prepare(
       `SELECT MAX(position) AS max_pos FROM objectives WHERE ticket_id = ? AND deleted_at IS NULL`
@@ -250,7 +261,7 @@ export function insertObjective({
       position,
       title?.trim() || initialTitleFromInstruction(instruction),
       instruction,
-      state,
+      resolvedState,
       autoAdvance ? 1 : 0,
       ctx.actorWorkspaceUserId,
       now,
@@ -275,7 +286,7 @@ export function insertObjective({
     position,
     title: title?.trim() || initialTitleFromInstruction(instruction),
     instruction_text: instruction,
-    state,
+    state: resolvedState,
     auto_advance: autoAdvance ? 1 : 0
   });
 }
@@ -359,7 +370,8 @@ export function createTicketWithObjectives({
           'validation_error'
         );
       }
-      const objectiveState = statusType === 'review' ? 'complete' : 'draft';
+      const objectiveState =
+        statusType === 'review' ? 'complete' : index === 0 ? 'draft' : 'future';
       createdObjectives.push(
         insertObjective({
           ctx,

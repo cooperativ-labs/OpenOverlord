@@ -6,8 +6,13 @@ import { getAutomation, listAutomations, registerAutomation } from './registry.j
 describe('automations registry', () => {
   it('includes built-in summarization tools', () => {
     const automationIds = listAutomations().map(automation => automation.id);
-    assert.deepEqual(automationIds, ['summarize-text', 'summarize-objective-title']);
+    assert.deepEqual(automationIds, [
+      'manage-objective-lifecycle',
+      'summarize-text',
+      'summarize-objective-title'
+    ]);
     assert.equal(getAutomation('summarize-text')?.label, 'Summarize text');
+    assert.equal(getAutomation('manage-objective-lifecycle')?.label, 'Manage objective lifecycle');
   });
 
   it('rejects duplicate automation registration', () => {

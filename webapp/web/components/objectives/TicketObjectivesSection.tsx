@@ -18,6 +18,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
+import { deriveObjectiveLifecycleView } from '../../../../src/automations/objective-manager/index.ts';
 import type {
   ExecutionRequestDto,
   ObjectiveDto,
@@ -28,8 +29,6 @@ import { cn } from '../../lib/utils.ts';
 
 import { DraftObjective } from './DraftObjective.tsx';
 import { ObjectiveCollapsibleItem } from './ObjectiveCollapsibleItem.tsx';
-
-const EDITABLE_STATES = new Set(['draft', 'submitted', 'launching']);
 
 /**
  * A future objective wrapped for drag-and-drop reordering. Mirrors the kanban
@@ -90,29 +89,14 @@ function SortableFutureObjective({
 export function TicketObjectivesSection({ ticket }: { ticket: TicketDetailDto }) {
   const reorder = useReorderFutureObjectives();
 
-  // `objectives` arrives position-ordered from the server, so a stable filter
-  // preserves that order for the non-future groups.
-  const objectives = ticket.objectives;
-
-  const executedObjectives = useMemo(
-    () =>
-      objectives.filter(
-        o =>
-          (o.state === 'executing' || o.state === 'pending_delivery' || o.state === 'complete') &&
-          o.instructionText.trim().length > 0
-      ),
-    [objectives]
+  const lifecycleView = useMemo(
+    () => deriveObjectiveLifecycleView(ticket.objectives),
+    [ticket.objectives]
   );
-
-  const editableObjectives = useMemo(
-    () => objectives.filter(o => EDITABLE_STATES.has(o.state)),
-    [objectives]
-  );
-
-  const futureObjectivesFromServer = useMemo(
-    () => objectives.filter(o => o.state === 'future'),
-    [objectives]
-  );
+  const objectives = lifecycleView.orderedObjectives;
+  const executedObjectives = lifecycleView.executedObjectives;
+  const editableObjectives = lifecycleView.editableObjectives;
+  const futureObjectivesFromServer = lifecycleView.futureObjectives;
 
   // Locally-mirrored order for optimistic drag-and-drop. We resync from the
   // server whenever the *set* of future objective ids changes; updates that only
@@ -163,7 +147,7 @@ export function TicketObjectivesSection({ ticket }: { ticket: TicketDetailDto })
     );
   }
 
-  const hasNonExecuted = editableObjectives.length > 0 || orderedFutureObjectives.length > 0;
+  const hasNonExecuted = lifecycleView.hasNonExecuted;
 
   return (
     <div className="space-y-3">
