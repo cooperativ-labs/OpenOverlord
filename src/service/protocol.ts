@@ -4,6 +4,7 @@ import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import { resolveProjectId, resolveTicketId } from './context.js';
 import { ServiceError } from './errors.js';
+import { createExecutionRequest } from './execution-requests.js';
 import { discoverProject } from './projects.js';
 import {
   addObjectivesToTicket,
@@ -796,6 +797,82 @@ export function deliverSession({
   });
 
   tx();
+
+  const nextObjective = ctx.db
+    .prepare(
+      `SELECT id, title, auto_advance FROM objectives
+       WHERE ticket_id = ? AND position > (
+         SELECT position FROM objectives WHERE id = ?
+       ) AND state = 'draft'
+       ORDER BY position ASC LIMIT 1`
+    )
+    .get(ticket.id, session.objective_id) as
+    | { id: string; title: string; auto_advance: number }
+    | undefined;
+
+  if (nextObjective) {
+    const eventId = newId();
+    const eventNow = nowIso();
+    if (nextObjective.auto_advance === 1) {
+      ctx.db
+        .prepare(
+          `UPDATE objectives SET state = 'submitted', updated_at = ?, revision = revision + 1
+           WHERE id = ?`
+        )
+        .run(eventNow, nextObjective.id);
+      try {
+        createExecutionRequest({
+          ctx,
+          ticketId: ticket.id,
+          objectiveId: nextObjective.id,
+          requestedSource: 'auto_advance',
+          idempotencyKey: `auto_advance:${nextObjective.id}`
+        });
+      } catch (error) {
+        ctx.db
+          .prepare(
+            `INSERT INTO ticket_events
+               (id, workspace_id, project_id, ticket_id, objective_id,
+                type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
+             VALUES (?, ?, ?, ?, ?, 'alert', 'review', ?, ?, ?, ?, ?)`
+          )
+          .run(
+            eventId,
+            ctx.workspace.id,
+            ticket.projectId,
+            ticket.id,
+            nextObjective.id,
+            `Auto-advance could not queue the next objective: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+            JSON.stringify({ autoAdvanceFailed: true }),
+            ctx.source,
+            ctx.actorWorkspaceUserId,
+            eventNow
+          );
+      }
+    } else {
+      ctx.db
+        .prepare(
+          `INSERT INTO ticket_events
+             (id, workspace_id, project_id, ticket_id, objective_id,
+              type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, 'awaiting_approval', 'review', ?, '{}', ?, ?, ?)`
+        )
+        .run(
+          eventId,
+          ctx.workspace.id,
+          ticket.projectId,
+          ticket.id,
+          nextObjective.id,
+          `Next objective is waiting for approval: ${nextObjective.title}`,
+          ctx.source,
+          ctx.actorWorkspaceUserId,
+          eventNow
+        );
+    }
+  }
+
   return { deliveryId, eventId };
 }
 

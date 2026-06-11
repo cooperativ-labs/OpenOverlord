@@ -18,10 +18,21 @@ grants = [
   "event:create",
   "event:read",
   "artifact:*",
+  "workspace_image:read",
+  "user_image:read",
+  "user_image:self:*",
+  "attachment:*",
   "user_token:self:*",
   "execution_request:create",
   "execution_request:read",
   "execution_request:claim",
+]
+
+[roles.PUBLIC]
+description = "Unauthenticated public read access"
+grants = [
+  "workspace_image:read",
+  "user_image:read",
 ]
 
 # Permission groups are named sets of grants that can be referenced in custom
@@ -46,4 +57,22 @@ grants = [
   "ticket:read",
   "ticket:update",
   "ticket:delete",
+]
+
+[permission_groups.workspace_image_crud]
+description = "Workspace image management"
+grants = [
+  "workspace_image:create",
+  "workspace_image:read",
+  "workspace_image:update",
+  "workspace_image:delete",
+]
+
+[permission_groups.attachment_crud]
+description = "Workspace attachment management"
+grants = [
+  "attachment:create",
+  "attachment:read",
+  "attachment:update",
+  "attachment:delete",
 ]

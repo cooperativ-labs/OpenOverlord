@@ -34,6 +34,23 @@ export const PERMISSIONS = {
   ARTIFACT_CREATE: 'artifact:create',
   ARTIFACT_DELETE: 'artifact:delete',
 
+  // Storage: public workspace images, self-managed user images, and member attachments
+  WORKSPACE_IMAGE_READ: 'workspace_image:read',
+  WORKSPACE_IMAGE_CREATE: 'workspace_image:create',
+  WORKSPACE_IMAGE_UPDATE: 'workspace_image:update',
+  WORKSPACE_IMAGE_DELETE: 'workspace_image:delete',
+  USER_IMAGE_READ: 'user_image:read',
+  USER_IMAGE_CREATE: 'user_image:create',
+  USER_IMAGE_UPDATE: 'user_image:update',
+  USER_IMAGE_DELETE: 'user_image:delete',
+  USER_IMAGE_SELF_CREATE: 'user_image:self:create',
+  USER_IMAGE_SELF_UPDATE: 'user_image:self:update',
+  USER_IMAGE_SELF_DELETE: 'user_image:self:delete',
+  ATTACHMENT_READ: 'attachment:read',
+  ATTACHMENT_CREATE: 'attachment:create',
+  ATTACHMENT_UPDATE: 'attachment:update',
+  ATTACHMENT_DELETE: 'attachment:delete',
+
   // Execution requests
   EXECUTION_REQUEST_CREATE: 'execution_request:create',
   EXECUTION_REQUEST_READ: 'execution_request:read',

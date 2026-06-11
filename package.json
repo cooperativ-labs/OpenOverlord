@@ -13,6 +13,7 @@
     "build": "tsc --project tsconfig.build.json && yarn build:cli",
     "build:cli": "node cli/scripts/stage-migrations.mjs && tsc --project cli/tsconfig.build.json",
     "pack:cli": "yarn build:cli && sh -c 'cd cli && npm pack'",
+    "stop:local": "node --experimental-strip-types scripts/stop-local-dev.ts",
     "clean:local": "node --experimental-strip-types scripts/clean-local-state.ts",
     "start:local": "node --experimental-strip-types src/database/launch-local.ts",
     "generate": "yarn start:local && kysely-codegen --dialect sqlite --url .overlord/Overlord.sqlite --out-file src/types/db.ts",

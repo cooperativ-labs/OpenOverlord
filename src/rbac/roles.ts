@@ -20,10 +20,18 @@ export const DEFAULT_ROLE_DEFINITIONS: Readonly<Record<Role, RoleDefinition>> = 
       'event:create',
       'event:read',
       'artifact:*',
+      'workspace_image:read',
+      'user_image:read',
+      'user_image:self:*',
+      'attachment:*',
       'user_token:self:*',
       'execution_request:create',
       'execution_request:read',
       'execution_request:claim'
     ]
+  },
+  [Role.PUBLIC]: {
+    description: 'Unauthenticated public read access',
+    grants: ['workspace_image:read', 'user_image:read']
   }
 };

@@ -9,9 +9,11 @@ import type {
   ProjectResourceDto,
   ProjectStatusDto,
   ReorderBoardColumnBody,
+  ReorderFutureObjectivesBody,
   StatusType,
   TicketDetailDto,
   TicketDto,
+  TicketEventDto,
   UpdateObjectiveBody,
   UpdateProjectBody,
   UpdateTicketBody
@@ -156,6 +158,8 @@ interface TicketRow {
   status_type: string;
   board_position: number;
   priority: string | null;
+  acceptance_criteria_text: string | null;
+  available_tools_json: string;
   created_at: string;
   updated_at: string;
   revision: number;
@@ -228,6 +232,18 @@ function toProjectResourceDto(r: ProjectResourceRow): ProjectResourceDto {
   };
 }
 
+function parseAvailableTools(json: string): string[] {
+  try {
+    const arr = JSON.parse(json);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .map(item => (typeof item === 'string' ? item : (item as { name?: string })?.name ?? ''))
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 function toTicketDto(r: TicketRow): TicketDto {
   return {
     id: r.id,
@@ -240,6 +256,8 @@ function toTicketDto(r: TicketRow): TicketDto {
     statusType: r.status_type as StatusType,
     boardPosition: r.board_position,
     priority: r.priority as TicketDto['priority'],
+    acceptanceCriteria: r.acceptance_criteria_text,
+    availableTools: parseAvailableTools(r.available_tools_json),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     revision: r.revision,
@@ -571,10 +589,12 @@ export const updateProject = db.transaction((id: string, body: UpdateProjectBody
 // ---- Tickets -------------------------------------------------------------
 
 const selectTicketsSql = `
-  SELECT t.*, (
-    SELECT COUNT(*) FROM objectives o
-      WHERE o.ticket_id = t.id AND o.deleted_at IS NULL
-  ) AS objective_count
+  SELECT t.id, t.workspace_id, t.project_id, t.display_id, t.sequence_number, t.title,
+         t.status_id, t.status_type, t.board_position, t.priority,
+         t.acceptance_criteria_text, t.available_tools_json,
+         t.created_at, t.updated_at, t.revision,
+         (SELECT COUNT(*) FROM objectives o
+            WHERE o.ticket_id = t.id AND o.deleted_at IS NULL) AS objective_count
   FROM tickets t
   WHERE t.workspace_id = @workspace_id AND t.deleted_at IS NULL
 `;
@@ -621,6 +641,48 @@ export function getTicketDetail(id: string): TicketDetailDto {
   const statuses = listProjectStatuses(ticket.projectId);
   const executionRequests = listTicketExecutionRequests(id);
   return { ...ticket, objectives, statuses, executionRequests };
+}
+
+interface TicketEventRow {
+  id: string;
+  ticket_id: string;
+  objective_id: string | null;
+  type: string;
+  phase: string | null;
+  summary: string;
+  source: string;
+  external_url: string | null;
+  created_at: string;
+}
+
+/**
+ * Returns a ticket's workflow history oldest-first for the live activity feed.
+ * `ticket_events` is append-only, so there is no soft-delete filter; the
+ * workspace scope guards against cross-workspace reads.
+ */
+export function listTicketEvents(ticketId: string, limit = 200): TicketEventDto[] {
+  // Validate the ticket exists and belongs to the active workspace (throws 404).
+  getTicketRow(ticketId);
+  const rows = db
+    .prepare(
+      `SELECT id, ticket_id, objective_id, type, phase, summary, source, external_url, created_at
+         FROM ticket_events
+        WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id
+        ORDER BY created_at ASC, id ASC
+        LIMIT @limit`
+    )
+    .all({ ticket_id: ticketId, workspace_id: WORKSPACE.id, limit }) as TicketEventRow[];
+  return rows.map(row => ({
+    id: row.id,
+    ticketId: row.ticket_id,
+    objectiveId: row.objective_id,
+    type: row.type,
+    phase: row.phase,
+    summary: row.summary,
+    source: row.source,
+    externalUrl: row.external_url,
+    createdAt: row.created_at
+  }));
 }
 
 function nextTicketSequence(): number {
@@ -808,6 +870,18 @@ export const updateTicket = db.transaction(
         changed.push('board_position');
       }
     }
+    if (body.acceptanceCriteria !== undefined) {
+      fields.push('acceptance_criteria_text = @acceptance_criteria_text');
+      params.acceptance_criteria_text = body.acceptanceCriteria?.trim() || null;
+      changed.push('acceptance_criteria_text');
+    }
+    if (body.availableTools !== undefined) {
+      if (!Array.isArray(body.availableTools)) throw new ApiError(400, 'availableTools must be an array');
+      const toolsJson = JSON.stringify(body.availableTools.map(name => ({ name })));
+      fields.push('available_tools_json = @available_tools_json');
+      params.available_tools_json = toolsJson;
+      changed.push('available_tools_json');
+    }
     if (fields.length === 0) return getTicketDetail(id);
 
     const now = nowIso();
@@ -952,6 +1026,81 @@ const VALID_STATES = [
   'pending_delivery',
   'complete'
 ];
+
+/**
+ * Reorder a ticket's `future` objectives. `orderedObjectiveIds` is the full
+ * top-to-bottom order the future group should have afterwards. The future rows
+ * are renumbered relative to one another starting at the lowest position they
+ * currently occupy, so they keep sitting after any non-future objectives.
+ * Objectives whose position is already correct are skipped so no redundant
+ * change-feed rows are written. Returns the ticket's full objective list in its
+ * new order.
+ */
+export const reorderFutureObjectives = db.transaction(
+  (ticketId: string, body: ReorderFutureObjectivesBody): ObjectiveDto[] => {
+    const orderedIds = body.orderedObjectiveIds;
+    if (!Array.isArray(orderedIds)) {
+      throw new ApiError(400, 'orderedObjectiveIds must be an array');
+    }
+    if (new Set(orderedIds).size !== orderedIds.length) {
+      throw new ApiError(400, 'orderedObjectiveIds contains duplicates');
+    }
+
+    const ticket = db
+      .prepare(
+        `SELECT id, project_id FROM tickets WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
+      )
+      .get(ticketId, WORKSPACE.id) as { id: string; project_id: string } | undefined;
+    if (!ticket) throw new ApiError(404, 'Ticket not found');
+
+    const rows = db
+      .prepare(
+        `SELECT * FROM objectives
+           WHERE ticket_id = ? AND workspace_id = ? AND deleted_at IS NULL`
+      )
+      .all(ticketId, WORKSPACE.id) as ObjectiveRow[];
+    const byId = new Map(rows.map(row => [row.id, row]));
+
+    const targets = orderedIds.map(id => {
+      const row = byId.get(id);
+      if (!row) throw new ApiError(404, `Objective ${id} not found on ticket`);
+      if (row.state !== 'future') {
+        throw new ApiError(400, `Objective ${id} is not a future objective`);
+      }
+      return row;
+    });
+    if (targets.length === 0) return listObjectives(ticketId);
+
+    // Renumber starting at the lowest position the future group currently holds,
+    // keeping the whole group after any non-future objectives.
+    const basePosition = Math.min(...targets.map(row => row.position));
+
+    const now = nowIso();
+    targets.forEach((existing, index) => {
+      const position = basePosition + index;
+      if (existing.position === position) return;
+
+      const revision = existing.revision + 1;
+      db.prepare(
+        `UPDATE objectives SET position = @position, updated_at = @now, revision = @revision
+           WHERE id = @id AND workspace_id = @workspace_id`
+      ).run({ id: existing.id, workspace_id: WORKSPACE.id, position, now, revision });
+
+      recordChange({
+        entityType: 'objective',
+        entityId: existing.id,
+        operation: 'update',
+        entityRevision: revision,
+        projectId: ticket.project_id,
+        ticketId,
+        objectiveId: existing.id,
+        changedFields: ['position']
+      });
+    });
+
+    return listObjectives(ticketId);
+  }
+);
 
 // Internal insert used by both createObjective and createTicket's first objective.
 // Assumes it runs within a transaction.

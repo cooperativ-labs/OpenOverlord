@@ -5,7 +5,9 @@ import { useState } from 'react';
 import type { ProjectStatusDto, TicketDetailDto, TicketPriority } from '../../shared/contract.ts';
 import { useCreateObjective, useDeleteTicket, useTicket, useUpdateTicket } from '../lib/queries.ts';
 
-import { DraftObjective } from './objectives/DraftObjective.tsx';
+import { LiveActivityFeed } from './LiveActivityFeed.tsx';
+import { TicketObjectivesSection } from './objectives/TicketObjectivesSection.tsx';
+import { TicketTools } from './TicketTools.tsx';
 import { RepositoryMentionTextarea } from './RepositoryMentionTextarea.tsx';
 import {
   Badge,
@@ -205,19 +207,23 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
         onClose={closePanel}
       />
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="mb-6">
+          <TicketTools ticketId={ticket.id} availableTools={ticket.availableTools} />
+        </div>
+
         <div className="space-y-3">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
             Objectives ({ticket.objectives.length})
           </h2>
-          {ticket.objectives.map(o => (
-            <DraftObjective
-              key={o.id}
-              objective={o}
-              siblings={ticket.objectives}
-              executionRequests={ticket.executionRequests}
-            />
-          ))}
+          <TicketObjectivesSection ticket={ticket} />
           <AddObjective ticketId={ticket.id} projectId={projectId} />
+        </div>
+
+        <div className="mt-6 space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
+            Activity
+          </h2>
+          <LiveActivityFeed ticketId={ticket.id} />
         </div>
       </div>
     </div>

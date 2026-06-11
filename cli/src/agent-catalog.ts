@@ -1,7 +1,4 @@
-import {
-  BUNDLED_AGENT_CATALOG,
-  type CatalogAgent
-} from './agent-catalog-defaults.ts';
+import { BUNDLED_AGENT_CATALOG, type CatalogAgent } from './agent-catalog-defaults.ts';
 
 type TomlCatalogModel = {
   id?: string;
@@ -23,9 +20,7 @@ function emptyToNull(value: string | undefined): string | null {
   return value;
 }
 
-export function parseAgentCatalogFromToml(
-  raw: unknown
-): Record<string, CatalogAgent> | null {
+export function parseAgentCatalogFromToml(raw: unknown): Record<string, CatalogAgent> | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
 
   const agents: Record<string, CatalogAgent> = {};

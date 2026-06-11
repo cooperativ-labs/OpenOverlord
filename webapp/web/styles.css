@@ -143,6 +143,13 @@
   }
 }
 
+/* Shimmer sweep used to mark in-flight objectives (executing / pending delivery). */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 /* Thin, unobtrusive scrollbars for dense board columns. */
 *::-webkit-scrollbar {
   width: 10px;

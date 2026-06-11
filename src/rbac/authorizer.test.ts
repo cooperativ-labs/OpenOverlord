@@ -16,6 +16,8 @@ describe('Authorizer', () => {
       assert.equal(auth.can(admin, PERMISSIONS.ROLE_ASSIGN).allowed, true);
       assert.equal(auth.can(admin, PERMISSIONS.CONNECTOR_CONFIGURE).allowed, true);
       assert.equal(auth.can(admin, PERMISSIONS.TICKET_DELETE).allowed, true);
+      assert.equal(auth.can(admin, PERMISSIONS.WORKSPACE_IMAGE_CREATE).allowed, true);
+      assert.equal(auth.can(admin, PERMISSIONS.ATTACHMENT_DELETE).allowed, true);
     });
   });
 
@@ -32,6 +34,33 @@ describe('Authorizer', () => {
     it('allows own token management via user_token:self:* wildcard', () => {
       assert.equal(auth.can(member, PERMISSIONS.USER_TOKEN_SELF_CREATE).allowed, true);
       assert.equal(auth.can(member, PERMISSIONS.USER_TOKEN_SELF_REVOKE).allowed, true);
+    });
+
+    it('allows attachment CRUD for workspace members', () => {
+      assert.equal(auth.can(member, PERMISSIONS.ATTACHMENT_CREATE).allowed, true);
+      assert.equal(auth.can(member, PERMISSIONS.ATTACHMENT_READ).allowed, true);
+      assert.equal(auth.can(member, PERMISSIONS.ATTACHMENT_UPDATE).allowed, true);
+      assert.equal(auth.can(member, PERMISSIONS.ATTACHMENT_DELETE).allowed, true);
+    });
+
+    it('allows public image reads and own user image management', () => {
+      assert.equal(auth.can(member, PERMISSIONS.WORKSPACE_IMAGE_READ).allowed, true);
+      assert.equal(auth.can(member, PERMISSIONS.USER_IMAGE_READ).allowed, true);
+      assert.equal(auth.can(member, PERMISSIONS.USER_IMAGE_SELF_CREATE).allowed, true);
+      assert.equal(auth.can(member, PERMISSIONS.USER_IMAGE_SELF_UPDATE).allowed, true);
+      assert.equal(auth.can(member, PERMISSIONS.USER_IMAGE_SELF_DELETE).allowed, true);
+    });
+
+    it('denies workspace image management by default', () => {
+      assert.equal(auth.can(member, PERMISSIONS.WORKSPACE_IMAGE_CREATE).allowed, false);
+      assert.equal(auth.can(member, PERMISSIONS.WORKSPACE_IMAGE_UPDATE).allowed, false);
+      assert.equal(auth.can(member, PERMISSIONS.WORKSPACE_IMAGE_DELETE).allowed, false);
+    });
+
+    it('denies non-self user image management by default', () => {
+      assert.equal(auth.can(member, PERMISSIONS.USER_IMAGE_CREATE).allowed, false);
+      assert.equal(auth.can(member, PERMISSIONS.USER_IMAGE_UPDATE).allowed, false);
+      assert.equal(auth.can(member, PERMISSIONS.USER_IMAGE_DELETE).allowed, false);
     });
 
     it('denies user management', () => {
@@ -52,6 +81,19 @@ describe('Authorizer', () => {
     it('allows project read but not create', () => {
       assert.equal(auth.can(member, PERMISSIONS.PROJECT_READ).allowed, true);
       assert.equal(auth.can(member, PERMISSIONS.PROJECT_CREATE).allowed, false);
+    });
+  });
+
+  describe('PUBLIC role', () => {
+    const publicActor = makeActor('public', [Role.PUBLIC]);
+
+    it('allows public image reads only', () => {
+      assert.equal(auth.can(publicActor, PERMISSIONS.WORKSPACE_IMAGE_READ).allowed, true);
+      assert.equal(auth.can(publicActor, PERMISSIONS.USER_IMAGE_READ).allowed, true);
+      assert.equal(auth.can(publicActor, PERMISSIONS.WORKSPACE_IMAGE_CREATE).allowed, false);
+      assert.equal(auth.can(publicActor, PERMISSIONS.USER_IMAGE_SELF_CREATE).allowed, false);
+      assert.equal(auth.can(publicActor, PERMISSIONS.ATTACHMENT_READ).allowed, false);
+      assert.equal(auth.can(publicActor, PERMISSIONS.TICKET_READ).allowed, false);
     });
   });
 

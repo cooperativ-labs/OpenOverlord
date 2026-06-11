@@ -22,7 +22,7 @@ Requirements:
 
 ## Default Roles
 
-Overlord should ship with two default roles.
+Overlord should ship with three default roles.
 
 ### ADMIN
 
@@ -49,6 +49,20 @@ Requirements:
 - Cannot create, disable, delete, or remove other users.
 - Cannot assign or revoke roles.
 - Cannot configure instance-wide auth or RBAC settings.
+- Can create, read, update, and delete workspace attachments.
+- Can read public workspace images and user images.
+- Can create, update, and delete that user's own images.
+
+### PUBLIC
+
+`PUBLIC` is the unauthenticated read role for resources that are intentionally public.
+
+Requirements:
+
+- Can read public workspace images.
+- Can read public user images.
+- Cannot create, update, or delete storage metadata.
+- Cannot read workspace attachments unless a custom policy explicitly grants that access.
 
 Persistent agent accounts should usually be modeled as users with `kind = "service"` or equivalent metadata, not as a separate identity primitive. They can receive `MEMBER` initially, and later narrower roles such as `AGENT` or `RUNNER` if customers need them.
 
@@ -69,6 +83,18 @@ objective:submit
 session:attach
 event:create
 artifact:read
+workspace_image:read
+workspace_image:create
+workspace_image:update
+workspace_image:delete
+user_image:read
+user_image:self:create
+user_image:self:update
+user_image:self:delete
+attachment:read
+attachment:create
+attachment:update
+attachment:delete
 execution_request:claim
 user:create
 user:disable
@@ -119,10 +145,21 @@ grants = [
   "event:create",
   "event:read",
   "artifact:*",
+  "workspace_image:read",
+  "user_image:read",
+  "user_image:self:*",
+  "attachment:*",
   "user_token:self:*",
   "execution_request:create",
   "execution_request:read",
   "execution_request:claim"
+]
+
+[roles.PUBLIC]
+description = "Unauthenticated public read access"
+grants = [
+  "workspace_image:read",
+  "user_image:read"
 ]
 
 [permission_groups.user_management]

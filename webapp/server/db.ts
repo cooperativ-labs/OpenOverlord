@@ -47,39 +47,82 @@ export function newId(): string {
 }
 
 // ---- Workspace / actor resolution ---------------------------------------
+//
+// A single Overlord database can hold many workspaces, and the local operator
+// can be a member of more than one. The web server tracks one *active*
+// workspace at a time; every read/write below scopes to it. `WORKSPACE` and
+// `ACTOR_WORKSPACE_USER_ID` are exported as live `let` bindings so switching the
+// active workspace at runtime (see `setActiveWorkspace`) is observed by every
+// module that imports them without any further wiring.
 
-interface WorkspaceRow {
+export interface WorkspaceRow {
   id: string;
   slug: string;
   name: string;
+  kind: string;
+  created_at: string;
 }
 
-const workspace = db
-  .prepare(
-    `SELECT id, slug, name FROM workspaces WHERE deleted_at IS NULL ORDER BY created_at ASC LIMIT 1`
-  )
-  .get() as WorkspaceRow | undefined;
+function loadWorkspaceRow(id: string): WorkspaceRow | undefined {
+  return db
+    .prepare(
+      `SELECT id, slug, name, kind, created_at FROM workspaces
+         WHERE id = ? AND deleted_at IS NULL`
+    )
+    .get(id) as WorkspaceRow | undefined;
+}
 
-if (!workspace) {
+function oldestWorkspaceRow(): WorkspaceRow | undefined {
+  return db
+    .prepare(
+      `SELECT id, slug, name, kind, created_at FROM workspaces
+         WHERE deleted_at IS NULL ORDER BY created_at ASC LIMIT 1`
+    )
+    .get() as WorkspaceRow | undefined;
+}
+
+/** Resolve the workspace user that changes in `workspaceId` are attributed to. */
+export function resolveActorForWorkspace(workspaceId: string): string | null {
+  const row = db
+    .prepare(
+      `SELECT id FROM workspace_users
+         WHERE workspace_id = ? AND status = 'active' AND deleted_at IS NULL
+         ORDER BY created_at ASC LIMIT 1`
+    )
+    .get(workspaceId) as { id: string } | undefined;
+  return row?.id ?? null;
+}
+
+const initialWorkspace = oldestWorkspaceRow();
+
+if (!initialWorkspace) {
   throw new Error('No workspace found in the database. Initialise it with `yarn start:local`.');
 }
 
-const actorRow = db
-  .prepare(
-    `SELECT id FROM workspace_users
-       WHERE workspace_id = ? AND status = 'active' AND deleted_at IS NULL
-       ORDER BY created_at ASC LIMIT 1`
-  )
-  .get(workspace.id) as { id: string } | undefined;
-
-export const WORKSPACE = {
-  id: workspace.id,
-  slug: workspace.slug,
-  name: workspace.name
+export let WORKSPACE: { id: string; slug: string; name: string; kind: string } = {
+  id: initialWorkspace.id,
+  slug: initialWorkspace.slug,
+  name: initialWorkspace.name,
+  kind: initialWorkspace.kind
 };
 
 /** The workspace user changes are attributed to (the local user for a local install). */
-export const ACTOR_WORKSPACE_USER_ID: string | null = actorRow?.id ?? null;
+export let ACTOR_WORKSPACE_USER_ID: string | null = resolveActorForWorkspace(initialWorkspace.id);
+
+/**
+ * Switch the active workspace. Re-points the `WORKSPACE` and
+ * `ACTOR_WORKSPACE_USER_ID` live bindings so subsequent reads/writes scope to
+ * the new workspace. Returns the new workspace row, or `null` if `id` does not
+ * resolve to an existing (non-deleted) workspace.
+ */
+export function setActiveWorkspace(id: string): WorkspaceRow | null {
+  if (id === WORKSPACE.id) return loadWorkspaceRow(id) ?? null;
+  const row = loadWorkspaceRow(id);
+  if (!row) return null;
+  WORKSPACE = { id: row.id, slug: row.slug, name: row.name, kind: row.kind };
+  ACTOR_WORKSPACE_USER_ID = resolveActorForWorkspace(row.id);
+  return row;
+}
 
 // ---- entity_changes writer ----------------------------------------------
 
@@ -104,6 +147,10 @@ export interface RecordChangeInput {
   ticketId?: string | null;
   objectiveId?: string | null;
   changedFields?: string[];
+  /** Override the workspace the change is attributed to (defaults to the active one). */
+  workspaceId?: string | null;
+  /** Override the actor the change is attributed to (defaults to the active one). */
+  actorWorkspaceUserId?: string | null;
 }
 
 /**
@@ -114,7 +161,7 @@ export interface RecordChangeInput {
 export function recordChange(input: RecordChangeInput): void {
   insertChangeStmt.run({
     id: newId(),
-    workspace_id: WORKSPACE.id,
+    workspace_id: input.workspaceId ?? WORKSPACE.id,
     project_id: input.projectId ?? null,
     ticket_id: input.ticketId ?? null,
     objective_id: input.objectiveId ?? null,
@@ -123,7 +170,10 @@ export function recordChange(input: RecordChangeInput): void {
     operation: input.operation,
     entity_revision: input.entityRevision ?? null,
     changed_fields_json: JSON.stringify(input.changedFields ?? []),
-    actor_workspace_user_id: ACTOR_WORKSPACE_USER_ID,
+    actor_workspace_user_id:
+      input.actorWorkspaceUserId !== undefined
+        ? input.actorWorkspaceUserId
+        : ACTOR_WORKSPACE_USER_ID,
     occurred_at: nowIso()
   });
 }

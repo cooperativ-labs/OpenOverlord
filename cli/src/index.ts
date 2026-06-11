@@ -23,8 +23,17 @@ const KNOWN_COMMANDS = new Set([
   'add-cwd',
   'create',
   'prompt',
+  'attach',
+  'launch',
+  'restart',
+  'connect',
+  'run',
+  'resume',
+  'runner',
   'tickets',
   'ticket',
+  'changes',
+  'execution',
   'config'
 ]);
 

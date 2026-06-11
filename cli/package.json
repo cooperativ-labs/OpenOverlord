@@ -24,7 +24,8 @@
     "prepack": "node scripts/stage-migrations.mjs && tsc --project tsconfig.build.json"
   },
   "dependencies": {
-    "better-sqlite3": "^12.0.0"
+    "better-sqlite3": "^12.0.0",
+    "smol-toml": "^1.6.1"
   },
   "keywords": [
     "overlord",

@@ -50,7 +50,7 @@ export const BUNDLED_AGENT_CATALOG: Record<string, CatalogAgent> = {
         reasoningOptions: ['low', 'medium', 'high', 'xhigh']
       }
     ],
-    defaultModel: 'gpt-5-codex',
+    defaultModel: 'gpt-5.4',
     defaultReasoningEffort: 'medium',
     reasoningLabel: 'Effort'
   },

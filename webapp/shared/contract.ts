@@ -35,6 +35,27 @@ export type ChangeOperation = 'insert' | 'update' | 'delete' | 'restore';
 
 // ---- Resource DTOs ----
 
+export interface WorkspaceDto {
+  id: string;
+  slug: string;
+  name: string;
+  /** Open vocabulary (`local`, `hosted`, …). Locally created workspaces are `local`. */
+  kind: string;
+  /** Whether this is the web server's currently active workspace. */
+  isActive: boolean;
+  /** Count of non-deleted projects in the workspace (read-side aggregate). */
+  projectCount: number;
+  /** Count of active members in the workspace (read-side aggregate). */
+  memberCount: number;
+  createdAt: string;
+}
+
+export interface CreateWorkspaceBody {
+  name: string;
+  /** Optional slug; derived from the name (and uniquified) when omitted. */
+  slug?: string;
+}
+
 export interface ProjectDto {
   id: string;
   workspaceId: string;
@@ -168,6 +189,10 @@ export interface TicketDto {
    */
   boardPosition: number;
   priority: TicketPriority | null;
+  /** Human-readable acceptance criteria for the ticket. */
+  acceptanceCriteria: string | null;
+  /** Tool names available to the agent working on this ticket. */
+  availableTools: string[];
   createdAt: string;
   updatedAt: string;
   revision: number;
@@ -198,6 +223,46 @@ export interface TicketDetailDto extends TicketDto {
   statuses: ProjectStatusDto[];
   /** Active (queued/claimed/launching) execution requests for this ticket's objectives. */
   executionRequests: ExecutionRequestDto[];
+}
+
+// ---- Ticket activity feed ----
+
+/**
+ * Closed vocabulary for `ticket_events.type` (see the schema contract). These
+ * are the workflow events surfaced in the ticket panel's live activity feed.
+ */
+export type TicketEventType =
+  | 'update'
+  | 'user_follow_up'
+  | 'alert'
+  | 'discussion_summary'
+  | 'decision'
+  | 'ask'
+  | 'permission_request'
+  | 'delivery'
+  | 'execution_requested'
+  | 'awaiting_approval'
+  | 'status_change';
+
+/**
+ * A single entry in a ticket's workflow history (`ticket_events`). Append-only;
+ * ordered oldest-first by `createdAt`. The SPA renders these as a realtime feed
+ * inside the ticket panel, refetching whenever the change feed reports activity.
+ */
+export interface TicketEventDto {
+  id: string;
+  ticketId: string;
+  objectiveId: string | null;
+  /** Closed vocabulary; unknown future values render with a neutral fallback. */
+  type: TicketEventType | string;
+  /** Optional workflow phase recorded with the event (`attach`, `execute`, …). */
+  phase: string | null;
+  summary: string;
+  /** Open vocabulary describing what produced the event (`agent`, `cli`, …). */
+  source: string;
+  /** Optional external link associated with the event. */
+  externalUrl: string | null;
+  createdAt: string;
 }
 
 // ---- Agent catalog and launch configuration ----
@@ -348,6 +413,8 @@ export interface UpdateTicketBody {
   title?: string;
   priority?: TicketPriority | null;
   statusId?: string;
+  acceptanceCriteria?: string | null;
+  availableTools?: string[];
 }
 
 /**
@@ -368,6 +435,18 @@ export interface CreateObjectiveBody {
   title?: string | null;
   state?: ObjectiveState;
   autoAdvance?: boolean;
+}
+
+/**
+ * Reorders the `future` objectives of a single ticket. `orderedObjectiveIds`
+ * lists every future objective on the ticket, top-to-bottom, after the move.
+ * Only objectives currently in the `future` state may be reordered; their
+ * `position` is renumbered relative to one another while remaining after any
+ * non-future objectives. Returns the ticket's full objective list in its new
+ * order.
+ */
+export interface ReorderFutureObjectivesBody {
+  orderedObjectiveIds: string[];
 }
 
 export interface UpdateObjectiveBody {

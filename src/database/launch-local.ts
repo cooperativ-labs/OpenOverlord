@@ -5,7 +5,12 @@ import { fileURLToPath } from 'node:url';
 
 const CONTRACT_VERSION = '0.2-draft';
 const DEFAULT_DATABASE_PATH = '.overlord/Overlord.sqlite';
-const MIGRATIONS = ['001_initial_core.sql', '002_rbac.sql', '003_better_auth.sql'] as const;
+const MIGRATIONS = [
+  '001_initial_core.sql',
+  '002_rbac.sql',
+  '003_better_auth.sql',
+  '004_storage.sql'
+] as const;
 
 type BetterSqlite3Constructor = typeof import('better-sqlite3');
 type DatabaseInstance = import('better-sqlite3').Database;

@@ -1,6 +1,15 @@
 import { getDevice, updateDevice } from '../../src/service/devices.js';
 import { ServiceError } from '../../src/service/errors.js';
 import {
+  claimNextExecutionRequest,
+  clearExecutionRequests,
+  createExecutionRequest,
+  listExecutionRequests,
+  markExecutionFailed,
+  markExecutionLaunched,
+  markExecutionLaunching
+} from '../../src/service/execution-requests.js';
+import {
   addProjectResource,
   createProject,
   discoverProject,
@@ -25,6 +34,11 @@ import {
   updateSession,
   writeSharedContext
 } from '../../src/service/protocol.js';
+import {
+  listChangedFilesForReview,
+  listRationalesForReview,
+  readCurrentDiff
+} from '../../src/service/changes.js';
 import { listTickets } from '../../src/service/tickets.js';
 
 import {
@@ -41,6 +55,7 @@ import { promptWithMentions } from './mention-prompt.js';
 import { printJson, printKeyValue } from './output.js';
 import { listMentionableFiles } from './repository-files.js';
 import type { CliRuntime } from './runtime.js';
+import { launchAgent } from './launch.js';
 
 function handleServiceError(error: unknown): never {
   if (error instanceof ServiceError) {
@@ -75,6 +90,19 @@ function mapStatusNames(statusCsv: string | undefined): string[] | undefined {
     if (status === 'next-up') return 'draft';
     return status;
   });
+}
+
+function repeatedFlagValues(args: string[], name: string): string[] {
+  const values: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== name) continue;
+    const value = args[index + 1];
+    if (value !== undefined) {
+      values.push(value);
+      index += 1;
+    }
+  }
+  return values;
 }
 
 export async function runProtocolCommand({
@@ -289,8 +317,13 @@ export async function runProtocolCommand({
           throw new CliError({ message: 'Missing --summary or --summary-file' });
         }
 
-        const rationalesRaw = flagValue(parsed.flags, '--change-rationales-json');
-        const artifactsRaw = flagValue(parsed.flags, '--artifacts');
+        const rationalesRaw =
+          flagValue(parsed.flags, '--change-rationales-json') ??
+          (flagValue(parsed.flags, '--change-rationales-file') === '-' ? stdin : undefined);
+        const artifactsRaw =
+          flagValue(parsed.flags, '--artifacts-json') ??
+          flagValue(parsed.flags, '--artifacts') ??
+          (flagValue(parsed.flags, '--artifacts-file') === '-' ? stdin : undefined);
 
         const result = deliverSession({
           ctx,
@@ -570,6 +603,182 @@ export async function runManagementCommand({
         else console.log(`Created and attached ticket ${result.ticket.displayId}`);
         return;
       }
+      case 'attach': {
+        const ticketId = parsed.positional[0] ?? flagValue(parsed.flags, '--ticket-id');
+        if (!ticketId) throw new CliError({ message: 'Usage: ovld attach <ticketId> [agent]' });
+        const agent = parsed.positional[1] ?? flagValue(parsed.flags, '--agent') ?? 'codex';
+        const request = createExecutionRequest({
+          ctx,
+          ticketId,
+          requestedAgent: agent,
+          requestedModel: flagValue(parsed.flags, '--model'),
+          requestedReasoningEffort: flagValue(parsed.flags, '--thinking'),
+          requestedSource: 'cli',
+          launchFlags: { flags: repeatedFlagValues(rest, '--flag') },
+          workingDirectory: flagValue(parsed.flags, '--working-directory')
+        });
+        if (json) printJson({ request });
+        else console.log(`Queued ${agent} for ${request.ticketDisplayId} (${request.id})`);
+        return;
+      }
+      case 'launch':
+      case 'restart':
+      case 'run':
+      case 'connect':
+      case 'resume': {
+        const agent =
+          command === 'run' || command === 'connect' || command === 'resume'
+            ? (flagValue(parsed.flags, '--agent') ?? parsed.positional[0] ?? 'codex')
+            : parsed.positional[0];
+        const ticketId =
+          flagValue(parsed.flags, '--ticket-id') ??
+          (command === 'run' || command === 'connect' || command === 'resume'
+            ? parsed.positional[1]
+            : parsed.positional[1]);
+        if (!agent || !ticketId) {
+          throw new CliError({ message: `Usage: ovld ${command} <agent> --ticket-id <ticketId>` });
+        }
+        const discovery = discoverProject({
+          ctx,
+          projectId: flagValue(parsed.flags, '--project-id'),
+          workingDirectory: flagValue(parsed.flags, '--working-directory')
+        });
+        const workingDirectory =
+          flagValue(parsed.flags, '--working-directory') ?? discovery.resourcePath ?? process.cwd();
+        const result = launchAgent({
+          runtime,
+          options: {
+            agent,
+            ticketId,
+            workingDirectory,
+            model: flagValue(parsed.flags, '--model'),
+            thinking: flagValue(parsed.flags, '--thinking'),
+            flags: repeatedFlagValues(rest, '--flag'),
+            preCommand: flagValue(parsed.flags, '--pre-command'),
+            dryRun: flagBoolean(parsed.flags, '--dry-run')
+          }
+        });
+        if (json || flagBoolean(parsed.flags, '--dry-run')) {
+          printJson({ plan: result.plan, status: result.status, signal: result.signal });
+        }
+        if (result.status && result.status !== 0) {
+          throw new CliError({ message: `Launch command exited with status ${result.status}` });
+        }
+        return;
+      }
+      case 'runner': {
+        const sub = parsed.positional[0] ?? 'status';
+        if (sub === 'status') {
+          const device = getDevice({ ctx });
+          const requests = listExecutionRequests({
+            ctx,
+            projectId: flagValue(parsed.flags, '--project-id'),
+            includeInactive: flagBoolean(parsed.flags, '--all')
+          });
+          if (json) printJson({ device, requests });
+          else {
+            console.log(`Device: ${device.label} (${device.fingerprint})`);
+            if (requests.length === 0) {
+              console.log('No active execution requests.');
+            } else {
+              for (const request of requests) {
+                console.log(
+                  `${request.status}\t${request.ticketDisplayId}\t${request.objectiveTitle}\t${request.requestedAgent ?? 'default'}`
+                );
+              }
+            }
+          }
+          return;
+        }
+        if (sub === 'clear' || sub === 'clear-all') {
+          const objectiveId = sub === 'clear' ? parsed.positional[1] : undefined;
+          if (sub === 'clear' && !objectiveId) {
+            throw new CliError({ message: 'Usage: ovld runner clear <objective_id>' });
+          }
+          const result = clearExecutionRequests({
+            ctx,
+            objectiveId,
+            projectId: flagValue(parsed.flags, '--project-id')
+          });
+          if (json) printJson(result);
+          else console.log(`Cleared ${result.cleared} execution request(s).`);
+          return;
+        }
+        if (sub !== 'once' && sub !== 'start') {
+          throw new CliError({
+            message: 'Usage: ovld runner once|start|status|clear <objective_id>|clear-all'
+          });
+        }
+
+        const runOnce = async (): Promise<boolean> => {
+          const claimed = claimNextExecutionRequest({
+            ctx,
+            projectId: flagValue(parsed.flags, '--project-id')
+          });
+          if (!claimed) return false;
+          markExecutionLaunching({ ctx, requestId: claimed.id });
+          try {
+            const result = launchAgent({
+              runtime,
+              options: {
+                agent: claimed.requestedAgent ?? 'codex',
+                ticketId: claimed.ticketDisplayId,
+                workingDirectory: claimed.workingDirectory,
+                model: claimed.requestedModel,
+                thinking: claimed.requestedReasoningEffort,
+                flags: Array.isArray(claimed.launchFlags.flags)
+                  ? claimed.launchFlags.flags.filter(
+                      (value): value is string => typeof value === 'string'
+                    )
+                  : [],
+                dryRun: flagBoolean(parsed.flags, '--dry-run')
+              }
+            });
+            if (result.status && result.status !== 0) {
+              markExecutionFailed({
+                ctx,
+                requestId: claimed.id,
+                error: `Launch command exited with status ${result.status}`
+              });
+              throw new CliError({ message: `Launch command exited with status ${result.status}` });
+            }
+            markExecutionLaunched({ ctx, requestId: claimed.id });
+            if (json || flagBoolean(parsed.flags, '--dry-run')) {
+              printJson({ request: claimed, plan: result.plan, status: result.status });
+            } else {
+              console.log(
+                `Launched ${claimed.requestedAgent ?? 'codex'} for ${claimed.ticketDisplayId}`
+              );
+            }
+            return true;
+          } catch (error) {
+            markExecutionFailed({
+              ctx,
+              requestId: claimed.id,
+              error: error instanceof Error ? error.message : String(error)
+            });
+            throw error;
+          }
+        };
+
+        if (sub === 'once') {
+          const launched = await runOnce();
+          if (!launched) {
+            if (json) printJson({ launched: false });
+            else console.log('No claimable execution requests.');
+          }
+          return;
+        }
+
+        const intervalMs = Number.parseInt(
+          flagValue(parsed.flags, '--poll-interval-ms') ?? '3000',
+          10
+        );
+        while (true) {
+          await runOnce();
+          await new Promise(resolve => setTimeout(resolve, intervalMs));
+        }
+      }
       case 'tickets': {
         const sub = parsed.positional[0];
         if (sub !== 'list') {
@@ -594,14 +803,155 @@ export async function runManagementCommand({
       case 'ticket': {
         const sub = parsed.positional[0];
         const ticketId = parsed.positional[1];
-        if (sub !== 'context' || !ticketId) {
-          throw new CliError({ message: 'Usage: ovld ticket context <ticketId> [--json]' });
+        if (!ticketId) {
+          throw new CliError({
+            message:
+              'Usage: ovld ticket context|events|deliveries|artifacts|rationales <ticketId> [--json]'
+          });
         }
-        const context = loadTicketContext({ ctx, ticketId });
-        if (json) printJson(context);
-        else {
-          console.log(context.promptContext);
+        if (sub === 'context') {
+          const context = loadTicketContext({ ctx, ticketId });
+          if (json) printJson(context);
+          else {
+            console.log(context.promptContext);
+          }
+          return;
         }
+        const resolved = ctx.db
+          .prepare(`SELECT id FROM tickets WHERE display_id = ? OR id = ?`)
+          .get(ticketId, ticketId) as { id: string } | undefined;
+        if (!resolved) throw new CliError({ message: `Ticket not found: ${ticketId}` });
+        if (sub === 'events') {
+          const rows = ctx.db
+            .prepare(
+              `SELECT type, phase, summary, created_at FROM ticket_events
+               WHERE ticket_id = ? ORDER BY created_at ASC`
+            )
+            .all(resolved.id);
+          if (json) printJson({ events: rows });
+          else
+            for (const row of rows as Array<{
+              type: string;
+              phase: string | null;
+              summary: string;
+            }>) {
+              console.log(`${row.type}\t${row.phase ?? ''}\t${row.summary}`);
+            }
+          return;
+        }
+        if (sub === 'deliveries') {
+          const rows = ctx.db
+            .prepare(
+              `SELECT id, summary, verification_summary, follow_up_notes, delivered_at
+               FROM deliveries WHERE ticket_id = ? ORDER BY delivered_at ASC`
+            )
+            .all(resolved.id);
+          if (json) printJson({ deliveries: rows });
+          else
+            for (const row of rows as Array<{
+              id: string;
+              delivered_at: string;
+              summary: string;
+            }>) {
+              console.log(`${row.delivered_at}\t${row.id}\t${row.summary}`);
+            }
+          return;
+        }
+        if (sub === 'artifacts') {
+          const rows = ctx.db
+            .prepare(
+              `SELECT type, label, content_text, external_url, created_at
+               FROM artifacts WHERE ticket_id = ? AND deleted_at IS NULL ORDER BY created_at ASC`
+            )
+            .all(resolved.id);
+          if (json) printJson({ artifacts: rows });
+          else
+            for (const row of rows as Array<{
+              type: string;
+              label: string;
+              external_url: string | null;
+            }>) {
+              console.log(
+                `${row.type}\t${row.label}${row.external_url ? `\t${row.external_url}` : ''}`
+              );
+            }
+          return;
+        }
+        if (sub === 'rationales') {
+          const rows = listRationalesForReview({
+            ctx,
+            ticketId,
+            objectiveId: flagValue(parsed.flags, '--objective-id')
+          });
+          if (json) printJson({ rationales: rows });
+          else
+            for (const row of rows) {
+              console.log(`${row.filePath}\t${row.label}\t${row.summary}`);
+            }
+          return;
+        }
+        throw new CliError({
+          message:
+            'Usage: ovld ticket context|events|deliveries|artifacts|rationales <ticketId> [--json]'
+        });
+      }
+      case 'changes': {
+        const sub = parsed.positional[0];
+        const ticketId = requireFlag(parsed.flags, '--ticket-id');
+        if (sub === 'status') {
+          const files = listChangedFilesForReview({
+            ctx,
+            ticketId,
+            objectiveId: flagValue(parsed.flags, '--objective-id')
+          });
+          if (json) printJson({ files });
+          else
+            for (const file of files) {
+              console.log(`${file.coverage}\t${file.vcsStatus ?? ''}\t${file.filePath}`);
+            }
+          return;
+        }
+        if (sub === 'diff') {
+          const result = readCurrentDiff({
+            ctx,
+            ticketId,
+            filePath: flagValue(parsed.flags, '--path')
+          });
+          if (json) printJson(result);
+          else console.log(result.diff || '(no diff)');
+          return;
+        }
+        if (sub === 'rationales') {
+          const rationales = listRationalesForReview({
+            ctx,
+            ticketId,
+            objectiveId: flagValue(parsed.flags, '--objective-id')
+          });
+          if (json) printJson({ rationales });
+          else
+            for (const rationale of rationales) {
+              console.log(`${rationale.filePath}\t${rationale.label}\t${rationale.summary}`);
+            }
+          return;
+        }
+        throw new CliError({
+          message: 'Usage: ovld changes status|diff|rationales --ticket-id <id>'
+        });
+      }
+      case 'execution': {
+        const ticketId = requireFlag(parsed.flags, '--ticket-id');
+        const request = createExecutionRequest({
+          ctx,
+          ticketId,
+          objectiveId: flagValue(parsed.flags, '--objective-id'),
+          requestedAgent: flagValue(parsed.flags, '--agent'),
+          requestedModel: flagValue(parsed.flags, '--model'),
+          requestedReasoningEffort: flagValue(parsed.flags, '--thinking'),
+          requestedSource: 'cli',
+          workingDirectory: flagValue(parsed.flags, '--working-directory')
+        });
+        if (json) printJson({ request });
+        else console.log(`Queued execution request ${request.id}`);
         return;
       }
       case 'config': {

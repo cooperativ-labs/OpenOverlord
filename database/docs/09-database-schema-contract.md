@@ -786,6 +786,130 @@ Indexes:
 - `(objective_id, created_at)`.
 - `(ticket_id, created_at)`.
 
+### `storage_buckets`
+
+Workspace-scoped storage backend configuration for durable objects. Buckets describe where bytes live; object tables below store metadata and backend keys only.
+
+SQLite/local deployments may use `local_fs` buckets rooted on the local device. PostgreSQL/shared deployments should use a managed storage provider such as Supabase Storage, S3-compatible storage, or a Railway volume. Credentials must not be stored in this table; use deployment secrets and store only non-secret provider metadata.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `bucket_key` | text | yes | Stable logical bucket key such as `workspace-images`, `user-images`, or `attachments`. |
+| `storage_backend` | text | yes | `local_fs`, `supabase`, `s3`, `railway_volume`, or adapter-defined. |
+| `base_url` | text | no | Public or signed URL origin when the provider exposes one; no credentials. |
+| `local_path` | Path | no | Local filesystem root for `local_fs` / volume-style backends. |
+| `settings_json` | Json | yes | Non-secret provider settings such as region, bucket name, or path prefix. |
+| `created_by_workspace_user_id` | Id | no | FK to `workspace_users`. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `deleted_at` | TimestampUTC | no | Tombstone. |
+| `revision` | integer | yes |  |
+
+Indexes:
+
+- Unique active `(workspace_id, bucket_key)`.
+- `(workspace_id, storage_backend)`.
+
+### `workspace_images`
+
+Publicly readable image metadata owned by a workspace. Administrators, or equivalent custom RBAC policy, manage inserts, updates, and deletes.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `storage_bucket_id` | Id | yes | FK to `storage_buckets`. |
+| `storage_key` | text | yes | Backend key/path, unique within the bucket for active rows. |
+| `filename` | text | yes | Original/display filename. |
+| `content_type` | text | yes | Must be an image media type. |
+| `size_bytes` | BigCount | no |  |
+| `checksum_sha256` | text | no |  |
+| `width_px` | integer | no |  |
+| `height_px` | integer | no |  |
+| `alt_text` | text | no | Human-facing accessibility text. |
+| `public_url` | text | no | Cached public URL when the provider exposes one; no credentials. |
+| `metadata_json` | Json | yes |  |
+| `created_by_workspace_user_id` | Id | no | FK to `workspace_users`. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `deleted_at` | TimestampUTC | no | Tombstone. |
+| `revision` | integer | yes |  |
+
+Indexes:
+
+- Unique active `(storage_bucket_id, storage_key)`.
+- `(workspace_id, created_at)`.
+
+### `user_images`
+
+Publicly readable image metadata associated with a user. The associated user, or equivalent custom RBAC policy, manages inserts, updates, and deletes.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `user_id` | Id | yes | FK to `users`. |
+| `workspace_user_id` | Id | no | FK to `workspace_users` when the image is membership-scoped. |
+| `storage_bucket_id` | Id | yes | FK to `storage_buckets`. |
+| `storage_key` | text | yes | Backend key/path, unique within the bucket for active rows. |
+| `filename` | text | yes | Original/display filename. |
+| `content_type` | text | yes | Must be an image media type. |
+| `size_bytes` | BigCount | no |  |
+| `checksum_sha256` | text | no |  |
+| `width_px` | integer | no |  |
+| `height_px` | integer | no |  |
+| `alt_text` | text | no | Human-facing accessibility text. |
+| `public_url` | text | no | Cached public URL when the provider exposes one; no credentials. |
+| `metadata_json` | Json | yes |  |
+| `created_by_workspace_user_id` | Id | no | FK to `workspace_users`. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `deleted_at` | TimestampUTC | no | Tombstone. |
+| `revision` | integer | yes |  |
+
+Indexes:
+
+- Unique active `(storage_bucket_id, storage_key)`.
+- `(workspace_id, user_id, created_at)`.
+- `(workspace_user_id, created_at)` where `workspace_user_id` is present.
+
+### `attachments`
+
+Workspace attachment metadata for files that are not limited to a single objective. Workspace members, or equivalent custom RBAC policy, may create, read, update, and delete attachments.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `project_id` | Id | no | FK to `projects` for project-scoped attachments. |
+| `ticket_id` | Id | no | FK to `tickets` for ticket-scoped attachments. |
+| `objective_id` | Id | no | FK to `objectives` for objective-scoped attachments. |
+| `storage_bucket_id` | Id | yes | FK to `storage_buckets`. |
+| `storage_key` | text | yes | Backend key/path, unique within the bucket for active rows. |
+| `filename` | text | yes | Original/display filename. |
+| `content_type` | text | no |  |
+| `size_bytes` | BigCount | no |  |
+| `checksum_sha256` | text | no |  |
+| `upload_status` | text | yes | `prepared`, `uploaded`, `available`, `failed`, `deleted`. |
+| `metadata_json` | Json | yes |  |
+| `created_by_workspace_user_id` | Id | no | FK to `workspace_users`. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `deleted_at` | TimestampUTC | no | Tombstone. |
+| `revision` | integer | yes |  |
+
+Indexes:
+
+- Unique active `(storage_bucket_id, storage_key)`.
+- `(workspace_id, created_at)`.
+- `(project_id, created_at)` where `project_id` is present.
+- `(ticket_id, created_at)` where `ticket_id` is present.
+- `(objective_id, created_at)` where `objective_id` is present.
+
+Storage object deletes are soft deletes. Services should enqueue provider cleanup through `outbox_messages` after the metadata tombstone commits.
+
 ### `deliveries`
 
 Final or follow-up delivery review boundary.
@@ -1383,7 +1507,7 @@ Closed values:
 
 Open extension values:
 
-- `workspaces.kind`, `users.kind`, `execution_targets.type`, `project_resources.type`, `artifacts.type`, `ticket_events.source`, `entity_changes.entity_type`, `entity_changes.source`, `outbox_messages.topic`, `worker_jobs.type`, RBAC permission names, and connector identifiers.
+- `workspaces.kind`, `users.kind`, `execution_targets.type`, `project_resources.type`, `storage_buckets.storage_backend`, `artifacts.type`, `ticket_events.source`, `entity_changes.entity_type`, `entity_changes.source`, `outbox_messages.topic`, `worker_jobs.type`, RBAC permission names, and connector identifiers.
 - Extension values must be namespaced unless they are accepted into core documentation.
 
 State transition rules:

@@ -31,15 +31,18 @@ import {
   getTicketDetail,
   listObjectives,
   listProjectResources,
+  listTicketEvents,
   listProjects,
   listProjectStatuses,
   listTickets,
   reorderBoardColumn,
+  reorderFutureObjectives,
   updateObjective,
   updateProject,
   updateTicket
 } from './repository.ts';
 import { getSqliteTableData, listSqliteTables, runSqliteQuery } from './sqlite-browser.ts';
+import { activateWorkspace, createWorkspace, listWorkspaces } from './workspaces.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..', '..');
@@ -97,6 +100,33 @@ app.get(
       executionTargets: false
     }
   }))
+);
+
+// ---- Workspaces ----------------------------------------------------------
+//
+// One database can hold many workspaces and the operator can belong to several.
+// Switching the active workspace changes what every other scoped query returns,
+// so both routes force a coarse realtime refresh to resync all subscribers.
+
+app.get(
+  '/api/workspaces',
+  handle(() => listWorkspaces())
+);
+app.post(
+  '/api/workspaces',
+  handle(req => {
+    const result = createWorkspace(req.body);
+    realtime.refreshAll();
+    return result;
+  })
+);
+app.post(
+  '/api/workspaces/:id/activate',
+  handle(req => {
+    const result = activateWorkspace(req.params.id);
+    realtime.refreshAll();
+    return result;
+  })
 );
 
 // ---- Realtime ------------------------------------------------------------
@@ -172,6 +202,14 @@ app.delete(
 app.get(
   '/api/tickets/:id/objectives',
   handle(req => listObjectives(req.params.id))
+);
+app.patch(
+  '/api/tickets/:id/objectives/reorder',
+  handle(req => reorderFutureObjectives(req.params.id, req.body), { mutates: true })
+);
+app.get(
+  '/api/tickets/:id/events',
+  handle(req => listTicketEvents(req.params.id))
 );
 
 // ---- Objectives ----------------------------------------------------------

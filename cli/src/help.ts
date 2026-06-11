@@ -22,8 +22,18 @@ Projects:
 Tickets:
   ${primaryCommand} create "<objective>" [--objectives-json '[...]'] [--json]
   ${primaryCommand} prompt "<objective>" [--json]
+  ${primaryCommand} attach <ticketId> [agent] [--json]
   ${primaryCommand} tickets list [--status <csv>] [--project-id <id>] [--json]
-  ${primaryCommand} ticket context <ticketId> [--json]
+  ${primaryCommand} ticket context|events|deliveries|artifacts|rationales <ticketId> [--json]
+
+Launch and runner:
+  ${primaryCommand} launch <agent> --ticket-id <ticketId> [--dry-run] [--json]
+  ${primaryCommand} runner once|start|status|clear|clear-all [--json]
+
+Changes:
+  ${primaryCommand} changes status --ticket-id <id> [--objective-id <id>] [--json]
+  ${primaryCommand} changes diff --ticket-id <id> [--path <path>] [--json]
+  ${primaryCommand} changes rationales --ticket-id <id> [--objective-id <id>] [--json]
 
 Protocol (JSON output by default):
   ${primaryCommand} protocol attach --ticket-id <id>

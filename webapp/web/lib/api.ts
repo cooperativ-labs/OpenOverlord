@@ -3,6 +3,7 @@ import type {
   CreateObjectiveBody,
   CreateProjectBody,
   CreateTicketBody,
+  CreateWorkspaceBody,
   ExecutionRequestDto,
   LaunchObjectiveBody,
   LaunchPreferenceDto,
@@ -14,16 +15,19 @@ import type {
   ProjectResourceDto,
   ProjectStatusDto,
   ReorderBoardColumnBody,
+  ReorderFutureObjectivesBody,
   SqliteBrowserQueryResultDto,
   SqliteBrowserTableDataDto,
   SqliteBrowserTablesDto,
   TicketDetailDto,
   TicketDto,
+  TicketEventDto,
   UpdateAgentLaunchConfigBody,
   UpdateLaunchPreferenceBody,
   UpdateObjectiveBody,
   UpdateProjectBody,
-  UpdateTicketBody
+  UpdateTicketBody,
+  WorkspaceDto
 } from '../../shared/contract.ts';
 
 export interface Meta {
@@ -57,6 +61,12 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 export const api = {
   meta: () => request<Meta>('GET', '/api/meta'),
 
+  listWorkspaces: () => request<WorkspaceDto[]>('GET', '/api/workspaces'),
+  createWorkspace: (body: CreateWorkspaceBody) =>
+    request<WorkspaceDto>('POST', '/api/workspaces', body),
+  activateWorkspace: (id: string) =>
+    request<WorkspaceDto[]>('POST', `/api/workspaces/${id}/activate`),
+
   listProjects: () => request<ProjectDto[]>('GET', '/api/projects'),
   getProject: (id: string) => request<ProjectDto>('GET', `/api/projects/${id}`),
   createProject: (body: CreateProjectBody) => request<ProjectDto>('POST', '/api/projects', body),
@@ -85,7 +95,11 @@ export const api = {
   updateTicket: (id: string, body: UpdateTicketBody) =>
     request<TicketDetailDto>('PATCH', `/api/tickets/${id}`, body),
   deleteTicket: (id: string) => request<{ ok: true }>('DELETE', `/api/tickets/${id}`),
+  listTicketEvents: (id: string) =>
+    request<TicketEventDto[]>('GET', `/api/tickets/${id}/events`),
 
+  reorderFutureObjectives: (ticketId: string, body: ReorderFutureObjectivesBody) =>
+    request<ObjectiveDto[]>('PATCH', `/api/tickets/${ticketId}/objectives/reorder`, body),
   createObjective: (body: CreateObjectiveBody) =>
     request<ObjectiveDto>('POST', '/api/objectives', body),
   updateObjective: (id: string, body: UpdateObjectiveBody) =>

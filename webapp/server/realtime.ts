@@ -67,6 +67,15 @@ class RealtimeHub {
     this.poll();
   }
 
+  /**
+   * Force every subscriber to refetch. Used for server-state changes that do not
+   * write to `entity_changes` — notably switching the active workspace, which
+   * changes what every scoped query returns.
+   */
+  refreshAll(): void {
+    this.broadcast('refresh', { type: 'refresh' });
+  }
+
   private poll(): void {
     if (this.clients.size === 0) {
       // Keep the cursor moving even with no subscribers so a later client does

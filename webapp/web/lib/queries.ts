@@ -4,10 +4,13 @@ import type {
   CreateObjectiveBody,
   CreateProjectBody,
   CreateTicketBody,
+  CreateWorkspaceBody,
   LaunchObjectiveBody,
   LaunchPreferenceDto,
+  ReorderFutureObjectivesBody,
   SqliteBrowserQueryResultDto,
   StatusType,
+  TicketDetailDto,
   TicketDto,
   UpdateAgentLaunchConfigBody,
   UpdateLaunchPreferenceBody,
@@ -20,6 +23,7 @@ import { api } from './api.ts';
 
 export const keys = {
   meta: ['meta'] as const,
+  workspaces: ['workspaces'] as const,
   projects: ['projects'] as const,
   project: (id: string) => ['project', id] as const,
   projectStatuses: (id: string) => ['project', id, 'statuses'] as const,
@@ -28,6 +32,7 @@ export const keys = {
     ['project', id, 'repository', executionTargetId ?? 'primary'] as const,
   tickets: (projectId: string) => ['project', projectId, 'tickets'] as const,
   ticket: (id: string) => ['ticket', id] as const,
+  ticketEvents: (id: string) => ['ticket', id, 'events'] as const,
   agentCatalog: ['agent-catalog'] as const,
   launchSettings: ['launch-settings'] as const,
   launchPreference: (projectId: string) => ['project', projectId, 'launch-preference'] as const,
@@ -45,6 +50,9 @@ function invalidateAll(qc: QueryClient) {
 // ---- Queries -------------------------------------------------------------
 
 export const useMeta = () => useQuery({ queryKey: keys.meta, queryFn: api.meta });
+
+export const useWorkspaces = () =>
+  useQuery({ queryKey: keys.workspaces, queryFn: api.listWorkspaces });
 
 export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: api.listProjects });
 
@@ -69,6 +77,12 @@ export const useTickets = (projectId: string) =>
 export const useTicket = (id: string) =>
   useQuery({ queryKey: keys.ticket(id), queryFn: () => api.getTicket(id) });
 
+// The global realtime SSE feed invalidates this query whenever the database
+// changes — including ticket_events written by the CLI/agent in another process
+// — so the activity feed updates in real time without bespoke wiring here.
+export const useTicketEvents = (id: string) =>
+  useQuery({ queryKey: keys.ticketEvents(id), queryFn: () => api.listTicketEvents(id) });
+
 export const useSqliteTables = () =>
   useQuery({ queryKey: keys.sqliteTables, queryFn: api.listSqliteTables });
 
@@ -80,6 +94,24 @@ export const useSqliteTableData = (tableName: string | null, limit: number, offs
   });
 
 // ---- Mutations -----------------------------------------------------------
+
+export function useCreateWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateWorkspaceBody) => api.createWorkspace(body),
+    // Creating a workspace also makes it active, so the whole cache is stale.
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
+export function useActivateWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.activateWorkspace(id),
+    // Switching workspace changes what every scoped query returns.
+    onSuccess: () => invalidateAll(qc)
+  });
+}
 
 export function useCreateProject() {
   const qc = useQueryClient();
@@ -204,6 +236,58 @@ export function useDeleteObjective() {
   return useMutation({
     mutationFn: (id: string) => api.deleteObjective(id),
     onSuccess: () => invalidateAll(qc)
+  });
+}
+
+export interface ReorderFutureObjectivesVars extends ReorderFutureObjectivesBody {
+  ticketId: string;
+}
+
+/**
+ * Reorders a ticket's future objectives with an optimistic cache update: the new
+ * order shows instantly and is reverted only if the server rejects it. The
+ * realtime SSE feed reconciles the cache with server truth on success.
+ */
+export function useReorderFutureObjectives() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ticketId, orderedObjectiveIds }: ReorderFutureObjectivesVars) =>
+      api.reorderFutureObjectives(ticketId, { orderedObjectiveIds }),
+    onMutate: async (vars: ReorderFutureObjectivesVars) => {
+      await qc.cancelQueries({ queryKey: keys.ticket(vars.ticketId) });
+      const previous = qc.getQueryData<TicketDetailDto>(keys.ticket(vars.ticketId));
+      if (previous) {
+        // Renumber the future group to match the requested order, starting at the
+        // lowest position it currently occupies, then re-sort by position.
+        const orderIndex = new Map(vars.orderedObjectiveIds.map((id, index) => [id, index]));
+        const basePosition = Math.min(
+          ...previous.objectives
+            .filter(o => orderIndex.has(o.id))
+            .map(o => o.position)
+        );
+        const next = {
+          ...previous,
+          objectives: previous.objectives
+            .map(objective => {
+              const index = orderIndex.get(objective.id);
+              return index === undefined
+                ? objective
+                : { ...objective, position: basePosition + index };
+            })
+            .sort((a, b) => a.position - b.position)
+        };
+        qc.setQueryData(keys.ticket(vars.ticketId), next);
+      }
+      return { previous };
+    },
+    onError: (_err, vars, context) => {
+      if (context?.previous) {
+        qc.setQueryData(keys.ticket(vars.ticketId), context.previous);
+      }
+    },
+    onSettled: (_data, _err, vars) => {
+      void qc.invalidateQueries({ queryKey: keys.ticket(vars.ticketId) });
+    }
   });
 }
 

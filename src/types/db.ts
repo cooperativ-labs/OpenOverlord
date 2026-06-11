@@ -70,6 +70,27 @@ export interface Artifacts {
   workspace_id: string;
 }
 
+export interface Attachments {
+  checksum_sha256: string | null;
+  content_type: string | null;
+  created_at: string;
+  created_by_workspace_user_id: string | null;
+  deleted_at: string | null;
+  filename: string;
+  id: string | null;
+  metadata_json: Generated<string>;
+  objective_id: string | null;
+  project_id: string | null;
+  revision: Generated<number>;
+  size_bytes: number | null;
+  storage_bucket_id: string;
+  storage_key: string;
+  ticket_id: string | null;
+  updated_at: string;
+  upload_status: string;
+  workspace_id: string;
+}
+
 export interface ChangedFiles {
   created_at: string;
   current_diff_state: string;
@@ -390,6 +411,21 @@ export interface SharedContextEntries {
   workspace_id: string;
 }
 
+export interface StorageBuckets {
+  base_url: string | null;
+  bucket_key: string;
+  created_at: string;
+  created_by_workspace_user_id: string | null;
+  deleted_at: string | null;
+  id: string | null;
+  local_path: string | null;
+  revision: Generated<number>;
+  settings_json: Generated<string>;
+  storage_backend: string;
+  updated_at: string;
+  workspace_id: string;
+}
+
 export interface TicketEvents {
   actor_token_id: string | null;
   actor_workspace_user_id: string | null;
@@ -454,6 +490,29 @@ export interface User {
   updatedAt: string;
 }
 
+export interface UserImages {
+  alt_text: string | null;
+  checksum_sha256: string | null;
+  content_type: string;
+  created_at: string;
+  created_by_workspace_user_id: string | null;
+  deleted_at: string | null;
+  filename: string;
+  height_px: number | null;
+  id: string | null;
+  metadata_json: Generated<string>;
+  public_url: string | null;
+  revision: Generated<number>;
+  size_bytes: number | null;
+  storage_bucket_id: string;
+  storage_key: string;
+  updated_at: string;
+  user_id: string;
+  width_px: number | null;
+  workspace_id: string;
+  workspace_user_id: string | null;
+}
+
 export interface Users {
   auth_provider: string | null;
   created_at: string;
@@ -515,6 +574,27 @@ export interface Verification {
   value: string;
 }
 
+export interface WorkspaceImages {
+  alt_text: string | null;
+  checksum_sha256: string | null;
+  content_type: string;
+  created_at: string;
+  created_by_workspace_user_id: string | null;
+  deleted_at: string | null;
+  filename: string;
+  height_px: number | null;
+  id: string | null;
+  metadata_json: Generated<string>;
+  public_url: string | null;
+  revision: Generated<number>;
+  size_bytes: number | null;
+  storage_bucket_id: string;
+  storage_key: string;
+  updated_at: string;
+  width_px: number | null;
+  workspace_id: string;
+}
+
 export interface Workspaces {
   created_at: string;
   deleted_at: string | null;
@@ -561,6 +641,7 @@ export interface DB {
   account: Account;
   agent_sessions: AgentSessions;
   artifacts: Artifacts;
+  attachments: Attachments;
   change_rationales: ChangeRationales;
   changed_files: ChangedFiles;
   deliveries: Deliveries;
@@ -579,14 +660,17 @@ export interface DB {
   schema_migrations: SchemaMigrations;
   session: Session;
   shared_context_entries: SharedContextEntries;
+  storage_buckets: StorageBuckets;
   ticket_events: TicketEvents;
   ticket_sequences: TicketSequences;
   tickets: Tickets;
   user: User;
+  user_images: UserImages;
   user_token_scopes: UserTokenScopes;
   user_tokens: UserTokens;
   users: Users;
   verification: Verification;
+  workspace_images: WorkspaceImages;
   workspace_user_execution_targets: WorkspaceUserExecutionTargets;
   workspace_users: WorkspaceUsers;
   workspaces: Workspaces;

@@ -6,7 +6,12 @@ import { fileURLToPath } from 'node:url';
 
 import { CONTRACT_VERSION } from './constants.js';
 
-const MIGRATIONS = ['001_initial_core.sql', '002_rbac.sql', '003_better_auth.sql'] as const;
+const MIGRATIONS = [
+  '001_initial_core.sql',
+  '002_rbac.sql',
+  '003_better_auth.sql',
+  '004_storage.sql'
+] as const;
 
 export type OverlordDatabase = Database.Database;
 
