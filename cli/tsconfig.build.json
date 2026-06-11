@@ -8,5 +8,10 @@
     "sourceMap": true,
     "noEmit": false
   },
-  "include": ["src/**/*.ts", "../src/database/**/*.ts", "../src/service/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "../src/database/**/*.ts",
+    "../src/service/**/*.ts",
+    "../src/repository/git-tree.ts"
+  ]
 }

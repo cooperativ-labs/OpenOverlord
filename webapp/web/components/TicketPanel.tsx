@@ -18,6 +18,7 @@ import {
   useUpdateTicket
 } from '../lib/queries.ts';
 
+import { RepositoryMentionTextarea } from './RepositoryMentionTextarea.tsx';
 import {
   Badge,
   Button,
@@ -28,8 +29,7 @@ import {
   priorityClasses,
   Select,
   Spinner,
-  statusClasses,
-  TextArea
+  statusClasses
 } from './ui.tsx';
 
 const PRIORITIES: TicketPriority[] = ['low', 'normal', 'high', 'urgent'];
@@ -103,7 +103,7 @@ function ObjectiveItem({ objective }: { objective: ObjectiveDto }) {
   );
 }
 
-function AddObjective({ ticketId }: { ticketId: string }) {
+function AddObjective({ ticketId, projectId }: { ticketId: string; projectId: string }) {
   const create = useCreateObjective();
   const [instruction, setInstruction] = useState('');
   const [open, setOpen] = useState(false);
@@ -132,12 +132,13 @@ function AddObjective({ ticketId }: { ticketId: string }) {
   return (
     <Card className="space-y-3 p-3">
       <Field label="New objective instruction">
-        <TextArea
+        <RepositoryMentionTextarea
           autoFocus
           rows={3}
+          projectId={projectId}
           value={instruction}
-          placeholder="Describe what the agent should do…"
-          onChange={e => setInstruction(e.target.value)}
+          placeholder="Describe what the agent should do… (type @ to mention a file)"
+          onValueChange={setInstruction}
         />
       </Field>
       {create.isError && <p className="text-xs text-red-400">{(create.error as Error).message}</p>}
@@ -293,7 +294,7 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
           {ticket.objectives.map(o => (
             <ObjectiveItem key={o.id} objective={o} />
           ))}
-          <AddObjective ticketId={ticket.id} />
+          <AddObjective ticketId={ticket.id} projectId={projectId} />
         </div>
       </div>
     </div>

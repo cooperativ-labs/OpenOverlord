@@ -1,7 +1,7 @@
 import { ChevronsUpDown, Monitor, Moon, Settings, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
-import type { SettingsNavSection } from '@/components/modals/SettingsModal';
+import type { SettingsNavSection } from '@/components/settings/SettingsModal';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,

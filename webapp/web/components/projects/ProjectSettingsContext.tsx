@@ -1,7 +1,7 @@
 import { createContext, type ReactNode, useContext, useMemo, useState } from 'react';
 
-import type { ProjectSettingsNavSection } from '@/components/modals/ProjectSettingsModal';
-import { ProjectSettingsModal } from '@/components/modals/ProjectSettingsModal';
+import type { ProjectSettingsNavSection } from '@/components/projects/ProjectSettingsModal';
+import { ProjectSettingsModal } from '@/components/projects/ProjectSettingsModal';
 import { useProject, useProjectStatuses } from '@/lib/queries';
 
 type ProjectSettingsContextValue = {

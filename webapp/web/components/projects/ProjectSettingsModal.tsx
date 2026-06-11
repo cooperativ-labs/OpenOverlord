@@ -1,11 +1,11 @@
 import { FolderTree, GitBranch, Settings, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { DangerZonePage } from '@/components/modals/project-settings/DangerZonePage';
-import { GeneralPage } from '@/components/modals/project-settings/GeneralPage';
-import { ResourcesPage } from '@/components/modals/project-settings/ResourcesPage';
-import { WorkflowPage } from '@/components/modals/project-settings/WorkflowPage';
-import { SettingsDialogShell, type SettingsNavItem } from '@/components/modals/SettingsDialogShell';
+import { DangerZonePage } from '@/components/projects/project-settings/DangerZonePage.tsx';
+import { GeneralPage } from '@/components/projects/project-settings/GeneralPage.tsx';
+import { ResourcesPage } from '@/components/projects/project-settings/ResourcesPage.tsx';
+import { WorkflowPage } from '@/components/projects/project-settings/WorkflowPage.tsx';
+import { SettingsDialogShell, type SettingsNavItem } from '@/components/settings/SettingsDialogShell.tsx';
 
 import type { ProjectDto, ProjectStatusDto } from '../../../shared/contract.ts';
 

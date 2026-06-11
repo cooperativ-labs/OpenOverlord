@@ -37,7 +37,9 @@ import {
   requireFlag
 } from './args.js';
 import { CliError } from './errors.js';
+import { promptWithMentions } from './mention-prompt.js';
 import { printJson, printKeyValue } from './output.js';
+import { listMentionableFiles } from './repository-files.js';
 import type { CliRuntime } from './runtime.js';
 
 function handleServiceError(error: unknown): never {
@@ -45,6 +47,26 @@ function handleServiceError(error: unknown): never {
     throw new CliError({ message: error.message });
   }
   throw error;
+}
+
+/**
+ * Collect objective text interactively when none was passed on the command line.
+ * On a TTY this opens the `@`-mention file picker seeded from the project's
+ * repository; otherwise it returns undefined so the caller falls back to its
+ * usual "missing text" error.
+ */
+async function collectObjectiveText({
+  resourcePath,
+  prompt
+}: {
+  resourcePath: string | null;
+  prompt: string;
+}): Promise<string | undefined> {
+  if (!process.stdin.isTTY) return undefined;
+  const files = listMentionableFiles(resourcePath);
+  const answer = await promptWithMentions({ files, prompt });
+  if (answer === null) throw new CliError({ message: 'Cancelled.' });
+  return answer.length > 0 ? answer : undefined;
 }
 
 function mapStatusNames(statusCsv: string | undefined): string[] | undefined {
@@ -493,7 +515,7 @@ export async function runManagementCommand({
       }
       case 'create': {
         const objectivesJson = flagValue(parsed.flags, '--objectives-json');
-        const text = parsed.positional.join(' ') || flagValue(parsed.flags, '--objective');
+        let text = parsed.positional.join(' ') || flagValue(parsed.flags, '--objective');
         const discovery = discoverProject({ ctx });
         if (objectivesJson) {
           const objectives = JSON.parse(objectivesJson) as Array<{
@@ -510,6 +532,12 @@ export async function runManagementCommand({
           else console.log(`Created ticket ${result.ticket.displayId}`);
           return;
         }
+        if (!text) {
+          text = await collectObjectiveText({
+            resourcePath: discovery.resourcePath,
+            prompt: 'New ticket (type @ to mention a file): '
+          });
+        }
         if (!text)
           throw new CliError({ message: 'Provide an objective string or --objectives-json' });
         const result = protocolCreate({ ctx, projectId: discovery.projectId, objective: text });
@@ -518,7 +546,20 @@ export async function runManagementCommand({
         return;
       }
       case 'prompt': {
-        const text = parsed.positional.join(' ');
+        let text = parsed.positional.join(' ');
+        if (!text) {
+          let resourcePath: string | null = null;
+          try {
+            resourcePath = discoverProject({ ctx }).resourcePath;
+          } catch {
+            // No linked project yet; the picker still opens without file suggestions.
+          }
+          text =
+            (await collectObjectiveText({
+              resourcePath,
+              prompt: 'Prompt objective (type @ to mention a file): '
+            })) ?? '';
+        }
         if (!text) throw new CliError({ message: 'Missing objective prompt text' });
         const result = protocolPrompt({ ctx, objective: text });
         printKeyValue({

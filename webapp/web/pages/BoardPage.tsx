@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { ProjectStatusDto, TicketDto, TicketPriority } from '../../shared/contract.ts';
 import { ProjectSettingsSection } from '../components/projects/ProjectSettingsSection.tsx';
+import { RepositoryMentionTextarea } from '../components/RepositoryMentionTextarea.tsx';
 import {
   Badge,
   Button,
@@ -36,8 +37,7 @@ import {
   Select,
   Spinner,
   STATUS_LABEL,
-  statusClasses,
-  TextArea
+  statusClasses
 } from '../components/ui.tsx';
 import {
   useCreateTicket,
@@ -91,12 +91,13 @@ function NewTicketModal({
     <Modal title="New ticket" open={open} onClose={onClose}>
       <div className="space-y-4">
         <Field label="What needs to be done?">
-          <TextArea
+          <RepositoryMentionTextarea
             autoFocus
             rows={3}
+            projectId={projectId}
             value={instruction}
-            placeholder="Describe the work to be executed…"
-            onChange={e => setInstruction(e.target.value)}
+            placeholder="Describe the work to be executed… (type @ to mention a file)"
+            onValueChange={setInstruction}
             onKeyDown={e => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit();
             }}

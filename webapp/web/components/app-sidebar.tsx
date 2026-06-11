@@ -2,7 +2,7 @@ import { Link, useParams } from '@tanstack/react-router';
 import { Archive, FolderKanban, LayoutGrid, Plus, Settings } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
-import { SettingsModal, type SettingsNavSection } from '@/components/modals/SettingsModal';
+import { SettingsModal, type SettingsNavSection } from '@/components/settings/SettingsModal.tsx';
 import { NavUser } from '@/components/nav-user';
 import { ProjectCreatorModal } from '@/components/projects/ProjectCreatorModal';
 import {

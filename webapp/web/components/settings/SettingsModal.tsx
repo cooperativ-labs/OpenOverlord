@@ -1,14 +1,14 @@
 import { Info, Palette, User } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { AboutPage } from '@/components/modals/settings/AboutPage';
-import { ApplicationPage } from '@/components/modals/settings/ApplicationPage';
-import { UserProfilePage } from '@/components/modals/settings/UserProfilePage';
+import { AboutPage } from '@/components/settings/AboutPage';
+import { ApplicationPage } from '@/components/settings/ApplicationPage';
+import { UserProfilePage } from '@/components/settings/UserProfilePage';
 import {
   SettingsDialogShell,
   type SettingsNavGroup,
   type SettingsNavItem
-} from '@/components/modals/SettingsDialogShell';
+} from '@/components/settings/SettingsDialogShell';
 
 type SettingsModalProps = {
   open: boolean;
