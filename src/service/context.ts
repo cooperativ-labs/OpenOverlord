@@ -32,7 +32,7 @@ export function createServiceContext({
 
   if (!workspace) {
     throw new ServiceError(
-      'No workspace found. Run `ovld init` and `yarn db:launch:local` first.',
+      'No workspace found. Run `ovld init` and `yarn start:local` first.',
       'no_workspace',
       503
     );

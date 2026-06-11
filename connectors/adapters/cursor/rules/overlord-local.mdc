@@ -1,0 +1,12 @@
+---
+description: Overlord local workflow protocol for Cursor.
+alwaysApply: true
+---
+
+# Overlord Local Workflow
+
+- If the session was launched by Overlord Desktop or CLI, attach first with `ovld protocol attach --ticket-id $TICKET_ID`, update during work, ask when blocked, and deliver last.
+- If the user asks from chat to use Overlord, use `/prompt` for new tickets, `/load` for read-only context by ticket ID, `/connect` to route the session onto an existing ticket, and `/attach` when the user explicitly wants execution.
+- If you need other protocol commands or flags, run `ovld protocol help` instead of guessing.
+
+Always include `changeRationales` on delivery for meaningful behavioral file changes.

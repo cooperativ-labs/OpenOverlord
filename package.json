@@ -8,7 +8,7 @@
   },
   "packageManager": "yarn@4.16.0",
   "scripts": {
-    "new": "rm -rf node_modules && yarn install",
+    "new": "rm -rf node_modules cli/node_modules webapp/node_modules && yarn install && yarn --cwd cli install && yarn --cwd webapp install",
     "dev": "yarn --cwd webapp dev",
     "build": "tsc --project tsconfig.build.json && yarn build:cli",
     "build:cli": "node cli/scripts/stage-migrations.mjs && tsc --project cli/tsconfig.build.json",

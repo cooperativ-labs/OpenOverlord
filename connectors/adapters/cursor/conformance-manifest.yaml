@@ -1,0 +1,39 @@
+contractVersion: "0.2-draft"
+componentType: connector
+componentKey: cursor
+label: "Cursor Connector"
+description: "Cursor plugin adapter for the Overlord ticket protocol workflow."
+
+connector:
+  agentIdentifier: cursor
+  capabilities:
+    - followUpHook
+    - modelFlag
+    - permissionRules
+    - slashCommands
+  hookTypes:
+    - UserPromptSubmit
+  installPath: "~/.cursor/plugins/local/overlord"
+  managedFiles:
+    - ".cursor-plugin/plugin.json"
+    - "README.md"
+    - "commands/add-objectives.md"
+    - "commands/attach.md"
+    - "commands/connect.md"
+    - "commands/create.md"
+    - "commands/discuss-objective.md"
+    - "commands/load.md"
+    - "commands/prompt.md"
+    - "commands/record-work.md"
+    - "commands/spawn.md"
+    - "hooks/overlord-user-prompt-submit.sh"
+    - "mcp.json"
+    - "prompt-wrapper.md"
+    - "rules/overlord-local.mdc"
+    - "scripts/overlord-mcp.mjs"
+    - "skills/overlord-ticket/SKILL.md"
+    - "skills/overlord-ticket/reference/cli.md"
+    - "skills/overlord-ticket/reference/context.md"
+    - "skills/overlord-ticket/reference/devices.md"
+    - "skills/overlord-ticket/reference/mcp.md"
+    - "skills/overlord-ticket/reference/shell-escaping.md"

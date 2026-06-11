@@ -10,7 +10,7 @@ import {
   parseConnectorManifestYaml,
   readConnectorManifest,
   setupConnector
-} from '../dist/connectors.js';
+} from '../dist/cli/src/connectors.js';
 
 const repoRoot = path.resolve(import.meta.dirname, '..', '..');
 
@@ -51,6 +51,26 @@ test('claude connector is available and every managed file exists on disk', () =
   }
 });
 
+test('cursor connector is available and every managed file exists on disk', () => {
+  assert.ok(listAvailableConnectors().includes('cursor'));
+  const manifest = readConnectorManifest('cursor');
+  assert.ok(manifest.connector.managedFiles.length > 0);
+  for (const relativePath of manifest.connector.managedFiles) {
+    const source = path.join(repoRoot, 'connectors', 'adapters', 'cursor', relativePath);
+    assert.ok(existsSync(source), `missing managed source: ${relativePath}`);
+  }
+});
+
+test('codex connector is available and every managed file exists on disk', () => {
+  assert.ok(listAvailableConnectors().includes('codex'));
+  const manifest = readConnectorManifest('codex');
+  assert.ok(manifest.connector.managedFiles.length > 0);
+  for (const relativePath of manifest.connector.managedFiles) {
+    const source = path.join(repoRoot, 'connectors', 'adapters', 'codex', relativePath);
+    assert.ok(existsSync(source), `missing managed source: ${relativePath}`);
+  }
+});
+
 test('setup installs exactly the managed files and is idempotent', () => {
   const home = tempHome();
   try {
@@ -73,8 +93,64 @@ test('setup installs exactly the managed files and is idempotent', () => {
   }
 });
 
-function inspectAndAssertHealthy(home: string): void {
-  const report = inspectConnector({ agentKey: 'claude', home });
+test('cursor setup merges hooks and permission rules', () => {
+  const home = tempHome();
+  try {
+    const result = setupConnector({ agentKey: 'cursor', home });
+    assert.ok(result.files.every(file => file.action === 'written'));
+
+    const hooks = JSON.parse(readFileSync(path.join(home, '.cursor', 'hooks.json'), 'utf8'));
+    assert.ok(
+      hooks.hooks.beforeSubmitPrompt.some((entry: { command: string }) =>
+        entry.command.includes('overlord-user-prompt-submit')
+      )
+    );
+
+    const settings = JSON.parse(readFileSync(path.join(home, '.cursor', 'settings.json'), 'utf8'));
+    assert.ok(settings.permissions.allow.includes('Shell(ovld protocol:*)'));
+
+    inspectAndAssertHealthy(home, 'cursor');
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('codex setup merges marketplace, rules, and hook commands', () => {
+  const home = tempHome();
+  try {
+    const result = setupConnector({ agentKey: 'codex', home });
+    assert.ok(result.files.every(file => file.action === 'written'));
+
+    const marketplace = JSON.parse(
+      readFileSync(path.join(home, '.agents', 'plugins', 'marketplace.json'), 'utf8')
+    );
+    assert.ok(
+      marketplace.plugins.some(
+        (plugin: { name: string }) => plugin.name === 'overlord'
+      )
+    );
+
+    const rules = readFileSync(path.join(home, '.codex', 'rules', 'default.rules'), 'utf8');
+    assert.ok(rules.includes('pattern = ["ovld", "protocol"]'));
+
+    const hooks = JSON.parse(
+      readFileSync(path.join(result.installPath, '.codex-plugin', 'hooks.json'), 'utf8')
+    );
+    assert.ok(
+      hooks.hooks.UserPromptSubmit[0].hooks[0].command.includes('user-prompt-submit-hook.sh')
+    );
+    assert.ok(
+      hooks.hooks.PermissionRequest[0].hooks[0].command.includes('permission-hook.sh')
+    );
+
+    inspectAndAssertHealthy(home, 'codex');
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+function inspectAndAssertHealthy(home: string, agentKey = 'claude'): void {
+  const report = inspectConnector({ agentKey, home });
   assert.ok(report.installed);
   assert.ok(report.healthy, report.problems.join('; '));
 }

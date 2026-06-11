@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
   copyFileSync,
@@ -6,6 +7,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   writeFileSync
 } from 'node:fs';
@@ -81,8 +83,14 @@ export type ConnectorReport = {
 const AGENT_BINARIES: Record<string, string> = {
   claude: 'claude',
   codex: 'codex',
-  cursor: 'cursor'
+  cursor: 'agent'
 };
+
+const CURSOR_HOOK_COMMAND = 'plugins/local/overlord/hooks/overlord-user-prompt-submit.sh';
+const CURSOR_PROTOCOL_PERMISSION = 'Shell(ovld protocol:*)';
+const CODEX_PLUGIN_KEY = 'overlord@overlord-local';
+const CODEX_RULES_START = '# overlord:permissions:start';
+const CODEX_RULES_END = '# overlord:permissions:end';
 
 /**
  * Locate the connector adapter source tree. The connectors directory is not
@@ -268,6 +276,248 @@ function isExecutableManaged(relativePath: string): boolean {
   return relativePath.endsWith('.sh');
 }
 
+function readJsonObject(filePath: string): Record<string, unknown> | null {
+  if (!existsSync(filePath)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(filePath, 'utf8')) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Merge Cursor harness hooks and permission rules without clobbering user settings. */
+function configureCursorHarness({
+  home,
+  dryRun = false
+}: {
+  home: string;
+  dryRun?: boolean;
+}): string[] {
+  const warnings: string[] = [];
+  const cursorDir = path.join(home, '.cursor');
+  const hooksPath = path.join(cursorDir, 'hooks.json');
+  const settingsPath = path.join(cursorDir, 'settings.json');
+
+  const hooks =
+    readJsonObject(hooksPath) ??
+    ({
+      version: 1,
+      hooks: {}
+    } as Record<string, unknown>);
+  const hookRoot = hooks.hooks;
+  const hookEntries =
+    hookRoot && typeof hookRoot === 'object' && !Array.isArray(hookRoot)
+      ? (hookRoot as Record<string, unknown>)
+      : {};
+  const beforeSubmit = Array.isArray(hookEntries.beforeSubmitPrompt)
+    ? [...(hookEntries.beforeSubmitPrompt as unknown[])]
+    : [];
+  const alreadyInstalled = beforeSubmit.some(entry => {
+    if (!entry || typeof entry !== 'object') return false;
+    const command = (entry as Record<string, unknown>).command;
+    return typeof command === 'string' && command.includes('overlord-user-prompt-submit');
+  });
+  if (!alreadyInstalled) {
+    beforeSubmit.push({ command: CURSOR_HOOK_COMMAND });
+    hookEntries.beforeSubmitPrompt = beforeSubmit;
+    hooks.hooks = hookEntries;
+    if (dryRun) {
+      warnings.push(`Would merge beforeSubmitPrompt hook into ${hooksPath}.`);
+    } else {
+      mkdirSync(cursorDir, { recursive: true });
+      writeFileSync(hooksPath, `${JSON.stringify(hooks, null, 2)}\n`);
+    }
+  }
+
+  const settings = readJsonObject(settingsPath) ?? {};
+  const permissionsRoot = settings.permissions;
+  const permissions =
+    permissionsRoot && typeof permissionsRoot === 'object' && !Array.isArray(permissionsRoot)
+      ? (permissionsRoot as Record<string, unknown>)
+      : {};
+  const allow = Array.isArray(permissions.allow) ? [...(permissions.allow as unknown[])] : [];
+  if (!allow.includes(CURSOR_PROTOCOL_PERMISSION)) {
+    allow.push(CURSOR_PROTOCOL_PERMISSION);
+    permissions.allow = allow;
+    settings.permissions = permissions;
+    if (dryRun) {
+      warnings.push(`Would add ${CURSOR_PROTOCOL_PERMISSION} to ${settingsPath}.`);
+    } else {
+      mkdirSync(cursorDir, { recursive: true });
+      writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+    }
+  }
+
+  return warnings;
+}
+
+function mergeCodexRules(existingContent: string): string {
+  const managedBlock = [
+    CODEX_RULES_START,
+    'prefix_rule(',
+    '  pattern = ["npx", "overlord", "protocol"],',
+    '  decision = "allow",',
+    '  justification = "Allow all Overlord protocol commands without prompts.",',
+    ')',
+    '',
+    'prefix_rule(',
+    '  pattern = ["ovld", "protocol"],',
+    '  decision = "allow",',
+    '  justification = "Allow all Overlord protocol commands without prompts.",',
+    ')',
+    CODEX_RULES_END
+  ].join('\n');
+
+  const startIndex = existingContent.indexOf(CODEX_RULES_START);
+  const endIndex = existingContent.indexOf(CODEX_RULES_END);
+  if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
+    const before = existingContent.slice(0, startIndex).trimEnd();
+    const after = existingContent.slice(endIndex + CODEX_RULES_END.length).trimStart();
+    if (!before && !after) return `${managedBlock}\n`;
+    if (!before) return `${managedBlock}\n\n${after}`;
+    if (!after) return `${before}\n\n${managedBlock}\n`;
+    return `${before}\n\n${managedBlock}\n\n${after}`;
+  }
+
+  const trimmed = existingContent.trimEnd();
+  if (!trimmed) return `${managedBlock}\n`;
+  return `${trimmed}\n\n${managedBlock}\n`;
+}
+
+function rewriteCodexHookCommands({
+  hooks,
+  eventName,
+  targetCommand
+}: {
+  hooks: Record<string, unknown>;
+  eventName: string;
+  targetCommand: string;
+}): void {
+  const hookRoot = hooks.hooks;
+  if (!hookRoot || typeof hookRoot !== 'object' || Array.isArray(hookRoot)) return;
+  const groups = (hookRoot as Record<string, unknown>)[eventName];
+  if (!Array.isArray(groups)) return;
+  for (const group of groups) {
+    if (!group || typeof group !== 'object') continue;
+    const entries = (group as Record<string, unknown>).hooks;
+    if (!Array.isArray(entries)) continue;
+    for (const hook of entries) {
+      if (hook && typeof hook === 'object' && (hook as Record<string, unknown>).type === 'command') {
+        (hook as Record<string, unknown>).command = targetCommand;
+      }
+    }
+  }
+}
+
+/** Merge Codex marketplace, rules, hook paths, and plugin enablement without clobbering user settings. */
+function configureCodexHarness({
+  home,
+  installPath,
+  dryRun = false
+}: {
+  home: string;
+  installPath: string;
+  dryRun?: boolean;
+}): string[] {
+  const warnings: string[] = [];
+  const marketplacePath = path.join(home, '.agents', 'plugins', 'marketplace.json');
+  const rulesPath = path.join(home, '.codex', 'rules', 'default.rules');
+  const legacyAgentsPath = path.join(home, '.codex', 'AGENTS.md');
+  const hooksPath = path.join(installPath, '.codex-plugin', 'hooks.json');
+  const userPromptHook = path.join(installPath, 'scripts', 'user-prompt-submit-hook.sh');
+  const permissionHook = path.join(installPath, 'scripts', 'permission-hook.sh');
+
+  const currentMarketplace = readJsonObject(marketplacePath) ?? {
+    name: 'overlord-local',
+    interface: { displayName: 'Overlord Local Plugins' },
+    plugins: []
+  };
+  const nextPlugins = Array.isArray(currentMarketplace.plugins)
+    ? [...(currentMarketplace.plugins as unknown[])]
+    : [];
+  const entry = {
+    name: 'overlord',
+    source: { source: 'local', path: './.codex/plugins/overlord' },
+    policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' },
+    category: 'Productivity'
+  };
+  const existingIndex = nextPlugins.findIndex(
+    plugin => plugin && typeof plugin === 'object' && (plugin as Record<string, unknown>).name === 'overlord'
+  );
+  if (existingIndex === -1) nextPlugins.push(entry);
+  else nextPlugins[existingIndex] = entry;
+
+  if (dryRun) {
+    warnings.push(`Would update Codex marketplace at ${marketplacePath}.`);
+    warnings.push(`Would merge protocol permission rules into ${rulesPath}.`);
+    warnings.push(`Would rewrite Codex hook commands in ${hooksPath}.`);
+    if (existsSync(legacyAgentsPath)) {
+      warnings.push(`Would remove legacy Codex bundle at ${legacyAgentsPath}.`);
+    }
+    warnings.push(`Would run \`codex plugin add ${CODEX_PLUGIN_KEY}\` when the Codex CLI is available.`);
+    return warnings;
+  }
+
+  mkdirSync(path.dirname(marketplacePath), { recursive: true });
+  writeFileSync(
+    marketplacePath,
+    `${JSON.stringify(
+      {
+        name: currentMarketplace.name ?? 'overlord-local',
+        interface: {
+          displayName:
+            (currentMarketplace.interface as Record<string, unknown> | undefined)?.displayName ??
+            'Overlord Local Plugins'
+        },
+        plugins: nextPlugins
+      },
+      null,
+      2
+    )}\n`
+  );
+
+  const existingRules = existsSync(rulesPath) ? readFileSync(rulesPath, 'utf8') : '';
+  mkdirSync(path.dirname(rulesPath), { recursive: true });
+  writeFileSync(rulesPath, mergeCodexRules(existingRules));
+
+  const hooks = readJsonObject(hooksPath);
+  if (hooks) {
+    rewriteCodexHookCommands({ hooks, eventName: 'PermissionRequest', targetCommand: permissionHook });
+    rewriteCodexHookCommands({ hooks, eventName: 'UserPromptSubmit', targetCommand: userPromptHook });
+    writeFileSync(hooksPath, `${JSON.stringify(hooks, null, 2)}\n`);
+  } else {
+    warnings.push(`Codex hook manifest missing or invalid at ${hooksPath}.`);
+  }
+
+  if (existsSync(legacyAgentsPath)) {
+    rmSync(legacyAgentsPath, { force: true });
+  }
+
+  const codexAdd = spawnSync('codex', ['plugin', 'add', CODEX_PLUGIN_KEY], {
+    encoding: 'utf8',
+    timeout: 30_000
+  });
+  if (codexAdd.error && (codexAdd.error as NodeJS.ErrnoException).code === 'ENOENT') {
+    warnings.push(
+      `Codex CLI not found on PATH — wrote the marketplace but could not install the plugin. ` +
+        `Run \`codex plugin add ${CODEX_PLUGIN_KEY}\` once Codex is installed.`
+    );
+  } else if (codexAdd.status !== 0) {
+    const output = `${codexAdd.stdout ?? ''}${codexAdd.stderr ?? ''}`;
+    if (/already/i.test(output)) {
+      return warnings;
+    }
+    warnings.push(
+      `Could not install the Codex plugin via the Codex CLI. Re-run \`ovld setup codex\` to retry.`
+    );
+  }
+
+  return warnings;
+}
+
 export function setupConnector({
   agentKey,
   home,
@@ -315,21 +565,9 @@ export function setupConnector({
       }
       files.push({ path: relativePath, action: unchanged ? 'unchanged' : 'written', executable });
     }
-    stateFiles.push({ path: relativePath, sha256: sha256(contents) });
-  }
-
-  if (!dryRun) {
-    const state: InstallState = {
-      agentKey,
-      agentIdentifier: manifest.connector.agentIdentifier,
-      contractVersion: manifest.contractVersion,
-      installPath,
-      installedAt: new Date().toISOString(),
-      files: stateFiles
-    };
-    const statePath = installStatePath(agentKey, resolvedHome);
-    mkdirSync(path.dirname(statePath), { recursive: true });
-    writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);
+    if (!dryRun) {
+      stateFiles.push({ path: relativePath, sha256: sha256(contents) });
+    }
   }
 
   const binaryName = AGENT_BINARIES[agentKey] ?? manifest.connector.agentIdentifier;
@@ -339,6 +577,38 @@ export function setupConnector({
       `Agent binary "${binaryName}" not found on PATH. The connector is installed; ` +
         `install ${binaryName} to launch this agent.`
     );
+  }
+
+  if (agentKey === 'cursor') {
+    warnings.push(...configureCursorHarness({ home: resolvedHome, dryRun }));
+  }
+
+  if (agentKey === 'codex') {
+    warnings.push(
+      ...configureCodexHarness({ home: resolvedHome, installPath, dryRun })
+    );
+  }
+
+  if (!dryRun) {
+    const installedStateFiles = manifest.connector.managedFiles
+      .map(relativePath => {
+        const target = path.join(installPath, relativePath);
+        if (!existsSync(target)) return null;
+        return { path: relativePath, sha256: sha256(readFileSync(target)) };
+      })
+      .filter((entry): entry is { path: string; sha256: string } => entry !== null);
+
+    const state: InstallState = {
+      agentKey,
+      agentIdentifier: manifest.connector.agentIdentifier,
+      contractVersion: manifest.contractVersion,
+      installPath,
+      installedAt: new Date().toISOString(),
+      files: installedStateFiles
+    };
+    const statePath = installStatePath(agentKey, resolvedHome);
+    mkdirSync(path.dirname(statePath), { recursive: true });
+    writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`);
   }
 
   return {
@@ -423,8 +693,7 @@ export function inspectConnector({
     }
     const recorded = state.files.find(file => file.path === relativePath);
     const actual = sha256(readFileSync(target));
-    const source = path.join(connectorDir(agentKey), relativePath);
-    const expected = existsSync(source) ? sha256(readFileSync(source)) : recorded?.sha256;
+    const expected = recorded?.sha256;
     if (expected && actual !== expected) {
       problems.push(`Modified or stale managed file: ${relativePath}`);
     }

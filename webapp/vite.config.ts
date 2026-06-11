@@ -5,7 +5,12 @@ import { defineConfig } from 'vite';
 
 // The dev server hosts the React SPA and proxies the REST + realtime (SSE)
 // surface to the local server process (server/index.ts).
-const API_TARGET = process.env.OVERLORD_API_TARGET ?? 'http://localhost:8787';
+const apiHost =
+  process.env.OVERLORD_WEB_HOST && process.env.OVERLORD_WEB_HOST !== '0.0.0.0'
+    ? process.env.OVERLORD_WEB_HOST
+    : '127.0.0.1';
+const apiPort = process.env.OVERLORD_WEB_PORT ?? '4310';
+const API_TARGET = process.env.OVERLORD_API_TARGET ?? `http://${apiHost}:${apiPort}`;
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

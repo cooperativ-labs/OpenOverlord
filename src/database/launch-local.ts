@@ -113,12 +113,24 @@ async function loadBetterSqlite3(): Promise<BetterSqlite3Constructor> {
   }
 }
 
+async function openDatabase(databasePath: string): Promise<DatabaseInstance> {
+  try {
+    const Database = await loadBetterSqlite3();
+    return new Database(databasePath);
+  } catch (error) {
+    const message = describeNativeModuleError(error);
+    if (message) {
+      throw new Error(message, { cause: error });
+    }
+    throw error;
+  }
+}
+
 async function main(): Promise<void> {
   const databasePath = resolveDatabasePath();
   mkdirSync(path.dirname(databasePath), { recursive: true });
 
-  const Database = await loadBetterSqlite3();
-  const db = new Database(databasePath);
+  const db = await openDatabase(databasePath);
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
   db.pragma('journal_mode = WAL');
