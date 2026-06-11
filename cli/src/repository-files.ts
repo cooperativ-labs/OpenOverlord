@@ -8,8 +8,8 @@ import { readRepositoryTree, RepositoryReadError } from '../../src/repository/gi
 export function listMentionableFiles(rootPath: string | null | undefined): string[] {
   if (!rootPath) return [];
   try {
-    return readRepositoryTree(rootPath).entries
-      .filter(entry => entry.type === 'file')
+    return readRepositoryTree(rootPath)
+      .entries.filter(entry => entry.type === 'file')
       .map(entry => entry.path);
   } catch (error) {
     if (error instanceof RepositoryReadError) return [];

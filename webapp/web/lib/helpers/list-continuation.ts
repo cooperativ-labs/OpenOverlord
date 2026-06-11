@@ -64,7 +64,8 @@ export function applyMarkdownListContinuation({
 
   // Empty item → user wants out of the list: clear the marker on this line.
   if (content.length === 0) {
-    const nextValue = value.slice(0, lineStart) + value.slice(lineEnd === -1 ? value.length : lineEnd);
+    const nextValue =
+      value.slice(0, lineStart) + value.slice(lineEnd === -1 ? value.length : lineEnd);
     return { applied: true, nextValue, nextSelection: lineStart };
   }
 

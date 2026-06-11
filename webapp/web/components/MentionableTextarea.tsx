@@ -138,7 +138,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
           clearMentionState();
         } else {
           const beforeCursor = nextValue.slice(0, cursorPosition);
-          const tokenMatch = beforeCursor.match(/(^|[\s(\[])@([^\s@]*)$/);
+          const tokenMatch = beforeCursor.match(/(^|[\s([])@([^\s@]*)$/);
           if (!tokenMatch) {
             clearMentionState();
           } else {
@@ -154,7 +154,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
           clearProjectMentionState();
         } else {
           const beforeCursor = nextValue.slice(0, cursorPosition);
-          const tokenMatch = beforeCursor.match(/(^|[\s(\[])#([^\s#[]*)$/);
+          const tokenMatch = beforeCursor.match(/(^|[\s([])#([^\s#[]*)$/);
           if (!tokenMatch) {
             clearProjectMentionState();
           } else {

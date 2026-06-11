@@ -11,7 +11,7 @@
 const MAX_MENTION_RESULTS = 20;
 
 /** Matches an in-progress `@<query>` token immediately before the cursor. */
-const ACTIVE_MENTION_PATTERN = /(?:^|[\s(\[])@([^\s@]*)$/;
+const ACTIVE_MENTION_PATTERN = /(?:^|[\s([])@([^\s@]*)$/;
 
 export interface ActiveMention {
   /** Index of the `@` character in the buffer. */
@@ -40,7 +40,11 @@ export function findActiveMention(text: string, cursor: number): ActiveMention |
 }
 
 /** Files whose path contains `query` (case-insensitive), capped for display. */
-export function fuzzyMatchFiles(files: string[], query: string, limit = MAX_MENTION_RESULTS): string[] {
+export function fuzzyMatchFiles(
+  files: string[],
+  query: string,
+  limit = MAX_MENTION_RESULTS
+): string[] {
   const needle = query.toLowerCase();
   const matches = needle ? files.filter(file => file.toLowerCase().includes(needle)) : files;
   return matches.slice(0, limit);
