@@ -115,6 +115,7 @@ Requirements:
 
 - Located at the instance or project root, depending on final packaging.
 - Configure instance name, SQLite database location, web port, default agent/model, terminal launch preferences, connector paths, and runner polling defaults.
+- Optional `[agent_catalog]` tables customize which agents and models are offered in the web UI (merged over bundled defaults on seed and catalog refresh).
 - Include commented examples for common terminals and agents.
 
 ### `.overlord/project.json`

@@ -19,6 +19,7 @@
 import { createHash } from 'node:crypto';
 import { hostname, platform } from 'node:os';
 
+import { resolveInstanceAgentCatalog } from '../../cli/src/agent-catalog.ts';
 import { loadConfig } from '../../cli/src/config.ts';
 import type {
   AgentCatalogAgentDto,
@@ -37,12 +38,12 @@ import type {
 import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';
 
-// ---- Bundled default catalog ----------------------------------------------
+// ---- Instance default catalog ----------------------------------------------
 //
-// Seeded into `workspaces.settings_json.agentCatalog` the first time the
-// catalog is read, and re-merged by the "refresh" endpoint so new bundled
-// models appear without wiping workspace customisations. Keys match the
-// connector registry (`cli/src/connectors.ts`).
+// Seeded into `workspaces.settings_json.agentCatalog` from bundled defaults
+// plus optional `[agent_catalog]` in overlord.toml, and re-merged by the
+// "refresh" endpoint so new defaults appear without wiping workspace edits.
+// Keys match the connector registry (`cli/src/connectors.ts`).
 
 interface StoredCatalogAgent {
   label: string;
@@ -62,51 +63,10 @@ type StoredCatalog = {
 
 const AGENT_CATALOG_SETTINGS_KEY = 'agentCatalog';
 
-const DEFAULT_AGENT_CATALOG: Record<string, StoredCatalogAgent> = {
-  claude: {
-    label: 'Claude Code',
-    availableByDefault: true,
-    models: [
-      {
-        id: 'claude-opus-4-8',
-        displayName: 'Opus 4.8',
-        reasoningOptions: ['low', 'medium', 'high']
-      },
-      {
-        id: 'claude-sonnet-4-6',
-        displayName: 'Sonnet 4.6',
-        reasoningOptions: ['low', 'medium', 'high']
-      },
-      { id: 'claude-haiku-4-5', displayName: 'Haiku 4.5', reasoningOptions: [] }
-    ],
-    defaultModel: null,
-    defaultReasoningEffort: null,
-    reasoningLabel: 'Thinking'
-  },
-  codex: {
-    label: 'Codex',
-    availableByDefault: true,
-    models: [
-      {
-        id: 'gpt-5-codex',
-        displayName: 'GPT-5 Codex',
-        reasoningOptions: ['low', 'medium', 'high']
-      },
-      { id: 'gpt-5', displayName: 'GPT-5', reasoningOptions: ['low', 'medium', 'high'] }
-    ],
-    defaultModel: 'gpt-5-codex',
-    defaultReasoningEffort: 'medium',
-    reasoningLabel: 'Effort'
-  },
-  cursor: {
-    label: 'Cursor',
-    availableByDefault: true,
-    models: [{ id: 'auto', displayName: 'Auto', reasoningOptions: [] }],
-    defaultModel: 'auto',
-    defaultReasoningEffort: null,
-    reasoningLabel: 'Thinking'
-  }
-};
+function instanceAgentCatalog(): Record<string, StoredCatalogAgent> {
+  const config = loadConfig();
+  return resolveInstanceAgentCatalog({ configCatalog: config.agentCatalog });
+}
 
 // ---- Workspace settings helpers --------------------------------------------
 
@@ -167,7 +127,7 @@ function toCatalogDto(stored: StoredCatalog): AgentCatalogDto {
 export const getAgentCatalog = db.transaction((): AgentCatalogDto => {
   let stored = readStoredCatalog();
   if (!stored) {
-    stored = { agents: structuredClone(DEFAULT_AGENT_CATALOG) };
+    stored = { agents: instanceAgentCatalog() };
     persistCatalog(stored);
   }
   return toCatalogDto(stored);
@@ -180,7 +140,7 @@ export const getAgentCatalog = db.transaction((): AgentCatalogDto => {
  */
 export const refreshAgentCatalog = db.transaction((): AgentCatalogDto => {
   const stored = readStoredCatalog() ?? { agents: {} };
-  for (const [key, bundled] of Object.entries(DEFAULT_AGENT_CATALOG)) {
+  for (const [key, bundled] of Object.entries(instanceAgentCatalog())) {
     const existing = stored.agents[key];
     if (!existing) {
       stored.agents[key] = structuredClone(bundled);

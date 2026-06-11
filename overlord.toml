@@ -6,6 +6,17 @@ web_port = 4310
 default_agent = "claude"
 # default_model = ""
 
+# Optional agent catalog (merged over bundled defaults on seed / refresh):
+[agent_catalog.claude]
+label = "Claude Code"
+available_by_default = true
+reasoning_label = "Thinking"
+
+[[agent_catalog.claude.models]]
+id = "claude-sonnet-4-6"
+display_name = "Sonnet 4.6"
+reasoning_options = ["low", "medium", "high"]
+
 # Common terminal launchers (examples):
 # terminal_launcher = "open -a Ghostty --args"
 # terminal_launcher = "wezterm start"

@@ -92,6 +92,7 @@ The `overlord.toml` file is used to configure the Open Overlord system. It is a 
 * The the database location
 * The host and port the web app will run on
 * The default agent/model options (for the run button in the web app)
+* An optional `[agent_catalog]` section to customize which agents and models are offered
 * Default terminal configuration (should include popular terminals commented out)
 
 
