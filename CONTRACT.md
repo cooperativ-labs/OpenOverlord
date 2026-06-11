@@ -78,7 +78,7 @@ Does NOT own:
 Owns:
 - Management command names and argument shapes
 - Project linking and discovery from working directory
-- Configuration file locations and formats (`overlord.toml`, `.overlord/project.json`)
+- Configuration file locations and formats (`overlord.toml`, `.overlord/project.json`), including web bind settings such as `web_host` and `web_port`
 - Human-readable CLI output format conventions
 
 Does NOT own:
@@ -126,6 +126,7 @@ Owns:
 - Request/response DTO shapes (derived from the logical schema's camelCase field names)
 - REST auth integration points
 - SSE/WebSocket realtime endpoint
+- Read-only SQLite browser endpoints under `/api/sqlite-browser/*`
 
 Does NOT own:
 - Database schema (→ Database Layer)

@@ -572,6 +572,7 @@ export async function runManagementCommand({
           else {
             console.log(`instance_name=${config.instanceName}`);
             console.log(`database_path=${config.databasePath}`);
+            console.log(`web_host=${config.webHost}`);
             console.log(`web_port=${config.webPort}`);
             console.log(`default_agent=${config.defaultAgent}`);
           }

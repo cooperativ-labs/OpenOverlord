@@ -4,6 +4,7 @@ import path from 'node:path';
 export type OverlordConfig = {
   instanceName: string;
   databasePath: string;
+  webHost: string;
   webPort: number;
   defaultAgent: string;
   defaultModel: string | null;
@@ -12,6 +13,7 @@ export type OverlordConfig = {
 const DEFAULT_CONFIG: OverlordConfig = {
   instanceName: 'Local Overlord',
   databasePath: '.overlord/Overlord.sqlite',
+  webHost: '127.0.0.1',
   webPort: 4310,
   defaultAgent: 'claude',
   defaultModel: null
@@ -68,6 +70,9 @@ export function loadConfig(configPath?: string | null): OverlordConfig {
       case 'database_path':
         config.databasePath = value;
         break;
+      case 'web_host':
+        config.webHost = value;
+        break;
       case 'web_port':
         config.webPort = Number.parseInt(value, 10);
         break;
@@ -97,6 +102,7 @@ export function writeConfig({
   const contents = `# Overlord local instance configuration
 instance_name = "${merged.instanceName}"
 database_path = "${merged.databasePath}"
+web_host = "${merged.webHost}"
 web_port = ${merged.webPort}
 default_agent = "${merged.defaultAgent}"
 ${merged.defaultModel ? `default_model = "${merged.defaultModel}"` : '# default_model = ""'}

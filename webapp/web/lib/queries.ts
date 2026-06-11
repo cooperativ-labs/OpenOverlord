@@ -4,6 +4,7 @@ import type {
   CreateObjectiveBody,
   CreateProjectBody,
   CreateTicketBody,
+  SqliteBrowserQueryResultDto,
   StatusType,
   TicketDto,
   UpdateObjectiveBody,
@@ -22,7 +23,10 @@ export const keys = {
   projectRepository: (id: string, executionTargetId: string | null) =>
     ['project', id, 'repository', executionTargetId ?? 'primary'] as const,
   tickets: (projectId: string) => ['project', projectId, 'tickets'] as const,
-  ticket: (id: string) => ['ticket', id] as const
+  ticket: (id: string) => ['ticket', id] as const,
+  sqliteTables: ['sqlite-browser', 'tables'] as const,
+  sqliteTableData: (tableName: string, limit: number, offset: number) =>
+    ['sqlite-browser', 'table', tableName, limit, offset] as const
 };
 
 // Realtime invalidation is global, but mutations also invalidate eagerly so the
@@ -57,6 +61,16 @@ export const useTickets = (projectId: string) =>
 
 export const useTicket = (id: string) =>
   useQuery({ queryKey: keys.ticket(id), queryFn: () => api.getTicket(id) });
+
+export const useSqliteTables = () =>
+  useQuery({ queryKey: keys.sqliteTables, queryFn: api.listSqliteTables });
+
+export const useSqliteTableData = (tableName: string | null, limit: number, offset: number) =>
+  useQuery({
+    queryKey: keys.sqliteTableData(tableName ?? '__none__', limit, offset),
+    queryFn: () => api.getSqliteTableData(tableName ?? '', limit, offset),
+    enabled: Boolean(tableName)
+  });
 
 // ---- Mutations -----------------------------------------------------------
 
@@ -183,5 +197,11 @@ export function useDeleteObjective() {
   return useMutation({
     mutationFn: (id: string) => api.deleteObjective(id),
     onSuccess: () => invalidateAll(qc)
+  });
+}
+
+export function useRunSqliteQuery() {
+  return useMutation({
+    mutationFn: (sql: string): Promise<SqliteBrowserQueryResultDto> => api.runSqliteQuery(sql)
   });
 }

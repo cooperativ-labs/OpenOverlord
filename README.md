@@ -83,14 +83,14 @@ Open Overlord should be CLI-first from the beginning. Any functionality availabl
 
 ### Web App
 
-Users will use `ovld serve` to start the web app on at their chosen port. Default is `http://localhost:8010`.
+Users will use `ovld serve` to start the web app at their chosen host/port. The current local config defaults are `http://127.0.0.1:4310`.
 
 ### overlord.toml
 
 The `overlord.toml` file is used to configure the Open Overlord system. It is a TOML file that is located in the root of the project. It is used to configure the project, including:
 * The instance/organization name
 * The the database location
-* The port the web app will run on
+* The host and port the web app will run on
 * The default agent/model options (for the run button in the web app)
 * Default terminal configuration (should include popular terminals commented out)
 
