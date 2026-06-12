@@ -11,7 +11,7 @@ export function ProjectsPage() {
   const [modalOpen, setModalOpen] = useState(false);
 
   return (
-    <div className="mx-auto min-h-0 flex-1 overflow-y-auto max-w-5xl px-6 py-8">
+    <div className=" min-h-0 flex-1 overflow-y-auto  px-6 py-8">
       <header className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Projects</h1>

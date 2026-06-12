@@ -150,9 +150,7 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
         {/* Card section — primary work surface: objectives */}
         <section className="border-b border-[var(--color-border)] bg-[var(--color-surface-1)] py-5">
           <div className="mb-3 px-5">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
-              Objectives ({ticket.objectives.length})
-            </h2>
+
           </div>
           <div className="flex flex-col gap-3 px-5 pb-1">
             <TicketObjectivesSection ticket={ticket} />
