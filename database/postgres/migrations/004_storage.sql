@@ -52,8 +52,7 @@ CREATE INDEX idx_workspace_images_workspace_created ON workspace_images (workspa
 CREATE TABLE user_images (
   id text PRIMARY KEY,
   workspace_id text NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
-  user_id text NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
-  workspace_user_id text REFERENCES workspace_users (id) ON DELETE SET NULL,
+  profile_id text NOT NULL REFERENCES profiles (id) ON DELETE RESTRICT,
   storage_bucket_id text NOT NULL REFERENCES storage_buckets (id) ON DELETE RESTRICT,
   storage_key text NOT NULL CHECK (char_length(btrim(storage_key)) > 0),
   filename text NOT NULL CHECK (char_length(btrim(filename)) > 0),
@@ -75,9 +74,7 @@ CREATE TABLE user_images (
 CREATE UNIQUE INDEX idx_user_images_active_bucket_key ON user_images
   (storage_bucket_id, storage_key)
   WHERE deleted_at IS NULL;
-CREATE INDEX idx_user_images_workspace_user_created ON user_images (workspace_id, user_id, created_at);
-CREATE INDEX idx_user_images_membership_created ON user_images (workspace_user_id, created_at)
-  WHERE workspace_user_id IS NOT NULL;
+CREATE INDEX idx_user_images_workspace_profile_created ON user_images (workspace_id, profile_id, created_at);
 
 CREATE TABLE attachments (
   id text PRIMARY KEY,
@@ -117,17 +114,17 @@ INSERT INTO storage_buckets (
 ) VALUES
   (
     'local-storage-workspace-images', 'local-workspace', 'workspace-images', 'local_fs',
-    NULL, '.overlord/storage/workspace-images', '{}'::jsonb, 'local-workspace-user',
+    NULL, 'database/.local/storage/workspace-images', '{}'::jsonb, 'local-workspace-user',
     '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1
   ),
   (
     'local-storage-user-images', 'local-workspace', 'user-images', 'local_fs',
-    NULL, '.overlord/storage/user-images', '{}'::jsonb, 'local-workspace-user',
+    NULL, 'database/.local/storage/user-images', '{}'::jsonb, 'local-workspace-user',
     '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1
   ),
   (
     'local-storage-attachments', 'local-workspace', 'attachments', 'local_fs',
-    NULL, '.overlord/storage/attachments', '{}'::jsonb, 'local-workspace-user',
+    NULL, 'database/.local/storage/attachments', '{}'::jsonb, 'local-workspace-user',
     '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1
   );
 

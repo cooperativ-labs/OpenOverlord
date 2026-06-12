@@ -20,7 +20,7 @@ yarn generate
 
 This script does two things:
 1. Runs `yarn start:local` to ensure the local SQLite database is up-to-date with all migrations.
-2. Runs `kysely-codegen` against `.overlord/Overlord.sqlite` and writes the output to `src/types/db.ts`.
+2. Runs `kysely-codegen` against `database/.local/Overlord.sqlite` and writes the output to `src/types/db.ts`.
 
 **Re-run `yarn generate` after every schema migration** to keep types in sync.
 
@@ -112,7 +112,7 @@ Key `kysely-codegen` flags used by this project:
 | Flag | Value | Purpose |
 |---|---|---|
 | `--dialect` | `sqlite` | Dialect for local SQLite dev DB |
-| `--url` | `.overlord/Overlord.sqlite` | Path to local SQLite file |
+| `--url` | `database/.local/Overlord.sqlite` | Path to local SQLite file |
 | `--out-file` | `src/types/db.ts` | Output location |
 
 Run `kysely-codegen --help` to see all available options.

@@ -5,6 +5,7 @@ import type {
   ArtifactDto,
   CreateObjectiveBody,
   CreateProjectBody,
+  CreateProjectStatusBody,
   CreateTicketBody,
   CreateUserTokenBody,
   CreateUserTokenResultDto,
@@ -17,6 +18,7 @@ import type {
   ProjectStatusDto,
   ReorderBoardColumnBody,
   ReorderFutureObjectivesBody,
+  ReorderProjectStatusesBody,
   StatusType,
   TicketDetailDto,
   TicketDto,
@@ -24,6 +26,7 @@ import type {
   UpdateObjectiveBody,
   UpdateProfileBody,
   UpdateProjectBody,
+  UpdateProjectStatusBody,
   UpdateTicketBody,
   UpdateUserTokenBody,
   UserTokenDto
@@ -133,6 +136,7 @@ function mergeProjectSettingsJson(
 
 interface ProjectStatusRow {
   id: string;
+  workspace_id: string;
   project_id: string;
   key: string;
   name: string;
@@ -140,6 +144,86 @@ interface ProjectStatusRow {
   position: number;
   is_default: number;
   is_terminal: number;
+  revision: number;
+}
+
+const STATUS_TYPES: StatusType[] = [
+  'draft',
+  'execute',
+  'review',
+  'complete',
+  'blocked',
+  'cancelled'
+];
+
+function assertValidStatusType(type: string): StatusType {
+  if (!STATUS_TYPES.includes(type as StatusType)) {
+    throw new ApiError(400, 'Invalid status type');
+  }
+  return type as StatusType;
+}
+
+function isTerminalStatusType(type: StatusType): boolean {
+  return type === 'complete' || type === 'cancelled';
+}
+
+function uniqueStatusKey({ projectId, name }: { projectId: string; name: string }): string {
+  const base = slugify(name).replace(/-/g, '_');
+  let key = base;
+  let suffix = 2;
+  while (
+    db
+      .prepare(`SELECT 1 FROM project_statuses WHERE project_id = ? AND key = ?`)
+      .get(projectId, key)
+  ) {
+    key = `${base}_${suffix}`;
+    suffix += 1;
+  }
+  return key;
+}
+
+function getProjectStatusRow(projectId: string, statusId: string): ProjectStatusRow {
+  getProject(projectId);
+  const row = db
+    .prepare(
+      `SELECT id, workspace_id, project_id, key, name, type, position, is_default, is_terminal, revision
+         FROM project_statuses
+        WHERE id = ? AND project_id = ? AND deleted_at IS NULL`
+    )
+    .get(statusId, projectId) as ProjectStatusRow | undefined;
+  if (!row) throw new ApiError(404, 'Status not found');
+  return row;
+}
+
+function countActiveStatusesByType({
+  projectId,
+  type
+}: {
+  projectId: string;
+  type: string;
+}): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM project_statuses
+        WHERE project_id = ? AND type = ? AND deleted_at IS NULL`
+    )
+    .get(projectId, type) as { count: number };
+  return row.count;
+}
+
+function countTicketsOnStatus(statusId: string): number {
+  const row = db
+    .prepare(`SELECT COUNT(*) AS count FROM tickets WHERE status_id = ? AND deleted_at IS NULL`)
+    .get(statusId) as { count: number };
+  return row.count;
+}
+
+function clearProjectDefaultStatuses({ projectId, now }: { projectId: string; now: string }): void {
+  db.prepare(
+    `UPDATE project_statuses
+        SET is_default = 0, updated_at = @now, revision = revision + 1
+      WHERE project_id = @project_id AND is_default = 1 AND deleted_at IS NULL`
+  ).run({ project_id: projectId, now });
 }
 
 interface ProjectResourceRow {
@@ -335,7 +419,7 @@ export function getProject(id: string): ProjectDto {
 export function listProjectStatuses(projectId: string): ProjectStatusDto[] {
   const rows = db
     .prepare(
-      `SELECT id, project_id, key, name, type, position, is_default, is_terminal
+      `SELECT id, workspace_id, project_id, key, name, type, position, is_default, is_terminal, revision
          FROM project_statuses
         WHERE project_id = ? AND deleted_at IS NULL
         ORDER BY position ASC`
@@ -343,6 +427,204 @@ export function listProjectStatuses(projectId: string): ProjectStatusDto[] {
     .all(projectId) as ProjectStatusRow[];
   return rows.map(toStatusDto);
 }
+
+export const createProjectStatus = db.transaction(
+  (projectId: string, body: CreateProjectStatusBody): ProjectStatusDto => {
+    getProject(projectId);
+
+    const name = (body.name ?? '').trim();
+    if (!name) throw new ApiError(400, 'Status name is required');
+
+    const type = assertValidStatusType(body.type);
+    if (type === 'execute' || type === 'review') {
+      if (countActiveStatusesByType({ projectId, type }) > 0) {
+        throw new ApiError(409, `This project already has a ${type} status`);
+      }
+    }
+
+    const isDefault = body.isDefault ?? false;
+    if (isDefault && type !== 'draft') {
+      throw new ApiError(400, 'Only draft-type statuses can be the default');
+    }
+
+    const now = nowIso();
+    const id = newId();
+    const key = uniqueStatusKey({ projectId, name });
+    const maxPos = db
+      .prepare(
+        `SELECT COALESCE(MAX(position), -1) AS max_pos FROM project_statuses
+          WHERE project_id = ? AND deleted_at IS NULL`
+      )
+      .get(projectId) as { max_pos: number };
+    const position = maxPos.max_pos + 1;
+
+    if (isDefault) {
+      clearProjectDefaultStatuses({ projectId, now });
+    }
+
+    db.prepare(
+      `INSERT INTO project_statuses
+         (id, workspace_id, project_id, key, name, type, position, is_default, is_terminal,
+          created_at, updated_at, revision)
+       VALUES (@id, @workspace_id, @project_id, @key, @name, @type, @position, @is_default, @is_terminal,
+          @now, @now, 1)`
+    ).run({
+      id,
+      workspace_id: WORKSPACE.id,
+      project_id: projectId,
+      key,
+      name,
+      type,
+      position,
+      is_default: isDefault ? 1 : 0,
+      is_terminal: isTerminalStatusType(type) ? 1 : 0,
+      now
+    });
+
+    recordChange({
+      entityType: 'project_status',
+      entityId: id,
+      operation: 'insert',
+      entityRevision: 1,
+      projectId,
+      changedFields: ['name', 'type', 'position', ...(isDefault ? ['is_default'] : [])]
+    });
+
+    return toStatusDto(getProjectStatusRow(projectId, id));
+  }
+);
+
+export const updateProjectStatus = db.transaction(
+  (projectId: string, statusId: string, body: UpdateProjectStatusBody): ProjectStatusDto => {
+    const existing = getProjectStatusRow(projectId, statusId);
+    const changed: string[] = [];
+    const now = nowIso();
+    const fields: string[] = [];
+    const params: Record<string, unknown> = { id: statusId, project_id: projectId };
+
+    if (body.name !== undefined) {
+      const name = body.name.trim();
+      if (!name) throw new ApiError(400, 'Status name cannot be empty');
+      fields.push('name = @name');
+      params.name = name;
+      changed.push('name');
+    }
+
+    if (body.isDefault !== undefined) {
+      if (body.isDefault) {
+        if (existing.type !== 'draft') {
+          throw new ApiError(400, 'Only draft-type statuses can be the default');
+        }
+        clearProjectDefaultStatuses({ projectId, now });
+        fields.push('is_default = 1');
+        changed.push('is_default');
+      } else if (existing.is_default === 1) {
+        throw new ApiError(409, 'Choose another status as the default before clearing this one');
+      }
+    }
+
+    if (fields.length === 0) {
+      return toStatusDto(existing);
+    }
+
+    const revision = existing.revision + 1;
+    db.prepare(
+      `UPDATE project_statuses
+          SET ${fields.join(', ')}, updated_at = @now, revision = @revision
+        WHERE id = @id AND project_id = @project_id AND deleted_at IS NULL`
+    ).run({ ...params, now, revision });
+
+    recordChange({
+      entityType: 'project_status',
+      entityId: statusId,
+      operation: 'update',
+      entityRevision: revision,
+      projectId,
+      changedFields: changed
+    });
+
+    return toStatusDto(getProjectStatusRow(projectId, statusId));
+  }
+);
+
+export const deleteProjectStatus = db.transaction((projectId: string, statusId: string): void => {
+  const existing = getProjectStatusRow(projectId, statusId);
+
+  if (existing.type === 'execute' || existing.type === 'review') {
+    throw new ApiError(409, 'Cannot remove the required execute or review status');
+  }
+  if (existing.is_default === 1) {
+    throw new ApiError(409, 'Set another status as the default before deleting this one');
+  }
+
+  const ticketCount = countTicketsOnStatus(statusId);
+  if (ticketCount > 0) {
+    throw new ApiError(
+      409,
+      `Cannot delete a status used by ${ticketCount} ticket(s). Move them first.`
+    );
+  }
+
+  const now = nowIso();
+  const revision = existing.revision + 1;
+  db.prepare(
+    `UPDATE project_statuses
+        SET deleted_at = @now, updated_at = @now, revision = @revision
+      WHERE id = @id AND project_id = @project_id AND deleted_at IS NULL`
+  ).run({ id: statusId, project_id: projectId, now, revision });
+
+  recordChange({
+    entityType: 'project_status',
+    entityId: statusId,
+    operation: 'delete',
+    entityRevision: revision,
+    projectId,
+    changedFields: ['deleted_at']
+  });
+});
+
+export const reorderProjectStatuses = db.transaction(
+  (projectId: string, body: ReorderProjectStatusesBody): ProjectStatusDto[] => {
+    getProject(projectId);
+
+    const orderedIds = body.orderedStatusIds;
+    if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+      throw new ApiError(400, 'orderedStatusIds is required');
+    }
+
+    const current = listProjectStatuses(projectId);
+    if (orderedIds.length !== current.length) {
+      throw new ApiError(400, 'orderedStatusIds must include every status');
+    }
+
+    const currentIds = new Set(current.map(status => status.id));
+    for (const id of orderedIds) {
+      if (!currentIds.has(id)) {
+        throw new ApiError(400, 'Unknown status in reorder list');
+      }
+    }
+
+    const now = nowIso();
+    const updatePosition = db.prepare(
+      `UPDATE project_statuses
+          SET position = @position, updated_at = @now, revision = revision + 1
+        WHERE id = @id AND project_id = @project_id AND deleted_at IS NULL`
+    );
+
+    orderedIds.forEach((id, position) => {
+      updatePosition.run({ position, now, id, project_id: projectId });
+      recordChange({
+        entityType: 'project_status',
+        entityId: id,
+        operation: 'update',
+        projectId,
+        changedFields: ['position']
+      });
+    });
+
+    return listProjectStatuses(projectId);
+  }
+);
 
 export function listProjectResources(projectId: string): ProjectResourceDto[] {
   getProject(projectId);
@@ -1714,10 +1996,8 @@ export const deleteObjective = db.transaction((id: string): void => {
 // ---- Profile -------------------------------------------------------------
 //
 // This build runs as a single trusted local operator, so "the profile" is the
-// operator's row in the `users` table. The avatar URL has no dedicated column
-// in the core schema, so it lives in `users.metadata_json.avatarUrl`. Password
-// management is intentionally absent: local installs have no Better Auth
-// credential to rotate.
+// operator's row in the `profiles` table. The avatar URL has no dedicated
+// column in the core schema, so it lives in `profiles.metadata_json.avatarUrl`.
 
 interface UserRow {
   id: string;
@@ -1725,14 +2005,13 @@ interface UserRow {
   display_name: string;
   handle: string | null;
   email: string | null;
-  auth_provider: string | null;
   metadata_json: string;
   created_at: string;
   revision: number;
 }
 
 /**
- * Resolve the local operator's `users` row. Prefers the user behind the active
+ * Resolve the local operator's `profiles` row. Prefers the profile behind the active
  * workspace's actor; falls back to the oldest active human user so a freshly
  * switched workspace without a recorded actor still resolves an identity.
  */
@@ -1740,20 +2019,20 @@ function loadOperatorUserRow(): UserRow {
   if (ACTOR_WORKSPACE_USER_ID) {
     const row = db
       .prepare(
-        `SELECT u.id, u.kind, u.display_name, u.handle, u.email, u.auth_provider,
-                u.metadata_json, u.created_at, u.revision
-           FROM users u
-           JOIN workspace_users wu ON wu.user_id = u.id
-          WHERE wu.id = ? AND u.deleted_at IS NULL`
+        `SELECT p.id, p.kind, p.display_name, p.handle, p.email,
+                p.metadata_json, p.created_at, p.revision
+           FROM profiles p
+           JOIN workspace_users wu ON wu.profile_id = p.id
+          WHERE wu.id = ? AND p.deleted_at IS NULL`
       )
       .get(ACTOR_WORKSPACE_USER_ID) as UserRow | undefined;
     if (row) return row;
   }
   const fallback = db
     .prepare(
-      `SELECT id, kind, display_name, handle, email, auth_provider,
+      `SELECT id, kind, display_name, handle, email,
               metadata_json, created_at, revision
-         FROM users
+         FROM profiles
         WHERE kind = 'human' AND status = 'active' AND deleted_at IS NULL
         ORDER BY created_at ASC LIMIT 1`
     )
@@ -1795,7 +2074,7 @@ function toProfileDto(row: UserRow): ProfileDto {
     email: row.email,
     avatarUrl: avatarUrlFromMetadata(row.metadata_json),
     kind: row.kind,
-    authProvider: row.auth_provider,
+    authProvider: 'better-auth',
     createdAt: row.created_at
   };
 }
@@ -1848,12 +2127,12 @@ export const updateProfile = db.transaction((body: UpdateProfileBody): ProfileDt
   const now = nowIso();
   const revision = existing.revision + 1;
   db.prepare(
-    `UPDATE users SET ${fields.join(', ')}, updated_at = @now, revision = @revision
+    `UPDATE profiles SET ${fields.join(', ')}, updated_at = @now, revision = @revision
        WHERE id = @id`
   ).run({ ...params, now, revision });
 
   recordChange({
-    entityType: 'user',
+    entityType: 'profile',
     entityId: existing.id,
     operation: 'update',
     entityRevision: revision,
@@ -1923,7 +2202,7 @@ function loadOperatorIdentity(): OperatorIdentity {
   const membership = db
     .prepare(
       `SELECT id FROM workspace_users
-         WHERE workspace_id = ? AND user_id = ? AND deleted_at IS NULL
+         WHERE workspace_id = ? AND profile_id = ? AND deleted_at IS NULL
          ORDER BY created_at ASC LIMIT 1`
     )
     .get(WORKSPACE.id, user.id) as { id: string } | undefined;
@@ -2006,7 +2285,7 @@ export const createUserToken = db.transaction(
     const now = nowIso();
     db.prepare(
       `INSERT INTO user_tokens (
-         id, workspace_id, user_id, workspace_user_id, label,
+         id, workspace_id, profile_id, workspace_user_id, label,
          token_prefix, token_hash, hash_algorithm, status, expires_at,
          last_used_context_json, metadata_json, created_at, updated_at, revision
        ) VALUES (

@@ -4,16 +4,21 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  loadConfig,
+  resolveDatabasePath as resolveConfiguredDatabasePath
+} from '../../cli/src/config.ts';
 import type { ChangeOperation } from '../shared/contract.ts';
 
 // webapp/server/db.ts -> repo root is two levels up from server/.
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-const DEFAULT_DATABASE_PATH = '.overlord/Overlord.sqlite';
-
 export function resolveDatabasePath(): string {
-  const explicit = process.env.OVERLORD_SQLITE_PATH ?? DEFAULT_DATABASE_PATH;
-  return path.isAbsolute(explicit) ? explicit : path.resolve(repoRoot, explicit);
+  const explicit = process.env.OVERLORD_SQLITE_PATH;
+  if (explicit) {
+    return path.isAbsolute(explicit) ? explicit : path.resolve(repoRoot, explicit);
+  }
+  return resolveConfiguredDatabasePath(loadConfig(path.join(repoRoot, 'overlord.toml')), repoRoot);
 }
 
 const databasePath = resolveDatabasePath();

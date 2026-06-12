@@ -5,7 +5,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
-import { useProjects, useProject, useUpdateTicket } from '@/lib/queries.ts';
+import { useProject, useProjects, useUpdateTicket } from '@/lib/queries.ts';
 import { cn } from '@/lib/utils';
 
 type TicketProjectSelectProps = {

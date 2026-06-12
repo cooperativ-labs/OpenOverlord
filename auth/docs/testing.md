@@ -90,8 +90,8 @@ These tests prove the auth layer obeys its interaction-surface rules.
 
 ### D1. Bridge resolution
 - Auth resolves an authenticated Better Auth identity to an Overlord `Actor` by
-  reading `workspace_users` and `users` where `users.auth_provider = 'better-auth'`
-  and `users.external_subject` matches the Better Auth user id.
+  reading `workspace_users` and `profiles` where `profiles.id` matches the
+  Better Auth user id.
 - Role resolution reads `role_assignments` by `workspace_user_id` + `workspace_id`
   to build the `Actor`'s role list.
 

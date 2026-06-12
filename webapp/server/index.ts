@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadConfig, resolveProjectRoot } from '../../cli/src/config.ts';
+import { loadConfig } from '../../cli/src/config.ts';
 
 import { DATABASE_PATH, WORKSPACE } from './db.ts';
 import {
@@ -23,9 +23,11 @@ import {
   ApiError,
   createObjective,
   createProject,
+  createProjectStatus,
   createTicket,
   createUserToken,
   deleteObjective,
+  deleteProjectStatus,
   deleteTicket,
   getProfile,
   getProject,
@@ -43,13 +45,15 @@ import {
   renameUserToken,
   reorderBoardColumn,
   reorderFutureObjectives,
+  reorderProjectStatuses,
   revokeUserToken,
   updateObjective,
   updateProfile,
   updateProject,
+  updateProjectStatus,
   updateTicket
 } from './repository.ts';
-import { getSqliteTableData, listSqliteTables, runSqliteQuery } from './sqlite-browser.ts';
+import { startSqlStudio } from './sql-studio.ts';
 import {
   deleteObjectiveAttachment,
   listObjectiveAttachments,
@@ -79,7 +83,17 @@ loadEnv({ path: path.join(repoRoot, '.env') });
 const config = loadConfig();
 const bindHost = process.env.OVERLORD_WEB_HOST ?? config.webHost;
 const bindPort = Number(process.env.OVERLORD_WEB_PORT ?? config.webPort);
-const projectRoot = resolveProjectRoot(repoRoot);
+const sqlStudioHost = process.env.OVERLORD_SQL_STUDIO_HOST ?? config.sqlStudioHost;
+const sqlStudioPort = Number(process.env.OVERLORD_SQL_STUDIO_PORT ?? config.sqlStudioPort);
+const sqlStudio = startSqlStudio({
+  enabled: process.env.OVERLORD_SQL_STUDIO_ENABLED
+    ? process.env.OVERLORD_SQL_STUDIO_ENABLED === 'true'
+    : config.sqlStudioEnabled,
+  binary: process.env.OVERLORD_SQL_STUDIO_BINARY ?? config.sqlStudioBinary,
+  host: sqlStudioHost,
+  port: sqlStudioPort,
+  databasePath: DATABASE_PATH
+});
 
 const app = express();
 app.use(cors());
@@ -116,6 +130,10 @@ app.get(
       port: bindPort,
       url: `http://${bindHost === '0.0.0.0' ? '127.0.0.1' : bindHost}:${bindPort}`
     },
+    sqlStudio: {
+      enabled: Boolean(sqlStudio.url),
+      url: sqlStudio.url
+    },
     // Capabilities scoped to what this build supports. Launching queues
     // execution requests for a runner; execution-target management remains
     // CLI-only.
@@ -124,7 +142,7 @@ app.get(
       tickets: true,
       objectives: true,
       realtime: true,
-      sqliteBrowser: true,
+      sqlStudio: Boolean(sqlStudio.url),
       launchAgents: true,
       executionTargets: false
     }
@@ -274,23 +292,26 @@ app.post(
 // `storageKey` path segment cannot traverse the filesystem. Attachments carry
 // arbitrary, user-supplied bytes, so they are served as downloads with
 // `nosniff` to prevent the browser from rendering them inline (e.g. HTML/SVG).
-app.get('/api/storage/:bucketKey/:storageKey', (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const resolved = resolveStoredObject(req.params.bucketKey, req.params.storageKey);
-    res.type(resolved.contentType);
-    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
-    if (resolved.forceDownload) {
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="${encodeURIComponent(resolved.filename)}"`
-      );
+app.get(
+  '/api/storage/:bucketKey/:storageKey',
+  (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const resolved = resolveStoredObject(req.params.bucketKey, req.params.storageKey);
+      res.type(resolved.contentType);
+      res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+      if (resolved.forceDownload) {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${encodeURIComponent(resolved.filename)}"`
+        );
+      }
+      res.sendFile(resolved.absolutePath);
+    } catch (err) {
+      next(err);
     }
-    res.sendFile(resolved.absolutePath);
-  } catch (err) {
-    next(err);
   }
-});
+);
 
 // ---- Realtime ------------------------------------------------------------
 
@@ -320,6 +341,30 @@ app.patch(
 app.get(
   '/api/projects/:id/statuses',
   handle(req => listProjectStatuses(req.params.id))
+);
+app.post(
+  '/api/projects/:id/statuses',
+  handle(req => createProjectStatus(req.params.id, req.body), { mutates: true })
+);
+app.patch(
+  '/api/projects/:id/statuses/reorder',
+  handle(req => reorderProjectStatuses(req.params.id, req.body), { mutates: true })
+);
+app.patch(
+  '/api/projects/:id/statuses/:statusId',
+  handle(req => updateProjectStatus(req.params.id, req.params.statusId, req.body), {
+    mutates: true
+  })
+);
+app.delete(
+  '/api/projects/:id/statuses/:statusId',
+  handle(
+    req => {
+      deleteProjectStatus(req.params.id, req.params.statusId);
+      return { ok: true as const };
+    },
+    { mutates: true }
+  )
 );
 app.get(
   '/api/projects/:id/resources',
@@ -469,33 +514,6 @@ app.put(
   handle(req => updateLaunchPreference(req.params.id, req.body), { mutates: true })
 );
 
-// ---- SQLite browser ------------------------------------------------------
-
-app.get(
-  '/api/sqlite-browser/tables',
-  handle(() => ({
-    databasePath: DATABASE_PATH,
-    workspaceRoot: projectRoot,
-    tables: listSqliteTables()
-  }))
-);
-
-app.get(
-  '/api/sqlite-browser/tables/:tableName',
-  handle(req =>
-    getSqliteTableData({
-      tableName: req.params.tableName,
-      limit: req.query.limit,
-      offset: req.query.offset
-    })
-  )
-);
-
-app.post(
-  '/api/sqlite-browser/query',
-  handle(req => runSqliteQuery(String(req.body?.sql ?? '')))
-);
-
 // ---- Static SPA (production: `yarn build` then `yarn start`) ------------
 
 if (existsSync(distDir)) {
@@ -521,10 +539,20 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
 realtime.start();
 
-app.listen(bindPort, bindHost, () => {
+const server = app.listen(bindPort, bindHost, () => {
   console.log(
     `[webapp] Overlord web server listening on http://${bindHost === '0.0.0.0' ? '127.0.0.1' : bindHost}:${bindPort}`
   );
   console.log(`[webapp] workspace: ${WORKSPACE.name} (${WORKSPACE.slug})`);
   console.log(`[webapp] database: ${DATABASE_PATH}`);
+});
+
+server.on('error', (error: NodeJS.ErrnoException) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(
+      `[webapp] port ${bindPort} is already in use. Stop the other process (yarn stop) or change web_port in overlord.toml.`
+    );
+    process.exit(1);
+  }
+  throw error;
 });

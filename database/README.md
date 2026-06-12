@@ -66,7 +66,7 @@ Use the Node-based local launcher for the default SQLite development database:
 yarn start:local
 ```
 
-This creates `.overlord/Overlord.sqlite`, enables SQLite foreign keys, WAL mode,
+This creates `database/.local/Overlord.sqlite` (git-ignored runtime data), enables SQLite foreign keys, WAL mode,
 and a short busy timeout for the launch connection, discovers
 `database/sqlite/migrations/*.sql`, applies any unapplied core SQLite migrations
 in lexical version order, and records each applied migration in
@@ -94,10 +94,10 @@ yarn install
 Manual SQL application remains useful for adapter experiments:
 
 ```sh
-sqlite3 .overlord/Overlord.sqlite < database/sqlite/migrations/001_initial_core.sql
-sqlite3 .overlord/Overlord.sqlite < database/sqlite/migrations/002_rbac.sql
-sqlite3 .overlord/Overlord.sqlite < database/sqlite/migrations/003_better_auth.sql
-sqlite3 .overlord/Overlord.sqlite < database/sqlite/migrations/004_storage.sql
+sqlite3 database/.local/Overlord.sqlite < database/sqlite/migrations/001_better_auth.sql
+sqlite3 database/.local/Overlord.sqlite < database/sqlite/migrations/002_initial_core.sql
+sqlite3 database/.local/Overlord.sqlite < database/sqlite/migrations/003_rbac.sql
+sqlite3 database/.local/Overlord.sqlite < database/sqlite/migrations/004_storage.sql
 
 psql "$DATABASE_URL" -f database/postgres/migrations/001_initial_core.sql
 psql "$DATABASE_URL" -f database/postgres/migrations/002_rbac.sql

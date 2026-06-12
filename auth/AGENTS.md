@@ -37,8 +37,8 @@ An auth provider replaces or supplements the built-in `USER_TOKEN` mechanism. Th
 1. **Create a conformance manifest** at `auth/providers/<name>/conformance-manifest.yaml` declaring `componentType: auth-provider` and `contractVersion: 0.2-draft`.
 2. **Implement the `AuthenticationProvider` interface** (define the interface in `src/auth/` if it does not exist yet). The provider must accept a credential and resolve it to an Overlord `Actor` or reject it.
 3. **Do not read Better Auth tables directly** (`user`, `session`, `account`, `verification`, `apikey`). Only the Auth Layer's own identity bridge code may read those.
-4. **Wire the identity bridge**: read `workspace_users` and `users` (via `users.external_subject` / `users.auth_provider`) to resolve the external identity to an `Actor`.
-5. **Update the migration if needed**: if your provider needs a new schema column (e.g. `users.external_subject`), add a numbered migration in `database/sqlite/migrations/` following the [database extension procedure](../database/AGENTS.md).
+4. **Wire the identity bridge**: read `workspace_users` and `profiles` (where `profiles.id` matches the Better Auth user id) to resolve the external identity to an `Actor`.
+5. **Update the migration if needed**: if your provider needs a new schema column, add a numbered migration in `database/sqlite/migrations/` following the [database extension procedure](../database/AGENTS.md).
 6. **No contract version bump needed** for a new auth provider — it is a sanctioned extension point. Add your `conformance-manifest.yaml` and run `ovld contract check` on it.
 
 ---

@@ -1,9 +1,9 @@
 # Overlord local scratch
 .overlord/tmp/
 .overlord/logs/
-.overlord/storage/
-.overlord/*.sqlite
-.overlord/*.sqlite-*
+
+# Live SQLite database and local object storage
+database/.local/
 
 node_modules/
 **/node_modules/
@@ -17,3 +17,5 @@ dist/
 .yarn
 webapp/.yarn/install-state.gz
 .yarn/install-state.gz
+
+

@@ -1,6 +1,6 @@
 # Overlord Component Interaction Contract
 
-Contract Version: `0.3-draft`
+Contract Version: `0.5-draft`
 
 ## Purpose
 
@@ -19,12 +19,14 @@ See `.claude/skills/component-contract.md` for the enforced agent workflow.
 
 ## Contract Version
 
-Current version: `0.3-draft`
+Current version: `0.5-draft`
 
 The contract version is incremented when any stable interface changes. All conformance manifests must declare the contract version they were validated against.
 
 | Version | Changes |
 | --- | --- |
+| `0.5-draft` | Removes the built-in read-only SQLite browser REST surface and replaces it with optional SQL Studio launch metadata configured by `overlord.toml`. |
+| `0.4-draft` | Renames application identity table `users` to `profiles`; profiles are created from Better Auth `user` rows with matching IDs; `workspace_users` now references `profile_id` and no longer stores a display-name override; `user_images` references profiles only. |
 | `0.3-draft` | Renames the AI Tools Layer (`ai-tools`) to the Automations Layer (`automations`); renames `serviceToAiTools` to `serviceToAutomations`; renames `AiTool` interface to `Automation`. |
 | `0.2-draft` | Adds `authToDatabase` interaction surface and Better Auth implementation tables; clarifies Better Auth uses the configured database adapter. Adds the AI Tools Layer (`ai-tools`) and `serviceToAiTools` interaction surface. |
 | `0.1-draft` | Initial component interaction contract. |
@@ -78,7 +80,7 @@ Does NOT own:
 Owns:
 - Management command names and argument shapes
 - Project linking and discovery from working directory
-- Configuration file locations and formats (`overlord.toml`, `.overlord/project.json`), including web bind settings such as `web_host` and `web_port`
+- Configuration file locations and formats (`overlord.toml`, `.overlord/project.json`), including web bind settings such as `web_host` and `web_port`, plus optional SQL Studio settings (`sql_studio_enabled`, `sql_studio_host`, `sql_studio_port`, `sql_studio_binary`)
 - Human-readable CLI output format conventions
 
 Does NOT own:
@@ -126,7 +128,7 @@ Owns:
 - Request/response DTO shapes (derived from the logical schema's camelCase field names)
 - REST auth integration points
 - SSE/WebSocket realtime endpoint
-- Read-only SQLite browser endpoints under `/api/sqlite-browser/*`
+- SQL Studio launch metadata in `/api/meta` when the optional external SQL Studio process is enabled
 
 Does NOT own:
 - Database schema (→ Database Layer)
@@ -231,7 +233,7 @@ These are the **only sanctioned paths** between components. Bypassing these surf
 
 - **Transport**: Better Auth's configured database adapter for auth tables; direct service-layer/database adapter queries for identity bridging
 - **Auth tables owned**: `user`, `session`, `account`, `verification`, `apikey` — auth-internal; no other component accesses them directly
-- **Identity bridge**: Auth Layer reads `workspace_users` and `users` (via `users.external_subject` / `users.auth_provider = 'better-auth'`) to resolve an authenticated identity to an Overlord `Actor`
+- **Identity bridge**: Auth Layer reads `workspace_users` and `profiles` (via `profiles.id = Better Auth user.id`) to resolve an authenticated identity to an Overlord `Actor`
 - **Role resolution**: Auth Layer reads `role_assignments` for the resolved workspace user to build the `Actor`'s role list
 - **Rule**: Auth Layer must not write to core domain tables (tickets, projects, etc.)
 
@@ -309,7 +311,7 @@ See [`contract/extension-points.yaml`](contract/extension-points.yaml) for machi
 
 ### Open (extensions may add namespaced values)
 
-- `workspaces.kind`, `users.kind`
+- `workspaces.kind`, `profiles.kind`
 - `execution_targets.type`, `project_resources.type`
 - `artifacts.type`
 - `ticket_events.source`, `entity_changes.entity_type`, `entity_changes.source`

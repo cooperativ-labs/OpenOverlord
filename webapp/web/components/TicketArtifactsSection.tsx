@@ -24,9 +24,7 @@ const ARTIFACT_META: Record<ArtifactType, { icon: LucideIcon; label: string }> =
 };
 
 function artifactMeta(type: string): { icon: LucideIcon | null; label: string } {
-  return (
-    ARTIFACT_META[type as ArtifactType] ?? { icon: null, label: type.replace(/_/g, ' ') }
-  );
+  return ARTIFACT_META[type as ArtifactType] ?? { icon: null, label: type.replace(/_/g, ' ') };
 }
 
 function formatDate(iso: string): string {

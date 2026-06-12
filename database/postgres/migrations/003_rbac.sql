@@ -32,7 +32,7 @@ CREATE INDEX idx_role_assignments_workspace_user ON role_assignments (workspace_
 CREATE TABLE user_tokens (
   id text PRIMARY KEY,
   workspace_id text NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
-  user_id text NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
+  profile_id text NOT NULL REFERENCES profiles (id) ON DELETE RESTRICT,
   workspace_user_id text NOT NULL REFERENCES workspace_users (id) ON DELETE RESTRICT,
   label text NOT NULL CHECK (char_length(btrim(label)) > 0),
   token_prefix text NOT NULL CHECK (char_length(btrim(token_prefix)) > 0),
@@ -54,7 +54,7 @@ CREATE TABLE user_tokens (
 
 CREATE UNIQUE INDEX idx_user_tokens_workspace_prefix ON user_tokens (workspace_id, token_prefix);
 CREATE INDEX idx_user_tokens_workspace_user_status ON user_tokens (workspace_id, workspace_user_id, status);
-CREATE INDEX idx_user_tokens_user_status ON user_tokens (user_id, status);
+CREATE INDEX idx_user_tokens_profile_status ON user_tokens (profile_id, status);
 CREATE INDEX idx_user_tokens_workspace_expires ON user_tokens (workspace_id, expires_at)
   WHERE expires_at IS NOT NULL;
 

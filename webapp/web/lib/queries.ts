@@ -4,14 +4,16 @@ import type {
   CompleteInitialSetupBody,
   CreateObjectiveBody,
   CreateProjectBody,
+  CreateProjectStatusBody,
   CreateTicketBody,
   CreateUserTokenBody,
   CreateWorkspaceBody,
   LaunchObjectiveBody,
   LaunchPreferenceDto,
   ObjectiveAttachmentDto,
+  ProjectStatusDto,
   ReorderFutureObjectivesBody,
-  SqliteBrowserQueryResultDto,
+  ReorderProjectStatusesBody,
   StatusType,
   TicketDetailDto,
   TicketDto,
@@ -20,6 +22,7 @@ import type {
   UpdateObjectiveBody,
   UpdateProfileBody,
   UpdateProjectBody,
+  UpdateProjectStatusBody,
   UpdateTicketBody,
   UpdateUserTokenBody,
   UpdateWorkspaceBody
@@ -44,14 +47,10 @@ export const keys = {
   ticketEvents: (id: string) => ['ticket', id, 'events'] as const,
   ticketArtifacts: (id: string) => ['ticket', id, 'artifacts'] as const,
   ticketFileChanges: (id: string) => ['ticket', id, 'file-changes'] as const,
-  objectiveAttachments: (objectiveId: string) =>
-    ['objective', objectiveId, 'attachments'] as const,
+  objectiveAttachments: (objectiveId: string) => ['objective', objectiveId, 'attachments'] as const,
   agentCatalog: ['agent-catalog'] as const,
   launchSettings: ['launch-settings'] as const,
-  launchPreference: (projectId: string) => ['project', projectId, 'launch-preference'] as const,
-  sqliteTables: ['sqlite-browser', 'tables'] as const,
-  sqliteTableData: (tableName: string, limit: number, offset: number) =>
-    ['sqlite-browser', 'table', tableName, limit, offset] as const
+  launchPreference: (projectId: string) => ['project', projectId, 'launch-preference'] as const
 };
 
 // Realtime invalidation is global, but mutations also invalidate eagerly so the
@@ -117,16 +116,6 @@ export const useTicketArtifacts = (id: string) =>
 // without bespoke wiring here.
 export const useTicketFileChanges = (id: string) =>
   useQuery({ queryKey: keys.ticketFileChanges(id), queryFn: () => api.listTicketFileChanges(id) });
-
-export const useSqliteTables = () =>
-  useQuery({ queryKey: keys.sqliteTables, queryFn: api.listSqliteTables });
-
-export const useSqliteTableData = (tableName: string | null, limit: number, offset: number) =>
-  useQuery({
-    queryKey: keys.sqliteTableData(tableName ?? '__none__', limit, offset),
-    queryFn: () => api.getSqliteTableData(tableName ?? '', limit, offset),
-    enabled: Boolean(tableName)
-  });
 
 // ---- Mutations -----------------------------------------------------------
 
@@ -245,6 +234,47 @@ export function useUpdateProject(id: string) {
   return useMutation({
     mutationFn: (body: UpdateProjectBody) => api.updateProject(id, body),
     onSuccess: () => invalidateAll(qc)
+  });
+}
+
+export function useCreateProjectStatus(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateProjectStatusBody) => api.createProjectStatus(projectId, body),
+    onSuccess: data => {
+      qc.setQueryData(keys.projectStatuses(projectId), (prev: ProjectStatusDto[] | undefined) =>
+        prev ? [...prev, data].sort((a, b) => a.position - b.position) : [data]
+      );
+      void qc.invalidateQueries({ queryKey: keys.projectStatuses(projectId) });
+    }
+  });
+}
+
+export function useUpdateProjectStatus(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ statusId, body }: { statusId: string; body: UpdateProjectStatusBody }) =>
+      api.updateProjectStatus(projectId, statusId, body),
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
+export function useDeleteProjectStatus(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (statusId: string) => api.deleteProjectStatus(projectId, statusId),
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
+export function useReorderProjectStatuses(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ReorderProjectStatusesBody) => api.reorderProjectStatuses(projectId, body),
+    onSuccess: data => {
+      qc.setQueryData(keys.projectStatuses(projectId), data);
+      void qc.invalidateQueries({ queryKey: keys.projectStatuses(projectId) });
+    }
   });
 }
 
@@ -391,8 +421,7 @@ export function useUploadObjectiveAttachment(objectiveId: string) {
 export function useDeleteObjectiveAttachment(objectiveId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (attachmentId: string) =>
-      api.deleteObjectiveAttachment(objectiveId, attachmentId),
+    mutationFn: (attachmentId: string) => api.deleteObjectiveAttachment(objectiveId, attachmentId),
     onSuccess: remaining => {
       qc.setQueryData(keys.objectiveAttachments(objectiveId), remaining);
       void qc.invalidateQueries({ queryKey: keys.objectiveAttachments(objectiveId) });
@@ -510,11 +539,5 @@ export function useRefreshAgentCatalog() {
   return useMutation({
     mutationFn: () => api.refreshAgentCatalog(),
     onSuccess: data => qc.setQueryData(keys.agentCatalog, data)
-  });
-}
-
-export function useRunSqliteQuery() {
-  return useMutation({
-    mutationFn: (sql: string): Promise<SqliteBrowserQueryResultDto> => api.runSqliteQuery(sql)
   });
 }

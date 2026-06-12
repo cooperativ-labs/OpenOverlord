@@ -1,5 +1,5 @@
-import { Link, useLocation, useParams } from '@tanstack/react-router';
-import { Archive, Database, FolderKanban, LayoutGrid, Plus, Settings } from 'lucide-react';
+import { Link, useParams } from '@tanstack/react-router';
+import { Archive, FolderKanban, LayoutGrid, Plus, Settings } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 import { NavUser } from '@/components/nav-user';
@@ -26,7 +26,7 @@ import { type LinkState, useRealtime } from '@/lib/realtime';
 
 import type { ProjectDto } from '../../shared/contract.ts';
 
-function RealtimeStatus() {
+function RealtimeStatus({ sqlStudio }: { sqlStudio?: { enabled: boolean; url: string | null } }) {
   const { state } = useRealtime();
   const config: Record<LinkState, { label: string; dot: string }> = {
     live: { label: 'Live', dot: 'bg-emerald-400' },
@@ -34,12 +34,31 @@ function RealtimeStatus() {
     reconnecting: { label: 'Reconnecting…', dot: 'bg-amber-400 animate-pulse' }
   };
   const c = config[state];
+  const sqlStudioUrl = sqlStudio?.enabled ? sqlStudio.url : null;
+  const canOpenSqlStudio = Boolean(sqlStudioUrl);
 
-  return (
-    <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
+  const content = (
+    <>
       <span className={`h-2 w-2 rounded-full ${c.dot}`} />
       {c.label}
-    </div>
+    </>
+  );
+
+  if (canOpenSqlStudio) {
+    return (
+      <button
+        type="button"
+        className="flex items-center gap-2 px-2 py-1 text-left text-xs text-muted-foreground hover:text-foreground"
+        title="Open SQL Studio"
+        onClick={() => window.open(sqlStudioUrl ?? undefined, '_blank', 'noopener,noreferrer')}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground">{content}</div>
   );
 }
 
@@ -77,7 +96,6 @@ function ProjectMenuItem({ project, isActive }: ProjectMenuItemProps) {
 export function AppSidebar() {
   const meta = useMeta();
   const projects = useProjects();
-  const location = useLocation();
   const params = useParams({ strict: false }) as { projectId?: string };
   const [projectCreatorOpen, setProjectCreatorOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -97,7 +115,6 @@ export function AppSidebar() {
   }, [projects.data]);
 
   const isProjectsActive = !params.projectId;
-  const isDatabaseActive = location.pathname.startsWith('/database');
 
   return (
     <>
@@ -110,12 +127,6 @@ export function AppSidebar() {
             <SidebarGroupLabel>Workspace</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton render={<Link to="/database" />} isActive={isDatabaseActive}>
-                    <Database />
-                    <span>SQLite Browser</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     render={<Link to="/projects" />}
@@ -180,7 +191,7 @@ export function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
-          <RealtimeStatus />
+          <RealtimeStatus sqlStudio={meta.data?.sqlStudio} />
           {meta.data?.databasePath && (
             <p
               className="truncate px-2 text-[10px] text-muted-foreground"

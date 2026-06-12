@@ -1,6 +1,6 @@
 # Database Schema Contract
 
-Contract Version: `0.2-draft`
+Contract Version: `0.4-draft`
 
 ## Goal
 
@@ -182,19 +182,20 @@ Indexes:
 
 - Unique `slug`.
 
-### `users`
+### `profiles`
 
-Represents global humans and persistent service-style users for agents/runners. A user can exist independently of any one workspace.
+Represents application-facing profile data for Better Auth users. Every interactive
+actor must have a Better Auth `user` row first; the corresponding `profiles` row
+uses the same `id` as the Better Auth user and is created automatically by the
+auth migration bridge. A profile can exist independently of any one workspace.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `id` | Id | yes | Stable user ID. |
+| `id` | Id | yes | Stable profile ID and FK to Better Auth `"user".id`. |
 | `kind` | text | yes | `human`, `service`, or adapter-defined. |
 | `display_name` | text | yes |  |
 | `handle` | text | no | Optional globally unique, URL/display-safe user handle. |
 | `email` | text | no | Optional for local MVP. |
-| `auth_provider` | text | no | Optional external auth provider key. |
-| `external_subject` | text | no | Optional external auth subject. |
 | `status` | text | yes | `active`, `disabled`. Removal is represented by `deleted_at`. |
 | `metadata_json` | Json | yes | Auth provider metadata, not secrets. |
 | `created_at` | TimestampUTC | yes |  |
@@ -206,21 +207,19 @@ Indexes:
 
 - `(status)`.
 - Optional unique lowercased `handle` where present.
-- Unique `(auth_provider, external_subject)` where both are present.
 - Optional unique `(email)` where present.
 
 ### `workspace_users`
 
-Represents a user's membership and effective identity inside a workspace. Workspace-scoped resources such as ticket assignments, role assignments, project ownership, and workflow attribution should reference `workspace_users.id`, not the global `users.id`.
+Represents a profile's membership and effective identity inside a workspace. Workspace-scoped resources such as ticket assignments, role assignments, project ownership, and workflow attribution should reference `workspace_users.id`, not the global `profiles.id`.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | Id | yes | Stable workspace membership ID. |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
-| `user_id` | Id | yes | FK to `users`. |
+| `profile_id` | Id | yes | FK to `profiles`. |
 | `member_key` | text | no | Optional human-readable key such as `<workspace>:<handle>` for URLs and assignee pickers. |
 | `status` | text | yes | `active`, `disabled`. Removal is represented by `deleted_at`. |
-| `display_name` | text | no | Optional workspace-local display override. |
 | `metadata_json` | Json | yes | Workspace membership metadata. |
 | `created_at` | TimestampUTC | yes |  |
 | `updated_at` | TimestampUTC | yes |  |
@@ -229,10 +228,10 @@ Represents a user's membership and effective identity inside a workspace. Worksp
 
 Indexes:
 
-- Unique active `(workspace_id, user_id)`.
+- Unique active `(workspace_id, profile_id)`.
 - Optional unique active `(workspace_id, member_key)` where present.
 - `(workspace_id, status)`.
-- `(user_id, status)`.
+- `(profile_id, status)`.
 
 ### `role_assignments`
 
@@ -265,7 +264,7 @@ Stores `USER_TOKEN` metadata and hashes only.
 | --- | --- | --- | --- |
 | `id` | Id | yes | Token identifier. |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
-| `user_id` | Id | yes | Global user that owns the token. |
+| `profile_id` | Id | yes | Profile that owns the token. |
 | `workspace_user_id` | Id | yes | Workspace membership whose permissions the token inherits. |
 | `label` | text | yes | User supplied. |
 | `token_prefix` | text | yes | Non-secret lookup/display prefix. |
@@ -288,7 +287,7 @@ Indexes:
 
 - Unique `(workspace_id, token_prefix)`.
 - `(workspace_id, workspace_user_id, status)`.
-- `(user_id, status)`.
+- `(profile_id, status)`.
 - `(workspace_id, expires_at)`.
 
 Token rotation stores `predecessor_token_id` only. The successor is derived by querying rows whose predecessor points at the current token, which avoids maintaining two linked-list directions in one transaction.
@@ -297,17 +296,17 @@ Token rotation stores `predecessor_token_id` only. The successor is derived by q
 
 Better Auth (the embedded authentication library) manages its own tables in the same configured adapter database. These tables are **owned by the Auth Layer** and must not be read or written by other components directly.
 
-Schema is managed by Better Auth's configured database adapter. Adapter migration `003_better_auth.sql` creates these tables at initialization time. Column names follow Better Auth's camelCase conventions (different from Overlord's snake_case domain tables).
+Schema is managed by Better Auth's configured database adapter. Adapter migration `001_better_auth.sql` creates these tables before the core migration so `profiles.id` can reference Better Auth `"user".id`. Column names follow Better Auth's camelCase conventions (different from Overlord's snake_case domain tables).
 
 | Table | Purpose |
 | --- | --- |
-| `user` | Better Auth user identity (email, name, emailVerified). Linked to Overlord `users` via `users.external_subject = user.id` and `users.auth_provider = 'better-auth'`. |
+| `user` | Better Auth user identity (email, name, emailVerified). Linked to Overlord `profiles` by matching primary key (`profiles.id = user.id`). |
 | `session` | Active browser/client sessions issued by Better Auth. |
 | `account` | OAuth2 / credential accounts linked to a Better Auth user. |
 | `verification` | Email verification and magic-link tokens. |
 | `apikey` | USER_TOKEN credentials managed by Better Auth's apiKey plugin. `key` column stores the hashed value; the `start` prefix is the non-secret display prefix. |
 
-These tables are created by each adapter's migration `003_better_auth.sql`. They do not carry Overlord's `workspace_id`, `revision`, or `deleted_at` fields — lifecycle is managed entirely by Better Auth.
+These tables are created by each adapter's migration `001_better_auth.sql`. They do not carry Overlord's `workspace_id`, `revision`, or `deleted_at` fields — lifecycle is managed entirely by Better Auth.
 
 ### `user_token_scopes`
 
@@ -850,8 +849,7 @@ Publicly readable image metadata associated with a user. The associated user, or
 | --- | --- | --- | --- |
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
-| `user_id` | Id | yes | FK to `users`. |
-| `workspace_user_id` | Id | no | FK to `workspace_users` when the image is membership-scoped. |
+| `profile_id` | Id | yes | FK to `profiles`. |
 | `storage_bucket_id` | Id | yes | FK to `storage_buckets`. |
 | `storage_key` | text | yes | Backend key/path, unique within the bucket for active rows. |
 | `filename` | text | yes | Original/display filename. |
@@ -872,8 +870,7 @@ Publicly readable image metadata associated with a user. The associated user, or
 Indexes:
 
 - Unique active `(storage_bucket_id, storage_key)`.
-- `(workspace_id, user_id, created_at)`.
-- `(workspace_user_id, created_at)` where `workspace_user_id` is present.
+- `(workspace_id, profile_id, created_at)`.
 
 ### `attachments`
 
@@ -1156,7 +1153,7 @@ definitions and are not automatically available to every workspace member.
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | Id | yes |  |
-| `owner_user_id` | Id | yes | FK to `users`. |
+| `owner_profile_id` | Id | yes | FK to `profiles`. |
 | `extension_key` | text | yes | Stable user-owned key, for example `my-local-review-agent`. |
 | `version` | text | yes | User-managed extension version. |
 | `visibility` | text | yes | `private`, `workspace_candidate`, or future adapter-defined value. |
@@ -1172,8 +1169,8 @@ definitions and are not automatically available to every workspace member.
 
 Indexes:
 
-- Unique active `(owner_user_id, extension_key, version)`.
-- `(owner_user_id, extension_key, updated_at)`.
+- Unique active `(owner_profile_id, extension_key, version)`.
+- `(owner_profile_id, extension_key, updated_at)`.
 
 Personal extension records are the source for authoring and iteration. Promoting one into a
 workspace should snapshot a specific version into `workspace_harness_extensions`; workspace behavior
@@ -1507,7 +1504,7 @@ Closed values:
 
 Open extension values:
 
-- `workspaces.kind`, `users.kind`, `execution_targets.type`, `project_resources.type`, `storage_buckets.storage_backend`, `artifacts.type`, `ticket_events.source`, `entity_changes.entity_type`, `entity_changes.source`, `outbox_messages.topic`, `worker_jobs.type`, RBAC permission names, and connector identifiers.
+- `workspaces.kind`, `profiles.kind`, `execution_targets.type`, `project_resources.type`, `storage_buckets.storage_backend`, `artifacts.type`, `ticket_events.source`, `entity_changes.entity_type`, `entity_changes.source`, `outbox_messages.topic`, `worker_jobs.type`, RBAC permission names, and connector identifiers.
 - Extension values must be namespaced unless they are accepted into core documentation.
 
 State transition rules:
@@ -1541,7 +1538,7 @@ Adapters may validate contracted JSON with CHECK constraints or generated schema
 Every fresh local database should seed the same logical minimum:
 
 - One local `workspaces` row from `overlord.toml` defaults.
-- One implicit human `users` row and active `workspace_users` membership.
+- One implicit Better Auth `user`, matching human `profiles` row, and active `workspace_users` membership.
 - One `ADMIN` role assignment for the implicit user when RBAC tables are present.
 - Default project statuses for each project: `draft`, `next-up`, `execute`, `review`, `complete`, `blocked`, `cancelled`, with the `next-up` status mapped to `type = 'draft'`.
 - One workspace-scoped `ticket_sequences` row for `counter_name = 'ticket'`.
@@ -1581,7 +1578,7 @@ The implementation docs should include a generated Mermaid ER diagram and an FK 
 ```mermaid
 erDiagram
   workspaces ||--o{ workspace_users : has
-  users ||--o{ workspace_users : joins
+  profiles ||--o{ workspace_users : joins
   workspaces ||--o{ projects : owns
   projects ||--o{ project_statuses : configures
   projects ||--o{ tickets : contains
@@ -1670,7 +1667,7 @@ Conflict handling can start simple:
 
 The first implementable migration does not need every table above. A practical MVP slice:
 
-1. `workspaces`, `users`, `workspace_users` with one implicit local user and membership.
+1. Better Auth `user`, `workspaces`, `profiles`, `workspace_users` with one implicit local user profile and membership.
 2. `projects`, `project_statuses`, `devices`, `execution_targets`, `workspace_user_execution_targets`, `project_resources`, `project_user_preferences`.
 3. `ticket_sequences`, `tickets`, `objectives`, `agent_sessions`.
 4. `ticket_events`, `shared_context_entries`, `objective_attachments`.

@@ -150,6 +150,7 @@ The `overlord.toml` file is used to configure the Open Overlord system. It is a 
 * The instance/organization name
 * The the database location
 * The host and port the web app will run on
+* Optional SQL Studio launch settings for local database inspection
 * The default agent/model options (for the run button in the web app)
 * An optional `[agent_catalog]` section to customize which agents and models are offered
 * Default terminal configuration (should include popular terminals commented out)
@@ -204,4 +205,3 @@ The master test strategy is [`TEST_PLAN.md`](TEST_PLAN.md): a five-layer test py
 ## Planned / Deferred
 
 * **MCP** — a Model Context Protocol server surface is planned but not yet implemented (Phase 5). The module slot is reserved at [mcp/](mcp/README.md), and it will be added to the contract before any implementation lands.
-

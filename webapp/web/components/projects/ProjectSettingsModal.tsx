@@ -64,7 +64,7 @@ export function ProjectSettingsModal({
         <GeneralPage open={open} project={project} onOpenChange={onOpenChange} />
       )}
       {activeNav === 'Resources' && <ResourcesPage open={open} projectId={project.id} />}
-      {activeNav === 'Workflow' && <WorkflowPage statuses={statuses} />}
+      {activeNav === 'Workflow' && <WorkflowPage projectId={project.id} statuses={statuses} />}
       {activeNav === 'Danger zone' && (
         <DangerZonePage
           projectId={project.id}

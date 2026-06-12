@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { LOCAL_STORAGE_BUCKET_PATHS } from '../../database/local-paths.ts';
 import { openInMemoryDatabase } from '../database/connection.js';
 
 import { createServiceContext, type ServiceContext } from './context.js';
@@ -21,27 +22,26 @@ function createMemberContext(adminCtx: ServiceContext): ServiceContext {
   const now = '2026-01-01T00:00:01.000Z';
   adminCtx.db
     .prepare(
-      `INSERT INTO users (
-         id, kind, display_name, handle, status, metadata_json, created_at, updated_at, revision
-       ) VALUES (?, 'human', ?, ?, 'active', '{}', ?, ?, 1)`
+      `INSERT INTO "user" (
+         "id", "name", "email", "emailVerified", "image", "createdAt", "updatedAt"
+       ) VALUES (?, ?, ?, 1, NULL, ?, ?)`
     )
-    .run('member-user', 'Member User', 'member', now, now);
+    .run('member-user', 'Member User', 'member@example.test', now, now);
+  adminCtx.db
+    .prepare(
+      `UPDATE profiles
+          SET handle = ?, updated_at = ?, revision = revision + 1
+        WHERE id = ?`
+    )
+    .run('member', now, 'member-user');
   adminCtx.db
     .prepare(
       `INSERT INTO workspace_users (
-         id, workspace_id, user_id, member_key, status, display_name, metadata_json,
+         id, workspace_id, profile_id, member_key, status, metadata_json,
          created_at, updated_at, revision
-       ) VALUES (?, ?, ?, ?, 'active', ?, '{}', ?, ?, 1)`
+       ) VALUES (?, ?, ?, ?, 'active', '{}', ?, ?, 1)`
     )
-    .run(
-      'member-workspace-user',
-      adminCtx.workspace.id,
-      'member-user',
-      'local:member',
-      'Member User',
-      now,
-      now
-    );
+    .run('member-workspace-user', adminCtx.workspace.id, 'member-user', 'local:member', now, now);
   adminCtx.db
     .prepare(
       `INSERT INTO role_assignments (
@@ -70,9 +70,9 @@ describe('storage service', () => {
       assert.deepEqual(
         buckets.map(bucket => [bucket.key, bucket.backend, bucket.localPath]),
         [
-          ['attachments', 'local_fs', '.overlord/storage/attachments'],
-          ['user-images', 'local_fs', '.overlord/storage/user-images'],
-          ['workspace-images', 'local_fs', '.overlord/storage/workspace-images']
+          ['attachments', 'local_fs', LOCAL_STORAGE_BUCKET_PATHS.attachments],
+          ['user-images', 'local_fs', LOCAL_STORAGE_BUCKET_PATHS['user-images']],
+          ['workspace-images', 'local_fs', LOCAL_STORAGE_BUCKET_PATHS['workspace-images']]
         ]
       );
     } finally {
@@ -150,7 +150,6 @@ describe('storage service', () => {
       const ownImage = createUserImage({
         ctx: memberCtx,
         userId: 'member-user',
-        workspaceUserId: 'member-workspace-user',
         input: { storageKey: 'avatar.png', filename: 'avatar.png', contentType: 'image/png' }
       });
       assert.equal(
@@ -163,7 +162,6 @@ describe('storage service', () => {
           createUserImage({
             ctx: memberCtx,
             userId: 'local-user',
-            workspaceUserId: 'local-workspace-user',
             input: { storageKey: 'other.png', filename: 'other.png', contentType: 'image/png' }
           }),
         ServiceError

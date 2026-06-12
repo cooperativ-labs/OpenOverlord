@@ -8,7 +8,13 @@ const VITE_DEV_PORT = 5173;
 
 export function stopLocalDev(): void {
   const config = loadConfig();
-  const ports = [...new Set([config.webPort, VITE_DEV_PORT])];
+  const ports = [
+    ...new Set([
+      config.webPort,
+      config.sqlStudioEnabled ? config.sqlStudioPort : null,
+      VITE_DEV_PORT
+    ])
+  ].filter((port): port is number => port !== null);
 
   for (const port of ports) {
     stopListenersOnPort(port);

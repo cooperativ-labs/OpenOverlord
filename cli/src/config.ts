@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parse } from 'smol-toml';
 
+import { DEFAULT_DATABASE_PATH } from '../../database/local-paths.ts';
+
 import { parseAgentCatalogFromToml } from './agent-catalog.ts';
 import type { CatalogAgent } from './agent-catalog-defaults.ts';
 
@@ -10,6 +12,10 @@ export type OverlordConfig = {
   databasePath: string;
   webHost: string;
   webPort: number;
+  sqlStudioEnabled: boolean;
+  sqlStudioHost: string;
+  sqlStudioPort: number;
+  sqlStudioBinary: string;
   defaultAgent: string;
   defaultModel: string | null;
   /** Parsed from `[agent_catalog]`; merged over bundled defaults when seeding the workspace catalog. */
@@ -18,9 +24,13 @@ export type OverlordConfig = {
 
 const DEFAULT_CONFIG: OverlordConfig = {
   instanceName: 'Local Overlord',
-  databasePath: '.overlord/Overlord.sqlite',
+  databasePath: DEFAULT_DATABASE_PATH,
   webHost: '127.0.0.1',
   webPort: 4310,
+  sqlStudioEnabled: false,
+  sqlStudioHost: '127.0.0.1',
+  sqlStudioPort: 4311,
+  sqlStudioBinary: 'sql-studio',
   defaultAgent: 'claude',
   defaultModel: null,
   agentCatalog: null
@@ -31,6 +41,10 @@ type TomlConfig = {
   database_path?: string;
   web_host?: string;
   web_port?: number;
+  sql_studio_enabled?: boolean;
+  sql_studio_host?: string;
+  sql_studio_port?: number;
+  sql_studio_binary?: string;
   default_agent?: string;
   default_model?: string;
   agent_catalog?: unknown;
@@ -50,6 +64,18 @@ function configFromToml(toml: TomlConfig): OverlordConfig {
     databasePath: toml.database_path ?? DEFAULT_CONFIG.databasePath,
     webHost: toml.web_host ?? DEFAULT_CONFIG.webHost,
     webPort: typeof toml.web_port === 'number' ? toml.web_port : DEFAULT_CONFIG.webPort,
+    sqlStudioEnabled:
+      typeof toml.sql_studio_enabled === 'boolean'
+        ? toml.sql_studio_enabled
+        : DEFAULT_CONFIG.sqlStudioEnabled,
+    sqlStudioHost: toml.sql_studio_host ?? DEFAULT_CONFIG.sqlStudioHost,
+    sqlStudioPort:
+      typeof toml.sql_studio_port === 'number'
+        ? toml.sql_studio_port
+        : DEFAULT_CONFIG.sqlStudioPort,
+    sqlStudioBinary: toml.sql_studio_binary?.trim()
+      ? toml.sql_studio_binary
+      : DEFAULT_CONFIG.sqlStudioBinary,
     defaultAgent: toml.default_agent ?? DEFAULT_CONFIG.defaultAgent,
     defaultModel: toml.default_model?.trim() ? toml.default_model : null,
     agentCatalog: parseAgentCatalogFromToml(toml.agent_catalog)
@@ -104,6 +130,10 @@ instance_name = "${merged.instanceName}"
 database_path = "${merged.databasePath}"
 web_host = "${merged.webHost}"
 web_port = ${merged.webPort}
+sql_studio_enabled = ${merged.sqlStudioEnabled}
+sql_studio_host = "${merged.sqlStudioHost}"
+sql_studio_port = ${merged.sqlStudioPort}
+sql_studio_binary = "${merged.sqlStudioBinary}"
 default_agent = "${merged.defaultAgent}"
 ${merged.defaultModel ? `default_model = "${merged.defaultModel}"` : '# default_model = ""'}
 

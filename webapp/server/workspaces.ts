@@ -71,21 +71,21 @@ function uniqueWorkspaceSlug(desired: string, excludeWorkspaceId?: string): stri
 }
 
 /**
- * The local operator user that new workspace memberships are attached to. We
- * reuse the user behind the active workspace's actor so the operator becomes a
- * member of every workspace they create; failing that, the oldest active human
- * user in the database.
+ * The local operator profile that new workspace memberships are attached to.
+ * We reuse the profile behind the active workspace's actor so the operator
+ * becomes a member of every workspace they create; failing that, the oldest
+ * active human profile in the database.
  */
 function resolveLocalUserId(): string {
   if (ACTOR_WORKSPACE_USER_ID) {
     const row = db
-      .prepare(`SELECT user_id FROM workspace_users WHERE id = ?`)
-      .get(ACTOR_WORKSPACE_USER_ID) as { user_id: string } | undefined;
-    if (row) return row.user_id;
+      .prepare(`SELECT profile_id FROM workspace_users WHERE id = ?`)
+      .get(ACTOR_WORKSPACE_USER_ID) as { profile_id: string } | undefined;
+    if (row) return row.profile_id;
   }
   const fallback = db
     .prepare(
-      `SELECT id FROM users
+      `SELECT id FROM profiles
          WHERE kind = 'human' AND status = 'active' AND deleted_at IS NULL
          ORDER BY created_at ASC LIMIT 1`
     )
@@ -109,7 +109,7 @@ export function listWorkspaces(): WorkspaceDto[] {
                    AND m.deleted_at IS NULL) AS member_count
          FROM workspaces w
          JOIN workspace_users wu
-           ON wu.workspace_id = w.id AND wu.user_id = @user_id
+           ON wu.workspace_id = w.id AND wu.profile_id = @user_id
           AND wu.status = 'active' AND wu.deleted_at IS NULL
         WHERE w.deleted_at IS NULL
         ORDER BY w.created_at ASC`
@@ -122,7 +122,9 @@ const createWorkspaceTx = db.transaction((body: CreateWorkspaceBody): string => 
   const name = (body.name ?? '').trim();
   if (!name) throw new ApiError(400, 'Workspace name is required');
 
-  const slug = uniqueWorkspaceSlug(body.slug?.trim() ? slugify(body.slug) : slugify(name));
+  const slug = uniqueWorkspaceSlug(
+    body.slug?.trim() ? slugify(body.slug) : suggestSlugFromName(name)
+  );
   const localUserId = resolveLocalUserId();
 
   const now = nowIso();
@@ -136,9 +138,9 @@ const createWorkspaceTx = db.transaction((body: CreateWorkspaceBody): string => 
 
   db.prepare(
     `INSERT INTO workspace_users
-       (id, workspace_id, user_id, member_key, status, display_name, metadata_json,
+       (id, workspace_id, profile_id, member_key, status, metadata_json,
         created_at, updated_at, revision)
-     VALUES (@id, @workspace_id, @user_id, @member_key, 'active', NULL, '{}', @now, @now, 1)`
+     VALUES (@id, @workspace_id, @user_id, @member_key, 'active', '{}', @now, @now, 1)`
   ).run({
     id: workspaceUserId,
     workspace_id: workspaceId,
@@ -368,9 +370,8 @@ export function deleteWorkspace(id: string): WorkspaceDto[] {
 
 interface WorkspaceMemberRow {
   workspace_user_id: string;
-  user_id: string;
-  member_display_name: string | null;
-  user_display_name: string;
+  profile_id: string;
+  display_name: string;
   handle: string | null;
   email: string | null;
   kind: string;
@@ -378,7 +379,7 @@ interface WorkspaceMemberRow {
   metadata_json: string;
 }
 
-/** Active members of a workspace (`workspace_users` joined to `users`). */
+/** Active members of a workspace (`workspace_users` joined to `profiles`). */
 export function listWorkspaceMembers(workspaceId: string): WorkspaceMemberDto[] {
   const workspace = db
     .prepare(`SELECT id FROM workspaces WHERE id = ? AND deleted_at IS NULL`)
@@ -388,11 +389,11 @@ export function listWorkspaceMembers(workspaceId: string): WorkspaceMemberDto[] 
   const localUserId = resolveLocalUserId();
   const rows = db
     .prepare(
-      `SELECT wu.id AS workspace_user_id, wu.user_id, wu.display_name AS member_display_name,
+      `SELECT wu.id AS workspace_user_id, wu.profile_id,
               wu.created_at AS joined_at,
-              u.display_name AS user_display_name, u.handle, u.email, u.kind, u.metadata_json
+              p.display_name, p.handle, p.email, p.kind, p.metadata_json
          FROM workspace_users wu
-         JOIN users u ON u.id = wu.user_id AND u.deleted_at IS NULL
+         JOIN profiles p ON p.id = wu.profile_id AND p.deleted_at IS NULL
         WHERE wu.workspace_id = ? AND wu.status = 'active' AND wu.deleted_at IS NULL
         ORDER BY wu.created_at ASC`
     )
@@ -410,12 +411,12 @@ export function listWorkspaceMembers(workspaceId: string): WorkspaceMemberDto[] 
     }
     return {
       workspaceUserId: r.workspace_user_id,
-      userId: r.user_id,
-      displayName: r.member_display_name ?? r.user_display_name,
+      userId: r.profile_id,
+      displayName: r.display_name,
       handle: r.handle,
       email: r.email,
       kind: r.kind,
-      isOperator: r.user_id === localUserId,
+      isOperator: r.profile_id === localUserId,
       joinedAt: r.joined_at,
       avatarUrl
     };

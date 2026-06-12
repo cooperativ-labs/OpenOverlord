@@ -6,13 +6,13 @@ import type { TicketDetailDto } from '../../shared/contract.ts';
 import { useCreateObjective, useTicket, useUpdateTicket } from '../lib/queries.ts';
 
 import { TicketObjectivesSection } from './objectives/TicketObjectivesSection.tsx';
+import { InlineEditField } from './InlineEditField.tsx';
 import { LiveActivityFeed } from './LiveActivityFeed.tsx';
 import { LiveFileChanges } from './LiveFileChanges.tsx';
 import { RepositoryMentionTextarea } from './RepositoryMentionTextarea.tsx';
 import { TicketArtifactsSection } from './TicketArtifactsSection.tsx';
 import { TicketPanelHeader } from './TicketPanelHeader.tsx';
 import { TicketToolsAndCriteria } from './TicketToolsAndCriteria.tsx';
-import { InlineEditField } from './InlineEditField.tsx';
 import { Button, Card, Field, Spinner } from './ui.tsx';
 
 function AddObjective({ ticketId, projectId }: { ticketId: string; projectId: string }) {
@@ -119,7 +119,11 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
     return (
       <div className="flex h-full flex-col p-4">
         <div className="mb-3">
-          <Button variant="ghost" aria-label="Close ticket panel" onClick={() => closeToProject(projectId)}>
+          <Button
+            variant="ghost"
+            aria-label="Close ticket panel"
+            onClick={() => closeToProject(projectId)}
+          >
             <ArrowRightToLine className="h-4 w-4" />
           </Button>
         </div>

@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: "0.3-draft"
+contractVersion: "0.5-draft"
 
 components:
   protocol:
@@ -52,6 +52,7 @@ components:
       - "management command names and argument shapes"
       - "project linking and discovery from working directory"
       - "configuration file locations: overlord.toml, .overlord/project.json"
+      - "optional SQL Studio settings: sql_studio_enabled, sql_studio_host, sql_studio_port, sql_studio_binary"
       - "human-readable CLI output format conventions"
     dependsOn:
       - database
@@ -99,6 +100,7 @@ components:
       - "request/response DTO shapes (camelCase, derived from logical schema)"
       - "REST auth integration points"
       - "SSE/WebSocket realtime endpoint"
+      - "SQL Studio launch metadata exposed through /api/meta"
     dependsOn:
       - database
       - auth
@@ -228,7 +230,7 @@ interactionSurfaces:
     transport: configured-better-auth-adapter-and-direct-query
     rules:
       - "Auth tables (user, session, account, verification, apikey) are auth-internal; no other component reads them directly"
-      - "Identity bridge reads workspace_users and users where users.auth_provider = 'better-auth' and users.external_subject matches the Better Auth user id"
+      - "Identity bridge reads workspace_users and profiles where profiles.id matches the Better Auth user id"
       - "Role resolution reads role_assignments by workspace_user_id and workspace_id"
       - "Auth Layer must not write to core domain tables (tickets, projects, etc.)"
 

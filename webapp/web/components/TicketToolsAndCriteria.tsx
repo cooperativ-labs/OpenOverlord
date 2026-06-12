@@ -1,7 +1,7 @@
 import { useUpdateTicket } from '../lib/queries.ts';
 
-import { InlineEditField } from './InlineEditField.tsx';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion.tsx';
+import { InlineEditField } from './InlineEditField.tsx';
 
 interface TicketToolsAndCriteriaProps {
   ticketId: string;

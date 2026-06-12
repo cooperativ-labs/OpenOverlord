@@ -2,6 +2,7 @@ import { existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
 import { loadConfig, resolveDatabasePath, resolveProjectRoot } from '../cli/src/config.ts';
+import { LOCAL_DATA_DIR } from '../database/local-paths.ts';
 
 import { stopLocalDev } from './stop-local-dev.ts';
 
@@ -11,6 +12,7 @@ const projectRoot = resolveProjectRoot();
 const databasePath = resolveDatabasePath(loadConfig(), projectRoot);
 
 const targets = [
+  path.join(projectRoot, LOCAL_DATA_DIR),
   databasePath,
   `${databasePath}-shm`,
   `${databasePath}-wal`,

@@ -17,6 +17,10 @@ test('loadConfig parses scalar keys from overlord.toml', () => {
 database_path = "db.sqlite"
 web_host = "0.0.0.0"
 web_port = 9999
+sql_studio_enabled = true
+sql_studio_host = "127.0.0.1"
+sql_studio_port = 3030
+sql_studio_binary = "/opt/sql-studio/bin/sql-studio"
 default_agent = "codex"
 default_model = "gpt-5"
 `
@@ -27,6 +31,10 @@ default_model = "gpt-5"
   assert.equal(config.databasePath, 'db.sqlite');
   assert.equal(config.webHost, '0.0.0.0');
   assert.equal(config.webPort, 9999);
+  assert.equal(config.sqlStudioEnabled, true);
+  assert.equal(config.sqlStudioHost, '127.0.0.1');
+  assert.equal(config.sqlStudioPort, 3030);
+  assert.equal(config.sqlStudioBinary, '/opt/sql-studio/bin/sql-studio');
   assert.equal(config.defaultAgent, 'codex');
   assert.equal(config.defaultModel, 'gpt-5');
   assert.equal(config.agentCatalog, null);

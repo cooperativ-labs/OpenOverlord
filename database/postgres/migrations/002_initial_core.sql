@@ -17,14 +17,12 @@ CREATE TABLE workspaces (
 
 CREATE UNIQUE INDEX idx_workspaces_slug ON workspaces (slug);
 
-CREATE TABLE users (
-  id text PRIMARY KEY,
+CREATE TABLE profiles (
+  id text PRIMARY KEY REFERENCES "user" ("id") ON DELETE CASCADE,
   kind text NOT NULL CHECK (kind IN ('human', 'service')),
   display_name text NOT NULL CHECK (char_length(btrim(display_name)) > 0),
   handle text,
   email text,
-  auth_provider text,
-  external_subject text,
   status text NOT NULL CHECK (status IN ('active', 'disabled')),
   metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL,
@@ -33,19 +31,45 @@ CREATE TABLE users (
   revision integer NOT NULL DEFAULT 1 CHECK (revision >= 1)
 );
 
-CREATE INDEX idx_users_status ON users (status);
-CREATE UNIQUE INDEX idx_users_handle_lower ON users (lower(handle)) WHERE handle IS NOT NULL;
-CREATE UNIQUE INDEX idx_users_external_subject ON users (auth_provider, external_subject)
-  WHERE auth_provider IS NOT NULL AND external_subject IS NOT NULL;
-CREATE UNIQUE INDEX idx_users_email_lower ON users (lower(email)) WHERE email IS NOT NULL;
+CREATE INDEX idx_profiles_status ON profiles (status);
+CREATE UNIQUE INDEX idx_profiles_handle_lower ON profiles (lower(handle)) WHERE handle IS NOT NULL;
+CREATE UNIQUE INDEX idx_profiles_email_lower ON profiles (lower(email)) WHERE email IS NOT NULL;
+
+CREATE FUNCTION create_profile_for_better_auth_user()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  INSERT INTO profiles (
+    id, kind, display_name, handle, email, status, metadata_json,
+    created_at, updated_at, revision
+  ) VALUES (
+    NEW."id",
+    'human',
+    COALESCE(NULLIF(btrim(NEW."name"), ''), NEW."email", 'User'),
+    NULL,
+    NEW."email",
+    'active',
+    '{}'::jsonb,
+    NEW."createdAt",
+    NEW."updatedAt",
+    1
+  );
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_better_auth_user_create_profile
+AFTER INSERT ON "user"
+FOR EACH ROW
+EXECUTE FUNCTION create_profile_for_better_auth_user();
 
 CREATE TABLE workspace_users (
   id text PRIMARY KEY,
   workspace_id text NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
-  user_id text NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
+  profile_id text NOT NULL REFERENCES profiles (id) ON DELETE RESTRICT,
   member_key text,
   status text NOT NULL CHECK (status IN ('active', 'disabled')),
-  display_name text,
   metadata_json jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
@@ -53,12 +77,12 @@ CREATE TABLE workspace_users (
   revision integer NOT NULL DEFAULT 1 CHECK (revision >= 1)
 );
 
-CREATE UNIQUE INDEX idx_workspace_users_active_user ON workspace_users (workspace_id, user_id)
+CREATE UNIQUE INDEX idx_workspace_users_active_profile ON workspace_users (workspace_id, profile_id)
   WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX idx_workspace_users_active_member_key ON workspace_users (workspace_id, member_key)
   WHERE member_key IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX idx_workspace_users_workspace_status ON workspace_users (workspace_id, status);
-CREATE INDEX idx_workspace_users_user_status ON workspace_users (user_id, status);
+CREATE INDEX idx_workspace_users_profile_status ON workspace_users (profile_id, status);
 
 CREATE TABLE projects (
   id text PRIMARY KEY,
@@ -599,7 +623,7 @@ INSERT INTO workspaces (
   '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1
 );
 
-INSERT INTO users (
+INSERT INTO profiles (
   id, kind, display_name, handle, status, metadata_json, created_at, updated_at, revision
 ) VALUES (
   'local-user', 'human', 'Local User', 'local', 'active', '{}'::jsonb,
@@ -607,11 +631,11 @@ INSERT INTO users (
 );
 
 INSERT INTO workspace_users (
-  id, workspace_id, user_id, member_key, status, display_name, metadata_json,
+  id, workspace_id, profile_id, member_key, status, metadata_json,
   created_at, updated_at, revision
 ) VALUES (
   'local-workspace-user', 'local-workspace', 'local-user', 'local:local',
-  'active', 'Local User', '{}'::jsonb,
+  'active', '{}'::jsonb,
   '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1
 );
 

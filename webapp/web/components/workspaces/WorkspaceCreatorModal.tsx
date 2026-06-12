@@ -10,10 +10,10 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { LoadingButton } from '@/components/ui/loading-button';
+import { WorkspaceCreationFields } from '@/components/workspaces/WorkspaceCreationFields';
+import { useWorkspaceCreationForm } from '@/lib/hooks/use-workspace-creation-form';
 import { useCreateWorkspace } from '@/lib/queries';
 
 type WorkspaceCreatorModalProps = {
@@ -24,13 +24,14 @@ type WorkspaceCreatorModalProps = {
 export function WorkspaceCreatorModal({ open, onOpenChange }: WorkspaceCreatorModalProps) {
   const navigate = useNavigate();
   const createWorkspaceMutation = useCreateWorkspace();
-  const [name, setName] = useState('');
+  const { name, setName, slug, setSlugFromInput, exampleSlug, reset, getSubmitBody } =
+    useWorkspaceCreationForm();
   const [error, setError] = useState<string | null>(null);
   const [createButtonState, setCreateButtonState] = useState<ButtonLoadingState>('default');
 
   function handleOpenChange(next: boolean) {
     if (!next) {
-      setName('');
+      reset();
       setError(null);
       setCreateButtonState('default');
     }
@@ -42,12 +43,12 @@ export function WorkspaceCreatorModal({ open, onOpenChange }: WorkspaceCreatorMo
     setError(null);
 
     try {
-      const trimmedName = name.trim();
-      if (!trimmedName) {
+      const body = getSubmitBody();
+      if (!body.name) {
         throw new Error('Workspace name is required.');
       }
 
-      await createWorkspaceMutation.mutateAsync({ name: trimmedName });
+      await createWorkspaceMutation.mutateAsync(body);
 
       setCreateButtonState('success');
       handleOpenChange(false);
@@ -71,19 +72,16 @@ export function WorkspaceCreatorModal({ open, onOpenChange }: WorkspaceCreatorMo
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          <div className="space-y-2">
-            <Label htmlFor="workspace-name">Name</Label>
-            <Input
-              id="workspace-name"
-              autoFocus
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="Workspace name"
-              onKeyDown={e => {
-                if (e.key === 'Enter') void handleCreate();
-              }}
-            />
-          </div>
+          <WorkspaceCreationFields
+            name={name}
+            onNameChange={setName}
+            slug={slug}
+            onSlugChange={setSlugFromInput}
+            exampleSlug={exampleSlug}
+            nameInputId="workspace-name"
+            slugInputId="workspace-slug"
+            onEnter={() => void handleCreate()}
+          />
 
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>

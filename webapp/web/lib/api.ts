@@ -4,6 +4,7 @@ import type {
   CompleteInitialSetupBody,
   CreateObjectiveBody,
   CreateProjectBody,
+  CreateProjectStatusBody,
   CreateTicketBody,
   CreateUserTokenBody,
   CreateUserTokenResultDto,
@@ -23,9 +24,7 @@ import type {
   ProjectStatusDto,
   ReorderBoardColumnBody,
   ReorderFutureObjectivesBody,
-  SqliteBrowserQueryResultDto,
-  SqliteBrowserTableDataDto,
-  SqliteBrowserTablesDto,
+  ReorderProjectStatusesBody,
   StoredImageDto,
   TicketDetailDto,
   TicketDto,
@@ -35,6 +34,7 @@ import type {
   UpdateObjectiveBody,
   UpdateProfileBody,
   UpdateProjectBody,
+  UpdateProjectStatusBody,
   UpdateTicketBody,
   UpdateUserTokenBody,
   UpdateWorkspaceBody,
@@ -49,6 +49,7 @@ export interface Meta {
   needsSetup: boolean;
   databasePath: string;
   web: { host: string; port: number; url: string };
+  sqlStudio: { enabled: boolean; url: string | null };
   capabilities: Record<string, boolean>;
 }
 
@@ -130,6 +131,14 @@ export const api = {
     request<ProjectDto>('PATCH', `/api/projects/${id}`, body),
   listProjectStatuses: (id: string) =>
     request<ProjectStatusDto[]>('GET', `/api/projects/${id}/statuses`),
+  createProjectStatus: (projectId: string, body: CreateProjectStatusBody) =>
+    request<ProjectStatusDto>('POST', `/api/projects/${projectId}/statuses`, body),
+  updateProjectStatus: (projectId: string, statusId: string, body: UpdateProjectStatusBody) =>
+    request<ProjectStatusDto>('PATCH', `/api/projects/${projectId}/statuses/${statusId}`, body),
+  deleteProjectStatus: (projectId: string, statusId: string) =>
+    request<{ ok: true }>('DELETE', `/api/projects/${projectId}/statuses/${statusId}`),
+  reorderProjectStatuses: (projectId: string, body: ReorderProjectStatusesBody) =>
+    request<ProjectStatusDto[]>('PATCH', `/api/projects/${projectId}/statuses/reorder`, body),
   listProjectResources: (id: string) =>
     request<ProjectResourceDto[]>('GET', `/api/projects/${id}/resources`),
   getProjectRepository: (id: string, executionTargetId?: string | null) => {
@@ -177,15 +186,10 @@ export const api = {
    * it without multipart parsing (mirrors the image upload service).
    */
   uploadObjectiveAttachment: (objectiveId: string, file: File) =>
-    request<ObjectiveAttachmentDto>(
-      'POST',
-      `/api/objectives/${objectiveId}/attachments`,
-      file,
-      {
-        'Content-Type': file.type || 'application/octet-stream',
-        'X-Upload-Filename': encodeURIComponent(file.name)
-      }
-    ),
+    request<ObjectiveAttachmentDto>('POST', `/api/objectives/${objectiveId}/attachments`, file, {
+      'Content-Type': file.type || 'application/octet-stream',
+      'X-Upload-Filename': encodeURIComponent(file.name)
+    }),
   deleteObjectiveAttachment: (objectiveId: string, attachmentId: string) =>
     request<ObjectiveAttachmentDto[]>(
       'DELETE',
@@ -204,14 +208,5 @@ export const api = {
   getLaunchPreference: (projectId: string) =>
     request<LaunchPreferenceDto>('GET', `/api/projects/${projectId}/launch-preference`),
   updateLaunchPreference: (projectId: string, body: UpdateLaunchPreferenceBody) =>
-    request<LaunchPreferenceDto>('PUT', `/api/projects/${projectId}/launch-preference`, body),
-
-  listSqliteTables: () => request<SqliteBrowserTablesDto>('GET', '/api/sqlite-browser/tables'),
-  getSqliteTableData: (tableName: string, limit = 100, offset = 0) =>
-    request<SqliteBrowserTableDataDto>(
-      'GET',
-      `/api/sqlite-browser/tables/${encodeURIComponent(tableName)}?limit=${limit}&offset=${offset}`
-    ),
-  runSqliteQuery: (sql: string) =>
-    request<SqliteBrowserQueryResultDto>('POST', '/api/sqlite-browser/query', { sql })
+    request<LaunchPreferenceDto>('PUT', `/api/projects/${projectId}/launch-preference`, body)
 };

@@ -4,6 +4,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { DEFAULT_DATABASE_PATH } from '../../database/local-paths.ts';
+
 import { CONTRACT_VERSION } from './constants.js';
 
 const MIGRATION_FILE_PATTERN = /^\d+_[a-z0-9_]+\.sql$/;
@@ -86,20 +88,29 @@ export function openDatabase({ databasePath }: { databasePath: string }): Overlo
 }
 
 export function migrateDatabase(db: OverlordDatabase): void {
+  const pendingMigrationRecords: Array<ReturnType<typeof loadMigrationSql>> = [];
   for (const fileName of listSqliteMigrationFiles()) {
     const migration = loadMigrationSql(fileName);
-    if (migration.version === '001') {
-      const hasSchema = db
+    const hasSchema = db
+      .prepare(`SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'schema_migrations'`)
+      .get();
+    if (!hasSchema) {
+      db.exec(migration.sql);
+      const createdSchema = db
         .prepare(`SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'schema_migrations'`)
         .get();
-      if (!hasSchema) {
-        db.exec(migration.sql);
+      if (!createdSchema) {
+        pendingMigrationRecords.push(migration);
+        continue;
+      }
+      for (const pending of [...pendingMigrationRecords, migration]) {
         db.prepare(
           `INSERT INTO schema_migrations (version, adapter, component, contract_version, checksum, applied_at)
            VALUES (?, 'sqlite', 'core', ?, ?, ?)`
-        ).run(migration.version, CONTRACT_VERSION, migration.checksum, new Date().toISOString());
-        continue;
+        ).run(pending.version, CONTRACT_VERSION, pending.checksum, new Date().toISOString());
       }
+      pendingMigrationRecords.length = 0;
+      continue;
     }
     applyMigration(db, migration);
   }
@@ -117,5 +128,5 @@ export function resolveDefaultDatabasePath(startDir = process.cwd()): string {
   if (explicit) {
     return path.isAbsolute(explicit) ? explicit : path.resolve(startDir, explicit);
   }
-  return path.resolve(startDir, '.overlord', 'Overlord.sqlite');
+  return path.resolve(startDir, DEFAULT_DATABASE_PATH);
 }

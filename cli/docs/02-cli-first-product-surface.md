@@ -114,7 +114,7 @@ Requirements:
 Requirements:
 
 - Located at the instance or project root, depending on final packaging.
-- Configure instance name, SQLite database location, web port, default agent/model, terminal launch preferences, connector paths, and runner polling defaults.
+- Configure instance name, SQLite database location, web port, optional SQL Studio launch settings, default agent/model, terminal launch preferences, connector paths, and runner polling defaults.
 - Optional `[agent_catalog]` tables customize which agents and models are offered in the web UI (merged over bundled defaults on seed and catalog refresh).
 - Include commented examples for common terminals and agents.
 
@@ -126,11 +126,18 @@ Requirements:
 - Stores local project identifier, resource label, whether the directory is primary, and enough metadata for project discovery.
 - Should be tracked unless the user chooses otherwise.
 
+### `database/.local/`
+
+Requirements:
+
+- Git-ignored runtime data for the local SQLite database (`Overlord.sqlite`) and `local_fs` object storage buckets.
+- Default `database_path` in `overlord.toml`; override per instance when needed.
+
 ### `.overlord/tmp/` And `.overlord/logs/`
 
 Requirements:
 
-- Reserved for context files, connector hook diagnostics, temporary settings, uploaded/downloaded attachment staging, and launch scratch files.
+- Reserved for context files, connector hook diagnostics, temporary settings, and launch scratch files.
 - Must be gitignored by generated `.gitignore` suggestions.
 - Do not gitignore the whole `.overlord/` directory by default because `project.json` is durable metadata.
 

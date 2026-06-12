@@ -1,4 +1,4 @@
--- Better Auth implementation tables (migration 003).
+-- Better Auth implementation tables (migration 001).
 -- These tables are owned by the Auth Layer (src/auth/) and managed via Better Auth's
 -- internal adapter. Column names follow Better Auth's camelCase conventions (intentionally
 -- different from Overlord's snake_case domain tables).
@@ -9,8 +9,8 @@ PRAGMA foreign_keys = ON;
 
 BEGIN;
 
--- Better Auth user identity. Linked to Overlord users via:
---   users.auth_provider = 'better-auth' AND users.external_subject = "user".id
+-- Better Auth user identity. Linked to Overlord profiles via:
+--   profiles.id = "user".id
 CREATE TABLE "user" (
   "id"            TEXT    NOT NULL PRIMARY KEY,
   "name"          TEXT    NOT NULL,
@@ -69,5 +69,12 @@ CREATE TABLE "verification" (
 );
 
 CREATE INDEX "idx_verification_identifier" ON "verification" ("identifier");
+
+INSERT INTO "user" (
+  "id", "name", "email", "emailVerified", "image", "createdAt", "updatedAt"
+) VALUES (
+  'local-user', 'Local User', 'local@overlord.local', 1, NULL,
+  '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
+);
 
 COMMIT;

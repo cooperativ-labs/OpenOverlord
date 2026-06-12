@@ -299,6 +299,20 @@ export interface Objectives {
   workspace_id: string;
 }
 
+export interface Profiles {
+  created_at: string;
+  deleted_at: string | null;
+  display_name: string;
+  email: string | null;
+  handle: string | null;
+  id: string | null;
+  kind: string;
+  metadata_json: Generated<string>;
+  revision: Generated<number>;
+  status: string;
+  updated_at: string;
+}
+
 export interface ProjectResources {
   created_at: string;
   deleted_at: string | null;
@@ -501,32 +515,15 @@ export interface UserImages {
   height_px: number | null;
   id: string | null;
   metadata_json: Generated<string>;
+  profile_id: string;
   public_url: string | null;
   revision: Generated<number>;
   size_bytes: number | null;
   storage_bucket_id: string;
   storage_key: string;
   updated_at: string;
-  user_id: string;
   width_px: number | null;
   workspace_id: string;
-  workspace_user_id: string | null;
-}
-
-export interface Users {
-  auth_provider: string | null;
-  created_at: string;
-  deleted_at: string | null;
-  display_name: string;
-  email: string | null;
-  external_subject: string | null;
-  handle: string | null;
-  id: string | null;
-  kind: string;
-  metadata_json: Generated<string>;
-  revision: Generated<number>;
-  status: string;
-  updated_at: string;
 }
 
 export interface UserTokens {
@@ -540,6 +537,7 @@ export interface UserTokens {
   last_used_context_json: Generated<string>;
   metadata_json: Generated<string>;
   predecessor_token_id: string | null;
+  profile_id: string;
   revision: Generated<number>;
   revoked_at: string | null;
   revoked_by_workspace_user_id: string | null;
@@ -547,7 +545,6 @@ export interface UserTokens {
   token_hash: string;
   token_prefix: string;
   updated_at: string;
-  user_id: string;
   workspace_id: string;
   workspace_user_id: string;
 }
@@ -626,14 +623,13 @@ export interface WorkspaceUserExecutionTargets {
 export interface WorkspaceUsers {
   created_at: string;
   deleted_at: string | null;
-  display_name: string | null;
   id: string | null;
   member_key: string | null;
   metadata_json: Generated<string>;
+  profile_id: string;
   revision: Generated<number>;
   status: string;
   updated_at: string;
-  user_id: string;
   workspace_id: string;
 }
 
@@ -652,6 +648,7 @@ export interface DB {
   idempotency_keys: IdempotencyKeys;
   objective_attachments: ObjectiveAttachments;
   objectives: Objectives;
+  profiles: Profiles;
   project_resources: ProjectResources;
   project_statuses: ProjectStatuses;
   project_user_preferences: ProjectUserPreferences;
@@ -668,7 +665,6 @@ export interface DB {
   user_images: UserImages;
   user_token_scopes: UserTokenScopes;
   user_tokens: UserTokens;
-  users: Users;
   verification: Verification;
   workspace_images: WorkspaceImages;
   workspace_user_execution_targets: WorkspaceUserExecutionTargets;

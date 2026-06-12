@@ -28,8 +28,8 @@ dev server (which proxies `/api` to it). For a production-style run:
 yarn build && yarn start   # builds the SPA, serves it + the API on :8787
 ```
 
-The server opens `.overlord/Overlord.sqlite` by default (override with
-`OVERLORD_SQLITE_PATH`). Initialise that database first with
+The server opens `database/.local/Overlord.sqlite` by default (configured in
+`overlord.toml`, override with `OVERLORD_SQLITE_PATH`). Initialise that database first with
 `yarn start:local` from the repo root.
 
 ## Module Layout
@@ -61,6 +61,10 @@ camelCase per the [REST API Boundary](../database/docs/09-database-schema-contra
 | `GET /api/stream` | SSE realtime feed of `entity_changes` deltas |
 | `GET/POST /api/projects`, `GET/PATCH /api/projects/:id` | Projects (PATCH covers rename / describe / archive) |
 | `GET /api/projects/:id/statuses` | Project workflow statuses (for board columns) |
+| `POST /api/projects/:id/statuses` | Add a project status |
+| `PATCH /api/projects/:id/statuses/:statusId` | Rename a status or set the default |
+| `PATCH /api/projects/:id/statuses/reorder` | Reorder project statuses |
+| `DELETE /api/projects/:id/statuses/:statusId` | Soft-delete a project status |
 | `GET /api/projects/:id/resources` | Linked project resources, including execution-target-specific working directories |
 | `GET /api/projects/:id/repository?executionTargetId=...` | Git repository metadata and file tree for the selected linked resource |
 | `GET /api/projects/:id/tickets` | Tickets in a project |

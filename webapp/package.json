@@ -15,7 +15,7 @@
     "build": "vite build",
     "start": "tsx server/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test server/title-automation.test.ts server/sqlite-browser.test.ts"
+    "test": "tsx --test server/title-automation.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

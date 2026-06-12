@@ -132,8 +132,8 @@ export function UserProfilePage({ open }: UserProfilePageProps) {
           </dl>
         ) : null}
         <p className="max-w-lg text-xs text-muted-foreground">
-          This build runs as a single trusted local operator. Password and passkeys appear here
-          once multi-user authentication is enabled; access tokens are managed under Tokens.
+          This build runs as a single trusted local operator. Password and passkeys appear here once
+          multi-user authentication is enabled; access tokens are managed under Tokens.
         </p>
       </div>
     </div>

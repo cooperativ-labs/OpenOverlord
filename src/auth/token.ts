@@ -69,7 +69,7 @@ export async function createUserToken(
   await execute(
     db,
     `INSERT INTO user_tokens (
-       id, workspace_id, user_id, workspace_user_id, label,
+       id, workspace_id, profile_id, workspace_user_id, label,
        token_prefix, token_hash, hash_algorithm,
        status, expires_at, last_used_at, last_used_context_json,
        metadata_json, created_at, updated_at, revision

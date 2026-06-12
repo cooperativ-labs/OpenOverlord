@@ -1,7 +1,6 @@
 import * as React from 'react';
 
 import { MentionableTextarea, type ProjectMentionOption } from '@/components/MentionableTextarea';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
@@ -94,64 +93,34 @@ export function InlineEditField({
 
   if (multiline) {
     return (
-      <div className="flex flex-col gap-2">
-        <MentionableTextarea
-          ref={textareaRef}
-          value={draft}
-          onValueChange={setDraft}
-          mentionPaths={mentionPaths}
-          projectMentionOptions={projectMentionOptions}
-          autoListContinuation="enter"
-          maxHeightPx={360}
-          aria-label={ariaLabel}
-          className={cn(
-            'min-h-[5rem] rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm leading-relaxed shadow-xs transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30',
-            inputClassName
-          )}
-          // Clicking outside (anywhere but the Save/Cancel/mention controls, which
-          // all preventDefault on mousedown to keep focus) commits the edit.
-          onBlur={commit}
-          onKeyDown={event => {
-            if (event.key === 'Escape') {
-              event.preventDefault();
-              cancel();
-              return;
-            }
-            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-              event.preventDefault();
-              commit();
-            }
-          }}
-        />
-        <div className="flex items-center justify-end gap-2">
-          <span className="mr-auto text-[11px] text-muted-foreground">
-            ⌘/Ctrl+Enter to save · Esc to cancel
-          </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            // preventDefault keeps the textarea focused so its blur-commit does
-            // not race the cancel.
-            onMouseDown={event => {
-              event.preventDefault();
-              cancel();
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            size="xs"
-            onMouseDown={event => {
-              event.preventDefault();
-              commit();
-            }}
-          >
-            Save
-          </Button>
-        </div>
-      </div>
+      <MentionableTextarea
+        ref={textareaRef}
+        value={draft}
+        onValueChange={setDraft}
+        mentionPaths={mentionPaths}
+        projectMentionOptions={projectMentionOptions}
+        autoListContinuation="enter"
+        maxHeightPx={360}
+        aria-label={ariaLabel}
+        className={cn(
+          'min-h-[5rem] rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm leading-relaxed shadow-xs transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30',
+          inputClassName
+        )}
+        // Clicking outside (anywhere but the mention menu, whose buttons
+        // preventDefault on mousedown to keep focus) commits the edit.
+        onBlur={commit}
+        onKeyDown={event => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            cancel();
+            return;
+          }
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            commit();
+          }
+        }}
+      />
     );
   }
 

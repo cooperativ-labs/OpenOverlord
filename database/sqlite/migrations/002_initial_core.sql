@@ -20,14 +20,12 @@ CREATE TABLE workspaces (
 
 CREATE UNIQUE INDEX idx_workspaces_slug ON workspaces (slug);
 
-CREATE TABLE users (
-  id TEXT PRIMARY KEY,
+CREATE TABLE profiles (
+  id TEXT PRIMARY KEY REFERENCES "user" ("id") ON DELETE CASCADE,
   kind TEXT NOT NULL CHECK (kind IN ('human', 'service')),
   display_name TEXT NOT NULL CHECK (length(trim(display_name)) > 0),
   handle TEXT,
   email TEXT,
-  auth_provider TEXT,
-  external_subject TEXT,
   status TEXT NOT NULL CHECK (status IN ('active', 'disabled')),
   metadata_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata_json)),
   created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
@@ -36,19 +34,43 @@ CREATE TABLE users (
   revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)
 );
 
-CREATE INDEX idx_users_status ON users (status);
-CREATE UNIQUE INDEX idx_users_handle_lower ON users (lower(handle)) WHERE handle IS NOT NULL;
-CREATE UNIQUE INDEX idx_users_external_subject ON users (auth_provider, external_subject)
-  WHERE auth_provider IS NOT NULL AND external_subject IS NOT NULL;
-CREATE UNIQUE INDEX idx_users_email_lower ON users (lower(email)) WHERE email IS NOT NULL;
+CREATE INDEX idx_profiles_status ON profiles (status);
+CREATE UNIQUE INDEX idx_profiles_handle_lower ON profiles (lower(handle)) WHERE handle IS NOT NULL;
+CREATE UNIQUE INDEX idx_profiles_email_lower ON profiles (lower(email)) WHERE email IS NOT NULL;
+
+CREATE TRIGGER trg_better_auth_user_create_profile
+AFTER INSERT ON "user"
+FOR EACH ROW
+BEGIN
+  INSERT INTO profiles (
+    id, kind, display_name, handle, email, status, metadata_json,
+    created_at, updated_at, revision
+  ) VALUES (
+    NEW."id",
+    'human',
+    COALESCE(NULLIF(trim(NEW."name"), ''), NEW."email", 'User'),
+    NULL,
+    NEW."email",
+    'active',
+    '{}',
+    CASE
+      WHEN NEW."createdAt" GLOB '????-??-??T??:??:??.???Z' THEN NEW."createdAt"
+      ELSE strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    END,
+    CASE
+      WHEN NEW."updatedAt" GLOB '????-??-??T??:??:??.???Z' THEN NEW."updatedAt"
+      ELSE strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    END,
+    1
+  );
+END;
 
 CREATE TABLE workspace_users (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
-  user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
+  profile_id TEXT NOT NULL REFERENCES profiles (id) ON DELETE RESTRICT,
   member_key TEXT,
   status TEXT NOT NULL CHECK (status IN ('active', 'disabled')),
-  display_name TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata_json)),
   created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
   updated_at TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??.???Z'),
@@ -56,12 +78,12 @@ CREATE TABLE workspace_users (
   revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)
 );
 
-CREATE UNIQUE INDEX idx_workspace_users_active_user ON workspace_users (workspace_id, user_id)
+CREATE UNIQUE INDEX idx_workspace_users_active_profile ON workspace_users (workspace_id, profile_id)
   WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX idx_workspace_users_active_member_key ON workspace_users (workspace_id, member_key)
   WHERE member_key IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX idx_workspace_users_workspace_status ON workspace_users (workspace_id, status);
-CREATE INDEX idx_workspace_users_user_status ON workspace_users (user_id, status);
+CREATE INDEX idx_workspace_users_profile_status ON workspace_users (profile_id, status);
 
 CREATE TABLE projects (
   id TEXT PRIMARY KEY,
@@ -600,7 +622,7 @@ INSERT INTO workspaces (
   '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1
 );
 
-INSERT INTO users (
+INSERT INTO profiles (
   id, kind, display_name, handle, status, metadata_json, created_at, updated_at, revision
 ) VALUES (
   'local-user', 'human', 'Local User', 'local', 'active', '{}',
@@ -608,11 +630,11 @@ INSERT INTO users (
 );
 
 INSERT INTO workspace_users (
-  id, workspace_id, user_id, member_key, status, display_name, metadata_json,
+  id, workspace_id, profile_id, member_key, status, metadata_json,
   created_at, updated_at, revision
 ) VALUES (
   'local-workspace-user', 'local-workspace', 'local-user', 'local:local',
-  'active', 'Local User', '{}',
+  'active', '{}',
   '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1
 );
 

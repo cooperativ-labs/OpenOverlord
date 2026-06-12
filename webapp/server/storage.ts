@@ -89,10 +89,7 @@ function localRootFor(bucket: StorageBucketRow): string {
 function extensionForImage(contentType: string): string {
   const ext = IMAGE_EXTENSIONS[contentType.toLowerCase()];
   if (!ext) {
-    throw new ApiError(
-      415,
-      'Unsupported image type. Upload a PNG, JPEG, GIF, or WebP image.'
-    );
+    throw new ApiError(415, 'Unsupported image type. Upload a PNG, JPEG, GIF, or WebP image.');
   }
   return ext;
 }
@@ -144,17 +141,17 @@ function writeImageObject(bucket: StorageBucketRow, input: UploadImageInput): Wr
   };
 }
 
-/** Resolve the operator's `users.id` for the active workspace actor. */
+/** Resolve the operator's `profiles.id` for the active workspace actor. */
 function operatorUserId(): string {
   if (ACTOR_WORKSPACE_USER_ID) {
     const row = db
-      .prepare(`SELECT user_id FROM workspace_users WHERE id = ?`)
-      .get(ACTOR_WORKSPACE_USER_ID) as { user_id: string } | undefined;
-    if (row) return row.user_id;
+      .prepare(`SELECT profile_id FROM workspace_users WHERE id = ?`)
+      .get(ACTOR_WORKSPACE_USER_ID) as { profile_id: string } | undefined;
+    if (row) return row.profile_id;
   }
   const fallback = db
     .prepare(
-      `SELECT id FROM users
+      `SELECT id FROM profiles
         WHERE kind = 'human' AND status = 'active' AND deleted_at IS NULL
         ORDER BY created_at ASC LIMIT 1`
     )
@@ -176,11 +173,11 @@ export const uploadUserImage = db.transaction((input: UploadImageInput): StoredI
 
   db.prepare(
     `INSERT INTO user_images (
-       id, workspace_id, user_id, workspace_user_id, storage_bucket_id, storage_key,
+       id, workspace_id, profile_id, storage_bucket_id, storage_key,
        filename, content_type, size_bytes, checksum_sha256, public_url, metadata_json,
        created_by_workspace_user_id, created_at, updated_at, revision
      ) VALUES (
-       @id, @workspace_id, @user_id, @workspace_user_id, @storage_bucket_id, @storage_key,
+       @id, @workspace_id, @user_id, @storage_bucket_id, @storage_key,
        @filename, @content_type, @size_bytes, @checksum_sha256, @public_url, '{}',
        @created_by, @created_at, @created_at, 1
      )`
@@ -188,7 +185,6 @@ export const uploadUserImage = db.transaction((input: UploadImageInput): StoredI
     id: written.id,
     workspace_id: WORKSPACE.id,
     user_id: userId,
-    workspace_user_id: ACTOR_WORKSPACE_USER_ID,
     storage_bucket_id: bucket.id,
     storage_key: written.storageKey,
     filename,
@@ -401,9 +397,7 @@ export const deleteObjectiveAttachment = db.transaction(
         `SELECT id, revision FROM attachments
           WHERE id = ? AND objective_id = ? AND workspace_id = ? AND deleted_at IS NULL`
       )
-      .get(attachmentId, objectiveId, WORKSPACE.id) as
-      | { id: string; revision: number }
-      | undefined;
+      .get(attachmentId, objectiveId, WORKSPACE.id) as { id: string; revision: number } | undefined;
     if (!row) throw new ApiError(404, 'Attachment not found');
 
     const now = nowIso();

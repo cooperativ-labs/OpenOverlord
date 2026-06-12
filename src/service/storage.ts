@@ -19,8 +19,7 @@ type StorageRow = {
   public_url?: string | null;
   alt_text?: string | null;
   upload_status?: string | null;
-  user_id?: string;
-  workspace_user_id?: string | null;
+  profile_id?: string;
   project_id?: string | null;
   ticket_id?: string | null;
   objective_id?: string | null;
@@ -95,9 +94,9 @@ function loadActor(ctx: ServiceContext) {
 function loadActorUserId(ctx: ServiceContext): string | null {
   if (!ctx.actorWorkspaceUserId) return null;
   const row = ctx.db
-    .prepare(`SELECT user_id FROM workspace_users WHERE id = ? AND workspace_id = ?`)
-    .get(ctx.actorWorkspaceUserId, ctx.workspace.id) as { user_id: string } | undefined;
-  return row?.user_id ?? null;
+    .prepare(`SELECT profile_id FROM workspace_users WHERE id = ? AND workspace_id = ?`)
+    .get(ctx.actorWorkspaceUserId, ctx.workspace.id) as { profile_id: string } | undefined;
+  return row?.profile_id ?? null;
 }
 
 function requirePermission(
@@ -352,13 +351,11 @@ export function deleteWorkspaceImage({
 export function createUserImage({
   ctx,
   userId,
-  workspaceUserId,
   input,
   authorization
 }: {
   ctx: ServiceContext;
   userId: string;
-  workspaceUserId?: string | null;
   input: ImageCreateInput;
 } & AuthorizationOptions): ImageSummary {
   requireUserImagePermission(
@@ -375,17 +372,16 @@ export function createUserImage({
   ctx.db
     .prepare(
       `INSERT INTO user_images (
-         id, workspace_id, user_id, workspace_user_id, storage_bucket_id, storage_key,
+         id, workspace_id, profile_id, storage_bucket_id, storage_key,
          filename, content_type, size_bytes, checksum_sha256, width_px, height_px,
          alt_text, public_url, metadata_json, created_by_workspace_user_id,
          created_at, updated_at, revision
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
     )
     .run(
       id,
       ctx.workspace.id,
       userId,
-      workspaceUserId ?? null,
       bucketId,
       input.storageKey,
       input.filename,
@@ -424,12 +420,12 @@ export function listUserImages({
 } & AuthorizationOptions): ImageSummary[] {
   requirePermission(ctx, PERMISSIONS.USER_IMAGE_READ, { authorization, allowPublic: true });
   const params: string[] = [ctx.workspace.id];
-  let sql = `SELECT id, workspace_id, user_id, workspace_user_id, storage_bucket_id, storage_key,
+  let sql = `SELECT id, workspace_id, profile_id, storage_bucket_id, storage_key,
                     filename, content_type, size_bytes, checksum_sha256, public_url, alt_text, revision
              FROM user_images
              WHERE workspace_id = ? AND deleted_at IS NULL`;
   if (userId) {
-    sql += ' AND user_id = ?';
+    sql += ' AND profile_id = ?';
     params.push(userId);
   }
   sql += ' ORDER BY created_at ASC';
@@ -455,14 +451,14 @@ export function updateUserImage({
   const existing = assertFound(
     ctx.db
       .prepare(
-        `SELECT user_id FROM user_images WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
+        `SELECT profile_id FROM user_images WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
       )
-      .get(imageId, ctx.workspace.id) as { user_id: string } | undefined,
+      .get(imageId, ctx.workspace.id) as { profile_id: string } | undefined,
     'User image not found'
   );
   requireUserImagePermission(
     ctx,
-    existing.user_id,
+    existing.profile_id,
     PERMISSIONS.USER_IMAGE_UPDATE,
     PERMISSIONS.USER_IMAGE_SELF_UPDATE,
     { authorization }
@@ -493,7 +489,7 @@ export function updateUserImage({
     changedFields: ['alt_text', 'public_url', 'metadata_json']
   });
   return assertFound(
-    listUserImages({ ctx, userId: existing.user_id }).find(image => image.id === imageId),
+    listUserImages({ ctx, userId: existing.profile_id }).find(image => image.id === imageId),
     'User image missing'
   );
 }
@@ -511,14 +507,14 @@ export function deleteUserImage({
   const existing = assertFound(
     ctx.db
       .prepare(
-        `SELECT user_id FROM user_images WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
+        `SELECT profile_id FROM user_images WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
       )
-      .get(imageId, ctx.workspace.id) as { user_id: string } | undefined,
+      .get(imageId, ctx.workspace.id) as { profile_id: string } | undefined,
     'User image not found'
   );
   requireUserImagePermission(
     ctx,
-    existing.user_id,
+    existing.profile_id,
     PERMISSIONS.USER_IMAGE_DELETE,
     PERMISSIONS.USER_IMAGE_SELF_DELETE,
     { authorization }

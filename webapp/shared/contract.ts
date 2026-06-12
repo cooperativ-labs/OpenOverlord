@@ -72,16 +72,16 @@ export interface CompleteInitialSetupBody {
 }
 
 /**
- * A workspace membership (`workspace_users` joined to `users`). Read-only in
+ * A workspace membership (`workspace_users` joined to `profiles`). Read-only in
  * this single-trusted-user build — invitations and role management are hosted
  * features; the local web server only lists who belongs to a workspace.
  */
 export interface WorkspaceMemberDto {
   /** `workspace_users.id` — the workspace-scoped identity. */
   workspaceUserId: string;
-  /** `users.id` — the global user behind the membership. */
+  /** `profiles.id` — the profile behind the membership. */
   userId: string;
-  /** Workspace `display_name` override when set, else the user's global one. */
+  /** `profiles.display_name`. */
   displayName: string;
   handle: string | null;
   email: string | null;
@@ -91,7 +91,7 @@ export interface WorkspaceMemberDto {
   isOperator: boolean;
   /** `workspace_users.created_at`. */
   joinedAt: string;
-  /** Optional avatar image URL from `users.metadata_json.avatarUrl`. */
+  /** Optional avatar image URL from `profiles.metadata_json.avatarUrl`. */
   avatarUrl: string | null;
 }
 
@@ -120,6 +120,27 @@ export interface ProjectStatusDto {
   position: number;
   isDefault: boolean;
   isTerminal: boolean;
+}
+
+export interface CreateProjectStatusBody {
+  name: string;
+  type: StatusType;
+  /** When true, clears the previous default. Only draft-type statuses may be default. */
+  isDefault?: boolean;
+}
+
+export interface UpdateProjectStatusBody {
+  name?: string;
+  /** When true, clears the previous default. Only draft-type statuses may be default. */
+  isDefault?: boolean;
+}
+
+/**
+ * Reorders every status on a project. `orderedStatusIds` lists status ids
+ * top-to-bottom after the move and must include every active status exactly once.
+ */
+export interface ReorderProjectStatusesBody {
+  orderedStatusIds: string[];
 }
 
 export type ProjectResourceType = 'local_directory' | 'remote_directory';
@@ -170,46 +191,6 @@ export interface ProjectRepositoryDto {
   truncated: boolean;
   scannedAt: string;
   message: string | null;
-}
-
-export interface SqliteBrowserColumnDto {
-  name: string;
-  type: string;
-  notNull: boolean;
-  defaultValue: string | null;
-  primaryKeyPosition: number;
-}
-
-export interface SqliteBrowserTableDto {
-  name: string;
-  type: 'table' | 'view';
-  columns: SqliteBrowserColumnDto[];
-  rowCount: number | null;
-  sql: string | null;
-}
-
-export interface SqliteBrowserTablesDto {
-  databasePath: string;
-  workspaceRoot: string;
-  tables: SqliteBrowserTableDto[];
-}
-
-export interface SqliteBrowserTableDataDto {
-  table: SqliteBrowserTableDto;
-  columns: string[];
-  rows: Array<Record<string, string | number | boolean | null>>;
-  limit: number;
-  offset: number;
-  totalRows: number | null;
-}
-
-export interface SqliteBrowserQueryResultDto {
-  sql: string;
-  columns: string[];
-  rows: Array<Record<string, string | number | boolean | null>>;
-  rowCount: number;
-  truncated: boolean;
-  durationMs: number;
 }
 
 export interface TicketDto {
@@ -597,17 +578,17 @@ export type UpdateLaunchPreferenceBody = Partial<LaunchPreferenceDto>;
 
 /**
  * The local operator's user-account profile. In this single-trusted-user build
- * the profile maps directly to the operator's `users` row; the avatar URL is
- * persisted in `users.metadata_json.avatarUrl`.
+ * the profile maps directly to the operator's `profiles` row; the avatar URL is
+ * persisted in `profiles.metadata_json.avatarUrl`.
  */
 export interface ProfileDto {
   userId: string;
-  /** `users.display_name` — required, non-empty. */
+  /** `profiles.display_name` — required, non-empty. */
   displayName: string;
-  /** `users.handle` — an optional short username/handle. */
+  /** `profiles.handle` — an optional short username/handle. */
   handle: string | null;
   email: string | null;
-  /** Optional avatar image URL stored in `users.metadata_json.avatarUrl`. */
+  /** Optional avatar image URL stored in `profiles.metadata_json.avatarUrl`. */
   avatarUrl: string | null;
   /** Open vocabulary (`human`, `service`). The local operator is `human`. */
   kind: string;
@@ -653,12 +634,7 @@ export interface StoredImageDto {
  * Lifecycle of a stored object's bytes (`attachments.upload_status` /
  * `objective_attachments.upload_status`). Local uploads land as `available`.
  */
-export type AttachmentUploadStatus =
-  | 'prepared'
-  | 'uploaded'
-  | 'available'
-  | 'failed'
-  | 'deleted';
+export type AttachmentUploadStatus = 'prepared' | 'uploaded' | 'available' | 'failed' | 'deleted';
 
 /**
  * A file attached to an objective, stored in the `attachments` bucket. Bytes

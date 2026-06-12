@@ -10,7 +10,6 @@ import { AppSidebar } from './components/app-sidebar.tsx';
 import { InitialSetupScreen } from './components/setup/InitialSetupScreen.tsx';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from './components/ui/sidebar.tsx';
 import { useMeta } from './lib/queries.ts';
-import { DatabasePage } from './pages/DatabasePage.tsx';
 import { ProjectBoardShell } from './pages/ProjectBoardShell.tsx';
 import { ProjectsPage } from './pages/ProjectsPage.tsx';
 import { TicketPanelRoute } from './pages/TicketPage.tsx';
@@ -56,12 +55,6 @@ const projectsRoute = createRoute({
   component: ProjectsPage
 });
 
-const databaseRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/database',
-  component: DatabasePage
-});
-
 const boardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects/$projectId',
@@ -77,7 +70,6 @@ const ticketRoute = createRoute({
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   projectsRoute,
-  databaseRoute,
   boardRoute,
   ticketRoute
 ]);

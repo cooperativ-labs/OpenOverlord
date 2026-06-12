@@ -8,7 +8,7 @@
   },
   "packageManager": "yarn@4.16.0",
   "scripts": {
-    "install:all": "yarn install && yarn --cwd cli install && yarn --cwd webapp install",
+    "install:all": "yarn install && yarn --cwd webapp install",
     "reinstall": "rm -rf node_modules cli/node_modules webapp/node_modules && yarn install:all",
     "new": "rm -rf node_modules cli/node_modules webapp/node_modules && yarn",
     "dev": "yarn dev:webapp",
@@ -26,7 +26,7 @@
     "clean": "yarn clean:local",
     "clean:local": "node --experimental-strip-types scripts/clean-local-state.ts",
     "start:local": "node --experimental-strip-types src/database/launch-local.ts",
-    "generate": "yarn start:local && kysely-codegen --dialect sqlite --url .overlord/Overlord.sqlite --out-file src/types/db.ts",
+    "generate": "yarn start:local && kysely-codegen --dialect sqlite --url database/.local/Overlord.sqlite --out-file src/types/db.ts",
     "typecheck": "yarn typecheck:root && yarn typecheck:cli && yarn typecheck:webapp",
     "typecheck:root": "tsc --project tsconfig.build.json --noEmit",
     "typecheck:cli": "tsc --project cli/tsconfig.build.json --noEmit",

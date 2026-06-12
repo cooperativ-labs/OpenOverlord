@@ -26,12 +26,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '../ui/dropdown-menu.tsx';
+import { FileDropZone } from '../ui/file-drop-zone.tsx';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover.tsx';
 import { Switch } from '../ui/switch.tsx';
 
 import { AgentLaunchButton } from './AgentLaunchButton.tsx';
 import { AgentModelChooserButton } from './AgentModelChooserButton.tsx';
-import { ObjectiveAttachments } from './ObjectiveAttachments.tsx';
+import {
+  ObjectiveAttachmentList,
+  ObjectiveAttachmentUploadTrigger,
+  useObjectiveAttachmentState
+} from './ObjectiveAttachments.tsx';
 import { useObjectiveAgentSelection } from './useObjectiveAgentSelection.ts';
 
 const AUTO_ADVANCE_TOGGLE_STATES: ObjectiveState[] = ['future', 'draft', 'submitted', 'launching'];
@@ -67,6 +72,17 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
   const [isFutureExpanded, setIsFutureExpanded] = useState(false);
 
   const isFuture = objective.state === 'future';
+  const {
+    attachments,
+    error: attachmentError,
+    removingId,
+    isUploading,
+    inputRef,
+    handleFiles,
+    handleInputChange,
+    handleRemove,
+    dragState
+  } = useObjectiveAttachmentState(objective.id, { dropDisabled: isFuture });
   // `launching` is the pre-attach state; render it like `submitted`.
   const isSubmitted = objective.state === 'submitted' || objective.state === 'launching';
   const isLaunchable = objective.state === 'draft' || isSubmitted;
@@ -84,10 +100,121 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
     update.mutate({ id: objective.id, body: { state: 'draft' } });
   }
 
+  const toolbarActions = (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50"
+          aria-label="Objective actions"
+          title="Objective actions"
+        >
+          <MoreVertical className="h-3.5 w-3.5" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-[160px]">
+          {OBJECTIVE_STATES.map(s => (
+            <DropdownMenuItem
+              key={s}
+              className="gap-2 text-xs"
+              onClick={() => update.mutate({ id: objective.id, body: { state: s } })}
+            >
+              <span>{OBJECTIVE_STATE_LABEL[s]}</span>
+              {s === objective.state && <Check className="ml-auto h-3 w-3 text-muted-foreground" />}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="gap-2 text-xs text-red-600 focus:text-red-600"
+            onClick={() => {
+              if (confirm('Delete this objective?')) remove.mutate(objective.id);
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span>Delete objective</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {canToggleAutoAdvance ? (
+        <Popover>
+          <PopoverTrigger
+            className={cn(
+              'inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs transition-colors hover:bg-accent',
+              objective.autoAdvance ? 'text-emerald-600' : 'text-amber-600'
+            )}
+            aria-label={objective.autoAdvance ? 'Auto-advance on' : 'Auto-advance off'}
+            title={objective.autoAdvance ? 'Auto-advance ON' : 'Auto-advance OFF'}
+          >
+            {autoAdvancePending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : objective.autoAdvance ? (
+              <FastForward className="h-3.5 w-3.5" />
+            ) : (
+              <PauseCircle className="h-3.5 w-3.5" />
+            )}
+          </PopoverTrigger>
+          <PopoverContent className="w-64" align="end">
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium">Auto-advance</span>
+                <Switch
+                  checked={objective.autoAdvance}
+                  disabled={autoAdvancePending}
+                  onCheckedChange={next =>
+                    update.mutate({ id: objective.id, body: { autoAdvance: next } })
+                  }
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                When enabled, this objective will automatically start executing after the previous
+                one completes. When disabled, it will wait for manual approval before starting.
+              </p>
+            </div>
+          </PopoverContent>
+        </Popover>
+      ) : null}
+
+      <AgentModelChooserButton
+        catalog={catalog}
+        selection={selection}
+        onChange={setSelection}
+        agentConfigs={agentConfigs}
+        onLaunchConfigCommit={commitLaunchConfig}
+      />
+
+      {isFuture ? (
+        <Button
+          variant="secondary"
+          className="h-8 gap-1.5 px-3 text-xs"
+          disabled={update.isPending}
+          onClick={handlePromote}
+        >
+          {update.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <ArrowUpCircle className="h-3.5 w-3.5" />
+          )}
+          Promote
+        </Button>
+      ) : isLaunchable ? (
+        <AgentLaunchButton
+          objective={objective}
+          selection={selection}
+          selectionLoaded={loaded}
+          hasActiveSibling={hasActiveSibling}
+          activeRequest={activeRequest}
+          size="sm"
+        />
+      ) : null}
+    </>
+  );
+
   return (
-    <div
+    <FileDropZone
+      onDrop={handleFiles}
+      disabled={isUploading || isFuture}
+      dragState={dragState}
       className={cn(
-        'relative w-full overflow-hidden rounded-xl border transition-all focus-within:ring-1 focus-within:ring-ring/50',
+        'w-full overflow-hidden rounded-xl border transition-all focus-within:ring-1 focus-within:ring-ring/50',
         isFuture
           ? 'border-border/50 bg-muted/20 opacity-70 focus-within:opacity-100'
           : 'border-muted-foreground/20',
@@ -135,124 +262,36 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
         ) : null}
       </div>
 
-      {/* Attachments — drag-and-drop files linked to this objective. Hidden for
-          collapsed `future` objectives to keep the preview compact. */}
-      {!isFuture ? (
-        <div className="border-t border-border/40 px-3 py-3">
-          <ObjectiveAttachments objectiveId={objective.id} />
-        </div>
-      ) : null}
-
-      {/* Toolbar: more menu, auto-advance, agent/model chooser, run / promote */}
-      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border/40 px-3 py-2">
-        <div className="grow" />
-
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50"
-            aria-label="Objective actions"
-            title="Objective actions"
-          >
-            <MoreVertical className="h-3.5 w-3.5" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-[160px]">
-            {OBJECTIVE_STATES.map(s => (
-              <DropdownMenuItem
-                key={s}
-                className="gap-2 text-xs"
-                onClick={() => update.mutate({ id: objective.id, body: { state: s } })}
-              >
-                <span>{OBJECTIVE_STATE_LABEL[s]}</span>
-                {s === objective.state && (
-                  <Check className="ml-auto h-3 w-3 text-muted-foreground" />
-                )}
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="gap-2 text-xs text-red-600 focus:text-red-600"
-              onClick={() => {
-                if (confirm('Delete this objective?')) remove.mutate(objective.id);
-              }}
+      {/* Attachments + toolbar. The whole card is the drop target (FileDropZone);
+          the footer + button opens the file browser. */}
+      <div className="border-t border-border/40">
+        {!isFuture ? (
+          <>
+            <ObjectiveAttachmentList
+              attachments={attachments}
+              removingId={removingId}
+              onRemove={handleRemove}
+              toolbar
+            />
+            {attachmentError ? (
+              <p className="px-3 pb-1 text-xs text-destructive">{attachmentError}</p>
+            ) : null}
+            <ObjectiveAttachmentUploadTrigger
+              attachmentsCount={attachments.length}
+              inputRef={inputRef}
+              onInputChange={handleInputChange}
+              disabled={isUploading}
             >
-              <Trash2 className="h-3.5 w-3.5" />
-              <span>Delete objective</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {canToggleAutoAdvance ? (
-          <Popover>
-            <PopoverTrigger
-              className={cn(
-                'inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs transition-colors hover:bg-accent',
-                objective.autoAdvance ? 'text-emerald-600' : 'text-amber-600'
-              )}
-              aria-label={objective.autoAdvance ? 'Auto-advance on' : 'Auto-advance off'}
-              title={objective.autoAdvance ? 'Auto-advance ON' : 'Auto-advance OFF'}
-            >
-              {autoAdvancePending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : objective.autoAdvance ? (
-                <FastForward className="h-3.5 w-3.5" />
-              ) : (
-                <PauseCircle className="h-3.5 w-3.5" />
-              )}
-            </PopoverTrigger>
-            <PopoverContent className="w-64" align="end">
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-medium">Auto-advance</span>
-                  <Switch
-                    checked={objective.autoAdvance}
-                    disabled={autoAdvancePending}
-                    onCheckedChange={next =>
-                      update.mutate({ id: objective.id, body: { autoAdvance: next } })
-                    }
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  When enabled, this objective will automatically start executing after the previous
-                  one completes. When disabled, it will wait for manual approval before starting.
-                </p>
-              </div>
-            </PopoverContent>
-          </Popover>
-        ) : null}
-
-        <AgentModelChooserButton
-          catalog={catalog}
-          selection={selection}
-          onChange={setSelection}
-          agentConfigs={agentConfigs}
-          onLaunchConfigCommit={commitLaunchConfig}
-        />
-
-        {isFuture ? (
-          <Button
-            variant="secondary"
-            className="h-8 gap-1.5 px-3 text-xs"
-            disabled={update.isPending}
-            onClick={handlePromote}
-          >
-            {update.isPending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <ArrowUpCircle className="h-3.5 w-3.5" />
-            )}
-            Promote
-          </Button>
-        ) : isLaunchable ? (
-          <AgentLaunchButton
-            objective={objective}
-            selection={selection}
-            selectionLoaded={loaded}
-            hasActiveSibling={hasActiveSibling}
-            activeRequest={activeRequest}
-            size="sm"
-          />
-        ) : null}
+              {toolbarActions}
+            </ObjectiveAttachmentUploadTrigger>
+          </>
+        ) : (
+          <div className="flex flex-wrap items-center justify-end gap-2 px-3 py-2">
+            <div className="grow" />
+            {toolbarActions}
+          </div>
+        )}
       </div>
-    </div>
+    </FileDropZone>
   );
 }

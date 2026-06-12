@@ -9,7 +9,7 @@ import { type AuthDomainDatabase, queryAll, queryOne } from './database.js';
  *
  * Validates the session via Better Auth (bearer plugin extracts the token from
  * the Authorization header), then bridges to the Overlord identity model:
- *   Better Auth user.id  →  users.external_subject (auth_provider = 'better-auth')
+ *   Better Auth user.id  →  profiles.id
  *                        →  workspace_users.id
  *                        →  role_assignments (active, workspace-scoped)
  *
@@ -32,12 +32,11 @@ export async function getActorForSession(
     db,
     `SELECT wu.id AS workspace_user_id
      FROM workspace_users wu
-     JOIN users u ON u.id = wu.user_id
-     WHERE u.auth_provider = 'better-auth'
-       AND u.external_subject = ?
+     JOIN profiles p ON p.id = wu.profile_id
+     WHERE p.id = ?
        AND wu.workspace_id = ?
        AND wu.status = 'active'
-       AND u.deleted_at IS NULL
+       AND p.deleted_at IS NULL
        AND wu.deleted_at IS NULL
      LIMIT 1`,
     [baUserId, workspaceId]

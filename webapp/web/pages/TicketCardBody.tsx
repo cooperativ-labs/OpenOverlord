@@ -1,0 +1,52 @@
+import { CardContent } from '@/components/ui/card';
+
+import type { TicketDto, WorkspaceMemberDto } from '../../shared/contract.ts';
+
+import { getTicketTags } from './board-shared.ts';
+import { TicketCardHoverFooter } from './TicketCardHoverFooter.tsx';
+import { ProjectColorDot, TicketAssigneeSummary } from './TicketCardPrimitives.tsx';
+
+export function TicketCardBody({
+  ticket,
+  projectId,
+  projectName,
+  projectColor,
+  assignee
+}: {
+  ticket: TicketDto;
+  projectId: string;
+  projectName: string;
+  projectColor: string | null;
+  assignee?: WorkspaceMemberDto | null;
+}) {
+  const tags = getTicketTags(ticket);
+
+  return (
+    <CardContent className="flex h-full flex-col p-0 pt-3">
+      <div className="space-y-3 px-3">
+        <div className="min-w-0">
+          <h4 className="text-sm font-medium leading-snug text-foreground">{ticket.title}</h4>
+
+          <div className="mt-4 flex items-start justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <ProjectColorDot color={projectColor} name={projectName} />
+              <span className="truncate text-[11px] text-muted-foreground">{projectName}</span>
+            </div>
+            <div className="flex min-w-0 max-w-[55%] shrink justify-end">
+              <TicketAssigneeSummary assignee={assignee} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="h-2" />
+
+      <TicketCardHoverFooter
+        ticketId={ticket.id}
+        projectId={projectId}
+        displayId={ticket.displayId}
+        tags={tags}
+      />
+    </CardContent>
+  );
+}

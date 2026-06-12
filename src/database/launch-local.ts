@@ -3,8 +3,9 @@ import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { DEFAULT_DATABASE_PATH } from '../../database/local-paths.ts';
+
 const CONTRACT_VERSION = '0.2-draft';
-const DEFAULT_DATABASE_PATH = '.overlord/Overlord.sqlite';
 const MIGRATION_FILE_PATTERN = /^\d+_[a-z0-9_]+\.sql$/;
 
 type BetterSqlite3Constructor = typeof import('better-sqlite3');
@@ -146,11 +147,9 @@ async function main(): Promise<void> {
   const results: string[] = [];
 
   try {
+    const pendingMigrationRecords: Migration[] = [];
     for (const migration of migrations) {
-      const state =
-        migration.version === '001'
-          ? applyInitialMigration(db, migration)
-          : applyMigration(db, migration);
+      const state = applyMigrationWithPendingRecords(db, migration, pendingMigrationRecords);
       results.push(`${migration.fileName}: ${state}`);
     }
 
@@ -174,31 +173,49 @@ async function main(): Promise<void> {
   }
 }
 
-function applyInitialMigration(db: DatabaseInstance, migration: Migration): 'applied' | 'skipped' {
-  const hasSchemaMigrations = db
-    .prepare(
-      `
-      SELECT 1
-      FROM sqlite_schema
-      WHERE type = 'table'
-        AND name = 'schema_migrations'
-      `
-    )
-    .get();
+function hasSchemaMigrationsTable(db: DatabaseInstance): boolean {
+  return Boolean(
+    db
+      .prepare(
+        `
+        SELECT 1
+        FROM sqlite_schema
+        WHERE type = 'table'
+          AND name = 'schema_migrations'
+        `
+      )
+      .get()
+  );
+}
 
-  if (!hasSchemaMigrations) {
-    db.exec(migration.sql);
-    db.prepare(
-      `
-      INSERT INTO schema_migrations (
-        version, adapter, component, contract_version, checksum, applied_at
-      ) VALUES (?, 'sqlite', 'core', ?, ?, ?)
-      `
-    ).run(migration.version, CONTRACT_VERSION, migration.checksum, new Date().toISOString());
-    return 'applied';
+function recordMigration(db: DatabaseInstance, migration: Migration): void {
+  db.prepare(
+    `
+    INSERT INTO schema_migrations (
+      version, adapter, component, contract_version, checksum, applied_at
+    ) VALUES (?, 'sqlite', 'core', ?, ?, ?)
+    `
+  ).run(migration.version, CONTRACT_VERSION, migration.checksum, new Date().toISOString());
+}
+
+function applyMigrationWithPendingRecords(
+  db: DatabaseInstance,
+  migration: Migration,
+  pendingMigrationRecords: Migration[]
+): 'applied' | 'applied-pending' | 'skipped' {
+  if (hasSchemaMigrationsTable(db)) return applyMigration(db, migration);
+
+  db.exec(migration.sql);
+  if (!hasSchemaMigrationsTable(db)) {
+    pendingMigrationRecords.push(migration);
+    return 'applied-pending';
   }
 
-  return applyMigration(db, migration);
+  for (const pending of [...pendingMigrationRecords, migration]) {
+    recordMigration(db, pending);
+  }
+  pendingMigrationRecords.length = 0;
+  return 'applied';
 }
 
 void main();
