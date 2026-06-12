@@ -2,6 +2,7 @@ import { ArrowRightToLine, EllipsisVertical } from 'lucide-react';
 
 import { CopyTicketIdentifierButton } from '@/components/CopyTicketIdentifierButton';
 import { DeleteTicketButton } from '@/components/DeleteTicketButton';
+import { TicketMemberSelect } from '@/components/TicketMemberSelect';
 import { TicketProjectSelect } from '@/components/TicketProjectSelect';
 import { TicketStatusSelect } from '@/components/TicketStatusSelect';
 import { Button } from '@/components/ui/button';
@@ -71,6 +72,11 @@ export function TicketPanelHeader({
 
       <div className="flex shrink-0 items-center justify-end gap-3">
         <div className="flex items-center gap-1.5">
+          <TicketMemberSelect
+            ticketId={ticket.id}
+            workspaceId={ticket.workspaceId}
+            assignedWorkspaceUserId={ticket.assignedWorkspaceUserId}
+          />
           <TicketProjectSelect
             ticketId={ticket.id}
             projectId={projectId}

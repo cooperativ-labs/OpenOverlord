@@ -1,0 +1,185 @@
+import * as React from 'react';
+
+import { MentionableTextarea, type ProjectMentionOption } from '@/components/MentionableTextarea';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
+
+export type InlineEditFieldProps = {
+  value: string;
+  onSave: (next: string) => void;
+  /** Edit in a multiline, mention-aware textarea instead of a single-line input. */
+  multiline?: boolean;
+  /** Classes applied to the static display element. */
+  className?: string;
+  /** Shown (italic, muted) when the value is empty. */
+  placeholder?: string;
+  /** Classes applied to the input/textarea while editing. */
+  inputClassName?: string;
+  /** File paths offered for `@` mentions (multiline only). */
+  mentionPaths?: string[];
+  /** Projects offered for `#` mentions (multiline only). */
+  projectMentionOptions?: ProjectMentionOption[];
+  /** Render the value as static, non-editable text. */
+  disabled?: boolean;
+  /** Accessible label for the editor. */
+  ariaLabel?: string;
+};
+
+/**
+ * Inline click-to-edit text. Displays a value that turns into an editor on
+ * click: a single-line input, or — when `multiline` — a {@link MentionableTextarea}
+ * with `@` file and `#` project mentions, markdown list continuation, and
+ * Save/Cancel affordances. Commits on blur or ⌘/Ctrl+Enter; Escape cancels.
+ *
+ * Extracted from the former `EditableText` in `ui.tsx` and modelled on the
+ * inline-edit pattern shared across the objective and ticket surfaces.
+ */
+export function InlineEditField({
+  value,
+  onSave,
+  multiline = false,
+  className,
+  placeholder = 'Click to edit',
+  inputClassName,
+  mentionPaths,
+  projectMentionOptions,
+  disabled = false,
+  ariaLabel
+}: InlineEditFieldProps) {
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState(value);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  React.useEffect(() => setDraft(value), [value]);
+
+  // Focus and place the caret at the end when entering multiline edit mode.
+  React.useEffect(() => {
+    if (!editing || !multiline) return;
+    const el = textareaRef.current;
+    if (!el) return;
+    el.focus();
+    const end = el.value.length;
+    el.setSelectionRange(end, end);
+  }, [editing, multiline]);
+
+  const commit = React.useCallback(() => {
+    setEditing(false);
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== value) onSave(trimmed);
+    else setDraft(value);
+  }, [draft, value, onSave]);
+
+  const cancel = React.useCallback(() => {
+    setDraft(value);
+    setEditing(false);
+  }, [value]);
+
+  if (disabled || !editing) {
+    return (
+      <span
+        className={cn(
+          'rounded',
+          !disabled && 'cursor-text hover:bg-muted',
+          className,
+          value ? '' : 'italic text-muted-foreground'
+        )}
+        onClick={disabled ? undefined : () => setEditing(true)}
+        title={disabled ? undefined : 'Click to edit'}
+      >
+        {value || placeholder}
+      </span>
+    );
+  }
+
+  if (multiline) {
+    return (
+      <div className="flex flex-col gap-2">
+        <MentionableTextarea
+          ref={textareaRef}
+          value={draft}
+          onValueChange={setDraft}
+          mentionPaths={mentionPaths}
+          projectMentionOptions={projectMentionOptions}
+          autoListContinuation="enter"
+          maxHeightPx={360}
+          aria-label={ariaLabel}
+          className={cn(
+            'min-h-[5rem] rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm leading-relaxed shadow-xs transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30',
+            inputClassName
+          )}
+          // Clicking outside (anywhere but the Save/Cancel/mention controls, which
+          // all preventDefault on mousedown to keep focus) commits the edit.
+          onBlur={commit}
+          onKeyDown={event => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              cancel();
+              return;
+            }
+            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              commit();
+            }
+          }}
+        />
+        <div className="flex items-center justify-end gap-2">
+          <span className="mr-auto text-[11px] text-muted-foreground">
+            ⌘/Ctrl+Enter to save · Esc to cancel
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            // preventDefault keeps the textarea focused so its blur-commit does
+            // not race the cancel.
+            onMouseDown={event => {
+              event.preventDefault();
+              cancel();
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            size="xs"
+            onMouseDown={event => {
+              event.preventDefault();
+              commit();
+            }}
+          >
+            Save
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Input
+      autoFocus
+      value={draft}
+      className={cn('h-8', inputClassName)}
+      aria-label={ariaLabel}
+      onChange={event => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={event => {
+        if (event.key === 'Escape') {
+          setDraft(value);
+          setEditing(false);
+          return;
+        }
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          commit();
+        }
+      }}
+    />
+  );
+}
+
+/**
+ * Backwards-compatible alias for {@link InlineEditField}. Prefer
+ * `InlineEditField` in new code.
+ */
+export const EditableText = InlineEditField;

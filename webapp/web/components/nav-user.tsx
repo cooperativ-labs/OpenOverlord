@@ -2,7 +2,7 @@ import { ChevronsUpDown, Monitor, Moon, Settings, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
 import type { SettingsNavSection } from '@/components/settings/SettingsModal';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +21,7 @@ import {
   SidebarMenuItem,
   useSidebar
 } from '@/components/ui/sidebar';
-import { useMeta } from '@/lib/queries';
+import { useMeta, useProfile } from '@/lib/queries';
 
 type NavUserProps = {
   onOpenSettings: (section?: SettingsNavSection) => void;
@@ -31,9 +31,12 @@ export function NavUser({ onOpenSettings }: NavUserProps) {
   const { isMobile } = useSidebar();
   const { theme, setTheme } = useTheme();
   const meta = useMeta();
+  const profileQ = useProfile();
 
-  const workspaceName = meta.data?.workspace.name ?? 'Local workspace';
-  const initials = workspaceName
+  const profile = profileQ.data;
+  const displayName = profile?.displayName || meta.data?.workspace.name || 'Local workspace';
+  const subtitle = profile?.handle ? `@${profile.handle}` : (profile?.email ?? 'Local operator');
+  const initials = displayName
     .split(/\s+/)
     .slice(0, 2)
     .map(part => part.charAt(0).toUpperCase())
@@ -52,11 +55,14 @@ export function NavUser({ onOpenSettings }: NavUserProps) {
             }
           >
             <Avatar className="size-8 rounded-lg">
+              {profile?.avatarUrl ? (
+                <AvatarImage src={profile.avatarUrl} alt={displayName} />
+              ) : null}
               <AvatarFallback className="rounded-lg">{initials || 'OL'}</AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-medium">{workspaceName}</span>
-              <span className="truncate text-xs text-muted-foreground">Local operator</span>
+              <span className="truncate font-medium">{displayName}</span>
+              <span className="truncate text-xs text-muted-foreground">{subtitle}</span>
             </div>
             <ChevronsUpDown className="ml-auto size-4" />
           </DropdownMenuTrigger>
@@ -70,11 +76,14 @@ export function NavUser({ onOpenSettings }: NavUserProps) {
               <DropdownMenuLabel className="p-0 font-normal">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                   <Avatar className="size-8 rounded-lg">
+                    {profile?.avatarUrl ? (
+                      <AvatarImage src={profile.avatarUrl} alt={displayName} />
+                    ) : null}
                     <AvatarFallback className="rounded-lg">{initials || 'OL'}</AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-medium">{workspaceName}</span>
-                    <span className="truncate text-xs text-muted-foreground">Local operator</span>
+                    <span className="truncate font-medium">{displayName}</span>
+                    <span className="truncate text-xs text-muted-foreground">{subtitle}</span>
                   </div>
                 </div>
               </DropdownMenuLabel>

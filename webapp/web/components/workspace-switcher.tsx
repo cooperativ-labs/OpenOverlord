@@ -1,10 +1,11 @@
 import { useNavigate } from '@tanstack/react-router';
-import { Check, ChevronsUpDown, Globe, Plus } from 'lucide-react';
+import { Check, ChevronsUpDown, Globe, Plus, Settings } from 'lucide-react';
 import { useState } from 'react';
 
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -17,6 +18,7 @@ import {
   useSidebar
 } from '@/components/ui/sidebar';
 import { WorkspaceCreatorModal } from '@/components/workspaces/WorkspaceCreatorModal';
+import { WorkspaceSettingsModal } from '@/components/workspaces/WorkspaceSettingsModal';
 import { useActivateWorkspace, useMeta, useWorkspaces } from '@/lib/queries';
 
 import type { WorkspaceDto } from '../../shared/contract.ts';
@@ -41,6 +43,7 @@ export function WorkspaceSwitcher() {
   const workspaces = useWorkspaces();
   const activateWorkspace = useActivateWorkspace();
   const [createOpen, setCreateOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const items = workspaces.data ?? [];
   const active =
@@ -93,39 +96,58 @@ export function WorkspaceSwitcher() {
               align="start"
               sideOffset={4}
             >
-              <DropdownMenuLabel className="text-xs text-muted-foreground">
-                Workspaces
-              </DropdownMenuLabel>
-              {items.map(workspace => (
-                <DropdownMenuItem
-                  key={workspace.id}
-                  className="gap-2 p-2"
-                  onClick={() => handleSelect(workspace)}
-                >
-                  <WorkspaceGlyph workspace={workspace} />
-                  <div className="grid flex-1 text-left leading-tight">
-                    <span className="truncate text-sm font-medium">{workspace.name}</span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {workspace.projectCount}{' '}
-                      {workspace.projectCount === 1 ? 'project' : 'projects'}
-                    </span>
-                  </div>
-                  {workspace.isActive && <Check className="ml-auto size-4" />}
-                </DropdownMenuItem>
-              ))}
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="text-xs text-muted-foreground">
+                  Workspaces
+                </DropdownMenuLabel>
+                {items.map(workspace => (
+                  <DropdownMenuItem
+                    key={workspace.id}
+                    className="gap-2 p-2"
+                    onClick={() => handleSelect(workspace)}
+                  >
+                    <WorkspaceGlyph workspace={workspace} />
+                    <div className="grid flex-1 text-left leading-tight">
+                      <span className="truncate text-sm font-medium">{workspace.name}</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {workspace.projectCount}{' '}
+                        {workspace.projectCount === 1 ? 'project' : 'projects'}
+                      </span>
+                    </div>
+                    {workspace.isActive && <Check className="ml-auto size-4" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="gap-2 p-2" onClick={() => setCreateOpen(true)}>
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg border bg-background">
-                  <Plus className="size-4" />
-                </div>
-                <span className="text-sm font-medium text-muted-foreground">Create workspace</span>
-              </DropdownMenuItem>
+              <DropdownMenuGroup>
+                <DropdownMenuItem className="gap-2 p-2" onClick={() => setSettingsOpen(true)}>
+                  <div className="flex aspect-square size-8 items-center justify-center rounded-lg border bg-background">
+                    <Settings className="size-4" />
+                  </div>
+                  <span className="text-sm font-medium text-muted-foreground">
+                    Workspace settings
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem className="gap-2 p-2" onClick={() => setCreateOpen(true)}>
+                  <div className="flex aspect-square size-8 items-center justify-center rounded-lg border bg-background">
+                    <Plus className="size-4" />
+                  </div>
+                  <span className="text-sm font-medium text-muted-foreground">
+                    Create workspace
+                  </span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
         </SidebarMenuItem>
       </SidebarMenu>
 
       <WorkspaceCreatorModal open={createOpen} onOpenChange={setCreateOpen} />
+      <WorkspaceSettingsModal
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        workspaceId={active?.id ?? null}
+      />
     </>
   );
 }

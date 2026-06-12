@@ -1,6 +1,7 @@
 # Overlord local scratch
 .overlord/tmp/
 .overlord/logs/
+.overlord/storage/
 .overlord/*.sqlite
 .overlord/*.sqlite-*
 

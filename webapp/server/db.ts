@@ -124,6 +124,16 @@ export function setActiveWorkspace(id: string): WorkspaceRow | null {
   return row;
 }
 
+/**
+ * Re-read the active workspace row after it was mutated in place (e.g. a
+ * rename) so the `WORKSPACE` live binding — and everything derived from it,
+ * like `/api/meta` — reflects the new values.
+ */
+export function reloadActiveWorkspace(): void {
+  const row = loadWorkspaceRow(WORKSPACE.id);
+  if (row) WORKSPACE = { id: row.id, slug: row.slug, name: row.name, kind: row.kind };
+}
+
 // ---- entity_changes writer ----------------------------------------------
 
 const insertChangeStmt = db.prepare(`

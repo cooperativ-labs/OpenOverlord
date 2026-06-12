@@ -56,6 +56,45 @@ export interface CreateWorkspaceBody {
   slug?: string;
 }
 
+/** Partial update of a workspace. Omitted fields are left unchanged. */
+export interface UpdateWorkspaceBody {
+  name?: string;
+}
+
+/**
+ * Initial instance setup: names the seeded first workspace and picks its slug.
+ * The slug prefixes ticket identifiers (`<slug>:<sequence>`); when omitted it
+ * is suggested from the first three letters of the name.
+ */
+export interface CompleteInitialSetupBody {
+  name: string;
+  slug?: string;
+}
+
+/**
+ * A workspace membership (`workspace_users` joined to `users`). Read-only in
+ * this single-trusted-user build — invitations and role management are hosted
+ * features; the local web server only lists who belongs to a workspace.
+ */
+export interface WorkspaceMemberDto {
+  /** `workspace_users.id` — the workspace-scoped identity. */
+  workspaceUserId: string;
+  /** `users.id` — the global user behind the membership. */
+  userId: string;
+  /** Workspace `display_name` override when set, else the user's global one. */
+  displayName: string;
+  handle: string | null;
+  email: string | null;
+  /** Open vocabulary (`human`, `service`). */
+  kind: string;
+  /** Whether this membership belongs to the local operator. */
+  isOperator: boolean;
+  /** `workspace_users.created_at`. */
+  joinedAt: string;
+  /** Optional avatar image URL from `users.metadata_json.avatarUrl`. */
+  avatarUrl: string | null;
+}
+
 export interface ProjectDto {
   id: string;
   workspaceId: string;
@@ -189,6 +228,11 @@ export interface TicketDto {
    */
   boardPosition: number;
   priority: TicketPriority | null;
+  /**
+   * `workspace_users.id` of the member this ticket is assigned to, or `null`
+   * when unassigned. Matches a `WorkspaceMemberDto.workspaceUserId`.
+   */
+  assignedWorkspaceUserId: string | null;
   /** Human-readable acceptance criteria for the ticket. */
   acceptanceCriteria: string | null;
   /** Tool names available to the agent working on this ticket. */
@@ -216,6 +260,32 @@ export interface ObjectiveDto {
   createdAt: string;
   updatedAt: string;
   revision: number;
+}
+
+export type ArtifactType =
+  | 'test_results'
+  | 'next_steps'
+  | 'note'
+  | 'url'
+  | 'decision'
+  | 'migration';
+
+export interface ArtifactDto {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  ticketId: string;
+  objectiveId: string | null;
+  sessionId: string | null;
+  deliveryId: string | null;
+  /** Open vocabulary: `test_results`, `next_steps`, `note`, `url`, `decision`, `migration`. */
+  type: ArtifactType | string;
+  label: string;
+  contentText: string | null;
+  contentJson: unknown | null;
+  externalUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface TicketDetailDto extends TicketDto {
@@ -262,6 +332,43 @@ export interface TicketEventDto {
   source: string;
   /** Optional external link associated with the event. */
   externalUrl: string | null;
+  createdAt: string;
+}
+
+// ---- Ticket file changes ----
+
+/**
+ * Diff availability for a changed file, mirroring `changed_files.current_diff_state`.
+ * `null` when no `changed_files` row is linked to the rationale.
+ */
+export type FileChangeDiffState = 'present' | 'resolved' | 'unknown' | 'unavailable' | null;
+
+/**
+ * A structured per-file change record (`change_rationales`) surfaced in the
+ * ticket panel's File Changes section. Each row records what changed in one file
+ * along with why the agent made the change and its expected impact. Optionally
+ * joined to the `changed_files` row that tracks the file's diff state.
+ */
+export interface FileChangeDto {
+  id: string;
+  ticketId: string;
+  objectiveId: string | null;
+  /** Repository-relative path of the changed file. */
+  filePath: string;
+  /** Basename of `filePath`, for compact display in the card header. */
+  fileName: string;
+  /** Short headline describing the change. */
+  label: string;
+  /** Longer description of what changed. */
+  summary: string;
+  /** Why the change was made. */
+  why: string;
+  /** Expected impact of the change. */
+  impact: string;
+  /** Diff availability from the linked `changed_files` row, when present. */
+  diffState: FileChangeDiffState;
+  /** Version-control status of the file (e.g. `modified`, `added`), when known. */
+  vcsStatus: string | null;
   createdAt: string;
 }
 
@@ -415,6 +522,8 @@ export interface UpdateTicketBody {
   /** Move the ticket to another workspace project. Status maps by type in the target project. */
   projectId?: string;
   statusId?: string;
+  /** Assign the ticket to a workspace member (`workspace_users.id`), or `null` to unassign. */
+  assignedWorkspaceUserId?: string | null;
   acceptanceCriteria?: string | null;
   availableTools?: string[];
 }
@@ -485,6 +594,143 @@ export interface UpdateAgentLaunchConfigBody {
 }
 
 export type UpdateLaunchPreferenceBody = Partial<LaunchPreferenceDto>;
+
+/**
+ * The local operator's user-account profile. In this single-trusted-user build
+ * the profile maps directly to the operator's `users` row; the avatar URL is
+ * persisted in `users.metadata_json.avatarUrl`.
+ */
+export interface ProfileDto {
+  userId: string;
+  /** `users.display_name` — required, non-empty. */
+  displayName: string;
+  /** `users.handle` — an optional short username/handle. */
+  handle: string | null;
+  email: string | null;
+  /** Optional avatar image URL stored in `users.metadata_json.avatarUrl`. */
+  avatarUrl: string | null;
+  /** Open vocabulary (`human`, `service`). The local operator is `human`. */
+  kind: string;
+  /** Identity provider, when the account is externally federated. */
+  authProvider: string | null;
+  createdAt: string;
+}
+
+/** Partial update of the local operator's profile. Omitted fields are left unchanged. */
+export interface UpdateProfileBody {
+  displayName?: string;
+  handle?: string | null;
+  email?: string | null;
+  avatarUrl?: string | null;
+}
+
+// ---- Uploads (core upload service) ----
+
+/**
+ * A stored image returned by the core upload service. Bytes live in the storage
+ * backend behind the bucket; this descriptor carries the metadata plus the
+ * server-relative `url` the SPA loads. Used today by the avatar uploader against
+ * the `user-images` bucket and reusable by other image components.
+ */
+export interface StoredImageDto {
+  /** `user_images.id` of the recorded object. */
+  id: string;
+  /** Logical bucket the image was stored in (e.g. `user-images`). */
+  bucketKey: string;
+  /** Backend key/path within the bucket. */
+  storageKey: string;
+  /** Original/display filename. */
+  filename: string;
+  /** Image media type (e.g. `image/png`). */
+  contentType: string;
+  sizeBytes: number;
+  /** Server-relative URL that serves the bytes (`/api/storage/<bucket>/<key>`). */
+  url: string;
+  createdAt: string;
+}
+
+/**
+ * Lifecycle of a stored object's bytes (`attachments.upload_status` /
+ * `objective_attachments.upload_status`). Local uploads land as `available`.
+ */
+export type AttachmentUploadStatus =
+  | 'prepared'
+  | 'uploaded'
+  | 'available'
+  | 'failed'
+  | 'deleted';
+
+/**
+ * A file attached to an objective, stored in the `attachments` bucket. Bytes
+ * live behind the bucket; this descriptor carries metadata plus the
+ * server-relative `url` the SPA loads (which serves the bytes as a download).
+ * Derived from the `attachments` table, scoped to a single objective.
+ */
+export interface ObjectiveAttachmentDto {
+  /** `attachments.id` of the recorded object. */
+  id: string;
+  workspaceId: string;
+  projectId: string | null;
+  ticketId: string | null;
+  objectiveId: string | null;
+  /** Logical bucket the file was stored in (e.g. `attachments`). */
+  bucketKey: string;
+  /** Backend key/path within the bucket. */
+  storageKey: string;
+  /** Original/display filename. */
+  filename: string;
+  /** Media type when known (e.g. `application/pdf`); `null` if undetermined. */
+  contentType: string | null;
+  sizeBytes: number | null;
+  uploadStatus: AttachmentUploadStatus;
+  /** Server-relative URL that serves the bytes (`/api/storage/<bucket>/<key>`). */
+  url: string;
+  createdAt: string;
+}
+
+/** Lifecycle state of a `USER_TOKEN` (`user_tokens.status`). */
+export type UserTokenStatus = 'active' | 'revoked' | 'expired' | 'rotated';
+
+/**
+ * A `USER_TOKEN` as surfaced to the settings UI. Derived from the `user_tokens`
+ * row owned by the local operator; the raw secret and its hash are never
+ * included — only the non-secret display prefix.
+ */
+export interface UserTokenDto {
+  id: string;
+  /** User-supplied label, e.g. "macbook runner". */
+  label: string;
+  /** Non-secret lookup/display prefix, e.g. `out_ab12cd34`. */
+  tokenPrefix: string;
+  status: UserTokenStatus;
+  /** Optional expiry; `null` means the token never expires. */
+  expiresAt: string | null;
+  /** Last time the token successfully authenticated, when recorded. */
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+}
+
+/** Create a new `USER_TOKEN` for the local operator. */
+export interface CreateUserTokenBody {
+  label: string;
+  /** Optional ISO-8601 expiry; omitted or `null` means the token never expires. */
+  expiresAt?: string | null;
+}
+
+/**
+ * The result of creating a token. The raw `secret` is returned exactly once and
+ * is never persisted (only its hash is stored) or retrievable again afterwards.
+ */
+export interface CreateUserTokenResultDto {
+  token: UserTokenDto;
+  secret: string;
+}
+
+/** Rename a token without rotating its secret. */
+export interface UpdateUserTokenBody {
+  label: string;
+}
 
 export interface ApiError {
   error: string;

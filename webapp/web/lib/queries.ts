@@ -1,12 +1,15 @@
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type {
+  CompleteInitialSetupBody,
   CreateObjectiveBody,
   CreateProjectBody,
   CreateTicketBody,
+  CreateUserTokenBody,
   CreateWorkspaceBody,
   LaunchObjectiveBody,
   LaunchPreferenceDto,
+  ObjectiveAttachmentDto,
   ReorderFutureObjectivesBody,
   SqliteBrowserQueryResultDto,
   StatusType,
@@ -15,15 +18,21 @@ import type {
   UpdateAgentLaunchConfigBody,
   UpdateLaunchPreferenceBody,
   UpdateObjectiveBody,
+  UpdateProfileBody,
   UpdateProjectBody,
-  UpdateTicketBody
+  UpdateTicketBody,
+  UpdateUserTokenBody,
+  UpdateWorkspaceBody
 } from '../../shared/contract.ts';
 
 import { api } from './api.ts';
 
 export const keys = {
   meta: ['meta'] as const,
+  profile: ['profile'] as const,
+  userTokens: ['user-tokens'] as const,
   workspaces: ['workspaces'] as const,
+  workspaceMembers: (id: string) => ['workspace', id, 'members'] as const,
   projects: ['projects'] as const,
   project: (id: string) => ['project', id] as const,
   projectStatuses: (id: string) => ['project', id, 'statuses'] as const,
@@ -33,6 +42,10 @@ export const keys = {
   tickets: (projectId: string) => ['project', projectId, 'tickets'] as const,
   ticket: (id: string) => ['ticket', id] as const,
   ticketEvents: (id: string) => ['ticket', id, 'events'] as const,
+  ticketArtifacts: (id: string) => ['ticket', id, 'artifacts'] as const,
+  ticketFileChanges: (id: string) => ['ticket', id, 'file-changes'] as const,
+  objectiveAttachments: (objectiveId: string) =>
+    ['objective', objectiveId, 'attachments'] as const,
   agentCatalog: ['agent-catalog'] as const,
   launchSettings: ['launch-settings'] as const,
   launchPreference: (projectId: string) => ['project', projectId, 'launch-preference'] as const,
@@ -51,8 +64,20 @@ function invalidateAll(qc: QueryClient) {
 
 export const useMeta = () => useQuery({ queryKey: keys.meta, queryFn: api.meta });
 
+export const useProfile = () => useQuery({ queryKey: keys.profile, queryFn: api.getProfile });
+
+export const useUserTokens = () =>
+  useQuery({ queryKey: keys.userTokens, queryFn: api.listUserTokens });
+
 export const useWorkspaces = () =>
   useQuery({ queryKey: keys.workspaces, queryFn: api.listWorkspaces });
+
+export const useWorkspaceMembers = (id: string | null) =>
+  useQuery({
+    queryKey: keys.workspaceMembers(id ?? '__none__'),
+    queryFn: () => api.listWorkspaceMembers(id ?? ''),
+    enabled: Boolean(id)
+  });
 
 export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: api.listProjects });
 
@@ -83,6 +108,16 @@ export const useTicket = (id: string) =>
 export const useTicketEvents = (id: string) =>
   useQuery({ queryKey: keys.ticketEvents(id), queryFn: () => api.listTicketEvents(id) });
 
+export const useTicketArtifacts = (id: string) =>
+  useQuery({ queryKey: keys.ticketArtifacts(id), queryFn: () => api.listTicketArtifacts(id) });
+
+// Like the activity feed, the global realtime SSE feed invalidates this query
+// whenever the database changes — including change_rationales recorded by the
+// CLI/agent in another process — so the File Changes section stays current
+// without bespoke wiring here.
+export const useTicketFileChanges = (id: string) =>
+  useQuery({ queryKey: keys.ticketFileChanges(id), queryFn: () => api.listTicketFileChanges(id) });
+
 export const useSqliteTables = () =>
   useQuery({ queryKey: keys.sqliteTables, queryFn: api.listSqliteTables });
 
@@ -94,6 +129,71 @@ export const useSqliteTableData = (tableName: string | null, limit: number, offs
   });
 
 // ---- Mutations -----------------------------------------------------------
+
+export function useUpdateProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateProfileBody) => api.updateProfile(body),
+    onSuccess: data => {
+      qc.setQueryData(keys.profile, data);
+      // The sidebar identity reads from the workspace meta, so refresh it too.
+      void qc.invalidateQueries({ queryKey: keys.meta });
+    }
+  });
+}
+
+/**
+ * Upload an image to the `user-images` bucket via the core upload service and
+ * set it as the operator's avatar in one step. Returns the updated profile.
+ */
+export function useUploadAvatar() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const stored = await api.uploadImage('user-images', file);
+      return api.updateProfile({ avatarUrl: stored.url });
+    },
+    onSuccess: data => {
+      qc.setQueryData(keys.profile, data);
+      void qc.invalidateQueries({ queryKey: keys.meta });
+    }
+  });
+}
+
+export function useCreateUserToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateUserTokenBody) => api.createUserToken(body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.userTokens })
+  });
+}
+
+export function useRenameUserToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateUserTokenBody }) =>
+      api.renameUserToken(id, body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.userTokens })
+  });
+}
+
+export function useRevokeUserToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.revokeUserToken(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.userTokens })
+  });
+}
+
+export function useCompleteSetup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CompleteInitialSetupBody) => api.completeSetup(body),
+    // Setup renames the active workspace and changes its slug, which feed
+    // `/api/meta`, the sidebar identity, and future ticket identifiers.
+    onSuccess: () => invalidateAll(qc)
+  });
+}
 
 export function useCreateWorkspace() {
   const qc = useQueryClient();
@@ -113,6 +213,25 @@ export function useActivateWorkspace() {
   });
 }
 
+export function useUpdateWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateWorkspaceBody }) =>
+      api.updateWorkspace(id, body),
+    // Renaming the active workspace also changes the sidebar identity (meta).
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
+export function useDeleteWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteWorkspace(id),
+    // Deleting may switch the active workspace, so the whole cache is stale.
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
 export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({
@@ -125,6 +244,15 @@ export function useUpdateProject(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: UpdateProjectBody) => api.updateProject(id, body),
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
+/** Restores an archived project. Takes the project id per call so list rows can share one hook. */
+export function useUnarchiveProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.updateProject(id, { status: 'active' }),
     onSuccess: () => invalidateAll(qc)
   });
 }
@@ -236,6 +364,39 @@ export function useDeleteObjective() {
   return useMutation({
     mutationFn: (id: string) => api.deleteObjective(id),
     onSuccess: () => invalidateAll(qc)
+  });
+}
+
+// ---- Objective attachments -----------------------------------------------
+
+export const useObjectiveAttachments = (objectiveId: string) =>
+  useQuery({
+    queryKey: keys.objectiveAttachments(objectiveId),
+    queryFn: () => api.listObjectiveAttachments(objectiveId)
+  });
+
+export function useUploadObjectiveAttachment(objectiveId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => api.uploadObjectiveAttachment(objectiveId, file),
+    onSuccess: attachment => {
+      qc.setQueryData<ObjectiveAttachmentDto[]>(keys.objectiveAttachments(objectiveId), prev =>
+        prev ? [...prev, attachment] : [attachment]
+      );
+      void qc.invalidateQueries({ queryKey: keys.objectiveAttachments(objectiveId) });
+    }
+  });
+}
+
+export function useDeleteObjectiveAttachment(objectiveId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (attachmentId: string) =>
+      api.deleteObjectiveAttachment(objectiveId, attachmentId),
+    onSuccess: remaining => {
+      qc.setQueryData(keys.objectiveAttachments(objectiveId), remaining);
+      void qc.invalidateQueries({ queryKey: keys.objectiveAttachments(objectiveId) });
+    }
   });
 }
 

@@ -1,9 +1,16 @@
+import { createHash, randomBytes } from 'node:crypto';
+
 import { readRepositoryTree, RepositoryReadError } from '../../src/repository/git-tree.ts';
 import type {
+  ArtifactDto,
   CreateObjectiveBody,
   CreateProjectBody,
   CreateTicketBody,
+  CreateUserTokenBody,
+  CreateUserTokenResultDto,
+  FileChangeDto,
   ObjectiveDto,
+  ProfileDto,
   ProjectDto,
   ProjectRepositoryDto,
   ProjectResourceDto,
@@ -15,8 +22,11 @@ import type {
   TicketDto,
   TicketEventDto,
   UpdateObjectiveBody,
+  UpdateProfileBody,
   UpdateProjectBody,
-  UpdateTicketBody
+  UpdateTicketBody,
+  UpdateUserTokenBody,
+  UserTokenDto
 } from '../shared/contract.ts';
 
 import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
@@ -158,6 +168,7 @@ interface TicketRow {
   status_type: string;
   board_position: number;
   priority: string | null;
+  assigned_workspace_user_id: string | null;
   acceptance_criteria_text: string | null;
   available_tools_json: string;
   created_at: string;
@@ -256,6 +267,7 @@ function toTicketDto(r: TicketRow): TicketDto {
     statusType: r.status_type as StatusType,
     boardPosition: r.board_position,
     priority: r.priority as TicketDto['priority'],
+    assignedWorkspaceUserId: r.assigned_workspace_user_id,
     acceptanceCriteria: r.acceptance_criteria_text,
     availableTools: parseAvailableTools(r.available_tools_json),
     createdAt: r.created_at,
@@ -591,6 +603,7 @@ export const updateProject = db.transaction((id: string, body: UpdateProjectBody
 const selectTicketsSql = `
   SELECT t.id, t.workspace_id, t.project_id, t.display_id, t.sequence_number, t.title,
          t.status_id, t.status_type, t.board_position, t.priority,
+         t.assigned_workspace_user_id,
          t.acceptance_criteria_text, t.available_tools_json,
          t.created_at, t.updated_at, t.revision,
          (SELECT COUNT(*) FROM objectives o
@@ -778,6 +791,107 @@ export function listTicketEvents(ticketId: string, limit = 200): TicketEventDto[
   }));
 }
 
+interface FileChangeRow {
+  id: string;
+  ticket_id: string;
+  objective_id: string | null;
+  file_path: string;
+  label: string;
+  summary: string;
+  why: string;
+  impact: string;
+  diff_state: string | null;
+  vcs_status: string | null;
+  created_at: string;
+}
+
+/**
+ * Returns a ticket's structured per-file change rationales newest-first for the
+ * File Changes section, joined to the `changed_files` row (when linked) for diff
+ * state and VCS status. Like the activity feed, the global SSE change feed
+ * invalidates the client query so changes recorded by the agent or CLI in
+ * another process stream into the panel without a manual refresh.
+ */
+export function listTicketFileChanges(ticketId: string, limit = 200): FileChangeDto[] {
+  // Validate the ticket exists and belongs to the active workspace (throws 404).
+  getTicketRow(ticketId);
+  const rows = db
+    .prepare(
+      `SELECT cr.id, cr.ticket_id, cr.objective_id, cr.file_path, cr.label, cr.summary,
+              cr.why, cr.impact, cr.created_at,
+              cf.current_diff_state AS diff_state, cf.vcs_status AS vcs_status
+         FROM change_rationales cr
+         LEFT JOIN changed_files cf
+           ON cf.id = cr.changed_file_id AND cf.deleted_at IS NULL
+        WHERE cr.ticket_id = @ticket_id AND cr.workspace_id = @workspace_id
+          AND cr.deleted_at IS NULL
+        ORDER BY cr.created_at DESC, cr.id DESC
+        LIMIT @limit`
+    )
+    .all({ ticket_id: ticketId, workspace_id: WORKSPACE.id, limit }) as FileChangeRow[];
+  return rows.map(row => ({
+    id: row.id,
+    ticketId: row.ticket_id,
+    objectiveId: row.objective_id,
+    filePath: row.file_path,
+    fileName: row.file_path.split('/').pop() || row.file_path,
+    label: row.label,
+    summary: row.summary,
+    why: row.why,
+    impact: row.impact,
+    diffState: (row.diff_state as FileChangeDto['diffState']) ?? null,
+    vcsStatus: row.vcs_status,
+    createdAt: row.created_at
+  }));
+}
+
+interface ArtifactRow {
+  id: string;
+  workspace_id: string;
+  project_id: string;
+  ticket_id: string;
+  objective_id: string | null;
+  session_id: string | null;
+  delivery_id: string | null;
+  type: string;
+  label: string;
+  content_text: string | null;
+  content_json: string | null;
+  external_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function listArtifacts(ticketId: string, limit = 200): ArtifactDto[] {
+  getTicketRow(ticketId);
+  const rows = db
+    .prepare(
+      `SELECT id, workspace_id, project_id, ticket_id, objective_id, session_id, delivery_id,
+              type, label, content_text, content_json, external_url, created_at, updated_at
+         FROM artifacts
+        WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id AND deleted_at IS NULL
+        ORDER BY created_at DESC, id DESC
+        LIMIT @limit`
+    )
+    .all({ ticket_id: ticketId, workspace_id: WORKSPACE.id, limit }) as ArtifactRow[];
+  return rows.map(row => ({
+    id: row.id,
+    workspaceId: row.workspace_id,
+    projectId: row.project_id,
+    ticketId: row.ticket_id,
+    objectiveId: row.objective_id,
+    sessionId: row.session_id,
+    deliveryId: row.delivery_id,
+    type: row.type,
+    label: row.label,
+    contentText: row.content_text,
+    contentJson: row.content_json ? (JSON.parse(row.content_json) as unknown) : null,
+    externalUrl: row.external_url,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }));
+}
+
 function nextTicketSequence(): number {
   // Allocate the next workspace-scoped ticket number, creating the counter row
   // if a fresh database somehow lacks it.
@@ -921,6 +1035,25 @@ export function createTicket(body: CreateTicketBody): TicketDetailDto {
   return detail;
 }
 
+/**
+ * Validate a ticket assignee. Returns the `workspace_users.id` when it names an
+ * active member of the current workspace, or `null` to unassign. Throws 400 for
+ * an unknown member so callers cannot point a ticket at a foreign workspace.
+ */
+function resolveAssignedWorkspaceUserId(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const member = db
+    .prepare(
+      `SELECT id FROM workspace_users
+        WHERE id = ? AND workspace_id = ? AND status = 'active' AND deleted_at IS NULL`
+    )
+    .get(trimmed, WORKSPACE.id) as { id: string } | undefined;
+  if (!member) throw new ApiError(400, 'Assignee is not a member of this workspace');
+  return member.id;
+}
+
 const patchTicketFieldsTx = db.transaction(
   (id: string, body: UpdateTicketBody): TicketDetailDto => {
     const existing = getTicketRow(id);
@@ -943,6 +1076,13 @@ const patchTicketFieldsTx = db.transaction(
       fields.push('priority = @priority');
       params.priority = body.priority;
       changed.push('priority');
+    }
+    if (body.assignedWorkspaceUserId !== undefined) {
+      fields.push('assigned_workspace_user_id = @assigned_workspace_user_id');
+      params.assigned_workspace_user_id = resolveAssignedWorkspaceUserId(
+        body.assignedWorkspaceUserId
+      );
+      changed.push('assigned_workspace_user_id');
     }
     if (body.statusId !== undefined) {
       const statusRow = getProjectStatusForProject({
@@ -1038,6 +1178,13 @@ const moveTicketProjectTx = db.transaction(
       fields.push('priority = @priority');
       params.priority = body.priority;
       changed.push('priority');
+    }
+    if (body.assignedWorkspaceUserId !== undefined) {
+      fields.push('assigned_workspace_user_id = @assigned_workspace_user_id');
+      params.assigned_workspace_user_id = resolveAssignedWorkspaceUserId(
+        body.assignedWorkspaceUserId
+      );
+      changed.push('assigned_workspace_user_id');
     }
     if (body.acceptanceCriteria !== undefined) {
       fields.push('acceptance_criteria_text = @acceptance_criteria_text');
@@ -1562,4 +1709,383 @@ export const deleteObjective = db.transaction((id: string): void => {
     ticketId: existing.ticket_id,
     objectiveId: id
   });
+});
+
+// ---- Profile -------------------------------------------------------------
+//
+// This build runs as a single trusted local operator, so "the profile" is the
+// operator's row in the `users` table. The avatar URL has no dedicated column
+// in the core schema, so it lives in `users.metadata_json.avatarUrl`. Password
+// management is intentionally absent: local installs have no Better Auth
+// credential to rotate.
+
+interface UserRow {
+  id: string;
+  kind: string;
+  display_name: string;
+  handle: string | null;
+  email: string | null;
+  auth_provider: string | null;
+  metadata_json: string;
+  created_at: string;
+  revision: number;
+}
+
+/**
+ * Resolve the local operator's `users` row. Prefers the user behind the active
+ * workspace's actor; falls back to the oldest active human user so a freshly
+ * switched workspace without a recorded actor still resolves an identity.
+ */
+function loadOperatorUserRow(): UserRow {
+  if (ACTOR_WORKSPACE_USER_ID) {
+    const row = db
+      .prepare(
+        `SELECT u.id, u.kind, u.display_name, u.handle, u.email, u.auth_provider,
+                u.metadata_json, u.created_at, u.revision
+           FROM users u
+           JOIN workspace_users wu ON wu.user_id = u.id
+          WHERE wu.id = ? AND u.deleted_at IS NULL`
+      )
+      .get(ACTOR_WORKSPACE_USER_ID) as UserRow | undefined;
+    if (row) return row;
+  }
+  const fallback = db
+    .prepare(
+      `SELECT id, kind, display_name, handle, email, auth_provider,
+              metadata_json, created_at, revision
+         FROM users
+        WHERE kind = 'human' AND status = 'active' AND deleted_at IS NULL
+        ORDER BY created_at ASC LIMIT 1`
+    )
+    .get() as UserRow | undefined;
+  if (!fallback) throw new ApiError(409, 'No local user profile exists');
+  return fallback;
+}
+
+function avatarUrlFromMetadata(metadataJson: string): string | null {
+  try {
+    const parsed = JSON.parse(metadataJson) as { avatarUrl?: unknown };
+    return typeof parsed.avatarUrl === 'string' && parsed.avatarUrl.trim()
+      ? parsed.avatarUrl
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Merge an avatar URL into the existing metadata JSON without dropping other keys. */
+function mergeAvatarMetadataJson(metadataJson: string, avatarUrl: string | null): string {
+  let parsed: Record<string, unknown> = {};
+  try {
+    const candidate = JSON.parse(metadataJson) as unknown;
+    if (candidate && typeof candidate === 'object') parsed = candidate as Record<string, unknown>;
+  } catch {
+    /* corrupt metadata is replaced rather than propagated */
+  }
+  if (avatarUrl) parsed.avatarUrl = avatarUrl;
+  else delete parsed.avatarUrl;
+  return JSON.stringify(parsed);
+}
+
+function toProfileDto(row: UserRow): ProfileDto {
+  return {
+    userId: row.id,
+    displayName: row.display_name,
+    handle: row.handle,
+    email: row.email,
+    avatarUrl: avatarUrlFromMetadata(row.metadata_json),
+    kind: row.kind,
+    authProvider: row.auth_provider,
+    createdAt: row.created_at
+  };
+}
+
+export function getProfile(): ProfileDto {
+  return toProfileDto(loadOperatorUserRow());
+}
+
+export const updateProfile = db.transaction((body: UpdateProfileBody): ProfileDto => {
+  const existing = loadOperatorUserRow();
+
+  const fields: string[] = [];
+  const params: Record<string, unknown> = { id: existing.id };
+  const changed: string[] = [];
+
+  if (body.displayName !== undefined) {
+    const displayName = body.displayName.trim();
+    if (!displayName) throw new ApiError(400, 'Display name cannot be empty');
+    fields.push('display_name = @display_name');
+    params.display_name = displayName;
+    changed.push('display_name');
+  }
+  if (body.handle !== undefined) {
+    fields.push('handle = @handle');
+    params.handle = body.handle?.trim() || null;
+    changed.push('handle');
+  }
+  if (body.email !== undefined) {
+    const email = body.email?.trim() || null;
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      throw new ApiError(400, 'Enter a valid email address');
+    }
+    fields.push('email = @email');
+    params.email = email;
+    changed.push('email');
+  }
+  if (body.avatarUrl !== undefined) {
+    const avatarUrl = body.avatarUrl?.trim() || null;
+    // Accept absolute http(s) URLs or a server-relative path (e.g. an image
+    // uploaded through the core upload service: `/api/storage/user-images/…`).
+    if (avatarUrl && !/^(https?:\/\/|\/)/i.test(avatarUrl)) {
+      throw new ApiError(400, 'Avatar URL must be an http(s) URL or an uploaded image path');
+    }
+    fields.push('metadata_json = @metadata_json');
+    params.metadata_json = mergeAvatarMetadataJson(existing.metadata_json, avatarUrl);
+    changed.push('metadata_json');
+  }
+  if (fields.length === 0) return toProfileDto(existing);
+
+  const now = nowIso();
+  const revision = existing.revision + 1;
+  db.prepare(
+    `UPDATE users SET ${fields.join(', ')}, updated_at = @now, revision = @revision
+       WHERE id = @id`
+  ).run({ ...params, now, revision });
+
+  recordChange({
+    entityType: 'user',
+    entityId: existing.id,
+    operation: 'update',
+    entityRevision: revision,
+    changedFields: changed
+  });
+
+  return getProfile();
+});
+
+// ---- User tokens ---------------------------------------------------------
+//
+// `USER_TOKEN`s are long-lived credentials the local operator can mint for CLI,
+// agent, runner, and future API use (see auth/docs/07-user-token-authentication.md).
+// In this single-trusted-user build a token confers the operator's identity. We
+// store only a hash of the secret plus a non-secret display prefix; the raw
+// secret is returned exactly once at creation and never persisted or shown again.
+
+/** Recognizable scheme for Overlord user tokens: `out_…`. */
+const USER_TOKEN_SCHEME = 'out';
+/** Algorithm recorded in `user_tokens.hash_algorithm` and used to hash secrets. */
+const USER_TOKEN_HASH_ALGORITHM = 'sha256';
+
+const USER_TOKEN_COLUMNS =
+  'id, label, token_prefix, status, expires_at, last_used_at, revoked_at, created_at';
+
+interface UserTokenRow {
+  id: string;
+  label: string;
+  token_prefix: string;
+  status: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+interface UserTokenMutableRow {
+  id: string;
+  status: string;
+  revision: number;
+}
+
+interface OperatorIdentity {
+  userId: string;
+  workspaceUserId: string;
+}
+
+function toUserTokenDto(row: UserTokenRow): UserTokenDto {
+  return {
+    id: row.id,
+    label: row.label,
+    tokenPrefix: row.token_prefix,
+    status: row.status as UserTokenDto['status'],
+    expiresAt: row.expires_at,
+    lastUsedAt: row.last_used_at,
+    revokedAt: row.revoked_at,
+    createdAt: row.created_at
+  };
+}
+
+/**
+ * Resolve both the global user id and the active-workspace membership id the
+ * token is owned by. The membership records whose permissions the token inherits.
+ */
+function loadOperatorIdentity(): OperatorIdentity {
+  const user = loadOperatorUserRow();
+  const membership = db
+    .prepare(
+      `SELECT id FROM workspace_users
+         WHERE workspace_id = ? AND user_id = ? AND deleted_at IS NULL
+         ORDER BY created_at ASC LIMIT 1`
+    )
+    .get(WORKSPACE.id, user.id) as { id: string } | undefined;
+  if (!membership) {
+    throw new ApiError(409, 'No workspace membership for the local operator');
+  }
+  return { userId: user.id, workspaceUserId: membership.id };
+}
+
+/**
+ * Generate a high-entropy secret of the form `out_<prefix><secret>`. The
+ * `out_<prefix>` portion is the non-secret lookup/display prefix; the full
+ * string is the raw secret. Only the SHA-256 hash of the raw secret is stored.
+ */
+function generateUserTokenSecret(): { secret: string; prefix: string; hash: string } {
+  const prefix = `${USER_TOKEN_SCHEME}_${randomBytes(4).toString('hex')}`;
+  const secret = `${prefix}${randomBytes(24).toString('hex')}`;
+  const hash = createHash(USER_TOKEN_HASH_ALGORITHM).update(secret).digest('hex');
+  return { secret, prefix, hash };
+}
+
+function loadUserTokenForUpdate(id: string): UserTokenMutableRow {
+  const row = db
+    .prepare(
+      `SELECT id, status, revision FROM user_tokens
+         WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
+    )
+    .get(id, WORKSPACE.id) as UserTokenMutableRow | undefined;
+  if (!row) throw new ApiError(404, 'Token not found');
+  return row;
+}
+
+function reloadUserToken(id: string): UserTokenRow {
+  return db
+    .prepare(`SELECT ${USER_TOKEN_COLUMNS} FROM user_tokens WHERE id = ?`)
+    .get(id) as UserTokenRow;
+}
+
+export function listUserTokens(): UserTokenDto[] {
+  const rows = db
+    .prepare(
+      `SELECT ${USER_TOKEN_COLUMNS} FROM user_tokens
+         WHERE workspace_id = ? AND deleted_at IS NULL
+         ORDER BY created_at DESC`
+    )
+    .all(WORKSPACE.id) as UserTokenRow[];
+  return rows.map(toUserTokenDto);
+}
+
+export const createUserToken = db.transaction(
+  (body: CreateUserTokenBody): CreateUserTokenResultDto => {
+    const label = body.label?.trim();
+    if (!label) throw new ApiError(400, 'Token label cannot be empty');
+
+    let expiresAt: string | null = null;
+    if (body.expiresAt !== null && body.expiresAt !== undefined && String(body.expiresAt).trim()) {
+      const parsed = new Date(body.expiresAt);
+      if (Number.isNaN(parsed.getTime())) throw new ApiError(400, 'Expiry must be a valid date');
+      if (parsed.getTime() <= Date.now()) throw new ApiError(400, 'Expiry must be in the future');
+      expiresAt = parsed.toISOString();
+    }
+
+    const { userId, workspaceUserId } = loadOperatorIdentity();
+
+    // The (workspace_id, token_prefix) index is unique; retry on the rare clash.
+    let generated: ReturnType<typeof generateUserTokenSecret> | null = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const candidate = generateUserTokenSecret();
+      const clash = db
+        .prepare('SELECT 1 FROM user_tokens WHERE workspace_id = ? AND token_prefix = ?')
+        .get(WORKSPACE.id, candidate.prefix);
+      if (!clash) {
+        generated = candidate;
+        break;
+      }
+    }
+    if (!generated) throw new ApiError(409, 'Could not allocate a unique token prefix; try again');
+
+    const id = newId();
+    const now = nowIso();
+    db.prepare(
+      `INSERT INTO user_tokens (
+         id, workspace_id, user_id, workspace_user_id, label,
+         token_prefix, token_hash, hash_algorithm, status, expires_at,
+         last_used_context_json, metadata_json, created_at, updated_at, revision
+       ) VALUES (
+         @id, @workspace_id, @user_id, @workspace_user_id, @label,
+         @token_prefix, @token_hash, @hash_algorithm, 'active', @expires_at,
+         '{}', '{}', @now, @now, 1
+       )`
+    ).run({
+      id,
+      workspace_id: WORKSPACE.id,
+      user_id: userId,
+      workspace_user_id: workspaceUserId,
+      label,
+      token_prefix: generated.prefix,
+      token_hash: generated.hash,
+      hash_algorithm: USER_TOKEN_HASH_ALGORITHM,
+      expires_at: expiresAt,
+      now
+    });
+
+    recordChange({
+      entityType: 'user_token',
+      entityId: id,
+      operation: 'insert',
+      entityRevision: 1
+    });
+
+    return { token: toUserTokenDto(reloadUserToken(id)), secret: generated.secret };
+  }
+);
+
+export const renameUserToken = db.transaction(
+  (id: string, body: UpdateUserTokenBody): UserTokenDto => {
+    const existing = loadUserTokenForUpdate(id);
+    const label = body.label?.trim();
+    if (!label) throw new ApiError(400, 'Token label cannot be empty');
+
+    const now = nowIso();
+    const revision = existing.revision + 1;
+    db.prepare(
+      `UPDATE user_tokens SET label = @label, updated_at = @now, revision = @revision
+         WHERE id = @id AND workspace_id = @workspace_id`
+    ).run({ id, workspace_id: WORKSPACE.id, label, now, revision });
+
+    recordChange({
+      entityType: 'user_token',
+      entityId: id,
+      operation: 'update',
+      entityRevision: revision,
+      changedFields: ['label']
+    });
+
+    return toUserTokenDto(reloadUserToken(id));
+  }
+);
+
+export const revokeUserToken = db.transaction((id: string): UserTokenDto => {
+  const existing = loadUserTokenForUpdate(id);
+  // Revocation is idempotent: revoking an already-revoked token is a no-op.
+  if (existing.status === 'revoked') return toUserTokenDto(reloadUserToken(id));
+
+  const { workspaceUserId } = loadOperatorIdentity();
+  const now = nowIso();
+  const revision = existing.revision + 1;
+  db.prepare(
+    `UPDATE user_tokens
+        SET status = 'revoked', revoked_at = @now,
+            revoked_by_workspace_user_id = @actor,
+            updated_at = @now, revision = @revision
+      WHERE id = @id AND workspace_id = @workspace_id`
+  ).run({ id, workspace_id: WORKSPACE.id, now, actor: workspaceUserId, revision });
+
+  recordChange({
+    entityType: 'user_token',
+    entityId: id,
+    operation: 'update',
+    entityRevision: revision,
+    changedFields: ['status', 'revoked_at']
+  });
+
+  return toUserTokenDto(reloadUserToken(id));
 });

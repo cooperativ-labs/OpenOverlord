@@ -4,8 +4,9 @@ import {
   ChevronUp,
   FastForward,
   Loader2,
+  MoreVertical,
   PauseCircle,
-  X
+  Trash2
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -16,17 +17,13 @@ import type {
 } from '../../../shared/contract.ts';
 import { useDeleteObjective, useUpdateObjective } from '../../lib/queries.ts';
 import { cn } from '../../lib/utils.ts';
-import {
-  Badge,
-  Button,
-  EditableText,
-  OBJECTIVE_STATE_LABEL,
-  objectiveStateClasses
-} from '../ui.tsx';
+import { InlineEditField } from '../InlineEditField.tsx';
+import { Button, OBJECTIVE_STATE_LABEL } from '../ui.tsx';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '../ui/dropdown-menu.tsx';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover.tsx';
@@ -34,6 +31,7 @@ import { Switch } from '../ui/switch.tsx';
 
 import { AgentLaunchButton } from './AgentLaunchButton.tsx';
 import { AgentModelChooserButton } from './AgentModelChooserButton.tsx';
+import { ObjectiveAttachments } from './ObjectiveAttachments.tsx';
 import { useObjectiveAgentSelection } from './useObjectiveAgentSelection.ts';
 
 const AUTO_ADVANCE_TOGGLE_STATES: ObjectiveState[] = ['future', 'draft', 'submitted', 'launching'];
@@ -99,71 +97,21 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
         if (isFuture) setIsFutureExpanded(true);
       }}
     >
-      {/* Header: position, title, state, delete */}
-      <div className="flex items-start justify-between gap-3 px-3 pt-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
-            #{objective.position + 1}
-          </span>
-          <span className="truncate text-sm font-medium">
-            <EditableText
-              value={objective.title ?? ''}
-              placeholder="Untitled objective"
-              onSave={title => update.mutate({ id: objective.id, body: { title } })}
-            />
-          </span>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              className="cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-              title="Change state"
-            >
-              <Badge className={objectiveStateClasses(objective.state)}>
-                {OBJECTIVE_STATE_LABEL[objective.state]}
-              </Badge>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[160px]">
-              {OBJECTIVE_STATES.map(s => (
-                <DropdownMenuItem
-                  key={s}
-                  className="gap-2 text-xs"
-                  onClick={() => update.mutate({ id: objective.id, body: { state: s } })}
-                >
-                  <span>{OBJECTIVE_STATE_LABEL[s]}</span>
-                  {s === objective.state && (
-                    <Check className="ml-auto h-3 w-3 text-muted-foreground" />
-                  )}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button
-            variant="ghost"
-            aria-label="Delete objective"
-            onClick={() => {
-              if (confirm('Delete this objective?')) remove.mutate(objective.id);
-            }}
-          >
-            <X className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
-
       {/* Instruction body — future objectives collapse until focused */}
       <div
         className={cn(
-          'relative px-3 py-2 transition-[max-height] duration-200 ease-in-out',
+          'relative px-3 pb-2 pt-3 transition-[max-height] duration-200 ease-in-out',
           isFuture && !isFutureExpanded && 'max-h-[3.25rem] overflow-hidden',
           isFuture && isFutureExpanded && 'max-h-[500px] overflow-y-auto'
         )}
       >
         <div className={cn('text-sm leading-relaxed', isFuture && 'text-muted-foreground')}>
-          <EditableText
+          <InlineEditField
             multiline
             value={objective.instructionText}
             className="block whitespace-pre-wrap"
             inputClassName="text-sm"
+            ariaLabel="Objective instruction"
             onSave={instructionText =>
               update.mutate({ id: objective.id, body: { instructionText } })
             }
@@ -187,8 +135,52 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
         ) : null}
       </div>
 
-      {/* Toolbar: auto-advance, agent/model chooser, run / promote */}
+      {/* Attachments — drag-and-drop files linked to this objective. Hidden for
+          collapsed `future` objectives to keep the preview compact. */}
+      {!isFuture ? (
+        <div className="border-t border-border/40 px-3 py-3">
+          <ObjectiveAttachments objectiveId={objective.id} />
+        </div>
+      ) : null}
+
+      {/* Toolbar: more menu, auto-advance, agent/model chooser, run / promote */}
       <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border/40 px-3 py-2">
+        <div className="grow" />
+
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50"
+            aria-label="Objective actions"
+            title="Objective actions"
+          >
+            <MoreVertical className="h-3.5 w-3.5" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[160px]">
+            {OBJECTIVE_STATES.map(s => (
+              <DropdownMenuItem
+                key={s}
+                className="gap-2 text-xs"
+                onClick={() => update.mutate({ id: objective.id, body: { state: s } })}
+              >
+                <span>{OBJECTIVE_STATE_LABEL[s]}</span>
+                {s === objective.state && (
+                  <Check className="ml-auto h-3 w-3 text-muted-foreground" />
+                )}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="gap-2 text-xs text-red-600 focus:text-red-600"
+              onClick={() => {
+                if (confirm('Delete this objective?')) remove.mutate(objective.id);
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Delete objective</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         {canToggleAutoAdvance ? (
           <Popover>
             <PopoverTrigger
@@ -227,8 +219,6 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
             </PopoverContent>
           </Popover>
         ) : null}
-
-        <div className="grow" />
 
         <AgentModelChooserButton
           catalog={catalog}

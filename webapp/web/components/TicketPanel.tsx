@@ -7,10 +7,13 @@ import { useCreateObjective, useTicket, useUpdateTicket } from '../lib/queries.t
 
 import { TicketObjectivesSection } from './objectives/TicketObjectivesSection.tsx';
 import { LiveActivityFeed } from './LiveActivityFeed.tsx';
+import { LiveFileChanges } from './LiveFileChanges.tsx';
 import { RepositoryMentionTextarea } from './RepositoryMentionTextarea.tsx';
+import { TicketArtifactsSection } from './TicketArtifactsSection.tsx';
 import { TicketPanelHeader } from './TicketPanelHeader.tsx';
 import { TicketToolsAndCriteria } from './TicketToolsAndCriteria.tsx';
-import { Button, Card, EditableText, Field, Spinner } from './ui.tsx';
+import { InlineEditField } from './InlineEditField.tsx';
+import { Button, Card, Field, Spinner } from './ui.tsx';
 
 function AddObjective({ ticketId, projectId }: { ticketId: string; projectId: string }) {
   const create = useCreateObjective();
@@ -79,7 +82,11 @@ function TicketTitle({ ticket }: { ticket: TicketDetailDto }) {
   return (
     <section className="border-b border-[var(--color-border)] bg-[var(--color-surface-1)] px-5 py-3">
       <h1 className="text-base font-semibold leading-snug">
-        <EditableText value={ticket.title} onSave={title => update.mutate({ title })} />
+        <InlineEditField
+          value={ticket.title}
+          ariaLabel="Ticket title"
+          onSave={title => update.mutate({ title })}
+        />
       </h1>
     </section>
   );
@@ -162,6 +169,20 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
               Activity
             </h2>
             <LiveActivityFeed ticketId={ticket.id} />
+          </div>
+
+          <div className="space-y-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
+              Artifacts
+            </h2>
+            <TicketArtifactsSection ticketId={ticket.id} />
+          </div>
+
+          <div className="space-y-3 pb-5">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
+              File Changes
+            </h2>
+            <LiveFileChanges ticketId={ticket.id} />
           </div>
         </section>
       </div>

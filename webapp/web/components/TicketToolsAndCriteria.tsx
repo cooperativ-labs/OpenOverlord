@@ -1,7 +1,7 @@
 import { useUpdateTicket } from '../lib/queries.ts';
 
+import { InlineEditField } from './InlineEditField.tsx';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion.tsx';
-import { EditableText } from './ui.tsx';
 
 interface TicketToolsAndCriteriaProps {
   ticketId: string;
@@ -28,10 +28,11 @@ export function TicketToolsAndCriteria({
         </AccordionTrigger>
         <AccordionContent>
           <div className="pb-2 pl-2">
-            <EditableText
-              className="text-sm leading-relaxed"
+            <InlineEditField
+              className="block text-sm leading-relaxed"
               value={acceptanceCriteria ?? ''}
               multiline
+              ariaLabel="Acceptance criteria"
               placeholder="None specified — click to add."
               onSave={next => update.mutate({ acceptanceCriteria: next || null })}
             />
@@ -42,10 +43,11 @@ export function TicketToolsAndCriteria({
         <AccordionTrigger className={accordionTriggerClassName}>Tools</AccordionTrigger>
         <AccordionContent>
           <div className="pb-2 pl-2">
-            <EditableText
-              className="text-sm leading-relaxed"
+            <InlineEditField
+              className="block text-sm leading-relaxed"
               value={toolsText}
               multiline
+              ariaLabel="Available tools"
               placeholder="None specified — click to add."
               onSave={next => {
                 const tools = next

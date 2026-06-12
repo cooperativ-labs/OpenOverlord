@@ -56,7 +56,8 @@ camelCase per the [REST API Boundary](../database/docs/09-database-schema-contra
 
 | Method & path | Purpose |
 | --- | --- |
-| `GET /api/meta` | Workspace + capability flags (what this build supports) |
+| `GET /api/meta` | Workspace + capability flags (what this build supports), plus `needsSetup` while the seeded first workspace is still unnamed |
+| `POST /api/setup` | One-time initial instance setup: names the first workspace and sets the slug that prefixes ticket identifiers (`<slug>:<sequence>`) |
 | `GET /api/stream` | SSE realtime feed of `entity_changes` deltas |
 | `GET/POST /api/projects`, `GET/PATCH /api/projects/:id` | Projects (PATCH covers rename / describe / archive) |
 | `GET /api/projects/:id/statuses` | Project workflow statuses (for board columns) |

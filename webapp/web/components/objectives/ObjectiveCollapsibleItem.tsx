@@ -12,13 +12,8 @@ import { useState } from 'react';
 import type { ObjectiveDto, ObjectiveState } from '../../../shared/contract.ts';
 import { useDeleteObjective, useUpdateObjective } from '../../lib/queries.ts';
 import { cn } from '../../lib/utils.ts';
-import {
-  Badge,
-  Button,
-  EditableText,
-  OBJECTIVE_STATE_LABEL,
-  objectiveStateClasses
-} from '../ui.tsx';
+import { InlineEditField } from '../InlineEditField.tsx';
+import { Badge, Button, OBJECTIVE_STATE_LABEL, objectiveStateClasses } from '../ui.tsx';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible.tsx';
 import {
   DropdownMenu,
@@ -144,11 +139,11 @@ export function ObjectiveCollapsibleItem({
         </div>
         <CollapsibleContent className="border-b px-3 pb-2 pt-1">
           <div className="text-sm leading-relaxed text-muted-foreground">
-            <EditableText
+            <InlineEditField
               multiline
               value={objective.instructionText}
               className="block whitespace-pre-wrap"
-              inputClassName="text-sm"
+              ariaLabel="Objective instruction"
               onSave={instructionText =>
                 update.mutate({ id: objective.id, body: { instructionText } })
               }

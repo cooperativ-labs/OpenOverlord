@@ -4,9 +4,7 @@ import {
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
-  type TextareaHTMLAttributes,
-  useEffect,
-  useState
+  type TextareaHTMLAttributes
 } from 'react';
 
 import { Badge as ShadcnBadge } from '@/components/ui/badge';
@@ -222,84 +220,6 @@ export function Spinner({ label }: { label?: string }) {
   );
 }
 
-/** Inline click-to-edit text. Renders a value that becomes an input/textarea on click. */
-export function EditableText({
-  value,
-  onSave,
-  multiline = false,
-  className = '',
-  placeholder = 'Click to edit',
-  inputClassName = ''
-}: {
-  value: string;
-  onSave: (next: string) => void;
-  multiline?: boolean;
-  className?: string;
-  placeholder?: string;
-  inputClassName?: string;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-
-  useEffect(() => setDraft(value), [value]);
-
-  if (!editing) {
-    return (
-      <span
-        className={cn(
-          'cursor-text rounded hover:bg-muted',
-          className,
-          value ? '' : 'text-muted-foreground italic'
-        )}
-        onClick={() => setEditing(true)}
-        title="Click to edit"
-      >
-        {value || placeholder}
-      </span>
-    );
-  }
-
-  const commit = () => {
-    setEditing(false);
-    const trimmed = draft.trim();
-    if (trimmed && trimmed !== value) onSave(trimmed);
-    else setDraft(value);
-  };
-
-  if (multiline) {
-    return (
-      <TextArea
-        autoFocus
-        rows={4}
-        value={draft}
-        className={inputClassName}
-        onChange={e => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={e => {
-          if (e.key === 'Escape') {
-            setDraft(value);
-            setEditing(false);
-          }
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) commit();
-        }}
-      />
-    );
-  }
-
-  return (
-    <TextInput
-      autoFocus
-      value={draft}
-      className={inputClassName}
-      onChange={e => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={e => {
-        if (e.key === 'Escape') {
-          setDraft(value);
-          setEditing(false);
-        }
-        if (e.key === 'Enter') commit();
-      }}
-    />
-  );
-}
+// Inline click-to-edit text now lives in its own component; import it from
+// `./InlineEditField` (exported as `InlineEditField`, with an `EditableText`
+// backwards-compatible alias).

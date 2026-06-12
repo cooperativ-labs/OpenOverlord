@@ -1,4 +1,4 @@
-import { Info, Palette, User } from 'lucide-react';
+import { Info, KeyRound, Palette, User } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { AboutPage } from '@/components/settings/AboutPage';
@@ -9,6 +9,7 @@ import {
   type SettingsNavItem
 } from '@/components/settings/SettingsDialogShell';
 import { UserProfilePage } from '@/components/settings/UserProfilePage';
+import { UserTokensPage } from '@/components/settings/UserTokensPage';
 
 type SettingsModalProps = {
   open: boolean;
@@ -21,7 +22,10 @@ const appNavItems: SettingsNavItem[] = [
   { name: 'About', icon: Info }
 ];
 
-const userNavItems: SettingsNavItem[] = [{ name: 'Profile', icon: User }];
+const userNavItems: SettingsNavItem[] = [
+  { name: 'Profile', icon: User },
+  { name: 'Tokens', icon: KeyRound }
+];
 
 const navItems: SettingsNavItem[] = [...userNavItems, ...appNavItems];
 
@@ -54,6 +58,7 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
     >
       {activeNav === 'Application' && <ApplicationPage />}
       {activeNav === 'Profile' && <UserProfilePage open={open} />}
+      {activeNav === 'Tokens' && <UserTokensPage open={open} />}
       {activeNav === 'About' && <AboutPage open={open} />}
     </SettingsDialogShell>
   );
