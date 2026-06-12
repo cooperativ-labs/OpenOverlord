@@ -10,7 +10,7 @@
   "scripts": {
     "install:all": "yarn install && yarn --cwd cli install && yarn --cwd webapp install",
     "reinstall": "rm -rf node_modules cli/node_modules webapp/node_modules && yarn install:all",
-    "new": "yarn reinstall",
+    "new": "rm -rf node_modules cli/node_modules webapp/node_modules && yarn",
     "dev": "yarn dev:webapp",
     "dev:webapp": "yarn --cwd webapp dev",
     "dev:server": "yarn --cwd webapp dev:server",

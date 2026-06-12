@@ -89,8 +89,15 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
   const navigate = useNavigate();
   const ticketQ = useTicket(ticketId);
 
-  const closePanel = () => {
-    navigate({ to: '/projects/$projectId', params: { projectId } });
+  const handleProjectChanged = (nextProjectId: string) => {
+    navigate({
+      to: '/projects/$projectId/tickets/$ticketId',
+      params: { projectId: nextProjectId, ticketId }
+    });
+  };
+
+  const closeToProject = (targetProjectId: string) => {
+    navigate({ to: '/projects/$projectId', params: { projectId: targetProjectId } });
   };
 
   if (ticketQ.isLoading) {
@@ -105,7 +112,7 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
     return (
       <div className="flex h-full flex-col p-4">
         <div className="mb-3">
-          <Button variant="ghost" aria-label="Close ticket panel" onClick={closePanel}>
+          <Button variant="ghost" aria-label="Close ticket panel" onClick={() => closeToProject(projectId)}>
             <ArrowRightToLine className="h-4 w-4" />
           </Button>
         </div>
@@ -120,7 +127,12 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
 
   return (
     <div className="flex h-full min-h-0 min-w-[320px] flex-col bg-[var(--color-surface-1)]">
-      <TicketPanelHeader ticket={ticket} projectId={projectId} onClose={closePanel} />
+      <TicketPanelHeader
+        ticket={ticket}
+        projectId={ticket.projectId}
+        onClose={() => closeToProject(ticket.projectId)}
+        onProjectChanged={handleProjectChanged}
+      />
       <TicketTitle ticket={ticket} />
 
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[var(--color-surface-0)] pb-10">
@@ -133,7 +145,7 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
           </div>
           <div className="flex flex-col gap-3 px-5 pb-1">
             <TicketObjectivesSection ticket={ticket} />
-            <AddObjective ticketId={ticket.id} projectId={projectId} />
+            <AddObjective ticketId={ticket.id} projectId={ticket.projectId} />
           </div>
         </section>
 

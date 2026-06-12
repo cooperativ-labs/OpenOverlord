@@ -412,6 +412,8 @@ export interface CreateTicketBody {
 export interface UpdateTicketBody {
   title?: string;
   priority?: TicketPriority | null;
+  /** Move the ticket to another workspace project. Status maps by type in the target project. */
+  projectId?: string;
   statusId?: string;
   acceptanceCriteria?: string | null;
   availableTools?: string[];

@@ -627,6 +627,99 @@ function topBoardPosition(projectId: string, statusId: string, excludeTicketId?:
   return row.min_pos === null ? 100 : row.min_pos - 100;
 }
 
+function getProjectStatusForProject({
+  projectId,
+  statusId
+}: {
+  projectId: string;
+  statusId: string;
+}): ProjectStatusRow {
+  const statusRow = db
+    .prepare(
+      `SELECT * FROM project_statuses WHERE id = ? AND project_id = ? AND deleted_at IS NULL`
+    )
+    .get(statusId, projectId) as ProjectStatusRow | undefined;
+  if (!statusRow) throw new ApiError(400, 'Unknown status for project');
+  return statusRow;
+}
+
+function resolveStatusForProjectMove({
+  targetProjectId,
+  currentStatusType
+}: {
+  targetProjectId: string;
+  currentStatusType: string;
+}): ProjectStatusRow {
+  const byType = db
+    .prepare(
+      `SELECT * FROM project_statuses
+         WHERE project_id = ? AND type = ? AND deleted_at IS NULL
+         ORDER BY position ASC LIMIT 1`
+    )
+    .get(targetProjectId, currentStatusType) as ProjectStatusRow | undefined;
+  if (byType) return byType;
+
+  const defaultStatus = db
+    .prepare(
+      `SELECT * FROM project_statuses
+         WHERE project_id = ? AND is_default = 1 AND deleted_at IS NULL LIMIT 1`
+    )
+    .get(targetProjectId) as ProjectStatusRow | undefined;
+  if (!defaultStatus) throw new ApiError(409, 'Target project has no default status');
+  return defaultStatus;
+}
+
+/** Repoint denormalized project_id columns on ticket-owned rows. */
+function cascadeTicketProjectId({
+  ticketId,
+  newProjectId,
+  now
+}: {
+  ticketId: string;
+  newProjectId: string;
+  now: string;
+}): void {
+  db.prepare(
+    `UPDATE objectives
+       SET project_id = @project_id, updated_at = @now, revision = revision + 1
+     WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id`
+  ).run({ project_id: newProjectId, ticket_id: ticketId, workspace_id: WORKSPACE.id, now });
+  db.prepare(
+    `UPDATE agent_sessions
+       SET project_id = @project_id, updated_at = @now, revision = revision + 1
+     WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id`
+  ).run({ project_id: newProjectId, ticket_id: ticketId, workspace_id: WORKSPACE.id, now });
+  db.prepare(
+    `UPDATE ticket_events SET project_id = @project_id
+     WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id`
+  ).run({ project_id: newProjectId, ticket_id: ticketId, workspace_id: WORKSPACE.id });
+  db.prepare(
+    `UPDATE deliveries
+       SET project_id = @project_id, updated_at = @now, revision = revision + 1
+     WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id`
+  ).run({ project_id: newProjectId, ticket_id: ticketId, workspace_id: WORKSPACE.id, now });
+  db.prepare(
+    `UPDATE artifacts
+       SET project_id = @project_id, updated_at = @now, revision = revision + 1
+     WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id`
+  ).run({ project_id: newProjectId, ticket_id: ticketId, workspace_id: WORKSPACE.id, now });
+  db.prepare(
+    `UPDATE changed_files
+       SET project_id = @project_id, updated_at = @now, revision = revision + 1
+     WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id`
+  ).run({ project_id: newProjectId, ticket_id: ticketId, workspace_id: WORKSPACE.id, now });
+  db.prepare(
+    `UPDATE change_rationales
+       SET project_id = @project_id, updated_at = @now, revision = revision + 1
+     WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id`
+  ).run({ project_id: newProjectId, ticket_id: ticketId, workspace_id: WORKSPACE.id, now });
+  db.prepare(
+    `UPDATE execution_requests
+       SET project_id = @project_id, updated_at = @now, revision = revision + 1
+     WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id`
+  ).run({ project_id: newProjectId, ticket_id: ticketId, workspace_id: WORKSPACE.id, now });
+}
+
 function getTicketRow(id: string): TicketRow {
   const row = db
     .prepare(`${selectTicketsSql} AND t.id = @id`)
@@ -828,7 +921,7 @@ export function createTicket(body: CreateTicketBody): TicketDetailDto {
   return detail;
 }
 
-export const updateTicket = db.transaction(
+const patchTicketFieldsTx = db.transaction(
   (id: string, body: UpdateTicketBody): TicketDetailDto => {
     const existing = getTicketRow(id);
 
@@ -852,18 +945,14 @@ export const updateTicket = db.transaction(
       changed.push('priority');
     }
     if (body.statusId !== undefined) {
-      const statusRow = db
-        .prepare(
-          `SELECT * FROM project_statuses WHERE id = ? AND project_id = ? AND deleted_at IS NULL`
-        )
-        .get(body.statusId, existing.project_id) as ProjectStatusRow | undefined;
-      if (!statusRow) throw new ApiError(400, 'Unknown status for project');
+      const statusRow = getProjectStatusForProject({
+        projectId: existing.project_id,
+        statusId: body.statusId
+      });
       fields.push('status_id = @status_id', 'status_type = @status_type');
       params.status_id = statusRow.id;
       params.status_type = statusRow.type;
       changed.push('status_id', 'status_type');
-      // Moving columns via the status dropdown: drop the card at the top of the
-      // destination column so it does not interleave by a stale position.
       if (statusRow.id !== existing.status_id) {
         fields.push('board_position = @board_position');
         params.board_position = topBoardPosition(existing.project_id, statusRow.id, id);
@@ -904,6 +993,121 @@ export const updateTicket = db.transaction(
     return getTicketDetail(id);
   }
 );
+
+const moveTicketProjectTx = db.transaction(
+  ({
+    id,
+    body,
+    existing,
+    targetProjectId,
+    statusRow
+  }: {
+    id: string;
+    body: UpdateTicketBody;
+    existing: TicketRow;
+    targetProjectId: string;
+    statusRow: ProjectStatusRow;
+  }): TicketDetailDto => {
+    const fields = [
+      'project_id = @project_id',
+      'status_id = @status_id',
+      'status_type = @status_type',
+      'board_position = @board_position'
+    ];
+    const params: Record<string, unknown> = {
+      id,
+      workspace_id: WORKSPACE.id,
+      project_id: targetProjectId,
+      status_id: statusRow.id,
+      status_type: statusRow.type,
+      board_position: topBoardPosition(targetProjectId, statusRow.id, id)
+    };
+    const changed = ['project_id', 'status_id', 'status_type', 'board_position'];
+
+    if (body.title !== undefined) {
+      const title = body.title.trim();
+      if (!title) throw new ApiError(400, 'Ticket title cannot be empty');
+      fields.push('title = @title');
+      params.title = title;
+      changed.push('title');
+    }
+    if (body.priority !== undefined) {
+      if (body.priority !== null && !['low', 'normal', 'high', 'urgent'].includes(body.priority)) {
+        throw new ApiError(400, 'Invalid priority');
+      }
+      fields.push('priority = @priority');
+      params.priority = body.priority;
+      changed.push('priority');
+    }
+    if (body.acceptanceCriteria !== undefined) {
+      fields.push('acceptance_criteria_text = @acceptance_criteria_text');
+      params.acceptance_criteria_text = body.acceptanceCriteria?.trim() || null;
+      changed.push('acceptance_criteria_text');
+    }
+    if (body.availableTools !== undefined) {
+      if (!Array.isArray(body.availableTools))
+        throw new ApiError(400, 'availableTools must be an array');
+      fields.push('available_tools_json = @available_tools_json');
+      params.available_tools_json = JSON.stringify(body.availableTools.map(name => ({ name })));
+      changed.push('available_tools_json');
+    }
+
+    const now = nowIso();
+    const revision = existing.revision + 1;
+    cascadeTicketProjectId({ ticketId: id, newProjectId: targetProjectId, now });
+    db.prepare(
+      `UPDATE tickets SET ${fields.join(', ')}, updated_at = @now, revision = @revision
+         WHERE id = @id AND workspace_id = @workspace_id`
+    ).run({ ...params, now, revision });
+
+    recordChange({
+      entityType: 'ticket',
+      entityId: id,
+      operation: 'update',
+      entityRevision: revision,
+      projectId: targetProjectId,
+      ticketId: id,
+      changedFields: changed
+    });
+    return getTicketDetail(id);
+  }
+);
+
+/** PATCH /api/tickets/:id — field updates and cross-project moves. */
+export function updateTicket(id: string, body: UpdateTicketBody): TicketDetailDto {
+  const existing = getTicketRow(id);
+  if (body.projectId !== undefined && body.projectId !== existing.project_id) {
+    const targetProject = db
+      .prepare(`SELECT id FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`)
+      .get(body.projectId, WORKSPACE.id) as { id: string } | undefined;
+    if (!targetProject) throw new ApiError(404, 'Project not found');
+
+    const statusRow =
+      body.statusId !== undefined
+        ? getProjectStatusForProject({ projectId: body.projectId, statusId: body.statusId })
+        : resolveStatusForProjectMove({
+            targetProjectId: body.projectId,
+            currentStatusType: existing.status_type
+          });
+
+    // Composite ticket/objective FKs require briefly disabling enforcement; SQLite
+    // will not allow toggling the pragma inside an open transaction.
+    db.pragma('foreign_keys = OFF');
+    try {
+      return moveTicketProjectTx({
+        id,
+        body,
+        existing,
+        targetProjectId: body.projectId,
+        statusRow
+      });
+    } finally {
+      db.pragma('foreign_keys = ON');
+    }
+  }
+
+  return patchTicketFieldsTx(id, body);
+}
 
 export const deleteTicket = db.transaction((id: string): void => {
   const existing = getTicketRow(id);

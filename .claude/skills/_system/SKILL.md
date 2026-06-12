@@ -1,5 +1,5 @@
 ---
-name: Overskill skills manager — Agent Instructions
+name: Skills manager — Agent Instructions
 description: Instructions for AI agents on how to use create, update, remove, and otherwise modify skills using the Overskill CLI
 ---
 
@@ -25,45 +25,6 @@ When you find a relevant skill:
 3. If multiple skills are relevant, read all of them before starting
 4. Skills take precedence over your default patterns when they conflict
 
-## Managing Skills (When Asked by the User)
+## Updating Skills
 
-If the user asks you to manage skills, you have these CLI commands available.
-Run them in the terminal:
-
-### Viewing Available Skills
-- `skill list` — Show all skills available in remote registries
-- `skill list --installed` — Show skills installed in this project
-- `skill search <query>` — Search for skills by keyword
-- `skill info <name>` — Show full details about a skill
-
-### Installing and Removing
-- `skill add <name>` — Add a skill to this project and sync it
-- `skill remove <name>` — Remove a skill from this project
-- `skill sync` — Re-sync all installed skills from remote
-- `skill save` — Save local skill changes back to the registry
-
-### Editing and Publishing
-- `skill open <name>` — Open a skill for editing in the default editor
-- `skill push <name>` — Publish local edits to the remote registry
-- `skill diff <name>` — See what changed between local and remote
-- `skill validate <name>` — Check skill file structure
-
-### Creating New Skills
-To create a new skill in this repo:
-1. Run `skill new <name>` — this scaffolds the skill and opens it in your editor
-2. Edit the resulting SKILL.md file with your instructions
-3. Run `skill save <name>` — this saves your changes back to the local registry
-
-A good SKILL.md includes:
-- A clear title (# heading)
-- A description of what the skill covers
-- Specific, actionable instructions
-- Code examples where relevant
-- Common pitfalls or anti-patterns to avoid
-
-## Rules
-
-- Do NOT modify .skills.yaml directly — use the CLI commands
-- Do NOT delete or rename skill folders manually
-- Do NOT assume a skill exists without checking SKILLS_INDEX.md
-- The _system folder (where this file lives) is managed by the CLI — do not modify it
+EVERY TIME YOU ADD, UPDATE, OR REMOVE A SKILL, update the skill list in .claude/skills/SKILLS_INDEX.md.

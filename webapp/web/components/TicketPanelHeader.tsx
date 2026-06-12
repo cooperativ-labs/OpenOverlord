@@ -17,9 +17,15 @@ type TicketPanelHeaderProps = {
   ticket: TicketDetailDto;
   projectId: string;
   onClose: () => void;
+  onProjectChanged?: (projectId: string) => void;
 };
 
-export function TicketPanelHeader({ ticket, projectId, onClose }: TicketPanelHeaderProps) {
+export function TicketPanelHeader({
+  ticket,
+  projectId,
+  onClose,
+  onProjectChanged
+}: TicketPanelHeaderProps) {
   return (
     <div className="relative flex shrink-0 items-center justify-between gap-2 overflow-hidden border-b border-[var(--color-border)] px-4 py-2.5">
       <div className="flex min-w-0 items-center gap-2">
@@ -65,7 +71,11 @@ export function TicketPanelHeader({ ticket, projectId, onClose }: TicketPanelHea
 
       <div className="flex shrink-0 items-center justify-end gap-3">
         <div className="flex items-center gap-1.5">
-          <TicketProjectSelect projectId={projectId} />
+          <TicketProjectSelect
+            ticketId={ticket.id}
+            projectId={projectId}
+            onProjectChanged={onProjectChanged}
+          />
           <TicketStatusSelect
             ticketId={ticket.id}
             currentStatusId={ticket.statusId}
