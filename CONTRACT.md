@@ -239,7 +239,7 @@ These are the **only sanctioned paths** between components. Bypassing these surf
 
 ### Service → Automations (Automation Surface)
 
-- **Transport**: Service-layer function calls to the automations module's exported API (`src/automations/`)
+- **Transport**: Service-layer function calls to the automations module's exported package API (`@overlord/automations`)
 - **Configuration**: Environment variables documented in `.env.example` (`GEMINI_API_KEY`, optional model override)
 - **Rule**: Automations must not read or write domain tables directly; persistence goes through caller-supplied store interfaces (e.g. `ObjectiveTitleStore`)
 - **Fallback**: When a provider is unavailable or a call fails, automations return `null` and callers use deterministic local fallbacks

@@ -33,7 +33,7 @@ permission check).
 ## Code & Tests
 
 The RBAC authorizer is the first implemented slice. It currently lives under
-[`../src/rbac/`](../src/rbac) with its test colocated:
+[`src/rbac/`](src/rbac) with its test colocated:
 
 - `src/rbac/authorizer.ts` — `can(actor, action, resource)` evaluation + `AuthorizationProvider` interface
 - `src/rbac/roles.ts`, `permissions.ts`, `types.ts`

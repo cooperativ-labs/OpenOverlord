@@ -1,7 +1,6 @@
+import { deriveTitleFromInstructionText } from '@overlord/automations';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-
-import { deriveTitleFromInstructionText } from '../../src/automations/title-summarizer/helpers/title.js';
 
 describe('deriveTitleFromInstructionText (webapp title fallback)', () => {
   it('returns short instruction text unchanged', () => {

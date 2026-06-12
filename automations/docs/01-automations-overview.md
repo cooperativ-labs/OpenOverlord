@@ -24,7 +24,7 @@ type Automation<TInput, TOutput> = {
 };
 ```
 
-Built-in automations register in `src/automations/registry.ts`. Callers can also register
+Built-in automations register in `automations/src/registry.ts`. Callers can also register
 custom automations with `registerAutomation` during module initialization.
 
 ## Built-In Automations
@@ -80,14 +80,14 @@ Environment variables (see [`.env.example`](../../.env.example)):
 
 ## Layout
 
-Each automation is self-contained in its own folder under `src/automations/`. The reference
+Each automation is self-contained in its own folder under `automations/src/`. The reference
 `title-summarizer` automation owns its Gemini client, helpers, tools, and objective title
 persistence helpers. Shared module code (`types.ts`, `registry.ts`, `index.ts`) stays at the
-`src/automations/` root.
+`automations/src/` root.
 
 ## Extension Guidelines
 
-1. Add new automations as folders under `src/automations/<automation-name>/`.
+1. Add new automations as folders under `automations/src/<automation-name>/`.
 2. Keep provider clients inside the automation folder (do not leak `@google/genai` into other modules).
 3. Document any new secrets in `.env.example`.
 4. Never import database adapters from automations — pass store interfaces from callers.

@@ -19,11 +19,12 @@ behavior.
 ## Documentation
 
 - [01 — Automations Overview](docs/01-automations-overview.md): automation model, Gemini setup, and extension guide
+- [02 — Branch Strategy Automation](docs/02-branch-strategy-automation.md): proposed plan for base-branch selection and branch-per-ticket/objective launch automation
 - [Test Plan](docs/testing.md): unit coverage for title derivation, fallbacks, and registry behavior
 
 ## Code & Tests
 
-Implementation lives under [`../src/automations/`](../src/automations):
+Implementation lives under [`src/`](src):
 
 - `types.ts` — shared `Automation` interface
 - `registry.ts` — built-in automation catalog and registration hook for new automations
@@ -39,9 +40,9 @@ Inside `title-summarizer/`:
 
 Colocated tests:
 
-- `src/automations/title-summarizer/helpers/title.test.ts`
-- `src/automations/title-summarizer/objectives/generate-objective-title.test.ts`
-- `src/automations/registry.test.ts`
+- `src/title-summarizer/helpers/title.test.ts`
+- `src/title-summarizer/objectives/generate-objective-title.test.ts`
+- `src/registry.test.ts`
 
 ## Configuration
 
@@ -51,6 +52,6 @@ callers should use deterministic local fallbacks (see `deriveTitleFromInstructio
 
 ## Interaction Boundaries
 
-Other components consume automations only through the exported API in `src/automations/`.
+Other components consume automations only through the `@overlord/automations` package API.
 Persistence must go through injected callbacks such as `ObjectiveTitleStore`; the
 module must not read or write domain tables directly.

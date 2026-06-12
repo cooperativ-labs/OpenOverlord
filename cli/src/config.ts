@@ -1,8 +1,7 @@
+import { DEFAULT_DATABASE_PATH } from '@overlord/database';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parse } from 'smol-toml';
-
-import { DEFAULT_DATABASE_PATH } from '../../database/local-paths.ts';
 
 import { parseAgentCatalogFromToml } from './agent-catalog.ts';
 import type { CatalogAgent } from './agent-catalog-defaults.ts';

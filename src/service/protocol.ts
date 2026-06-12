@@ -1,4 +1,4 @@
-import { UPDATE_EVENT_TYPES, UPDATE_PHASES } from '../database/constants.js';
+import { UPDATE_EVENT_TYPES, UPDATE_PHASES } from '@overlord/database';
 
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';

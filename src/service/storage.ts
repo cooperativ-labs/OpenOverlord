@@ -1,6 +1,10 @@
-import { type AuthorizationProvider, defaultAuthorizer, makeActor } from '../rbac/authorizer.js';
-import { PERMISSIONS } from '../rbac/permissions.js';
-import { Role } from '../rbac/types.js';
+import {
+  type AuthorizationProvider,
+  defaultAuthorizer,
+  makeActor,
+  PERMISSIONS,
+  Role
+} from '@overlord/auth';
 
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';

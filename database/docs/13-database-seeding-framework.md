@@ -7,7 +7,7 @@
 
 **Do not adopt a third-party "seeding framework."** Build a thin, first-party
 seed runner that mirrors the existing migration launcher
-([`src/database/launch-local.ts`](../../src/database/launch-local.ts)) and
+([`database/src/launch-local.ts`](../src/launch-local.ts)) and
 composes the tools already in the stack:
 
 - **Kysely** for inserts — it is already the query builder and is dialect-aware,
@@ -80,8 +80,8 @@ Be explicit about which tier each row belongs to — they have different owners:
 ## Recommended implementation shape (next objective)
 
 ```
-src/database/seed-local.ts      # runner; mirrors launch-local.ts
-src/database/seeds/*.ts          # composable seed modules (projects, tickets, …)
+database/src/seed-local.ts      # runner; mirrors launch-local.ts
+database/src/seeds/*.ts          # composable seed modules (projects, tickets, …)
 ```
 
 - The runner resolves the DB path, asserts migrations are applied, then runs the
@@ -91,7 +91,7 @@ src/database/seeds/*.ts          # composable seed modules (projects, tickets, �
   `createObjective` service functions so the change feed and revisions stay valid.
 - `@faker-js/faker` (devDependency) generates names/descriptions/volume; the RNG
   is seeded with a constant for reproducibility.
-- Add a script: `"db:seed:local": "node --experimental-strip-types src/database/seed-local.ts"`.
+- Add a script: `"db:seed:local": "tsx database/src/seed-local.ts"`.
 
 No contract change is required: this introduces no new tables, vocabularies, or
 interaction surfaces — it composes the existing service layer through a sanctioned

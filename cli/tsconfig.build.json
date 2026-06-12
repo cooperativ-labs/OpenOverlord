@@ -10,7 +10,6 @@
   },
   "include": [
     "src/**/*.ts",
-    "../src/database/**/*.ts",
     "../src/service/**/*.ts",
     "../src/repository/git-tree.ts"
   ]

@@ -15,10 +15,10 @@ import {
   verticalListSortingStrategy
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { deriveObjectiveLifecycleView } from '@overlord/automations';
 import { GripVertical } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
-import { deriveObjectiveLifecycleView } from '../../../../src/automations/objective-manager/index.ts';
 import type {
   ExecutionRequestDto,
   ObjectiveDto,

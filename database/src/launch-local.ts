@@ -3,9 +3,9 @@ import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { DEFAULT_DATABASE_PATH } from '../../database/local-paths.ts';
+import { CONTRACT_VERSION } from './constants.js';
+import { DEFAULT_DATABASE_PATH } from './local-paths.js';
 
-const CONTRACT_VERSION = '0.2-draft';
 const MIGRATION_FILE_PATTERN = /^\d+_[a-z0-9_]+\.sql$/;
 
 type BetterSqlite3Constructor = typeof import('better-sqlite3');
@@ -18,11 +18,19 @@ type Migration = {
   checksum: string;
 };
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+/** Migrations ship inside this package; resolve them relative to this module. */
+const migrationsDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'sqlite',
+  'migrations'
+);
 
 function resolveDatabasePath(): string {
   const explicitPath = process.env.OVERLORD_SQLITE_PATH;
-  return path.resolve(repoRoot, explicitPath ?? DEFAULT_DATABASE_PATH);
+  // The launcher is run from the repo root (`yarn db:start`), so the default
+  // relative path resolves against the working directory, not this package.
+  return path.resolve(process.cwd(), explicitPath ?? DEFAULT_DATABASE_PATH);
 }
 
 function checksum(sql: string): string {
@@ -35,7 +43,7 @@ function loadMigration(fileName: string): Migration {
     throw new Error(`Migration ${fileName} does not start with a version.`);
   }
 
-  const filePath = path.join(repoRoot, 'database', 'sqlite', 'migrations', fileName);
+  const filePath = path.join(migrationsDir, fileName);
   const sql = readFileSync(filePath, 'utf8');
 
   return {
@@ -47,8 +55,7 @@ function loadMigration(fileName: string): Migration {
 }
 
 function listMigrationFiles(): string[] {
-  const migrationDir = path.join(repoRoot, 'database', 'sqlite', 'migrations');
-  return readdirSync(migrationDir)
+  return readdirSync(migrationsDir)
     .filter(fileName => MIGRATION_FILE_PATTERN.test(fileName))
     .sort((left, right) => left.localeCompare(right));
 }

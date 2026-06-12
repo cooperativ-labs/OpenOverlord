@@ -1,4 +1,4 @@
-import { OBJECTIVE_STATES } from '../database/constants.js';
+import { OBJECTIVE_STATES } from '@overlord/database';
 
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';

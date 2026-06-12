@@ -26,10 +26,10 @@ Read [`CONTRACT.md`](../CONTRACT.md) and the [component-contract skill](../.clau
 
 **Steps:**
 
-1. Create a self-contained folder under `src/automations/<automation-name>/` (for example `title-summarizer/`). Keep helpers, provider clients, tools, and persistence helpers inside that folder.
-2. Implement tools using the shared `Automation` interface from `src/automations/types.ts`.
-3. Export the automation's public API from `src/automations/<automation-name>/index.ts` and re-export from `src/automations/index.ts`.
-4. Register built-in tools in `src/automations/registry.ts` (or call `registerTypedAutomation` from module init code).
+1. Create a self-contained folder under `automations/src/<automation-name>/` (for example `title-summarizer/`). Keep helpers, provider clients, tools, and persistence helpers inside that folder.
+2. Implement tools using the shared `Automation` interface from `automations/src/types.ts`.
+3. Export the automation's public API from `automations/src/<automation-name>/index.ts` and re-export from `automations/src/index.ts`.
+4. Register built-in tools in `automations/src/registry.ts` (or call `registerTypedAutomation` from module init code).
 5. Add colocated unit tests under the automation folder or next to shared module files.
 6. Document provider secrets in `.env.example` if the automation needs new environment variables.
 7. Update [`docs/01-automations-overview.md`](docs/01-automations-overview.md) with usage notes.
@@ -43,7 +43,7 @@ Automations must return `null` when a provider is unavailable or a model call fa
 If an automation should update domain state:
 
 1. Define a narrow store interface (see `ObjectiveTitleStore` in `title-summarizer/objectives/generate-objective-title.ts`).
-2. Accept the store from the caller — do not import Kysely or database adapters inside `src/automations/`.
+2. Accept the store from the caller — do not import Kysely or database adapters inside `automations/src/`.
 3. Keep fire-and-forget helpers async-safe: swallow/log provider errors, never throw for missing API keys.
 
 ---
@@ -56,7 +56,7 @@ automations/
   AGENTS.md
   README.md
 
-src/automations/
+automations/src/
   types.ts
   registry.ts
   index.ts
@@ -74,7 +74,7 @@ src/automations/
 ## Cross-Module Checklist
 
 - [ ] Read `CONTRACT.md` Automations Layer and `serviceToAutomations` surface
-- [ ] No direct database access from `src/automations/`
+- [ ] No direct database access from `automations/src/`
 - [ ] New secrets documented in `.env.example`
 - [ ] Colocated tests for fallback and happy-path behavior
 - [ ] Contract update only if you add a new interaction surface or stable interface

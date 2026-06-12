@@ -19,6 +19,37 @@ The result is a Kanban-style workflow where humans plan and agents execute, with
 | Plans, tickets, and code drift apart                         | One ticket holds many ordered objectives sharing the same context and artifacts |
 
 
+## Getting Started
+
+This repo is a single [Yarn 4](https://yarnpkg.com) workspace (`cli` + `webapp`
+alongside the root). One install at the root bootstraps everything — there are
+no per-package installs to remember. Yarn 4 is provided via `packageManager`;
+run `corepack enable` once if `yarn --version` does not report `4.x`.
+
+```bash
+yarn setup   # install, build, start the local DB, and regenerate DB types
+yarn dev     # run the webapp (API server + Vite)
+yarn check   # lint + typecheck + test — the "am I done?" command
+```
+
+Common tasks (every command is run from the repo root):
+
+| Command | What it does |
+| --- | --- |
+| `yarn build` | Build root, CLI, and webapp |
+| `yarn test` / `yarn test:watch` | Run all tests / watch the root suite |
+| `yarn typecheck` | Typecheck all workspaces |
+| `yarn db:start` | Launch the local SQLite database |
+| `yarn db:reset` | Wipe local state and relaunch the database |
+| `yarn db:codegen` | Regenerate `src/types/db.ts` from the local schema |
+| `yarn pack:cli` | Produce the publishable `overlord-cli` tarball |
+
+To work inside a single package, use `yarn workspace <name> <script>`
+(e.g. `yarn workspace @overlord/webapp dev`). Because the tree is synced across
+macOS and Linux (Syncthing), re-run `yarn install` after switching machines so
+the native `better-sqlite3` addon is rebuilt for the current host.
+
+
 ## Surfaces and Interfaces
 
 ### Agent Connectors
@@ -172,7 +203,7 @@ boundary.
 
 | Module | Purpose | Contract component(s) |
 | --- | --- | --- |
-| [database/](database/README.md) | SQLite-default portable persistence + schema extension system | `database`, `extension` |
+| [database/](database/README.md) | SQLite-default portable persistence + schema extension system (the `@overlord/database` workspace package — runtime in `database/src/`) | `database`, `extension` |
 | [cli/](cli/README.md) | The `ovld` command surface: management, agent protocol, and runner | `cli`, `protocol`, `runner` |
 | [auth/](auth/README.md) | Mix-and-match authentication (tokens) and RBAC authorization | `auth` |
 | [webapp/](webapp/README.md) | Deferred web control center + REST/realtime API | `rest` |
@@ -187,7 +218,7 @@ boundary.
 > owning module under `<module>/docs/`; each module README links to its relevant
 > plans, and [planning/feature-plans/](planning/feature-plans/README.md) is now a
 > redirect index pointing at those module homes. **Convention:** colocate new code and tests inside
-> the owning module (as `src/rbac/authorizer.ts` + `authorizer.test.ts` and
+> the owning module (as `auth/src/rbac/authorizer.ts` + `authorizer.test.ts` and
 > `database/sqlite/migrations/` already do).
 
 

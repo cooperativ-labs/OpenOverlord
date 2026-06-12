@@ -89,7 +89,7 @@ cli/
   runner/         ← runner and launch execution
 ```
 
-No implementation has landed yet. When it does, follow the colocated pattern established by `src/rbac/`.
+No implementation has landed yet. When it does, follow the colocated pattern established by `auth/src/rbac/`.
 
 ---
 

@@ -1,0 +1,32 @@
+{
+  "name": "@overlord/database",
+  "version": "0.1.0",
+  "description": "Overlord persistence layer: SQLite migrations, connection/migration runtime, local launcher, and adapter selection.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "sqlite/migrations/",
+    "postgres/migrations/"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "typecheck": "tsc --project tsconfig.build.json --noEmit",
+    "db:start": "tsx src/launch-local.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.0.0"
+  },
+  "license": "MIT"
+}

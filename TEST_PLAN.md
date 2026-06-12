@@ -89,7 +89,7 @@ The project already standardizes on Node's built-in runner (see `package.json`):
 The plan extends this rather than introducing a heavyweight framework:
 
 - **Runner:** `node:test` (`describe`/`it`) with `node:assert/strict`. Already in
-  use by `src/rbac/authorizer.test.ts`; keep it as the single runner.
+  use by `auth/src/rbac/authorizer.test.ts`; keep it as the single runner.
 - **TypeScript:** `--experimental-strip-types` (no build step for tests). Type
   errors are caught separately by `yarn typecheck` (`tsc --noEmit`).
 - **Coverage:** `node --test --experimental-test-coverage` with a per-layer
@@ -201,7 +201,7 @@ These tests prove components only talk through sanctioned surfaces:
 - **Auth never writes core tables.** Auth-layer source must not mutate `tickets`,
   `projects`, `objectives`, etc. (contract: "Auth Layer must not write to core
   domain tables").
-- **Auth-internal tables are private.** No module outside `auth/`/`src/auth`
+- **Auth-internal tables are private.** No module outside `auth/`/`auth/src/auth`
   reads `user`, `session`, `account`, `verification`, `apikey` directly.
 - **Hook scripts use protocol only.** `connectors/**/scripts/*.sh` must invoke
   `ovld protocol …` and contain no DB connection strings or SQL.
@@ -307,7 +307,7 @@ Coverage is a floor, not a goal; the traceability matrix is the real bar.
 
 | Area | Line/branch floor | Notes |
 | --- | --- | --- |
-| `src/rbac`, `src/auth` token/hash logic | 95% | Security-critical pure logic |
+| `auth/src/rbac`, `auth/src/auth` token/hash logic | 95% | Security-critical pure logic |
 | Service layer (database) | 90% | Primary behavioral chokepoint |
 | Protocol/CLI command handlers | 85% | Surface wiring + validation |
 | REST handlers | 85% | Auth + service delegation |

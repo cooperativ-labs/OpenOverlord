@@ -1,3 +1,4 @@
+import { type AdapterConfig, resolveAdapter } from '@overlord/database';
 import { betterAuth } from 'better-auth';
 import { bearer } from 'better-auth/plugins';
 import Database from 'better-sqlite3';
@@ -55,17 +56,35 @@ function createBetterAuthDatabase(config: AuthDatabaseConfig) {
   };
 }
 
+/** Map the repo-wide `resolveAdapter()` result onto Better Auth's database config. */
+function authDatabaseFromAdapter(adapter: AdapterConfig): AuthDatabaseConfig {
+  if (adapter.type === 'sqlite') {
+    return { type: 'sqlite', path: adapter.path };
+  }
+  return adapter.schema
+    ? { type: 'postgres', connectionString: adapter.connectionString, schema: adapter.schema }
+    : { type: 'postgres', connectionString: adapter.connectionString };
+}
+
 /**
  * Create a Better Auth instance backed by SQLite or PostgreSQL.
+ *
+ * Called with no argument, the database is chosen by the single repo-wide
+ * `resolveAdapter()` so auth coordinates with the same adapter the rest of the
+ * service layer uses, instead of independently sniffing `DATABASE_URL`. A string
+ * still selects SQLite at that path, and an explicit options object overrides
+ * the selection entirely.
  *
  * The bearer plugin converts Authorization: Bearer <session_token> headers into
  * session cookies so that programmatic HTTP clients can use session tokens.
  */
-export function createAuth(dbPathOrOptions: string | CreateAuthOptions) {
+export function createAuth(dbPathOrOptions?: string | CreateAuthOptions) {
   const options =
-    typeof dbPathOrOptions === 'string'
-      ? { database: { type: 'sqlite' as const, path: dbPathOrOptions } }
-      : dbPathOrOptions;
+    dbPathOrOptions === undefined
+      ? { database: authDatabaseFromAdapter(resolveAdapter()) }
+      : typeof dbPathOrOptions === 'string'
+        ? { database: { type: 'sqlite' as const, path: dbPathOrOptions } }
+        : dbPathOrOptions;
 
   return betterAuth({
     database: createBetterAuthDatabase(options.database),

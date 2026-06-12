@@ -25,7 +25,7 @@ export async function runLocalCommand({
     case 'init': {
       const { writeConfig, loadConfig, resolveDatabasePath, resolveRepoPath } =
         await import('./config.js');
-      const { migrateDatabase, openDatabase } = await import('../../src/database/connection.js');
+      const { migrateDatabase, openDatabase } = await import('@overlord/database');
       const target = resolveRepoPath('overlord.toml');
       writeConfig({ targetPath: target, config: { instanceName: 'Local Overlord' } });
       const dbPath = resolveDatabasePath(loadConfig(target));

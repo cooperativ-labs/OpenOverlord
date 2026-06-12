@@ -2,7 +2,7 @@ import {
   deriveTitleFromInstructionText,
   generateAndSetObjectiveTitle,
   generateObjectiveTitle
-} from '../../src/automations/index.js';
+} from '@overlord/automations';
 
 import { db, nowIso, recordChange } from './db.ts';
 import { realtime } from './realtime.ts';

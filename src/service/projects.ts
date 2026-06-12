@@ -1,7 +1,6 @@
+import { DEFAULT_STATUSES } from '@overlord/database';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-
-import { DEFAULT_STATUSES } from '../database/constants.js';
 
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';

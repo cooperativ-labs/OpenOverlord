@@ -43,7 +43,7 @@ A clear-eyed starting point, because it determines the whole sequence.
 | REST endpoints (`/projects`, `/tickets`, `/protocol/*`, …) | None implemented |
 | `/realtime` SSE/WebSocket + `/sync/changes` feed | None implemented |
 | Shared service layer (CLI/protocol/REST call into it) | Not present in `src/` |
-| Auth + RBAC | Partially present (`src/auth/`, `src/rbac/`) |
+| Auth + RBAC | Partially present (`auth/src/auth/`, `auth/src/rbac/`) |
 | Database schema / `entity_changes` feed | Specified in the schema contract; not migrated |
 
 **The central fact:** the UI design docs describe a client that is a *read-through

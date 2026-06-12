@@ -1,5 +1,5 @@
 -- Better Auth implementation tables (migration 001).
--- These tables are owned by the Auth Layer (src/auth/) and managed via Better Auth's
+-- These tables are owned by the Auth Layer (auth/src/auth/) and managed via Better Auth's
 -- internal adapter. Column names follow Better Auth's camelCase conventions (intentionally
 -- different from Overlord's snake_case domain tables).
 -- No other component should read or write these tables directly.

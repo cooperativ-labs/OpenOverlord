@@ -4,11 +4,11 @@ Part of the [master test plan](../../TEST_PLAN.md). Covers the `automations` con
 component. Normative source: [`01-automations-overview.md`](01-automations-overview.md) and the
 `serviceToAutomations` surface in [`contract/components.yaml`](../../contract/components.yaml).
 
-Current code under test: `src/automations/`.
+Current code under test: `automations/src/`.
 
 ---
 
-## A. Title helpers (`src/automations/title-summarizer/helpers`) — L1 unit
+## A. Title helpers (`automations/src/title-summarizer/helpers`) — L1 unit
 
 ### A1. Local derivation
 - Short instruction text returns unchanged.
@@ -16,7 +16,7 @@ Current code under test: `src/automations/`.
 
 ---
 
-## B. Objective title automation (`src/automations/title-summarizer/objectives`) — L1 unit
+## B. Objective title automation (`automations/src/title-summarizer/objectives`) — L1 unit
 
 ### B1. Threshold behavior
 - Instruction text at or below `AI_TITLE_THRESHOLD` never requires Gemini.
@@ -29,7 +29,7 @@ Current code under test: `src/automations/`.
 
 ---
 
-## C. Registry (`src/automations/registry`) — L1 unit
+## C. Registry (`automations/src/registry`) — L1 unit
 
 ### C1. Built-in catalog
 - `listAutomations` exposes `summarize-text` and `summarize-objective-title`.

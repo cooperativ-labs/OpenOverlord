@@ -1,8 +1,8 @@
+import { LOCAL_DATA_DIR } from '@overlord/database';
 import { existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
 import { loadConfig, resolveDatabasePath, resolveProjectRoot } from '../cli/src/config.ts';
-import { LOCAL_DATA_DIR } from '../database/local-paths.ts';
 
 import { stopLocalDev } from './stop-local-dev.ts';
 

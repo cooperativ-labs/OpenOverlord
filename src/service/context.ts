@@ -1,5 +1,8 @@
-import type { OverlordDatabase } from '../database/connection.js';
-import { SEED_WORKSPACE_ID, SEED_WORKSPACE_USER_ID } from '../database/constants.js';
+import {
+  type OverlordDatabase,
+  SEED_WORKSPACE_ID,
+  SEED_WORKSPACE_USER_ID
+} from '@overlord/database';
 
 import { ServiceError } from './errors.js';
 

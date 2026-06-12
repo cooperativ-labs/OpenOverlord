@@ -1,8 +1,8 @@
+import { migrateDatabase } from '@overlord/database';
 import Database from 'better-sqlite3';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { migrateDatabase } from '../dist/src/database/connection.js';
 import { createServiceContext } from '../dist/src/service/context.js';
 import { createProject } from '../dist/src/service/projects.js';
 import { addObjectivesToTicket, createTicketWithObjectives } from '../dist/src/service/tickets.js';

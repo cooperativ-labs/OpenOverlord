@@ -31,6 +31,26 @@ response shapes (→ [webapp module](../webapp/README.md)).
 
 ## Code & Tests (colocated)
 
+This module is the `@overlord/database` workspace package. Its runtime lives in
+[`database/src/`](src/) and is consumed by the CLI, the root service layer, and
+the auth module through the package name (`@overlord/database`) rather than
+cross-folder relative imports:
+
+- `connection.ts` — open/migrate a SQLite database, list migrations, in-memory
+  test databases. Migrations are resolved relative to this package, so the same
+  code works from source, from the built `dist/`, and from the copy bundled into
+  the published CLI tarball.
+- `launch-local.ts` — the `yarn db:start` local launcher.
+- `constants.ts` — database-layer constants and controlled vocabularies
+  (statuses, objective states, update phases/events, seed IDs, contract version).
+- `local-paths.ts` — canonical local-data paths (`database/.local/…`).
+- `adapter.ts` — `resolveAdapter()`, the single point that decides SQLite vs.
+  PostgreSQL from `DATABASE_URL` so auth and the service layer never disagree.
+
+The CLI no longer hand-copies migrations: `@overlord/database` is bundled into
+the `overlord-cli` tarball at pack time, so there is a single source of truth for
+the migration SQL.
+
 Migrations live here, numbered sequentially:
 
 ### `sqlite/migrations/001_initial_core.sql` and `postgres/migrations/001_initial_core.sql`

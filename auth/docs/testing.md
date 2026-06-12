@@ -6,15 +6,15 @@ component: tokens, identity bridging, and RBAC. Normative sources:
 [08-role-based-access-control.md](08-role-based-access-control.md), and the
 `authToDatabase` surface in [`contract/components.yaml`](../../contract/components.yaml).
 
-Current code under test: `src/auth/` (config, database, session, token) and
-`src/rbac/` (authorizer, permissions, roles, types). `src/rbac/authorizer.test.ts`
+Current code under test: `auth/src/auth/` (config, database, session, token) and
+`auth/src/rbac/` (authorizer, permissions, roles, types). `auth/src/rbac/authorizer.test.ts`
 already exists and is the seed of the RBAC suite — this plan extends it.
 
 Auth is security-critical, so its pure logic carries the **95% coverage floor**.
 
 ---
 
-## A. RBAC Authorizer (`src/rbac`) — L1 unit
+## A. RBAC Authorizer (`auth/src/rbac`) — L1 unit
 
 Extends the existing `authorizer.test.ts`.
 
@@ -45,7 +45,7 @@ Extends the existing `authorizer.test.ts`.
 
 ---
 
-## B. Tokens (`src/auth/token`) — L1 + L2
+## B. Tokens (`auth/src/auth/token`) — L1 + L2
 
 ### B1. Hash-only storage (security boundary)
 > "Raw `USER_TOKEN` secrets are displayed once and never persisted."
@@ -70,7 +70,7 @@ Extends the existing `authorizer.test.ts`.
 
 ---
 
-## C. Session Keys (`src/auth/session`)
+## C. Session Keys (`auth/src/auth/session`)
 
 > "Raw session keys should not be persisted. Store hashes and prefixes."
 
@@ -96,7 +96,7 @@ These tests prove the auth layer obeys its interaction-surface rules.
   to build the `Actor`'s role list.
 
 ### D2. Boundary enforcement (shared with Layer 3 §3.3)
-- **Auth-internal tables are private:** no module outside `auth/`/`src/auth` reads
+- **Auth-internal tables are private:** no module outside `auth/`/`auth/src/auth` reads
   `user`, `session`, `account`, `verification`, `apikey` directly.
 - **Auth never writes core tables:** auth-layer source contains no writes to
   `tickets`, `projects`, `objectives`, etc.
@@ -131,8 +131,8 @@ For a custom auth/RBAC provider shipped as a component (per
 ## Test Layout
 
 ```
-src/rbac/authorizer.test.ts     # A1 (exists) + A2
-src/rbac/permissions.test.ts    # A2 vocab/shape
+auth/src/rbac/authorizer.test.ts     # A1 (exists) + A2
+auth/src/rbac/permissions.test.ts    # A2 vocab/shape
 auth/
   test/
     rbac-config.test.ts   # A3

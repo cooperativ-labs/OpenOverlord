@@ -1,8 +1,6 @@
+import { LOCAL_STORAGE_BUCKET_PATHS, openInMemoryDatabase } from '@overlord/database';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-
-import { LOCAL_STORAGE_BUCKET_PATHS } from '../../database/local-paths.ts';
-import { openInMemoryDatabase } from '../database/connection.js';
 
 import { createServiceContext, type ServiceContext } from './context.js';
 import { ServiceError } from './errors.js';

@@ -1,10 +1,6 @@
+import { migrateDatabase, openDatabase, type OverlordDatabase } from '@overlord/database';
 import { existsSync } from 'node:fs';
 
-import {
-  migrateDatabase,
-  openDatabase,
-  type OverlordDatabase
-} from '../../src/database/connection.js';
 import { createServiceContext, type ServiceContext } from '../../src/service/context.js';
 
 import { loadConfig, resolveDatabasePath } from './config.js';

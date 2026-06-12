@@ -29,8 +29,7 @@ export function TicketCard({
       aria-label={`Open ticket: ${ticket.title}`}
       className={cn(
         'group relative cursor-pointer overflow-hidden rounded-md border-gray-300/60 bg-linear-to-br from-gray-300/5 to-transparent transition-all hover:shadow-md dark:border-gray-700/40',
-        selected &&
-          'border-gray-600/60 bg-gray-100/90 dark:border-gray-500/70 dark:bg-gray-900/40'
+        selected && 'border-gray-600/60 bg-gray-100/90 dark:border-gray-500/70 dark:bg-gray-900/40'
       )}
       onClick={() =>
         navigate({

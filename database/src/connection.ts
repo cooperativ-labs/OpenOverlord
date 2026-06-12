@@ -1,32 +1,24 @@
 import Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { DEFAULT_DATABASE_PATH } from '../../database/local-paths.ts';
-
 import { CONTRACT_VERSION } from './constants.js';
+import { DEFAULT_DATABASE_PATH } from './local-paths.js';
 
 const MIGRATION_FILE_PATTERN = /^\d+_[a-z0-9_]+\.sql$/;
 
 export type OverlordDatabase = Database.Database;
 
-function resolveRepoRoot(): string {
-  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    path.resolve(moduleDir, '../../..'),
-    path.resolve(moduleDir, '../../../..'),
-    path.resolve(moduleDir, '../..')
-  ];
-
-  for (const candidate of candidates) {
-    if (existsSync(path.join(candidate, 'database', 'sqlite', 'migrations'))) {
-      return candidate;
-    }
-  }
-
-  throw new Error('Cannot locate Overlord SQLite migrations.');
+/**
+ * The SQLite migrations ship inside this package (`@overlord/database`) and are
+ * resolved relative to this module, so the lookup works identically when run
+ * from TypeScript source, from the compiled `dist/`, or from a copy bundled into
+ * the CLI tarball — no repo-root heuristics required.
+ */
+function migrationsDir(): string {
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'sqlite', 'migrations');
 }
 
 function checksum(sql: string): string {
@@ -35,16 +27,13 @@ function checksum(sql: string): string {
 
 function loadMigrationSql(fileName: string): { version: string; sql: string; checksum: string } {
   const version = fileName.split('_', 1)[0] ?? fileName;
-  const repoRoot = resolveRepoRoot();
-  const filePath = path.join(repoRoot, 'database', 'sqlite', 'migrations', fileName);
+  const filePath = path.join(migrationsDir(), fileName);
   const sql = readFileSync(filePath, 'utf8');
   return { version, sql, checksum: checksum(sql) };
 }
 
 export function listSqliteMigrationFiles(): string[] {
-  const repoRoot = resolveRepoRoot();
-  const migrationDir = path.join(repoRoot, 'database', 'sqlite', 'migrations');
-  return readdirSync(migrationDir)
+  return readdirSync(migrationsDir())
     .filter(fileName => MIGRATION_FILE_PATTERN.test(fileName))
     .sort((left, right) => left.localeCompare(right));
 }

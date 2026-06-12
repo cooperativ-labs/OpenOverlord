@@ -4,7 +4,6 @@
   "description": "Overlord CLI — management, agent protocol, and runner for OpenOverlord",
   "type": "module",
   "private": true,
-  "packageManager": "yarn@4.16.0",
   "engines": {
     "node": ">=20"
   },
@@ -14,19 +13,23 @@
   },
   "files": [
     "bin/",
-    "dist/",
-    "database/sqlite/migrations/"
+    "dist/"
   ],
   "scripts": {
-    "build": "node scripts/stage-migrations.mjs && tsc --project tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types 'test/**/*.test.ts'",
-    "prepack": "node scripts/stage-migrations.mjs && tsc --project tsconfig.build.json"
+    "build": "tsc --project tsconfig.build.json",
+    "typecheck": "tsc --project tsconfig.build.json --noEmit",
+    "test": "yarn build && tsx --test 'test/**/*.test.ts'",
+    "prepack": "tsc --project tsconfig.build.json && node scripts/vendor-database.mjs",
+    "postpack": "node scripts/vendor-database.mjs restore"
   },
   "dependencies": {
+    "@overlord/database": "workspace:*",
     "better-sqlite3": "^12.0.0",
     "smol-toml": "^1.6.1"
   },
+  "bundleDependencies": [
+    "@overlord/database"
+  ],
   "keywords": [
     "overlord",
     "ai",

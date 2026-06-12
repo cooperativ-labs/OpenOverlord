@@ -1,0 +1,36 @@
+/**
+ * `@overlord/database` — the persistence package for Overlord.
+ *
+ * Owns the SQLite migrations, the local-development launcher, the connection /
+ * migration runtime, the database-layer constants and controlled vocabularies,
+ * and the single `resolveAdapter()` adapter-selection point. The CLI, the root
+ * service layer, and the auth module all depend on this package instead of
+ * reaching across folder boundaries with relative imports.
+ */
+export { type AdapterConfig, resolveAdapter } from './adapter.js';
+export {
+  listSqliteMigrationFiles,
+  migrateDatabase,
+  openDatabase,
+  openInMemoryDatabase,
+  type OverlordDatabase,
+  resolveDefaultDatabasePath
+} from './connection.js';
+export {
+  CONTRACT_VERSION,
+  DEFAULT_STATUSES,
+  OBJECTIVE_STATES,
+  type ObjectiveState,
+  SEED_USER_ID,
+  SEED_WORKSPACE_ID,
+  SEED_WORKSPACE_SLUG,
+  SEED_WORKSPACE_USER_ID,
+  UPDATE_EVENT_TYPES,
+  UPDATE_PHASES
+} from './constants.js';
+export {
+  DEFAULT_DATABASE_PATH,
+  LOCAL_DATA_DIR,
+  LOCAL_STORAGE_BUCKET_PATHS,
+  LOCAL_STORAGE_DIR
+} from './local-paths.js';
