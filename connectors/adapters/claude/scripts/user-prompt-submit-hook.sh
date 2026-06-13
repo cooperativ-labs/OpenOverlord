@@ -30,6 +30,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 try:
     body = json.load(sys.stdin)
@@ -41,6 +42,18 @@ if not text:
     sys.exit(0)
 
 sid = body.get('session_id') or 'unknown'
+tid = os.environ.get('TICKET_ID', '')
+if sid != 'unknown' and tid:
+    try:
+        key = hashlib.sha256((os.getcwd() + '\0' + tid + '\0claude').encode()).hexdigest()
+        native_dir = Path.home() / '.ovld' / 'native-sessions'
+        native_dir.mkdir(parents=True, exist_ok=True)
+        (native_dir / key).write_text(
+            json.dumps({'agent': 'claude', 'ticketId': tid, 'externalSessionId': sid}),
+            encoding='utf-8',
+        )
+    except Exception:
+        pass
 state_dir = os.path.join(os.path.expanduser('~'), '.ovld', 'claude-user-prompt-hook')
 os.makedirs(state_dir, exist_ok=True)
 path = os.path.join(state_dir, hashlib.sha256(sid.encode()).hexdigest())
@@ -57,7 +70,6 @@ turn_index = last_posted + 1
 with open(path, 'w', encoding='utf-8') as handle:
     handle.write(str(turn_index))
 
-tid = os.environ.get('TICKET_ID', '')
 session_key = os.environ.get('SESSION_KEY') or ''
 if not session_key:
     encoded = __import__('base64').urlsafe_b64encode(os.getcwd().encode()).decode().rstrip('=')

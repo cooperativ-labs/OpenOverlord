@@ -93,6 +93,11 @@ Delete operations can be added once project/resource lifecycle semantics are set
 
 ## Attach Response Requirements
 
+`attach`, `connect`, and `prompt` should accept optional native session
+attribution with `external-session-id`. When the flag is omitted, the CLI may
+auto-detect known agent session IDs from harness environment variables or
+connector hook caches and store the result in `agent_sessions.external_session_id`.
+
 `attach` must return:
 
 - Ticket metadata.

@@ -50,9 +50,11 @@ import {
   readFlagOrFile,
   requireFlag
 } from './args.js';
+import { loadConfig } from './config.js';
 import { CliError } from './errors.js';
 import { launchAgent } from './launch.js';
 import { promptWithMentions } from './mention-prompt.js';
+import { resolveNativeSessionId } from './native-session.js';
 import { printJson, printKeyValue } from './output.js';
 import { listMentionableFiles } from './repository-files.js';
 import type { CliRuntime } from './runtime.js';
@@ -92,6 +94,18 @@ function mapStatusNames(statusCsv: string | undefined): string[] | undefined {
   });
 }
 
+/**
+ * Resolve the terminal launcher used when spawning an agent. `--terminal <name>`
+ * overrides the configured `terminal_launcher`, and `--no-terminal` forces an
+ * inline (current-terminal) launch regardless of config.
+ */
+function resolveTerminalLauncher(flags: Map<string, string | true>): string | null {
+  if (flagBoolean(flags, '--no-terminal')) return null;
+  const override = flagValue(flags, '--terminal');
+  if (override) return override;
+  return loadConfig().terminalLauncher;
+}
+
 function repeatedFlagValues(args: string[], name: string): string[] {
   const values: string[] = [];
   for (let index = 0; index < args.length; index += 1) {
@@ -103,6 +117,14 @@ function repeatedFlagValues(args: string[], name: string): string[] {
     }
   }
   return values;
+}
+
+function nullableFlagValue(
+  flags: Map<string, string | true>,
+  name: string
+): string | null | undefined {
+  const value = flagValue(flags, name);
+  return value === 'null' ? null : value;
 }
 
 export async function runProtocolCommand({
@@ -154,12 +176,19 @@ export async function runProtocolCommand({
         if (!objective) {
           throw new CliError({ message: 'Missing objective text or --objective flag' });
         }
+        const agent = flagValue(parsed.flags, '--agent') ?? 'unknown';
         const result = protocolPrompt({
           ctx,
           projectId: flagValue(parsed.flags, '--project-id'),
           objective,
           title: flagValue(parsed.flags, '--title'),
-          agentIdentifier: flagValue(parsed.flags, '--agent') ?? 'unknown'
+          agentIdentifier: agent,
+          externalSessionId: resolveNativeSessionId({
+            explicit: flagValue(parsed.flags, '--external-session-id'),
+            agent,
+            ticketId: 'new',
+            workingDirectory: process.cwd()
+          })
         });
         printKeyValue({
           SESSION_KEY: result.sessionKey,
@@ -177,10 +206,17 @@ export async function runProtocolCommand({
       }
       case 'connect': {
         const ticketId = requireFlag(parsed.flags, '--ticket-id');
+        const agent = flagValue(parsed.flags, '--agent') ?? 'unknown';
         const result = connectSession({
           ctx,
           ticketId,
-          agentIdentifier: flagValue(parsed.flags, '--agent') ?? 'unknown'
+          agentIdentifier: agent,
+          externalSessionId: resolveNativeSessionId({
+            explicit: flagValue(parsed.flags, '--external-session-id'),
+            agent,
+            ticketId,
+            workingDirectory: process.cwd()
+          })
         });
         printKeyValue({
           SESSION_KEY: result.sessionKey,
@@ -217,12 +253,19 @@ export async function runProtocolCommand({
       }
       case 'attach': {
         const ticketId = requireFlag(parsed.flags, '--ticket-id');
+        const agent = flagValue(parsed.flags, '--agent') ?? 'unknown';
         const result = attachSession({
           ctx,
           ticketId,
           existingSessionKey: flagValue(parsed.flags, '--session-key'),
-          agentIdentifier: flagValue(parsed.flags, '--agent') ?? 'unknown',
-          modelIdentifier: flagValue(parsed.flags, '--model')
+          agentIdentifier: agent,
+          modelIdentifier: flagValue(parsed.flags, '--model'),
+          externalSessionId: resolveNativeSessionId({
+            explicit: flagValue(parsed.flags, '--external-session-id'),
+            agent,
+            ticketId,
+            workingDirectory: process.cwd()
+          })
         });
         printKeyValue({
           SESSION_KEY: result.sessionKey,
@@ -262,7 +305,7 @@ export async function runProtocolCommand({
           eventType: flagValue(parsed.flags, '--event-type'),
           payloadJson: parseJsonFlag(parsed.flags, '--payload-json'),
           externalUrl: flagValue(parsed.flags, '--external-url'),
-          externalSessionId: flagValue(parsed.flags, '--external-session-id'),
+          externalSessionId: nullableFlagValue(parsed.flags, '--external-session-id'),
           beginFollowUpWork: flagBoolean(parsed.flags, '--begin-follow-up-work'),
           followUpIntent: flagValue(parsed.flags, '--follow-up-intent'),
           changedFiles: changedFilesRaw
@@ -594,7 +637,18 @@ export async function runManagementCommand({
             })) ?? '';
         }
         if (!text) throw new CliError({ message: 'Missing objective prompt text' });
-        const result = protocolPrompt({ ctx, objective: text });
+        const agent = flagValue(parsed.flags, '--agent') ?? 'unknown';
+        const result = protocolPrompt({
+          ctx,
+          objective: text,
+          agentIdentifier: agent,
+          externalSessionId: resolveNativeSessionId({
+            explicit: flagValue(parsed.flags, '--external-session-id'),
+            agent,
+            ticketId: 'new',
+            workingDirectory: process.cwd()
+          })
+        });
         printKeyValue({
           SESSION_KEY: result.sessionKey,
           TICKET_ID: result.ticket.displayId
@@ -655,6 +709,7 @@ export async function runManagementCommand({
             thinking: flagValue(parsed.flags, '--thinking'),
             flags: repeatedFlagValues(rest, '--flag'),
             preCommand: flagValue(parsed.flags, '--pre-command'),
+            terminalLauncher: resolveTerminalLauncher(parsed.flags),
             dryRun: flagBoolean(parsed.flags, '--dry-run')
           }
         });
@@ -731,6 +786,7 @@ export async function runManagementCommand({
                       (value): value is string => typeof value === 'string'
                     )
                   : [],
+                terminalLauncher: resolveTerminalLauncher(parsed.flags),
                 dryRun: flagBoolean(parsed.flags, '--dry-run')
               }
             });
@@ -956,7 +1012,7 @@ export async function runManagementCommand({
       }
       case 'config': {
         const sub = parsed.positional[0] ?? 'list';
-        const { loadConfig, findConfigPath } = await import('./config.js');
+        const { findConfigPath } = await import('./config.js');
         const config = loadConfig();
         if (sub === 'list') {
           if (json) printJson({ config, path: findConfigPath() });
@@ -966,6 +1022,7 @@ export async function runManagementCommand({
             console.log(`web_host=${config.webHost}`);
             console.log(`web_port=${config.webPort}`);
             console.log(`default_agent=${config.defaultAgent}`);
+            console.log(`terminal_launcher=${config.terminalLauncher ?? '(inline)'}`);
           }
           return;
         }

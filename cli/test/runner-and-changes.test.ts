@@ -80,6 +80,36 @@ test('execution request queue can create, claim, launch, and clear active reques
   db.close();
 });
 
+test('runner does not claim a queued request for a soft-deleted objective', () => {
+  const { db, ctx } = createContext();
+  const project = createProject({ ctx, name: 'Deleted Objective Test' });
+  addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
+  const { ticket, objectives } = createTicketWithObjectives({
+    ctx,
+    projectId: project.id,
+    objectives: [{ objective: 'Objective to be removed' }]
+  });
+
+  const request = createExecutionRequest({
+    ctx,
+    ticketId: ticket.displayId,
+    objectiveId: objectives[0]?.id,
+    requestedAgent: 'codex',
+    requestedSource: 'cli'
+  });
+  assert.equal(request.status, 'queued');
+
+  // Mirror a UI disconnect/delete that soft-deletes the objective. The runner
+  // must skip the orphaned request rather than launch retired work.
+  ctx.db
+    .prepare(`UPDATE objectives SET deleted_at = ? WHERE id = ?`)
+    .run(new Date().toISOString(), objectives[0]?.id);
+
+  assert.equal(claimNextExecutionRequest({ ctx }), null);
+
+  db.close();
+});
+
 test('delivery auto-advance queues next objective when enabled', () => {
   const { db, ctx } = createContext();
   const project = createProject({ ctx, name: 'Auto Advance Test' });

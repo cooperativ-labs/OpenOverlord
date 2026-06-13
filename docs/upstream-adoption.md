@@ -8,6 +8,43 @@ The short version: keep each customization behind a contract-sanctioned boundary
 then treat every upstream update as a contract conformance exercise before it
 reaches a production instance.
 
+## Submodule vs Downstream Distribution
+
+Do **not** make a Git submodule the default way to run a customized
+OpenOverlord instance if you expect to edit core OpenOverlord code directly. A
+submodule is good for pinning a mostly unchanged upstream dependency inside a
+larger deployment repository, but it is awkward for day-to-day core work:
+
+- every core change must be committed inside the nested repository and then the
+  parent repository must also update its submodule pointer;
+- local core patches are easy to hide in the submodule worktree and miss during
+  parent reviews;
+- cross-cutting changes between core code, mobile apps, deployment automation,
+  and instance configuration are split across repositories and histories;
+- adopting upstream still becomes a merge/rebase problem, just with an extra
+  parent pointer to maintain.
+
+Prefer a downstream distribution repository or fork that keeps upstream
+OpenOverlord as a normal Git remote:
+
+```bash
+git remote add upstream <public-openoverlord-repo-url>
+git fetch upstream
+git checkout -b distribution upstream/main
+```
+
+Then add instance-specific packages and deployment assets beside the core repo
+in that distribution branch, for example `apps/mobile`, `deploy/`,
+`automations/custom-*`, or `extensions/<name>`. Keep direct changes to
+upstream-owned modules small, reviewable, and either upstream-bound or
+documented as carried core patches.
+
+Use a submodule only when the parent repository is primarily an external
+orchestrator: for example, a private infrastructure repo that pins a released
+OpenOverlord commit and stores Terraform, secrets wiring, or environment
+templates, while all OpenOverlord product code changes still happen in a fork or
+branch of the OpenOverlord repository itself.
+
 ## Operating Model
 
 Run customized OpenOverlord as a downstream distribution of upstream

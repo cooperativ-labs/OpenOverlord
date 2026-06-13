@@ -506,7 +506,130 @@ interface LaunchObjectiveRow {
   revision: number;
 }
 
-const LAUNCHABLE_STATES = ['draft', 'submitted', 'launching'];
+export const LAUNCHABLE_STATES = ['draft', 'submitted', 'launching'];
+
+/**
+ * Execution-request statuses that keep an objective "in the runner queue": the
+ * runner only claims `queued` rows, but `claimed`/`launching` rows are mid-flight
+ * and must also be retired when the objective leaves the launch pipeline.
+ */
+const ACTIVE_EXECUTION_STATUSES = ['queued', 'claimed', 'launching'];
+
+/**
+ * Remove an objective from the runner queue when a user manually completes,
+ * disconnects, or deletes it in the UI. Clears any active (queued/claimed/
+ * launching) execution requests so a runner never claims work the user has
+ * stopped, and ends any still-open agent session bound to the objective so the
+ * session status reflects the new objective state.
+ *
+ * Must be called inside the caller's transaction so the objective mutation and
+ * these queue/session updates land atomically. Returns the counts so callers
+ * can decide whether to surface them.
+ */
+export function dequeueObjective({
+  objectiveId,
+  projectId,
+  ticketId,
+  reason,
+  newState,
+  now
+}: {
+  objectiveId: string;
+  projectId: string;
+  ticketId: string;
+  /** Why the objective left the queue, for the audit event payload. */
+  reason: 'completed' | 'disconnected' | 'deleted';
+  /** New objective state, or null when the objective is being deleted. */
+  newState: string | null;
+  now: string;
+}): { clearedRequests: number; endedSessions: number } {
+  const activeRequests = db
+    .prepare(
+      `SELECT id, revision FROM execution_requests
+        WHERE workspace_id = ? AND objective_id = ? AND deleted_at IS NULL
+          AND status IN (${ACTIVE_EXECUTION_STATUSES.map(() => '?').join(', ')})`
+    )
+    .all(WORKSPACE.id, objectiveId, ...ACTIVE_EXECUTION_STATUSES) as Array<{
+    id: string;
+    revision: number;
+  }>;
+
+  for (const request of activeRequests) {
+    const revision = request.revision + 1;
+    db.prepare(
+      `UPDATE execution_requests
+         SET status = 'cleared', updated_at = @now, revision = @revision
+       WHERE id = @id AND workspace_id = @workspace_id`
+    ).run({ id: request.id, workspace_id: WORKSPACE.id, now, revision });
+    recordChange({
+      entityType: 'execution_request',
+      entityId: request.id,
+      operation: 'update',
+      entityRevision: revision,
+      projectId,
+      ticketId,
+      objectiveId,
+      changedFields: ['status']
+    });
+  }
+
+  // A completed objective ends its session cleanly; a disconnect/delete leaves
+  // it blocked since the agent never reached a delivery.
+  const sessionPhase = newState === 'complete' ? 'complete' : 'blocked';
+  const openSessions = db
+    .prepare(
+      `SELECT id, revision FROM agent_sessions
+        WHERE workspace_id = ? AND objective_id = ? AND deleted_at IS NULL
+          AND ended_at IS NULL`
+    )
+    .all(WORKSPACE.id, objectiveId) as Array<{ id: string; revision: number }>;
+
+  for (const session of openSessions) {
+    const revision = session.revision + 1;
+    db.prepare(
+      `UPDATE agent_sessions
+         SET phase = @phase, ended_at = @now, updated_at = @now, revision = @revision
+       WHERE id = @id AND workspace_id = @workspace_id`
+    ).run({ id: session.id, workspace_id: WORKSPACE.id, phase: sessionPhase, now, revision });
+    recordChange({
+      entityType: 'agent_session',
+      entityId: session.id,
+      operation: 'update',
+      entityRevision: revision,
+      projectId,
+      ticketId,
+      objectiveId,
+      changedFields: ['phase', 'ended_at']
+    });
+  }
+
+  if (activeRequests.length > 0 || openSessions.length > 0) {
+    db.prepare(
+      `INSERT INTO ticket_events
+         (id, workspace_id, project_id, ticket_id, objective_id, type, phase, summary,
+          payload_json, source, actor_workspace_user_id, created_at)
+       VALUES (?, ?, ?, ?, ?, 'status_change', NULL, ?, ?, 'webapp', ?, ?)`
+    ).run(
+      newId(),
+      WORKSPACE.id,
+      projectId,
+      ticketId,
+      objectiveId,
+      `Objective ${reason}: cleared ${activeRequests.length} queued execution request(s) ` +
+        `and ended ${openSessions.length} active session(s).`,
+      JSON.stringify({
+        reason,
+        newState,
+        clearedRequests: activeRequests.length,
+        endedSessions: openSessions.length
+      }),
+      ACTOR_WORKSPACE_USER_ID,
+      now
+    );
+  }
+
+  return { clearedRequests: activeRequests.length, endedSessions: openSessions.length };
+}
 
 /**
  * Resolve the launch config for an objective + target + agent, most specific

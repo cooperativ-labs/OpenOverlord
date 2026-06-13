@@ -185,13 +185,21 @@ Overlord connects to harnesses (Claude Code, Codex, Cursor, …) through
 
 - Run `ovld setup <agent>` to install a connector bundle into a harness.
 - Run `ovld doctor` to verify what's installed and at what version.
-- The runner launches agents in your chosen terminal. Set `terminal_launcher`
-  in `overlord.toml` to match your terminal, e.g.:
+- The runner (and `ovld launch`) can open agents in a new terminal window. Set
+  `terminal_launcher` in `overlord.toml` to match your terminal. The built-in
+  macOS launchers `"iTerm2"` and `"Terminal"` open a fresh window in the project
+  directory; any other value is treated as a prefix command:
 
 ```toml
-terminal_launcher = "open -a Ghostty --args"
+terminal_launcher = "iTerm2"
+# terminal_launcher = "Terminal"
+# terminal_launcher = "open -a Ghostty --args"
 # terminal_launcher = "wezterm start"
 ```
+
+  Override per launch with `ovld launch <agent> --terminal "Terminal"`, or force
+  an inline (current-terminal) launch with `--no-terminal`. When
+  `terminal_launcher` is unset the agent runs inline in the current terminal.
 
 ### Q9 — Do you want the local SQL inspector?
 

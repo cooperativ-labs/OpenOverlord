@@ -17,6 +17,12 @@ export type OverlordConfig = {
   sqlStudioBinary: string;
   defaultAgent: string;
   defaultModel: string | null;
+  /**
+   * How `ovld launch` / the runner open the agent in a new terminal window.
+   * A built-in name (`iTerm2`, `Terminal`) or a raw prefix command
+   * (e.g. `open -a Ghostty --args`). `null` launches the agent inline.
+   */
+  terminalLauncher: string | null;
   /** Parsed from `[agent_catalog]`; merged over bundled defaults when seeding the workspace catalog. */
   agentCatalog: Record<string, CatalogAgent> | null;
 };
@@ -32,6 +38,7 @@ const DEFAULT_CONFIG: OverlordConfig = {
   sqlStudioBinary: 'sql-studio',
   defaultAgent: 'claude',
   defaultModel: null,
+  terminalLauncher: null,
   agentCatalog: null
 };
 
@@ -46,6 +53,7 @@ type TomlConfig = {
   sql_studio_binary?: string;
   default_agent?: string;
   default_model?: string;
+  terminal_launcher?: string;
   agent_catalog?: unknown;
 };
 
@@ -77,6 +85,7 @@ function configFromToml(toml: TomlConfig): OverlordConfig {
       : DEFAULT_CONFIG.sqlStudioBinary,
     defaultAgent: toml.default_agent ?? DEFAULT_CONFIG.defaultAgent,
     defaultModel: toml.default_model?.trim() ? toml.default_model : null,
+    terminalLauncher: toml.terminal_launcher?.trim() ? toml.terminal_launcher.trim() : null,
     agentCatalog: parseAgentCatalogFromToml(toml.agent_catalog)
   };
 }
@@ -135,6 +144,15 @@ sql_studio_port = ${merged.sqlStudioPort}
 sql_studio_binary = "${merged.sqlStudioBinary}"
 default_agent = "${merged.defaultAgent}"
 ${merged.defaultModel ? `default_model = "${merged.defaultModel}"` : '# default_model = ""'}
+${merged.terminalLauncher ? `terminal_launcher = "${merged.terminalLauncher}"\n` : ''}
+# Terminal launcher: open the launched agent in a new terminal window.
+# Built-in launchers (macOS): "iTerm2" and "Terminal" use AppleScript so the
+# agent opens in a fresh window in the project directory.
+# terminal_launcher = "iTerm2"
+# terminal_launcher = "Terminal"
+# Any other value is treated as a prefix command with the agent invocation appended:
+# terminal_launcher = "open -a Ghostty --args"
+# terminal_launcher = "wezterm start"
 
 # Optional workspace agent catalog (merged over bundled defaults on first seed / refresh).
 # [agent_catalog.claude]
@@ -146,10 +164,6 @@ ${merged.defaultModel ? `default_model = "${merged.defaultModel}"` : '# default_
 # id = "claude-sonnet-4-6"
 # display_name = "Sonnet 4.6"
 # reasoning_options = ["low", "medium", "high"]
-
-# Common terminal launchers (examples):
-# terminal_launcher = "open -a Ghostty --args"
-# terminal_launcher = "wezterm start"
 `;
 
   writeFileSync(targetPath, contents);

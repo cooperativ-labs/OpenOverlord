@@ -5,6 +5,7 @@ import path from 'node:path';
 import { loadTicketContext } from '../../src/service/protocol.js';
 
 import type { CliRuntime } from './runtime.js';
+import { type LaunchExecution, resolveLaunchExecution, tmpEnvFor } from './terminal-launcher.js';
 
 export type LaunchOptions = {
   agent: string;
@@ -14,6 +15,12 @@ export type LaunchOptions = {
   thinking?: string | null;
   flags?: string[];
   preCommand?: string | null;
+  /**
+   * Open the agent in a new terminal window. A built-in name (`iTerm2`,
+   * `Terminal`) or a raw prefix command (e.g. `open -a Ghostty --args`).
+   * When omitted/null the agent runs inline in the current terminal.
+   */
+  terminalLauncher?: string | null;
   dryRun?: boolean;
 };
 
@@ -23,11 +30,8 @@ type LaunchPlan = {
   prompt: string;
   contextFile: string;
   workingDirectory: string;
+  execution: LaunchExecution;
 };
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
 
 function buildAgentCommand({
   agent,
@@ -96,11 +100,20 @@ export function buildLaunchPlan({
     contextFile
   });
 
+  const execution = resolveLaunchExecution({
+    command: command.command,
+    args: command.args,
+    workingDirectory: options.workingDirectory,
+    preCommand: options.preCommand,
+    terminalLauncher: options.terminalLauncher
+  });
+
   return {
     ...command,
     prompt,
     contextFile,
-    workingDirectory: options.workingDirectory
+    workingDirectory: options.workingDirectory,
+    execution
   };
 }
 
@@ -118,24 +131,18 @@ export function launchAgent({
 
   const env = {
     ...process.env,
-    TMPDIR: path.join(options.workingDirectory, '.overlord', 'tmp'),
-    TMP: path.join(options.workingDirectory, '.overlord', 'tmp'),
-    TEMP: path.join(options.workingDirectory, '.overlord', 'tmp'),
-    OVERLORD_TMPDIR: path.join(options.workingDirectory, '.overlord', 'tmp')
+    ...tmpEnvFor(options.workingDirectory)
   };
 
-  const command = options.preCommand
-    ? `${options.preCommand} ${shellQuote(plan.command)} ${plan.args.map(shellQuote).join(' ')}`
-    : null;
-
-  const result = command
-    ? spawnSync(command, {
+  const { execution } = plan;
+  const result = execution.useShell
+    ? spawnSync(execution.command, {
         cwd: options.workingDirectory,
         env,
         shell: true,
         stdio: 'inherit'
       })
-    : spawnSync(plan.command, plan.args, {
+    : spawnSync(execution.command, execution.args, {
         cwd: options.workingDirectory,
         env,
         stdio: 'inherit'

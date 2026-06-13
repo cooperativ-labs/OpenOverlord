@@ -6,7 +6,7 @@ import test from 'node:test';
 
 import { parseAgentCatalogFromToml, resolveInstanceAgentCatalog } from '../src/agent-catalog.ts';
 import { BUNDLED_AGENT_CATALOG } from '../src/agent-catalog-defaults.ts';
-import { loadConfig } from '../src/config.ts';
+import { loadConfig, writeConfig } from '../src/config.ts';
 
 test('loadConfig parses scalar keys from overlord.toml', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
@@ -23,11 +23,13 @@ sql_studio_port = 3030
 sql_studio_binary = "/opt/sql-studio/bin/sql-studio"
 default_agent = "codex"
 default_model = "gpt-5"
+terminal_launcher = "iTerm2"
 `
   );
 
   const config = loadConfig(configPath);
   assert.equal(config.instanceName, 'Test Instance');
+  assert.equal(config.terminalLauncher, 'iTerm2');
   assert.equal(config.databasePath, 'db.sqlite');
   assert.equal(config.webHost, '0.0.0.0');
   assert.equal(config.webPort, 9999);
@@ -38,6 +40,18 @@ default_model = "gpt-5"
   assert.equal(config.defaultAgent, 'codex');
   assert.equal(config.defaultModel, 'gpt-5');
   assert.equal(config.agentCatalog, null);
+});
+
+test('writeConfig round-trips a set terminal_launcher and defaults to inline when unset', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
+
+  const withLauncher = path.join(dir, 'with.toml');
+  writeConfig({ targetPath: withLauncher, config: { terminalLauncher: 'Terminal' } });
+  assert.equal(loadConfig(withLauncher).terminalLauncher, 'Terminal');
+
+  const withoutLauncher = path.join(dir, 'without.toml');
+  writeConfig({ targetPath: withoutLauncher, config: { instanceName: 'Local Overlord' } });
+  assert.equal(loadConfig(withoutLauncher).terminalLauncher, null);
 });
 
 test('loadConfig parses agent_catalog tables', () => {
@@ -60,6 +74,7 @@ reasoning_options = ["low", "high"]
   );
 
   const config = loadConfig(configPath);
+  assert.equal(config.terminalLauncher, null);
   assert.ok(config.agentCatalog);
   assert.equal(config.agentCatalog?.claude.label, 'My Claude');
   assert.deepEqual(config.agentCatalog?.claude.models, [

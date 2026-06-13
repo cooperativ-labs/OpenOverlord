@@ -337,6 +337,7 @@ export function claimNextExecutionRequest({
     'er.workspace_id = ?',
     "er.status = 'queued'",
     'er.deleted_at IS NULL',
+    'o.deleted_at IS NULL',
     "o.state IN ('draft', 'submitted', 'launching')"
   ];
   const params: string[] = [ctx.workspace.id];

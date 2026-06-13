@@ -53,6 +53,7 @@ components:
       - "project linking and discovery from working directory"
       - "configuration file locations: overlord.toml, .overlord/project.json"
       - "optional SQL Studio settings: sql_studio_enabled, sql_studio_host, sql_studio_port, sql_studio_binary"
+      - "optional terminal_launcher for opening launched agents in a new terminal window"
       - "human-readable CLI output format conventions"
     dependsOn:
       - database

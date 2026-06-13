@@ -1,3 +1,4 @@
+import Database from 'better-sqlite3';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -59,6 +60,54 @@ test('ovld protocol attach returns attach-response-v1 JSON', async () => {
     assert.ok(field in payload, `missing ${field}`);
   }
   assert.match(attached.stderr, /SESSION_KEY=/);
+});
+
+test('ovld protocol attach stores external session id', async () => {
+  const env = tempDatabaseEnv();
+  const init = await runOvld({ args: ['init', '--json'], env });
+  assert.equal(init.exitCode, 0);
+
+  await runOvld({
+    args: ['create-project', '--name', 'External Session Project', '--json'],
+    env
+  });
+
+  const created = await runOvld({
+    args: ['create', '--objectives-json', '[{"objective":"E2E external session test"}]', '--json'],
+    env
+  });
+  assert.equal(created.exitCode, 0);
+  const createdJson = JSON.parse(created.stdout) as { ticket: { displayId: string; id: string } };
+
+  await runOvld({
+    args: ['protocol', 'discuss-objective', '--ticket-id', createdJson.ticket.displayId],
+    env
+  });
+
+  const attached = await runOvld({
+    args: [
+      'protocol',
+      'attach',
+      '--ticket-id',
+      createdJson.ticket.displayId,
+      '--agent',
+      'claude',
+      '--external-session-id',
+      'claude-e2e-session'
+    ],
+    env
+  });
+  assert.equal(attached.exitCode, 0, attached.stderr);
+
+  const dbPath = env.OVERLORD_SQLITE_PATH;
+  assert.ok(dbPath);
+  const db = new Database(dbPath);
+  const sessionRow = db
+    .prepare(`SELECT external_session_id FROM agent_sessions WHERE ticket_id = ?`)
+    .get(createdJson.ticket.id) as { external_session_id: string | null };
+  db.close();
+
+  assert.equal(sessionRow.external_session_id, 'claude-e2e-session');
 });
 
 test('ovld protocol update without session key exits non-zero', async () => {

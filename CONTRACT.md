@@ -80,7 +80,7 @@ Does NOT own:
 Owns:
 - Management command names and argument shapes
 - Project linking and discovery from working directory
-- Configuration file locations and formats (`overlord.toml`, `.overlord/project.json`), including web bind settings such as `web_host` and `web_port`, plus optional SQL Studio settings (`sql_studio_enabled`, `sql_studio_host`, `sql_studio_port`, `sql_studio_binary`)
+- Configuration file locations and formats (`overlord.toml`, `.overlord/project.json`), including web bind settings such as `web_host` and `web_port`, optional SQL Studio settings (`sql_studio_enabled`, `sql_studio_host`, `sql_studio_port`, `sql_studio_binary`), and the optional `terminal_launcher` used to open launched agents in a new terminal window
 - Human-readable CLI output format conventions
 
 Does NOT own:

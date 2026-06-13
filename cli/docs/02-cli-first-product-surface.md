@@ -57,6 +57,7 @@ Launch flags to preserve:
 - `--thinking <level>` where the target agent supports it
 - repeated `--flag <value>` passthrough
 - `--pre-command <wrapper>` for wrappers such as container or remote execution helpers
+- `--terminal <launcher>` to open the agent in a new terminal window (built-in `iTerm2`/`Terminal`, or a prefix command), overriding `terminal_launcher`; `--no-terminal` forces an inline launch
 - `--allow-uninstalled` for custom/experimental agents
 
 SSH flags can be deferred:

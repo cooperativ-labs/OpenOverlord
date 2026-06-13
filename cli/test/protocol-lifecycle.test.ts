@@ -37,6 +37,11 @@ test('protocol lifecycle: attach → update → deliver', () => {
   assert.equal(attached.objective.state, 'executing');
   assert.match(attached.promptContext, /Implement feature X/);
 
+  const sessionRow = ctx.db
+    .prepare(`SELECT external_session_id FROM agent_sessions WHERE id = ?`)
+    .get(attached.session.id) as { external_session_id: string | null };
+  assert.equal(sessionRow.external_session_id, null);
+
   updateSession({
     ctx,
     ticketId: ticket.displayId,
@@ -61,6 +66,47 @@ test('protocol lifecycle: attach → update → deliver', () => {
     .prepare(`SELECT state FROM objectives WHERE id = ?`)
     .get(objectives[0]?.id) as { state: string };
   assert.equal(objectiveRow.state, 'complete');
+
+  db.close();
+});
+
+test('attach records and clears native external session id', () => {
+  const db = new Database(':memory:');
+  db.pragma('foreign_keys = ON');
+  migrateDatabase(db);
+  const ctx = createServiceContext({ db, source: 'protocol' });
+
+  const project = createProject({ ctx, name: 'External Session Test' });
+  const { ticket, objectives } = createTicketWithObjectives({
+    ctx,
+    projectId: project.id,
+    objectives: [{ objective: 'Track native session id' }]
+  });
+  ctx.db.prepare(`UPDATE objectives SET state = 'submitted' WHERE id = ?`).run(objectives[0]?.id);
+
+  const attached = attachSession({
+    ctx,
+    ticketId: ticket.id,
+    agentIdentifier: 'claude',
+    externalSessionId: 'claude-native-123'
+  });
+
+  let sessionRow = ctx.db
+    .prepare(`SELECT external_session_id FROM agent_sessions WHERE id = ?`)
+    .get(attached.session.id) as { external_session_id: string | null };
+  assert.equal(sessionRow.external_session_id, 'claude-native-123');
+
+  attachSession({
+    ctx,
+    ticketId: ticket.id,
+    existingSessionKey: attached.sessionKey,
+    externalSessionId: null
+  });
+
+  sessionRow = ctx.db
+    .prepare(`SELECT external_session_id FROM agent_sessions WHERE id = ?`)
+    .get(attached.session.id) as { external_session_id: string | null };
+  assert.equal(sessionRow.external_session_id, null);
 
   db.close();
 });

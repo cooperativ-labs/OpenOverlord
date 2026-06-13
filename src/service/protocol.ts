@@ -205,7 +205,8 @@ export function attachSession({
   agentIdentifier = 'unknown',
   modelIdentifier,
   connectionMethod = 'cli',
-  existingSessionKey
+  existingSessionKey,
+  externalSessionId
 }: {
   ctx: ServiceContext;
   ticketId: string;
@@ -213,6 +214,7 @@ export function attachSession({
   modelIdentifier?: string | null;
   connectionMethod?: string;
   existingSessionKey?: string | null;
+  externalSessionId?: string | null;
 }): AttachResponse & { sessionKey: string } {
   const context = loadTicketContext({ ctx, ticketId });
   const objective = context.objective;
@@ -221,6 +223,14 @@ export function attachSession({
     const existing = getSessionByKey(ctx, existingSessionKey);
     if (existing.ticket_id !== context.ticket.id) {
       throw new ServiceError('Session key belongs to a different ticket', 'invalid_session', 401);
+    }
+    if (externalSessionId !== undefined) {
+      ctx.db
+        .prepare(
+          `UPDATE agent_sessions SET external_session_id = ?, updated_at = ?, revision = revision + 1
+           WHERE id = ?`
+        )
+        .run(externalSessionId, nowIso(), existing.id);
     }
     return {
       ...context,
@@ -296,9 +306,9 @@ export function attachSession({
         `INSERT INTO agent_sessions
            (id, workspace_id, project_id, ticket_id, objective_id,
             session_key_prefix, session_key_hash, agent_identifier, model_identifier,
-            connection_method, phase, delivery_state, started_at, last_heartbeat_at,
+            connection_method, external_session_id, phase, delivery_state, started_at, last_heartbeat_at,
             metadata_json, created_by_workspace_user_id, created_at, updated_at, revision)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'execute', 'not_delivered', ?, ?, '{}', ?, ?, ?, 1)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'execute', 'not_delivered', ?, ?, '{}', ?, ?, ?, 1)`
       )
       .run(
         sessionId,
@@ -311,6 +321,7 @@ export function attachSession({
         agentIdentifier,
         modelIdentifier ?? null,
         connectionMethod,
+        externalSessionId ?? null,
         now,
         now,
         ctx.actorWorkspaceUserId,
@@ -360,13 +371,21 @@ export function attachSession({
 export function connectSession({
   ctx,
   ticketId,
-  agentIdentifier = 'unknown'
+  agentIdentifier = 'unknown',
+  externalSessionId
 }: {
   ctx: ServiceContext;
   ticketId: string;
   agentIdentifier?: string;
+  externalSessionId?: string | null;
 }): { sessionKey: string; ticketId: string; objectiveId: string } {
-  const result = attachSession({ ctx, ticketId, agentIdentifier, connectionMethod: 'connect' });
+  const result = attachSession({
+    ctx,
+    ticketId,
+    agentIdentifier,
+    connectionMethod: 'connect',
+    externalSessionId
+  });
   return {
     sessionKey: result.sessionKey,
     ticketId: result.ticket.id,
@@ -521,7 +540,7 @@ export function updateSession({
         now
       );
 
-    if (externalSessionId) {
+    if (externalSessionId !== undefined) {
       ctx.db
         .prepare(
           `UPDATE agent_sessions SET external_session_id = ?, updated_at = ?, revision = revision + 1
@@ -943,13 +962,15 @@ export function protocolPrompt({
   projectId,
   objective,
   title,
-  agentIdentifier = 'unknown'
+  agentIdentifier = 'unknown',
+  externalSessionId
 }: {
   ctx: ServiceContext;
   projectId?: string | null;
   objective: string;
   title?: string | null;
   agentIdentifier?: string;
+  externalSessionId?: string | null;
 }): AttachResponse & { sessionKey: string } {
   const discovery = projectId
     ? { projectId: resolveProjectId(ctx, projectId) }
@@ -974,7 +995,8 @@ export function protocolPrompt({
     ctx,
     ticketId: created.ticket.id,
     agentIdentifier,
-    connectionMethod: 'prompt'
+    connectionMethod: 'prompt',
+    externalSessionId
   });
 }
 

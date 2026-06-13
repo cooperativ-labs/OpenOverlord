@@ -34,7 +34,7 @@ import type {
 
 import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';
-import { listTicketExecutionRequests } from './launch.ts';
+import { dequeueObjective, LAUNCHABLE_STATES, listTicketExecutionRequests } from './launch.ts';
 import {
   initialTitleFromInstruction,
   scheduleObjectiveTitleGeneration,
@@ -2026,6 +2026,24 @@ const updateObjectiveTx = db.transaction(
       changedFields: changed
     });
 
+    // When a user manually moves an objective out of the launch pipeline
+    // (completing it, or disconnecting it back to future/executing/pending),
+    // the runner must stop seeing it: clear queued work and end open sessions.
+    if (
+      body.state !== undefined &&
+      body.state !== existing.state &&
+      !LAUNCHABLE_STATES.includes(body.state)
+    ) {
+      dequeueObjective({
+        objectiveId: id,
+        projectId: existing.project_id,
+        ticketId: existing.ticket_id,
+        reason: body.state === 'complete' ? 'completed' : 'disconnected',
+        newState: body.state,
+        now
+      });
+    }
+
     const row = db.prepare(`SELECT * FROM objectives WHERE id = ?`).get(id) as ObjectiveRow;
     const objective = toObjectiveDto(row);
 
@@ -2072,6 +2090,18 @@ export const deleteObjective = db.transaction((id: string): void => {
     projectId: existing.project_id,
     ticketId: existing.ticket_id,
     objectiveId: id
+  });
+
+  // A deleted objective must also leave the runner queue: the runner's claim
+  // query joins objectives without filtering soft-deletes, so stale queued
+  // requests could otherwise still be claimed.
+  dequeueObjective({
+    objectiveId: id,
+    projectId: existing.project_id,
+    ticketId: existing.ticket_id,
+    reason: 'deleted',
+    newState: null,
+    now
   });
 });
 

@@ -10,6 +10,15 @@ sql_studio_binary = "sql-studio"
 default_agent = "claude"
 # default_model = ""
 
+# Terminal launcher: open the launched agent in a new terminal window.
+# Built-in launchers (macOS): "iTerm2" and "Terminal" use AppleScript so the
+# agent opens in a fresh window in the project directory.
+# terminal_launcher = "iTerm2"
+# terminal_launcher = "Terminal"
+# Any other value is treated as a prefix command with the agent invocation appended:
+# terminal_launcher = "open -a Ghostty --args"
+# terminal_launcher = "wezterm start"
+
 # Optional workspace agent catalog (merged over bundled defaults on first seed / refresh).
 # [agent_catalog.claude]
 # label = "Claude Code"
@@ -20,7 +29,3 @@ default_agent = "claude"
 # id = "claude-sonnet-4-6"
 # display_name = "Sonnet 4.6"
 # reasoning_options = ["low", "medium", "high"]
-
-# Common terminal launchers (examples):
-# terminal_launcher = "open -a Ghostty --args"
-# terminal_launcher = "wezterm start"
