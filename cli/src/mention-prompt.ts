@@ -4,11 +4,12 @@ import {
   type ActiveMention,
   findActiveMention,
   fuzzyMatchFiles,
-  getCollapsedFileMentionLabel,
   insertMention
 } from './mentions.js';
 
-const DIM = '\x1b[2m';
+const BOLD = '\x1b[1m';
+const CYAN = '\x1b[36m';
+const INPUT_BG = '\x1b[48;5;236m';
 const RESET = '\x1b[0m';
 const CLEAR_DOWN = '\x1b[0J';
 const MENU_LIMIT = 8;
@@ -20,6 +21,33 @@ export interface MentionPromptOptions {
   prompt: string;
   input?: NodeJS.ReadStream;
   output?: NodeJS.WriteStream;
+}
+
+export interface MentionPromptFrameOptions {
+  buffer: string;
+  matches: string[];
+  prompt: string;
+  selected: number;
+  columns?: number;
+}
+
+export function renderMentionPromptFrame({
+  buffer,
+  matches,
+  prompt,
+  selected,
+  columns = 0
+}: MentionPromptFrameOptions): string[] {
+  const lineText = `${prompt}${buffer}`;
+  const padding = columns > lineText.length ? ' '.repeat(columns - lineText.length) : '';
+  const rows = [`${INPUT_BG}${lineText}${padding}${RESET}`];
+
+  matches.forEach((filePath, index) => {
+    const styledLabel = index === selected ? `${CYAN}${BOLD}${filePath}${RESET}` : filePath;
+    rows.push(styledLabel);
+  });
+
+  return rows;
 }
 
 /**
@@ -53,19 +81,22 @@ export function promptWithMentions({
       const matches = menuDismissed ? [] : visibleMatches(mention);
       if (selected >= matches.length) selected = Math.max(0, matches.length - 1);
 
-      // Cursor sits at the end of the input line from the previous render.
-      output.write(`\r${CLEAR_DOWN}${prompt}${buffer}`);
-
-      matches.forEach((filePath, index) => {
-        const marker = index === selected ? '❯' : ' ';
-        const label = getCollapsedFileMentionLabel(filePath);
-        const detail = label === filePath ? '' : `  ${DIM}${filePath}${RESET}`;
-        output.write(`\n  ${marker} @${label}${detail}`);
+      const rows = renderMentionPromptFrame({
+        buffer,
+        matches,
+        prompt,
+        selected,
+        columns: output.columns
       });
+
+      // Cursor sits at the end of the input line from the previous render.
+      output.write(`\r${CLEAR_DOWN}${rows.join('\n')}`);
 
       // Park the cursor back at the end of the input line for the next render.
       if (matches.length > 0) {
         output.write(`\x1b[${matches.length}A\r\x1b[${prompt.length + buffer.length}C`);
+      } else {
+        output.write(`\r\x1b[${prompt.length + buffer.length}C`);
       }
       renderedMenuRows = matches.length;
     };
@@ -158,7 +189,16 @@ export function promptWithMentions({
       for (const char of chunk) onChar(char);
     };
 
-    output.write(`${prompt}`);
+    output.write(
+      renderMentionPromptFrame({
+        buffer,
+        matches: [],
+        prompt,
+        selected: 0,
+        columns: output.columns
+      })[0] ?? prompt
+    );
+    output.write(`\r\x1b[${prompt.length}C`);
     input.setRawMode(true);
     input.resume();
     input.setEncoding('utf8');

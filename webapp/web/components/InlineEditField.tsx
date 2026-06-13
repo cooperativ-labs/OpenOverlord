@@ -1,6 +1,10 @@
 import * as React from 'react';
 
-import { MentionableTextarea, type ProjectMentionOption } from '@/components/MentionableTextarea';
+import {
+  MentionableTextarea,
+  type ProjectMentionOption,
+  type TicketMentionOption
+} from '@/components/MentionableTextarea';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
@@ -19,6 +23,8 @@ export type InlineEditFieldProps = {
   mentionPaths?: string[];
   /** Projects offered for `#` mentions (multiline only). */
   projectMentionOptions?: ProjectMentionOption[];
+  /** Tickets offered for `$` mentions (multiline only). */
+  ticketMentionOptions?: TicketMentionOption[];
   /** Render the value as static, non-editable text. */
   disabled?: boolean;
   /** Accessible label for the editor. */
@@ -28,8 +34,9 @@ export type InlineEditFieldProps = {
 /**
  * Inline click-to-edit text. Displays a value that turns into an editor on
  * click: a single-line input, or — when `multiline` — a {@link MentionableTextarea}
- * with `@` file and `#` project mentions, markdown list continuation, and
- * Save/Cancel affordances. Commits on blur or ⌘/Ctrl+Enter; Escape cancels.
+ * with `@` file, `#` project, and `$` ticket mentions, markdown list
+ * continuation, and Save/Cancel affordances. Commits on blur or ⌘/Ctrl+Enter;
+ * Escape cancels.
  *
  * Extracted from the former `EditableText` in `ui.tsx` and modelled on the
  * inline-edit pattern shared across the objective and ticket surfaces.
@@ -43,6 +50,7 @@ export function InlineEditField({
   inputClassName,
   mentionPaths,
   projectMentionOptions,
+  ticketMentionOptions,
   disabled = false,
   ariaLabel
 }: InlineEditFieldProps) {
@@ -99,6 +107,7 @@ export function InlineEditField({
         onValueChange={setDraft}
         mentionPaths={mentionPaths}
         projectMentionOptions={projectMentionOptions}
+        ticketMentionOptions={ticketMentionOptions}
         autoListContinuation="enter"
         maxHeightPx={360}
         aria-label={ariaLabel}

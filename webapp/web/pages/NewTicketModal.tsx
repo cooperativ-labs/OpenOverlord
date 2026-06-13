@@ -54,7 +54,7 @@ export function NewTicketModal({
             rows={3}
             projectId={projectId}
             value={instruction}
-            placeholder="Describe the work to be executed… (type @ to mention a file)"
+            placeholder="Describe the work to be executed… (@ file, # project, $ ticket)"
             onValueChange={setInstruction}
             onKeyDown={e => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit();

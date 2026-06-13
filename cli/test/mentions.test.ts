@@ -40,6 +40,24 @@ test('fuzzyMatchFiles filters by substring and caps results', () => {
   assert.equal(fuzzyMatchFiles(files, 'b', 1).length, 1);
 });
 
+test('fuzzyMatchFiles ranks basename matches before path-only matches', () => {
+  const files = [
+    'connectors/agent-catalog.ts',
+    'cli/AGENTS.md',
+    'mcp/AGENTS.md',
+    'AGENTS.md',
+    'docs/agent-notes.md'
+  ];
+
+  assert.deepEqual(fuzzyMatchFiles(files, 'agent', 5), [
+    'AGENTS.md',
+    'cli/AGENTS.md',
+    'mcp/AGENTS.md',
+    'docs/agent-notes.md',
+    'connectors/agent-catalog.ts'
+  ]);
+});
+
 test('insertMention replaces the active token and adds a trailing space', () => {
   const mention = findActiveMention('look at @cli', 12);
   assert.ok(mention);

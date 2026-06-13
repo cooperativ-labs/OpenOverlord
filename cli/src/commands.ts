@@ -568,7 +568,7 @@ export async function runManagementCommand({
         if (!text) {
           text = await collectObjectiveText({
             resourcePath: discovery.resourcePath,
-            prompt: 'New ticket (type @ to mention a file): '
+            prompt: '› '
           });
         }
         if (!text)
@@ -590,7 +590,7 @@ export async function runManagementCommand({
           text =
             (await collectObjectiveText({
               resourcePath,
-              prompt: 'Prompt objective (type @ to mention a file): '
+              prompt: '› '
             })) ?? '';
         }
         if (!text) throw new CliError({ message: 'Missing objective prompt text' });

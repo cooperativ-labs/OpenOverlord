@@ -39,15 +39,44 @@ export function findActiveMention(text: string, cursor: number): ActiveMention |
   return { start: cursor - query.length - 1, query };
 }
 
-/** Files whose path contains `query` (case-insensitive), capped for display. */
+/** Files whose path contains `query` (case-insensitive), ranked and capped for display. */
 export function fuzzyMatchFiles(
   files: string[],
   query: string,
   limit = MAX_MENTION_RESULTS
 ): string[] {
   const needle = query.toLowerCase();
-  const matches = needle ? files.filter(file => file.toLowerCase().includes(needle)) : files;
-  return matches.slice(0, limit);
+  if (!needle) return files.slice(0, limit);
+
+  return files
+    .map((file, index) => ({
+      file,
+      index,
+      score: scoreFileMention(file, needle)
+    }))
+    .filter(
+      (candidate): candidate is { file: string; index: number; score: number } =>
+        candidate.score !== null
+    )
+    .sort((a, b) => {
+      if (a.score !== b.score) return a.score - b.score;
+      if (a.file.length !== b.file.length) return a.file.length - b.file.length;
+      return a.index - b.index;
+    })
+    .slice(0, limit)
+    .map(candidate => candidate.file);
+}
+
+function scoreFileMention(filePath: string, needle: string): number | null {
+  const haystack = filePath.toLowerCase();
+  const baseName = haystack.slice(haystack.lastIndexOf('/') + 1);
+  if (baseName === needle) return 0;
+  if (baseName.startsWith(needle)) return 1;
+  if (baseName.includes(needle)) return 2;
+  if (haystack.startsWith(needle)) return 3;
+  if (haystack.includes(`/${needle}`)) return 4;
+  if (haystack.includes(needle)) return 5;
+  return null;
 }
 
 /**

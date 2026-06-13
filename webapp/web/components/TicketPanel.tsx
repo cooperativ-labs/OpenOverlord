@@ -49,7 +49,7 @@ function AddObjective({ ticketId, projectId }: { ticketId: string; projectId: st
           rows={3}
           projectId={projectId}
           value={instruction}
-          placeholder="Describe what the agent should do… (type @ to mention a file)"
+          placeholder="Describe what the agent should do… (@ file, # project, $ ticket)"
           onValueChange={setInstruction}
         />
       </Field>
