@@ -256,7 +256,9 @@ REST changes (`webapp/server/index.ts`, `repository.ts`,
   branch-per-objective in the same directory would fight over HEAD. The
   runner already serializes launches per device (single claim loop), so this
   is acceptable for the local MVP; document it, and revisit with worktree
-  support (e.g. `git worktree add`) as a future enhancement.
+  support (e.g. `git worktree add`) as a future enhancement. The worktree
+  approach and where worktrees should be stored are designed in
+  [03 — Worktree Storage Layout](03-worktree-storage-layout.md).
 
 ## Contract Impact (CONTRACT.md)
 

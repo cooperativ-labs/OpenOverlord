@@ -1401,13 +1401,14 @@ Indexes:
 
 ### `search_documents`
 
-Portable search indexing table. Adapters can replace or augment this with SQLite FTS5 or Postgres `tsvector`.
+Portable search indexing table. Adapters can replace or augment this with SQLite FTS5 or Postgres `tsvector`. Every searchable document maps back to a ticket via `ticket_id`, so ticket search always returns tickets while ranking aggregates content across all source entity types.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `project_id` | Id | no | FK to `projects`. |
+| `ticket_id` | Id | yes | Owning ticket. For `entity_type = 'ticket'` this equals `entity_id`; for objectives and events it is the parent ticket so all documents aggregate per ticket. |
 | `entity_type` | text | yes | `ticket`, `objective`, `event`, etc. |
 | `entity_id` | Id | yes |  |
 | `title` | text | no |  |
@@ -1421,18 +1422,22 @@ Indexes:
 
 - Unique `(workspace_id, entity_type, entity_id)`.
 - `(workspace_id, project_id, entity_type)`.
+- `(ticket_id)` for per-ticket aggregation and cascade cleanup.
 - Adapter full-text index on `title` and `body_text`.
 
 Ticket search should support:
 
 - Exact lookup by `display_id`.
-- Ranked text search over title, display ID, and the first objective text.
+- Ranked text search over title, display ID, objective text, and ticket-event summaries.
 - Filters for workspace, project, status list, creator, and updated date range.
 - A bounded result limit suitable for protocol `search-tickets`.
 
-SQLite can implement this with FTS5 or the portable `search_documents` table. Postgres can optimize with `tsvector`, trigram indexes, and a stable search RPC, but those should remain adapter details.
+Ranking aggregates per-document relevance into one score per ticket. The reference implementation weights the title column above the body and weights source kinds by importance (ticket title > objective > event), so a query that hits a ticket's title outranks one that only appears in an event.
 
-Search services should remove or tombstone `search_documents` when the source entity is soft-deleted. `content_hash` and `source_revision` allow incremental reindexing instead of blind rebuilds.
+The index is maintained by adapter triggers, not application writes: insert/update/delete on `tickets`, `objectives`, and `ticket_events` keep `search_documents` (and the adapter full-text index) in sync, and a soft delete of a ticket removes every document for that ticket so deleted tickets never surface. `content_hash` and `source_revision` allow incremental reindexing instead of blind rebuilds.
+
+- **SQLite** implements the full-text index as an external-content FTS5 virtual table (`search_documents_fts`) over `search_documents`, with `ticket_id`/`entity_type` carried as `UNINDEXED` columns so a single `bm25()`-ranked query can return and weight tickets without a join back to the base table.
+- **Postgres** implements it as a generated `tsvector` column with a GIN index and `plpgsql` sync triggers; trigram indexes and a stable search RPC may be added as adapter details.
 
 ## Audit And Migrations
 

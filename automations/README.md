@@ -20,6 +20,7 @@ behavior.
 
 - [01 — Automations Overview](docs/01-automations-overview.md): automation model, Gemini setup, and extension guide
 - [02 — Branch Strategy Automation](docs/02-branch-strategy-automation.md): proposed plan for base-branch selection and branch-per-ticket/objective launch automation
+- [03 — Worktree Storage Layout](docs/03-worktree-storage-layout.md): where git worktrees should live (central `~/.ovld/worktrees`, outside the synced repo) and how worktrees fold into the branch-strategy plan
 - [Test Plan](docs/testing.md): unit coverage for title derivation, fallbacks, and registry behavior
 
 ## Code & Tests

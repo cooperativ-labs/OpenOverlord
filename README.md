@@ -21,8 +21,12 @@ The result is a Kanban-style workflow where humans plan and agents execute, with
 
 ## Getting Started
 
-This repo is a single [Yarn 4](https://yarnpkg.com) workspace (`cli` + `webapp`
-alongside the root). One install at the root bootstraps everything — there are
+New to Overlord? Follow the [Getting Started guide](docs/getting-started.md) —
+ten minutes from a fresh `ovld` install to your first delivered ticket.
+
+This repo is a single [Yarn 4](https://yarnpkg.com) workspace: the `auth`,
+`automations`, `database`, `cli`, and `webapp` packages alongside the root. One
+install at the root bootstraps everything — there are
 no per-package installs to remember. Yarn 4 is provided via `packageManager`;
 run `corepack enable` once if `yarn --version` does not report `4.x`.
 
@@ -36,7 +40,7 @@ Common tasks (every command is run from the repo root):
 
 | Command | What it does |
 | --- | --- |
-| `yarn build` | Build root, CLI, and webapp |
+| `yarn build` | Build all workspaces (database, auth, automations, root, CLI, webapp) |
 | `yarn test` / `yarn test:watch` | Run all tests / watch the root suite |
 | `yarn typecheck` | Typecheck all workspaces |
 | `yarn db:start` | Launch the local SQLite database |
@@ -48,6 +52,14 @@ To work inside a single package, use `yarn workspace <name> <script>`
 (e.g. `yarn workspace @overlord/webapp dev`). Because the tree is synced across
 macOS and Linux (Syncthing), re-run `yarn install` after switching machines so
 the native `better-sqlite3` addon is rebuilt for the current host.
+
+### Setting up a custom instance
+
+Forked Overlord and standing up your own instance? Start with
+[Setting Up a Custom Overlord Instance](docs/custom-instance-setup.md) — the
+ordered list of questions (which database, which schema groups, what goes in
+`overlord.toml`) to answer before you configure anything. It doubles as the
+interview script for an agent asked to set Overlord up for you.
 
 
 ## Surfaces and Interfaces
@@ -205,11 +217,11 @@ boundary.
 | --- | --- | --- |
 | [database/](database/README.md) | SQLite-default portable persistence + schema extension system (the `@overlord/database` workspace package — runtime in `database/src/`) | `database`, `extension` |
 | [cli/](cli/README.md) | The `ovld` command surface: management, agent protocol, and runner | `cli`, `protocol`, `runner` |
-| [auth/](auth/README.md) | Mix-and-match authentication (tokens) and RBAC authorization | `auth` |
+| [auth/](auth/README.md) | Mix-and-match authentication (tokens) and RBAC authorization (the `@overlord/auth` workspace package — runtime in `auth/src/`) | `auth` |
 | [webapp/](webapp/README.md) | Deferred web control center + REST/realtime API | `rest` |
 | [mcp/](mcp/README.md) | Planned MCP server surface (Phase 5, not yet implemented) | _(future)_ |
 | [connectors/](connectors/README.md) | Agent harness connectors: core, plugins, adapters, hooks | `connector` |
-| [automations/](automations/README.md) | Optional AI automations (Gemini summarization, objective titles) | `automations` |
+| [automations/](automations/README.md) | Optional AI automations (Gemini summarization, objective titles) (the `@overlord/automations` workspace package — runtime in `automations/src/`) | `automations` |
 | [contract/](contract/README.md) | The connecting spec — machine-readable counterparts to `CONTRACT.md` | _(spec)_ |
 
 > The contract defines eight fine-grained components; the six modules above are

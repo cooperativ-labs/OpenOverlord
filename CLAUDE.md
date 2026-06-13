@@ -2,3 +2,5 @@ Every module should adhere to the contract in CONTRACT.md. Before beginning work
 
 Always use '===' and instead of '=='  eqeqeq
 Always use '!==' and instead of '!='  eqeqeq
+
+Feature planning documents should be saved in the planning/feature-plans directory.

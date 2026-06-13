@@ -7,8 +7,9 @@ import {
 } from '@tanstack/react-router';
 
 import { AppSidebar } from './components/app-sidebar.tsx';
+import { NavHeader } from './components/nav-header.tsx';
 import { InitialSetupScreen } from './components/setup/InitialSetupScreen.tsx';
-import { SidebarInset, SidebarProvider, SidebarTrigger } from './components/ui/sidebar.tsx';
+import { SidebarInset, SidebarProvider } from './components/ui/sidebar.tsx';
 import { useMeta } from './lib/queries.ts';
 import { ProjectBoardShell } from './pages/ProjectBoardShell.tsx';
 import { ProjectsPage } from './pages/ProjectsPage.tsx';
@@ -27,10 +28,7 @@ function RootLayout() {
     <SidebarProvider className="h-dvh min-h-0 overflow-hidden">
       <AppSidebar />
       <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4 md:hidden">
-          <SidebarTrigger />
-          <span className="font-semibold">Overlord</span>
-        </header>
+        <NavHeader />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <Outlet />
         </div>

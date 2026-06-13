@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Open-source management and coordination layer for AI coding agents",
   "type": "module",
+  "private": true,
   "engines": {
     "node": ">=20"
   },

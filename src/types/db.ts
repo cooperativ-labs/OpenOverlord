@@ -397,6 +397,49 @@ export interface SchemaMigrations {
   version: string;
 }
 
+export interface SearchDocuments {
+  body_text: string;
+  content_hash: string | null;
+  entity_id: string;
+  entity_type: string;
+  id: string | null;
+  indexed_at: string;
+  metadata_json: Generated<string>;
+  project_id: string | null;
+  source_revision: number | null;
+  ticket_id: string;
+  title: string | null;
+  workspace_id: string;
+}
+
+export interface SearchDocumentsFts {
+  body_text: string | null;
+  entity_type: string | null;
+  ticket_id: string | null;
+  title: string | null;
+}
+
+export interface SearchDocumentsFtsConfig {
+  k: string;
+  v: string | null;
+}
+
+export interface SearchDocumentsFtsData {
+  block: Buffer | null;
+  id: Generated<number | null>;
+}
+
+export interface SearchDocumentsFtsDocsize {
+  id: Generated<number | null>;
+  sz: Buffer | null;
+}
+
+export interface SearchDocumentsFtsIdx {
+  pgno: string | null;
+  segid: string;
+  term: string;
+}
+
 export interface Session {
   createdAt: string;
   expiresAt: string;
@@ -655,6 +698,12 @@ export interface DB {
   projects: Projects;
   role_assignments: RoleAssignments;
   schema_migrations: SchemaMigrations;
+  search_documents: SearchDocuments;
+  search_documents_fts: SearchDocumentsFts;
+  search_documents_fts_config: SearchDocumentsFtsConfig;
+  search_documents_fts_data: SearchDocumentsFtsData;
+  search_documents_fts_docsize: SearchDocumentsFtsDocsize;
+  search_documents_fts_idx: SearchDocumentsFtsIdx;
   session: Session;
   shared_context_entries: SharedContextEntries;
   storage_buckets: StorageBuckets;

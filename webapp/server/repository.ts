@@ -907,6 +907,88 @@ export function listTickets(projectId: string): TicketDto[] {
   return rows.map(toTicketDto);
 }
 
+/**
+ * Turn free-form input into an FTS5 MATCH expression: lowercase alphanumeric
+ * runs become OR-combined prefix tokens. Lowercasing also neutralises FTS5's
+ * uppercase boolean keywords, and stripping to alphanumeric runs keeps the
+ * expression injection-safe. Returns null when there is nothing to match.
+ */
+function buildTicketSearchMatch(query: string): string | null {
+  const terms = query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  if (terms.length === 0) return null;
+  return terms.map(term => `${term}*`).join(' OR ');
+}
+
+/**
+ * Full-text ticket search ranked across ticket titles, objective text, and
+ * ticket-event summaries via the `search_documents` FTS index. Every matched
+ * document is scored (title column and ticket-kind weighted highest), then the
+ * scores are summed per ticket. Mirrors the CLI/protocol `searchTickets` service
+ * so both surfaces rank identically. An empty query lists recent tickets.
+ */
+export function searchTickets({
+  query,
+  projectId,
+  limit = 25
+}: {
+  query?: string | null;
+  projectId?: string | null;
+  limit?: number;
+}): TicketDto[] {
+  const match = query?.trim() ? buildTicketSearchMatch(query.trim()) : null;
+
+  if (!match) {
+    const sql = projectId
+      ? `${selectTicketsSql} AND t.project_id = @project_id ORDER BY t.updated_at DESC LIMIT @limit`
+      : `${selectTicketsSql} ORDER BY t.updated_at DESC LIMIT @limit`;
+    const rows = db
+      .prepare(sql)
+      .all({ workspace_id: WORKSPACE.id, project_id: projectId ?? null, limit }) as TicketRow[];
+    return rows.map(toTicketDto);
+  }
+
+  const projectFilter = projectId ? ' AND t.project_id = @project_id' : '';
+  const rows = db
+    .prepare(
+      `SELECT t.id, t.workspace_id, t.project_id, t.display_id, t.sequence_number, t.title,
+              t.status_id, t.status_type, t.board_position, t.priority,
+              t.assigned_workspace_user_id,
+              t.acceptance_criteria_text, t.available_tools_json,
+              t.created_at, t.updated_at, t.revision,
+              (SELECT COUNT(*) FROM objectives o
+                 WHERE o.ticket_id = t.id AND o.deleted_at IS NULL) AS objective_count,
+              (CASE search_documents_fts.entity_type
+                 WHEN 'ticket' THEN 3.0 WHEN 'objective' THEN 2.0 ELSE 1.0 END)
+                * (-bm25(search_documents_fts, 10.0, 1.0)) AS doc_score
+         FROM search_documents_fts
+         JOIN tickets t ON t.id = search_documents_fts.ticket_id
+           AND t.workspace_id = @workspace_id AND t.deleted_at IS NULL${projectFilter}
+        WHERE search_documents_fts MATCH @match`
+    )
+    .all({ workspace_id: WORKSPACE.id, project_id: projectId ?? null, match }) as Array<
+    TicketRow & { doc_score: number }
+  >;
+
+  // Aggregate per-document scores into one relevance per ticket, then rank.
+  const byTicket = new Map<string, { row: TicketRow; relevance: number }>();
+  for (const row of rows) {
+    const existing = byTicket.get(row.id);
+    if (existing) {
+      existing.relevance += row.doc_score;
+      continue;
+    }
+    byTicket.set(row.id, { row, relevance: row.doc_score });
+  }
+
+  return [...byTicket.values()]
+    .sort(
+      (left, right) =>
+        right.relevance - left.relevance || right.row.updated_at.localeCompare(left.row.updated_at)
+    )
+    .slice(0, limit)
+    .map(entry => toTicketDto(entry.row));
+}
+
 // New cards drop in at the top of their column. Gap-based: one step (100) above
 // the current minimum so no renumber is needed until the column is reordered.
 function topBoardPosition(projectId: string, statusId: string, excludeTicketId?: string): number {

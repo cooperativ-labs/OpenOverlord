@@ -155,6 +155,12 @@ export const api = {
   reorderBoardColumn: (projectId: string, body: ReorderBoardColumnBody) =>
     request<TicketDto[]>('PATCH', `/api/projects/${projectId}/board/reorder`, body),
 
+  searchTickets: (query: string, options: { projectId?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams({ q: query });
+    if (options.projectId) params.set('projectId', options.projectId);
+    if (options.limit !== undefined) params.set('limit', String(options.limit));
+    return request<{ tickets: TicketDto[] }>('GET', `/api/tickets/search?${params.toString()}`);
+  },
   getTicket: (id: string) => request<TicketDetailDto>('GET', `/api/tickets/${id}`),
   createTicket: (body: CreateTicketBody) => request<TicketDetailDto>('POST', '/api/tickets', body),
   updateTicket: (id: string, body: UpdateTicketBody) =>

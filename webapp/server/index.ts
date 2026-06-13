@@ -47,6 +47,7 @@ import {
   reorderFutureObjectives,
   reorderProjectStatuses,
   revokeUserToken,
+  searchTickets,
   updateObjective,
   updateProfile,
   updateProject,
@@ -391,6 +392,22 @@ app.patch(
 
 // ---- Tickets -------------------------------------------------------------
 
+app.get(
+  '/api/tickets/search',
+  handle(req => {
+    const query = typeof req.query.q === 'string' ? req.query.q : null;
+    const projectId =
+      typeof req.query.projectId === 'string' && req.query.projectId.trim()
+        ? req.query.projectId.trim()
+        : null;
+    const parsedLimit = Number.parseInt(
+      typeof req.query.limit === 'string' ? req.query.limit : '',
+      10
+    );
+    const limit = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
+    return { tickets: searchTickets({ query, projectId, limit }) };
+  })
+);
 app.post(
   '/api/tickets',
   handle(req => createTicket(req.body), { mutates: true })

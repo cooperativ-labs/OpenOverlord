@@ -499,6 +499,22 @@ export function listTickets({
   }));
 }
 
+/**
+ * Build an FTS5 MATCH expression from free-form user input.
+ *
+ * Each run of letters/digits becomes a lowercase prefix token (`term*`) so
+ * partial words match, and tokens are OR-combined for recall — a ticket surfaces
+ * when any of its indexed documents (title, objective, or event) contains any
+ * term, and ranking decides ordering. Lowercasing also neutralises the
+ * uppercase-only FTS5 boolean keywords (`AND`/`OR`/`NOT`), and stripping to
+ * alphanumeric runs keeps the expression injection-safe.
+ */
+function buildFtsMatch(query: string): string | null {
+  const terms = query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  if (terms.length === 0) return null;
+  return terms.map(term => `${term}*`).join(' OR ');
+}
+
 export function searchTickets({
   ctx,
   query,
@@ -512,12 +528,38 @@ export function searchTickets({
   projectId?: string | null;
   limit?: number;
 }): TicketSummary[] {
-  const params: Array<string | number> = [ctx.workspace.id];
+  const trimmed = query?.trim();
+  const match = trimmed ? buildFtsMatch(trimmed) : null;
+
+  // No usable search terms → fall back to a recency-ordered browse of the same
+  // filtered set rather than running an empty full-text query.
+  if (!match) {
+    return listTickets({
+      ctx,
+      projectId: projectId ?? null,
+      statusTypes: statusTypes ?? null,
+      limit
+    });
+  }
+
+  // Score every matching source document, then aggregate per ticket below.
+  // Per-document relevance weights the title column above the body (bm25 column
+  // weights) and the source kind by importance (ticket title > objective >
+  // event). bm25() returns smaller values for better matches, so we negate it to
+  // accumulate a higher-is-better score. The score is computed in a single
+  // full-text query without GROUP BY or a join back to `search_documents`,
+  // because either would move bm25() out of the context FTS5 allows it in.
+  const params: Array<string | number> = [ctx.workspace.id, match];
   let sql = `SELECT t.id, t.display_id, t.project_id, t.title, t.status_type, t.status_id,
                     t.priority, t.created_at, t.updated_at,
-                    (SELECT COUNT(*) FROM objectives o WHERE o.ticket_id = t.id AND o.deleted_at IS NULL) AS objective_count
-             FROM tickets t
-             WHERE t.workspace_id = ? AND t.deleted_at IS NULL`;
+                    (SELECT COUNT(*) FROM objectives o WHERE o.ticket_id = t.id AND o.deleted_at IS NULL) AS objective_count,
+                    (CASE search_documents_fts.entity_type
+                       WHEN 'ticket' THEN 3.0 WHEN 'objective' THEN 2.0 ELSE 1.0 END)
+                      * (-bm25(search_documents_fts, 10.0, 1.0)) AS doc_score
+             FROM search_documents_fts
+             JOIN tickets t ON t.id = search_documents_fts.ticket_id
+               AND t.workspace_id = ? AND t.deleted_at IS NULL
+             WHERE search_documents_fts MATCH ?`;
 
   if (projectId) {
     sql += ' AND t.project_id = ?';
@@ -530,20 +572,6 @@ export function searchTickets({
     params.push(...statusTypes);
   }
 
-  if (query?.trim()) {
-    const like = `%${query.trim()}%`;
-    sql += ` AND (t.title LIKE ? OR t.display_id LIKE ?
-              OR EXISTS (
-                SELECT 1 FROM objectives o
-                WHERE o.ticket_id = t.id AND o.deleted_at IS NULL
-                  AND (o.instruction_text LIKE ? OR o.title LIKE ?)
-              ))`;
-    params.push(like, like, like, like);
-  }
-
-  sql += ' ORDER BY t.updated_at DESC LIMIT ?';
-  params.push(limit);
-
   const rows = ctx.db.prepare(sql).all(...params) as Array<{
     id: string;
     display_id: string;
@@ -555,20 +583,42 @@ export function searchTickets({
     created_at: string;
     updated_at: string;
     objective_count: number;
+    doc_score: number;
   }>;
 
-  return rows.map(row => ({
-    id: row.id,
-    displayId: row.display_id,
-    projectId: row.project_id,
-    title: row.title,
-    statusType: row.status_type,
-    statusId: row.status_id,
-    priority: row.priority,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    objectiveCount: row.objective_count
-  }));
+  // Aggregate per-document scores into one relevance per ticket.
+  const byTicket = new Map<string, { ticket: TicketSummary; relevance: number }>();
+  for (const row of rows) {
+    const existing = byTicket.get(row.id);
+    if (existing) {
+      existing.relevance += row.doc_score;
+      continue;
+    }
+    byTicket.set(row.id, {
+      relevance: row.doc_score,
+      ticket: {
+        id: row.id,
+        displayId: row.display_id,
+        projectId: row.project_id,
+        title: row.title,
+        statusType: row.status_type,
+        statusId: row.status_id,
+        priority: row.priority,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        objectiveCount: row.objective_count
+      }
+    });
+  }
+
+  return [...byTicket.values()]
+    .sort(
+      (left, right) =>
+        right.relevance - left.relevance ||
+        right.ticket.updatedAt.localeCompare(left.ticket.updatedAt)
+    )
+    .slice(0, limit)
+    .map(entry => entry.ticket);
 }
 
 export function addObjectivesToTicket({

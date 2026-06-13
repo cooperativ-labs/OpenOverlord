@@ -149,9 +149,7 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[var(--color-surface-0)] pb-10">
         {/* Card section — primary work surface: objectives */}
         <section className="border-b border-[var(--color-border)] bg-[var(--color-surface-1)] py-5">
-          <div className="mb-3 px-5">
-
-          </div>
+          <div className="mb-3 px-5"></div>
           <div className="flex flex-col gap-3 px-5 pb-1">
             <TicketObjectivesSection ticket={ticket} />
             <AddObjective ticketId={ticket.id} projectId={ticket.projectId} />
