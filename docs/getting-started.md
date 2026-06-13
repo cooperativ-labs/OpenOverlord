@@ -185,6 +185,63 @@ where you can create, edit, and launch tickets without using the CLI.
 
 ---
 
+## Step 8 — Inspect the database with SQL Studio (optional)
+
+Overlord can launch [SQL Studio](https://github.com/frectonz/sql-studio), an
+external local database browser, alongside the web app so you can inspect your
+Overlord database directly. It is **off by default** — you opt in per instance.
+
+**1. Install the `sql-studio` binary.** It is a standalone tool, not bundled
+with Overlord. Install it via its release script or with Cargo, then confirm it
+is on your `PATH`:
+
+```bash
+# Release install script (see the project README for the latest command)
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/frectonz/sql-studio/releases/latest/download/sql-studio-installer.sh | sh
+
+# …or with Cargo
+cargo install sql-studio
+
+# Confirm it resolves
+sql-studio --version
+```
+
+**2. Enable it in `overlord.toml`.** Add (or flip) these keys next to your
+existing config:
+
+```toml
+sql_studio_enabled = true
+sql_studio_host     = "127.0.0.1"
+sql_studio_port     = 4311
+sql_studio_binary   = "sql-studio"   # name on PATH, or an absolute path
+```
+
+| Setting | `overlord.toml` key | Env override | Default |
+| --- | --- | --- | --- |
+| Enable SQL Studio | `sql_studio_enabled` | `OVERLORD_SQL_STUDIO_ENABLED` | `false` |
+| Bind host | `sql_studio_host` | `OVERLORD_SQL_STUDIO_HOST` | `127.0.0.1` |
+| Bind port | `sql_studio_port` | `OVERLORD_SQL_STUDIO_PORT` | `4311` |
+| Binary name or path | `sql_studio_binary` | `OVERLORD_SQL_STUDIO_BINARY` | `"sql-studio"` |
+
+**3. Activate it.** SQL Studio starts as part of the web app, so just (re)start
+the server:
+
+```bash
+ovld serve
+```
+
+On startup you'll see a `[sql-studio] launching http://127.0.0.1:4311` line, and
+the web app sidebar shows an **Open SQL Studio** button that opens the browser
+pointed at your Overlord SQLite database. If the binary can't be found, the
+server logs a warning and keeps running without it — fix the install or
+`sql_studio_binary` path and restart.
+
+> **Keep it local.** Leave SQL Studio disabled on shared or production
+> instances; it is meant for local inspection only.
+
+---
+
 ## What's next
 
 | Goal | Where to look |

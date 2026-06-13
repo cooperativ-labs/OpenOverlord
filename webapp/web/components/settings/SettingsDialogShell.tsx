@@ -65,7 +65,7 @@ export function SettingsDialogShell({
         <DialogDescription className="sr-only">{description}</DialogDescription>
 
         <div className="flex items-start">
-          <aside className="hidden w-52 shrink-0 border-r border-border bg-muted/30 md:flex md:flex-col">
+          <aside className="hidden w-52 shrink-0 border-r border-border bg-muted/30 md:flex md:flex-col h-full">
             <nav className="flex flex-col gap-4 p-3">
               {navGroups.map((group, index) => (
                 <div key={group.label ?? `group-${index}`} className="space-y-1">
