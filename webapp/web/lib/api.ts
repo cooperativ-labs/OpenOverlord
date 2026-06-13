@@ -129,6 +129,7 @@ export const api = {
   createProject: (body: CreateProjectBody) => request<ProjectDto>('POST', '/api/projects', body),
   updateProject: (id: string, body: UpdateProjectBody) =>
     request<ProjectDto>('PATCH', `/api/projects/${id}`, body),
+  deleteProject: (id: string) => request<{ ok: true }>('DELETE', `/api/projects/${id}`),
   listProjectStatuses: (id: string) =>
     request<ProjectStatusDto[]>('GET', `/api/projects/${id}/statuses`),
   createProjectStatus: (projectId: string, body: CreateProjectStatusBody) =>

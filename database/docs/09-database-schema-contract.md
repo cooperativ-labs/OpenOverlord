@@ -348,7 +348,7 @@ Absence of scope rows means "no token-level restriction" in v1.
 
 Indexes:
 
-- Unique `(workspace_id, slug)`.
+- Unique `(workspace_id, slug)` among active rows (`deleted_at IS NULL`). Soft-deleted projects release their slug for reuse.
 - `(workspace_id, status, updated_at)`.
 
 ### `project_statuses`

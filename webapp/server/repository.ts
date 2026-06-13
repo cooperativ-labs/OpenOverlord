@@ -880,6 +880,50 @@ export const updateProject = db.transaction((id: string, body: UpdateProjectBody
   return getProject(id);
 });
 
+export const deleteProject = db.transaction((id: string): void => {
+  const existing = db
+    .prepare(`SELECT id, revision FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`)
+    .get(id, WORKSPACE.id) as { id: string; revision: number } | undefined;
+  if (!existing) throw new ApiError(404, 'Project not found');
+
+  const now = nowIso();
+  const revision = existing.revision + 1;
+
+  // Cascade soft-delete to tickets and their objectives.
+  const ticketIds = (
+    db
+      .prepare(`SELECT id FROM tickets WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL`)
+      .all(id, WORKSPACE.id) as { id: string }[]
+  ).map(r => r.id);
+
+  for (const ticketId of ticketIds) {
+    db.prepare(
+      `UPDATE objectives SET deleted_at = @now, revision = revision + 1
+         WHERE ticket_id = @ticketId AND deleted_at IS NULL`
+    ).run({ ticketId, now });
+  }
+
+  if (ticketIds.length > 0) {
+    db.prepare(
+      `UPDATE tickets SET deleted_at = @now, revision = revision + 1
+         WHERE project_id = @id AND workspace_id = @workspace_id AND deleted_at IS NULL`
+    ).run({ id, workspace_id: WORKSPACE.id, now });
+  }
+
+  db.prepare(
+    `UPDATE projects SET deleted_at = @now, updated_at = @now, revision = @revision
+       WHERE id = @id AND workspace_id = @workspace_id`
+  ).run({ id, workspace_id: WORKSPACE.id, now, revision });
+
+  recordChange({
+    entityType: 'project',
+    entityId: id,
+    operation: 'delete',
+    entityRevision: revision,
+    projectId: id
+  });
+});
+
 // ---- Tickets -------------------------------------------------------------
 
 const selectTicketsSql = `

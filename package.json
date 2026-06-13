@@ -18,7 +18,6 @@
   "scripts": {
     "setup": "yarn install && yarn build && yarn db:start && yarn db:codegen",
     "install:all": "yarn install",
-    "reinstall": "rm -rf node_modules cli/node_modules webapp/node_modules && yarn install",
     "new": "rm -rf node_modules cli/node_modules webapp/node_modules && yarn install",
     "dev": "yarn dev:webapp",
     "dev:webapp": "yarn workspace @overlord/webapp dev",

@@ -19,7 +19,8 @@ import {
   createProject,
   discoverProject,
   listOrganizations,
-  listProjectResources
+  listProjectResources,
+  listProjects
 } from '../../src/service/projects.js';
 import {
   addObjectivesToTicket,
@@ -56,6 +57,7 @@ import { launchAgent } from './launch.js';
 import { promptWithMentions } from './mention-prompt.js';
 import { resolveNativeSessionId } from './native-session.js';
 import { printJson, printKeyValue } from './output.js';
+import { promptForProject } from './select-prompt.js';
 import { listMentionableFiles } from './repository-files.js';
 import type { CliRuntime } from './runtime.js';
 
@@ -563,20 +565,35 @@ export async function runManagementCommand({
         const directory = flagValue(parsed.flags, '--directory') ?? process.cwd();
         let projectId = flagValue(parsed.flags, '--project-id');
         if (!projectId) {
-          try {
-            projectId = discoverProject({ ctx }).projectId;
-          } catch {
-            const latest = ctx.db
-              .prepare(
-                `SELECT id FROM projects WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`
-              )
-              .get(ctx.workspace.id) as { id: string } | undefined;
-            if (!latest) {
+          if (process.stdin.isTTY) {
+            const projects = listProjects({ ctx });
+            if (projects.length === 0) {
               throw new CliError({
                 message: 'No project found. Create one with `ovld create-project`.'
               });
             }
-            projectId = latest.id;
+            const chosen = await promptForProject({ projects, directoryPath: directory });
+            if (!chosen) {
+              console.log('Cancelled. No changes made.');
+              return;
+            }
+            projectId = chosen.id;
+          } else {
+            try {
+              projectId = discoverProject({ ctx }).projectId;
+            } catch {
+              const latest = ctx.db
+                .prepare(
+                  `SELECT id FROM projects WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`
+                )
+                .get(ctx.workspace.id) as { id: string } | undefined;
+              if (!latest) {
+                throw new CliError({
+                  message: 'No project found. Create one with `ovld create-project`.'
+                });
+              }
+              projectId = latest.id;
+            }
           }
         }
         const resource = addProjectResource({

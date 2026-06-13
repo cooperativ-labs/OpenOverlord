@@ -23,7 +23,7 @@ Requirements:
 - `ovld config get/set/list`: inspect and update local configuration.
 - `ovld user-token create/list/rotate/revoke/rename`: manage user-owned non-interactive credentials once the `USER_TOKEN` module is enabled.
 - `ovld create-project --name "<name>" [--directory <path>|--no-directory]`: create a project and optionally register the current directory.
-- `ovld add-cwd [--directory <path>] [--project-id <id-or-name>] [--primary true|false]`: link a checkout to a project.
+- `ovld add-cwd [--directory <path>] [--project-id <id-or-name>] [--primary true|false]`: link a checkout to a project. When `--project-id` is omitted on an interactive terminal, lists your projects and prompts you to pick one; non-interactively it falls back to the discovered or most recent project.
 - `ovld protocol discover-project [--working-directory <path>] [--project-id <id-or-name>]`: resolve the project for a path or explicit project.
 
 ### Ticket Commands For Humans

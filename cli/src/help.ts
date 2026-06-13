@@ -18,6 +18,7 @@ Connectors:
 Projects:
   ${primaryCommand} create-project --name "<name>" [--directory <path>|--no-directory]
   ${primaryCommand} add-cwd [--directory <path>] [--project-id <id>] [--primary true|false]
+                                                 (prompts to pick a project when --project-id is omitted)
 
 Tickets:
   ${primaryCommand} create "<objective>" [--objectives-json '[...]'] [--json]

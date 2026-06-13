@@ -100,7 +100,8 @@ CREATE TABLE projects (
   revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)
 );
 
-CREATE UNIQUE INDEX idx_projects_workspace_slug ON projects (workspace_id, slug);
+CREATE UNIQUE INDEX idx_projects_workspace_slug ON projects (workspace_id, slug)
+  WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX idx_projects_workspace_id ON projects (workspace_id, id);
 CREATE INDEX idx_projects_workspace_status_updated ON projects (workspace_id, status, updated_at);
 

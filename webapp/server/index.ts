@@ -27,6 +27,7 @@ import {
   createTicket,
   createUserToken,
   deleteObjective,
+  deleteProject,
   deleteProjectStatus,
   deleteTicket,
   getProfile,
@@ -338,6 +339,10 @@ app.get(
 app.patch(
   '/api/projects/:id',
   handle(req => updateProject(req.params.id, req.body), { mutates: true })
+);
+app.delete(
+  '/api/projects/:id',
+  handle(req => deleteProject(req.params.id), { mutates: true })
 );
 app.get(
   '/api/projects/:id/statuses',

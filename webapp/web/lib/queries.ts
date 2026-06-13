@@ -237,6 +237,14 @@ export function useUpdateProject(id: string) {
   });
 }
 
+export function useDeleteProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteProject(id),
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
 export function useCreateProjectStatus(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
