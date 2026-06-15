@@ -98,6 +98,17 @@ extensionPoints:
       - "Must use the service layer for database access — no direct table writes"
       - "Must use Auth Layer for authentication and authorization"
 
+  customAutomation:
+    id: custom-automation
+    description: "Add downstream automations to a repo that tracks OpenOverlord upstream, without editing the built-in registry"
+    mechanism: "Module(s) named by OVERLORD_AUTOMATIONS_MODULE that call registerAutomation / registerAutomations at import time; loaded at server boot via loadExternalAutomations()"
+    ownedBy: automations
+    constraints:
+      - "Each automation id must be namespaced to the fork (e.g. acme:triage) to avoid colliding with built-ins"
+      - "Must not edit builtInAutomations in registry.ts — register only through the env-var seam"
+      - "Automations must not read or write domain tables directly — persistence goes through caller-supplied store interfaces"
+      - "Automations return null on provider unavailability or failure; callers supply deterministic fallbacks"
+
   openVocabularyValue:
     id: open-vocabulary-value
     description: "Add new values to open controlled vocabularies"

@@ -1,6 +1,6 @@
 # Overlord Component Interaction Contract
 
-Contract Version: `0.5-draft`
+Contract Version: `0.6-draft`
 
 ## Purpose
 
@@ -19,12 +19,14 @@ See `.claude/skills/component-contract.md` for the enforced agent workflow.
 
 ## Contract Version
 
-Current version: `0.5-draft`
+Current version: `0.7-draft`
 
 The contract version is incremented when any stable interface changes. All conformance manifests must declare the contract version they were validated against.
 
 | Version | Changes |
 | --- | --- |
+| `0.7-draft` | Adds the `custom-automation` extension point: downstream repos that track OpenOverlord upstream register their own automations via the `OVERLORD_AUTOMATIONS_MODULE` env var (loaded at server boot by `loadExternalAutomations()`), without editing the built-in automation registry. Additive; no schema or migration impact. |
+| `0.6-draft` | Moves the default SQLite database location from the repo (`database/.local/Overlord.sqlite`) to the per-user global directory (`~/.ovld/Overlord.sqlite`, overridable via `OVLD_HOME`); the `overlord.toml` `database_path` key overrides it per instance. Adds the admin `database_url` key for pointing Overlord at a hosted/cloud database, which feeds the shared `resolveAdapter()` selection point. |
 | `0.5-draft` | Removes the built-in read-only SQLite browser REST surface and replaces it with optional SQL Studio launch metadata configured by `overlord.toml`. |
 | `0.4-draft` | Renames application identity table `users` to `profiles`; profiles are created from Better Auth `user` rows with matching IDs; `workspace_users` now references `profile_id` and no longer stores a display-name override; `user_images` references profiles only. |
 | `0.3-draft` | Renames the AI Tools Layer (`ai-tools`) to the Automations Layer (`automations`); renames `serviceToAiTools` to `serviceToAutomations`; renames `AiTool` interface to `Automation`. |
@@ -80,7 +82,7 @@ Does NOT own:
 Owns:
 - Management command names and argument shapes
 - Project linking and discovery from working directory
-- Configuration file locations and formats (`overlord.toml`, `.overlord/project.json`), including web bind settings such as `web_host` and `web_port`, optional SQL Studio settings (`sql_studio_enabled`, `sql_studio_host`, `sql_studio_port`, `sql_studio_binary`), and the optional `terminal_launcher` used to open launched agents in a new terminal window
+- Configuration file locations and formats (`overlord.toml`, `.overlord/project.json`), including the database location settings (`database_path` developer override of the global `~/.ovld/Overlord.sqlite` default, and the admin `database_url` cloud/hosted-database connection string), web bind settings such as `web_host` and `web_port`, optional SQL Studio settings (`sql_studio_enabled`, `sql_studio_host`, `sql_studio_port`, `sql_studio_binary`), and the optional `terminal_launcher` used to open launched agents in a new terminal window
 - Human-readable CLI output format conventions
 
 Does NOT own:
@@ -160,6 +162,7 @@ Owns:
 - Provider configuration for optional Gemini-backed tools (`GEMINI_API_KEY`, model selection)
 - Reference summarization tools (text summarization, objective title generation)
 - Fire-and-forget automation helpers that callers invoke through injected persistence callbacks
+- Downstream automation loading via `OVERLORD_AUTOMATIONS_MODULE` (the `custom-automation` extension point)
 
 Does NOT own:
 - Database schema (→ Database Layer)
@@ -243,6 +246,7 @@ These are the **only sanctioned paths** between components. Bypassing these surf
 - **Configuration**: Environment variables documented in `.env.example` (`GEMINI_API_KEY`, optional model override)
 - **Rule**: Automations must not read or write domain tables directly; persistence goes through caller-supplied store interfaces (e.g. `ObjectiveTitleStore`)
 - **Fallback**: When a provider is unavailable or a call fails, automations return `null` and callers use deterministic local fallbacks
+- **Downstream extension**: Forks add automations via `OVERLORD_AUTOMATIONS_MODULE` (`custom-automation` extension point), registering through the module API — never by editing the built-in registry
 
 ### Extension → Core (Extension Surface)
 
@@ -284,6 +288,7 @@ The only sanctioned ways to extend Overlord:
 | --- | --- | --- |
 | Custom agent connector | New adapter + `conformance-manifest.yaml` | Connector Layer |
 | Custom harness | `user_harness_extensions` + workspace promotion | Extension System |
+| Custom automation | Module(s) via `OVERLORD_AUTOMATIONS_MODULE` calling `registerAutomation` | Automations Layer |
 | Database adapter | Implement full logical schema + pass conformance tests | Database Layer |
 | Database extension | `ext_<name>_` tables + `schema_migrations.component` | Database Layer |
 | Auth/RBAC provider | Auth Layer service boundary | Auth Layer |

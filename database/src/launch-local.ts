@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { CONTRACT_VERSION } from './constants.js';
-import { DEFAULT_DATABASE_PATH } from './local-paths.js';
+import { resolveGlobalDatabasePath } from './local-paths.js';
 
 const MIGRATION_FILE_PATTERN = /^\d+_[a-z0-9_]+\.sql$/;
 
@@ -28,9 +28,12 @@ const migrationsDir = path.resolve(
 
 function resolveDatabasePath(): string {
   const explicitPath = process.env.OVERLORD_SQLITE_PATH;
-  // The launcher is run from the repo root (`yarn db:start`), so the default
-  // relative path resolves against the working directory, not this package.
-  return path.resolve(process.cwd(), explicitPath ?? DEFAULT_DATABASE_PATH);
+  if (explicitPath) {
+    return path.isAbsolute(explicitPath) ? explicitPath : path.resolve(process.cwd(), explicitPath);
+  }
+  // Default to the per-user global database (`~/.ovld/Overlord.sqlite`) so the
+  // launcher targets the same database a globally installed `ovld` would use.
+  return resolveGlobalDatabasePath();
 }
 
 function checksum(sql: string): string {

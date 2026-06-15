@@ -91,6 +91,8 @@ const CURSOR_PROTOCOL_PERMISSION = 'Shell(ovld protocol:*)';
 const CODEX_PLUGIN_KEY = 'overlord@overlord-local';
 const CODEX_RULES_START = '# overlord:permissions:start';
 const CODEX_RULES_END = '# overlord:permissions:end';
+const CLAUDE_MARKETPLACE_NAME = 'overlord-local';
+const CLAUDE_PLUGIN_KEY = `overlord@${CLAUDE_MARKETPLACE_NAME}`;
 
 /**
  * Locate the connector adapter source tree. The connectors directory is not
@@ -535,6 +537,109 @@ function configureCodexHarness({
   return warnings;
 }
 
+/**
+ * Register the Overlord plugin with Claude Code. Unlike Cursor and Codex, Claude
+ * Code never auto-discovers a plugin merely dropped into `~/.claude/plugins`; it
+ * only loads plugins published through a registered marketplace. So we build a
+ * local marketplace whose single plugin entry points at the freshly-installed
+ * plugin tree (`installPath`), then drive the Claude CLI to add the marketplace
+ * and install + enable the plugin. The CLI writes the same files (`config dir`'s
+ * `known_marketplaces.json`, `installed_plugins.json`, and `enabledPlugins` in
+ * `settings.json`) it would on an interactive `/plugin install`, so the result
+ * is identical to a hand-installed plugin.
+ *
+ * `installPath` ends in `plugins/overlord`; its grandparent is the marketplace
+ * root that holds `.claude-plugin/marketplace.json`. The plugin `source` must be
+ * a path relative to that root — Claude rejects absolute sources.
+ */
+function configureClaudeHarness({
+  home,
+  installPath,
+  dryRun = false
+}: {
+  home: string;
+  installPath: string;
+  dryRun?: boolean;
+}): string[] {
+  const warnings: string[] = [];
+  const marketplaceRoot = path.dirname(path.dirname(installPath));
+  const marketplacePath = path.join(marketplaceRoot, '.claude-plugin', 'marketplace.json');
+  const relativeSource = `./${path.relative(marketplaceRoot, installPath).split(path.sep).join('/')}`;
+  const configDir = path.join(home, '.claude');
+
+  const marketplace = {
+    name: CLAUDE_MARKETPLACE_NAME,
+    owner: { name: 'Cooperativ' },
+    metadata: { description: 'Overlord local plugin marketplace.' },
+    plugins: [
+      {
+        name: 'overlord',
+        source: relativeSource,
+        description: 'Overlord ticket protocol workflow for Claude Code.'
+      }
+    ]
+  };
+
+  if (dryRun) {
+    warnings.push(`Would write Claude marketplace manifest at ${marketplacePath}.`);
+    warnings.push(
+      `Would run \`claude plugin marketplace add\` and \`claude plugin install ${CLAUDE_PLUGIN_KEY}\` ` +
+        `when the Claude CLI is available.`
+    );
+    return warnings;
+  }
+
+  mkdirSync(path.dirname(marketplacePath), { recursive: true });
+  writeFileSync(marketplacePath, `${JSON.stringify(marketplace, null, 2)}\n`);
+
+  const runClaude = (args: string[]): ReturnType<typeof spawnSync> =>
+    spawnSync('claude', args, {
+      encoding: 'utf8',
+      timeout: 60_000,
+      // Pin the CLI to the same home we installed into so the marketplace and
+      // plugin land in this home's config dir rather than the caller's real one.
+      env: { ...process.env, CLAUDE_CONFIG_DIR: configDir }
+    });
+
+  const add = runClaude(['plugin', 'marketplace', 'add', marketplaceRoot]);
+  if (add.error && (add.error as NodeJS.ErrnoException).code === 'ENOENT') {
+    warnings.push(
+      `Claude CLI not found on PATH — wrote the marketplace but could not install the plugin. ` +
+        `Run \`claude plugin marketplace add ${marketplaceRoot}\` then ` +
+        `\`claude plugin install ${CLAUDE_PLUGIN_KEY}\` once Claude Code is installed.`
+    );
+    return warnings;
+  }
+  // `marketplace add` fails when the marketplace already exists; refresh it from
+  // source instead so re-running `ovld setup claude` picks up plugin changes.
+  if (add.status !== 0) {
+    const output = `${add.stdout ?? ''}${add.stderr ?? ''}`;
+    if (/already|exists/i.test(output)) {
+      runClaude(['plugin', 'marketplace', 'update', CLAUDE_MARKETPLACE_NAME]);
+    } else {
+      warnings.push(
+        `Could not register the Claude marketplace. Re-run \`ovld setup claude\` to retry.`
+      );
+      return warnings;
+    }
+  }
+
+  const install = runClaude(['plugin', 'install', CLAUDE_PLUGIN_KEY, '--scope', 'user']);
+  if (install.status !== 0) {
+    const output = `${install.stdout ?? ''}${install.stderr ?? ''}`;
+    if (/already/i.test(output)) {
+      // Already installed — refresh the cached copy so file edits take effect.
+      runClaude(['plugin', 'update', CLAUDE_PLUGIN_KEY]);
+    } else {
+      warnings.push(
+        `Could not install the Claude plugin via the Claude CLI. Re-run \`ovld setup claude\` to retry.`
+      );
+    }
+  }
+
+  return warnings;
+}
+
 export function setupConnector({
   agentKey,
   home,
@@ -602,6 +707,10 @@ export function setupConnector({
 
   if (agentKey === 'codex') {
     warnings.push(...configureCodexHarness({ home: resolvedHome, installPath, dryRun }));
+  }
+
+  if (agentKey === 'claude') {
+    warnings.push(...configureClaudeHarness({ home: resolvedHome, installPath, dryRun }));
   }
 
   if (!dryRun) {

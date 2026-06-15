@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: "0.5-draft"
+contractVersion: "0.7-draft"
 
 components:
   protocol:
@@ -52,6 +52,7 @@ components:
       - "management command names and argument shapes"
       - "project linking and discovery from working directory"
       - "configuration file locations: overlord.toml, .overlord/project.json"
+      - "database location settings: database_path (developer override of the global ~/.ovld/Overlord.sqlite default), database_url (admin cloud/hosted-database connection string feeding resolveAdapter())"
       - "optional SQL Studio settings: sql_studio_enabled, sql_studio_host, sql_studio_port, sql_studio_binary"
       - "optional terminal_launcher for opening launched agents in a new terminal window"
       - "human-readable CLI output format conventions"
@@ -134,6 +135,7 @@ components:
       - "Gemini provider configuration and client lifecycle"
       - "reference summarization automations and objective title automation"
       - "fire-and-forget automation helpers with caller-supplied persistence callbacks"
+      - "downstream automation loading via OVERLORD_AUTOMATIONS_MODULE (custom-automation extension point)"
     dependsOn: []
     interactionSurfaces:
       - serviceToAutomations
@@ -245,6 +247,7 @@ interactionSurfaces:
       - "Provider secrets come from environment variables documented in .env.example"
       - "Automations return null on provider unavailability or failure; callers supply deterministic fallbacks"
       - "New built-in automations register through the automations registry, not ad hoc imports from other modules"
+      - "Downstream automations load via OVERLORD_AUTOMATIONS_MODULE (custom-automation extension point), not by editing the built-in registry"
 
   extensionToCore:
     description: "Extensions interact with core only through service APIs and change feed"

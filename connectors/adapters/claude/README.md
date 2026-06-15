@@ -32,13 +32,36 @@ The shared Connector Core source is outside this adapter at `connectors/core/ove
 - `TICKET_ID` is exported automatically when a Claude session is launched from Overlord; outside that launch, set it manually before calling the permission hook.
 
 
+## Install (recommended)
+
+```bash
+ovld setup claude
+```
+
+`ovld setup claude` materializes the plugin into a local marketplace under
+`~/.ovld/claude/marketplace` (the plugin tree lands in `plugins/overlord`, with a
+generated `.claude-plugin/marketplace.json` beside it), then drives the Claude
+CLI to register and enable it:
+
+```bash
+claude plugin marketplace add ~/.ovld/claude/marketplace
+claude plugin install overlord@overlord-local --scope user
+```
+
+Claude Code only loads plugins published through a registered marketplace — a
+plugin directory dropped into `~/.claude/plugins` is not discovered — so this
+marketplace registration is what makes the Claude desktop app and CLI pick up
+the connector. If the `claude` CLI is not on `PATH`, setup still writes the
+marketplace manifest and prints the two commands above to run once Claude Code
+is installed.
+
 ## Install (local dev)
 
 ```bash
 claude --plugin-dir /absolute/path/to/Overlord/connectors/adapters/claude
 ```
 
-## Install (marketplace)
+## Install (published marketplace)
 
 
 Once published:

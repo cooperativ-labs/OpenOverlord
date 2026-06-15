@@ -1,9 +1,14 @@
-import { migrateDatabase, openDatabase, type OverlordDatabase } from '@overlord/database';
+import {
+  fixupLocalStoragePaths,
+  migrateDatabase,
+  openDatabase,
+  type OverlordDatabase
+} from '@overlord/database';
 import { existsSync } from 'node:fs';
 
 import { createServiceContext, type ServiceContext } from '../../src/service/context.js';
 
-import { loadConfig, resolveDatabasePath } from './config.js';
+import { applyDatabaseEnv, loadConfig, resolveDatabasePath } from './config.js';
 import { CliError } from './errors.js';
 
 export type CliRuntime = {
@@ -14,6 +19,8 @@ export type CliRuntime = {
 
 export function openCliRuntime({ source }: { source: ServiceContext['source'] }): CliRuntime {
   const config = loadConfig();
+  // Coordinate auth + the shared adapter with any admin-configured cloud DB.
+  applyDatabaseEnv(config);
   const databasePath = resolveDatabasePath(config);
 
   if (!existsSync(databasePath)) {
@@ -26,6 +33,7 @@ export function openCliRuntime({ source }: { source: ServiceContext['source'] })
 
   const db = openDatabase({ databasePath });
   migrateDatabase(db);
+  fixupLocalStoragePaths(db, databasePath);
   const ctx = createServiceContext({ db, source });
 
   return {

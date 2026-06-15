@@ -143,6 +143,38 @@ test('codex setup merges marketplace, rules, and hook commands', () => {
   }
 });
 
+test('claude setup writes a local marketplace pointing at the installed plugin', () => {
+  const home = tempHome();
+  try {
+    const result = setupConnector({ agentKey: 'claude', home });
+    assert.ok(result.files.every(file => file.action === 'written'));
+
+    const marketplacePath = path.join(
+      home,
+      '.ovld',
+      'claude',
+      'marketplace',
+      '.claude-plugin',
+      'marketplace.json'
+    );
+    const marketplace = JSON.parse(readFileSync(marketplacePath, 'utf8'));
+    assert.equal(marketplace.name, 'overlord-local');
+    const plugin = marketplace.plugins.find((entry: { name: string }) => entry.name === 'overlord');
+    assert.ok(plugin, 'overlord plugin entry present');
+
+    // The plugin source must be relative to the marketplace root and resolve to
+    // the directory where the managed files were installed.
+    assert.ok(plugin.source.startsWith('./'), `relative source, got ${plugin.source}`);
+    const resolved = path.resolve(path.dirname(path.dirname(marketplacePath)), plugin.source);
+    assert.equal(resolved, result.installPath);
+    assert.ok(existsSync(path.join(resolved, '.claude-plugin', 'plugin.json')));
+
+    inspectAndAssertHealthy(home, 'claude');
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 function inspectAndAssertHealthy(home: string, agentKey = 'claude'): void {
   const report = inspectConnector({ agentKey, home });
   assert.ok(report.installed);

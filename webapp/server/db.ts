@@ -1,3 +1,4 @@
+import { fixupLocalStoragePaths } from '@overlord/database';
 import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
@@ -5,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  applyDatabaseEnv,
   loadConfig,
   resolveDatabasePath as resolveConfiguredDatabasePath
 } from '../../cli/src/config.ts';
@@ -18,7 +20,10 @@ export function resolveDatabasePath(): string {
   if (explicit) {
     return path.isAbsolute(explicit) ? explicit : path.resolve(repoRoot, explicit);
   }
-  return resolveConfiguredDatabasePath(loadConfig(path.join(repoRoot, 'overlord.toml')), repoRoot);
+  const config = loadConfig(path.join(repoRoot, 'overlord.toml'));
+  // Bridge any admin-configured cloud DB so auth and the shared adapter agree.
+  applyDatabaseEnv(config);
+  return resolveConfiguredDatabasePath(config, repoRoot);
 }
 
 const databasePath = resolveDatabasePath();
@@ -38,6 +43,8 @@ export const db = new Database(databasePath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 db.pragma('busy_timeout = 5000');
+
+fixupLocalStoragePaths(db, databasePath);
 
 export const DATABASE_PATH = databasePath;
 

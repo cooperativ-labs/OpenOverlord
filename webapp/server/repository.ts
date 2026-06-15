@@ -882,7 +882,9 @@ export const updateProject = db.transaction((id: string, body: UpdateProjectBody
 
 export const deleteProject = db.transaction((id: string): void => {
   const existing = db
-    .prepare(`SELECT id, revision FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`)
+    .prepare(
+      `SELECT id, revision FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
+    )
     .get(id, WORKSPACE.id) as { id: string; revision: number } | undefined;
   if (!existing) throw new ApiError(404, 'Project not found');
 
@@ -892,7 +894,9 @@ export const deleteProject = db.transaction((id: string): void => {
   // Cascade soft-delete to tickets and their objectives.
   const ticketIds = (
     db
-      .prepare(`SELECT id FROM tickets WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL`)
+      .prepare(
+        `SELECT id FROM tickets WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL`
+      )
       .all(id, WORKSPACE.id) as { id: string }[]
   ).map(r => r.id);
 

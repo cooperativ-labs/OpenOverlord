@@ -22,8 +22,8 @@ export function TicketCardBody({
   const tags = getTicketTags(ticket);
 
   return (
-    <CardContent className="flex h-full flex-col p-0 pt-3">
-      <div className="space-y-3 px-3">
+    <CardContent className="flex h-full flex-col p-0 ">
+      <div className="px-3">
         <div className="min-w-0">
           <h4 className="text-sm font-medium leading-snug text-foreground">{ticket.title}</h4>
 

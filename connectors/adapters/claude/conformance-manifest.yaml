@@ -19,7 +19,7 @@ connector:
     - UserPromptSubmit
     - PermissionRequest
     - Stop
-  installPath: "~/.claude/plugins/overlord"
+  installPath: "~/.ovld/claude/marketplace/plugins/overlord"
   managedFiles:
     - ".claude-plugin/plugin.json"
     - "README.md"

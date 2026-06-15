@@ -1,12 +1,17 @@
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
 import { parseAgentCatalogFromToml, resolveInstanceAgentCatalog } from '../src/agent-catalog.ts';
 import { BUNDLED_AGENT_CATALOG } from '../src/agent-catalog-defaults.ts';
-import { loadConfig, writeConfig } from '../src/config.ts';
+import {
+  loadConfig,
+  resolveDatabasePath,
+  resolveDatabaseTarget,
+  writeConfig
+} from '../src/config.ts';
 
 test('loadConfig parses scalar keys from overlord.toml', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
@@ -40,6 +45,71 @@ terminal_launcher = "iTerm2"
   assert.equal(config.defaultAgent, 'codex');
   assert.equal(config.defaultModel, 'gpt-5');
   assert.equal(config.agentCatalog, null);
+});
+
+test('defaults to the global database when database_path is unset', () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'overlord-home-'));
+  const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
+  const configPath = path.join(dir, 'overlord.toml');
+  writeFileSync(configPath, `instance_name = "Global"\n`);
+
+  const previousHome = process.env.OVLD_HOME;
+  const previousSqlite = process.env.OVERLORD_SQLITE_PATH;
+  process.env.OVLD_HOME = home;
+  delete process.env.OVERLORD_SQLITE_PATH;
+  try {
+    const config = loadConfig(configPath);
+    assert.equal(config.databasePath, null);
+    assert.equal(config.databaseUrl, null);
+    assert.equal(resolveDatabasePath(config, dir), path.join(home, 'Overlord.sqlite'));
+  } finally {
+    if (previousHome === undefined) delete process.env.OVLD_HOME;
+    else process.env.OVLD_HOME = previousHome;
+    if (previousSqlite === undefined) delete process.env.OVERLORD_SQLITE_PATH;
+    else process.env.OVERLORD_SQLITE_PATH = previousSqlite;
+  }
+});
+
+test('expands a leading ~ in database_path to the home directory', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
+  const configPath = path.join(dir, 'overlord.toml');
+  writeFileSync(configPath, `database_path = "~/.ovld/Overlord.sqlite"\n`);
+
+  const previousSqlite = process.env.OVERLORD_SQLITE_PATH;
+  delete process.env.OVERLORD_SQLITE_PATH;
+  try {
+    const config = loadConfig(configPath);
+    assert.equal(config.databasePath, '~/.ovld/Overlord.sqlite');
+    assert.equal(
+      resolveDatabasePath(config, dir),
+      path.join(homedir(), '.ovld', 'Overlord.sqlite')
+    );
+  } finally {
+    if (previousSqlite === undefined) delete process.env.OVERLORD_SQLITE_PATH;
+    else process.env.OVERLORD_SQLITE_PATH = previousSqlite;
+  }
+});
+
+test('database_url selects the cloud (postgres) adapter target', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
+  const configPath = path.join(dir, 'overlord.toml');
+  writeFileSync(configPath, `database_url = "postgres://user:pass@db.example.com:5432/overlord"\n`);
+
+  const previousUrl = process.env.DATABASE_URL;
+  delete process.env.DATABASE_URL;
+  try {
+    const config = loadConfig(configPath);
+    assert.equal(config.databaseUrl, 'postgres://user:pass@db.example.com:5432/overlord');
+    const target = resolveDatabaseTarget(config, dir);
+    assert.equal(target.type, 'postgres');
+    assert.equal(
+      target.type === 'postgres' ? target.connectionString : null,
+      'postgres://user:pass@db.example.com:5432/overlord'
+    );
+  } finally {
+    if (previousUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousUrl;
+  }
 });
 
 test('writeConfig round-trips a set terminal_launcher and defaults to inline when unset', () => {

@@ -1,3 +1,4 @@
+import { loadExternalAutomations } from '@overlord/automations';
 import cors from 'cors';
 import { config as loadEnv } from 'dotenv';
 import express, { type NextFunction, type Request, type Response } from 'express';
@@ -558,6 +559,13 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error('[webapp] request failed:', message);
   res.status(500).json({ error: 'Internal error', detail: message });
 });
+
+// Downstream forks inject their own automations via OVERLORD_AUTOMATIONS_MODULE
+// (custom-automation extension point); a no-op when the env var is unset.
+const externalAutomations = await loadExternalAutomations();
+if (externalAutomations.length > 0) {
+  console.log(`[webapp] loaded external automations: ${externalAutomations.join(', ')}`);
+}
 
 realtime.start();
 

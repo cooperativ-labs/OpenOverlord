@@ -9,6 +9,7 @@
  */
 export { type AdapterConfig, resolveAdapter } from './adapter.js';
 export {
+  fixupLocalStoragePaths,
   listSqliteMigrationFiles,
   migrateDatabase,
   openDatabase,
@@ -29,8 +30,11 @@ export {
   UPDATE_PHASES
 } from './constants.js';
 export {
-  DEFAULT_DATABASE_PATH,
+  GLOBAL_DATA_DIR_NAME,
+  GLOBAL_DATABASE_FILENAME,
   LOCAL_DATA_DIR,
   LOCAL_STORAGE_BUCKET_PATHS,
-  LOCAL_STORAGE_DIR
+  LOCAL_STORAGE_DIR,
+  resolveGlobalDatabasePath,
+  resolveGlobalDataDir
 } from './local-paths.js';

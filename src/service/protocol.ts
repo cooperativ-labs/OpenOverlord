@@ -384,7 +384,7 @@ export function connectSession({
     ticketId,
     agentIdentifier,
     connectionMethod: 'connect',
-    externalSessionId
+    externalSessionId: externalSessionId ?? null
   });
   return {
     sessionKey: result.sessionKey,
@@ -996,7 +996,7 @@ export function protocolPrompt({
     ticketId: created.ticket.id,
     agentIdentifier,
     connectionMethod: 'prompt',
-    externalSessionId
+    externalSessionId: externalSessionId ?? null
   });
 }
 

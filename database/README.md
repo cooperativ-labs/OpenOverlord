@@ -43,9 +43,12 @@ cross-folder relative imports:
 - `launch-local.ts` — the `yarn db:start` local launcher.
 - `constants.ts` — database-layer constants and controlled vocabularies
   (statuses, objective states, update phases/events, seed IDs, contract version).
-- `local-paths.ts` — canonical local-data paths (`database/.local/…`).
+- `local-paths.ts` — canonical local-data paths: the per-user global database
+  directory (`~/.ovld/`, overridable via `OVLD_HOME`) plus the repo-local
+  `database/.local/…` storage-bucket paths.
 - `adapter.ts` — `resolveAdapter()`, the single point that decides SQLite vs.
-  PostgreSQL from `DATABASE_URL` so auth and the service layer never disagree.
+  PostgreSQL from the `overlord.toml` `database_url` admin setting or the
+  `DATABASE_URL` environment variable so auth and the service layer never disagree.
 
 The CLI no longer hand-copies migrations: `@overlord/database` is bundled into
 the `overlord-cli` tarball at pack time, so there is a single source of truth for
@@ -86,7 +89,7 @@ Use the Node-based local launcher for the default SQLite development database:
 yarn start:local
 ```
 
-This creates `database/.local/Overlord.sqlite` (git-ignored runtime data), enables SQLite foreign keys, WAL mode,
+This creates the SQLite database at the per-user global path `~/.ovld/Overlord.sqlite` (override with `OVLD_HOME` or `OVERLORD_SQLITE_PATH`), enables SQLite foreign keys, WAL mode,
 and a short busy timeout for the launch connection, discovers
 `database/sqlite/migrations/*.sql`, applies any unapplied core SQLite migrations
 in lexical version order, and records each applied migration in

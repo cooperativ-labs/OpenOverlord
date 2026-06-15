@@ -7,8 +7,10 @@ import { resolveDefaultDatabasePath } from './connection.js';
  * path while `auth/src/auth/config.ts` independently sniffed `DATABASE_URL` to decide
  * between SQLite and PostgreSQL. That meant auth and the rest of the service
  * layer could disagree about which database is authoritative. `resolveAdapter()`
- * makes that decision once: a PostgreSQL connection string in `DATABASE_URL`
- * selects Postgres; otherwise we use local SQLite at the resolved path.
+ * makes that decision once: a PostgreSQL connection string (from the
+ * `overlord.toml` `database_url` admin setting, or the `DATABASE_URL`
+ * environment variable) selects Postgres; otherwise we use local SQLite at the
+ * resolved path.
  */
 export type AdapterConfig =
   | { type: 'sqlite'; path: string }
@@ -17,9 +19,11 @@ export type AdapterConfig =
 const POSTGRES_URL_PATTERN = /^postgres(ql)?:\/\//i;
 
 export function resolveAdapter(
-  options: { databasePath?: string; startDir?: string } = {}
+  options: { databasePath?: string; databaseUrl?: string; startDir?: string } = {}
 ): AdapterConfig {
-  const url = process.env.DATABASE_URL?.trim();
+  // An explicit `database_url` (admin-configured cloud location in
+  // `overlord.toml`) takes precedence over the ambient `DATABASE_URL`.
+  const url = options.databaseUrl?.trim() || process.env.DATABASE_URL?.trim();
   if (url && POSTGRES_URL_PATTERN.test(url)) {
     const schema = process.env.OVERLORD_PG_SCHEMA?.trim();
     return schema

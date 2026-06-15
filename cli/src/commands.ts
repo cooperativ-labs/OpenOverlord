@@ -57,9 +57,9 @@ import { launchAgent } from './launch.js';
 import { promptWithMentions } from './mention-prompt.js';
 import { resolveNativeSessionId } from './native-session.js';
 import { printJson, printKeyValue } from './output.js';
-import { promptForProject } from './select-prompt.js';
 import { listMentionableFiles } from './repository-files.js';
 import type { CliRuntime } from './runtime.js';
+import { promptForProject } from './select-prompt.js';
 
 function handleServiceError(error: unknown): never {
   if (error instanceof ServiceError) {
@@ -847,6 +847,11 @@ export async function runManagementCommand({
           flagValue(parsed.flags, '--poll-interval-ms') ?? '3000',
           10
         );
+        if (!json) {
+          console.log(
+            `Runner started. Polling every ${intervalMs}ms for execution requests. Sessions will appear below.`
+          );
+        }
         while (true) {
           await runOnce();
           await new Promise(resolve => setTimeout(resolve, intervalMs));
@@ -1029,13 +1034,14 @@ export async function runManagementCommand({
       }
       case 'config': {
         const sub = parsed.positional[0] ?? 'list';
-        const { findConfigPath } = await import('./config.js');
+        const { findConfigPath, resolveDatabasePath } = await import('./config.js');
         const config = loadConfig();
         if (sub === 'list') {
           if (json) printJson({ config, path: findConfigPath() });
           else {
             console.log(`instance_name=${config.instanceName}`);
-            console.log(`database_path=${config.databasePath}`);
+            console.log(`database_path=${resolveDatabasePath(config)}`);
+            console.log(`database_url=${config.databaseUrl ?? '(local sqlite)'}`);
             console.log(`web_host=${config.webHost}`);
             console.log(`web_port=${config.webPort}`);
             console.log(`default_agent=${config.defaultAgent}`);

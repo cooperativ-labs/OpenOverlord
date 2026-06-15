@@ -145,8 +145,8 @@ export function BlankTicketCard({
   );
 
   return (
-    <Card ref={cardRef} className="overflow-hidden rounded-md border-border/60 shadow-sm">
-      <CardContent className="p-2">
+    <Card ref={cardRef} className="overflow-hidden rounded-md border-border/60 shadow-sm py-0">
+      <CardContent className="p-2 ">
         <RepositoryMentionTextarea
           id={inputId}
           autoFocus

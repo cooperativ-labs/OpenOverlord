@@ -77,6 +77,7 @@ Environment variables (see [`.env.example`](../../.env.example)):
 | --- | --- | --- | --- |
 | `GEMINI_API_KEY` | No | — | Enables Gemini-backed automations when set |
 | `GEMINI_MODEL` | No | `gemini-2.5-flash-lite` | Model identifier for summarization calls |
+| `OVERLORD_AUTOMATIONS_MODULE` | No | — | Comma-separated downstream automation bundle(s) loaded at boot (see [Downstream Automations](#downstream-automations)) |
 
 ## Layout
 
@@ -91,3 +92,28 @@ persistence helpers. Shared module code (`types.ts`, `registry.ts`, `index.ts`) 
 2. Keep provider clients inside the automation folder (do not leak `@google/genai` into other modules).
 3. Document any new secrets in `.env.example`.
 4. Never import database adapters from automations — pass store interfaces from callers.
+
+## Downstream Automations
+
+The `custom-automation` extension point lets a repo that tracks OpenOverlord
+upstream register its own automations **without editing this module**, so those
+edits never collide with upstream changes on merge.
+
+- Build a small module that calls `registerAutomation` / `registerAutomations`
+  (re-exported from `@overlord/automations`) at import time.
+- Point `OVERLORD_AUTOMATIONS_MODULE` at it (comma-separated package names or
+  paths for more than one). The server imports each module for its side effects
+  at boot via `loadExternalAutomations()` and logs the ids it registered.
+
+```ts
+// @your-org/overlord-automations — loaded only when the env var points at it.
+import { registerAutomations } from '@overlord/automations';
+
+registerAutomations([
+  { id: 'acme:triage', label: 'Triage', description: '…', run: async () => null }
+]);
+```
+
+Do **not** add downstream automations to `builtInAutomations` in
+`registry.ts` — that array is upstream-owned and the env-var seam exists
+precisely to keep it conflict-free.

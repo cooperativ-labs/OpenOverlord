@@ -35,7 +35,9 @@ export type { RegisteredAutomation } from './registry.js';
 export {
   getAutomation,
   listAutomations,
+  loadExternalAutomations,
   registerAutomation,
+  registerAutomations,
   registerTypedAutomation
 } from './registry.js';
 export type {

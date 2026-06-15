@@ -115,7 +115,10 @@ Requirements:
 Requirements:
 
 - Located at the instance or project root, depending on final packaging.
-- Configure instance name, SQLite database location, web port, optional SQL Studio launch settings, default agent/model, terminal launch preferences, connector paths, and runner polling defaults.
+- Configure instance name, database location, web port, optional SQL Studio launch settings, default agent/model, terminal launch preferences, connector paths, and runner polling defaults.
+- Database location keys:
+  - `database_path` — developer override for the local SQLite file. Relative paths resolve against the `overlord.toml` directory; absolute paths are used as-is. When unset, the per-user global default `~/.ovld/Overlord.sqlite` is used (set `OVLD_HOME` to relocate the global directory; `OVERLORD_SQLITE_PATH` still overrides everything).
+  - `database_url` — admin setting for running Overlord against a hosted/cloud database (e.g. a PostgreSQL connection string). When set it feeds the shared `resolveAdapter()` selection point and is bridged to `DATABASE_URL` for the auth layer; equivalent to exporting `DATABASE_URL`.
 - Optional `[agent_catalog]` tables customize which agents and models are offered in the web UI (merged over bundled defaults on seed and catalog refresh).
 - Include commented examples for common terminals and agents.
 
@@ -127,12 +130,12 @@ Requirements:
 - Stores local project identifier, resource label, whether the directory is primary, and enough metadata for project discovery.
 - Should be tracked unless the user chooses otherwise.
 
-### `database/.local/`
+### `~/.ovld/` (global database) and `database/.local/`
 
 Requirements:
 
-- Git-ignored runtime data for the local SQLite database (`Overlord.sqlite`) and `local_fs` object storage buckets.
-- Default `database_path` in `overlord.toml`; override per instance when needed.
+- The local SQLite database (`Overlord.sqlite`) defaults to the per-user global directory `~/.ovld/` so a single global install is shared across every project directory. Override the directory with `OVLD_HOME`, or the full path with `database_path` / `OVERLORD_SQLITE_PATH`.
+- `database/.local/` remains git-ignored runtime data for `local_fs` object storage buckets (and the SQLite database when `database_path` points back into the repo).
 
 ### `.overlord/tmp/` And `.overlord/logs/`
 

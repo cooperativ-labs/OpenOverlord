@@ -3,6 +3,7 @@ import type { MouseEvent, PointerEvent } from 'react';
 
 import { DeleteTicketButton } from '@/components/DeleteTicketButton';
 import { Button } from '@/components/ui/button';
+import { CardFooter } from '@/components/ui/card';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -81,8 +82,9 @@ export function TicketCardHoverFooter({
   };
 
   return (
-    <div
+    <CardFooter
       className={cn(
+        'p-0',
         'grid grid-rows-[0fr] opacity-0 transition-all duration-150 ease-out',
         'group-hover:grid-rows-[1fr] group-hover:opacity-100',
         'focus-within:grid-rows-[1fr] focus-within:opacity-100'
@@ -109,6 +111,6 @@ export function TicketCardHoverFooter({
           </div>
         </div>
       </div>
-    </div>
+    </CardFooter>
   );
 }

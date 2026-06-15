@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { CONTRACT_VERSION } from './constants.js';
-import { DEFAULT_DATABASE_PATH } from './local-paths.js';
+import { resolveGlobalDatabasePath } from './local-paths.js';
 
 const MIGRATION_FILE_PATTERN = /^\d+_[a-z0-9_]+\.sql$/;
 
@@ -117,5 +117,35 @@ export function resolveDefaultDatabasePath(startDir = process.cwd()): string {
   if (explicit) {
     return path.isAbsolute(explicit) ? explicit : path.resolve(startDir, explicit);
   }
-  return path.resolve(startDir, DEFAULT_DATABASE_PATH);
+  return resolveGlobalDatabasePath();
+}
+
+/**
+ * Convert any relative `local_path` values in `storage_buckets` to absolute
+ * paths derived from the database file's directory. This makes local storage
+ * follow the database regardless of where it lives — when `database_path` in
+ * `overlord.toml` points to `~/.ovld/Overlord.sqlite`, storage lands at
+ * `~/.ovld/storage/<bucket_key>` instead of resolving relative to the repo.
+ *
+ * Idempotent: rows with an already-absolute `local_path` are skipped.
+ */
+export function fixupLocalStoragePaths(db: OverlordDatabase, databasePath: string): void {
+  const storageDir = path.join(path.dirname(path.resolve(databasePath)), 'storage');
+
+  const buckets = db
+    .prepare(
+      `SELECT id, bucket_key, local_path FROM storage_buckets
+       WHERE storage_backend = 'local_fs' AND deleted_at IS NULL`
+    )
+    .all() as Array<{ id: string; bucket_key: string; local_path: string | null }>;
+
+  const update = db.prepare(
+    `UPDATE storage_buckets SET local_path = ?, updated_at = ? WHERE id = ?`
+  );
+
+  const now = new Date().toISOString();
+  for (const bucket of buckets) {
+    if (!bucket.local_path || path.isAbsolute(bucket.local_path)) continue;
+    update.run(path.join(storageDir, bucket.bucket_key), now, bucket.id);
+  }
 }
