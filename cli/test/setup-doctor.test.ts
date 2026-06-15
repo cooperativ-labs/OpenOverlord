@@ -97,6 +97,7 @@ test('cursor setup merges hooks and permission rules', () => {
   const home = tempHome();
   try {
     const result = setupConnector({ agentKey: 'cursor', home });
+    assert.equal(result.binaryName, 'agent');
     assert.ok(result.files.every(file => file.action === 'written'));
 
     const hooks = JSON.parse(readFileSync(path.join(home, '.cursor', 'hooks.json'), 'utf8'));

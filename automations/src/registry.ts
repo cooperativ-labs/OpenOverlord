@@ -64,6 +64,9 @@ export function registerAutomations(automations: ReadonlyArray<RegisteredAutomat
 }
 
 const loadedModuleSpecs = new Set<string>();
+const importExternalAutomationModule = new Function('specifier', 'return import(specifier);') as (
+  specifier: string
+) => Promise<unknown>;
 
 /**
  * Downstream extension seam (`custom-automation` extension point). Imports the
@@ -96,7 +99,7 @@ export async function loadExternalAutomations(
     loadedModuleSpecs.add(spec);
 
     const before = new Set(automationsById.keys());
-    await import(spec);
+    await importExternalAutomationModule(spec);
     for (const id of automationsById.keys()) {
       if (!before.has(id)) newlyRegistered.push(id);
     }

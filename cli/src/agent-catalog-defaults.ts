@@ -57,7 +57,10 @@ export const BUNDLED_AGENT_CATALOG: Record<string, CatalogAgent> = {
   cursor: {
     label: 'Cursor',
     availableByDefault: true,
-    models: [{ id: 'auto', displayName: 'Auto', reasoningOptions: [] }],
+    models: [
+      { id: 'auto', displayName: 'Auto', reasoningOptions: [] },
+      { id: 'composer-2.5', displayName: 'Composer 2.5', reasoningOptions: [] }
+    ],
     defaultModel: 'auto',
     defaultReasoningEffort: null,
     reasoningLabel: 'Thinking'

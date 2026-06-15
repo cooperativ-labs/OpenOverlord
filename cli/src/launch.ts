@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import { loadTicketContext } from '../../src/service/protocol.js';
 
+import { resolveAgentBinary } from './agent-binaries.js';
 import type { CliRuntime } from './runtime.js';
 import { type LaunchExecution, resolveLaunchExecution, tmpEnvFor } from './terminal-launcher.js';
 
@@ -67,7 +68,7 @@ function buildAgentCommand({
   const args = [];
   if (model) args.push('--model', model);
   args.push(...flags, prompt);
-  return { command: agent, args };
+  return { command: resolveAgentBinary(agent), args };
 }
 
 export function buildLaunchPlan({

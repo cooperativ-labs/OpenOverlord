@@ -25,12 +25,12 @@ test('ovld protocol attach returns attach-response-v1 JSON', async () => {
 
   const created = await runOvld({
     args: [
+      'protocol',
       'create',
       '--project-id',
       projectJson.project.id,
-      '--objectives-json',
-      '[{"objective":"E2E attach test"}]',
-      '--json'
+      '--objective',
+      'E2E attach test'
     ],
     env
   });
@@ -82,12 +82,12 @@ test('ovld protocol attach stores external session id', async () => {
 
   const created = await runOvld({
     args: [
+      'protocol',
       'create',
       '--project-id',
       projectJson.project.id,
-      '--objectives-json',
-      '[{"objective":"E2E external session test"}]',
-      '--json'
+      '--objective',
+      'E2E external session test'
     ],
     env
   });
@@ -149,7 +149,14 @@ test('shell-special summary via --summary-file - round-trips', async () => {
   assert.equal(project.exitCode, 0, project.stderr);
   const projectJson = JSON.parse(project.stdout) as { project: { id: string } };
   const created = await runOvld({
-    args: ['create', 'Test `backticks` and $vars', '--project-id', projectJson.project.id, '--json'],
+    args: [
+      'protocol',
+      'create',
+      '--project-id',
+      projectJson.project.id,
+      '--objective',
+      'Test `backticks` and $vars'
+    ],
     env
   });
   assert.equal(created.exitCode, 0);
@@ -196,7 +203,14 @@ test('post-delivery hook-event records discussion and resume-follow-up reopens w
   assert.equal(project.exitCode, 0, project.stderr);
   const projectJson = JSON.parse(project.stdout) as { project: { id: string } };
   const created = await runOvld({
-    args: ['create', 'Initial follow-up target', '--project-id', projectJson.project.id, '--json'],
+    args: [
+      'protocol',
+      'create',
+      '--project-id',
+      projectJson.project.id,
+      '--objective',
+      'Initial follow-up target'
+    ],
     env
   });
   assert.equal(created.exitCode, 0, created.stderr);

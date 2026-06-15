@@ -14,6 +14,7 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 
+import { resolveAgentBinary } from './agent-binaries.js';
 import { resolveRepoPath } from './config.js';
 import { CliError } from './errors.js';
 
@@ -77,13 +78,6 @@ export type ConnectorReport = {
   binaryFound: boolean;
   staleContractVersion: boolean;
   problems: string[];
-};
-
-/** Native agent binary names by connector key, for PATH detection. */
-const AGENT_BINARIES: Record<string, string> = {
-  claude: 'claude',
-  codex: 'codex',
-  cursor: 'agent'
 };
 
 const CURSOR_HOOK_COMMAND = 'plugins/local/overlord/hooks/overlord-user-prompt-submit.sh';
@@ -692,7 +686,7 @@ export function setupConnector({
     }
   }
 
-  const binaryName = AGENT_BINARIES[agentKey] ?? manifest.connector.agentIdentifier;
+  const binaryName = resolveAgentBinary(agentKey);
   const binaryFound = findOnPath(binaryName);
   if (!binaryFound) {
     warnings.push(
@@ -782,7 +776,7 @@ export function inspectConnector({
 }): ConnectorReport {
   const resolvedHome = resolveHome(home);
   const manifest = readConnectorManifest(agentKey);
-  const binaryName = AGENT_BINARIES[agentKey] ?? manifest.connector.agentIdentifier;
+  const binaryName = resolveAgentBinary(agentKey);
   const binaryFound = findOnPath(binaryName);
   const state = readInstallState(agentKey, resolvedHome);
 
