@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: "0.7-draft"
+contractVersion: "0.8-draft"
 
 components:
   protocol:
@@ -203,6 +203,7 @@ interactionSurfaces:
       - "Hook scripts must not write to the database directly"
       - "Hook scripts must use ovld protocol hook-event or update"
       - "Hooks may not add new event types without contract update"
+      - "UserPromptSubmit follow-up capture records user_follow_up activity without requiring a live session and without reopening execution"
 
   runnerToDatabase:
     description: "Runner claims execution requests atomically; appends events in same transaction"

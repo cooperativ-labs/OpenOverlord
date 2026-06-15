@@ -25,6 +25,7 @@ When working inside an Overlord source checkout, read and follow that core befor
 - Submit a draft objective for discussion: `/discuss-objective` or `ovld protocol discuss-objective --ticket-id <ticket_id>`
 - Connect this session: `/connect` or `ovld protocol connect --ticket-id <ticket_id>`
 - Attach for execution: `/attach` or `ovld protocol attach --ticket-id <ticket_id>`
+- Resume delivered work for follow-up execution: `ovld protocol resume-follow-up --ticket-id <ticket_id>`
 - Add ordered follow-up objectives: `/add-objectives` or `ovld protocol add-objectives --ticket-id <ticket_id> --objectives-json '[{"objective":"..."}]'`
 
 ## Shared Lifecycle
@@ -35,7 +36,7 @@ Follow the shared Connector Core lifecycle rules in the bundled reference files:
 2. Post updates while working with `ovld protocol update` or liveness with `ovld protocol heartbeat`.
 3. Ask blocking questions with `ovld protocol ask` and stop work.
 4. Deliver with `ovld protocol deliver` when work is complete, including `changeRationales` for meaningful file changes.
-5. Do not continue implementation after delivery without `--begin-follow-up-work`.
+5. Do not continue implementation after delivery without `ovld protocol resume-follow-up` or `--begin-follow-up-work` on a still-live session.
 
 For full command syntax, flags, phase values, and event types see [reference/cli.md](reference/cli.md).
 

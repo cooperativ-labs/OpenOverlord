@@ -19,12 +19,13 @@ See `.claude/skills/component-contract.md` for the enforced agent workflow.
 
 ## Contract Version
 
-Current version: `0.7-draft`
+Current version: `0.8-draft`
 
 The contract version is incremented when any stable interface changes. All conformance manifests must declare the contract version they were validated against.
 
 | Version | Changes |
 | --- | --- |
+| `0.8-draft` | Adds post-delivery follow-up recovery: `UserPromptSubmit` hook events may record `user_follow_up` activity without a live session, and explicit protocol follow-up resume reopens a completed objective as `pending_delivery` with a new session for changed-file tracking and redelivery. |
 | `0.7-draft` | Adds the `custom-automation` extension point: downstream repos that track OpenOverlord upstream register their own automations via the `OVERLORD_AUTOMATIONS_MODULE` env var (loaded at server boot by `loadExternalAutomations()`), without editing the built-in automation registry. Additive; no schema or migration impact. |
 | `0.6-draft` | Moves the default SQLite database location from the repo (`database/.local/Overlord.sqlite`) to the per-user global directory (`~/.ovld/Overlord.sqlite`, overridable via `OVLD_HOME`); the `overlord.toml` `database_path` key overrides it per instance. Adds the admin `database_url` key for pointing Overlord at a hosted/cloud database, which feeds the shared `resolveAdapter()` selection point. |
 | `0.5-draft` | Removes the built-in read-only SQLite browser REST surface and replaces it with optional SQL Studio launch metadata configured by `overlord.toml`. |
@@ -218,6 +219,7 @@ These are the **only sanctioned paths** between components. Bypassing these surf
 - **Hooks**: `UserPromptSubmit`, `PermissionRequest`, `Stop` (future)
 - **Transport**: Shell scripts invoking `ovld protocol hook-event` or `update`
 - **Rule**: Hook scripts must not write to the database directly; use protocol commands only
+- **Follow-up capture**: `UserPromptSubmit` records `user_follow_up` activity even when the original delivery ended the session; it must not reopen implementation work by itself
 
 ### Runner → Database (Queue Surface)
 
@@ -325,6 +327,11 @@ See [`contract/extension-points.yaml`](contract/extension-points.yaml) for machi
 - Connector/agent identifiers
 
 Full value lists live in the database schema contract "Controlled Vocabularies" section.
+
+Post-delivery follow-up execution reuses existing vocabulary values: discussion-only
+follow-ups append `ticket_events.type = user_follow_up` while the objective remains
+`complete`; explicit resume transitions the objective to `pending_delivery` and
+creates a new session with `agent_sessions.delivery_state = pending_redelivery`.
 
 ---
 

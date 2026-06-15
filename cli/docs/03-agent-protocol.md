@@ -49,7 +49,8 @@ Requirements:
 - `heartbeat`: update liveness and transient telemetry without creating a ticket event.
 - `ask`: post a blocking question and stop work.
 - `deliver`: finish work, store artifacts/rationales, mark objective complete, and move ticket to review.
-- `hook-event`: record connector lifecycle events such as `UserPromptSubmit` and future `Stop`.
+- `hook-event`: record connector lifecycle events such as `UserPromptSubmit` and future `Stop`. `UserPromptSubmit` records follow-up user activity without requiring a live session and without reopening execution.
+- `resume-follow-up`: explicitly reopen a completed objective for post-delivery implementation follow-up, returning a new session key.
 - `permission-request`: record that an agent asked for tool permission.
 
 ### Shared Context And Attachments
@@ -145,6 +146,19 @@ The assembled prompt context should include:
 - `track-changed-files`
 - `changed-files-json` or `changed-files-file`
 - `change-rationales-json` or `change-rationales-file`
+
+Post-delivery discussion vs execution:
+
+- Connector `UserPromptSubmit` hooks should call `hook-event` for ordinary user
+  follow-up messages. This appends `user_follow_up` activity and does not change
+  objective state.
+- When the user explicitly asks for more implementation after delivery, agents
+  should call `resume-follow-up` to create a new live session and transition the
+  completed objective to `pending_delivery`.
+- A bare `attach` must not silently reopen a completed objective.
+- `resume-follow-up` reuses the existing completed objective rather than adding
+  a new objective when the user is asking for a correction or update to the
+  delivered work.
 
 Changed-file tracking requirements:
 
