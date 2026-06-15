@@ -16,7 +16,16 @@ export default [
       'coverage/**',
       'src/types/db.ts',
       '**/*.d.ts',
-      '**/*.js'
+      '**/*.js',
+      // Desktop: bundled server, staged SPA/CLI, migrations (see desktop/.gitignore)
+      'desktop/dist-electron/**',
+      'desktop/server/**',
+      'desktop/sqlite/**',
+      'desktop/staging/**',
+      'desktop/webapp-dist/**',
+      'desktop/release/**',
+      // Webapp: esbuild server bundle consumed by desktop packaging
+      'webapp/dist-server/**'
     ]
   },
   js.configs.recommended,
@@ -52,7 +61,8 @@ export default [
           'automations/tsconfig.json',
           'database/tsconfig.json',
           'webapp/tsconfig.json',
-          'cli/tsconfig.json'
+          'cli/tsconfig.json',
+          'desktop/tsconfig.json'
         ],
         ecmaVersion: 2022,
         sourceType: 'module',

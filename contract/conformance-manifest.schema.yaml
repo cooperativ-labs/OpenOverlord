@@ -41,6 +41,7 @@ properties:
       - database-adapter
       - auth-provider
       - rest-module
+      - desktop-shell
     description: "The kind of component being shipped"
 
   componentKey:
@@ -208,6 +209,30 @@ properties:
       usesServiceLayer:
         type: boolean
         description: "Declares that this module uses the service layer for database access (no direct table writes)"
+
+  # ── Desktop shell-specific fields ─────────────────────────────────────────────
+
+  desktopShell:
+    type: object
+    description: "Required when componentType is 'desktop-shell'"
+    additionalProperties: false
+    properties:
+      wrapsModule:
+        type: string
+        description: "The component whose web surface this shell wraps (e.g. webapp/rest)"
+      supervisedProcesses:
+        type: array
+        description: "CLI/server processes this shell launches and supervises"
+        items:
+          type: string
+      bridgeNamespace:
+        type: string
+        description: "The contextBridge global exposed to the renderer (e.g. window.overlord)"
+      packagingTargets:
+        type: array
+        description: "Distribution artifacts this shell can produce (e.g. dmg, zip, AppImage, deb)"
+        items:
+          type: string
 
   # ── Shared: vocabulary extensions ────────────────────────────────────────────
 

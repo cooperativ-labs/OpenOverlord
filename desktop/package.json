@@ -1,0 +1,32 @@
+{
+  "name": "@overlord/desktop",
+  "version": "0.2606151622.0",
+  "private": true,
+  "author": "Cooperativ Labs",
+  "description": "Optional Electron desktop shell that wraps the OpenOverlord web control center (the @overlord/webapp SPA + REST/realtime server).",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dev": "node esbuild.mjs && OVERLORD_DESKTOP_DEV=1 electron .",
+    "start": "node esbuild.mjs && electron .",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "@google/genai": "^2.8.0",
+    "better-sqlite3": "^12.10.1",
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "@electron/notarize": "^2.5.0",
+    "@types/node": "^22.10.0",
+    "electron": "^42.4.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.7.2"
+  },
+  "license": "MIT"
+}

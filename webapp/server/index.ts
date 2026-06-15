@@ -79,8 +79,15 @@ import {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..', '..');
-const distDir = path.resolve(here, '..', 'dist');
+// The built SPA. Defaults to `webapp/dist` next to this module (repo + server
+// bundle layouts both resolve correctly); the packaged desktop overrides it with
+// OVERLORD_WEBAPP_DIST so the embedded server serves the bundled static assets.
+const distDir = process.env.OVERLORD_WEBAPP_DIST
+  ? path.resolve(process.env.OVERLORD_WEBAPP_DIST)
+  : path.resolve(here, '..', 'dist');
 
+// Load repo `.env` when present (dev). Harmless no-op in packaged mode where no
+// repo `.env` exists; secrets there come from the process environment.
 loadEnv({ path: path.join(repoRoot, '.env') });
 
 const config = loadConfig();
@@ -560,29 +567,37 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ error: 'Internal error', detail: message });
 });
 
-// Downstream forks inject their own automations via OVERLORD_AUTOMATIONS_MODULE
-// (custom-automation extension point); a no-op when the env var is unset.
-const externalAutomations = await loadExternalAutomations();
-if (externalAutomations.length > 0) {
-  console.log(`[webapp] loaded external automations: ${externalAutomations.join(', ')}`);
+// Boot the server. Wrapped in an async function (rather than a top-level await)
+// so the server bundle can be emitted as CommonJS — top-level await is ESM-only,
+// and a CJS bundle lets the many CommonJS dependencies (dotenv, express, the
+// google-auth chain, …) use native `require` instead of esbuild's ESM shim.
+async function start(): Promise<void> {
+  // Downstream forks inject their own automations via OVERLORD_AUTOMATIONS_MODULE
+  // (custom-automation extension point); a no-op when the env var is unset.
+  const externalAutomations = await loadExternalAutomations();
+  if (externalAutomations.length > 0) {
+    console.log(`[webapp] loaded external automations: ${externalAutomations.join(', ')}`);
+  }
+
+  realtime.start();
+
+  const server = app.listen(bindPort, bindHost, () => {
+    console.log(
+      `[webapp] Overlord web server listening on http://${bindHost === '0.0.0.0' ? '127.0.0.1' : bindHost}:${bindPort}`
+    );
+    console.log(`[webapp] workspace: ${WORKSPACE.name} (${WORKSPACE.slug})`);
+    console.log(`[webapp] database: ${DATABASE_PATH}`);
+  });
+
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(
+        `[webapp] port ${bindPort} is already in use. Stop the other process (yarn stop) or change web_port in overlord.toml.`
+      );
+      process.exit(1);
+    }
+    throw error;
+  });
 }
 
-realtime.start();
-
-const server = app.listen(bindPort, bindHost, () => {
-  console.log(
-    `[webapp] Overlord web server listening on http://${bindHost === '0.0.0.0' ? '127.0.0.1' : bindHost}:${bindPort}`
-  );
-  console.log(`[webapp] workspace: ${WORKSPACE.name} (${WORKSPACE.slug})`);
-  console.log(`[webapp] database: ${DATABASE_PATH}`);
-});
-
-server.on('error', (error: NodeJS.ErrnoException) => {
-  if (error.code === 'EADDRINUSE') {
-    console.error(
-      `[webapp] port ${bindPort} is already in use. Stop the other process (yarn stop) or change web_port in overlord.toml.`
-    );
-    process.exit(1);
-  }
-  throw error;
-});
+void start();

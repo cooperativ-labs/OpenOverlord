@@ -281,7 +281,9 @@ test('post-delivery hook-event records discussion and resume-follow-up reopens w
     .prepare(`SELECT state FROM objectives WHERE id = ?`)
     .get(objectiveId) as { state: string };
   const eventRow = db
-    .prepare(`SELECT type, summary FROM ticket_events WHERE objective_id = ? ORDER BY created_at DESC LIMIT 1`)
+    .prepare(
+      `SELECT type, summary FROM ticket_events WHERE objective_id = ? ORDER BY created_at DESC LIMIT 1`
+    )
     .get(objectiveId) as { type: string; summary: string };
   assert.equal(discussionState.state, 'complete');
   assert.equal(eventRow.type, 'user_follow_up');
@@ -351,9 +353,9 @@ test('post-delivery hook-event records discussion and resume-follow-up reopens w
   });
   assert.equal(redelivered.exitCode, 0, redelivered.stderr);
 
-  const finalState = db
-    .prepare(`SELECT state FROM objectives WHERE id = ?`)
-    .get(objectiveId) as { state: string };
+  const finalState = db.prepare(`SELECT state FROM objectives WHERE id = ?`).get(objectiveId) as {
+    state: string;
+  };
   const deliveryCount = db
     .prepare(`SELECT COUNT(*) AS count FROM deliveries WHERE objective_id = ?`)
     .get(objectiveId) as { count: number };

@@ -1,6 +1,6 @@
 {
   "name": "overlord",
-  "version": "0.1.0",
+  "version": "0.2606151622.0",
   "description": "Open-source management and coordination layer for AI coding agents",
   "type": "module",
   "private": true,
@@ -13,12 +13,13 @@
     "automations",
     "database",
     "cli",
-    "webapp"
+    "webapp",
+    "desktop"
   ],
   "scripts": {
     "setup": "yarn install && yarn build && yarn db:start && yarn db:codegen && yarn install",
     "install:all": "yarn install",
-    "new": "rm -rf node_modules cli/node_modules webapp/node_modules && yarn install",
+    "new": "rm -rf node_modules cli/node_modules webapp/node_modules rm -rf dist webapp/dist webapp/dist-server desktop/dist-electron && yarn install",
     "dev": "yarn dev:webapp",
     "dev:webapp": "yarn workspace @overlord/webapp dev",
     "dev:server": "yarn workspace @overlord/webapp dev:server",
@@ -35,6 +36,11 @@
     "build:webapp": "yarn workspace @overlord/webapp build",
     "pack:cli": "yarn build:db && yarn build:cli && sh -c 'cd cli && npm pack'",
     "load:cli": "yarn pack:cli && yarn workspace overlord-cli link",
+    "build:server": "yarn workspace @overlord/webapp build:server",
+    "desktop:build": "yarn build:webapp && yarn build:server && yarn workspace @overlord/desktop build",
+    "desktop:dev": "yarn workspace @overlord/desktop dev",
+    "desktop:typecheck": "yarn workspace @overlord/desktop typecheck",
+    "desktop:package": "tsx scripts/build-desktop.ts",
     "typecheck": "yarn build:db && yarn build:auth && yarn build:automations && yarn typecheck:root && yarn typecheck:cli && yarn typecheck:webapp",
     "typecheck:auth": "yarn workspace @overlord/auth typecheck",
     "typecheck:automations": "yarn workspace @overlord/automations typecheck",
@@ -60,7 +66,8 @@
     "start:local": "yarn db:start",
     "clean": "yarn db:clean",
     "clean:local": "yarn db:clean",
-    "generate": "yarn db:codegen"
+    "generate": "yarn db:codegen",
+    "version:update:minor": "node scripts/version-update.mjs"
   },
   "dependencies": {
     "@overlord/auth": "workspace:*",

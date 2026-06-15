@@ -13,6 +13,7 @@ Requirements:
 - `ovld help`: print top-level command help.
 - `ovld version`: print CLI and local runtime version.
 - `ovld doctor`: validate configuration, database accessibility, connector installs, supported agent binaries, project metadata, and common permission/path problems.
+- `ovld serve [--host <h>] [--port <p>] [--db <path>] [--json]`: boot the web/REST server (the control center and its API). This is the single "start a fully-initialized local instance" entrypoint shared by the repo, hosted (Postgres) deployments, and the desktop bundle: it resolves the database location, **creates and migrates it on first run** (seeding the first workspace) so a clean machine comes up with no prior `yarn start:local`, then starts the server. Host/port default to `overlord.toml` (`web_host`/`web_port`); `--db` (or `OVERLORD_SQLITE_PATH`) overrides the database location. It resolves the server entry in order: `OVERLORD_SERVER_ENTRY`, the built bundle (`webapp/dist-server/index.mjs`), then the TypeScript source via `tsx`. (The desktop app forks the same server bundle inside an Electron `utilityProcess` rather than calling `ovld serve`.)
 - `ovld update`: optional for packaged releases; can be deferred until distribution is defined.
 
 ### Configuration Commands

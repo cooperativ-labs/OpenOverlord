@@ -1,5 +1,4 @@
 # Overlord local instance configuration
-
 instance_name = "Overlord"
 # database_path = ""
 # Database location.
@@ -13,7 +12,6 @@ instance_name = "Overlord"
 # of a local SQLite file by setting a connection string. This feeds the shared
 # adapter-selection point and is equivalent to exporting DATABASE_URL.
 # database_url = "postgres://user:password@host:5432/overlord"
-
 web_host = "127.0.0.1"
 web_port = 4310
 sql_studio_enabled = true

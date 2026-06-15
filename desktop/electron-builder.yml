@@ -1,0 +1,72 @@
+# electron-builder configuration for the Overlord desktop shell.
+#
+# Driven by `scripts/build-desktop.ts` (`yarn desktop:package`), which stages the
+# server bundle, SPA, and CLI into this workspace before invoking electron-builder
+# and toggles signing/notarization via flags + env. See desktop/docs/desktop-app.md.
+appId: io.cooperativ.openoverlord
+productName: Overlord
+copyright: Copyright © Cooperativ Labs
+
+directories:
+  output: release
+  buildResources: build
+
+# App files packed into app.asar. node_modules production dependencies are
+# included automatically by electron-builder's dependency analysis (and the
+# native better-sqlite3 addon is rebuilt for the Electron ABI when npmRebuild is
+# on). The server bundle is staged into ./server before packaging.
+files:
+  - dist-electron/**/*
+  - server/**/*
+  - sqlite/**/*
+  - package.json
+
+# Unpacked from the asar: the native addon, loaded by dlopen. The server's
+# JS dependency graph (express, the @overlord/* packages, …) is bundled into
+# server/index.cjs; only better-sqlite3 and @google/genai remain as packed
+# node_modules, and the SQL migrations are staged under sqlite/.
+asar: true
+asarUnpack:
+  - "**/*.node"
+  - "node_modules/better-sqlite3/**/*"
+
+# Static assets and the staged CLI, emitted next to the app (not in the asar):
+#   - webapp-dist: the built SPA the embedded server serves (OVERLORD_WEBAPP_DIST)
+#   - cli: the packed `ovld` CLI used to supervise a runner / Install CLI
+extraResources:
+  - from: webapp-dist
+    to: webapp-dist
+  - from: staging/cli
+    to: cli
+
+npmRebuild: true
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+    - target: zip
+      arch:
+        - arm64
+        - x64
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Notarization is off by default; the build script enables it for --notarize
+  # (reads APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID from the env).
+  notarize: false
+  extendInfo:
+    NSAppleEventsUsageDescription: Overlord opens your terminal application to run coding agents.
+
+dmg:
+  title: ${productName}
+
+linux:
+  category: Development
+  target:
+    - AppImage
+    - deb

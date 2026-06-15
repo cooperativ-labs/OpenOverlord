@@ -1,6 +1,6 @@
 {
-  "name": "overlord-cli",
-  "version": "0.1.0",
+  "name": "open-overlord-cli",
+  "version": "0.2606151622.0",
   "description": "Overlord CLI — management, agent protocol, and runner for OpenOverlord",
   "type": "module",
   "private": true,
@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@overlord/database": "workspace:*",
-    "better-sqlite3": "^12.0.0",
+    "better-sqlite3": "^12.10.1",
     "smol-toml": "^1.6.1"
   },
   "bundleDependencies": [

@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: "0.8-draft"
+contractVersion: "0.9-draft"
 
 components:
   protocol:
@@ -50,7 +50,8 @@ components:
     referenceSpec: "planning/feature-plans/02-cli-first-product-surface.md"
     owns:
       - "management command names and argument shapes"
-      - "project linking and discovery from working directory"
+      - "ovld serve: boot a fully-initialized local instance (resolve adapter -> create + migrate database if absent -> start the web/REST server)"
+      - "project linking and discovery from working directory, with a packaged-mode fallback to the OS app-data overlord.toml"
       - "configuration file locations: overlord.toml, .overlord/project.json"
       - "database location settings: database_path (developer override of the global ~/.ovld/Overlord.sqlite default), database_url (admin cloud/hosted-database connection string feeding resolveAdapter())"
       - "optional SQL Studio settings: sql_studio_enabled, sql_studio_host, sql_studio_port, sql_studio_binary"
@@ -158,6 +159,26 @@ components:
     interactionSurfaces:
       - extensionToCore
 
+  desktop:
+    label: "Desktop Shell"
+    stableIdentifier: desktop
+    referenceSpec: "desktop/docs/desktop-app.md"
+    optional: true
+    owns:
+      - "Electron app/window lifecycle and the hardened BrowserWindow security baseline (contextIsolation, sandbox, nodeIntegration: false, preload)"
+      - "loopback-scoped CSP, single-instance lock, external-navigation handling"
+      - "process supervision of the bundled web/REST server (Node utilityProcess) and optionally a local runner"
+      - "the minimal window.overlord preload bridge surface (feature-detected by the SPA, never required by it)"
+      - "desktop packaging metadata and the build/sign/notarize pipeline (electron-builder, entitlements, app-data layout)"
+    dependsOn:
+      - rest
+      - cli
+      - runner
+      - auth
+    interactionSurfaces:
+      - shellToRest
+      - shellToCli
+
 # Interaction surfaces — the only sanctioned paths between components
 interactionSurfaces:
 
@@ -261,3 +282,23 @@ interactionSurfaces:
       - "Migration component must be ext:<name>"
       - "JSON metadata keys must be namespaced (reverse-DNS or package-style)"
       - "Reactions to core events via service APIs, entity_changes, or outbox_messages only"
+
+  shellToRest:
+    description: "The desktop shell's BrowserWindow loads the SPA and calls /api/* (incl. SSE /api/stream) over the loopback origin — another HTTP client of the existing REST surface"
+    from: desktop
+    to: rest
+    transport: loopback-http-and-sse
+    rules:
+      - "The shell must not fork or modify the SPA"
+      - "Better Auth session cookies work natively on the shared loopback origin; the shell injects no headers and stores no tokens for in-app requests"
+      - "Desktop-only affordances are exposed only via the feature-detected window.overlord preload bridge"
+
+  shellToCli:
+    description: "The desktop shell supervises the bundled CLI/server as subprocesses (ovld serve / runner / launch), analogous to the Agent -> Protocol subprocess pattern"
+    from: desktop
+    to: cli
+    transport: subprocess-and-utility-process
+    rules:
+      - "The shell triggers existing CLI/runner behavior; it must not reimplement launch, terminal, or config logic owned by the CLI/Runner Layers"
+      - "Spawned CLI needing a network credential receives a USER_TOKEN via Overlord_USER_TOKEN; pure-loopback execution needs none"
+      - "The web/REST server is forked as a Node utilityProcess (Electron ABI), not a separately shipped Node runtime"

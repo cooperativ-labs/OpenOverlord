@@ -13,7 +13,8 @@ const DB_FREE_COMMANDS = new Set([
   '-v',
   'init',
   'doctor',
-  'setup'
+  'setup',
+  'serve'
 ]);
 
 const KNOWN_COMMANDS = new Set([
@@ -79,6 +80,11 @@ async function dispatchCommand({
     case 'setup': {
       const { runLocalCommand } = await import('./management.js');
       await runLocalCommand({ command, rest: args });
+      return;
+    }
+    case 'serve': {
+      const { runServeCommand } = await import('./serve.js');
+      await runServeCommand({ rest: args });
       return;
     }
     case 'protocol': {

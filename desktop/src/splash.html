@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';" />
+    <title>Overlord</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0b0b0f;
+        color: #e8e8ef;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+      .wrap {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+      }
+      .mark {
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+      }
+      .status {
+        font-size: 13px;
+        color: #8a8a98;
+      }
+      .spinner {
+        width: 26px;
+        height: 26px;
+        border: 2px solid #2a2a35;
+        border-top-color: #6d6df0;
+        border-radius: 50%;
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="spinner"></div>
+      <div class="mark">Overlord</div>
+      <div class="status">Starting the local control center…</div>
+    </div>
+  </body>
+</html>

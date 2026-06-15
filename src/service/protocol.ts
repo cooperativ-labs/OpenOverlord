@@ -459,9 +459,7 @@ function resolveFollowUpObjective({
 }): { objective: ObjectiveSummary | undefined; session: SessionRow | undefined } {
   const active =
     objectives.find(objective =>
-      ['executing', 'pending_delivery', 'launching', 'submitted', 'draft'].includes(
-        objective.state
-      )
+      ['executing', 'pending_delivery', 'launching', 'submitted', 'draft'].includes(objective.state)
     ) ?? undefined;
   if (active) return { objective: active, session: undefined };
 
@@ -608,7 +606,11 @@ export function resumeFollowUp({
     : latestCompletedObjective(objectives);
 
   if (!selectedObjective) {
-    throw new ServiceError('No completed objective found for follow-up', 'no_active_objective', 409);
+    throw new ServiceError(
+      'No completed objective found for follow-up',
+      'no_active_objective',
+      409
+    );
   }
 
   const activeObjective = objectives.find(objective =>
@@ -721,12 +723,17 @@ export function resumeFollowUp({
   tx();
 
   const refreshedTicket = getTicketSummary({ ctx, ticketId: ticket.id });
-  const refreshedObjective =
-    listObjectives({ ctx, ticketId: ticket.id }).find(objective => objective.id === selectedObjective.id) ?? {
-      ...selectedObjective,
-      state: 'pending_delivery'
-    };
-  const context = contextForObjective({ ctx, ticket: refreshedTicket, objective: refreshedObjective });
+  const refreshedObjective = listObjectives({ ctx, ticketId: ticket.id }).find(
+    objective => objective.id === selectedObjective.id
+  ) ?? {
+    ...selectedObjective,
+    state: 'pending_delivery'
+  };
+  const context = contextForObjective({
+    ctx,
+    ticket: refreshedTicket,
+    objective: refreshedObjective
+  });
 
   return {
     ...context,

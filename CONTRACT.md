@@ -1,6 +1,6 @@
 # Overlord Component Interaction Contract
 
-Contract Version: `0.6-draft`
+Contract Version: `0.9-draft`
 
 ## Purpose
 
@@ -19,12 +19,13 @@ See `.claude/skills/component-contract.md` for the enforced agent workflow.
 
 ## Contract Version
 
-Current version: `0.8-draft`
+Current version: `0.9-draft`
 
 The contract version is incremented when any stable interface changes. All conformance manifests must declare the contract version they were validated against.
 
 | Version | Changes |
 | --- | --- |
+| `0.9-draft` | Adds the `desktop` component (**Desktop Shell**): an optional Electron wrapper around the local webapp that supervises the bundled REST/realtime server and reuses existing surfaces — it loads the SPA + `/api/*` over the loopback origin and spawns the CLI (`ovld serve`/`runner`/`launch`) as subprocesses, owning no product logic. Adds the `desktop-shell` conformance `componentType`; the `shellToRest` and `shellToCli` interaction surfaces; and the `ovld serve` management command (boot a fully-initialized local instance: create → migrate → serve), plus the documented packaged-mode app-data fallback for `overlord.toml`/SQLite resolution. Additive: no schema, vocabulary, or migration impact. |
 | `0.8-draft` | Adds post-delivery follow-up recovery: `UserPromptSubmit` hook events may record `user_follow_up` activity without a live session, and explicit protocol follow-up resume reopens a completed objective as `pending_delivery` with a new session for changed-file tracking and redelivery. |
 | `0.7-draft` | Adds the `custom-automation` extension point: downstream repos that track OpenOverlord upstream register their own automations via the `OVERLORD_AUTOMATIONS_MODULE` env var (loaded at server boot by `loadExternalAutomations()`), without editing the built-in automation registry. Additive; no schema or migration impact. |
 | `0.6-draft` | Moves the default SQLite database location from the repo (`database/.local/Overlord.sqlite`) to the per-user global directory (`~/.ovld/Overlord.sqlite`, overridable via `OVLD_HOME`); the `overlord.toml` `database_path` key overrides it per instance. Adds the admin `database_url` key for pointing Overlord at a hosted/cloud database, which feeds the shared `resolveAdapter()` selection point. |
@@ -81,9 +82,9 @@ Does NOT own:
 **Reference spec**: [`cli/docs/02-cli-first-product-surface.md`](cli/docs/02-cli-first-product-surface.md)
 
 Owns:
-- Management command names and argument shapes
+- Management command names and argument shapes, including `ovld serve` (boot a fully-initialized local instance: resolve adapter → create + migrate the database if absent → start the web/REST server)
 - Project linking and discovery from working directory
-- Configuration file locations and formats (`overlord.toml`, `.overlord/project.json`), including the database location settings (`database_path` developer override of the global `~/.ovld/Overlord.sqlite` default, and the admin `database_url` cloud/hosted-database connection string), web bind settings such as `web_host` and `web_port`, optional SQL Studio settings (`sql_studio_enabled`, `sql_studio_host`, `sql_studio_port`, `sql_studio_binary`), and the optional `terminal_launcher` used to open launched agents in a new terminal window
+- Configuration file locations and formats (`overlord.toml`, `.overlord/project.json`), resolved by walking up from the working directory with a documented packaged-mode fallback to the OS app-data directory (e.g. `~/Library/Application Support/Overlord/overlord.toml`), including the database location settings (`database_path` developer override of the global `~/.ovld/Overlord.sqlite` default, and the admin `database_url` cloud/hosted-database connection string), web bind settings such as `web_host` and `web_port`, optional SQL Studio settings (`sql_studio_enabled`, `sql_studio_host`, `sql_studio_port`, `sql_studio_binary`), and the optional `terminal_launcher` used to open launched agents in a new terminal window
 - Human-readable CLI output format conventions
 
 Does NOT own:
@@ -186,6 +187,32 @@ Does NOT own:
 - Core table schemas (→ Database Layer)
 - Built-in connector catalog (→ Connector Layer)
 
+### 10. Desktop Shell
+
+**Stable identifier**: `desktop`
+**Reference spec**: [`desktop/docs/desktop-app.md`](desktop/docs/desktop-app.md)
+
+An **optional** Electron wrapper around the local webapp. It is a thin desktop shell, not a reimplementation of product logic: it loads the local web control center in a hardened `BrowserWindow`, supervises the local processes the webapp depends on, and gives the user a native app shell.
+
+Owns:
+- The Electron app/window lifecycle and the hardened `BrowserWindow` security baseline (`contextIsolation`, `sandbox`, `nodeIntegration: false`, `preload`), the loopback-scoped CSP, single-instance lock, and external-navigation handling
+- Process supervision of the bundled web/REST server (forked as a Node `utilityProcess`) and, optionally, a local runner
+- The minimal `preload` bridge surface exposed to the renderer as `window.overlord` (feature-detected by the SPA; never required by it)
+- Desktop packaging metadata and the build/sign/notarize pipeline (`electron-builder`, entitlements, app-data layout)
+
+Does NOT own:
+- REST/SSE URL paths or DTO shapes (→ REST API Layer)
+- CLI/launch/terminal configuration, including `terminal_launcher` (→ CLI / Runner Layers)
+- Authentication mechanism (→ Auth Layer)
+- Database schema or adapter selection (→ Database Layer)
+
+Depends on:
+- `rest` — loads the SPA and calls `/api/*` over the loopback origin
+- `cli` / `runner` — spawns `ovld serve` / `ovld runner` / `ovld launch` as subprocesses
+- `auth` — in-app auth uses Better Auth session cookies on the same loopback origin; spawned CLI uses `USER_TOKEN` when a credential is required
+
+The dependency arrow points one way only: `webapp`, `cli`, and `database` MUST NOT depend on `desktop`.
+
 ---
 
 ## Interaction Surfaces
@@ -257,6 +284,18 @@ These are the **only sanctioned paths** between components. Bypassing these surf
 - **Reactions**: Via service APIs, `entity_changes`, and `outbox_messages`; no direct writes to core tables
 - **Connector extensions**: Via `user_harness_extensions` → `workspace_harness_extensions` promotion
 
+### Desktop Shell → REST (Renderer Surface)
+
+- **Transport**: The hardened `BrowserWindow` loads the SPA and calls `/api/*` (including the SSE `/api/stream`) over the loopback `http`/`ws` origin — it is just another HTTP client of the existing REST surface
+- **Auth**: Better Auth session cookies work natively because the renderer and API share the same loopback origin; the shell injects no headers and stores no tokens for in-app requests
+- **Rule**: The shell must not fork or modify the SPA; desktop-only affordances are exposed only through the feature-detected `window.overlord` preload bridge
+
+### Desktop Shell → CLI (Process Supervision Surface)
+
+- **Transport**: Subprocess / Node `utilityProcess` invocation of the bundled CLI and server (`ovld serve`, `ovld runner`, `ovld launch`), analogous to the Agent → Protocol subprocess pattern
+- **Credential**: For spawned CLI that needs a network credential (remote/shared deployments), the shell passes a `USER_TOKEN` via `Overlord_USER_TOKEN`; pure-loopback execution talks to the local service layer and needs none
+- **Rule**: The shell triggers existing CLI/runner behavior; it must not reimplement launch, terminal, or config logic the CLI/Runner Layers own
+
 ---
 
 ## Conformance Requirements
@@ -265,7 +304,7 @@ Any component, connector, or extension that ships against Overlord must:
 
 1. **Provide a conformance manifest** (`conformance-manifest.yaml`) at its root declaring:
    - `contractVersion`: the version this component was validated against
-   - `componentType`: one of `connector`, `extension`, `database-adapter`, `auth-provider`, `rest-module`
+   - `componentType`: one of `connector`, `extension`, `database-adapter`, `auth-provider`, `rest-module`, `desktop-shell`
    - `componentKey`: stable lowercase identifier
    - All capabilities and extension points it uses
 

@@ -7,6 +7,8 @@ General:
   ${primaryCommand} help                         Show this help message
   ${primaryCommand} version [--json]             Show the installed CLI version
   ${primaryCommand} init [--json]                Create overlord.toml and local database
+  ${primaryCommand} serve [--host <h>] [--port <p>] [--db <path>] [--json]
+                                                 Boot the web/REST server (creates + migrates the DB on first run)
   ${primaryCommand} doctor [--json]              Validate config, database, and connector installs
   ${primaryCommand} config list [--json]         Show local configuration
 

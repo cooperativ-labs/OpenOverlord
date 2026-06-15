@@ -222,9 +222,10 @@ boundary.
 | [mcp/](mcp/README.md) | Planned MCP server surface (Phase 5, not yet implemented) | _(future)_ |
 | [connectors/](connectors/README.md) | Agent harness connectors: core, plugins, adapters, hooks | `connector` |
 | [automations/](automations/README.md) | Optional AI automations (Gemini summarization, objective titles) (the `@overlord/automations` workspace package — runtime in `automations/src/`) | `automations` |
+| [desktop/](desktop/README.md) | Optional Electron desktop shell wrapping the webapp (the `@overlord/desktop` workspace package) — **not built by default** | `desktop` |
 | [contract/](contract/README.md) | The connecting spec — machine-readable counterparts to `CONTRACT.md` | _(spec)_ |
 
-> The contract defines eight fine-grained components; the six modules above are
+> The contract defines nine fine-grained components; the seven modules above are
 > friendlier developer-facing groupings, and each module's README maps to the
 > contract component(s) it contains. Behavior specs are colocated with their
 > owning module under `<module>/docs/`; each module README links to its relevant

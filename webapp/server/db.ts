@@ -1,7 +1,7 @@
-import { fixupLocalStoragePaths } from '@overlord/database';
+import { fixupLocalStoragePaths, migrateDatabase } from '@overlord/database';
 import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,21 +28,24 @@ export function resolveDatabasePath(): string {
 
 const databasePath = resolveDatabasePath();
 
-if (!existsSync(databasePath)) {
-  throw new Error(
-    `Overlord SQLite database not found at ${databasePath}.\n` +
-      'Run `yarn start:local` from the repo root to create and migrate it first.'
-  );
-}
-
 // Open the local Overlord database directly through better-sqlite3, exactly as
 // the objective specifies. WAL mode lets the CLI write concurrently while the
 // web server reads/writes; foreign_keys enforces the referential integrity the
-// schema relies on.
+// schema relies on. We create the parent directory first so a fresh
+// app-data/global location (e.g. the packaged desktop's userData dir) works
+// without any prior setup.
+mkdirSync(path.dirname(databasePath), { recursive: true });
+
 export const db = new Database(databasePath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 db.pragma('busy_timeout = 5000');
+
+// First-run bootstrap: create the schema and seed the first workspace if the
+// database is empty; a no-op once migrated. This is what makes `ovld serve` and
+// the packaged desktop come up on a clean machine without `yarn start:local`.
+// (Idempotent — checksums are verified against schema_migrations.)
+migrateDatabase(db);
 
 fixupLocalStoragePaths(db, databasePath);
 
@@ -108,7 +111,10 @@ export function resolveActorForWorkspace(workspaceId: string): string | null {
 const initialWorkspace = oldestWorkspaceRow();
 
 if (!initialWorkspace) {
-  throw new Error('No workspace found in the database. Initialise it with `yarn start:local`.');
+  // Migrations seed the first workspace, so a freshly migrated database always
+  // has one. Reaching here means the database predates the seed migration or
+  // was tampered with — re-run migrations (`ovld serve` / `yarn start:local`).
+  throw new Error('No workspace found in the database. Re-run migrations to seed it.');
 }
 
 export let WORKSPACE: { id: string; slug: string; name: string; kind: string } = {
