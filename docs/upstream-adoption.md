@@ -25,11 +25,14 @@ larger deployment repository, but it is awkward for day-to-day core work:
   parent pointer to maintain.
 
 Prefer a downstream distribution repository or fork that keeps upstream
-OpenOverlord as a normal Git remote:
+OpenOverlord as a normal Git remote. In the closed downstream fork, `origin`
+points at the private distribution repository and `upstream` points at public
+OpenOverlord:
 
 ```bash
-git remote add upstream <public-openoverlord-repo-url>
+git remote add upstream https://github.com/cooperativ-labs/OpenOverlord
 git fetch upstream
+git branch --track upstream-main upstream/main
 git checkout -b distribution upstream/main
 ```
 
@@ -66,12 +69,18 @@ implement the downstream behavior.
 
 Use Git history to make the boundary between upstream and local behavior obvious:
 
-1. Keep `main` or `upstream-main` tracking the public OpenOverlord repository.
-2. Keep a long-lived `distribution` branch that merges or rebases upstream and
-   contains only downstream-approved changes.
-3. Put each substantial customization on its own topic branch before merging it
-   into `distribution`.
-4. Keep per-instance deployment state outside the code branch when possible:
+1. Keep `upstream-main` tracking `upstream/main` exactly. Do not commit
+   downstream work there; update it only by fetching from the public upstream.
+2. Keep a long-lived `distribution` branch created from `upstream/main`. This is
+   the closed integration branch that carries downstream-approved changes.
+3. Put each substantial Overlord Lite customization on a short-lived
+   `lite/<topic>` branch created from `distribution`, then merge it back into
+   `distribution` after review and verification.
+4. Use `adopt/upstream-<date>` branches for upstream adoption cycles. Create
+   them from `distribution`, merge or rebase `upstream/main`, resolve conflicts,
+   run conformance and module checks, then merge the result back to
+   `distribution`.
+5. Keep per-instance deployment state outside the code branch when possible:
    environment variables, secret stores, database files, and local
    `overlord.toml` overlays should not be required to merge upstream code.
 
@@ -106,6 +115,14 @@ Fetch upstream into a temporary integration branch:
 git fetch upstream
 git checkout -b adopt/upstream-<date> distribution
 git merge upstream/main
+```
+
+Keep the local mirror branch current as part of the same adoption cycle:
+
+```bash
+git checkout upstream-main
+git merge --ff-only upstream/main
+git checkout distribution
 ```
 
 Review upstream changes in this order:

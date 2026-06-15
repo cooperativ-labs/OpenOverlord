@@ -1,5 +1,5 @@
 # Overlord local instance configuration
-instance_name = "Local Overlord"
+instance_name = "Overlord"
 web_host = "127.0.0.1"
 web_port = 4310
 sql_studio_enabled = true
