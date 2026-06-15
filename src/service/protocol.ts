@@ -1,4 +1,5 @@
 import { UPDATE_EVENT_TYPES, UPDATE_PHASES } from '@overlord/database';
+import { createHash } from 'node:crypto';
 
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
@@ -51,6 +52,16 @@ export type AttachResponse = {
   promptContext: string;
 };
 
+type SessionRow = {
+  id: string;
+  ticket_id: string;
+  objective_id: string;
+  phase: string;
+  delivery_state: string;
+  ended_at: string | null;
+  external_session_id: string | null;
+};
+
 const PROTOCOL_WORKFLOW = `Required protocol workflow:
 1. Attach first with \`ovld protocol attach --ticket-id <id>\`.
 2. Post progress with \`ovld protocol update\` or liveness with \`ovld protocol heartbeat\`.
@@ -72,38 +83,49 @@ function resolveActiveObjective(objectives: ObjectiveSummary[]): ObjectiveSummar
   return active;
 }
 
-function getSessionByKey(
+function getSessionByKeyMaybeEnded(
   ctx: ServiceContext,
-  sessionKey: string
-): {
-  id: string;
-  ticket_id: string;
-  objective_id: string;
-  phase: string;
-  delivery_state: string;
-} {
+  sessionKey: string,
+  options: { includeEnded?: boolean } = {}
+): SessionRow | undefined {
   const hash = hashSessionKey(sessionKey);
-  const row = ctx.db
+  const endedFilter = options.includeEnded ? '' : 'AND ended_at IS NULL';
+  return ctx.db
     .prepare(
-      `SELECT id, ticket_id, objective_id, phase, delivery_state
+      `SELECT id, ticket_id, objective_id, phase, delivery_state, ended_at, external_session_id
        FROM agent_sessions
-       WHERE workspace_id = ? AND session_key_hash = ? AND deleted_at IS NULL AND ended_at IS NULL
+       WHERE workspace_id = ? AND session_key_hash = ? AND deleted_at IS NULL ${endedFilter}
        ORDER BY started_at DESC LIMIT 1`
     )
-    .get(ctx.workspace.id, hash) as
-    | {
-        id: string;
-        ticket_id: string;
-        objective_id: string;
-        phase: string;
-        delivery_state: string;
-      }
-    | undefined;
+    .get(ctx.workspace.id, hash) as SessionRow | undefined;
+}
+
+function getSessionByKey(ctx: ServiceContext, sessionKey: string): SessionRow {
+  const row = getSessionByKeyMaybeEnded(ctx, sessionKey);
 
   if (!row) {
     throw new ServiceError('Invalid or expired session key', 'invalid_session', 401);
   }
   return row;
+}
+
+function getLatestSessionByExternalId({
+  ctx,
+  ticketId,
+  externalSessionId
+}: {
+  ctx: ServiceContext;
+  ticketId: string;
+  externalSessionId: string;
+}): SessionRow | undefined {
+  return ctx.db
+    .prepare(
+      `SELECT id, ticket_id, objective_id, phase, delivery_state, ended_at, external_session_id
+       FROM agent_sessions
+       WHERE workspace_id = ? AND ticket_id = ? AND external_session_id = ? AND deleted_at IS NULL
+       ORDER BY started_at DESC LIMIT 1`
+    )
+    .get(ctx.workspace.id, ticketId, externalSessionId) as SessionRow | undefined;
 }
 
 function assemblePromptContext({
@@ -160,16 +182,16 @@ function assemblePromptContext({
     .join('\n');
 }
 
-export function loadTicketContext({
+function contextForObjective({
   ctx,
-  ticketId
+  ticket,
+  objective
 }: {
   ctx: ServiceContext;
-  ticketId: string;
+  ticket: TicketSummary;
+  objective: ObjectiveSummary;
 }): Omit<AttachResponse, 'session'> {
-  const ticket = getTicketSummary({ ctx, ticketId });
   const objectives = listObjectives({ ctx, ticketId: ticket.id });
-  const objective = resolveActiveObjective(objectives);
   const history = listTicketEvents({ ctx, ticketId: ticket.id });
   const artifacts = listArtifacts({ ctx, ticketId: ticket.id });
   const attachments = listAttachments({ ctx, ticketId: ticket.id, objectiveId: objective.id });
@@ -197,6 +219,19 @@ export function loadTicketContext({
       sharedState
     })
   };
+}
+
+export function loadTicketContext({
+  ctx,
+  ticketId
+}: {
+  ctx: ServiceContext;
+  ticketId: string;
+}): Omit<AttachResponse, 'session'> {
+  const ticket = getTicketSummary({ ctx, ticketId });
+  const objectives = listObjectives({ ctx, ticketId: ticket.id });
+  const objective = resolveActiveObjective(objectives);
+  return contextForObjective({ ctx, ticket, objective });
 }
 
 export function attachSession({
@@ -390,6 +425,321 @@ export function connectSession({
     sessionKey: result.sessionKey,
     ticketId: result.ticket.id,
     objectiveId: result.objective.id
+  };
+}
+
+function promptHash(prompt: string): string {
+  return createHash('sha256').update(prompt).digest('hex');
+}
+
+function objectiveFromSession(
+  objectives: ObjectiveSummary[],
+  session: SessionRow | undefined
+): ObjectiveSummary | undefined {
+  if (!session) return undefined;
+  return objectives.find(objective => objective.id === session.objective_id);
+}
+
+function latestCompletedObjective(objectives: ObjectiveSummary[]): ObjectiveSummary | undefined {
+  return [...objectives].reverse().find(objective => objective.state === 'complete');
+}
+
+function resolveFollowUpObjective({
+  ctx,
+  ticket,
+  objectives,
+  sessionKey,
+  externalSessionId
+}: {
+  ctx: ServiceContext;
+  ticket: TicketSummary;
+  objectives: ObjectiveSummary[];
+  sessionKey?: string | null;
+  externalSessionId?: string | null;
+}): { objective: ObjectiveSummary | undefined; session: SessionRow | undefined } {
+  const active =
+    objectives.find(objective =>
+      ['executing', 'pending_delivery', 'launching', 'submitted', 'draft'].includes(
+        objective.state
+      )
+    ) ?? undefined;
+  if (active) return { objective: active, session: undefined };
+
+  const sessionFromKey = sessionKey
+    ? getSessionByKeyMaybeEnded(ctx, sessionKey, { includeEnded: true })
+    : undefined;
+  const objectiveFromKey = objectiveFromSession(objectives, sessionFromKey);
+  if (objectiveFromKey) return { objective: objectiveFromKey, session: sessionFromKey };
+
+  const sessionFromExternal = externalSessionId
+    ? getLatestSessionByExternalId({ ctx, ticketId: ticket.id, externalSessionId })
+    : undefined;
+  const objectiveFromExternal = objectiveFromSession(objectives, sessionFromExternal);
+  if (objectiveFromExternal) {
+    return { objective: objectiveFromExternal, session: sessionFromExternal };
+  }
+
+  return { objective: latestCompletedObjective(objectives), session: undefined };
+}
+
+export function recordHookEvent({
+  ctx,
+  ticketId,
+  hookType,
+  prompt,
+  sessionKey,
+  externalSessionId,
+  turnIndex
+}: {
+  ctx: ServiceContext;
+  ticketId: string;
+  hookType: string;
+  prompt: string;
+  sessionKey?: string | null;
+  externalSessionId?: string | null;
+  turnIndex?: string | null;
+}): { eventId: string; objectiveId: string | null; sessionId: string | null } {
+  if (hookType !== 'UserPromptSubmit') {
+    throw new ServiceError(`Unsupported hook type: ${hookType}`, 'validation_error');
+  }
+
+  const trimmedPrompt = prompt.trim();
+  if (!trimmedPrompt) {
+    throw new ServiceError('Hook prompt is required', 'validation_error');
+  }
+
+  const ticket = getTicketSummary({ ctx, ticketId });
+  const objectives = listObjectives({ ctx, ticketId: ticket.id });
+  const { objective, session } = resolveFollowUpObjective({
+    ctx,
+    ticket,
+    objectives,
+    sessionKey,
+    externalSessionId
+  });
+  const hash = promptHash(trimmedPrompt);
+  const dedupeParts = [
+    hookType,
+    ticket.id,
+    externalSessionId || session?.id || 'unknown-session',
+    turnIndex || 'unknown-turn',
+    hash
+  ];
+  const idempotencyKey = dedupeParts.join(':');
+
+  const existing = ctx.db
+    .prepare(
+      `SELECT id, objective_id, session_id FROM ticket_events
+       WHERE workspace_id = ? AND source = ? AND idempotency_key = ?
+       LIMIT 1`
+    )
+    .get(ctx.workspace.id, ctx.source, idempotencyKey) as
+    | { id: string; objective_id: string | null; session_id: string | null }
+    | undefined;
+  if (existing) {
+    return {
+      eventId: existing.id,
+      objectiveId: existing.objective_id,
+      sessionId: existing.session_id
+    };
+  }
+
+  const eventId = newId();
+  const now = nowIso();
+  const phase =
+    objective && ['executing', 'pending_delivery'].includes(objective.state) ? 'execute' : 'review';
+
+  ctx.db
+    .prepare(
+      `INSERT INTO ticket_events
+         (id, workspace_id, project_id, ticket_id, objective_id, session_id,
+          type, phase, summary, payload_json, source, actor_workspace_user_id,
+          idempotency_key, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'user_follow_up', ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      eventId,
+      ctx.workspace.id,
+      ticket.projectId,
+      ticket.id,
+      objective?.id ?? null,
+      session?.id ?? null,
+      phase,
+      trimmedPrompt,
+      JSON.stringify({
+        hookType,
+        ...(turnIndex ? { turnIndex } : {}),
+        ...(externalSessionId ? { externalSessionId } : {}),
+        promptHash: hash
+      }),
+      ctx.source,
+      ctx.actorWorkspaceUserId,
+      idempotencyKey,
+      now
+    );
+
+  return { eventId, objectiveId: objective?.id ?? null, sessionId: session?.id ?? null };
+}
+
+export function resumeFollowUp({
+  ctx,
+  ticketId,
+  objectiveId,
+  agentIdentifier = 'unknown',
+  modelIdentifier,
+  connectionMethod = 'cli',
+  externalSessionId,
+  summary = 'Beginning follow-up work.'
+}: {
+  ctx: ServiceContext;
+  ticketId: string;
+  objectiveId?: string | null;
+  agentIdentifier?: string;
+  modelIdentifier?: string | null;
+  connectionMethod?: string;
+  externalSessionId?: string | null;
+  summary?: string | null;
+}): AttachResponse & { sessionKey: string } {
+  const trimmedSummary = summary?.trim() || 'Beginning follow-up work.';
+  const ticket = getTicketSummary({ ctx, ticketId });
+  const objectives = listObjectives({ ctx, ticketId: ticket.id });
+  const selectedObjective = objectiveId
+    ? objectives.find(objective => objective.id === objectiveId)
+    : latestCompletedObjective(objectives);
+
+  if (!selectedObjective) {
+    throw new ServiceError('No completed objective found for follow-up', 'no_active_objective', 409);
+  }
+
+  const activeObjective = objectives.find(objective =>
+    ['executing', 'pending_delivery'].includes(objective.state)
+  );
+  if (activeObjective) {
+    throw new ServiceError(
+      'Ticket already has active follow-up or execution work',
+      'active_objective_exists',
+      409
+    );
+  }
+
+  if (selectedObjective.state !== 'complete') {
+    throw new ServiceError(
+      'Follow-up resume requires a completed objective',
+      'validation_error',
+      409
+    );
+  }
+
+  const { rawKey, prefix, hash } = generateSessionKey();
+  const now = nowIso();
+  const sessionId = newId();
+  const eventId = newId();
+
+  const tx = ctx.db.transaction(() => {
+    ctx.db
+      .prepare(
+        `UPDATE objectives
+         SET state = 'pending_delivery', completed_at = NULL, updated_at = ?, revision = revision + 1
+         WHERE id = ? AND ticket_id = ? AND state = 'complete'`
+      )
+      .run(now, selectedObjective.id, ticket.id);
+
+    ctx.db
+      .prepare(
+        `INSERT INTO agent_sessions
+           (id, workspace_id, project_id, ticket_id, objective_id,
+            session_key_prefix, session_key_hash, agent_identifier, model_identifier,
+            connection_method, external_session_id, phase, delivery_state, started_at, last_heartbeat_at,
+            metadata_json, created_by_workspace_user_id, created_at, updated_at, revision)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'execute', 'pending_redelivery', ?, ?, '{}', ?, ?, ?, 1)`
+      )
+      .run(
+        sessionId,
+        ctx.workspace.id,
+        ticket.projectId,
+        ticket.id,
+        selectedObjective.id,
+        prefix,
+        hash,
+        agentIdentifier,
+        modelIdentifier ?? null,
+        connectionMethod,
+        externalSessionId ?? null,
+        now,
+        now,
+        ctx.actorWorkspaceUserId,
+        now,
+        now
+      );
+
+    ctx.db
+      .prepare(
+        `INSERT INTO ticket_events
+           (id, workspace_id, project_id, ticket_id, objective_id, session_id,
+            type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'update', 'execute', ?, ?, ?, ?, ?)`
+      )
+      .run(
+        eventId,
+        ctx.workspace.id,
+        ticket.projectId,
+        ticket.id,
+        selectedObjective.id,
+        sessionId,
+        trimmedSummary,
+        JSON.stringify({ followUpIntent: 'execution', reactivated: true }),
+        ctx.source,
+        ctx.actorWorkspaceUserId,
+        now
+      );
+
+    moveTicketToExecute({ ctx, ticketId: ticket.id });
+
+    recordChange({
+      ctx,
+      entityType: 'objective',
+      entityId: selectedObjective.id,
+      operation: 'update',
+      projectId: ticket.projectId,
+      ticketId: ticket.id,
+      objectiveId: selectedObjective.id,
+      changedFields: ['state', 'completed_at']
+    });
+
+    recordChange({
+      ctx,
+      entityType: 'agent_session',
+      entityId: sessionId,
+      operation: 'insert',
+      entityRevision: 1,
+      projectId: ticket.projectId,
+      ticketId: ticket.id,
+      objectiveId: selectedObjective.id
+    });
+  });
+
+  tx();
+
+  const refreshedTicket = getTicketSummary({ ctx, ticketId: ticket.id });
+  const refreshedObjective =
+    listObjectives({ ctx, ticketId: ticket.id }).find(objective => objective.id === selectedObjective.id) ?? {
+      ...selectedObjective,
+      state: 'pending_delivery'
+    };
+  const context = contextForObjective({ ctx, ticket: refreshedTicket, objective: refreshedObjective });
+
+  return {
+    ...context,
+    session: {
+      id: sessionId,
+      sessionKey: rawKey,
+      state: 'executing',
+      objectiveId: selectedObjective.id,
+      ticketId: ticket.id,
+      phase: 'execute',
+      deliveryState: 'pending_redelivery'
+    },
+    sessionKey: rawKey
   };
 }
 

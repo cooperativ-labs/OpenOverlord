@@ -45,6 +45,7 @@ Event types:
 - Post-delivery follow-up modes:
 
 - User follow-up messages default to `discussion` intent while the ticket is in review.
+- Use `ovld protocol resume-follow-up --ticket-id $TICKET_ID --summary "Beginning follow-up work."` when post-delivery implementation starts after the original session has ended or its key is unavailable.
 - Use `ovld protocol update --begin-follow-up-work --follow-up-intent execution --summary "Beginning follow-up work."` before moving a delivered/review ticket back to execution.
 - Use `--follow-up-intent pending_delivery` when implementation is complete but final delivery is still being prepared.
 

@@ -96,8 +96,9 @@ For the `record-change-rationales` command and full payload shape with optional 
 - Use `ovld protocol` commands and the connector's native commands/tools instead of ad hoc scripts.
 - Do not invent protocol subcommands. Use `ovld protocol help` when unsure.
 - Include at least one progress update before delivering.
-- After delivery, answer ordinary questions and clarifications in discussion mode; only begin follow-up execution when the user explicitly asks for file or code changes.
-- When explicit follow-up implementation starts on a delivered/review ticket, call `ovld protocol update --begin-follow-up-work --follow-up-intent execution --summary "Beginning follow-up work."` before code changes or `--phase execute`.
+- After delivery, answer ordinary questions and clarifications in discussion mode; hook capture records those user turns as `user_follow_up` activity.
+- When explicit follow-up implementation starts on a delivered/review ticket and no live session exists, call `ovld protocol resume-follow-up --ticket-id <ticket_id> --summary "Beginning follow-up work."` and use the returned session key before code changes.
+- When explicit follow-up implementation starts while a live delivered session still accepts updates, call `ovld protocol update --begin-follow-up-work --follow-up-intent execution --summary "Beginning follow-up work."` before code changes or `--phase execute`.
 - During follow-up execution, post progress updates and record change rationales for each file modified, the same as during initial execution.
 - Record important non-file decisions with `--event-type decision` or `--event-type discussion_summary`.
 - The `summary` in deliver is what the PM reads first, so write it as a narrative, not a command list.

@@ -7,7 +7,7 @@
 # IMPORTANT: Any addition, rename, or flag change to a command in this file requires
 # a contract version update in CONTRACT.md and components.yaml.
 
-contractVersion: "0.1-draft"
+contractVersion: "0.8-draft"
 referenceSpec: "planning/feature-plans/03-agent-protocol.md"
 
 sessionLifecycle:
@@ -62,6 +62,44 @@ sessionLifecycle:
     sideEffects:
       - appends-ticket-event
       - upserts-changed-files-by-session-objective-path
+
+  hookEvent:
+    description: "Record connector lifecycle events such as UserPromptSubmit without requiring a live agent session"
+    requiredFlags:
+      - --hook-type
+      - --ticket-id
+    optionalFlags:
+      - --session-key
+      - --external-session-id
+      - --prompt
+      - --prompt-file
+      - --turn-index
+    validHookTypes:
+      - UserPromptSubmit
+    sideEffects:
+      - appends-ticket-event-type-user-follow-up
+    rules:
+      - "UserPromptSubmit records discussion activity and does not reopen objective execution"
+      - "Expired delivered sessions may be used for attribution but must not reject follow-up capture"
+
+  resumeFollowUp:
+    description: "Explicitly reopen a completed objective for post-delivery implementation follow-up"
+    requiredFlags:
+      - --ticket-id
+    optionalFlags:
+      - --objective-id
+      - --agent
+      - --model
+      - --external-session-id
+      - --summary
+      - --summary-file
+    returnsSessionKey: true
+    responseShape: attach-response-v1
+    sideEffects:
+      - creates-agent-session
+      - objective-state-complete-to-pending-delivery
+      - ticket-status-to-execute
+      - appends-ticket-event
 
   heartbeat:
     description: "Update session liveness without creating a ticket event"

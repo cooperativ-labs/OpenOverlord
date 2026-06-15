@@ -33,9 +33,11 @@ import {
   heartbeatSession,
   listSharedContext,
   loadTicketContext,
+  recordHookEvent,
   protocolCreate,
   protocolPrompt,
   recordWork,
+  resumeFollowUp,
   searchTickets,
   updateSession,
   writeSharedContext
@@ -316,6 +318,55 @@ export async function runProtocolCommand({
           changeRationales: rationalesRaw
             ? (JSON.parse(rationalesRaw) as Array<Record<string, unknown>>)
             : undefined
+        });
+        printJson(result);
+        return;
+      }
+      case 'hook-event': {
+        const ticketId = requireFlag(parsed.flags, '--ticket-id');
+        const hookType = requireFlag(parsed.flags, '--hook-type');
+        const prompt = await readFlagOrFile({
+          flags: parsed.flags,
+          flagName: '--prompt',
+          fileFlagName: '--prompt-file',
+          stdin
+        });
+        if (!prompt) {
+          throw new CliError({ message: 'Missing --prompt or --prompt-file' });
+        }
+        const result = recordHookEvent({
+          ctx,
+          ticketId,
+          hookType,
+          prompt,
+          sessionKey: flagValue(parsed.flags, '--session-key'),
+          externalSessionId: nullableFlagValue(parsed.flags, '--external-session-id'),
+          turnIndex: flagValue(parsed.flags, '--turn-index')
+        });
+        printJson(result);
+        return;
+      }
+      case 'resume-follow-up': {
+        const ticketId = requireFlag(parsed.flags, '--ticket-id');
+        const summary = await readFlagOrFile({
+          flags: parsed.flags,
+          flagName: '--summary',
+          fileFlagName: '--summary-file',
+          stdin
+        });
+        const result = resumeFollowUp({
+          ctx,
+          ticketId,
+          objectiveId: flagValue(parsed.flags, '--objective-id'),
+          agentIdentifier: flagValue(parsed.flags, '--agent') ?? 'unknown',
+          modelIdentifier: flagValue(parsed.flags, '--model'),
+          externalSessionId: nullableFlagValue(parsed.flags, '--external-session-id'),
+          summary
+        });
+        printKeyValue({
+          SESSION_KEY: result.sessionKey,
+          TICKET_ID: result.ticket.displayId,
+          OBJECTIVE_ID: result.objective.id
         });
         printJson(result);
         return;

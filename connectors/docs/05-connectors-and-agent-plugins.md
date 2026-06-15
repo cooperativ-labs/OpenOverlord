@@ -51,6 +51,15 @@ Requirements:
 - Install a home-local Codex plugin.
 - Include Overlord skill/workflow instructions.
 - Include `UserPromptSubmit` hook to record follow-up messages.
+- The `UserPromptSubmit` hook should call `ovld protocol hook-event` with
+  `--hook-type UserPromptSubmit`, `--ticket-id`, the prompt text, optional
+  native `--external-session-id`, and optional `--session-key`. The session key
+  must be optional because delivered sessions may be ended before a user sends a
+  follow-up.
+- Hook capture records `user_follow_up` activity only. It must not reopen an
+  objective for implementation; agents do that later with
+  `ovld protocol resume-follow-up` when the user explicitly asks for file or
+  code changes.
 - Include permission hook to record tool permission requests.
 - Install protocol permission rules for `ovld protocol`.
 - Avoid generating or relying on a repository-local `AGENTS.md` for Overlord itself.

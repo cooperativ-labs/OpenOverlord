@@ -26,6 +26,7 @@ When working inside an Overlord source checkout, read and follow that core befor
 - Submit a draft objective for discussion: `/overlord:discuss-objective` or `ovld protocol discuss-objective --ticket-id <ticket_id>`
 - Connect this session: `/overlord:connect` or `ovld protocol connect --ticket-id <ticket_id>`
 - Attach for execution: `/overlord:attach` or `ovld protocol attach --ticket-id <ticket_id>`
+- Resume delivered work for follow-up execution: `ovld protocol resume-follow-up --ticket-id <ticket_id>`
 - Add ordered follow-up objectives: `/overlord:add-objectives` or `ovld protocol add-objectives --ticket-id <ticket_id> --objectives-json '[{"objective":"..."}]'`
 
 ## References
