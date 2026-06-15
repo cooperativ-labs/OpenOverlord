@@ -110,11 +110,17 @@ unless the change is intentionally a core patch.
 
 Branch model:
 
-- `upstream-main`: tracks the public upstream exactly.
-- `distribution`: long-lived closed downstream integration branch.
-- `lite/<topic>`: topic branches for Overlord Lite work.
-- `adopt/upstream-<date>`: temporary branches used to merge or rebase upstream
-  into `distribution`.
+- `upstream-main`: local mirror of `upstream/main`. It tracks the public
+  OpenOverlord history exactly and should not receive downstream commits.
+- `distribution`: long-lived closed downstream integration branch, initially
+  created from `upstream/main`. Merge reviewed downstream work here.
+- `lite/<topic>`: short-lived topic branches created from `distribution` for
+  Overlord Lite changes. Keep each branch scoped to one feature, scaffold, or
+  packaging task.
+- `adopt/upstream-<date>`: temporary integration branches created from
+  `distribution` for upstream adoption. Merge or rebase `upstream/main`, run
+  contract and module verification, then merge the result back to
+  `distribution`.
 
 For each upstream adoption, review in this order:
 
