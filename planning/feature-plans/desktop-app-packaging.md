@@ -86,7 +86,7 @@ modules — no new product code beyond glue):
 | REST/realtime server | `webapp/server/*` + `src/service/*` + `cli/src/config` | **esbuild bundle** → run via `utilityProcess.fork()` |
 | Database runtime + migrations | `@overlord/database` (`dist/` + `sqlite/migrations/`) | unpacked (migrations read from disk) |
 | `better-sqlite3` native addon | `node_modules/better-sqlite3` | **Electron-ABI** build (server) **+ Node-ABI** build (CLI) |
-| `ovld` / `overlord` CLI | `overlord-cli` packed tarball | `asarUnpack`'d under `Contents/Resources/cli` |
+| `ovld` / `overlord` CLI | `open-overlord-cli` packed tarball | `asarUnpack`'d under `Contents/Resources/cli` |
 | Default config template | generated `overlord.toml` | written into app-data dir on first run |
 | Icons / Info.plist / entitlements | `desktop/resources/` | bundle metadata |
 
@@ -326,7 +326,7 @@ Agents (Claude Code, etc.) invoke `ovld` as an **external** process, so the CLI
 cannot rely on Electron's ABI. It needs its own Node-ABI `better-sqlite3` and a
 runtime to execute under.
 
-**v1 (recommended):** ship the packed `overlord-cli` (which already vendors
+**v1 (recommended):** ship the packed `open-overlord-cli` (which already vendors
 `@overlord/database` via `cli/scripts/vendor-database.mjs`) plus a **Node-ABI
 `better-sqlite3`** under `Contents/Resources/cli/`. Provide an **"Install CLI"**
 menu action (the VS Code "Install 'code' command" pattern) that symlinks

@@ -41,7 +41,10 @@ export function applyCsp(session: Session, appOrigin: string): void {
   const wsOrigin = appOrigin.replace(/^http/, 'ws');
   const csp = [
     `default-src 'self'`,
-    `script-src 'self'`,
+    // The SPA's index.html carries one tiny inline theme-bootstrap script; allow
+    // exactly that one by hash rather than opening up 'unsafe-inline'. Keep this
+    // hash in sync if that snippet ever changes.
+    `script-src 'self' 'sha256-Y0NzcdWqLK5zUKdExAf8aq3UxpIzkXbzq9budSiMuvc='`,
     `style-src 'self' 'unsafe-inline'`,
     `img-src 'self' data: blob:`,
     `font-src 'self' data:`,

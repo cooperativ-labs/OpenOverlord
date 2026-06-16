@@ -10,6 +10,7 @@ import path from 'node:path';
 
 import { registerIpc } from './ipc.js';
 import { findFreePort, startServer, stopServer, waitForHealth } from './server.js';
+import { DesktopUpdater } from './updater.js';
 import { applyCsp, createWindow, guardNavigation } from './window.js';
 
 // `__dirname` is the dist-electron directory (esbuild emits CJS). The preload
@@ -27,6 +28,7 @@ const DEV_URL = process.env.OVERLORD_DESKTOP_URL ?? `http://${HOST}:${PREFERRED_
 
 let mainWindow: BrowserWindow | null = null;
 let appOrigin = `http://${HOST}:${PREFERRED_PORT}`;
+let updater: DesktopUpdater | null = null;
 
 // Expose the version to the preload bridge.
 process.env.OVERLORD_DESKTOP_VERSION = app.getVersion();
@@ -52,8 +54,9 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 async function boot(): Promise<void> {
-  installApplicationMenu();
-  registerIpc(() => mainWindow);
+  updater = new DesktopUpdater(() => mainWindow);
+  installApplicationMenu(updater);
+  registerIpc(() => mainWindow, updater);
 
   // In connect-only dev mode the origin is the running dev server; otherwise we
   // claim a free loopback port and the supervised server binds to it.
@@ -64,6 +67,7 @@ async function boot(): Promise<void> {
   applyCsp(session.defaultSession, appOrigin);
 
   await openMainWindow();
+  updater.startAutomaticChecks();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) void openMainWindow();
@@ -118,7 +122,10 @@ async function showStartupError(): Promise<void> {
   }
 }
 
-app.on('before-quit', () => stopServer());
+app.on('before-quit', () => {
+  updater?.stopAutomaticChecks();
+  stopServer();
+});
 
 app.on('window-all-closed', () => {
   // A wrapper around a single web UI: closing the window quits the app (and the
@@ -126,16 +133,54 @@ app.on('window-all-closed', () => {
   app.quit();
 });
 
-function installApplicationMenu(): void {
+function installApplicationMenu(updater: DesktopUpdater): void {
   const isMac = process.platform === 'darwin';
+  const checkForUpdatesItem: MenuItemConstructorOptions = {
+    label: 'Check for Updates...',
+    click: () => {
+      void updater.checkForUpdatesWithDialog();
+    }
+  };
+  const installUpdateItem: MenuItemConstructorOptions = {
+    label: 'Install Update and Relaunch',
+    click: () => {
+      void updater.showInstallDialog();
+    }
+  };
   const template: MenuItemConstructorOptions[] = [
     ...(isMac
-      ? ([{ role: 'appMenu' }] as MenuItemConstructorOptions[])
+      ? ([
+          {
+            label: app.name,
+            submenu: [
+              { role: 'about' },
+              { type: 'separator' },
+              checkForUpdatesItem,
+              installUpdateItem,
+              { type: 'separator' },
+              { role: 'services' },
+              { type: 'separator' },
+              { role: 'hide' },
+              { role: 'hideOthers' },
+              { role: 'unhide' },
+              { type: 'separator' },
+              { role: 'quit' }
+            ]
+          }
+        ] as MenuItemConstructorOptions[])
       : ([] as MenuItemConstructorOptions[])),
     { role: 'fileMenu' },
     { role: 'editMenu' },
     { role: 'viewMenu' },
-    { role: 'windowMenu' }
+    { role: 'windowMenu' },
+    ...(!isMac
+      ? ([
+          {
+            role: 'help',
+            submenu: [checkForUpdatesItem, installUpdateItem]
+          }
+        ] as MenuItemConstructorOptions[])
+      : ([] as MenuItemConstructorOptions[]))
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }

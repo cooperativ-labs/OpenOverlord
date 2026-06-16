@@ -1,5 +1,5 @@
 # Overlord local instance configuration
-instance_name = "Overlord"
+instance_name = "Local Overlord"
 # database_path = ""
 # Database location.
 # By default the SQLite database lives in the per-user global directory
@@ -14,7 +14,7 @@ instance_name = "Overlord"
 # database_url = "postgres://user:password@host:5432/overlord"
 web_host = "127.0.0.1"
 web_port = 4310
-sql_studio_enabled = true
+sql_studio_enabled = false
 sql_studio_host = "127.0.0.1"
 sql_studio_port = 4311
 sql_studio_binary = "sql-studio"
@@ -24,7 +24,7 @@ default_agent = "claude"
 # Terminal launcher: open the launched agent in a new terminal window.
 # Built-in launchers (macOS): "iTerm2" and "Terminal" use AppleScript so the
 # agent opens in a fresh window in the project directory.
-terminal_launcher = "iTerm2"
+# terminal_launcher = "iTerm2"
 # terminal_launcher = "Terminal"
 # Any other value is treated as a prefix command with the agent invocation appended:
 # terminal_launcher = "open -a Ghostty --args"

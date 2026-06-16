@@ -6,6 +6,7 @@
 appId: io.cooperativ.openoverlord
 productName: Overlord
 copyright: Copyright © Cooperativ Labs
+artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
 
 directories:
   output: release
@@ -20,6 +21,7 @@ files:
   - server/**/*
   - sqlite/**/*
   - package.json
+  # - "!node_modules"
 
 # Unpacked from the asar: the native addon, loaded by dlopen. The server's
 # JS dependency graph (express, the @overlord/* packages, …) is bundled into
@@ -42,16 +44,11 @@ extraResources:
 npmRebuild: true
 
 mac:
+  icon: build/icon.png
   category: public.app-category.developer-tools
   target:
-    - target: dmg
-      arch:
-        - arm64
-        - x64
-    - target: zip
-      arch:
-        - arm64
-        - x64
+      - dmg
+      - zip
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
@@ -66,6 +63,7 @@ dmg:
   title: ${productName}
 
 linux:
+  icon: build/icon.png
   category: Development
   target:
     - AppImage

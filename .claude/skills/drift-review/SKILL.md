@@ -11,7 +11,7 @@ user-invocable: true
 
 Review all Overlord product surfaces for alignment drift. The goal is to ensure that API routes, CLI commands, MCP tools, agent plugins, and public docs expose the same operations with matching parameters, so that agents can use any surface interchangeably.
 
-When a change touches agent launch commands, also compare the human-launch surfaces: `packages/overlord-cli/bin/_cli/launcher.mjs`, `lib/overlord/launch-commands.ts`, and any ticket copy surfaces that emit copy/paste launch commands.
+When a change touches agent launch commands, also compare the human-launch surfaces: `packages/open-overlord-cli/bin/_cli/launcher.mjs`, `lib/overlord/launch-commands.ts`, and any ticket copy surfaces that emit copy/paste launch commands.
 
 ## Product Surfaces
 
@@ -20,11 +20,11 @@ Overlord exposes its protocol through six parallel surfaces:
 | Surface | Location | Convention |
 |---------|----------|------------|
 | **API routes** | `apps/web/app/api/protocol/*/route.ts` | REST endpoints, kebab-case paths |
-| **CLI commands** | `packages/overlord-cli/bin/_cli/protocol.mjs` | `ovld protocol <subcommand>`, `--kebab-case` flags |
+| **CLI commands** | `packages/open-overlord-cli/bin/_cli/protocol.mjs` | `ovld protocol <subcommand>`, `--kebab-case` flags |
 | **MCP tools** | `supabase/functions/mcp/tools.ts` (hosted) + `plugins/overlord/scripts/overlord-mcp.mjs` (Codex local shim) + `plugins/antigravity/scripts/overlord-mcp.mjs` (Antigravity local shim, staged to `~/.ovld/antigravity/scripts/`) | Hosted: `snake_case` tool names, **camelCase** parameters matching API JSON. Local shims: `snake_case` parameters mapping to CLI flags. |
-| **Agent plugins** | Source templates in `plugins/_source/agents/{claude,cursor,overlord}/` plus shared include templates in `plugins/_source/shared/` render to `plugins/{claude,cursor,overlord}/` and `packages/overlord-cli/plugins/{claude,cursor,overlord}/`; Antigravity remains direct at `plugins/antigravity/skills/overlord-ticket/` | Skill instructions referencing CLI/MCP |
+| **Agent plugins** | Source templates in `plugins/_source/agents/{claude,cursor,overlord}/` plus shared include templates in `plugins/_source/shared/` render to `plugins/{claude,cursor,overlord}/` and `packages/open-overlord-cli/plugins/{claude,cursor,overlord}/`; Antigravity remains direct at `plugins/antigravity/skills/overlord-ticket/` | Skill instructions referencing CLI/MCP |
 | **Public docs for agents** | `docs/public/` | AI-agent-facing explainers that help agents explain Overlord to end users |
-| **CLI README** | `packages/overlord-cli/README.md` | User-facing CLI documentation and examples |
+| **CLI README** | `packages/open-overlord-cli/README.md` | User-facing CLI documentation and examples |
 
 ## Review Process
 
@@ -43,12 +43,12 @@ Read each `route.ts` under `apps/web/app/api/protocol/`. Extract:
 - Expected request body or query parameters (look for destructuring of `await request.json()` or `searchParams`)
 
 #### 2. CLI Commands
-Read `packages/overlord-cli/bin/_cli/protocol.mjs`. Extract:
+Read `packages/open-overlord-cli/bin/_cli/protocol.mjs`. Extract:
 - Each subcommand from the dispatch block (the `if (subcommand === '...')` section)
 - The flags each handler function reads via `parseFlags()`
 - Any flag aliases or defaults
 
-If the task changes human launch commands, also read `packages/overlord-cli/bin/_cli/launcher.mjs` and `lib/overlord/launch-commands.ts` so you can compare `ovld launch` / `ovld restart` help, aliases, and emitted copy commands against Desktop and product copy.
+If the task changes human launch commands, also read `packages/open-overlord-cli/bin/_cli/launcher.mjs` and `lib/overlord/launch-commands.ts` so you can compare `ovld launch` / `ovld restart` help, aliases, and emitted copy commands against Desktop and product copy.
 
 #### 3. MCP Tools
 Read all applicable MCP sources:
@@ -56,7 +56,7 @@ Read all applicable MCP sources:
 - `plugins/overlord/scripts/overlord-mcp.mjs` — Codex local MCP shim (`tools` array + `searchTicketsTool`) and CLI flag mapping
 - `plugins/antigravity/scripts/overlord-mcp.mjs` — Antigravity local MCP shim (same `ovld protocol` delegation pattern; installed copy lives at `~/.ovld/antigravity/scripts/overlord-mcp.mjs`)
 
-When auditing Antigravity-only drift, also read the installed-path patch logic in `packages/overlord-cli/bin/_cli/setup.mjs` (`patchAntigravityInstalledPaths`) so MCP `args` and hook `command` paths match the staged runtime scripts.
+When auditing Antigravity-only drift, also read the installed-path patch logic in `packages/open-overlord-cli/bin/_cli/setup.mjs` (`patchAntigravityInstalledPaths`) so MCP `args` and hook `command` paths match the staged runtime scripts.
 
 Extract for each tool:
 - `name`, `inputSchema.properties`, `inputSchema.required`
@@ -84,7 +84,7 @@ These docs are specifically targeted to AI agents, and their purpose is to help 
 Also read `docs/for-agents/cli-reference/page.tsx` and `docs/for-agents/rules/page.tsx` to check for drift in the agent documentation.
 
 #### 6. CLI README
-Read `packages/overlord-cli/README.md`.
+Read `packages/open-overlord-cli/README.md`.
 
 Extract which `ovld protocol` operations, flags, and examples are documented, then compare them to the real CLI implementation and matching API/MCP surfaces.
 
@@ -112,7 +112,7 @@ An operation exists in one surface but not another:
 - MCP tool with no corresponding API route
 - Operations not documented in agent plugin skills
 - Operations not documented (or inaccurately documented) in `docs/public/`
-- Operations not documented (or inaccurately documented) in `packages/overlord-cli/README.md`
+- Operations not documented (or inaccurately documented) in `packages/open-overlord-cli/README.md`
 
 #### 3b. Parameter Drift
 An operation exists in multiple surfaces but parameters differ:
@@ -134,7 +134,7 @@ An operation exists in multiple surfaces but parameters differ:
 - Inconsistent descriptions of the same operation across surfaces
 - `docs/public/` guidance that no longer matches the current protocol surface
 - `docs/public/` explanations that would cause an AI agent to explain Overlord incorrectly
-- `packages/overlord-cli/README.md` command or flag examples that no longer match `packages/overlord-cli/bin/_cli/protocol.mjs`
+- `packages/open-overlord-cli/README.md` command or flag examples that no longer match `packages/open-overlord-cli/bin/_cli/protocol.mjs`
 
 #### 3e. Launch Command Drift
 - `ovld launch` help text, accepted flags, and alias behavior diverge from `lib/overlord/launch-commands.ts`

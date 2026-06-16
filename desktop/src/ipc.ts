@@ -1,12 +1,14 @@
 import { type BrowserWindow, dialog, ipcMain, shell } from 'electron';
 
+import type { DesktopUpdater } from './updater.js';
+
 /**
  * The minimal, audited IPC surface exposed to the renderer through the
  * `window.overlord` preload bridge. Each handler is a genuinely shell-only
  * capability (file picking, opening things in the OS) — no product logic, no DB
  * access. The SPA feature-detects these; it never requires them.
  */
-export function registerIpc(getWindow: () => BrowserWindow | null): void {
+export function registerIpc(getWindow: () => BrowserWindow | null, updater: DesktopUpdater): void {
   // Pick a local directory (e.g. to link a project to a checkout).
   ipcMain.handle('overlord:choose-directory', async () => {
     const window = getWindow();
@@ -42,4 +44,8 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     shell.showItemInFolder(targetPath);
     return true;
   });
+
+  ipcMain.handle('overlord:updates:get-status', () => updater.getStatus());
+  ipcMain.handle('overlord:updates:check', () => updater.checkForUpdates());
+  ipcMain.handle('overlord:updates:install', () => updater.installDownloadedUpdate());
 }

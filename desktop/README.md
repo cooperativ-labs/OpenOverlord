@@ -69,9 +69,12 @@ from the environment (`.env` at the repo root):
 | `APPLE_ID` | Apple ID for notarization |
 | `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for that Apple ID |
 | `APPLE_TEAM_ID` | Developer Team ID |
+| `OVERLORD_UPDATE_FEED_URL` | Optional generic electron-updater feed URL embedded in release builds |
 
 The Developer ID Application signing identity is auto-discovered from the login
 keychain (or set `CSC_LINK`/`CSC_KEY_PASSWORD`). Use `--no-sign` for an ad-hoc
-local build that needs no Apple account. See
+local build that needs no Apple account. When `OVERLORD_UPDATE_FEED_URL` is set,
+publish the emitted `.zip`, `.blockmap`, and `latest-mac.yml` files at that URL.
+See
 [`docs/desktop-app.md`](docs/desktop-app.md) for the full behavior spec and
 [`docs/testing.md`](docs/testing.md) for the test plan.

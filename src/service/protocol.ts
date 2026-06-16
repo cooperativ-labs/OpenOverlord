@@ -512,8 +512,8 @@ export function recordHookEvent({
     ctx,
     ticket,
     objectives,
-    sessionKey,
-    externalSessionId
+    sessionKey: sessionKey ?? null,
+    externalSessionId: externalSessionId ?? null
   });
   const hash = promptHash(trimmedPrompt);
   const dedupeParts = [

@@ -1,5 +1,23 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+export type DesktopUpdateState =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'not-available'
+  | 'downloading'
+  | 'downloaded'
+  | 'error'
+  | 'unsupported';
+
+export type DesktopUpdateStatus = {
+  state: DesktopUpdateState;
+  currentVersion: string;
+  availableVersion: string | null;
+  message: string | null;
+  progressPercent: number | null;
+};
+
 /**
  * The `window.overlord` bridge. Kept deliberately tiny: a few shell-only
  * affordances the unmodified SPA can *feature-detect* (`if (window.overlord)`),
@@ -16,7 +34,22 @@ const api = {
   openExternal: (url: string): Promise<boolean> =>
     ipcRenderer.invoke('overlord:open-external', url),
   /** Reveal a path in the OS file manager. */
-  revealInFinder: (path: string): Promise<boolean> => ipcRenderer.invoke('overlord:reveal', path)
+  revealInFinder: (path: string): Promise<boolean> => ipcRenderer.invoke('overlord:reveal', path),
+  updates: {
+    getStatus: (): Promise<DesktopUpdateStatus> =>
+      ipcRenderer.invoke('overlord:updates:get-status'),
+    check: (): Promise<DesktopUpdateStatus> => ipcRenderer.invoke('overlord:updates:check'),
+    install: (): Promise<DesktopUpdateStatus> => ipcRenderer.invoke('overlord:updates:install'),
+    onStatus: (callback: (status: DesktopUpdateStatus) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: DesktopUpdateStatus) => {
+        callback(status);
+      };
+      ipcRenderer.on('overlord:updates:status', listener);
+      return () => {
+        ipcRenderer.removeListener('overlord:updates:status', listener);
+      };
+    }
+  }
 };
 
 export type OverlordBridge = typeof api;

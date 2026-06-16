@@ -8,6 +8,9 @@ webapp-dist/
 sqlite/
 staging/
 
+# Staged from webapp/public/images/512.png by scripts/build-desktop.ts
+build/icon.png
+
 # electron-builder output
 release/
 

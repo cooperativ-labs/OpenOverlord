@@ -32,5 +32,46 @@ export default defineConfig({
       }
     }
   },
-  build: { outDir: 'dist', emptyOutDir: true }
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return undefined;
+          }
+
+          const normalizedId = id.replaceAll('\\', '/');
+          const packagePath = normalizedId.split('/node_modules/').pop() ?? '';
+
+          if (
+            packagePath.startsWith('react/') ||
+            packagePath.startsWith('react-dom/') ||
+            packagePath.startsWith('scheduler/')
+          ) {
+            return 'vendor-react';
+          }
+
+          if (packagePath.startsWith('@tanstack/')) {
+            return 'vendor-tanstack';
+          }
+
+          if (packagePath.startsWith('@dnd-kit/')) {
+            return 'vendor-dnd';
+          }
+
+          if (packagePath.startsWith('@base-ui/')) {
+            return 'vendor-base-ui';
+          }
+
+          if (packagePath.startsWith('lucide-react/')) {
+            return 'vendor-icons';
+          }
+
+          return 'vendor';
+        }
+      }
+    }
+  }
 });

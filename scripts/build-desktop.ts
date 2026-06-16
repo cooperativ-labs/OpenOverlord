@@ -111,6 +111,45 @@ function resolveBin(name: string): string {
   fail(`Could not find ${name}. Run \`yarn desktop:install\` first.`);
 }
 
+function canImportDistutils(python: string): boolean {
+  const result = spawnSync(python, ['-c', 'import distutils.version'], {
+    cwd: repoRoot,
+    stdio: 'ignore'
+  });
+  return result.status === 0;
+}
+
+function resolveCommand(commandName: string): string | null {
+  const result = spawnSync('which', [commandName], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore']
+  });
+  if (result.status !== 0) return null;
+  return result.stdout.trim() || null;
+}
+
+function configureNodeGypPython(): void {
+  if (process.env.PYTHON) return;
+
+  for (const candidate of ['python3', 'python']) {
+    const resolved = resolveCommand(candidate);
+    if (resolved && canImportDistutils(resolved)) return;
+  }
+
+  for (const candidate of ['python3.11', 'python3.10', 'python3.9', 'python3.8']) {
+    const resolved = resolveCommand(candidate);
+    if (!resolved || !canImportDistutils(resolved)) continue;
+    process.env.PYTHON = resolved;
+    console.log(`\n→ Using ${resolved} for node-gyp (default Python has no distutils)`);
+    return;
+  }
+
+  fail(
+    'Electron native rebuild needs a Python with distutils. Set PYTHON to Python 3.11 or install setuptools for your default Python.'
+  );
+}
+
 function stage(from: string, to: string): void {
   if (!existsSync(from)) fail(`Expected build output missing: ${from}`);
   rmSync(to, { recursive: true, force: true });
@@ -118,9 +157,16 @@ function stage(from: string, to: string): void {
   cpSync(from, to, { recursive: true });
 }
 
+function stageFile(from: string, to: string): void {
+  if (!existsSync(from)) fail(`Expected build output missing: ${from}`);
+  mkdirSync(path.dirname(to), { recursive: true });
+  cpSync(from, to);
+}
+
 function main(): void {
   loadEnv();
   const args = parseArgs(process.argv.slice(2));
+  configureNodeGypPython();
 
   const electronInstalled = [
     path.join(desktopDir, 'node_modules', 'electron'),
@@ -165,6 +211,10 @@ function main(): void {
     path.join(desktopDir, 'sqlite', 'migrations')
   );
   stageCli();
+  stageFile(
+    path.join(repoRoot, 'webapp', 'public', 'images', '512.png'),
+    path.join(desktopDir, 'build', 'icon.png')
+  );
 
   // 3. Run electron-builder.
   runElectronBuilder(args);
@@ -201,6 +251,11 @@ function runElectronBuilder(args: Args): void {
   // explicitly from the installed package metadata.
   const electronVersion = installedElectronVersion();
   if (electronVersion) builderArgs.push(`-c.electronVersion=${electronVersion}`);
+
+  if (process.env.OVERLORD_UPDATE_FEED_URL) {
+    builderArgs.push('-c.publish.provider=generic');
+    builderArgs.push(`-c.publish.url=${process.env.OVERLORD_UPDATE_FEED_URL}`);
+  }
 
   if (args.notarize) {
     builderArgs.push('-c.mac.notarize=true');

@@ -46,7 +46,7 @@ Common tasks (every command is run from the repo root):
 | `yarn db:start` | Launch the local SQLite database |
 | `yarn db:reset` | Wipe local state and relaunch the database |
 | `yarn db:codegen` | Regenerate `src/types/db.ts` from the local schema |
-| `yarn pack:cli` | Produce the publishable `overlord-cli` tarball |
+| `yarn pack:cli` | Produce the publishable `open-overlord-cli` tarball |
 
 To work inside a single package, use `yarn workspace <name> <script>`
 (e.g. `yarn workspace @overlord/webapp dev`). Because the tree is synced across

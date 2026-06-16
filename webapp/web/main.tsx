@@ -5,6 +5,10 @@ import { RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import {
+  SystemNotificationProvider,
+  SystemNotificationRoot
+} from './components/system-notifications';
 import { ThemeProvider } from './components/theme-provider.tsx';
 import { TooltipProvider } from './components/ui/tooltip.tsx';
 import { RealtimeProvider } from './lib/realtime.tsx';
@@ -29,9 +33,12 @@ createRoot(rootElement).render(
     <ThemeProvider>
       <TooltipProvider>
         <QueryClientProvider client={queryClient}>
-          <RealtimeProvider>
-            <RouterProvider router={router} />
-          </RealtimeProvider>
+          <SystemNotificationProvider>
+            <RealtimeProvider>
+              <RouterProvider router={router} />
+            </RealtimeProvider>
+            <SystemNotificationRoot />
+          </SystemNotificationProvider>
         </QueryClientProvider>
       </TooltipProvider>
     </ThemeProvider>

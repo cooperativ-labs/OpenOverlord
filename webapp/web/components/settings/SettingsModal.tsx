@@ -1,8 +1,9 @@
-import { Info, KeyRound, Palette, User } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Info, KeyRound, MonitorDown, Palette, User } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { AboutPage } from '@/components/settings/AboutPage';
 import { ApplicationPage } from '@/components/settings/ApplicationPage';
+import { DesktopUpdatesPage } from '@/components/settings/DesktopUpdatesPage';
 import {
   SettingsDialogShell,
   type SettingsNavGroup,
@@ -22,28 +23,39 @@ const appNavItems: SettingsNavItem[] = [
   { name: 'About', icon: Info }
 ];
 
+const desktopNavItem: SettingsNavItem = { name: 'Desktop', icon: MonitorDown };
+
 const userNavItems: SettingsNavItem[] = [
   { name: 'Profile', icon: User },
   { name: 'Tokens', icon: KeyRound }
 ];
 
-const navItems: SettingsNavItem[] = [...userNavItems, ...appNavItems];
+const navItems: SettingsNavItem[] = [...userNavItems, ...appNavItems, desktopNavItem];
 
 export type SettingsNavSection = (typeof navItems)[number]['name'];
 
-const navGroups: SettingsNavGroup[] = [
-  { label: 'User', items: userNavItems },
-  { label: 'Application', items: appNavItems }
-];
-
 export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalProps) {
   const [activeNav, setActiveNav] = useState<SettingsNavSection>('Profile');
+  const isDesktop = typeof window !== 'undefined' && window.overlord?.isDesktop === true;
+  const navGroups = useMemo<SettingsNavGroup[]>(
+    () => [
+      { label: 'User', items: userNavItems },
+      { label: 'Application', items: isDesktop ? [...appNavItems, desktopNavItem] : appNavItems }
+    ],
+    [isDesktop]
+  );
+  const availableNavItems = useMemo(() => navGroups.flatMap(group => group.items), [navGroups]);
 
   useEffect(() => {
     if (!open || !initialNav) return;
-    if (!navItems.some(item => item.name === initialNav)) return;
+    if (!availableNavItems.some(item => item.name === initialNav)) return;
     setActiveNav(initialNav);
-  }, [open, initialNav]);
+  }, [availableNavItems, open, initialNav]);
+
+  useEffect(() => {
+    if (availableNavItems.some(item => item.name === activeNav)) return;
+    setActiveNav('Profile');
+  }, [activeNav, availableNavItems]);
 
   return (
     <SettingsDialogShell
@@ -57,6 +69,7 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
       showClose
     >
       {activeNav === 'Application' && <ApplicationPage />}
+      {activeNav === 'Desktop' && <DesktopUpdatesPage />}
       {activeNav === 'Profile' && <UserProfilePage open={open} />}
       {activeNav === 'Tokens' && <UserTokensPage open={open} />}
       {activeNav === 'About' && <AboutPage open={open} />}

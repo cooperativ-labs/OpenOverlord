@@ -64,9 +64,24 @@ export function registerAutomations(automations: ReadonlyArray<RegisteredAutomat
 }
 
 const loadedModuleSpecs = new Set<string>();
-const importExternalAutomationModule = new Function('specifier', 'return import(specifier);') as (
-  specifier: string
-) => Promise<unknown>;
+
+/**
+ * Built lazily on first use so the `new Function` indirection — which keeps the
+ * bundler from trying to resolve the dynamic specifier — is never *evaluated* in
+ * the renderer. The webapp imports this module for `listAutomations` /
+ * `getAutomation`, but only the server ever calls `loadExternalAutomations`.
+ * Constructing the function at module scope ran it in the browser, where the
+ * desktop shell's `script-src 'self'` CSP blocks `new Function`, throwing at
+ * import time and blanking the window.
+ */
+let externalModuleImporter: ((specifier: string) => Promise<unknown>) | null = null;
+
+function importExternalAutomationModule(specifier: string): Promise<unknown> {
+  externalModuleImporter ??= new Function('specifier', 'return import(specifier);') as (
+    specifier: string
+  ) => Promise<unknown>;
+  return externalModuleImporter(specifier);
+}
 
 /**
  * Downstream extension seam (`custom-automation` extension point). Imports the

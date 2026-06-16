@@ -76,10 +76,27 @@ A minimal, audited surface the SPA **feature-detects** (`if (window.overlord)`):
 | `chooseDirectory()` | native directory picker → absolute path or `null` |
 | `openExternal(url)` | open an http(s) URL in the system browser |
 | `revealInFinder(path)` | reveal a path in the OS file manager |
+| `updates.getStatus()` | current update state |
+| `updates.check()` | check the configured update feed |
+| `updates.install()` | install a downloaded update and relaunch |
+| `updates.onStatus(callback)` | subscribe to update state changes |
 
 No tokens, Node access, or product logic cross this boundary.
 
-## 6. Launching agents
+## 6. Updates
+
+The shell uses `electron-updater` for packaged-app updates. On startup it checks
+the configured feed, then checks again every four hours. Updates download
+automatically; installation is explicit through **Settings → Desktop** or the
+native **Check for Updates...** / **Install Update and Relaunch** menu items.
+
+Release builds can embed a generic update feed by setting
+`OVERLORD_UPDATE_FEED_URL` when running `yarn desktop:package`. The release
+directory must publish the `.zip`, `.blockmap`, and `latest-mac.yml` files
+emitted by electron-builder at that feed URL. In unsigned/dev builds without a
+feed, update checks report as unavailable.
+
+## 7. Launching agents
 
 Launching is unchanged: the webapp's **Launch** button queues an
 `execution_request`; an `ovld runner` claims it and `ovld launch` opens the agent
@@ -87,7 +104,7 @@ in the terminal configured by `terminal_launcher` (CLI-owned). The desktop may
 supervise a runner so the button works with zero manual setup. The shell adds no
 terminal configuration of its own.
 
-## 7. Packaging
+## 8. Packaging
 
 `scripts/build-desktop.ts` (`yarn desktop:package`) stages the server bundle, SPA,
 and CLI, then runs electron-builder:
@@ -102,6 +119,8 @@ and CLI, then runs electron-builder:
   `CSC_LINK`); notarization (`--notarize`) uses `APPLE_ID` /
   `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID`. `--no-sign` produces an ad-hoc
   build.
+- `OVERLORD_UPDATE_FEED_URL` configures the generic updater feed and causes
+  electron-builder to emit update metadata such as `latest-mac.yml`.
 
 ### Native module / toolchain notes
 
@@ -112,18 +131,20 @@ packaging, so the build machine needs:
   Electron 42's V8 (`v8::External::New` gained a required third argument). 12.10.1
   builds against Electron 42 cleanly.
 - **A node-gyp-compatible Python** — node-gyp's bundled gyp imports `distutils`,
-  which was removed in Python 3.12. On a machine whose default `python3` is ≥3.12,
-  point node-gyp at an older interpreter (`PYTHON=/path/to/python3.11
-  yarn desktop:package`) or `pip install setuptools` to restore `distutils`.
+  which was removed in Python 3.12. `yarn desktop:package` uses `PYTHON` when
+  set, otherwise it auto-selects an installed `python3.11`/`python3.10`/`python3.9`
+  /`python3.8` if the default Python cannot import `distutils`. If none is
+  available, install Python 3.11 or `pip install setuptools` for the default
+  Python.
 - Xcode Command Line Tools (the C++ toolchain) for the compile.
 
 A verified `--no-sign` arm64 + x64 build with Electron 42.4.0 produces
 `Overlord-<version>-arm64.dmg` / `Overlord-<version>.dmg` (and matching `.zip`s).
 
-## 8. Deferred (later phases)
+## 9. Deferred (later phases)
 
 - Better Auth login UI in the SPA (loopback stays single-trusted-operator by
   default; in-app auth would use Better Auth session cookies, spawned CLI a
   `USER_TOKEN`).
-- "Install CLI" shim, auto-updater, Tailscale, quick-task/feed windows,
-  connector/plugin auto-install. These remain CLI surfaces or future work.
+- "Install CLI" shim, Tailscale, quick-task/feed windows, connector/plugin
+  auto-install. These remain CLI surfaces or future work.

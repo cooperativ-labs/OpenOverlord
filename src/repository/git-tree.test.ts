@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -29,7 +29,7 @@ test('readRepositoryTree returns tracked and untracked file structure', () => {
     const tree = readRepositoryTree(dir);
     const entriesByPath = new Map(tree.entries.map(entry => [entry.path, entry]));
 
-    assert.equal(tree.gitRoot, dir);
+    assert.equal(tree.gitRoot, realpathSync(dir));
     assert.ok(tree.branch);
     assert.match(tree.commit ?? '', /^[a-f0-9]+$/);
     assert.equal(entriesByPath.get('README.md')?.type, 'file');

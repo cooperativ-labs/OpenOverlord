@@ -51,7 +51,7 @@ cross-folder relative imports:
   `DATABASE_URL` environment variable so auth and the service layer never disagree.
 
 The CLI no longer hand-copies migrations: `@overlord/database` is bundled into
-the `overlord-cli` tarball at pack time, so there is a single source of truth for
+the `open-overlord-cli` tarball at pack time, so there is a single source of truth for
 the migration SQL.
 
 Migrations live here, numbered sequentially:
