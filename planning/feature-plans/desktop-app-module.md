@@ -100,7 +100,7 @@ Key behaviors that matter for our port:
   (`agent-bundle/`, `overlord-plugin.ts`, `agent-permissions.ts`), Tailscale,
   Supabase manager, quick-task hotkey window, feed window, auto-updater.
 
-- **Packaging (`electron-builder.yml`).** Bundles `packages/open-overlord-cli/**`
+- **Packaging (`electron-builder.yml`).** Bundles `packages/open-overlord/**`
   and the `plugins/**` into the app (with `asarUnpack`), targets dmg/zip +
   AppImage/deb, sets electron fuses, and runs a notarize step after signing.
 
@@ -164,7 +164,7 @@ module"):**
   `… build` / `… package`, and optionally a root convenience alias
   `yarn desktop` that fails with a helpful message if deps are absent.
 - The desktop module **depends on** `webapp` (URL + REST surface) and the
-  packaged `open-overlord-cli`, but `webapp` and `cli` must have **no build/runtime
+  packaged `open-overlord`, but `webapp` and `cli` must have **no build/runtime
   dependency on `desktop`** — the dependency arrow points one way only.
 - Document it as the eighth row in the README module table and mark it
   "optional / not built by default."
@@ -417,7 +417,7 @@ Mirror the closed app's proven setup, scaled down:
   (linux); `appId: io.cooperativ.openoverlord` (or similar); set the same
   hardening fuses; `npmRebuild: false`.
 - **Bundle the CLI + connector plugins** so the spawned `ovld` and any installed
-  plugins exist offline: include the packed `open-overlord-cli` tarball/dir and
+  plugins exist offline: include the packed `open-overlord` tarball/dir and
   `connectors/adapters/**`, `asarUnpack` them (they're executed as subprocesses
   / read from disk). `cli-resolver.ts` resolves `ovld` from the unpacked
   location first, then global `PATH`.

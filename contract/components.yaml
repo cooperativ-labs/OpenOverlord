@@ -4,20 +4,20 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: "0.9-draft"
+contractVersion: '0.11-draft'
 
 components:
   protocol:
-    label: "Protocol Layer"
+    label: 'Protocol Layer'
     stableIdentifier: protocol
-    referenceSpec: "planning/feature-plans/03-agent-protocol.md"
+    referenceSpec: 'planning/feature-plans/03-agent-protocol.md'
     owns:
-      - "ovld protocol subcommand names and flags"
-      - "session lifecycle: attach → (update|heartbeat)* → (ask|deliver)"
-      - "context assembly format from attach"
-      - "delivery payload structure and validation rules"
-      - "changed-file and change-rationale recording protocol"
-      - "idempotency key scope naming: protocol.*"
+      - 'ovld protocol subcommand names and flags'
+      - 'session lifecycle: attach → (update|heartbeat)* → (ask|deliver)'
+      - 'context assembly format from attach'
+      - 'delivery payload structure and validation rules'
+      - 'changed-file and change-rationale recording protocol'
+      - 'idempotency key scope naming: protocol.*'
     dependsOn:
       - database
       - auth
@@ -26,84 +26,85 @@ components:
       - protocolToDatabase
 
   database:
-    label: "Database Layer"
+    label: 'Database Layer'
     stableIdentifier: database
-    referenceSpec: "planning/feature-plans/09-database-schema-contract.md"
+    referenceSpec: 'planning/feature-plans/09-database-schema-contract.md'
     owns:
-      - "table definitions, column types, indexes, foreign keys, CHECK constraints"
-      - "controlled vocabularies (closed and open sets)"
-      - "soft-delete and revision semantics"
-      - "migration versioning via schema_migrations"
-      - "extension table naming: ext_<name>_"
-      - "logical types and adapter mappings"
+      - 'table definitions, column types, indexes, foreign keys, CHECK constraints'
+      - 'controlled vocabularies (closed and open sets)'
+      - 'soft-delete and revision semantics'
+      - 'migration versioning via schema_migrations'
+      - 'extension table naming: ext_<name>_'
+      - 'logical types and adapter mappings'
     dependsOn: []
     interactionSurfaces:
       - protocolToDatabase
-      - cliToDatabase
-      - runnerToDatabase
+      - restApiToDatabase
       - restApiToDatabase
       - extensionToCore
 
   cli:
-    label: "CLI Layer"
+    label: 'CLI Layer'
     stableIdentifier: cli
-    referenceSpec: "planning/feature-plans/02-cli-first-product-surface.md"
+    referenceSpec: 'planning/feature-plans/02-cli-first-product-surface.md'
     owns:
-      - "management command names and argument shapes"
-      - "ovld serve: boot a fully-initialized local instance (resolve adapter -> create + migrate database if absent -> start the web/REST server)"
-      - "project linking and discovery from working directory, with a packaged-mode fallback to the OS app-data overlord.toml"
-      - "configuration file locations: overlord.toml, .overlord/project.json"
-      - "database location settings: database_path (developer override of the global ~/.ovld/Overlord.sqlite default), database_url (admin cloud/hosted-database connection string feeding resolveAdapter())"
-      - "optional SQL Studio settings: sql_studio_enabled, sql_studio_host, sql_studio_port, sql_studio_binary"
-      - "optional terminal_launcher for opening launched agents in a new terminal window"
-      - "human-readable CLI output format conventions"
+      - 'management command names and argument shapes'
+      - 'ovld serve: boot a fully-initialized local instance in local/backend packages'
+      - 'ovld config set: select a local loopback backend URL or hosted/cloud backend URL'
+      - 'ovld auth login: first-run backend onboarding before authentication'
+      - 'project linking and discovery from working directory, with a packaged-mode fallback to the OS app-data overlord.toml'
+      - 'configuration file locations: overlord.toml, .overlord/project.json'
+      - 'backend URL settings: backend_url and backend_mode (local/cloud)'
+      - 'optional terminal_launcher for opening launched agents in a new terminal window'
+      - 'human-readable CLI output format conventions'
     dependsOn:
-      - database
       - auth
+      - rest
     interactionSurfaces:
-      - cliToDatabase
+      - cliToRest
 
   connector:
-    label: "Connector Layer"
+    label: 'Connector Layer'
     stableIdentifier: connector
-    referenceSpec: "planning/feature-plans/05-connectors-and-agent-plugins.md"
+    referenceSpec: 'planning/feature-plans/05-connectors-and-agent-plugins.md'
     owns:
-      - "connector core workflow instructions"
-      - "per-agent plugin/adapter files and managed file manifests"
-      - "hook scripts and their event contracts"
-      - "ovld setup <agent> and ovld doctor behavior"
-      - "connector capability declarations and approved capability flag set"
+      - 'connector core workflow instructions'
+      - 'per-agent plugin/adapter files and managed file manifests'
+      - 'hook scripts and their event contracts'
+      - 'ovld setup <agent> and ovld doctor behavior'
+      - 'connector capability declarations and approved capability flag set'
     dependsOn:
       - protocol
     interactionSurfaces:
       - connectorToProtocol
 
   runner:
-    label: "Runner Layer"
+    label: 'Runner Layer'
     stableIdentifier: runner
-    referenceSpec: "planning/feature-plans/04-runner-and-launch-execution.md"
+    referenceSpec: 'planning/feature-plans/04-runner-and-launch-execution.md'
     owns:
-      - "execution_requests queue claiming and launch"
-      - "working directory resolution"
-      - "ovld runner commands"
-      - "execution target selection logic"
+      - 'execution_requests queue claiming and launch'
+      - 'working directory resolution'
+      - 'ovld runner commands'
+      - 'execution target selection logic'
     dependsOn:
       - database
       - connector
+      - rest
     interactionSurfaces:
-      - runnerToDatabase
+      - runnerToRest
 
   rest:
-    label: "REST API Layer"
+    label: 'REST API Layer'
     stableIdentifier: rest
-    referenceSpec: "planning/feature-plans/09-database-schema-contract.md"
-    referenceSection: "REST API Boundary"
+    referenceSpec: 'planning/feature-plans/09-database-schema-contract.md'
+    referenceSection: 'REST API Boundary'
     owns:
-      - "URL paths and HTTP method contracts"
-      - "request/response DTO shapes (camelCase, derived from logical schema)"
-      - "REST auth integration points"
-      - "SSE/WebSocket realtime endpoint"
-      - "SQL Studio launch metadata exposed through /api/meta"
+      - 'URL paths and HTTP method contracts'
+      - 'request/response DTO shapes (camelCase, derived from logical schema)'
+      - 'REST auth integration points'
+      - 'SSE/WebSocket realtime endpoint'
+      - 'SQL Studio launch metadata exposed through /api/meta'
     dependsOn:
       - database
       - auth
@@ -111,65 +112,65 @@ components:
       - restApiToDatabase
 
   auth:
-    label: "Auth Layer"
+    label: 'Auth Layer'
     stableIdentifier: auth
     referenceSpecs:
-      - "planning/feature-plans/07-user-token-authentication.md"
-      - "planning/feature-plans/08-role-based-access-control.md"
+      - 'planning/feature-plans/07-user-token-authentication.md'
+      - 'planning/feature-plans/08-role-based-access-control.md'
     owns:
-      - "token creation, rotation, revocation, hash storage"
-      - "role assignment CRUD"
-      - "permission check interface"
-      - "audit log attribution fields"
-      - "Better Auth implementation tables: user, session, account, verification, apikey"
+      - 'token creation, rotation, revocation, hash storage'
+      - 'role assignment CRUD'
+      - 'permission check interface'
+      - 'audit log attribution fields'
+      - 'Better Auth implementation tables: user, session, account, verification, apikey'
     dependsOn:
       - database
     interactionSurfaces:
       - authToDatabase
 
   automations:
-    label: "Automations Layer"
+    label: 'Automations Layer'
     stableIdentifier: automations
-    referenceSpec: "automations/docs/01-automations-overview.md"
+    referenceSpec: 'automations/docs/01-automations-overview.md'
     owns:
-      - "Automation interface and built-in automation registry"
-      - "Gemini provider configuration and client lifecycle"
-      - "reference summarization automations and objective title automation"
-      - "fire-and-forget automation helpers with caller-supplied persistence callbacks"
-      - "downstream automation loading via OVERLORD_AUTOMATIONS_MODULE (custom-automation extension point)"
+      - 'Automation interface and built-in automation registry'
+      - 'Gemini provider configuration and client lifecycle'
+      - 'reference summarization automations and objective title automation'
+      - 'fire-and-forget automation helpers with caller-supplied persistence callbacks'
+      - 'downstream automation loading via OVERLORD_AUTOMATIONS_MODULE (custom-automation extension point)'
     dependsOn: []
     interactionSurfaces:
       - serviceToAutomations
 
   extension:
-    label: "Extension System"
+    label: 'Extension System'
     stableIdentifier: extension
     referenceSpecs:
-      - "planning/feature-plans/09-database-schema-contract.md"
-      - "planning/feature-plans/agent-harness-configuration-architecture.md"
-    referenceSection: "Extension Points"
+      - 'planning/feature-plans/09-database-schema-contract.md'
+      - 'planning/feature-plans/agent-harness-configuration-architecture.md'
+    referenceSection: 'Extension Points'
     owns:
-      - "user_harness_extensions authoring workflow"
-      - "workspace_harness_extensions catalog promotion workflow"
-      - "extension table namespace: ext_<name>_"
-      - "extension migration component naming: ext:<name>"
-      - "namespaced JSON metadata keys inside core tables"
+      - 'user_harness_extensions authoring workflow'
+      - 'workspace_harness_extensions catalog promotion workflow'
+      - 'extension table namespace: ext_<name>_'
+      - 'extension migration component naming: ext:<name>'
+      - 'namespaced JSON metadata keys inside core tables'
     dependsOn:
       - database
     interactionSurfaces:
       - extensionToCore
 
   desktop:
-    label: "Desktop Shell"
+    label: 'Desktop Shell'
     stableIdentifier: desktop
-    referenceSpec: "desktop/docs/desktop-app.md"
+    referenceSpec: 'desktop/docs/desktop-app.md'
     optional: true
     owns:
-      - "Electron app/window lifecycle and the hardened BrowserWindow security baseline (contextIsolation, sandbox, nodeIntegration: false, preload)"
-      - "loopback-scoped CSP, single-instance lock, external-navigation handling"
-      - "process supervision of the bundled web/REST server (Node utilityProcess) and optionally a local runner"
-      - "the minimal window.overlord preload bridge surface (feature-detected by the SPA, never required by it)"
-      - "desktop packaging metadata and the build/sign/notarize pipeline (electron-builder, entitlements, app-data layout)"
+      - 'Electron app/window lifecycle and the hardened BrowserWindow security baseline (contextIsolation, sandbox, nodeIntegration: false, preload)'
+      - 'loopback-scoped CSP, single-instance lock, external-navigation handling'
+      - 'process supervision of the bundled web/REST server (Node utilityProcess) and optionally a local runner'
+      - 'the minimal window.overlord preload bridge surface (feature-detected by the SPA, never required by it)'
+      - 'desktop packaging metadata and the build/sign/notarize pipeline (electron-builder, entitlements, app-data layout)'
     dependsOn:
       - rest
       - cli
@@ -181,107 +182,105 @@ components:
 
 # Interaction surfaces — the only sanctioned paths between components
 interactionSurfaces:
-
   agentToProtocol:
-    description: "Agents invoke ovld protocol subcommands via subprocess CLI"
+    description: 'Agents invoke ovld protocol subcommands via subprocess CLI'
     from: agent
     to: protocol
     transport: subprocess-cli
     authMechanism: session-key-flag
-    requiredSequence: "attach → (update|heartbeat)* → (ask|deliver)"
+    requiredSequence: 'attach → (update|heartbeat)* → (ask|deliver)'
     responseFormat: json-stdout
     errorSignal: non-zero-exit
-    shellSpecialHandling: "--summary-file - / --payload-file - with heredoc"
+    shellSpecialHandling: '--summary-file - / --payload-file - with heredoc'
 
   protocolToDatabase:
-    description: "Protocol layer reads and writes via service layer only — no direct table access"
+    description: 'Protocol layer reads and writes via service layer only — no direct table access'
     from: protocol
     to: database
     transport: service-layer-function-calls
     rules:
-      - "No direct table writes from protocol handlers"
-      - "All mutations in ACID transactions"
-      - "Optimistic concurrency: revision compare-and-set; zero-row update = 409"
-      - "entity_changes appended in same transaction as domain mutation"
-      - "Protocol-scope idempotency keys in idempotency_keys table"
+      - 'No direct table writes from protocol handlers'
+      - 'All mutations in ACID transactions'
+      - 'Optimistic concurrency: revision compare-and-set; zero-row update = 409'
+      - 'entity_changes appended in same transaction as domain mutation'
+      - 'Protocol-scope idempotency keys in idempotency_keys table'
 
-  cliToDatabase:
-    description: "CLI management commands use the same service layer as the protocol layer"
+  cliToRest:
+    description: 'Published CLI commands call the configured backend over HTTP instead of opening the database'
     from: cli
-    to: database
-    transport: service-layer-function-calls
+    to: rest
+    transport: http-json
     rules:
-      - "Same service layer as Protocol Layer"
-      - "All mutations in ACID transactions"
-      - "Optimistic concurrency via revision"
+      - 'CLI must not import database adapters or service internals'
+      - 'Backend URL comes from backend_url in overlord.toml/global config'
+      - 'Mutations go through backend endpoints that own persistence and idempotency'
 
   connectorToProtocol:
-    description: "Connector hook scripts invoke protocol commands via subprocess"
+    description: 'Connector hook scripts invoke protocol commands via subprocess'
     from: connector
     to: protocol
     transport: shell-script-subprocess
     rules:
-      - "Hook scripts must not write to the database directly"
-      - "Hook scripts must use ovld protocol hook-event or update"
-      - "Hooks may not add new event types without contract update"
-      - "UserPromptSubmit follow-up capture records user_follow_up activity without requiring a live session and without reopening execution"
+      - 'Hook scripts must not write to the database directly'
+      - 'Hook scripts must use ovld protocol hook-event or update'
+      - 'Hooks may not add new event types without contract update'
+      - 'UserPromptSubmit follow-up capture records user_follow_up activity without requiring a live session and without reopening execution'
 
-  runnerToDatabase:
-    description: "Runner claims execution requests atomically; appends events in same transaction"
+  runnerToRest:
+    description: 'CLI runner polls/claims/updates execution requests through backend APIs, then launches agents locally'
     from: runner
-    to: database
-    transport: service-layer-function-calls
+    to: rest
+    transport: http-json
     rules:
-      - "Claim must be atomic compare-and-set on execution_requests"
-      - "Verify objective is launchable before claiming"
-      - "ticket_events appended in same claim transaction"
-      - "entity_changes appended in same claim transaction"
+      - 'Backend claim endpoint must perform atomic compare-and-set on execution_requests'
+      - 'Runner launches agents locally after a successful claim'
+      - 'Runner reports launching/launched/failed state back through backend endpoints'
 
   restApiToDatabase:
-    description: "REST handlers use service layer after auth check"
+    description: 'REST handlers use service layer after auth check'
     from: rest
     to: database
     transport: service-layer-function-calls
     rules:
-      - "Auth check via Auth Layer before any service call"
-      - "Same service layer as CLI and Protocol Layers"
-      - "Idempotency keys for retried writes"
-      - "Response shapes use camelCase logical field names"
+      - 'Auth check via Auth Layer before any service call'
+      - 'Same service layer as CLI and Protocol Layers'
+      - 'Idempotency keys for retried writes'
+      - 'Response shapes use camelCase logical field names'
 
   authToDatabase:
-    description: "Auth layer accesses auth tables via the configured Better Auth database adapter; reads role_assignments and workspace_users for identity bridging"
+    description: 'Auth layer accesses auth tables via the configured Better Auth database adapter; reads role_assignments and workspace_users for identity bridging'
     from: auth
     to: database
     transport: configured-better-auth-adapter-and-direct-query
     rules:
-      - "Auth tables (user, session, account, verification, apikey) are auth-internal; no other component reads them directly"
-      - "Identity bridge reads workspace_users and profiles where profiles.id matches the Better Auth user id"
-      - "Role resolution reads role_assignments by workspace_user_id and workspace_id"
-      - "Auth Layer must not write to core domain tables (tickets, projects, etc.)"
+      - 'Auth tables (user, session, account, verification, apikey) are auth-internal; no other component reads them directly'
+      - 'Identity bridge reads workspace_users and profiles where profiles.id matches the Better Auth user id'
+      - 'Role resolution reads role_assignments by workspace_user_id and workspace_id'
+      - 'Auth Layer must not write to core domain tables (tickets, projects, etc.)'
 
   serviceToAutomations:
-    description: "Service-layer callers invoke automations through exported functions; persistence via injected callbacks only"
+    description: 'Service-layer callers invoke automations through exported functions; persistence via injected callbacks only'
     from: service
     to: automations
     transport: function-calls
     rules:
-      - "Automations must not read or write domain tables directly"
-      - "Provider secrets come from environment variables documented in .env.example"
-      - "Automations return null on provider unavailability or failure; callers supply deterministic fallbacks"
-      - "New built-in automations register through the automations registry, not ad hoc imports from other modules"
-      - "Downstream automations load via OVERLORD_AUTOMATIONS_MODULE (custom-automation extension point), not by editing the built-in registry"
+      - 'Automations must not read or write domain tables directly'
+      - 'Provider secrets come from environment variables documented in .env.example'
+      - 'Automations return null on provider unavailability or failure; callers supply deterministic fallbacks'
+      - 'New built-in automations register through the automations registry, not ad hoc imports from other modules'
+      - 'Downstream automations load via OVERLORD_AUTOMATIONS_MODULE (custom-automation extension point), not by editing the built-in registry'
 
   extensionToCore:
-    description: "Extensions interact with core only through service APIs and change feed"
+    description: 'Extensions interact with core only through service APIs and change feed'
     from: extension
     to: database
     transport: service-layer-apis-entity-changes-outbox
     rules:
-      - "No direct writes to core tables"
-      - "Extension tables must use ext_<name>_ prefix"
-      - "Migration component must be ext:<name>"
-      - "JSON metadata keys must be namespaced (reverse-DNS or package-style)"
-      - "Reactions to core events via service APIs, entity_changes, or outbox_messages only"
+      - 'No direct writes to core tables'
+      - 'Extension tables must use ext_<name>_ prefix'
+      - 'Migration component must be ext:<name>'
+      - 'JSON metadata keys must be namespaced (reverse-DNS or package-style)'
+      - 'Reactions to core events via service APIs, entity_changes, or outbox_messages only'
 
   shellToRest:
     description: "The desktop shell's BrowserWindow loads the SPA and calls /api/* (incl. SSE /api/stream) over the loopback origin — another HTTP client of the existing REST surface"
@@ -289,16 +288,16 @@ interactionSurfaces:
     to: rest
     transport: loopback-http-and-sse
     rules:
-      - "The shell must not fork or modify the SPA"
-      - "Better Auth session cookies work natively on the shared loopback origin; the shell injects no headers and stores no tokens for in-app requests"
-      - "Desktop-only affordances are exposed only via the feature-detected window.overlord preload bridge"
+      - 'The shell must not fork or modify the SPA'
+      - 'Better Auth session cookies work natively on the shared loopback origin; the shell injects no headers and stores no tokens for in-app requests'
+      - 'Desktop-only affordances are exposed only via the feature-detected window.overlord preload bridge'
 
   shellToCli:
-    description: "The desktop shell supervises the bundled CLI/server as subprocesses (ovld serve / runner / launch), analogous to the Agent -> Protocol subprocess pattern"
+    description: 'The desktop shell supervises the bundled CLI/server as subprocesses (ovld serve / runner / launch), analogous to the Agent -> Protocol subprocess pattern'
     from: desktop
     to: cli
     transport: subprocess-and-utility-process
     rules:
-      - "The shell triggers existing CLI/runner behavior; it must not reimplement launch, terminal, or config logic owned by the CLI/Runner Layers"
-      - "Spawned CLI needing a network credential receives a USER_TOKEN via Overlord_USER_TOKEN; pure-loopback execution needs none"
-      - "The web/REST server is forked as a Node utilityProcess (Electron ABI), not a separately shipped Node runtime"
+      - 'The shell triggers existing CLI/runner behavior; it must not reimplement launch, terminal, or config logic owned by the CLI/Runner Layers'
+      - 'Spawned CLI needing a network credential receives a USER_TOKEN via Overlord_USER_TOKEN; pure-loopback execution needs none'
+      - 'The web/REST server is forked as a Node utilityProcess (Electron ABI), not a separately shipped Node runtime'

@@ -4,13 +4,17 @@ export function printHelp({ primaryCommand }: { primaryCommand: string }): void 
 Primary command: ${primaryCommand}
 
 General:
+  ${primaryCommand} auth login                   Configure backend and log in
   ${primaryCommand} help                         Show this help message
   ${primaryCommand} version [--json]             Show the installed CLI version
-  ${primaryCommand} init [--json]                Create overlord.toml and local database
+  ${primaryCommand} init [--json]                Create overlord.toml with a local backend URL
   ${primaryCommand} serve [--host <h>] [--port <p>] [--db <path>] [--json]
                                                  Boot the web/REST server (creates + migrates the DB on first run)
-  ${primaryCommand} doctor [--json]              Validate config, database, and connector installs
+  ${primaryCommand} doctor [--json]              Validate backend and connector installs
   ${primaryCommand} config list [--json]         Show local configuration
+  ${primaryCommand} config set                   Choose local/cloud backend interactively
+  ${primaryCommand} config set local [url]       Use a local backend URL (default: http://127.0.0.1:4310)
+  ${primaryCommand} config set cloud <url>       Use a hosted backend URL
 
 Connectors:
   ${primaryCommand} setup [--json]               List installable agent connectors
@@ -47,6 +51,8 @@ Protocol (JSON output by default):
   ${primaryCommand} protocol search-tickets --query "<text>" --status next-up,execute
   ${primaryCommand} protocol load-context --ticket-id <id>
   ${primaryCommand} protocol help
+
+After installation, run \`${primaryCommand} auth login\` to choose your backend.
 
 See cli/docs/ for the full command reference.
 `);

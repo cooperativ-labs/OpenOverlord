@@ -25,8 +25,8 @@ New to Overlord? Follow the [Getting Started guide](docs/getting-started.md) —
 ten minutes from a fresh `ovld` install to your first delivered ticket.
 
 This repo is a single [Yarn 4](https://yarnpkg.com) workspace: the `auth`,
-`automations`, `database`, `cli`, and `webapp` packages alongside the root. One
-install at the root bootstraps everything — there are
+`automations`, `database`, `cli`, `webapp`, and optional `desktop` packages
+alongside the root. One install at the root bootstraps everything — there are
 no per-package installs to remember. Yarn 4 is provided via `packageManager`;
 run `corepack enable` once if `yarn --version` does not report `4.x`.
 
@@ -46,12 +46,14 @@ Common tasks (every command is run from the repo root):
 | `yarn db:start` | Launch the local SQLite database |
 | `yarn db:reset` | Wipe local state and relaunch the database |
 | `yarn db:codegen` | Regenerate `src/types/db.ts` from the local schema |
-| `yarn pack:cli` | Produce the publishable `open-overlord-cli` tarball |
+| `yarn pack:cli` | Produce the publishable `open-overlord` tarball |
 
 To work inside a single package, use `yarn workspace <name> <script>`
 (e.g. `yarn workspace @overlord/webapp dev`). Because the tree is synced across
 macOS and Linux (Syncthing), re-run `yarn install` after switching machines so
-the native `better-sqlite3` addon is rebuilt for the current host.
+native dependencies used by the local backend/Desktop build are rebuilt for the
+current host. The published npm CLI does not include native database
+dependencies.
 
 ### Setting up a custom instance
 
@@ -76,15 +78,22 @@ interview script for an agent asked to set Overlord up for you.
 
 These need to be well-documented and cleanly organized so that users and agents can easily create new connectors by referencing their chosen connectors' documentation. 
 
-### Database
+### Database And Backends
 
-The package includes a SQLite database by default to store projects, tickets, objectives, events, and other data. The first-pass portable schema proposal is documented in the [database module's schema contract](database/docs/09-database-schema-contract.md) (see the [database module](database/README.md)). The schema should be generated from one machine-readable source for SQLite/Postgres DDL, docs, and adapter conformance tests. Users should be able to extend/customize the schema through component-scoped migrations, namespaced metadata, and documented extension points:
+Overlord stores projects, tickets, objectives, events, and other data behind a
+backend service. Local mode uses a backend running on the user's machine
+(Desktop today, and possibly a future db-only local backend) that owns SQLite
+and migrations. Cloud mode uses a hosted backend that owns Postgres. The
+published `open-overlord` CLI is a client of one of those backends; it does not
+open SQLite directly or ship `better-sqlite3`.
+
+The first-pass portable schema proposal is documented in the [database module's schema contract](database/docs/09-database-schema-contract.md) (see the [database module](database/README.md)). The schema should be generated from one machine-readable source for SQLite/Postgres DDL, docs, and adapter conformance tests. Users should be able to extend/customize the schema through component-scoped migrations, namespaced metadata, and documented extension points:
 **Authentication:** Users should be able to attach their own authentication mechanisms to Overlord, so the schema should facilitate this and documentation should be provided for how to do so.
 **Role-Based Access Control:** We want users to be able to define roles and permissions. 
 
 ### CLI
 
-Open Overlord should be CLI-first from the beginning. Any functionality available in the web app should be available in the CLI. Major components include: 
+Open Overlord should be CLI-first from the beginning. Any functionality available in the web app should be available in the CLI. The CLI talks to the configured backend URL (`backend_url` in `overlord.toml`) for stateful operations while keeping local connector setup and runner/agent launching on the user's machine. Major components include:
 
 **Management**
 * Projects: Users should be able to create, delete, and manage projects.
@@ -109,7 +118,11 @@ Open Overlord should be CLI-first from the beginning. Any functionality availabl
 
 ### Web App
 
-Users will use `ovld serve` to start the web app at their chosen host/port. The current local config defaults are `http://127.0.0.1:4310`.
+The web app runs as part of a backend process at the configured host/port. From
+a source checkout, `yarn dev` or `ovld serve` can start the local web/API
+backend; in packaged local mode, Desktop supervises that backend. The current
+local default is `http://127.0.0.1:4310`, which is also the CLI's default
+`backend_url`.
 
 
 ## Core Concepts
@@ -189,11 +202,14 @@ sequenceDiagram
 
 ### overlord.toml
 
-The `overlord.toml` file is used to configure the Open Overlord system. It is a TOML file that is located in the root of the project. It is used to configure the project, including:
+The `overlord.toml` file is used to configure the Open Overlord system. It is a
+TOML file discovered from the current directory upward, with a global fallback
+under `~/.ovld/`. It is used to configure:
 * The instance/organization name
-* The the database location
+* The CLI backend target (`backend_mode`, `backend_url`)
 * The host and port the web app will run on
-* Optional SQL Studio launch settings for local database inspection
+* Optional legacy database settings consumed by local/backend packages
+* Optional SQL Studio launch settings for local backend database inspection
 * The default agent/model options (for the run button in the web app)
 * An optional `[agent_catalog]` section to customize which agents and models are offered
 * Default terminal configuration (should include popular terminals commented out)
@@ -215,8 +231,8 @@ boundary.
 
 | Module | Purpose | Contract component(s) |
 | --- | --- | --- |
-| [database/](database/README.md) | SQLite-default portable persistence + schema extension system (the `@overlord/database` workspace package — runtime in `database/src/`) | `database`, `extension` |
-| [cli/](cli/README.md) | The `ovld` command surface: management, agent protocol, and runner | `cli`, `protocol`, `runner` |
+| [database/](database/README.md) | SQLite/Postgres persistence, migrations, and schema extension system used behind local/cloud backends | `database`, `extension` |
+| [cli/](cli/README.md) | The client-only `ovld` command surface: config, backend API client, agent protocol forwarding, and local runner/launcher | `cli`, `protocol`, `runner` |
 | [auth/](auth/README.md) | Mix-and-match authentication (tokens) and RBAC authorization (the `@overlord/auth` workspace package — runtime in `auth/src/`) | `auth` |
 | [webapp/](webapp/README.md) | Deferred web control center + REST/realtime API | `rest` |
 | [mcp/](mcp/README.md) | Planned MCP server surface (Phase 5, not yet implemented) | _(future)_ |

@@ -8,7 +8,7 @@ function resolvePackageJsonPath(): string {
     const candidate = path.join(dir, 'package.json');
     if (existsSync(candidate)) {
       const packageJson = JSON.parse(readFileSync(candidate, 'utf8')) as { name?: string };
-      if (packageJson.name === 'open-overlord-cli') {
+      if (packageJson.name === 'open-overlord') {
         return candidate;
       }
     }
@@ -19,7 +19,7 @@ function resolvePackageJsonPath(): string {
     dir = parent;
   }
 
-  throw new Error('Cannot locate open-overlord-cli package.json');
+  throw new Error('Cannot locate open-overlord package.json');
 }
 
 export function getCliVersion(): string {

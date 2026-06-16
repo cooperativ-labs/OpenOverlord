@@ -12,16 +12,22 @@ Requirements:
 
 - `ovld help`: print top-level command help.
 - `ovld version`: print CLI and local runtime version.
-- `ovld doctor`: validate configuration, database accessibility, connector installs, supported agent binaries, project metadata, and common permission/path problems.
-- `ovld serve [--host <h>] [--port <p>] [--db <path>] [--json]`: boot the web/REST server (the control center and its API). This is the single "start a fully-initialized local instance" entrypoint shared by the repo, hosted (Postgres) deployments, and the desktop bundle: it resolves the database location, **creates and migrates it on first run** (seeding the first workspace) so a clean machine comes up with no prior `yarn start:local`, then starts the server. Host/port default to `overlord.toml` (`web_host`/`web_port`); `--db` (or `OVERLORD_SQLITE_PATH`) overrides the database location. It resolves the server entry in order: `OVERLORD_SERVER_ENTRY`, the built bundle (`webapp/dist-server/index.mjs`), then the TypeScript source via `tsx`. (The desktop app forks the same server bundle inside an Electron `utilityProcess` rather than calling `ovld serve`.)
+- `ovld doctor`: validate backend reachability, connector installs, supported agent binaries, project metadata, and common permission/path problems.
+- `ovld serve [--host <h>] [--port <p>] [--db <path>] [--json]`: local/backend-package command, not required in the published npm CLI. It boots the web/REST server that owns SQLite for local mode. The desktop app can ship and supervise this backend; a future db-only/local backend app may do the same.
 - `ovld update`: optional for packaged releases; can be deferred until distribution is defined.
 
 ### Configuration Commands
 
 Requirements:
 
-- `ovld init`: create or update `overlord.toml` for a local instance.
-- `ovld config get/set/list`: inspect and update local configuration.
+- `ovld init`: create or update `overlord.toml` with the default local backend URL.
+- `ovld auth login`: first-run onboarding for the CLI. It verifies that a backend
+  URL is configured before any login step. If not, it presents the `ovld config`
+  backend selector first.
+- `ovld config get/set/list`: inspect and update local configuration. `ovld
+config set` opens the interactive backend selector; `ovld config set local
+[url]` points the CLI at a local backend URL (default
+  `http://127.0.0.1:4310`); `ovld config set cloud <url>` points it at a hosted backend URL.
 - `ovld user-token create/list/rotate/revoke/rename`: manage user-owned non-interactive credentials once the `USER_TOKEN` module is enabled.
 - `ovld create-project --name "<name>" [--directory <path>|--no-directory]`: create a project and optionally register the current directory.
 - `ovld add-cwd [--directory <path>] [--project-id <id-or-name>] [--primary true|false]`: link a checkout to a project. When `--project-id` is omitted on an interactive terminal, lists your projects and prompts you to pick one; non-interactively it falls back to the discovered or most recent project.
@@ -116,10 +122,11 @@ Requirements:
 Requirements:
 
 - Located at the instance or project root, depending on final packaging.
-- Configure instance name, database location, web port, optional SQL Studio launch settings, default agent/model, terminal launch preferences, connector paths, and runner polling defaults.
-- Database location keys:
-  - `database_path` — developer override for the local SQLite file. Relative paths resolve against the `overlord.toml` directory; absolute paths are used as-is. When unset, the per-user global default `~/.ovld/Overlord.sqlite` is used (set `OVLD_HOME` to relocate the global directory; `OVERLORD_SQLITE_PATH` still overrides everything).
-  - `database_url` — admin setting for running Overlord against a hosted/cloud database (e.g. a PostgreSQL connection string). When set it feeds the shared `resolveAdapter()` selection point and is bridged to `DATABASE_URL` for the auth layer; equivalent to exporting `DATABASE_URL`.
+- Configure instance name, backend URL, default agent/model, terminal launch preferences, connector paths, and runner polling defaults.
+- Backend keys:
+  - `backend_mode` — `local` or `cloud`.
+  - `backend_url` — REST/backend base URL. Local mode defaults to `http://127.0.0.1:4310`; cloud mode stores the hosted backend URL.
+- Legacy database keys (`database_path`, `database_url`) are owned by local/backend packages such as Desktop, not by the published npm CLI.
 - Optional `[agent_catalog]` tables customize which agents and models are offered in the web UI (merged over bundled defaults on seed and catalog refresh).
 - Include commented examples for common terminals and agents.
 
@@ -131,12 +138,12 @@ Requirements:
 - Stores local project identifier, resource label, whether the directory is primary, and enough metadata for project discovery.
 - Should be tracked unless the user chooses otherwise.
 
-### `~/.ovld/` (global database) and `database/.local/`
+### `~/.ovld/` (global CLI config) and local backend data
 
 Requirements:
 
-- The local SQLite database (`Overlord.sqlite`) defaults to the per-user global directory `~/.ovld/` so a single global install is shared across every project directory. Override the directory with `OVLD_HOME`, or the full path with `database_path` / `OVERLORD_SQLITE_PATH`.
-- `database/.local/` remains git-ignored runtime data for `local_fs` object storage buckets (and the SQLite database when `database_path` points back into the repo).
+- The published CLI stores global config under `~/.ovld/` (overridable with `OVLD_HOME`) and talks to a backend URL.
+- Local SQLite files and `local_fs` object storage are owned by the local backend/Desktop package, not by the published CLI.
 
 ### `.overlord/tmp/` And `.overlord/logs/`
 

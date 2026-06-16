@@ -2,8 +2,6 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { loadTicketContext } from '../../src/service/protocol.js';
-
 import { resolveAgentBinary } from './agent-binaries.js';
 import type { CliRuntime } from './runtime.js';
 import { type LaunchExecution, resolveLaunchExecution, tmpEnvFor } from './terminal-launcher.js';
@@ -33,6 +31,59 @@ type LaunchPlan = {
   workingDirectory: string;
   execution: LaunchExecution;
 };
+
+type TicketContext = {
+  displayId: string;
+  promptContext: string;
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+async function loadTicketContext({
+  runtime,
+  ticketId
+}: {
+  runtime: CliRuntime;
+  ticketId: string;
+}): Promise<TicketContext> {
+  const ticket = asRecord(
+    await runtime.backend.get(`/api/tickets/${encodeURIComponent(ticketId)}`)
+  );
+  const events = await runtime.backend
+    .get<unknown[]>(`/api/tickets/${encodeURIComponent(ticketId)}/events`)
+    .catch(() => []);
+  const artifacts = await runtime.backend
+    .get<unknown[]>(`/api/tickets/${encodeURIComponent(ticketId)}/artifacts`)
+    .catch(() => []);
+  const displayId = String(ticket.displayId ?? ticket.id ?? ticketId);
+  const objectives = Array.isArray(ticket.objectives) ? ticket.objectives.map(asRecord) : [];
+  const promptContext = [
+    '# Overlord Ticket Context',
+    '',
+    `Ticket: ${displayId}`,
+    `Title: ${ticket.title ?? '(untitled)'}`,
+    '',
+    '## Objectives',
+    ...objectives.map((objective, index) => {
+      const instruction = objective.instructionText ?? objective.instruction ?? '';
+      return `${index + 1}. [${objective.state ?? 'unknown'}] ${instruction}`;
+    }),
+    '',
+    '## Recent Activity',
+    ...events.slice(-20).map(event => `- ${asRecord(event).summary ?? JSON.stringify(event)}`),
+    '',
+    '## Artifacts',
+    ...artifacts.map(
+      artifact => `- ${asRecord(artifact).label ?? asRecord(artifact).type ?? 'artifact'}`
+    ),
+    '',
+    'Use `ovld protocol attach --ticket-id <id>` before making changes, update during work, and deliver last.'
+  ].join('\n');
+
+  return { displayId, promptContext };
+}
 
 function buildAgentCommand({
   agent,
@@ -71,25 +122,25 @@ function buildAgentCommand({
   return { command: resolveAgentBinary(agent), args };
 }
 
-export function buildLaunchPlan({
+export async function buildLaunchPlan({
   runtime,
   options
 }: {
   runtime: CliRuntime;
   options: LaunchOptions;
-}): LaunchPlan {
-  const context = loadTicketContext({ ctx: runtime.ctx, ticketId: options.ticketId });
+}): Promise<LaunchPlan> {
+  const context = await loadTicketContext({ runtime, ticketId: options.ticketId });
   const tmpDir = path.join(options.workingDirectory, '.overlord', 'tmp');
   mkdirSync(tmpDir, { recursive: true });
   const contextFile = path.join(
     tmpDir,
-    `ticket-${context.ticket.displayId.replace(/[^a-zA-Z0-9_-]/g, '-')}.md`
+    `ticket-${context.displayId.replace(/[^a-zA-Z0-9_-]/g, '-')}.md`
   );
   writeFileSync(contextFile, `${context.promptContext}\n`);
 
   const prompt =
     context.promptContext.length > 4000
-      ? `Use the Overlord context file at ${contextFile} and attach to ticket ${context.ticket.displayId}.`
+      ? `Use the Overlord context file at ${contextFile} and attach to ticket ${context.displayId}.`
       : context.promptContext;
 
   const command = buildAgentCommand({
@@ -118,14 +169,14 @@ export function buildLaunchPlan({
   };
 }
 
-export function launchAgent({
+export async function launchAgent({
   runtime,
   options
 }: {
   runtime: CliRuntime;
   options: LaunchOptions;
-}): { plan: LaunchPlan; status: number | null; signal: NodeJS.Signals | null } {
-  const plan = buildLaunchPlan({ runtime, options });
+}): Promise<{ plan: LaunchPlan; status: number | null; signal: NodeJS.Signals | null }> {
+  const plan = await buildLaunchPlan({ runtime, options });
   if (options.dryRun) {
     return { plan, status: 0, signal: null };
   }

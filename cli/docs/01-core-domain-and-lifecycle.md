@@ -12,8 +12,9 @@ The local Overlord installation. For the MVP, one local instance can act as one 
 
 Requirements:
 
-- Has a human-readable name from `overlord.toml`.
-- Owns the local SQLite database.
+- Has a human-readable name and backend URL from `overlord.toml`.
+- Reaches persistence through the configured backend; local SQLite is owned by
+  Desktop/local backend packages, not by the published npm CLI.
 - Provides defaults for web port, default agent/model, terminal launcher, and connector locations.
 - Can later support multiple users, roles, and authentication without changing the ticket/objective workflow semantics.
 

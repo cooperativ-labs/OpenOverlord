@@ -14,7 +14,9 @@ const DB_FREE_COMMANDS = new Set([
   'init',
   'doctor',
   'setup',
-  'serve'
+  'serve',
+  'config',
+  'auth'
 ]);
 
 const KNOWN_COMMANDS = new Set([
@@ -77,7 +79,9 @@ async function dispatchCommand({
       return;
     case 'init':
     case 'doctor':
-    case 'setup': {
+    case 'setup':
+    case 'config':
+    case 'auth': {
       const { runLocalCommand } = await import('./management.js');
       await runLocalCommand({ command, rest: args });
       return;
@@ -94,7 +98,7 @@ async function dispatchCommand({
       }
       const { openCliRuntime } = await import('./runtime.js');
       const { runProtocolCommand } = await import('./commands.js');
-      const runtime = openCliRuntime({ source: 'protocol' });
+      const runtime = openCliRuntime();
       try {
         await runProtocolCommand({ runtime, subcommand, args: rest, stdin });
       } finally {
@@ -110,7 +114,7 @@ async function dispatchCommand({
       }
       const { openCliRuntime } = await import('./runtime.js');
       const { runManagementCommand } = await import('./commands.js');
-      const runtime = openCliRuntime({ source: 'cli' });
+      const runtime = openCliRuntime();
       try {
         await runManagementCommand({ runtime, command, rest: args });
       } finally {
@@ -138,17 +142,6 @@ export async function runCli({
   } catch (error) {
     if (error instanceof CliError) {
       throw error;
-    }
-    try {
-      const { ServiceError } = await import('../../src/service/errors.js');
-      if (error instanceof ServiceError) {
-        throw new CliError({ message: error.message });
-      }
-    } catch (importError) {
-      if (importError instanceof CliError) {
-        throw importError;
-      }
-      // Service layer import failed; fall through to the generic error formatter.
     }
     throw new CliError({ message: formatCliError(error) });
   }

@@ -7,7 +7,7 @@ import test from 'node:test';
 import { runOvld } from '../../../test/support/cli.ts';
 
 function tempDatabaseEnv(): NodeJS.ProcessEnv {
-  const dir = mkdtempSync(path.join('/tmp', 'open-overlord-cli-e2e-'));
+  const dir = mkdtempSync(path.join('/tmp', 'open-overlord-e2e-'));
   return { OVERLORD_SQLITE_PATH: path.join(dir, 'Overlord.sqlite') };
 }
 

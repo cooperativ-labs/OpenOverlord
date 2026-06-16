@@ -1,12 +1,253 @@
-import { existsSync } from 'node:fs';
+import { createInterface } from 'node:readline/promises';
 
-import { flagBoolean, parseArgs } from './args.js';
+import { flagBoolean, flagValue, parseArgs } from './args.js';
 import { CliError } from './errors.js';
 import { printJson } from './output.js';
 
+type BackendConfigResult = {
+  configPath: string;
+  mode: 'local' | 'cloud';
+  url: string;
+};
+
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value.trim());
+}
+
+async function promptLine({
+  message,
+  defaultValue
+}: {
+  message: string;
+  defaultValue?: string;
+}): Promise<string> {
+  if (!process.stdin.isTTY) {
+    throw new CliError({
+      message:
+        'Interactive backend configuration requires a TTY. Run `ovld config set local [url]` or `ovld config set cloud <url>`.'
+    });
+  }
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const suffix = defaultValue ? ` [${defaultValue}]` : '';
+    const answer = await rl.question(`${message}${suffix}: `);
+    return answer.trim() || defaultValue || '';
+  } finally {
+    rl.close();
+  }
+}
+
+async function configureBackendInteractive(): Promise<BackendConfigResult> {
+  const { DEFAULT_LOCAL_BACKEND_URL, loadConfig, resolveConfigWritePath, writeConfig } =
+    await import('./config.js');
+
+  console.log('Choose an Overlord backend before continuing.');
+  console.log(
+    'Use local for a Desktop/local backend on this machine, or cloud for a hosted Overlord backend.'
+  );
+
+  const type = (
+    await promptLine({
+      message: 'Backend type (local/cloud)',
+      defaultValue: 'local'
+    })
+  ).toLowerCase();
+  const targetPath = resolveConfigWritePath();
+  const current = loadConfig(targetPath);
+
+  if (type === 'cloud') {
+    const cloudUrl = await promptLine({ message: 'Cloud backend URL' });
+    if (!cloudUrl) throw new CliError({ message: 'Cloud backend URL is required.' });
+    if (!isHttpUrl(cloudUrl)) {
+      throw new CliError({
+        message: 'Cloud backend must be an http:// or https:// URL.'
+      });
+    }
+    writeConfig({
+      targetPath,
+      config: { ...current, backendMode: 'cloud', backendUrl: cloudUrl }
+    });
+    return { configPath: targetPath, mode: 'cloud', url: cloudUrl };
+  }
+
+  if (type !== 'local') {
+    throw new CliError({ message: 'Backend type must be `local` or `cloud`.' });
+  }
+
+  const localUrl = await promptLine({
+    message: 'Local backend URL',
+    defaultValue: DEFAULT_LOCAL_BACKEND_URL
+  });
+  if (!isHttpUrl(localUrl)) {
+    throw new CliError({ message: 'Local backend must be an http:// or https:// URL.' });
+  }
+  writeConfig({
+    targetPath,
+    config: { ...current, backendMode: 'local', backendUrl: localUrl }
+  });
+  return { configPath: targetPath, mode: 'local', url: localUrl };
+}
+
+async function configureBackendFromArgs({
+  parsed,
+  json
+}: {
+  parsed: ReturnType<typeof parseArgs>;
+  json: boolean;
+}): Promise<void> {
+  const {
+    DEFAULT_LOCAL_BACKEND_URL,
+    findEffectiveConfigPath,
+    loadConfig,
+    resolveConfigWritePath,
+    resolveBackendUrl,
+    writeConfig
+  } = await import('./config.js');
+
+  const sub = parsed.positional[0] ?? 'list';
+  const targetPath = resolveConfigWritePath();
+  const current = loadConfig(targetPath);
+
+  if (sub === 'list') {
+    const effectivePath = findEffectiveConfigPath();
+    const mode = current.backendUrl ? current.backendMode : 'unset';
+    const backendUrl = resolveBackendUrl(current);
+    if (json) {
+      printJson({
+        config: current,
+        path: effectivePath,
+        backend: {
+          configured: mode !== 'unset',
+          mode,
+          url: backendUrl
+        }
+      });
+    } else {
+      console.log(`config_path=${effectivePath ?? '(not configured)'}`);
+      console.log(`backend_mode=${mode}`);
+      console.log(`backend_url=${backendUrl}`);
+      console.log(`web_host=${current.webHost}`);
+      console.log(`web_port=${current.webPort}`);
+      console.log(`default_agent=${current.defaultAgent}`);
+      console.log(`terminal_launcher=${current.terminalLauncher ?? '(inline)'}`);
+    }
+    return;
+  }
+
+  if (sub === 'get') {
+    const key = parsed.positional[1] ?? 'backend';
+    const values: Record<string, string | number | boolean | null> = {
+      backend: current.backendUrl ?? `default local (${DEFAULT_LOCAL_BACKEND_URL})`,
+      backend_mode: current.backendMode,
+      backend_url: resolveBackendUrl(current),
+      web_host: current.webHost,
+      web_port: current.webPort,
+      default_agent: current.defaultAgent,
+      terminal_launcher: current.terminalLauncher
+    };
+    if (!(key in values)) throw new CliError({ message: `Unknown config key: ${key}` });
+    if (json) printJson({ key, value: values[key] });
+    else console.log(`${key}=${values[key] ?? ''}`);
+    return;
+  }
+
+  if (sub !== 'set') {
+    throw new CliError({
+      message:
+        'Usage: ovld config list|get <key>|set [local <path>|cloud <postgres-url>|database_path <path>|database_url <postgres-url>]'
+    });
+  }
+
+  const target = parsed.positional[1];
+  const value =
+    parsed.positional[2] ?? flagValue(parsed.flags, '--path') ?? flagValue(parsed.flags, '--url');
+
+  let result: BackendConfigResult;
+  if (!target) {
+    result = await configureBackendInteractive();
+  } else if (target === 'local' || target === 'backend_url') {
+    const backendUrl = value?.trim() || DEFAULT_LOCAL_BACKEND_URL;
+    if (!isHttpUrl(backendUrl)) {
+      throw new CliError({ message: 'Local backend must be an http:// or https:// URL.' });
+    }
+    writeConfig({
+      targetPath,
+      config: { ...current, backendMode: 'local', backendUrl }
+    });
+    result = { configPath: targetPath, mode: 'local', url: backendUrl };
+  } else if (target === 'cloud') {
+    if (!value) throw new CliError({ message: 'Cloud backend URL is required.' });
+    if (!isHttpUrl(value)) {
+      throw new CliError({
+        message: 'Cloud backend must be an http:// or https:// URL.'
+      });
+    }
+    writeConfig({
+      targetPath,
+      config: { ...current, backendMode: 'cloud', backendUrl: value }
+    });
+    result = { configPath: targetPath, mode: 'cloud', url: value };
+  } else {
+    throw new CliError({
+      message: 'Usage: ovld config set [local <url>|cloud <url>]'
+    });
+  }
+
+  if (json) printJson(result);
+  else {
+    console.log(`Configured ${result.mode} backend at ${result.url}`);
+    console.log(`Wrote ${result.configPath}`);
+  }
+}
+
+async function runAuthCommand({ rest, json }: { rest: string[]; json: boolean }): Promise<void> {
+  const parsed = parseArgs(rest);
+  const sub = parsed.positional[0] ?? 'login';
+  if (sub !== 'login') throw new CliError({ message: 'Usage: ovld auth login [--json]' });
+
+  const { findEffectiveConfigPath, hasExplicitBackendConfig, loadConfig } =
+    await import('./config.js');
+  let config = loadConfig();
+  let configPath = findEffectiveConfigPath();
+  let configured = hasExplicitBackendConfig(config);
+  let setup: BackendConfigResult | null = null;
+
+  if (!configured) {
+    setup = await configureBackendInteractive();
+    config = loadConfig(setup.configPath);
+    configPath = setup.configPath;
+    configured = hasExplicitBackendConfig(config);
+  }
+
+  if (!configured)
+    throw new CliError({ message: 'Backend configuration is required before login.' });
+
+  const { resolveBackendUrl } = await import('./config.js');
+  const mode = config.backendMode;
+  const backendUrl = resolveBackendUrl(config);
+  if (json) {
+    printJson({
+      ok: true,
+      authMode: mode === 'local' ? 'local_implicit' : 'cloud_configured',
+      backend: {
+        mode,
+        url: backendUrl,
+        configPath
+      },
+      configuredDuringLogin: setup !== null
+    });
+  } else if (mode === 'local') {
+    console.log(`Configured local backend at ${backendUrl}.`);
+    console.log('Authentication will use the configured backend.');
+  } else {
+    console.log(`Configured cloud backend at ${backendUrl}.`);
+    console.log('Interactive cloud account authentication is not available in this CLI build yet.');
+  }
+}
+
 /**
  * Local management commands that do NOT require the database/service layer:
- * `init`, `doctor`, and `setup`. These are dispatched separately from the
+ * `init`, `doctor`, `setup`, `config`, and `auth login`. These are dispatched separately from the
  * DB-backed commands in `commands.ts` so they never statically import the
  * service layer — keeping them runnable from a globally installed `ovld`
  * binary (where the root project `dist/` is not on disk).
@@ -23,20 +264,22 @@ export async function runLocalCommand({
 
   switch (command) {
     case 'init': {
-      const { writeConfig, loadConfig, resolveDatabasePath, resolveRepoPath } =
+      const { DEFAULT_LOCAL_BACKEND_URL, writeConfig, resolveRepoPath } =
         await import('./config.js');
-      const { migrateDatabase, openDatabase } = await import('@overlord/database');
       const target = resolveRepoPath('overlord.toml');
-      writeConfig({ targetPath: target, config: { instanceName: 'Local Overlord' } });
-      const dbPath = resolveDatabasePath(loadConfig(target));
-      const db = openDatabase({ databasePath: dbPath });
-      migrateDatabase(db);
-      db.close();
+      writeConfig({
+        targetPath: target,
+        config: {
+          instanceName: 'Local Overlord',
+          backendMode: 'local',
+          backendUrl: DEFAULT_LOCAL_BACKEND_URL
+        }
+      });
       if (json) {
-        printJson({ ok: true, configPath: target, databasePath: dbPath });
+        printJson({ ok: true, configPath: target, backendUrl: DEFAULT_LOCAL_BACKEND_URL });
       } else {
         console.log(`Initialized Overlord at ${target}`);
-        console.log(`Database ready at ${dbPath}`);
+        console.log(`Configured local backend at ${DEFAULT_LOCAL_BACKEND_URL}`);
       }
       return;
     }
@@ -45,17 +288,28 @@ export async function runLocalCommand({
       await runSetupCommand({ rest, json });
       return;
     }
+    case 'config': {
+      await configureBackendFromArgs({ parsed, json });
+      return;
+    }
+    case 'auth': {
+      await runAuthCommand({ rest, json });
+      return;
+    }
     case 'doctor': {
-      const { loadConfig, resolveDatabasePath } = await import('./config.js');
+      const { createBackendClient } = await import('./backend-client.js');
       const { inspectConnector, listAvailableConnectors } = await import('./connectors.js');
-      const config = loadConfig();
-      const dbPath = resolveDatabasePath(config);
+      const backend = createBackendClient();
+      const health = await backend.health().catch(error => ({
+        ok: false,
+        detail: error instanceof Error ? error.message : String(error)
+      }));
       const checks: Array<{ name: string; ok: boolean; required: boolean; detail: string }> = [
         {
-          name: 'database',
-          ok: existsSync(dbPath),
+          name: 'backend',
+          ok: health.ok,
           required: true,
-          detail: existsSync(dbPath) ? dbPath : `Missing database at ${dbPath}`
+          detail: health.ok ? backend.baseUrl : `Backend unreachable at ${backend.baseUrl}`
         }
       ];
 

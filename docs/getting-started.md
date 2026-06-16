@@ -15,11 +15,15 @@ ticket in about ten minutes.
 ## Prerequisites
 
 - **Node.js 20+** (needed to run the CLI)
+- **A running Overlord backend**:
+  - Local mode: run the Desktop app or a local backend listening on
+    `http://127.0.0.1:4310`.
+  - Cloud mode: use the URL for a hosted Overlord backend.
 - **`ovld` installed** — install from the published tarball or build from source:
 
   ```bash
   # From a release tarball
-  npm install -g open-overlord-cli-<version>.tgz
+  npm install -g open-overlord-<version>.tgz
 
   # From source (builds the CLI, then symlinks or adds to PATH)
   yarn build:cli
@@ -30,26 +34,40 @@ ticket in about ten minutes.
 
 ---
 
-## Step 1 — Initialize your instance
+## Step 1 — Point `ovld` at a backend
 
-Run this once, in the directory that will hold your Overlord config:
+Run this after installing the CLI:
 
 ```bash
-ovld init
+ovld auth login
 ```
 
-`init` writes `overlord.toml` next to where you run it and creates the local
-SQLite database (`database/.local/Overlord.sqlite` by default). The defaults
-are sensible for a solo developer:
+`auth login` verifies that the CLI has a backend URL. If not, it walks you
+through `ovld config` first. Local mode defaults to the Desktop/local backend at
+`http://127.0.0.1:4310`; cloud mode stores the hosted backend URL.
+
+You can configure the backend non-interactively:
+
+```bash
+# Local Desktop/local backend
+ovld config set local
+ovld config set local http://127.0.0.1:4310
+
+# Hosted backend
+ovld config set cloud https://overlord.example.com
+```
+
+The resulting `overlord.toml` stores the backend target:
 
 ```toml
-# overlord.toml (created by ovld init)
 instance_name = "Local Overlord"
-database_path = "database/.local/Overlord.sqlite"
-web_host      = "127.0.0.1"
-web_port      = 4310
+backend_mode = "local"
+backend_url = "http://127.0.0.1:4310"
 default_agent = "claude"
 ```
+
+The published npm CLI does not create or migrate SQLite. SQLite lives behind the
+Desktop/local backend; Postgres lives behind a hosted backend.
 
 > **Setting up a team or custom instance?** See
 > [Setting Up a Custom Overlord Instance](custom-instance-setup.md) for
@@ -177,19 +195,22 @@ trail that lives alongside the diff.
 ## Step 7 — Open the web app (optional)
 
 ```bash
-ovld serve
+yarn dev
 ```
 
-This starts the Overlord web app at `http://127.0.0.1:4310` — a Kanban board
-where you can create, edit, and launch tickets without using the CLI.
+From a source checkout, this starts the local web/API backend at
+`http://127.0.0.1:4310` — a Kanban board where you can create, edit, and launch
+tickets without using the CLI. In a packaged install, Desktop owns starting and
+supervising the local backend.
 
 ---
 
 ## Step 8 — Inspect the database with SQL Studio (optional)
 
-Overlord can launch [SQL Studio](https://github.com/frectonz/sql-studio), an
-external local database browser, alongside the web app so you can inspect your
-Overlord database directly. It is **off by default** — you opt in per instance.
+The local backend can launch [SQL Studio](https://github.com/frectonz/sql-studio),
+an external local database browser, alongside the web app so you can inspect
+the local Overlord database directly. It is **off by default** — you opt in per
+instance.
 
 **1. Install the `sql-studio` binary.** It is a standalone tool, not bundled
 with Overlord. Install it via its release script or with Cargo, then confirm it

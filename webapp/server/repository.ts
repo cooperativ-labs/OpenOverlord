@@ -641,6 +641,61 @@ export function listProjectResources(projectId: string): ProjectResourceDto[] {
   return rows.map(toProjectResourceDto);
 }
 
+export const createProjectResource = db.transaction(
+  (
+    projectId: string,
+    body: { directoryPath?: string; path?: string; label?: string | null; isPrimary?: boolean }
+  ): ProjectResourceDto => {
+    const project = getProject(projectId);
+    const resourcePath = (body.directoryPath ?? body.path ?? '').trim();
+    if (!resourcePath) throw new ApiError(400, 'directoryPath is required');
+
+    const now = nowIso();
+    if (body.isPrimary !== false) {
+      db.prepare(
+        `UPDATE project_resources
+            SET is_primary = 0, updated_at = @now, revision = revision + 1
+          WHERE project_id = @project_id AND deleted_at IS NULL`
+      ).run({ project_id: projectId, now });
+    }
+
+    const id = newId();
+    db.prepare(
+      `INSERT INTO project_resources
+         (id, workspace_id, project_id, execution_target_id, type, label, path,
+          is_primary, status, metadata_json, created_at, updated_at, revision)
+       VALUES (?, ?, ?, NULL, 'local_directory', ?, ?, ?, 'active', '{}', ?, ?, 1)`
+    ).run(
+      id,
+      project.workspaceId,
+      projectId,
+      body.label ?? null,
+      resourcePath,
+      body.isPrimary === false ? 0 : 1,
+      now,
+      now
+    );
+    recordChange({
+      entityType: 'project_resource',
+      entityId: id,
+      operation: 'insert',
+      entityRevision: 1,
+      projectId,
+      changedFields: ['path', 'is_primary']
+    });
+
+    const row = db
+      .prepare(
+        `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
+                is_primary, status, created_at, updated_at, revision
+           FROM project_resources
+          WHERE id = ?`
+      )
+      .get(id) as ProjectResourceRow;
+    return toProjectResourceDto(row);
+  }
+);
+
 function getProjectRepositoryResource(
   projectId: string,
   executionTargetId: string | null

@@ -12,7 +12,7 @@ The same pipeline should power manual run and auto-advance:
 2. Overlord writes a durable execution request.
 3. `ovld runner start` or `ovld runner once` claims the request.
 4. The runner resolves a working directory.
-5. The runner calls `ovld launch <agent>`.
+5. The runner launches the requested agent locally.
 6. The launched agent attaches to the ticket.
 7. The runner marks the launch successful or failed.
 
@@ -49,11 +49,11 @@ Options:
 MVP behavior:
 
 - Register/read a stable local device fingerprint from `~/.ovld/device.json`.
-- Poll the local database.
+- Poll the configured backend.
 - Claim the oldest compatible request.
 - Resolve working directory.
 - Spawn the launch command.
-- Record launch success/failure.
+- Record launch success/failure through the backend API.
 - Print status with device identity and active queue.
 
 Future behavior:

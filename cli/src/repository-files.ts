@@ -1,4 +1,22 @@
-import { readRepositoryTree, RepositoryReadError } from '../../src/repository/git-tree.js';
+import { execFileSync } from 'node:child_process';
+
+function readGitFiles(rootPath: string): string[] {
+  const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+    cwd: rootPath,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore']
+  }).trim();
+  const output = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], {
+    cwd: gitRoot,
+    encoding: 'utf8',
+    maxBuffer: 10 * 1024 * 1024,
+    stdio: ['ignore', 'pipe', 'ignore']
+  });
+  return output
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean);
+}
 
 /**
  * Tracked + untracked files under `rootPath`'s git repository, used as the
@@ -8,11 +26,8 @@ import { readRepositoryTree, RepositoryReadError } from '../../src/repository/gi
 export function listMentionableFiles(rootPath: string | null | undefined): string[] {
   if (!rootPath) return [];
   try {
-    return readRepositoryTree(rootPath)
-      .entries.filter(entry => entry.type === 'file')
-      .map(entry => entry.path);
-  } catch (error) {
-    if (error instanceof RepositoryReadError) return [];
-    throw error;
+    return readGitFiles(rootPath);
+  } catch {
+    return [];
   }
 }

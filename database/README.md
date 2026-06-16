@@ -32,14 +32,14 @@ response shapes (→ [webapp module](../webapp/README.md)).
 ## Code & Tests (colocated)
 
 This module is the `@overlord/database` workspace package. Its runtime lives in
-[`database/src/`](src/) and is consumed by the CLI, the root service layer, and
-the auth module through the package name (`@overlord/database`) rather than
-cross-folder relative imports:
+[`database/src/`](src/) and is consumed by backend processes, the root service
+layer, and the auth module through the package name (`@overlord/database`)
+rather than cross-folder relative imports:
 
 - `connection.ts` — open/migrate a SQLite database, list migrations, in-memory
   test databases. Migrations are resolved relative to this package, so the same
-  code works from source, from the built `dist/`, and from the copy bundled into
-  the published CLI tarball.
+  code works from source, from the built `dist/`, and from packaged local
+  backend/Desktop builds.
 - `launch-local.ts` — the `yarn db:start` local launcher.
 - `constants.ts` — database-layer constants and controlled vocabularies
   (statuses, objective states, update phases/events, seed IDs, contract version).
@@ -50,9 +50,9 @@ cross-folder relative imports:
   PostgreSQL from the `overlord.toml` `database_url` admin setting or the
   `DATABASE_URL` environment variable so auth and the service layer never disagree.
 
-The CLI no longer hand-copies migrations: `@overlord/database` is bundled into
-the `open-overlord-cli` tarball at pack time, so there is a single source of truth for
-the migration SQL.
+The published `open-overlord` CLI does not bundle this package. It talks to a
+configured backend URL; local/cloud backend packages own database adapters and
+migrations.
 
 Migrations live here, numbered sequentially:
 
@@ -99,10 +99,9 @@ outside the default location.
 
 Do not edit a migration after it has been applied to a database you care about.
 Create a new forward-only migration such as `005_add_ticket_labels.sql`; the
-next `yarn start:local`, `ovld init`, or DB-backed `ovld` command will apply it
-without wiping existing rows. If the checksum of an already-applied migration
-changes, startup fails so the mismatch can be fixed instead of silently
-rewriting history.
+next backend startup applies it without wiping existing rows. If the checksum of
+an already-applied migration changes, startup fails so the mismatch can be fixed
+instead of silently rewriting history.
 
 If `yarn start:local` fails with `ERR_DLOPEN_FAILED`
 or `invalid ELF header` while loading `better-sqlite3`, the repo is using a

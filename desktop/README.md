@@ -26,10 +26,10 @@ Maps to the `desktop` contract component (`desktop/docs/desktop-app.md`).
   (`webapp/dist-server/index.mjs`) inside an Electron **`utilityProcess`** — a
   Node context on Electron's ABI, so there is a single runtime to ship and sign.
   It polls `/api/health`, then loads the URL. The server is stopped on quit.
-- **Shared database.** The server uses its default database location (the
-  per-user global `~/.ovld/Overlord.sqlite`), so an `ovld` run from a terminal
-  shares the exact database the window shows — no extra wiring. The DB is created
-  and migrated on first launch by the server boot path.
+- **Local backend and database.** The desktop-supervised server owns the local
+  SQLite database and migrations. The published `ovld` CLI does not open this
+  database directly; it points at the desktop/local backend URL (by default
+  `http://127.0.0.1:4310`) and uses the same `/api/*` surface the SPA uses.
 - **Bridge.** `window.overlord` exposes only shell-only affordances
   (`chooseDirectory`, `openExternal`, `revealInFinder`), which the SPA
   feature-detects and never requires.
@@ -42,6 +42,7 @@ yarn desktop:build         # build the SPA + server bundle + Electron main/prelo
 yarn desktop:dev           # connect-only: wraps a running `ovld serve` / `yarn start`
 yarn desktop:typecheck     # typecheck the shell against the Electron type defs
 yarn desktop:package --out <dir> [--arch arm64|x64|universal] [--no-sign] [--notarize]
+yarn desktop:publish       # publish desktop/release artifacts to GitHub Releases via gh
 ```
 
 ### Dev loop (connect-only)
@@ -51,7 +52,7 @@ rebuild during development). Start a server first, then launch the shell:
 
 ```bash
 yarn build:webapp && yarn workspace @overlord/webapp build:server
-ovld serve            # serves the SPA + API at http://127.0.0.1:4310
+ovld serve            # serves the SPA + API at http://127.0.0.1:4310 from a source checkout
 yarn desktop:dev      # Electron window connects to it
 ```
 
@@ -78,3 +79,23 @@ publish the emitted `.zip`, `.blockmap`, and `latest-mac.yml` files at that URL.
 See
 [`docs/desktop-app.md`](docs/desktop-app.md) for the full behavior spec and
 [`docs/testing.md`](docs/testing.md) for the test plan.
+
+To push the packaged desktop artifacts to GitHub Releases, first run
+`yarn desktop:package` so `desktop/release` contains the current version's
+artifacts, then run:
+
+```bash
+yarn desktop:publish
+```
+
+The publish script:
+
+- infers the GitHub repo from `origin` unless you pass `--repo owner/name`
+- defaults the release tag to `v<root package version>`
+- uploads the current version's `.dmg`, `.zip`, `.blockmap`, `AppImage`, `deb`,
+  and `latest-mac.yml` files from `desktop/release`
+- creates the release with generated notes if it does not exist yet, or uploads
+  replacement assets with `--clobber` if the tag already exists
+
+Use `yarn desktop:publish --dry-run` to inspect the resolved release command
+without changing GitHub.

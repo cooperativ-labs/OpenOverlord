@@ -1,9 +1,9 @@
 # Setting Up a Custom Overlord Instance
 
 You just forked Open Overlord and want to stand up your own instance. This guide
-is the ordered list of questions to answer **before** you write `overlord.toml`,
-pick a database, or run a migration. Work top to bottom: each answer narrows the
-next decision.
+is the ordered list of questions to answer **before** you write backend config,
+pick a database, point the CLI at a backend URL, or run a migration. Work top to
+bottom: each answer narrows the next decision.
 
 It serves two audiences:
 
@@ -31,13 +31,17 @@ filling in fields.
 
 ```
 Q1 Who uses it?
- ├─ Just me, one machine ........... SQLite default, core tables, CLI-only
+ ├─ Just me, one machine ........... local backend + SQLite, core tables
  ├─ A small team (2–5) ............. PostgreSQL, + auth/audit groups
  └─ An organization / runners ...... PostgreSQL service deployment, all groups
 
 Q2 Database follows from Q1:
- ├─ SQLite  → leave DATABASE_URL unset; set database_path in overlord.toml
- └─ Postgres → set DATABASE_URL=postgres://… (overrides database_path)
+ ├─ SQLite  → local backend owns the SQLite file
+ └─ Postgres → hosted/backend service owns DATABASE_URL
+
+CLI target:
+ ├─ Local backend → ovld config set local http://127.0.0.1:4310
+ └─ Hosted backend → ovld config set cloud https://overlord.example.com
 ```
 
 ---
@@ -50,7 +54,7 @@ This is the root decision; everything else hangs off it.
 
 | Answer | What it implies |
 | --- | --- |
-| **Just me, on one workstation** | SQLite is the right default. State is local application state. CLI-first; web app optional. |
+| **Just me, on one workstation** | SQLite behind a local backend is the right default. State is local application state. CLI-first; web app optional. |
 | **A small team (≈2–5), shared org** | PostgreSQL from the start. State is shared organization state, not a local file. Add auth + audit schema groups. |
 | **An organization with remote/distributed runners** | PostgreSQL behind an Overlord service process on a private network; clients and runners call the protocol/REST layer, never the DB directly. All schema groups in play. |
 
@@ -60,8 +64,9 @@ This is the root decision; everything else hangs off it.
 
 ### Q2 — Which database: SQLite or PostgreSQL?
 
-Follows directly from Q1. Overlord selects the adapter at runtime in
-`resolveAdapter()`:
+Follows directly from Q1. The backend selects the adapter at runtime in
+`resolveAdapter()`. The published CLI does not select a database adapter; it
+selects a backend URL.
 
 - If `DATABASE_URL` is set to a `postgres://` / `postgresql://` connection
   string → **PostgreSQL**.
@@ -69,8 +74,8 @@ Follows directly from Q1. Overlord selects the adapter at runtime in
 
 | Choose | When | How you configure it |
 | --- | --- | --- |
-| **SQLite (default)** | Solo dev, single host, offline drafts, local cache, test fixtures, zero-setup MVP | Leave `DATABASE_URL` unset. Set `database_path` in `overlord.toml` (default `database/.local/Overlord.sqlite`). Optionally override at runtime with `OVERLORD_SQLITE_PATH`. |
-| **PostgreSQL** | Shared/team/org state, multiple writers, distributed runner queue claiming (`FOR UPDATE SKIP LOCKED`), auditability, network-addressable DB | Set `DATABASE_URL=postgres://user:pass@host:5432/overlord`. Optionally set `OVERLORD_PG_SCHEMA` to namespace tables. When set, `DATABASE_URL` **overrides** `database_path`. |
+| **SQLite (default local backend)** | Solo dev, single host, offline drafts, local cache, test fixtures, zero-setup MVP | Run Desktop/local backend. Leave backend `DATABASE_URL` unset. Optionally set backend-owned `database_path` / `OVERLORD_SQLITE_PATH`. Point the CLI at it with `ovld config set local`. |
+| **PostgreSQL** | Shared/team/org state, multiple writers, distributed runner queue claiming (`FOR UPDATE SKIP LOCKED`), auditability, network-addressable DB | Configure the backend service with `DATABASE_URL=postgres://user:pass@host:5432/overlord`. Point the CLI at the service with `ovld config set cloud <url>`. |
 
 Notes:
 
@@ -87,7 +92,8 @@ These are the plain identity/networking fields of `overlord.toml`:
 | Question | Field | Default | Notes |
 | --- | --- | --- | --- |
 | What should the instance/org be named? | `instance_name` | `"Local Overlord"` | Shown in the UI/CLI. |
-| Where does the SQLite file live? | `database_path` | `database/.local/Overlord.sqlite` | Relative to the `overlord.toml` directory. Ignored when `DATABASE_URL` is set. |
+| What backend should the CLI call? | `backend_url` | `http://127.0.0.1:4310` | Stored by `ovld config`; local points at Desktop/local backend, cloud points at a hosted backend. |
+| Where does the SQLite file live? | backend-owned `database_path` | backend default | Consumed by local/backend packages, not by the published CLI. Ignored when backend `DATABASE_URL` is set. |
 | What address should the web app bind to? | `web_host` | `127.0.0.1` | Use `0.0.0.0` only behind a trusted network/VPN, never raw on the public internet. |
 | What port for the web app? | `web_port` | `4310` | Started via `ovld serve`. |
 
@@ -228,14 +234,15 @@ the database directly.
 
 ## Worked Configurations
 
-### A. Solo developer, CLI-only (SQLite)
+### A. Solo developer, local backend (SQLite)
 
 Answers: Q1 just me · Q2 SQLite · Q4 CLI-only · Q5 no auth · Q6 core only.
 
 ```toml
 # overlord.toml
 instance_name = "Local Overlord"
-database_path = "database/.local/Overlord.sqlite"
+backend_mode = "local"
+backend_url = "http://127.0.0.1:4310"
 web_host = "127.0.0.1"
 web_port = 4310
 sql_studio_enabled = false
@@ -246,7 +253,8 @@ default_agent = "claude"
 # default_model = ""
 ```
 
-No `DATABASE_URL`. Migrations: core only.
+No backend `DATABASE_URL`. Desktop/local backend owns SQLite and migrations:
+core only. The CLI points at that backend with `ovld config set local`.
 
 ### B. Small team, shared instance (PostgreSQL)
 
@@ -256,7 +264,8 @@ audit · Q6 core + Groups 1, 2, 5.
 ```toml
 # overlord.toml
 instance_name = "Acme Overlord"
-# database_path ignored — DATABASE_URL is set in the environment
+backend_mode = "cloud"
+backend_url = "https://overlord.acme.example"
 web_host = "0.0.0.0"          # behind VPN/private network only
 web_port = 4310
 sql_studio_enabled = false
@@ -267,7 +276,7 @@ default_agent = "claude"
 ```
 
 ```bash
-# environment
+# backend service environment
 export DATABASE_URL="postgres://overlord:***@db.internal:5432/overlord"
 # optional: export OVERLORD_PG_SCHEMA="overlord"
 ```
@@ -297,8 +306,8 @@ files or running migrations:
 
 1. **Q1/Q2** — number of users + machines → database (SQLite vs Postgres). *Block
    on this; don't guess.*
-2. **Q3** — `instance_name`, `database_path` (SQLite) or `DATABASE_URL`
-   (Postgres), `web_host`, `web_port`.
+2. **Q3** — `instance_name`, CLI `backend_url`, backend `database_path`
+   (SQLite) or backend `DATABASE_URL` (Postgres), `web_host`, `web_port`.
 3. **Q4** — web app or CLI-only.
 4. **Q5** — multi-user? external API callers? compliance? → which auth/RBAC.
 5. **Q6** — confirm the exact schema group list, then run migrations. *Never

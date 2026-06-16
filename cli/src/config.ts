@@ -1,5 +1,3 @@
-import type { AdapterConfig } from '@overlord/database';
-import { resolveAdapter, resolveGlobalDatabasePath } from '@overlord/database';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,8 +6,16 @@ import { parse } from 'smol-toml';
 import { parseAgentCatalogFromToml } from './agent-catalog.ts';
 import type { CatalogAgent } from './agent-catalog-defaults.ts';
 
+export const DEFAULT_LOCAL_BACKEND_DIR = '~/.ovld';
+export const DEFAULT_LOCAL_BACKEND_DATABASE_PATH = '~/.ovld/Overlord.sqlite';
+export const DEFAULT_LOCAL_BACKEND_URL = 'http://127.0.0.1:4310';
+
+export type BackendMode = 'local' | 'cloud';
+
 export type OverlordConfig = {
   instanceName: string;
+  backendMode: BackendMode;
+  backendUrl: string | null;
   /**
    * Developer override for the local SQLite location. Relative paths resolve
    * against the `overlord.toml` directory; absolute paths are used as-is.
@@ -43,6 +49,8 @@ export type OverlordConfig = {
 
 const DEFAULT_CONFIG: OverlordConfig = {
   instanceName: 'Local Overlord',
+  backendMode: 'local',
+  backendUrl: null,
   databasePath: null,
   databaseUrl: null,
   webHost: '127.0.0.1',
@@ -57,8 +65,14 @@ const DEFAULT_CONFIG: OverlordConfig = {
   agentCatalog: null
 };
 
+function tomlString(value: string): string {
+  return JSON.stringify(value);
+}
+
 type TomlConfig = {
   instance_name?: string;
+  backend_mode?: string;
+  backend_url?: string;
   database_path?: string;
   database_url?: string;
   web_host?: string;
@@ -82,8 +96,11 @@ function parseTomlConfig(raw: string): TomlConfig {
 }
 
 function configFromToml(toml: TomlConfig): OverlordConfig {
+  const backendMode: BackendMode = toml.backend_mode === 'cloud' ? 'cloud' : 'local';
   return {
     instanceName: toml.instance_name ?? DEFAULT_CONFIG.instanceName,
+    backendMode,
+    backendUrl: toml.backend_url?.trim() ? toml.backend_url.trim() : null,
     databasePath: toml.database_path?.trim() ? toml.database_path.trim() : null,
     databaseUrl: toml.database_url?.trim() ? toml.database_url.trim() : null,
     webHost: toml.web_host ?? DEFAULT_CONFIG.webHost,
@@ -131,8 +148,28 @@ export function findConfigPath(startDir = process.cwd()): string | null {
   return null;
 }
 
+export function resolveGlobalDataDir(): string {
+  return process.env.OVLD_HOME?.trim() || path.join(os.homedir(), '.ovld');
+}
+
+export function resolveGlobalConfigPath(): string {
+  return path.join(resolveGlobalDataDir(), 'overlord.toml');
+}
+
+export function findEffectiveConfigPath(startDir = process.cwd()): string | null {
+  const localPath = findConfigPath(startDir);
+  if (localPath) return localPath;
+
+  const globalPath = resolveGlobalConfigPath();
+  return existsSync(globalPath) ? globalPath : null;
+}
+
+export function resolveConfigWritePath(startDir = process.cwd()): string {
+  return findConfigPath(startDir) ?? resolveGlobalConfigPath();
+}
+
 export function loadConfig(configPath?: string | null): OverlordConfig {
-  const resolvedPath = configPath ?? findConfigPath();
+  const resolvedPath = configPath ?? findEffectiveConfigPath();
   if (!resolvedPath || !existsSync(resolvedPath)) {
     return { ...DEFAULT_CONFIG };
   }
@@ -151,28 +188,35 @@ export function writeConfig({
   mkdirSync(path.dirname(targetPath), { recursive: true });
   const merged = { ...DEFAULT_CONFIG, ...config };
   const contents = `# Overlord local instance configuration
-instance_name = "${merged.instanceName}"
-${merged.databasePath ? `database_path = "${merged.databasePath}"` : '# database_path = ""'}
-# Database location.
-# By default the SQLite database lives in the per-user global directory
-# (~/.ovld/Overlord.sqlite), so a single global install is shared across every
-# project directory. Set database_path to override the location for this
-# instance (relative paths resolve against this file's directory):
+instance_name = ${tomlString(merged.instanceName)}
+backend_mode = ${tomlString(merged.backendMode)}
+${merged.backendUrl ? `backend_url = ${tomlString(merged.backendUrl)}` : `backend_url = ${tomlString(DEFAULT_LOCAL_BACKEND_URL)}`}
+
+# Published CLI backend target.
+# Local mode expects a Desktop/local backend listening on the loopback URL.
+# Cloud mode points at a hosted Overlord backend.
+#
+# backend_mode = "local"
+# backend_url = "http://127.0.0.1:4310"
+# backend_mode = "cloud"
+# backend_url = "https://overlord.example.com"
+
+${merged.databasePath ? `database_path = ${tomlString(merged.databasePath)}` : '# database_path = ""'}
+# Legacy local-backend database location. The published npm CLI does not open
+# SQLite; these keys are consumed only by local backend packages such as Desktop.
 # database_path = "./database/.local/Overlord.sqlite"
 #
-# Cloud / hosted database (admins): point Overlord at a hosted database instead
-# of a local SQLite file by setting a connection string. This feeds the shared
-# adapter-selection point and is equivalent to exporting DATABASE_URL.
-${merged.databaseUrl ? `database_url = "${merged.databaseUrl}"` : '# database_url = "postgres://user:password@host:5432/overlord"'}
-web_host = "${merged.webHost}"
+# Legacy backend database URL for backend packages that talk directly to Postgres.
+${merged.databaseUrl ? `database_url = ${tomlString(merged.databaseUrl)}` : '# database_url = "postgres://user:password@host:5432/overlord"'}
+web_host = ${tomlString(merged.webHost)}
 web_port = ${merged.webPort}
 sql_studio_enabled = ${merged.sqlStudioEnabled}
-sql_studio_host = "${merged.sqlStudioHost}"
+sql_studio_host = ${tomlString(merged.sqlStudioHost)}
 sql_studio_port = ${merged.sqlStudioPort}
-sql_studio_binary = "${merged.sqlStudioBinary}"
-default_agent = "${merged.defaultAgent}"
-${merged.defaultModel ? `default_model = "${merged.defaultModel}"` : '# default_model = ""'}
-${merged.terminalLauncher ? `terminal_launcher = "${merged.terminalLauncher}"\n` : ''}
+sql_studio_binary = ${tomlString(merged.sqlStudioBinary)}
+default_agent = ${tomlString(merged.defaultAgent)}
+${merged.defaultModel ? `default_model = ${tomlString(merged.defaultModel)}` : '# default_model = ""'}
+${merged.terminalLauncher ? `terminal_launcher = ${tomlString(merged.terminalLauncher)}\n` : ''}
 # Terminal launcher: open the launched agent in a new terminal window.
 # Built-in launchers (macOS): "iTerm2" and "Terminal" use AppleScript so the
 # agent opens in a fresh window in the project directory.
@@ -195,6 +239,10 @@ ${merged.terminalLauncher ? `terminal_launcher = "${merged.terminalLauncher}"\n`
 `;
 
   writeFileSync(targetPath, contents);
+}
+
+export function hasExplicitBackendConfig(config: OverlordConfig): boolean {
+  return Boolean(config.backendUrl?.trim());
 }
 
 /**
@@ -222,7 +270,7 @@ export function resolveDatabasePath(config: OverlordConfig, startDir = process.c
 
   // No developer override: use the per-user global default (`~/.ovld/...`).
   if (!config.databasePath) {
-    return resolveGlobalDatabasePath();
+    return path.join(resolveGlobalDataDir(), 'Overlord.sqlite');
   }
 
   const expanded = expandTilde(config.databasePath);
@@ -231,20 +279,8 @@ export function resolveDatabasePath(config: OverlordConfig, startDir = process.c
   return path.isAbsolute(expanded) ? expanded : path.resolve(baseDir, expanded);
 }
 
-/**
- * The single answer to "where does this instance's database live?" — a cloud
- * connection string (`database_url`) when an admin has configured one,
- * otherwise the local SQLite file at the resolved {@link resolveDatabasePath}.
- * Delegates the sqlite/postgres decision to the shared `resolveAdapter()`.
- */
-export function resolveDatabaseTarget(
-  config: OverlordConfig,
-  startDir = process.cwd()
-): AdapterConfig {
-  return resolveAdapter({
-    databaseUrl: config.databaseUrl ?? undefined,
-    databasePath: resolveDatabasePath(config, startDir)
-  });
+export function resolveBackendUrl(config: OverlordConfig): string {
+  return config.backendUrl?.trim() || DEFAULT_LOCAL_BACKEND_URL;
 }
 
 /**

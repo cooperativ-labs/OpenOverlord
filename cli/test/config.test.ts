@@ -7,9 +7,10 @@ import test from 'node:test';
 import { parseAgentCatalogFromToml, resolveInstanceAgentCatalog } from '../src/agent-catalog.ts';
 import { BUNDLED_AGENT_CATALOG } from '../src/agent-catalog-defaults.ts';
 import {
+  DEFAULT_LOCAL_BACKEND_URL,
   loadConfig,
+  resolveBackendUrl,
   resolveDatabasePath,
-  resolveDatabaseTarget,
   writeConfig
 } from '../src/config.ts';
 
@@ -34,6 +35,8 @@ terminal_launcher = "iTerm2"
 
   const config = loadConfig(configPath);
   assert.equal(config.instanceName, 'Test Instance');
+  assert.equal(config.backendMode, 'local');
+  assert.equal(resolveBackendUrl(config), DEFAULT_LOCAL_BACKEND_URL);
   assert.equal(config.terminalLauncher, 'iTerm2');
   assert.equal(config.databasePath, 'db.sqlite');
   assert.equal(config.webHost, '0.0.0.0');
@@ -90,26 +93,20 @@ test('expands a leading ~ in database_path to the home directory', () => {
   }
 });
 
-test('database_url selects the cloud (postgres) adapter target', () => {
+test('backend_url selects the configured backend target', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
   const configPath = path.join(dir, 'overlord.toml');
-  writeFileSync(configPath, `database_url = "postgres://user:pass@db.example.com:5432/overlord"\n`);
+  writeFileSync(
+    configPath,
+    `backend_mode = "cloud"
+backend_url = "https://overlord.example.com"
+`
+  );
 
-  const previousUrl = process.env.DATABASE_URL;
-  delete process.env.DATABASE_URL;
-  try {
-    const config = loadConfig(configPath);
-    assert.equal(config.databaseUrl, 'postgres://user:pass@db.example.com:5432/overlord');
-    const target = resolveDatabaseTarget(config, dir);
-    assert.equal(target.type, 'postgres');
-    assert.equal(
-      target.type === 'postgres' ? target.connectionString : null,
-      'postgres://user:pass@db.example.com:5432/overlord'
-    );
-  } finally {
-    if (previousUrl === undefined) delete process.env.DATABASE_URL;
-    else process.env.DATABASE_URL = previousUrl;
-  }
+  const config = loadConfig(configPath);
+  assert.equal(config.backendMode, 'cloud');
+  assert.equal(config.backendUrl, 'https://overlord.example.com');
+  assert.equal(resolveBackendUrl(config), 'https://overlord.example.com');
 });
 
 test('writeConfig round-trips a set terminal_launcher and defaults to inline when unset', () => {

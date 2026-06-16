@@ -24,6 +24,7 @@ import {
   ApiError,
   createObjective,
   createProject,
+  createProjectResource,
   createProjectStatus,
   createTicket,
   createUserToken,
@@ -56,6 +57,12 @@ import {
   updateProjectStatus,
   updateTicket
 } from './repository.ts';
+import {
+  claimRunnerRequest,
+  clearRunnerRequests,
+  runnerStatus,
+  updateRunnerRequestStatus
+} from './runner.ts';
 import { startSqlStudio } from './sql-studio.ts';
 import {
   deleteObjectiveAttachment,
@@ -384,6 +391,10 @@ app.get(
   '/api/projects/:id/resources',
   handle(req => listProjectResources(req.params.id))
 );
+app.post(
+  '/api/projects/:id/resources',
+  handle(req => createProjectResource(req.params.id, req.body), { mutates: true })
+);
 app.get(
   '/api/projects/:id/repository',
   handle(req => {
@@ -542,6 +553,75 @@ app.get(
 app.put(
   '/api/projects/:id/launch-preference',
   handle(req => updateLaunchPreference(req.params.id, req.body), { mutates: true })
+);
+
+// ---- CLI protocol / runner ------------------------------------------------
+
+app.post(
+  '/api/protocol/:subcommand',
+  handle(req => {
+    throw new ApiError(
+      501,
+      `Protocol backend endpoint is not implemented for ${req.params.subcommand}`,
+      'The npm CLI is client-only and reached the backend successfully; implement this protocol route in the backend service.'
+    );
+  })
+);
+
+app.get(
+  '/api/runner/status',
+  handle(req => {
+    const projectId =
+      typeof req.query.projectId === 'string' && req.query.projectId.trim()
+        ? req.query.projectId.trim()
+        : null;
+    return runnerStatus(projectId);
+  })
+);
+app.post(
+  '/api/runner/claim',
+  handle(
+    req =>
+      claimRunnerRequest({
+        projectId: typeof req.body?.projectId === 'string' ? req.body.projectId : null
+      }),
+    { mutates: true }
+  )
+);
+app.post(
+  '/api/runner/clear',
+  handle(
+    req =>
+      clearRunnerRequests({
+        objectiveId: typeof req.body?.objectiveId === 'string' ? req.body.objectiveId : null,
+        projectId: typeof req.body?.projectId === 'string' ? req.body.projectId : null
+      }),
+    { mutates: true }
+  )
+);
+app.post(
+  '/api/runner/requests/:id/launching',
+  handle(req => updateRunnerRequestStatus({ requestId: req.params.id, status: 'launching' }), {
+    mutates: true
+  })
+);
+app.post(
+  '/api/runner/requests/:id/launched',
+  handle(req => updateRunnerRequestStatus({ requestId: req.params.id, status: 'launched' }), {
+    mutates: true
+  })
+);
+app.post(
+  '/api/runner/requests/:id/failed',
+  handle(
+    req =>
+      updateRunnerRequestStatus({
+        requestId: req.params.id,
+        status: 'failed',
+        error: typeof req.body?.error === 'string' ? req.body.error : null
+      }),
+    { mutates: true }
+  )
 );
 
 // ---- Static SPA (production: `yarn build` then `yarn start`) ------------

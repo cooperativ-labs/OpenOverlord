@@ -1,9 +1,9 @@
 {
-  "name": "open-overlord-cli",
-  "version": "0.2606151622.0",
+  "name": "open-overlord",
+  "version": "0.2606161230.0",
   "description": "Overlord CLI — management, agent protocol, and runner for OpenOverlord",
   "type": "module",
-  "private": true,
+  "private": false,
   "engines": {
     "node": ">=20"
   },
@@ -13,28 +13,28 @@
   },
   "files": [
     "bin/",
-    "dist/"
+    "dist/",
+    "scripts/postinstall.mjs"
   ],
   "scripts": {
-    "build": "tsc --project tsconfig.build.json",
-    "typecheck": "tsc --project tsconfig.build.json --noEmit",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "yarn clean && ../node_modules/.bin/tsc --project tsconfig.build.json",
+    "typecheck": "../node_modules/.bin/tsc --project tsconfig.build.json --noEmit",
     "test": "yarn build && tsx --test 'test/**/*.test.ts'",
-    "prepack": "tsc --project tsconfig.build.json && node scripts/vendor-database.mjs",
-    "postpack": "node scripts/vendor-database.mjs restore"
+    "prepack": "yarn build",
+    "postinstall": "node scripts/postinstall.mjs"
   },
   "dependencies": {
-    "@overlord/database": "workspace:*",
-    "better-sqlite3": "^12.11.1",
     "smol-toml": "^1.6.1"
   },
-  "bundleDependencies": [
-    "@overlord/database"
-  ],
   "keywords": [
     "overlord",
     "ai",
     "agents",
     "cli"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  }
 }

@@ -54,7 +54,7 @@ natively. The conversion is small:
   `supportedArchitectures` block into the root `.yarnrc.yml` (it is what lets the
   same tree install on both the Linux pod and the macOS host).
 - **`better-sqlite3` resolves once** and builds once, hoisted to the root.
-- **Cross-module dependencies become declared edges.** `open-overlord-cli` and
+- **Cross-module dependencies become declared edges.** `open-overlord` and
   `@overlord/webapp` add `"@overlord/database": "workspace:*"` instead of reaching
   up with `../../src` or copying files. `yarn workspaces foreach --topological`
   then builds things in the right order for free.
@@ -71,7 +71,7 @@ natively. The conversion is small:
   and conformance manifests, not by lockfile separation. Workspaces make the module
   graph *more* explicit, because every cross-module edge must appear in a
   `package.json`.
-- It does **not** change how the CLI ships. `open-overlord-cli` is still packed and
+- It does **not** change how the CLI ships. `open-overlord` is still packed and
   published from `cli/`; the difference is that its dependency on the database
   module travels through normal package resolution (bundled at pack time) instead
   of `stage-migrations.mjs`.
