@@ -1,6 +1,8 @@
 import { app, type BrowserWindow, dialog } from 'electron';
 import { autoUpdater, type ProgressInfo } from 'electron-updater';
 
+import { DEFAULT_UPDATE_FEED_URL } from '../update-feed.js';
+
 export type DesktopUpdateState =
   | 'idle'
   | 'checking'
@@ -39,7 +41,9 @@ export class DesktopUpdater {
     autoUpdater.autoInstallOnAppQuit = false;
     autoUpdater.logger = console;
 
-    const feedUrl = process.env.OVERLORD_UPDATE_FEED_URL;
+    const feedUrl =
+      process.env.OVERLORD_UPDATE_FEED_URL ??
+      (app.isPackaged ? DEFAULT_UPDATE_FEED_URL : undefined);
     if (feedUrl) autoUpdater.setFeedURL({ provider: 'generic', url: feedUrl });
 
     autoUpdater.on('checking-for-update', () => {

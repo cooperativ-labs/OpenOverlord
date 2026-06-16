@@ -8,6 +8,12 @@ productName: Overlord
 copyright: Copyright © Cooperativ Labs
 artifactName: "${productName}-${version}-${os}-${arch}.${ext}"
 
+# Generic updater feed (also set by scripts/build-desktop.ts). Serves latest-mac.yml
+# and release assets from https://github.com/cooperativ-labs/OpenOverlord/releases
+publish:
+  provider: generic
+  url: https://github.com/cooperativ-labs/OpenOverlord/releases/latest/download/
+
 directories:
   output: release
   buildResources: build
@@ -55,7 +61,7 @@ mac:
   entitlementsInherit: build/entitlements.mac.plist
   # Notarization is off by default; the build script enables it for --notarize
   # (reads APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID from the env).
-  notarize: false
+  notarize: true
   extendInfo:
     NSAppleEventsUsageDescription: Overlord opens your terminal application to run coding agents.
 

@@ -2,12 +2,13 @@
  * Build, sign, and notarize the Overlord desktop app, emitting the artifacts to
  * a folder the operator specifies.
  *
+ *   yarn desktop:package                                          # signed → desktop/release (for publish)
  *   yarn desktop:package --out ~/Desktop/overlord-dist            # signed (auto-discovered identity)
  *   yarn desktop:package --out ~/Desktop/overlord-dist --notarize # signed + notarized
  *   yarn desktop:package --out ./build --no-sign                  # ad-hoc, no Apple account
  *
  * Flags:
- *   --out <dir>            (required) where the .dmg/.zip are copied
+ *   --out <dir>            where the .dmg/.zip are copied (default: desktop/release)
  *   --arch <arm64|x64|universal>   (default: host arch)
  *   --no-sign              ad-hoc build (Gatekeeper warns; fine for local testing)
  *   --sign                 sign with the Developer ID Application identity (default)
@@ -25,8 +26,11 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { DEFAULT_UPDATE_FEED_URL } from '../desktop/update-feed.ts';
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const desktopDir = path.join(repoRoot, 'desktop');
+const defaultOutDir = path.join(desktopDir, 'release');
 
 type Args = {
   out: string | null;
@@ -46,7 +50,7 @@ function parseArgs(argv: string[]): Args {
     const token = argv[i];
     switch (token) {
       case '--out':
-        args.out = argv[(i += 1)];
+        args.out = argv[(i += 1)] ?? fail('Missing value for --out.');
         break;
       case '--arch': {
         const value = argv[(i += 1)];
@@ -70,7 +74,7 @@ function parseArgs(argv: string[]): Args {
         fail(`Unknown argument: ${token}`);
     }
   }
-  if (!args.out) fail('Missing required --out <dir>.');
+  if (!args.out) args.out = defaultOutDir;
   return args;
 }
 
@@ -86,7 +90,9 @@ function loadEnv(): void {
   for (const line of readFileSync(envPath, 'utf8').split('\n')) {
     const match = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
     if (!match) continue;
-    const [, key, rawValue] = match;
+    const key = match[1];
+    const rawValue = match[2];
+    if (!key || rawValue === undefined) continue;
     if (process.env[key]) continue; // never override an existing env var
     process.env[key] = rawValue.replace(/^["']|["']$/g, '');
   }
@@ -252,10 +258,9 @@ function runElectronBuilder(args: Args): void {
   const electronVersion = installedElectronVersion();
   if (electronVersion) builderArgs.push(`-c.electronVersion=${electronVersion}`);
 
-  if (process.env.OVERLORD_UPDATE_FEED_URL) {
-    builderArgs.push('-c.publish.provider=generic');
-    builderArgs.push(`-c.publish.url=${process.env.OVERLORD_UPDATE_FEED_URL}`);
-  }
+  const updateFeedUrl = process.env.OVERLORD_UPDATE_FEED_URL ?? DEFAULT_UPDATE_FEED_URL;
+  builderArgs.push('-c.publish.provider=generic');
+  builderArgs.push(`-c.publish.url=${updateFeedUrl}`);
 
   if (args.notarize) {
     builderArgs.push('-c.mac.notarize=true');
@@ -285,6 +290,11 @@ function installedElectronVersion(): string | null {
   return null;
 }
 
+/** Matches the distributable artifacts a build produces (and that a prior build left behind). */
+function isDistributable(name: string): boolean {
+  return /\.(dmg|zip|blockmap|AppImage|deb)$/.test(name) || name === 'latest-mac.yml';
+}
+
 function emitArtifacts(outDir: string): void {
   const releaseDir = path.join(desktopDir, 'release');
   const resolvedOut = path.resolve(outDir);
@@ -292,13 +302,27 @@ function emitArtifacts(outDir: string): void {
 
   if (!existsSync(releaseDir)) fail(`electron-builder produced no output at ${releaseDir}`);
 
-  const wanted = readdirSync(releaseDir).filter(
-    name => /\.(dmg|zip|blockmap|AppImage|deb)$/.test(name) || name === 'latest-mac.yml'
-  );
+  const wanted = readdirSync(releaseDir).filter(isDistributable);
   if (wanted.length === 0) fail(`No distributable artifacts found in ${releaseDir}`);
 
+  // Remove the preceding build's artifacts from the output dir before saving the
+  // new ones, so stale versioned .dmg/.zip/.blockmap files don't accumulate or
+  // confuse the generic update feed. Only distributable artifacts are touched;
+  // anything else the operator keeps in --out is left alone.
+  for (const name of readdirSync(resolvedOut).filter(isDistributable)) {
+    const stale = path.join(resolvedOut, name);
+    if (path.resolve(stale) !== path.resolve(path.join(releaseDir, name))) {
+      rmSync(stale, { force: true });
+      console.log(`  removed stale ${name}`);
+    }
+  }
+
   for (const name of wanted) {
-    cpSync(path.join(releaseDir, name), path.join(resolvedOut, name));
+    const source = path.join(releaseDir, name);
+    const destination = path.join(resolvedOut, name);
+    if (path.resolve(source) !== path.resolve(destination)) {
+      cpSync(source, destination);
+    }
     console.log(`  emitted ${name}`);
   }
 }

@@ -91,10 +91,12 @@ automatically; installation is explicit through **Settings → Desktop** or the
 native **Check for Updates...** / **Install Update and Relaunch** menu items.
 
 Release builds can embed a generic update feed by setting
-`OVERLORD_UPDATE_FEED_URL` when running `yarn desktop:package`. The release
-directory must publish the `.zip`, `.blockmap`, and `latest-mac.yml` files
-emitted by electron-builder at that feed URL. In unsigned/dev builds without a
-feed, update checks report as unavailable.
+`OVERLORD_UPDATE_FEED_URL` when running `yarn desktop:package`. The default feed
+is [GitHub Releases](https://github.com/cooperativ-labs/OpenOverlord/releases/latest/download/)
+(see `desktop/update-feed.ts`). Each release must publish the `.zip`, `.blockmap`,
+and `latest-mac.yml` files emitted by electron-builder — `yarn desktop:publish`
+uploads them automatically. In unsigned/dev builds without a feed, update checks
+report as unavailable.
 
 ## 7. Launching agents
 
@@ -119,8 +121,9 @@ and CLI, then runs electron-builder:
   `CSC_LINK`); notarization (`--notarize`) uses `APPLE_ID` /
   `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID`. `--no-sign` produces an ad-hoc
   build.
-- `OVERLORD_UPDATE_FEED_URL` configures the generic updater feed and causes
-  electron-builder to emit update metadata such as `latest-mac.yml`.
+- `OVERLORD_UPDATE_FEED_URL` overrides the default GitHub Releases updater feed
+  (`desktop/update-feed.ts`) and causes electron-builder to emit update metadata
+  such as `latest-mac.yml`.
 
 ### Native module / toolchain notes
 

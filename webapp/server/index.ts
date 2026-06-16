@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadConfig } from '../../cli/src/config.ts';
+import { ServiceError } from '../../src/service/errors.ts';
 
 import { DATABASE_PATH, WORKSPACE } from './db.ts';
 import {
@@ -19,6 +20,7 @@ import {
   updateAgentLaunchConfig,
   updateLaunchPreference
 } from './launch.ts';
+import { runProtocolSubcommand } from './protocol.ts';
 import { realtime } from './realtime.ts';
 import {
   ApiError,
@@ -559,13 +561,7 @@ app.put(
 
 app.post(
   '/api/protocol/:subcommand',
-  handle(req => {
-    throw new ApiError(
-      501,
-      `Protocol backend endpoint is not implemented for ${req.params.subcommand}`,
-      'The npm CLI is client-only and reached the backend successfully; implement this protocol route in the backend service.'
-    );
-  })
+  handle(req => runProtocolSubcommand(req.params.subcommand, req.body ?? {}), { mutates: true })
 );
 
 app.get(
@@ -639,6 +635,12 @@ if (existsSync(distDir)) {
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof ApiError) {
     res.status(err.status).json({ error: err.message, detail: err.detail });
+    return;
+  }
+  // Service-layer validation (invalid session, no active objective, missing
+  // rationale, …) carries its own HTTP status and machine-readable code.
+  if (err instanceof ServiceError) {
+    res.status(err.status).json({ error: err.message, code: err.code });
     return;
   }
   // SQLite constraint failures and the like.

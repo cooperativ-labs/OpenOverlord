@@ -41,7 +41,7 @@ Maps to the `desktop` contract component (`desktop/docs/desktop-app.md`).
 yarn desktop:build         # build the SPA + server bundle + Electron main/preload
 yarn desktop:dev           # connect-only: wraps a running `ovld serve` / `yarn start`
 yarn desktop:typecheck     # typecheck the shell against the Electron type defs
-yarn desktop:package --out <dir> [--arch arm64|x64|universal] [--no-sign] [--notarize]
+yarn desktop:package [--out <dir>] [--arch arm64|x64|universal] [--no-sign] [--notarize]
 yarn desktop:publish       # publish desktop/release artifacts to GitHub Releases via gh
 ```
 
@@ -70,19 +70,24 @@ from the environment (`.env` at the repo root):
 | `APPLE_ID` | Apple ID for notarization |
 | `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for that Apple ID |
 | `APPLE_TEAM_ID` | Developer Team ID |
-| `OVERLORD_UPDATE_FEED_URL` | Optional generic electron-updater feed URL embedded in release builds |
+| `OVERLORD_UPDATE_FEED_URL` | Override the default GitHub Releases update feed (see `desktop/update-feed.ts`) |
+
+Release builds embed a generic electron-updater feed pointing at
+[GitHub Releases](https://github.com/cooperativ-labs/OpenOverlord/releases/latest/download/)
+(`latest-mac.yml` plus `.zip` / `.blockmap` assets). `yarn desktop:publish` uploads
+those files to the repo's Releases page; installed apps check that feed on startup
+and every four hours.
 
 The Developer ID Application signing identity is auto-discovered from the login
 keychain (or set `CSC_LINK`/`CSC_KEY_PASSWORD`). Use `--no-sign` for an ad-hoc
-local build that needs no Apple account. When `OVERLORD_UPDATE_FEED_URL` is set,
-publish the emitted `.zip`, `.blockmap`, and `latest-mac.yml` files at that URL.
+local build that needs no Apple account.
+
 See
 [`docs/desktop-app.md`](docs/desktop-app.md) for the full behavior spec and
 [`docs/testing.md`](docs/testing.md) for the test plan.
 
-To push the packaged desktop artifacts to GitHub Releases, first run
-`yarn desktop:package` so `desktop/release` contains the current version's
-artifacts, then run:
+To push the packaged desktop artifacts to GitHub Releases, run
+`yarn desktop:package` (artifacts land in `desktop/release` by default), then:
 
 ```bash
 yarn desktop:publish
