@@ -132,6 +132,20 @@ test('double quotes in the agent command are escaped for AppleScript', () => {
   assert.ok(script.includes('\\"hi\\"'));
 });
 
+test('multi-line agent prompts are valid AppleScript expressions', () => {
+  const exec = resolveLaunchExecution({
+    command: 'codex',
+    args: ['line one\nif this prompt leaks, AppleScript fails\nline three'],
+    workingDirectory: '/tmp/p',
+    terminalLauncher: 'iTerm2',
+    terminalLaunchPlacement: 'chord',
+    terminalLaunchChord: 'cmd+d'
+  });
+  const script = exec.args[1] ?? '';
+  assert.ok(script.includes(' & linefeed & '));
+  assert.ok(script.includes('"if this prompt leaks, AppleScript fails"'));
+});
+
 test('a pre-command is wrapped inside the new terminal window', () => {
   const exec = resolveLaunchExecution({
     ...AGENT,

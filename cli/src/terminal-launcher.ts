@@ -30,9 +30,13 @@ export function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-/** Build an AppleScript string literal, escaping backslashes and quotes. */
+/** Build an AppleScript string expression, escaping content and preserving line breaks. */
 function appleScriptString(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  const literal = (segment: string): string =>
+    `"${segment.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  const segments = value.split(/\r\n|\r|\n/);
+  if (segments.length === 1) return literal(value);
+  return segments.map(literal).join(' & linefeed & ');
 }
 
 /** Map a configured launcher value to a built-in launcher, or null for a raw prefix. */
