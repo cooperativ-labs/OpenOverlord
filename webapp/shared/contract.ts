@@ -358,7 +358,7 @@ export interface FileChangeDto {
 // Shapes follow connectors/docs/agent-harness-configuration-architecture.md:
 // the workspace catalog (workspaces.settings_json.agentCatalog) answers "what
 // agents and models are offered"; per-user launch mechanics live on the user's
-// workspace_user_execution_targets row; project_user_preferences remember the
+// user_execution_target_preferences row; project_user_preferences remember the
 // last selection; objectives.launch_config_json holds explicit per-objective
 // overrides keyed by execution target and agent.
 
@@ -394,13 +394,25 @@ export interface AgentLaunchConfigDto {
   flags: string[];
 }
 
+export interface TerminalProfileDto {
+  /** Built-in launcher (`iTerm2`, `Terminal`) or prefix command; null runs inline. */
+  launcher: string | null;
+  placement: 'window' | 'tab' | 'chord';
+  /** Typed shortcut such as `cmd+d` when placement is `chord`. */
+  chord: string | null;
+}
+
 export interface LaunchSettingsDto {
   /** The local execution target launches queue against (provisioned on demand). */
   executionTargetId: string;
   deviceLabel: string;
   /** Per-user launch configs keyed by agent key. */
   agentConfigs: Record<string, AgentLaunchConfigDto>;
+  /** Per-user terminal profile for this machine's execution target. */
+  terminalProfile: TerminalProfileDto;
 }
+
+export type UpdateTerminalProfileBody = TerminalProfileDto;
 
 /** Last agent/model/reasoning the user selected within a project. */
 export interface LaunchPreferenceDto {
@@ -489,12 +501,14 @@ export interface UpdateProjectBody {
 
 export interface CreateTicketBody {
   projectId: string;
-  /** Optional when `firstObjective` is provided; otherwise required. */
+  /** Optional when `firstObjective` or `objectives` is provided; otherwise required. */
   title?: string;
   priority?: TicketPriority;
   statusId?: string;
   /** Optional first objective instruction; creates objective #1 when present. */
   firstObjective?: string;
+  /** Optional ordered objective instructions; creates objective #1 as draft and the rest as future. */
+  objectives?: Array<{ objective: string; title?: string | null; autoAdvance?: boolean }>;
 }
 
 export interface UpdateTicketBody {

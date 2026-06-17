@@ -1390,12 +1390,18 @@ function nextTicketSequence(): number {
 
 type CreateTicketResult = {
   detail: TicketDetailDto;
-  firstObjectiveId?: string;
+  objectiveIds: string[];
   instruction: string;
 };
 
 const createTicketTx = db.transaction((body: CreateTicketBody): CreateTicketResult => {
-  const instruction = (body.firstObjective ?? body.title ?? '').trim();
+  const objectiveInputs =
+    body.objectives && body.objectives.length > 0
+      ? body.objectives
+      : body.firstObjective
+        ? [{ objective: body.firstObjective }]
+        : [];
+  const instruction = (objectiveInputs[0]?.objective ?? body.title ?? '').trim();
   if (!instruction) {
     throw new ApiError(400, 'Describe the work to be done (title or first objective)');
   }
@@ -1469,20 +1475,25 @@ const createTicketTx = db.transaction((body: CreateTicketBody): CreateTicketResu
     ticketId: id
   });
 
-  let firstObjectiveId: string | undefined;
-  if (body.firstObjective?.trim()) {
+  const objectiveIds: string[] = [];
+  for (const item of objectiveInputs) {
+    if (!item.objective.trim()) {
+      throw new ApiError(400, 'Objective instruction is required');
+    }
     const objective = insertObjective({
       ticketId: id,
-      instructionText: body.firstObjective
+      instructionText: item.objective,
+      ...(item.title !== undefined ? { title: item.title ?? undefined } : {}),
+      autoAdvance: item.autoAdvance ?? false
     });
-    firstObjectiveId = objective.id;
+    objectiveIds.push(objective.id);
   }
 
-  return { detail: getTicketDetail(id), firstObjectiveId, instruction };
+  return { detail: getTicketDetail(id), objectiveIds, instruction };
 });
 
 export function createTicket(body: CreateTicketBody): TicketDetailDto {
-  const { detail, firstObjectiveId, instruction } = createTicketTx(body);
+  const { detail, objectiveIds, instruction } = createTicketTx(body);
 
   scheduleTicketTitleGeneration({
     ticketId: detail.id,
@@ -1490,6 +1501,7 @@ export function createTicket(body: CreateTicketBody): TicketDetailDto {
     instructionText: instruction
   });
 
+  const firstObjectiveId = objectiveIds[0];
   if (firstObjectiveId) {
     scheduleObjectiveTitleGeneration({
       objectiveId: firstObjectiveId,

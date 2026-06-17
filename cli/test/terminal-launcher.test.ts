@@ -42,10 +42,54 @@ test('iTerm2 launcher drives osascript to open a new window', () => {
   assert.ok(script.includes('tell application "iTerm"'));
   assert.ok(script.includes('create window with default profile'));
   assert.ok(script.includes('write text'));
-  // The window cd's into the project and re-exports the TMPDIR family.
   assert.ok(script.includes(`cd '/Users/jake/project'`));
   assert.ok(script.includes(`export OVERLORD_TMPDIR='/Users/jake/project/.overlord/tmp'`));
   assert.ok(script.includes(`'claude'`));
+});
+
+test('iTerm2 tab placement creates a tab in the current window', () => {
+  const exec = resolveLaunchExecution({
+    ...AGENT,
+    terminalLauncher: 'iTerm2',
+    terminalLaunchPlacement: 'tab'
+  });
+  const script = exec.args[1] ?? '';
+  assert.ok(script.includes('create tab with default profile'));
+});
+
+test('iTerm2 chord placement splits vertically for cmd+d', () => {
+  const exec = resolveLaunchExecution({
+    ...AGENT,
+    terminalLauncher: 'iTerm2',
+    terminalLaunchPlacement: 'chord',
+    terminalLaunchChord: 'cmd+d'
+  });
+  const script = exec.args[1] ?? '';
+  assert.ok(script.includes('split vertically with default profile'));
+  assert.ok(script.includes('tell second session of current tab'));
+});
+
+test('Terminal tab placement opens in the front window', () => {
+  const exec = resolveLaunchExecution({
+    ...AGENT,
+    terminalLauncher: 'Terminal',
+    terminalLaunchPlacement: 'tab'
+  });
+  const script = exec.args[1] ?? '';
+  assert.ok(script.includes('do script'));
+  assert.ok(script.includes('in front window'));
+});
+
+test('generic launcher chord placement activates the app and sends the shortcut', () => {
+  const exec = resolveLaunchExecution({
+    ...AGENT,
+    terminalLauncher: "open -a 'Ghostty' --args",
+    terminalLaunchPlacement: 'chord',
+    terminalLaunchChord: 'cmd+d'
+  });
+  assert.equal(exec.useShell, true);
+  assert.ok(exec.command.includes(`tell application "Ghostty" to activate`));
+  assert.ok(exec.command.includes('keystroke "d" using {command down}'));
 });
 
 test('Terminal launcher drives osascript with do script', () => {

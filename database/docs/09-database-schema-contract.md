@@ -416,8 +416,6 @@ Represents where an objective can run. The local MVP has one local target per de
 | `label` | text | yes |  |
 | `status` | text | yes | `active`, `disabled`, `unavailable`. |
 | `connection_json` | Json | yes | SSH host metadata later. No raw credentials. |
-| `agent_flags_json` | Json | yes | Default per-agent launch flags/pre-command for this target. |
-| `terminal_profile_json` | Json | yes | Terminal launch profile for local GUI/CLI use. |
 | `created_at` | TimestampUTC | yes |  |
 | `updated_at` | TimestampUTC | yes |  |
 | `deleted_at` | TimestampUTC | no | Tombstone. |
@@ -430,7 +428,7 @@ Indexes:
 
 ### `workspace_user_execution_targets`
 
-Represents a user's access and local preferences for an execution target. Overlord's hosted schema separates target identity from per-user access/config; Overlord can keep the local MVP simpler, but this contract should preserve the same concept.
+Represents a workspace user's access to a workspace execution target. Reusable user launch preferences live in `user_execution_target_preferences`, keyed by profile and stable target fingerprint.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -441,8 +439,6 @@ Represents a user's access and local preferences for an execution target. Overlo
 | `default_username` | text | no | SSH/local username hint. |
 | `access_status` | text | yes | `active`, `pending`, `disabled`, `error`. |
 | `last_connected_at` | TimestampUTC | no |  |
-| `agent_flags_json` | Json | yes | Per-user/per-target agent flags and pre-command overrides. |
-| `terminal_profile_json` | Json | yes | Per-user terminal profile for this target. |
 | `created_at` | TimestampUTC | yes |  |
 | `updated_at` | TimestampUTC | yes |  |
 | `deleted_at` | TimestampUTC | no | Tombstone. |
@@ -452,6 +448,28 @@ Indexes:
 
 - Unique active `(workspace_user_id, execution_target_id)`.
 - `(workspace_id, execution_target_id, access_status)`.
+
+### `user_execution_target_preferences`
+
+Represents reusable per-profile launch preferences for a stable execution target identity. Local targets use the device fingerprint as `target_fingerprint`, so the same user's laptop keeps one terminal and agent launch profile across multiple workspace memberships.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `profile_id` | Id | yes | FK to `profiles`. |
+| `target_type` | text | yes | `local`, `ssh`, future adapter-defined. |
+| `target_fingerprint` | text | yes | Stable user-target identity. For local targets, the device fingerprint. |
+| `agent_configs_json` | Json | yes | Per-user/per-target agent launch config, keyed by agent identifier. |
+| `terminal_profile_json` | Json | yes | Per-user terminal profile for this target fingerprint. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `deleted_at` | TimestampUTC | no | Tombstone. |
+| `revision` | integer | yes |  |
+
+Indexes:
+
+- Unique active `(profile_id, target_type, target_fingerprint)`.
+- `(profile_id, target_type, updated_at)`.
 
 ### `project_resources`
 
@@ -1525,10 +1543,11 @@ JSON columns are either extension space or contracted structures:
 
 - `available_tools_json`: array of tool descriptors with stable `name`, optional `description`, and optional `source`.
 - `execution_target_intent_json`: object with optional `targetKind`, `targetId`, `deviceFingerprint`, `resourceId`, and `workingDirectory`.
-- `agent_flags_json`: object keyed by agent identifier; values contain launch flags, optional pre-command, and connector-specific settings.
+- `agent_flags_json`: legacy/objective/request object keyed by agent identifier; values contain launch flags, optional pre-command, and connector-specific settings.
+- `agent_configs_json`: user execution-target preference object keyed by agent identifier; values contain launch flags, optional pre-command, and connector-specific settings.
 - `launch_config_json`: object with resolved per-objective overrides for agent flags, model, reasoning effort, execution target, and terminal profile.
 - `connection_json`: target-specific connection metadata; must not contain raw credentials.
-- `terminal_profile_json`: terminal application/profile/command template metadata for local launches.
+- `terminal_profile_json`: terminal application/profile/command template metadata for local launches; reusable user defaults live in `user_execution_target_preferences`.
 - `capabilities_json`: object of connector or target capability booleans and version hints.
 - `manifest_json`: connector-managed file manifest and checksums.
 - `connector_config_json`: custom harness command templates, launch argument mapping, hook support, and connector capabilities. Must not contain secrets.
@@ -1673,7 +1692,7 @@ Conflict handling can start simple:
 The first implementable migration does not need every table above. A practical MVP slice:
 
 1. Better Auth `user`, `workspaces`, `profiles`, `workspace_users` with one implicit local user profile and membership.
-2. `projects`, `project_statuses`, `devices`, `execution_targets`, `workspace_user_execution_targets`, `project_resources`, `project_user_preferences`.
+2. `projects`, `project_statuses`, `devices`, `execution_targets`, `workspace_user_execution_targets`, `user_execution_target_preferences`, `project_resources`, `project_user_preferences`.
 3. `ticket_sequences`, `tickets`, `objectives`, `agent_sessions`.
 4. `ticket_events`, `shared_context_entries`, `objective_attachments`.
 5. `deliveries`, `artifacts`, `changed_files`, `change_rationales`.

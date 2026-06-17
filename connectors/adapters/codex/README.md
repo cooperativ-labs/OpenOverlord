@@ -33,7 +33,7 @@ The shared Connector Core source is outside this adapter at `connectors/core/ove
 From an OpenOverlord checkout:
 
 ```bash
-ovld setup codex
+ovld agent-setup codex
 ```
 
 This copies managed plugin files to `~/.codex/plugins/overlord`, merges protocol permission rules into `~/.codex/rules/default.rules`, writes the personal marketplace entry at `~/.agents/plugins/marketplace.json`, and runs `codex plugin add overlord@overlord-local` when the Codex CLI is available.
@@ -41,7 +41,7 @@ This copies managed plugin files to `~/.codex/plugins/overlord`, merges protocol
 Re-run safely any time the connector contract version changes:
 
 ```bash
-ovld setup codex
+ovld agent-setup codex
 ovld doctor
 ```
 

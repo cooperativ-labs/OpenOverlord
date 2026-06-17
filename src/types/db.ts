@@ -223,7 +223,6 @@ export interface ExecutionRequests {
 }
 
 export interface ExecutionTargets {
-  agent_flags_json: Generated<string>;
   connection_json: Generated<string>;
   created_at: string;
   deleted_at: string | null;
@@ -233,7 +232,6 @@ export interface ExecutionTargets {
   owner_workspace_user_id: string | null;
   revision: Generated<number>;
   status: string;
-  terminal_profile_json: Generated<string>;
   type: string;
   updated_at: string;
   workspace_id: string;
@@ -547,6 +545,19 @@ export interface User {
   updatedAt: string;
 }
 
+export interface UserExecutionTargetPreferences {
+  agent_configs_json: Generated<string>;
+  created_at: string;
+  deleted_at: string | null;
+  id: string | null;
+  profile_id: string;
+  revision: Generated<number>;
+  target_fingerprint: string;
+  target_type: string;
+  terminal_profile_json: Generated<string>;
+  updated_at: string;
+}
+
 export interface UserImages {
   alt_text: string | null;
   checksum_sha256: string | null;
@@ -649,7 +660,6 @@ export interface Workspaces {
 
 export interface WorkspaceUserExecutionTargets {
   access_status: string;
-  agent_flags_json: Generated<string>;
   created_at: string;
   default_username: string | null;
   deleted_at: string | null;
@@ -657,7 +667,6 @@ export interface WorkspaceUserExecutionTargets {
   id: string | null;
   last_connected_at: string | null;
   revision: Generated<number>;
-  terminal_profile_json: Generated<string>;
   updated_at: string;
   workspace_id: string;
   workspace_user_id: string;
@@ -711,6 +720,7 @@ export interface DB {
   ticket_sequences: TicketSequences;
   tickets: Tickets;
   user: User;
+  user_execution_target_preferences: UserExecutionTargetPreferences;
   user_images: UserImages;
   user_token_scopes: UserTokenScopes;
   user_tokens: UserTokens;

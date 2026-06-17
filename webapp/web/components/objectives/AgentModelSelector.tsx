@@ -25,7 +25,7 @@ type AgentModelSelectorProps = {
   onChange: (selection: AgentModelSelection) => void;
   /**
    * Per-user launch mechanics keyed by agent (from `/api/launch-settings`,
-   * i.e. the user's workspace_user_execution_targets row). The footer seeds
+   * i.e. the user's user_execution_target_preferences row). The footer seeds
    * from the selected agent's entry.
    */
   agentConfigs: Record<string, AgentLaunchConfigDto>;

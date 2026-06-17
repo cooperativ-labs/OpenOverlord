@@ -11,9 +11,11 @@ const DB_FREE_COMMANDS = new Set([
   'version',
   '--version',
   '-v',
+  'update',
   'init',
   'doctor',
   'setup',
+  'agent-setup',
   'serve',
   'config',
   'auth'
@@ -77,9 +79,15 @@ async function dispatchCommand({
     case '-v':
       runVersionCommand({ json: wantsJsonOutput(args) });
       return;
+    case 'update': {
+      const { runUpdateCommand } = await import('./update.js');
+      await runUpdateCommand({ rest: args });
+      return;
+    }
     case 'init':
     case 'doctor':
     case 'setup':
+    case 'agent-setup':
     case 'config':
     case 'auth': {
       const { runLocalCommand } = await import('./management.js');

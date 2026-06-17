@@ -7,8 +7,8 @@
 # IMPORTANT: Any addition, rename, or flag change to a command in this file requires
 # a contract version update in CONTRACT.md and components.yaml.
 
-contractVersion: "0.8-draft"
-referenceSpec: "planning/feature-plans/03-agent-protocol.md"
+contractVersion: "0.13-draft"
+referenceSpec: "cli/docs/03-agent-protocol.md"
 
 sessionLifecycle:
 
@@ -20,6 +20,8 @@ sessionLifecycle:
       - --session-key
     returnsSessionKey: true
     responseShape: attach-response-v1
+    clientCapture:
+      - "The client CLI records a VCS baseline (changed file paths from git status) for the working directory so deliver can compute the run-attributable changed-file delta. VCS is read on the client only; best-effort and skipped outside a git repo."
     sideEffects:
       - creates-agent-session
       - objective-state-to-executing
@@ -140,14 +142,22 @@ sessionLifecycle:
       - --artifacts
       - --change-rationales-json
       - --change-rationales-file
+      - --changed-files-json
+      - --changed-files-file
+      - --no-file-changes
       - --payload-json
       - --payload-file
       - --verification-summary
       - --follow-up-notes
+    clientCapture:
+      - "The client CLI auto-injects --changed-files-json at deliver from the run-attributable VCS delta (current changed paths minus the baseline captured at attach/resume-follow-up). VCS is read on the client only."
     validationRules:
       - "Meaningful tracked changed files require rationales"
+      - "Rationale coverage is objective-scoped: aggregated across all sessions for the objective (and no-session record-work records)"
+      - "--no-file-changes asserts this run changed no files and skips rationale-coverage enforcement"
       - "Delivery is the final work boundary — no implementation after delivery without explicit follow-up"
     sideEffects:
+      - upserts-changed-files-by-session-objective-path
       - stores-delivery-record
       - objective-state-to-complete
       - ticket-status-to-review

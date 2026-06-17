@@ -11,7 +11,7 @@ Maps to the **Connector Layer** (`connector`) in [`CONTRACT.md`](../CONTRACT.md)
 - Connector core workflow instructions
 - Per-agent plugin/adapter files and their managed-file manifests
 - Hook scripts and their event contracts (`UserPromptSubmit`, `PermissionRequest`, `Stop`)
-- `ovld setup <agent>` and `ovld doctor` behavior
+- `ovld agent-setup <agent>` / `ovld agent-setup all` and `ovld doctor` behavior
 - Connector capability declarations (the approved capability flag set)
 
 It does **not** own protocol command implementations (→ [CLI module](../cli/README.md))

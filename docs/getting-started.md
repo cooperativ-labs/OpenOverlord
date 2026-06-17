@@ -101,20 +101,34 @@ future commands can resolve the project automatically.
 
 ---
 
-## Step 3 — Install an agent connector
+## Step 3 — Configure Overlord
+
+Run the guided setup to choose a local or cloud backend, configure agent
+connectors, and pick the default terminal used for launched agents:
+
+```bash
+ovld setup
+```
+
+For local mode, setup asks whether the Desktop app is installed. If it is not,
+it prints the latest Desktop download URL before writing the local backend URL.
+
+---
+
+## Step 4 — Install or repair an agent connector directly
 
 Connectors let your AI harness (Claude Code, Codex, Cursor, …) speak the
 Overlord protocol and receive ticket context automatically.
 
 ```bash
 # See what connectors are available
-ovld setup
+ovld agent-setup
 
 # Install the Claude Code connector
-ovld setup claude
+ovld agent-setup claude
 
 # Install all supported connectors at once
-ovld setup all
+ovld agent-setup all
 
 # Verify the install
 ovld doctor
@@ -122,12 +136,12 @@ ovld doctor
 
 The connector installs a plugin into the harness and wires up the
 `UserPromptSubmit` hook so ticket context is injected at prompt time. You only
-need to do this once per harness; re-running `ovld setup <agent>` repairs or
-updates it.
+need to do this once per harness; re-running `ovld agent-setup <agent>` repairs
+or updates it.
 
 ---
 
-## Step 4 — Create your first ticket
+## Step 5 — Create your first ticket
 
 A **ticket** is a unit of work. It holds one or more sequential **objectives**,
 each of which maps to one agent session. Create a ticket with a single
@@ -153,7 +167,7 @@ ovld tickets list --status next-up,execute
 
 ---
 
-## Step 5 — Launch an agent on the ticket
+## Step 6 — Launch an agent on the ticket
 
 ```bash
 ovld launch claude --ticket-id 1:1042
@@ -169,7 +183,7 @@ do the work, post progress updates, and deliver when done.
 
 ---
 
-## Step 6 — Review the results
+## Step 7 — Review the results
 
 Once the agent delivers, inspect what it produced:
 
@@ -192,7 +206,7 @@ trail that lives alongside the diff.
 
 ---
 
-## Step 7 — Open the web app (optional)
+## Step 8 — Open the web app (optional)
 
 ```bash
 yarn dev
@@ -205,7 +219,7 @@ supervising the local backend.
 
 ---
 
-## Step 8 — Inspect the database with SQL Studio (optional)
+## Step 9 — Inspect the database with SQL Studio (optional)
 
 The local backend can launch [SQL Studio](https://github.com/frectonz/sql-studio),
 an external local database browser, alongside the web app so you can inspect

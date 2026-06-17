@@ -42,6 +42,7 @@ const targets = [
   'package.json',
   'cli/package.json',
   'desktop/package.json',
+  'webapp/package.json',
 ];
 
 const datetime = getDatetime();

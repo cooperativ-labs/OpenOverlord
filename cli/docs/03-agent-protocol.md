@@ -162,12 +162,20 @@ Post-delivery discussion vs execution:
 
 Changed-file tracking requirements:
 
-- `update` should support posting changed-file metadata during normal progress updates, without requiring extra agent calls.
-- The CLI should be able to read local VCS status when `track-changed-files` is set and include only changed file paths/statuses, not full diffs or file contents.
+- Changed-file capture is mechanical, not agent-enumerated. The client CLI records a VCS baseline (changed file paths from local `git status`) for the working directory when a work session begins (`attach`, and `resume-follow-up`), and at `deliver` computes the run-attributable delta — the paths changed now minus the baseline — and sends them as changed files. Agents do not have to manually list what they changed.
+- VCS is read on the client only. The CLI sends normalized file paths/statuses (never full diffs or file contents); the backend persists what the client sends.
+- Capture is best-effort: outside a git repository, or when git is unavailable, no changed files are inferred and delivery proceeds on whatever the agent recorded explicitly.
+- `update` may still carry explicit changed-file metadata (`--changed-files-json` / `--changed-files-file`) during normal progress updates, without requiring extra agent calls.
 - Agents may include rationale fields for changed files in the same update payload when useful, but incomplete rationales are allowed before delivery.
-- Changed files should be upserted by session, objective, and normalized file path so repeated updates revise the same file record instead of creating duplicates.
+- Changed files are upserted by session, objective, and normalized file path so repeated updates revise the same file record instead of creating duplicates.
 - Changed-file records should distinguish mechanically observed file changes from agent-authored rationales.
 - Files that can no longer be observed in the local diff should not be silently deleted from history; they should be marked resolved/no-current-diff or excluded from final coverage according to review rules.
+
+> Concurrency note: the runner resolves all executions for a project to the same
+> working directory, so a raw whole-tree `git status` cannot attribute a change to
+> one run. The baseline-at-attach / delta-at-deliver approach subtracts files that
+> were already dirty when the session began. Exact per-run attribution under
+> concurrency requires per-run worktree isolation (a separate runner change).
 
 Supported phases:
 
@@ -194,6 +202,8 @@ Supported event types:
 - `summary`
 - `artifacts`
 - `changeRationales`
+- `changed-files-json` / `changed-files-file` (normally auto-injected by the CLI from the run-attributable VCS delta)
+- `no-file-changes` (assert this run changed no files; skips rationale-coverage enforcement)
 - `payload-json`
 - `payload-file`
 - optional file-change coverage checks
@@ -202,7 +212,7 @@ Delivery rules:
 
 - Every meaningful tracked file change should have a rationale.
 - Do not store generic `file_changes` artifacts as a substitute for structured rationales.
-- Delivery should validate final rationale coverage against current changed-file records and local VCS status when available.
+- Delivery validates rationale coverage against the changed-file records for the objective (aggregated across all sessions and no-session `record-work` records). The client supplies the current run's changed files from local VCS; the agent can pass `--no-file-changes` to declare the run made no file changes.
 - Delivery is the final review boundary, but it should not be the first time Overlord learns which files changed during the session.
 - Delivery moves the active objective to `complete`.
 - Delivery moves the ticket to review unless another explicit status is requested later.

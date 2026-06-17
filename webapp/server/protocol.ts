@@ -23,7 +23,6 @@ import {
   updateSession,
   writeSharedContext
 } from '../../src/service/protocol.ts';
-import { listAttachments } from '../../src/service/tickets.ts';
 
 import { ACTOR_WORKSPACE_USER_ID, db, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';
@@ -158,6 +157,21 @@ function objectiveText(body: ProtocolRequestBody): string {
   throw new ApiError(400, 'Missing objective text (use --objective or a positional argument)');
 }
 
+type ObjectiveInput = { objective: string; title?: string | null; autoAdvance?: boolean };
+
+/** Objective array for create/prompt: `--objectives-json`, else a one-item `--objective`. */
+function objectiveInputs(body: ProtocolRequestBody): ObjectiveInput[] {
+  const parsed =
+    parseJsonInput<ObjectiveInput[]>(body, '--objectives-json', '--objectives-file') ?? null;
+  if (parsed) {
+    if (!Array.isArray(parsed)) {
+      throw new ApiError(400, 'objectives-json must be an array');
+    }
+    return parsed;
+  }
+  return [{ objective: objectiveText(body) }];
+}
+
 type ArtifactInput = {
   type: string;
   label: string;
@@ -242,6 +256,12 @@ const handlers: Record<string, Handler> = {
           '--change-rationales-json',
           '--change-rationales-file'
         ) ?? [],
+      changedFiles: parseJsonInput<ChangedFileInput[]>(
+        body,
+        '--changed-files-json',
+        '--changed-files-file'
+      ),
+      noFileChanges: boolFlag(body, '--no-file-changes'),
       payloadJson: parseJsonInput<Record<string, unknown>>(
         body,
         '--payload-json',
@@ -278,7 +298,7 @@ const handlers: Record<string, Handler> = {
     protocolCreate({
       ctx,
       projectId: strFlag(body, '--project-id') ?? null,
-      objective: objectiveText(body),
+      objectives: objectiveInputs(body),
       title: strFlag(body, '--title') ?? null
     }),
 
@@ -286,7 +306,7 @@ const handlers: Record<string, Handler> = {
     protocolPrompt({
       ctx,
       projectId: strFlag(body, '--project-id') ?? null,
-      objective: objectiveText(body),
+      objectives: objectiveInputs(body),
       title: strFlag(body, '--title') ?? null,
       agentIdentifier: strFlag(body, '--agent') ?? 'unknown',
       externalSessionId: externalSessionId(body)

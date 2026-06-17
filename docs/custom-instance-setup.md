@@ -189,23 +189,23 @@ reasoning_options = ["low", "medium", "high"]
 Overlord connects to harnesses (Claude Code, Codex, Cursor, …) through
 **connectors**. After the instance exists, you install connectors per harness:
 
-- Run `ovld setup <agent>` to install a connector bundle into a harness.
+- Run `ovld agent-setup <agent>` to install a connector bundle into a harness.
 - Run `ovld doctor` to verify what's installed and at what version.
-- The runner (and `ovld launch`) can open agents in a new terminal window. Set
-  `terminal_launcher` in `overlord.toml` to match your terminal. The built-in
+- The runner (and `ovld launch`) can open agents in a new terminal window. Configure
+  terminal settings during `ovld setup`; they are stored on
+  `user_execution_target_preferences.terminal_profile_json` for this user's
+  local target fingerprint (auto-provisioned from the device fingerprint). Built-in
   macOS launchers `"iTerm2"` and `"Terminal"` open a fresh window in the project
-  directory; any other value is treated as a prefix command:
-
-```toml
-terminal_launcher = "iTerm2"
-# terminal_launcher = "Terminal"
-# terminal_launcher = "open -a Ghostty --args"
-# terminal_launcher = "wezterm start"
-```
+  directory; any other launcher value is treated as a prefix command. After
+  choosing a terminal, setup also asks whether agents open in a **new window**
+  (default), a **new tab**, or a **split pane** via a typed keyboard shortcut
+  (for example `cmd+d` — type it during setup, do not press it).
 
   Override per launch with `ovld launch <agent> --terminal "Terminal"`, or force
-  an inline (current-terminal) launch with `--no-terminal`. When
-  `terminal_launcher` is unset the agent runs inline in the current terminal.
+  an inline (current-terminal) launch with `--no-terminal`. When the stored
+  profile uses inline launch, the agent runs in the current terminal.
+  Split-pane placement for iTerm2 uses native AppleScript splits for `cmd+d` and
+  `cmd+shift+d`; other terminals receive the shortcut through System Events.
 
 ### Q9 — Do you want the local SQL inspector?
 
@@ -313,13 +313,13 @@ files or running migrations:
 5. **Q6** — confirm the exact schema group list, then run migrations. *Never
    migrate before this is confirmed.*
 6. **Q7** — `default_agent` / `default_model` / `[agent_catalog]`.
-7. **Q8** — which harness connectors to `ovld setup`, plus `terminal_launcher`.
+7. **Q8** — which harness connectors to `ovld agent-setup`, plus terminal profile setup for the local execution target.
 8. **Q9** — SQL Studio on/off.
 9. **Q10** — local-only or remote execution targets.
 
 Then: write `overlord.toml`, set environment variables, copy/edit
 `openoverlord.rbac.toml` if multi-user, run migrations for the confirmed groups,
-`ovld setup <agent>` the chosen connectors, and `ovld doctor` to verify.
+`ovld agent-setup <agent>` the chosen connectors, and `ovld doctor` to verify.
 
 > Any à la carte schema group can be added later with additive-only migrations,
 > so prefer the minimal set now and grow into the rest.

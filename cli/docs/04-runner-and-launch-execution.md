@@ -108,7 +108,7 @@ Requirements:
 - Preserve model/thinking/flags.
 - Support `--pre-command <wrapper>` through an interactive shell where needed.
 - Open the agent in a new terminal window when a launcher is configured via
-  `terminal_launcher` (or `--terminal <launcher>`); `--no-terminal` forces an
+  the stored terminal profile (or `--terminal <launcher>`); `--no-terminal` forces an
   inline launch. Built-in macOS launchers `iTerm2` and `Terminal` drive
   AppleScript (`osascript`) to open a fresh window, `cd` into the working
   directory, and re-export the `TMPDIR` family before invoking the agent. Any

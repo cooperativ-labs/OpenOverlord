@@ -82,7 +82,9 @@ For ticket creation examples, project discovery, and `--objectives-json` format 
 
 Always include `changeRationales` when delivering. Optionally include them on updates during long-running work.
 
-Before delivering, make sure every meaningful git-tracked file change is represented in `changeRationales`; do not send `file_changes` as an artifact. Record only meaningful behavioral changes. Skip formatting-only noise.
+Overlord captures *which* files changed for you: the CLI records a VCS baseline when you attach and, at `deliver`, automatically reports the files this run changed (current `git status` minus that baseline). You do **not** need to enumerate changed files by hand. Your job is to provide a rationale for each meaningful change — if `deliver` rejects with a missing-rationale error, it is listing files VCS shows you changed that still need a rationale. Record only meaningful behavioral changes; skip formatting-only noise. Do not send `file_changes` as an artifact.
+
+If your run genuinely changed no files (investigation, discussion, or read-only work), deliver with `--no-file-changes` to declare that explicitly and skip rationale-coverage enforcement.
 
 Each rationale entry requires these fields: `file_path`, `label`, `summary`, `why`, `impact` — all strings. Do **not** use `filePath` or `rationale`; those are a different internal shape and will cause a validation error.
 
@@ -117,4 +119,4 @@ For the `record-change-rationales` command and full payload shape with optional 
 - [reference/context.md](reference/context.md) — Shared state, attachments, and large artifact policy
 - [reference/shell-escaping.md](reference/shell-escaping.md) — Heredoc stdin piping for special characters in summaries and payloads
 
-<!-- version: 0.5.12 -->
+<!-- version: 0.5.13 -->

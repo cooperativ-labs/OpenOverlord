@@ -10,7 +10,7 @@ import {
   parseConnectorManifestYaml,
   readConnectorManifest,
   setupConnector
-} from '../dist/cli/src/connectors.js';
+} from '../dist/connectors.js';
 
 const repoRoot = path.resolve(import.meta.dirname, '..', '..');
 

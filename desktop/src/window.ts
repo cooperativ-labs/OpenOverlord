@@ -1,11 +1,25 @@
-import { BrowserWindow, type Session, shell } from 'electron';
+import {
+  BrowserWindow,
+  Menu,
+  type MenuItemConstructorOptions,
+  type Session,
+  shell
+} from 'electron';
 import path from 'node:path';
+
+const isMac = process.platform === 'darwin';
 
 /**
  * Creates the single hardened BrowserWindow. The security baseline
  * (`contextIsolation`, `sandbox`, `nodeIntegration: false`, a `preload` exposed
  * via `contextBridge`) is non-negotiable: the renderer is the unmodified webapp
  * SPA loaded over a loopback origin and must never get Node access.
+ *
+ * On macOS the native title bar is removed (`hiddenInset`) and the traffic
+ * lights are inset into the content so the webapp's own top nav serves as the
+ * title bar — there is no separate "Overlord" chrome above the UI. The webapp
+ * feature-detects the shell (`window.overlord`) to make that strip draggable and
+ * to reserve space for the inset traffic lights.
  */
 export function createWindow(preloadPath: string): BrowserWindow {
   const window = new BrowserWindow({
@@ -16,6 +30,12 @@ export function createWindow(preloadPath: string): BrowserWindow {
     backgroundColor: '#0b0b0f',
     show: false,
     title: 'Overlord',
+    ...(isMac
+      ? {
+          titleBarStyle: 'hiddenInset' as const,
+          trafficLightPosition: { x: 14, y: 14 }
+        }
+      : {}),
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
@@ -26,8 +46,60 @@ export function createWindow(preloadPath: string): BrowserWindow {
     }
   });
 
+  registerNativeContextMenu(window);
   window.once('ready-to-show', () => window.show());
   return window;
+}
+
+/**
+ * Native right-click menu. Because the renderer is sandboxed with no Node
+ * access, the SPA cannot build an OS-native context menu itself — the shell
+ * provides one. In editable fields it offers spellcheck suggestions (wired to
+ * the `spellcheck: true` web preference) plus the standard editing roles; over a
+ * plain text selection it offers copy/select-all. Anywhere else it stays out of
+ * the way.
+ */
+export function registerNativeContextMenu(window: BrowserWindow): void {
+  window.webContents.on('context-menu', (_event, params) => {
+    const template: MenuItemConstructorOptions[] = [];
+    const hasSelection = Boolean(params.selectionText?.trim());
+
+    if (params.isEditable) {
+      if (params.misspelledWord) {
+        const suggestions = params.dictionarySuggestions.slice(0, 6);
+        if (suggestions.length > 0) {
+          template.push(
+            ...suggestions.map(suggestion => ({
+              label: suggestion,
+              click: () => window.webContents.replaceMisspelling(suggestion)
+            }))
+          );
+        } else {
+          template.push({
+            label: 'No spelling suggestions',
+            enabled: false
+          });
+        }
+        template.push({ type: 'separator' });
+      }
+
+      template.push(
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      );
+    } else if (hasSelection) {
+      template.push({ role: 'copy' }, { type: 'separator' }, { role: 'selectAll' });
+    }
+
+    if (template.length === 0) return;
+
+    Menu.buildFromTemplate(template).popup({ window });
+  });
 }
 
 /**

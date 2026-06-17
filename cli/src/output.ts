@@ -2,9 +2,13 @@ export function printJson(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
+export function printLine(line: string): void {
+  process.stdout.write(`${line}\n`);
+}
+
 export function printLines(lines: string[]): void {
   for (const line of lines) {
-    console.log(line);
+    printLine(line);
   }
 }
 

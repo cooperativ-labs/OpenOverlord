@@ -7,7 +7,7 @@
  * - The workspace catalog (which agents/models are offered) lives in
  *   `workspaces.settings_json.agentCatalog`, seeded from a bundled default.
  * - Per-user launch mechanics (pre-command, flags) live on the user's
- *   `workspace_user_execution_targets.agent_flags_json` for the local target.
+ *   `user_execution_target_preferences.agent_configs_json` for the local target fingerprint.
  * - Last selection per project lives in
  *   `project_user_preferences.preferences_json.launchPreference`.
  * - Explicit per-objective overrides live in `objectives.launch_config_json`,
@@ -16,11 +16,13 @@
  *   config → workspace default → empty) and snapshots it into
  *   `execution_requests.launch_flags_json` for the runner to consume verbatim.
  */
-import { createHash } from 'node:crypto';
-import { hostname, platform } from 'node:os';
-
 import { resolveInstanceAgentCatalog } from '../../cli/src/agent-catalog.ts';
 import { loadConfig } from '../../cli/src/config.ts';
+import type { TerminalProfile } from '../../cli/src/terminal-profile-types.ts';
+import {
+  ensureLocalExecutionTarget,
+  updateTerminalProfile as persistTerminalProfile
+} from '../../src/service/execution-targets.ts';
 import type {
   AgentCatalogAgentDto,
   AgentCatalogDto,
@@ -31,8 +33,10 @@ import type {
   LaunchPreferenceDto,
   LaunchSettingsDto,
   ObjectivePromptDto,
+  TerminalProfileDto,
   UpdateAgentLaunchConfigBody,
-  UpdateLaunchPreferenceBody
+  UpdateLaunchPreferenceBody,
+  UpdateTerminalProfileBody
 } from '../shared/contract.ts';
 
 import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
@@ -157,17 +161,21 @@ export const refreshAgentCatalog = db.transaction((): AgentCatalogDto => {
 
 // ---- Local device / execution target provisioning -------------------------
 
-interface LocalLaunchTarget {
-  deviceId: string;
-  deviceLabel: string;
-  executionTargetId: string;
-  /** workspace_user_execution_targets row id (null when there is no actor). */
-  userTargetId: string | null;
-  agentConfigs: Record<string, AgentLaunchConfigDto>;
+function serviceContext() {
+  return {
+    db,
+    workspace: { id: WORKSPACE.id, slug: WORKSPACE.slug, name: WORKSPACE.name },
+    actorWorkspaceUserId: ACTOR_WORKSPACE_USER_ID,
+    source: 'webapp' as const
+  };
 }
 
-function deviceFingerprint(): string {
-  return createHash('sha256').update(`${hostname()}:${platform()}`).digest('hex').slice(0, 32);
+function toTerminalProfileDto(profile: TerminalProfile): TerminalProfileDto {
+  return {
+    launcher: profile.launcher ?? null,
+    placement: profile.placement ?? 'window',
+    chord: profile.chord ?? null
+  };
 }
 
 function parseAgentConfigs(json: string): Record<string, AgentLaunchConfigDto> {
@@ -189,104 +197,42 @@ function parseAgentConfigs(json: string): Record<string, AgentLaunchConfigDto> {
   return configs;
 }
 
-/**
- * Resolve (provisioning on demand) the local device, its `local` execution
- * target, and the acting user's per-target config row. Mirrors the CLI's
- * device fingerprint so the web server and `ovld` agree on identity.
- */
-const ensureLocalLaunchTarget = db.transaction((): LocalLaunchTarget => {
-  const now = nowIso();
-  const fingerprint = deviceFingerprint();
+function readAgentConfigs(preferenceId: string | null): Record<string, AgentLaunchConfigDto> {
+  if (!preferenceId) return {};
+  const row = db
+    .prepare(`SELECT agent_configs_json FROM user_execution_target_preferences WHERE id = ?`)
+    .get(preferenceId) as { agent_configs_json: string } | undefined;
+  return row ? parseAgentConfigs(row.agent_configs_json) : {};
+}
 
-  let device = db
-    .prepare(
-      `SELECT id, label FROM devices
-        WHERE workspace_id = ? AND fingerprint = ? AND deleted_at IS NULL`
-    )
-    .get(WORKSPACE.id, fingerprint) as { id: string; label: string } | undefined;
-  if (!device) {
-    const id = newId();
-    const label = hostname();
-    db.prepare(
-      `INSERT INTO devices
-         (id, workspace_id, fingerprint, label, platform, status, last_seen_at,
-          metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, ?, 'active', ?, '{}', ?, ?, 1)`
-    ).run(id, WORKSPACE.id, fingerprint, label, platform(), now, now, now);
-    recordChange({ entityType: 'device', entityId: id, operation: 'insert', entityRevision: 1 });
-    device = { id, label };
-  } else {
-    db.prepare(`UPDATE devices SET last_seen_at = ?, updated_at = ? WHERE id = ?`).run(
-      now,
-      now,
-      device.id
-    );
-  }
-
-  let target = db
-    .prepare(
-      `SELECT id FROM execution_targets
-        WHERE workspace_id = ? AND device_id = ? AND type = 'local' AND deleted_at IS NULL`
-    )
-    .get(WORKSPACE.id, device.id) as { id: string } | undefined;
-  if (!target) {
-    const id = newId();
-    db.prepare(
-      `INSERT INTO execution_targets
-         (id, workspace_id, device_id, owner_workspace_user_id, type, label, status,
-          connection_json, agent_flags_json, terminal_profile_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, 'local', ?, 'active', '{}', '{}', '{}', ?, ?, 1)`
-    ).run(id, WORKSPACE.id, device.id, ACTOR_WORKSPACE_USER_ID, device.label, now, now);
-    recordChange({
-      entityType: 'execution_target',
-      entityId: id,
-      operation: 'insert',
-      entityRevision: 1
-    });
-    target = { id };
-  }
-
-  let userTargetId: string | null = null;
-  let agentConfigs: Record<string, AgentLaunchConfigDto> = {};
-  if (ACTOR_WORKSPACE_USER_ID) {
-    const userTarget = db
-      .prepare(
-        `SELECT id, agent_flags_json FROM workspace_user_execution_targets
-          WHERE workspace_id = ? AND workspace_user_id = ? AND execution_target_id = ?
-            AND deleted_at IS NULL`
-      )
-      .get(WORKSPACE.id, ACTOR_WORKSPACE_USER_ID, target.id) as
-      | { id: string; agent_flags_json: string }
-      | undefined;
-    if (userTarget) {
-      userTargetId = userTarget.id;
-      agentConfigs = parseAgentConfigs(userTarget.agent_flags_json);
-    } else {
-      userTargetId = newId();
-      db.prepare(
-        `INSERT INTO workspace_user_execution_targets
-           (id, workspace_id, workspace_user_id, execution_target_id, access_status,
-            agent_flags_json, terminal_profile_json, created_at, updated_at, revision)
-         VALUES (?, ?, ?, ?, 'active', '{}', '{}', ?, ?, 1)`
-      ).run(userTargetId, WORKSPACE.id, ACTOR_WORKSPACE_USER_ID, target.id, now, now);
-    }
-  }
-
+function ensureLocalLaunchTarget(): {
+  deviceId: string;
+  deviceLabel: string;
+  executionTargetId: string;
+  userTargetId: string | null;
+  preferenceId: string | null;
+  agentConfigs: Record<string, AgentLaunchConfigDto>;
+  terminalProfile: TerminalProfileDto;
+} {
+  const target = ensureLocalExecutionTarget({ ctx: serviceContext() });
   return {
-    deviceId: device.id,
-    deviceLabel: device.label,
-    executionTargetId: target.id,
-    userTargetId,
-    agentConfigs
+    deviceId: target.deviceId,
+    deviceLabel: target.deviceLabel,
+    executionTargetId: target.executionTargetId,
+    userTargetId: target.userTargetId,
+    preferenceId: target.preferenceId,
+    agentConfigs: readAgentConfigs(target.preferenceId),
+    terminalProfile: toTerminalProfileDto(target.terminalProfile)
   };
-});
+}
 
 export function getLaunchSettings(): LaunchSettingsDto {
   const target = ensureLocalLaunchTarget();
   return {
     executionTargetId: target.executionTargetId,
     deviceLabel: target.deviceLabel,
-    agentConfigs: target.agentConfigs
+    agentConfigs: target.agentConfigs,
+    terminalProfile: target.terminalProfile
   };
 }
 
@@ -296,7 +242,7 @@ export const updateAgentLaunchConfig = db.transaction(
     const key = agentKey.trim();
     if (!key) throw new ApiError(400, 'Agent key is required');
     const target = ensureLocalLaunchTarget();
-    if (!target.userTargetId) {
+    if (!target.preferenceId) {
       throw new ApiError(409, 'No active workspace user to store launch configs for');
     }
 
@@ -313,15 +259,37 @@ export const updateAgentLaunchConfig = db.transaction(
     const configs = { ...target.agentConfigs, [key]: next };
 
     db.prepare(
-      `UPDATE workspace_user_execution_targets
-          SET agent_flags_json = ?, updated_at = ?, revision = revision + 1
+      `UPDATE user_execution_target_preferences
+          SET agent_configs_json = ?, updated_at = ?, revision = revision + 1
         WHERE id = ?`
-    ).run(JSON.stringify(configs), nowIso(), target.userTargetId);
+    ).run(JSON.stringify(configs), nowIso(), target.preferenceId);
 
     return {
       executionTargetId: target.executionTargetId,
       deviceLabel: target.deviceLabel,
-      agentConfigs: configs
+      agentConfigs: configs,
+      terminalProfile: target.terminalProfile
+    };
+  }
+);
+
+/** Persist the acting user's terminal profile for the local execution target. */
+export const updateTerminalProfile = db.transaction(
+  (body: UpdateTerminalProfileBody): LaunchSettingsDto => {
+    const saved = persistTerminalProfile({
+      ctx: serviceContext(),
+      profile: {
+        launcher: body.launcher ?? null,
+        placement: body.placement ?? 'window',
+        chord: body.placement === 'chord' ? (body.chord ?? null) : null
+      }
+    });
+    const target = ensureLocalLaunchTarget();
+    return {
+      executionTargetId: saved.executionTargetId,
+      deviceLabel: saved.deviceLabel,
+      agentConfigs: target.agentConfigs,
+      terminalProfile: toTerminalProfileDto(saved.terminalProfile)
     };
   }
 );
@@ -636,7 +604,7 @@ export function dequeueObjective({
  * source first (see "Launch Configuration Resolution" in the architecture doc):
  *
  * 1. `objectives.launch_config_json[targetId][agentKey]` — authoritative when present
- * 2. The user's per-target config (`workspace_user_execution_targets.agent_flags_json`)
+ * 2. The user's per-target config (`user_execution_target_preferences.agent_configs_json`)
  * 3. The workspace catalog's launch default for the agent
  * 4. Empty (no pre-command, no flags)
  */

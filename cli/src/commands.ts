@@ -6,6 +6,74 @@ import { resolveNativeSessionId } from './native-session.js';
 import { printJson, printKeyValue } from './output.js';
 import type { CliRuntime } from './runtime.js';
 import { promptForProject } from './select-prompt.js';
+import type { TerminalLaunchSettings } from './terminal-launcher.js';
+import { fetchTerminalProfile, terminalProfileToLaunchSettings } from './terminal-profile.js';
+import { computeRunDelta, readChangedFiles, writeBaseline } from './vcs.js';
+
+type ChangedFileEntry = { filePath: string; vcsStatus?: string | null };
+
+/** Parse an inline `--changed-files-json` value into entries (best-effort). */
+function parseChangedFilesFlag(value: unknown): ChangedFileEntry[] {
+  if (typeof value !== 'string' || value.trim() === '') return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (entry): entry is ChangedFileEntry =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        typeof (entry as ChangedFileEntry).filePath === 'string'
+    );
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * At deliver, auto-inject the run-attributable changed-file delta (current dirty
+ * paths minus the session baseline) as `--changed-files-json` so reporting does
+ * not depend on the agent enumerating files. `--no-file-changes` opts out and
+ * only warns if VCS still shows changes.
+ */
+function applyDeliverChangedFiles({
+  flags,
+  workingDirectory,
+  ticketId
+}: {
+  flags: Record<string, string | true>;
+  workingDirectory: string;
+  ticketId: string;
+}): void {
+  const noFileChanges =
+    flags['--no-file-changes'] === true || flags['--no-file-changes'] === 'true';
+  const delta = computeRunDelta({ workingDirectory, ticketId });
+
+  if (noFileChanges) {
+    if (delta.length > 0) {
+      console.error(
+        `[overlord] --no-file-changes was set, but VCS shows ${delta.length} changed file(s) for this run: ${delta
+          .map(entry => entry.filePath)
+          .join(', ')}`
+      );
+    }
+    return;
+  }
+
+  // Respect an explicit file-variant payload rather than clobbering it.
+  if ('--changed-files-file' in flags) return;
+  if (delta.length === 0) return;
+
+  const byPath = new Map<string, ChangedFileEntry>();
+  for (const entry of parseChangedFilesFlag(flags['--changed-files-json'])) {
+    byPath.set(entry.filePath, entry);
+  }
+  for (const entry of delta) {
+    if (!byPath.has(entry.filePath)) {
+      byPath.set(entry.filePath, { filePath: entry.filePath, vcsStatus: entry.vcsStatus });
+    }
+  }
+  flags['--changed-files-json'] = JSON.stringify(Array.from(byPath.values()));
+}
 
 type JsonRecord = Record<string, unknown>;
 
@@ -22,11 +90,37 @@ function repeatedFlagValues(args: string[], name: string): string[] {
   return values;
 }
 
-function resolveTerminalLauncher(flags: Map<string, string | true>): string | null {
-  if (flagBoolean(flags, '--no-terminal')) return null;
+async function resolveTerminalLaunchSettings({
+  runtime,
+  flags
+}: {
+  runtime: CliRuntime;
+  flags: Map<string, string | true>;
+}): Promise<TerminalLaunchSettings> {
+  if (flagBoolean(flags, '--no-terminal')) {
+    return { terminalLauncher: null };
+  }
+
   const override = flagValue(flags, '--terminal');
-  if (override) return override;
-  return loadConfig().terminalLauncher;
+  if (override) {
+    try {
+      const profile = await fetchTerminalProfile({ backend: runtime.backend });
+      return {
+        terminalLauncher: override,
+        terminalLaunchPlacement: profile.placement,
+        terminalLaunchChord: profile.chord
+      };
+    } catch {
+      return { terminalLauncher: override };
+    }
+  }
+
+  try {
+    const profile = await fetchTerminalProfile({ backend: runtime.backend });
+    return terminalProfileToLaunchSettings(profile);
+  } catch {
+    return { terminalLauncher: null };
+  }
 }
 
 function asRecord(value: unknown): JsonRecord {
@@ -81,12 +175,22 @@ export async function runProtocolCommand({
     return;
   }
 
+  const workingDirectory = process.cwd();
+  const ticketId = flagValue(parsed.flags, '--ticket-id') ?? parsed.positional[0];
+  const flags = Object.fromEntries(parsed.flags);
+
+  // Client-side VCS capture: read git status here (the agent's machine), never on
+  // the backend. At deliver, inject the run-attributable changed-file delta.
+  if (subcommand === 'deliver' && ticketId) {
+    applyDeliverChangedFiles({ flags, workingDirectory, ticketId });
+  }
+
   const result = await runtime.backend.post<unknown>({
     path: `/api/protocol/${encodeURIComponent(subcommand)}`,
     body: {
       args,
       positional: parsed.positional,
-      flags: Object.fromEntries(parsed.flags),
+      flags,
       stdin,
       externalSessionId:
         flagValue(parsed.flags, '--external-session-id') ??
@@ -94,10 +198,20 @@ export async function runProtocolCommand({
           explicit: undefined,
           agent: flagValue(parsed.flags, '--agent') ?? 'unknown',
           ticketId: flagValue(parsed.flags, '--ticket-id') ?? 'unknown',
-          workingDirectory: process.cwd()
+          workingDirectory
         })
     }
   });
+
+  // Record the dirty-file baseline once a work session begins, so deliver can
+  // subtract pre-existing/concurrent changes from this run's reported delta.
+  if ((subcommand === 'attach' || subcommand === 'resume-follow-up') && ticketId) {
+    writeBaseline({
+      workingDirectory,
+      ticketId,
+      paths: readChangedFiles(workingDirectory).map(entry => entry.filePath)
+    });
+  }
 
   const resultRecord = asRecord(result);
   if (typeof resultRecord.sessionKey === 'string') {
@@ -186,50 +300,47 @@ export async function runManagementCommand({
     }
     case 'create':
     case 'prompt': {
+      const objectivesJson = flagValue(parsed.flags, '--objectives-json');
       const objective =
         parsed.positional.join(' ') ||
         flagValue(parsed.flags, '--objective') ||
         flagValue(parsed.flags, '--prompt');
-      const objectivesJson = flagValue(parsed.flags, '--objectives-json');
       const projectId = await discoverProjectId(runtime, flagValue(parsed.flags, '--project-id'));
-      if (objectivesJson) {
-        const objectives = JSON.parse(objectivesJson) as Array<{
-          objective: string;
-          title?: string;
-        }>;
-        const first = objectives[0];
-        if (!first)
-          throw new CliError({ message: 'objectives-json must contain at least one objective' });
-        const ticket = await runtime.backend.post<unknown>({
-          path: '/api/tickets',
-          body: {
-            projectId,
-            title: first.title ?? first.objective,
-            firstObjective: first.objective
-          }
+      const objectives = objectivesJson
+        ? (JSON.parse(objectivesJson) as Array<{
+            objective: string;
+            title?: string | null;
+            autoAdvance?: boolean;
+          }>)
+        : objective
+          ? [{ objective, title: flagValue(parsed.flags, '--title') ?? null }]
+          : [];
+      const first = objectives[0];
+      if (!first) {
+        throw new CliError({
+          message: objectivesJson
+            ? 'objectives-json must contain at least one objective'
+            : 'Missing objective prompt text'
         });
-        const ticketId = asRecord(ticket).id;
-        if (typeof ticketId === 'string') {
-          for (const item of objectives.slice(1)) {
-            await runtime.backend.post({
-              path: '/api/objectives',
-              body: { ticketId, title: item.title ?? null, instructionText: item.objective }
-            });
-          }
-        }
-        if (json) printJson(ticket);
-        else console.log(`Created ticket ${ticketDisplayId(ticket)}`);
-        return;
       }
-      if (!objective) throw new CliError({ message: 'Missing objective prompt text' });
+
+      const title = flagValue(parsed.flags, '--title') ?? first.title ?? first.objective;
       const ticket = await runtime.backend.post<unknown>({
         path: '/api/tickets',
         body: {
           projectId,
-          title: flagValue(parsed.flags, '--title') ?? objective,
-          firstObjective: objective
+          title,
+          objectives
         }
       });
+      if (objectivesJson) {
+        const ticketObjectives = asRecord(ticket).objectives;
+        if (Array.isArray(ticketObjectives) && ticketObjectives.length !== objectives.length) {
+          throw new CliError({
+            message: `Backend created ${ticketObjectives.length} objective(s), expected ${objectives.length}`
+          });
+        }
+      }
       if (command === 'prompt') {
         const objectiveId = firstObjectiveId(ticket);
         if (objectiveId) {
@@ -287,6 +398,7 @@ export async function runManagementCommand({
         throw new CliError({ message: `Usage: ovld ${command} <agent> --ticket-id <ticketId>` });
       }
       const workingDirectory = flagValue(parsed.flags, '--working-directory') ?? process.cwd();
+      const terminal = await resolveTerminalLaunchSettings({ runtime, flags: parsed.flags });
       const result = await launchAgent({
         runtime,
         options: {
@@ -297,7 +409,7 @@ export async function runManagementCommand({
           thinking: flagValue(parsed.flags, '--thinking'),
           flags: repeatedFlagValues(rest, '--flag'),
           preCommand: flagValue(parsed.flags, '--pre-command'),
-          terminalLauncher: resolveTerminalLauncher(parsed.flags),
+          ...terminal,
           dryRun: flagBoolean(parsed.flags, '--dry-run')
         }
       });
@@ -435,6 +547,7 @@ async function runRunnerCommand({
     await runtime.backend.post({ path: `/api/runner/requests/${requestId}/launching` });
     try {
       const launchConfig = asRecord(requestRecord.launchConfig);
+      const terminal = await resolveTerminalLaunchSettings({ runtime, flags: parsed.flags });
       const result = await launchAgent({
         runtime,
         options: {
@@ -454,7 +567,7 @@ async function runRunnerCommand({
             : [],
           preCommand:
             typeof launchConfig.preCommand === 'string' ? launchConfig.preCommand : undefined,
-          terminalLauncher: resolveTerminalLauncher(parsed.flags),
+          ...terminal,
           dryRun: flagBoolean(parsed.flags, '--dry-run')
         }
       });

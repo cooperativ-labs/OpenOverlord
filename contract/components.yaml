@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '0.11-draft'
+contractVersion: '0.15-draft'
 
 components:
   protocol:
@@ -49,13 +49,14 @@ components:
     referenceSpec: 'planning/feature-plans/02-cli-first-product-surface.md'
     owns:
       - 'management command names and argument shapes'
+      - 'ovld setup: interactive first-run configuration for backend target, agent connectors, and terminal launcher'
       - 'ovld serve: boot a fully-initialized local instance in local/backend packages'
       - 'ovld config set: select a local loopback backend URL or hosted/cloud backend URL'
       - 'ovld auth login: first-run backend onboarding before authentication'
       - 'project linking and discovery from working directory, with a packaged-mode fallback to the OS app-data overlord.toml'
       - 'configuration file locations: overlord.toml, .overlord/project.json'
       - 'backend URL settings: backend_url and backend_mode (local/cloud)'
-      - 'optional terminal_launcher for opening launched agents in a new terminal window'
+      - 'per-user terminal profiles on user_execution_target_preferences for opening launched agents in a terminal window'
       - 'human-readable CLI output format conventions'
     dependsOn:
       - auth
@@ -71,7 +72,7 @@ components:
       - 'connector core workflow instructions'
       - 'per-agent plugin/adapter files and managed file manifests'
       - 'hook scripts and their event contracts'
-      - 'ovld setup <agent> and ovld doctor behavior'
+      - 'ovld agent-setup <agent>/all and ovld doctor behavior'
       - 'connector capability declarations and approved capability flag set'
     dependsOn:
       - protocol

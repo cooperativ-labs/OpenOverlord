@@ -157,8 +157,6 @@ CREATE TABLE execution_targets (
   label text NOT NULL CHECK (char_length(btrim(label)) > 0),
   status text NOT NULL CHECK (status IN ('active', 'disabled', 'unavailable')),
   connection_json jsonb NOT NULL DEFAULT '{}'::jsonb,
-  agent_flags_json jsonb NOT NULL DEFAULT '{}'::jsonb,
-  terminal_profile_json jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
   deleted_at timestamptz,
@@ -177,8 +175,6 @@ CREATE TABLE workspace_user_execution_targets (
   default_username text,
   access_status text NOT NULL CHECK (access_status IN ('active', 'pending', 'disabled', 'error')),
   last_connected_at timestamptz,
-  agent_flags_json jsonb NOT NULL DEFAULT '{}'::jsonb,
-  terminal_profile_json jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
   deleted_at timestamptz,
@@ -188,6 +184,23 @@ CREATE TABLE workspace_user_execution_targets (
 CREATE UNIQUE INDEX idx_wuet_active_user_target ON workspace_user_execution_targets (workspace_user_id, execution_target_id)
   WHERE deleted_at IS NULL;
 CREATE INDEX idx_wuet_workspace_target_status ON workspace_user_execution_targets (workspace_id, execution_target_id, access_status);
+
+CREATE TABLE user_execution_target_preferences (
+  id text PRIMARY KEY,
+  profile_id text NOT NULL REFERENCES profiles (id) ON DELETE CASCADE,
+  target_type text NOT NULL CHECK (char_length(btrim(target_type)) > 0),
+  target_fingerprint text NOT NULL CHECK (char_length(btrim(target_fingerprint)) > 0),
+  agent_configs_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  terminal_profile_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  deleted_at timestamptz,
+  revision integer NOT NULL DEFAULT 1 CHECK (revision >= 1)
+);
+
+CREATE UNIQUE INDEX idx_uetp_active_profile_target ON user_execution_target_preferences (profile_id, target_type, target_fingerprint)
+  WHERE deleted_at IS NULL;
+CREATE INDEX idx_uetp_profile_type_updated ON user_execution_target_preferences (profile_id, target_type, updated_at);
 
 CREATE TABLE project_resources (
   id text PRIMARY KEY,

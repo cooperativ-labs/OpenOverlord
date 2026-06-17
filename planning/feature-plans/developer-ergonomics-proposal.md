@@ -184,9 +184,13 @@ Ordered by expected payoff:
    (`ovld contract check` or the interim script) across all modules. The contract
    is the repo's spine; it should be one command to verify, and that command should
    join `yarn check` once it is fast enough.
-6. **`yarn cli:link`** — build the CLI and `npm link`/`yarn link` it so `ovld`
-   on the developer's PATH points at the working tree. Today testing a CLI change
-   end-to-end requires knowing the `pack:cli` + global-install dance.
+6. **`yarn ovld:dev`** — build and run the in-repo CLI (`cli/bin/ovld.mjs`)
+   against an isolated, throwaway `OVLD_HOME` on a dev backend port (`:4320`) via
+   `scripts/with-ovld-home.mjs`, so end-to-end testing of a CLI change never
+   touches the installed instance's data (`~/.ovld`, `:4310`). We deliberately do
+   **not** link the working-tree CLI over the global `ovld` (no `cli:link` /
+   `load:cli`): bare `ovld` must stay the installed build agents use for real
+   project-management calls.
 7. **`yarn test:watch`** — `tsx --test --watch` for the root suite (and per-module
    variants). Cheap to add, large quality-of-life gain during TDD.
 

@@ -3,6 +3,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
+import { resolveGlobalDataDir } from './config.js';
+
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 function sessionCachePath({
@@ -17,7 +19,7 @@ function sessionCachePath({
   const key = createHash('sha256')
     .update(`${path.resolve(workingDirectory)}\0${ticketId}\0${agent}`)
     .digest('hex');
-  return path.join(homedir(), '.ovld', 'native-sessions', key);
+  return path.join(resolveGlobalDataDir(), 'native-sessions', key);
 }
 
 function readCachedNativeSessionId({

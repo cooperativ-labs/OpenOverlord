@@ -4,7 +4,12 @@ import path from 'node:path';
 
 import { resolveAgentBinary } from './agent-binaries.js';
 import type { CliRuntime } from './runtime.js';
-import { type LaunchExecution, resolveLaunchExecution, tmpEnvFor } from './terminal-launcher.js';
+import {
+  type LaunchExecution,
+  resolveLaunchExecution,
+  type TerminalLaunchSettings,
+  tmpEnvFor
+} from './terminal-launcher.js';
 
 export type LaunchOptions = {
   agent: string;
@@ -20,6 +25,8 @@ export type LaunchOptions = {
    * When omitted/null the agent runs inline in the current terminal.
    */
   terminalLauncher?: string | null;
+  terminalLaunchPlacement?: TerminalLaunchSettings['terminalLaunchPlacement'];
+  terminalLaunchChord?: string | null;
   dryRun?: boolean;
 };
 
@@ -157,7 +164,9 @@ export async function buildLaunchPlan({
     args: command.args,
     workingDirectory: options.workingDirectory,
     preCommand: options.preCommand,
-    terminalLauncher: options.terminalLauncher
+    terminalLauncher: options.terminalLauncher,
+    terminalLaunchPlacement: options.terminalLaunchPlacement,
+    terminalLaunchChord: options.terminalLaunchChord
   });
 
   return {

@@ -1,3 +1,4 @@
+import { AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
 
 import {
@@ -59,6 +60,17 @@ export function InitialSetupScreen() {
         </CardHeader>
 
         <CardContent className="space-y-4">
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <p>
+              Before continuing, install the Overlord CLI by running{' '}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                npm install -g open-overlord
+              </code>{' '}
+              in your terminal.
+            </p>
+          </div>
+
           <WorkspaceCreationFields
             name={name}
             onNameChange={setName}

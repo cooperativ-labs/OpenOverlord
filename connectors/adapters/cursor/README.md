@@ -34,7 +34,7 @@ The shared Connector Core source is outside this adapter at `connectors/core/ove
 From an OpenOverlord checkout:
 
 ```bash
-ovld setup cursor
+ovld agent-setup cursor
 ```
 
 This copies managed plugin files to `~/.cursor/plugins/local/overlord`, merges a `beforeSubmitPrompt` hook into `~/.cursor/hooks.json`, and adds a `Shell(ovld protocol:*)` permission allow rule to `~/.cursor/settings.json` when missing.
@@ -42,7 +42,7 @@ This copies managed plugin files to `~/.cursor/plugins/local/overlord`, merges a
 Re-run safely any time the connector contract version changes:
 
 ```bash
-ovld setup cursor
+ovld agent-setup cursor
 ovld doctor
 ```
 

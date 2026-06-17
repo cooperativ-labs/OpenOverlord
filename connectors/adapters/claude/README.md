@@ -35,10 +35,10 @@ The shared Connector Core source is outside this adapter at `connectors/core/ove
 ## Install (recommended)
 
 ```bash
-ovld setup claude
+ovld agent-setup claude
 ```
 
-`ovld setup claude` materializes the plugin into a local marketplace under
+`ovld agent-setup claude` materializes the plugin into a local marketplace under
 `~/.ovld/claude/marketplace` (the plugin tree lands in `plugins/overlord`, with a
 generated `.claude-plugin/marketplace.json` beside it), then drives the Claude
 CLI to register and enable it:

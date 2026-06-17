@@ -37,12 +37,6 @@ export type OverlordConfig = {
   sqlStudioBinary: string;
   defaultAgent: string;
   defaultModel: string | null;
-  /**
-   * How `ovld launch` / the runner open the agent in a new terminal window.
-   * A built-in name (`iTerm2`, `Terminal`) or a raw prefix command
-   * (e.g. `open -a Ghostty --args`). `null` launches the agent inline.
-   */
-  terminalLauncher: string | null;
   /** Parsed from `[agent_catalog]`; merged over bundled defaults when seeding the workspace catalog. */
   agentCatalog: Record<string, CatalogAgent> | null;
 };
@@ -61,7 +55,6 @@ const DEFAULT_CONFIG: OverlordConfig = {
   sqlStudioBinary: 'sql-studio',
   defaultAgent: 'claude',
   defaultModel: null,
-  terminalLauncher: null,
   agentCatalog: null
 };
 
@@ -83,7 +76,6 @@ type TomlConfig = {
   sql_studio_binary?: string;
   default_agent?: string;
   default_model?: string;
-  terminal_launcher?: string;
   agent_catalog?: unknown;
 };
 
@@ -119,7 +111,6 @@ function configFromToml(toml: TomlConfig): OverlordConfig {
       : DEFAULT_CONFIG.sqlStudioBinary,
     defaultAgent: toml.default_agent ?? DEFAULT_CONFIG.defaultAgent,
     defaultModel: toml.default_model?.trim() ? toml.default_model : null,
-    terminalLauncher: toml.terminal_launcher?.trim() ? toml.terminal_launcher.trim() : null,
     agentCatalog: parseAgentCatalogFromToml(toml.agent_catalog)
   };
 }
@@ -216,15 +207,8 @@ sql_studio_port = ${merged.sqlStudioPort}
 sql_studio_binary = ${tomlString(merged.sqlStudioBinary)}
 default_agent = ${tomlString(merged.defaultAgent)}
 ${merged.defaultModel ? `default_model = ${tomlString(merged.defaultModel)}` : '# default_model = ""'}
-${merged.terminalLauncher ? `terminal_launcher = ${tomlString(merged.terminalLauncher)}\n` : ''}
-# Terminal launcher: open the launched agent in a new terminal window.
-# Built-in launchers (macOS): "iTerm2" and "Terminal" use AppleScript so the
-# agent opens in a fresh window in the project directory.
-# terminal_launcher = "iTerm2"
-# terminal_launcher = "Terminal"
-# Any other value is treated as a prefix command with the agent invocation appended:
-# terminal_launcher = "open -a Ghostty --args"
-# terminal_launcher = "wezterm start"
+# Terminal launch settings live on user_execution_target_preferences.terminal_profile_json
+# for this user's local target fingerprint. Configure them with ovld setup.
 
 # Optional workspace agent catalog (merged over bundled defaults on first seed / refresh).
 # [agent_catalog.claude]
@@ -280,6 +264,12 @@ export function resolveDatabasePath(config: OverlordConfig, startDir = process.c
 }
 
 export function resolveBackendUrl(config: OverlordConfig): string {
+  // Env override takes precedence over the resolved `overlord.toml` so an
+  // in-repo build can target an isolated local instance (e.g. a dev backend on
+  // `:4320`) without editing the committed repo `overlord.toml`. Mirrors the
+  // existing OVLD_HOME / OVERLORD_SQLITE_PATH / OVERLORD_WEB_PORT overrides.
+  const override = process.env.OVERLORD_BACKEND_URL?.trim();
+  if (override) return override;
   return config.backendUrl?.trim() || DEFAULT_LOCAL_BACKEND_URL;
 }
 

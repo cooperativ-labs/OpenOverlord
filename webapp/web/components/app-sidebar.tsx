@@ -21,6 +21,7 @@ import {
   SidebarSeparator
 } from '@/components/ui/sidebar';
 import { WorkspaceSwitcher } from '@/components/workspace-switcher';
+import { DRAG_REGION, getDesktopChrome, NO_DRAG_REGION } from '@/lib/desktop-chrome';
 import { useMeta, useProjects } from '@/lib/queries';
 import { type LinkState, useRealtime } from '@/lib/realtime';
 
@@ -116,11 +117,21 @@ export function AppSidebar() {
 
   const isProjectsActive = !params.projectId;
 
+  // On macOS the shell insets the traffic lights at (14, 14), which sit over the
+  // top-left of the sidebar. Reserve vertical room for them and make the cleared
+  // strip a window-drag region (the WorkspaceSwitcher opts back out below).
+  const { isMacDesktop } = getDesktopChrome();
+
   return (
     <>
       <Sidebar collapsible="icon">
-        <SidebarHeader>
-          <WorkspaceSwitcher />
+        <SidebarHeader
+          className={isMacDesktop ? 'pt-7' : undefined}
+          style={isMacDesktop ? DRAG_REGION : undefined}
+        >
+          <div style={isMacDesktop ? NO_DRAG_REGION : undefined}>
+            <WorkspaceSwitcher />
+          </div>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>

@@ -1,5 +1,11 @@
 import path from 'node:path';
 
+import {
+  appleScriptKeystrokeClause,
+  parseTerminalLaunchChord,
+  type TerminalLaunchPlacement
+} from './terminal-launch-chord.js';
+
 /** Resolved process invocation describing exactly how the agent is spawned. */
 export type LaunchExecution = {
   /** The program (or full shell string when `useShell` is true) to spawn. */
@@ -12,6 +18,12 @@ export type LaunchExecution = {
   terminal: string | null;
   /** Human-readable description of what runs (for dry-run / JSON output). */
   display: string;
+};
+
+export type TerminalLaunchSettings = {
+  terminalLauncher?: string | null;
+  terminalLaunchPlacement?: TerminalLaunchPlacement;
+  terminalLaunchChord?: string | null;
 };
 
 export function shellQuote(value: string): string {
@@ -37,6 +49,12 @@ function resolveBuiltinTerminal(value: string): 'iterm' | 'terminal' | null {
     default:
       return null;
   }
+}
+
+/** Extract a macOS app name from an `open -a … --args` launcher prefix. */
+export function extractAppNameFromLauncher(launcher: string): string | null {
+  const match = launcher.match(/open\s+-a\s+(?:'([^']+)'|"([^"]+)"|(\S+))/i);
+  return match?.[1] ?? match?.[2] ?? match?.[3] ?? null;
 }
 
 /** The TMPDIR-family environment Overlord pins to the project `.overlord/tmp/`. */
@@ -77,79 +95,239 @@ function terminalInnerCommand({
   return `cd ${shellQuote(workingDirectory)} && ${exports}; ${agentCommand}`;
 }
 
+function resolveItermSplitKind(
+  chord: string | null | undefined
+): 'vertical' | 'horizontal' | 'keystroke' {
+  const parsed = chord ? parseTerminalLaunchChord(chord) : null;
+  if (!parsed) return 'vertical';
+  if (
+    parsed.modifiers.includes('command') &&
+    parsed.modifiers.includes('shift') &&
+    parsed.key === 'd'
+  ) {
+    return 'horizontal';
+  }
+  if (parsed.modifiers.includes('command') && parsed.key === 'd' && parsed.modifiers.length === 1) {
+    return 'vertical';
+  }
+  return 'keystroke';
+}
+
+function buildItermAppleScript({
+  inner,
+  placement,
+  chordClause,
+  chord
+}: {
+  inner: string;
+  placement: TerminalLaunchPlacement;
+  chordClause?: string | null;
+  chord?: string | null;
+}): string {
+  const lines = ['tell application "iTerm"', 'activate'];
+
+  if (placement === 'window') {
+    lines.push(
+      'set newWindow to (create window with default profile)',
+      `tell current session of newWindow to write text ${appleScriptString(inner)}`
+    );
+    lines.push('end tell');
+    return lines.join('\n');
+  }
+
+  lines.push(
+    'if (count of windows) = 0 then',
+    'set newWindow to (create window with default profile)',
+    `tell current session of newWindow to write text ${appleScriptString(inner)}`,
+    'else',
+    'tell current window'
+  );
+
+  if (placement === 'tab') {
+    lines.push(
+      'create tab with default profile',
+      `tell current session to write text ${appleScriptString(inner)}`
+    );
+  } else {
+    const splitKind = resolveItermSplitKind(chord);
+    if (splitKind === 'keystroke' && chordClause) {
+      lines.push(
+        'tell application "System Events"',
+        chordClause,
+        'end tell',
+        'delay 0.2',
+        `tell current session to write text ${appleScriptString(inner)}`
+      );
+    } else {
+      const splitVerb = splitKind === 'horizontal' ? 'horizontally' : 'vertically';
+      lines.push(
+        'tell current session',
+        `split ${splitVerb} with default profile`,
+        'end tell',
+        'tell second session of current tab',
+        `write text ${appleScriptString(inner)}`
+      );
+    }
+  }
+
+  lines.push('end tell', 'end if', 'end tell');
+  return lines.join('\n');
+}
+
+function buildTerminalAppleScript({
+  inner,
+  placement,
+  chordClause
+}: {
+  inner: string;
+  placement: TerminalLaunchPlacement;
+  chordClause?: string | null;
+}): string {
+  const lines = ['tell application "Terminal"', 'activate'];
+
+  if (placement === 'window') {
+    lines.push(`do script ${appleScriptString(inner)}`);
+  } else if (placement === 'tab') {
+    lines.push(
+      'if (count of windows) = 0 then',
+      `do script ${appleScriptString(inner)}`,
+      'else',
+      `do script ${appleScriptString(inner)} in front window`,
+      'end if'
+    );
+  } else {
+    lines.push(
+      'if (count of windows) = 0 then',
+      `do script ${appleScriptString(inner)}`,
+      'else',
+      'tell application "System Events"',
+      chordClause ?? 'keystroke "d" using command down',
+      'end tell',
+      'delay 0.2',
+      `do script ${appleScriptString(inner)} in front window`,
+      'end if'
+    );
+  }
+
+  lines.push('end tell');
+  return lines.join('\n');
+}
+
+function buildGenericPlacementShell({
+  launcher,
+  inner,
+  placement,
+  chordClause
+}: {
+  launcher: string;
+  inner: string;
+  placement: TerminalLaunchPlacement;
+  chordClause?: string | null;
+}): string {
+  const appName = extractAppNameFromLauncher(launcher);
+  const launch = `${launcher} ${inner}`;
+
+  if (placement === 'window' || !appName) {
+    return launch;
+  }
+
+  const activate = `osascript -e ${shellQuote(`tell application ${JSON.stringify(appName)} to activate`)}`;
+  const chord =
+    chordClause &&
+    `osascript -e ${shellQuote(
+      ['tell application "System Events"', chordClause, 'end tell'].join('\n')
+    )}`;
+
+  if (placement === 'tab') {
+    const newTab = `osascript -e ${shellQuote(
+      [
+        'tell application "System Events"',
+        `tell process ${JSON.stringify(appName)}`,
+        'keystroke "t" using command down',
+        'end tell',
+        'end tell'
+      ].join('\n')
+    )}`;
+    return [activate, newTab, 'sleep 0.2', launch].join(' && ');
+  }
+
+  return [activate, chord ?? '', 'sleep 0.2', launch].filter(Boolean).join(' && ');
+}
+
+function resolveChordClause(chord: string | null | undefined): string | null {
+  if (!chord?.trim()) return null;
+  const parsed = parseTerminalLaunchChord(chord);
+  if (!parsed) return null;
+  return appleScriptKeystrokeClause(parsed);
+}
+
 /**
  * Resolve how the agent should actually be spawned given the configured
  * pre-command and terminal launcher. Pure (no side effects) so it can be
  * inspected via `--dry-run` and unit-tested without launching anything.
- *
- * - No launcher → run inline (current terminal), matching the legacy behaviour.
- * - Built-in `iTerm2` / `Terminal` → drive AppleScript via `osascript` to open a
- *   new window in the working directory.
- * - Any other launcher value → a prefix command with the agent appended.
  */
 export function resolveLaunchExecution({
   command,
   args,
   workingDirectory,
   preCommand,
-  terminalLauncher
+  terminalLauncher,
+  terminalLaunchPlacement = 'window',
+  terminalLaunchChord
 }: {
   command: string;
   args: string[];
   workingDirectory: string;
   preCommand?: string | null;
-  terminalLauncher?: string | null;
-}): LaunchExecution {
+} & TerminalLaunchSettings): LaunchExecution {
   const agentCommand = agentShellCommand({ command, args, preCommand });
   const launcher = terminalLauncher?.trim();
+  const placement = terminalLaunchPlacement ?? 'window';
+  const chordClause = resolveChordClause(terminalLaunchChord);
 
   if (!launcher) {
-    // Inline launch (current terminal). Only go through a shell when a
-    // pre-command wrapper is present, preserving the legacy spawn shape.
     return preCommand?.trim()
       ? { command: agentCommand, args: [], useShell: true, terminal: null, display: agentCommand }
       : { command, args, useShell: false, terminal: null, display: agentCommand };
   }
 
+  const inner = terminalInnerCommand({ workingDirectory, agentCommand });
   const builtin = resolveBuiltinTerminal(launcher);
 
   if (builtin === 'terminal') {
-    const inner = terminalInnerCommand({ workingDirectory, agentCommand });
-    const script = [
-      'tell application "Terminal"',
-      'activate',
-      `do script ${appleScriptString(inner)}`,
-      'end tell'
-    ].join('\n');
+    const script = buildTerminalAppleScript({
+      inner,
+      placement,
+      chordClause
+    });
     return {
       command: 'osascript',
       args: ['-e', script],
       useShell: false,
       terminal: 'Terminal',
-      display: `Terminal.app › ${inner}`
+      display: `Terminal.app (${placement}) › ${inner}`
     };
   }
 
   if (builtin === 'iterm') {
-    const inner = terminalInnerCommand({ workingDirectory, agentCommand });
-    const script = [
-      'tell application "iTerm"',
-      'activate',
-      'set newWindow to (create window with default profile)',
-      `tell current session of newWindow to write text ${appleScriptString(inner)}`,
-      'end tell'
-    ].join('\n');
+    const script = buildItermAppleScript({
+      inner,
+      placement,
+      chordClause,
+      chord: terminalLaunchChord
+    });
     return {
       command: 'osascript',
       args: ['-e', script],
       useShell: false,
       terminal: 'iTerm2',
-      display: `iTerm2 › ${inner}`
+      display: `iTerm2 (${placement}) › ${inner}`
     };
   }
 
-  // Raw prefix launcher (e.g. `open -a Ghostty --args`, `wezterm start`): the
-  // launcher inherits our spawn cwd/env and we append the agent invocation.
-  const full = `${launcher} ${agentCommand}`;
+  const full =
+    placement === 'window'
+      ? `${launcher} ${agentCommand}`
+      : buildGenericPlacementShell({ launcher, inner: agentCommand, placement, chordClause });
   return { command: full, args: [], useShell: true, terminal: launcher, display: full };
 }

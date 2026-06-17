@@ -1,6 +1,6 @@
 # Overlord Component Interaction Contract
 
-Contract Version: `0.11-draft`
+Contract Version: `0.15-draft`
 
 ## Purpose
 
@@ -19,12 +19,16 @@ See `.claude/skills/component-contract.md` for the enforced agent workflow.
 
 ## Contract Version
 
-Current version: `0.11-draft`
+Current version: `0.15-draft`
 
 The contract version is incremented when any stable interface changes. All conformance manifests must declare the contract version they were validated against.
 
 | Version      | Changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0.15-draft` | Moves reusable per-user execution-target launch preferences from workspace-scoped target/access rows into `user_execution_target_preferences`, keyed by profile, target type, and stable target fingerprint. `execution_targets` now owns target identity/connection metadata only; `workspace_user_execution_targets` owns workspace-member access only. `ovld setup` continues configuring the default terminal through the REST launch-settings surface, but persistence now writes `user_execution_target_preferences.terminal_profile_json`. Breaking database schema change; the reset schema no longer includes `agent_flags_json` / `terminal_profile_json` on `execution_targets` or `workspace_user_execution_targets`. |
+| `0.14-draft` | Adds the `OVERLORD_BACKEND_URL` environment override for the client CLI/protocol backend target, mirroring the existing `OVLD_HOME` / `OVERLORD_SQLITE_PATH` / `OVERLORD_WEB_PORT` / `OVERLORD_USER_TOKEN` overrides. It takes precedence over the resolved `overlord.toml` `backend_url`, letting an in-repo build target an isolated local instance (e.g. a dev backend on `:4320`) without editing a committed `overlord.toml`. Also clarifies that `OVLD_HOME` relocates the *entire* per-user data dir — VCS baselines and native-session caches now resolve under it too, not just the SQLite database. Additive; no schema, vocabulary, or migration impact. |
+| `0.13-draft` | Moves per-agent connector installation from `ovld setup <agent>` / `ovld setup all` to `ovld agent-setup <agent>` / `ovld agent-setup all`. `ovld setup` becomes the CLI-owned interactive first-run configuration flow for backend selection, agent connector setup, and `terminal_launcher` selection. Additive to config shape and REST/database boundaries; no schema or migration impact. |
+| `0.12-draft` | Makes changed-file capture mechanical instead of agent-enumerated. The client CLI records a VCS baseline (`git status` paths) when a work session begins (`attach`/`resume-follow-up`) and, at `deliver`, sends the run-attributable delta (current changed paths minus baseline) as changed files — so agents no longer have to manually list what they changed. Adds the `--no-file-changes` flag to `deliver` as the explicit "this run changed no files" escape hatch that skips rationale-coverage enforcement. `deliver` now accepts `--changed-files-json` / `--changed-files-file`, and rationale-coverage validation is objective-scoped (aggregated across all sessions for the objective) per the change-tracking spec. VCS is read on the client only; the backend persists what the client sends. Additive: no schema or migration impact. |
 | `0.11-draft` | Changes the published npm CLI to a client-only runtime. The CLI owns command UX, config, connector setup, and local runner/agent launching, but it no longer opens SQLite or imports database/service internals. Local mode points at a loopback backend URL (served by Desktop/local backend) and cloud mode points at a hosted backend URL; both use the REST/backend-client surface. SQLite/native dependencies move behind the local backend package. |
 | `0.10-draft` | Adds first-run CLI backend onboarding: `ovld config set` can select a local SQLite backend or a hosted/cloud Postgres backend, and `ovld auth login` must ensure a backend is configured before continuing. Additive: no schema, vocabulary, or migration impact.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `0.9-draft`  | Adds the `desktop` component (**Desktop Shell**): an optional Electron wrapper around the local webapp that supervises the bundled REST/realtime server and reuses existing surfaces — it loads the SPA + `/api/*` over the loopback origin and spawns the CLI (`ovld serve`/`runner`/`launch`) as subprocesses, owning no product logic. Adds the `desktop-shell` conformance `componentType`; the `shellToRest` and `shellToCli` interaction surfaces; and the `ovld serve` management command (boot a fully-initialized local instance: create → migrate → serve), plus the documented packaged-mode app-data fallback for `overlord.toml`/SQLite resolution. Additive: no schema, vocabulary, or migration impact. |
@@ -89,9 +93,9 @@ Does NOT own:
 
 Owns:
 
-- Management command names and argument shapes, including `ovld serve` (boot a fully-initialized local instance in local/backend packages), `ovld config set` (select local loopback backend URL or hosted/cloud backend URL), and `ovld auth login` (first-run backend onboarding before authentication)
+- Management command names and argument shapes, including `ovld setup` (interactive first-run configuration), `ovld serve` (boot a fully-initialized local instance in local/backend packages), `ovld config set` (select local loopback backend URL or hosted/cloud backend URL), and `ovld auth login` (first-run backend onboarding before authentication)
 - Project linking and discovery from working directory
-- Configuration file locations and formats (`overlord.toml`, `.overlord/project.json`), resolved by walking up from the working directory with a documented packaged-mode fallback to the OS app-data directory (e.g. `~/Library/Application Support/Overlord/overlord.toml`), including backend URL settings (`backend_url` for the active REST/backend endpoint, `backend_mode` as `local` or `cloud`), optional legacy database settings consumed only by local/backend packages, and the optional `terminal_launcher` used to open launched agents in a new terminal window
+- Configuration file locations and formats (`overlord.toml`, `.overlord/project.json`), resolved by walking up from the working directory with a documented packaged-mode fallback to the OS app-data directory (e.g. `~/Library/Application Support/Overlord/overlord.toml`), including backend URL settings (`backend_url` for the active REST/backend endpoint, `backend_mode` as `local` or `cloud`), optional legacy database settings consumed only by local/backend packages. Terminal launch settings live on `user_execution_target_preferences.terminal_profile_json` for the local execution target fingerprint (provisioned from the device fingerprint during `ovld setup`).
 - Human-readable CLI output format conventions
 
 Does NOT own:
@@ -109,7 +113,7 @@ Owns:
 - Connector core workflow instructions
 - Per-agent plugin/adapter files and managed file manifests
 - Hook scripts and their event contracts
-- `ovld setup <agent>` and `ovld doctor` behavior
+- `ovld agent-setup <agent>` / `ovld agent-setup all` and `ovld doctor` behavior
 - Connector capability declarations (the approved capability flag set)
 
 Does NOT own:
@@ -216,7 +220,7 @@ An **optional** Electron wrapper around the local webapp. It is a thin desktop s
 
 Owns:
 
-- The Electron app/window lifecycle and the hardened `BrowserWindow` security baseline (`contextIsolation`, `sandbox`, `nodeIntegration: false`, `preload`), the loopback-scoped CSP, single-instance lock, and external-navigation handling
+- The Electron app/window lifecycle and the hardened `BrowserWindow` security baseline (`contextIsolation`, `sandbox`, `nodeIntegration: false`, `preload`), the loopback-scoped CSP, single-instance lock, external-navigation handling, native window chrome (macOS `hiddenInset` title bar + inset traffic-light position so the webapp nav serves as the title bar), and the sandboxed renderer's native context menu (spellcheck/edit roles)
 - Process supervision of the bundled web/REST server (forked as a Node `utilityProcess`) and, optionally, a local runner
 - The minimal `preload` bridge surface exposed to the renderer as `window.overlord` (feature-detected by the SPA; never required by it)
 - Desktop packaging metadata and the build/sign/notarize pipeline (`electron-builder`, entitlements, app-data layout)
@@ -224,7 +228,7 @@ Owns:
 Does NOT own:
 
 - REST/SSE URL paths or DTO shapes (→ REST API Layer)
-- CLI/launch/terminal configuration, including `terminal_launcher` (→ CLI / Runner Layers)
+- CLI/launch/terminal configuration, including per-user terminal profiles on `user_execution_target_preferences` (→ CLI / Runner Layers)
 - Authentication mechanism (→ Auth Layer)
 - Database schema or adapter selection (→ Database Layer)
 

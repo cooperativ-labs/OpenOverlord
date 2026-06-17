@@ -14,7 +14,7 @@ Requirements:
 - `ovld version`: print CLI and local runtime version.
 - `ovld doctor`: validate backend reachability, connector installs, supported agent binaries, project metadata, and common permission/path problems.
 - `ovld serve [--host <h>] [--port <p>] [--db <path>] [--json]`: local/backend-package command, not required in the published npm CLI. It boots the web/REST server that owns SQLite for local mode. The desktop app can ship and supervise this backend; a future db-only/local backend app may do the same.
-- `ovld update`: optional for packaged releases; can be deferred until distribution is defined.
+- `ovld update [--check] [--force] [--json]`: check npm for the latest published `open-overlord` version and, unless `--check` is passed, update the globally installed CLI via `npm install -g open-overlord@latest`.
 
 ### Configuration Commands
 
@@ -64,7 +64,7 @@ Launch flags to preserve:
 - `--thinking <level>` where the target agent supports it
 - repeated `--flag <value>` passthrough
 - `--pre-command <wrapper>` for wrappers such as container or remote execution helpers
-- `--terminal <launcher>` to open the agent in a new terminal window (built-in `iTerm2`/`Terminal`, or a prefix command), overriding `terminal_launcher`; `--no-terminal` forces an inline launch
+- `--terminal <launcher>` to open the agent in a new terminal window (built-in `iTerm2`/`Terminal`, or a prefix command), overriding the stored terminal profile; `--no-terminal` forces an inline launch
 - `--allow-uninstalled` for custom/experimental agents
 
 SSH flags can be deferred:
@@ -88,9 +88,10 @@ Requirements:
 
 Requirements:
 
-- `ovld setup`: interactive connector setup.
-- `ovld setup <agent>`: install/repair one connector.
-- `ovld setup all`: install/repair all supported connectors.
+- `ovld setup`: interactive first-run configuration for backend target, agent connectors, and terminal launcher.
+- `ovld agent-setup`: list installable connectors.
+- `ovld agent-setup <agent>`: install/repair one connector.
+- `ovld agent-setup all`: install/repair all supported connectors.
 - `ovld doctor`: report connector status, stale/missing files, and malformed, expired, or revoked `USER_TOKEN` configuration once token auth is enabled.
 
 Initial supported agents should be:

@@ -13,15 +13,15 @@ The project-specific model is:
    workspace by default.
 3. Users may create personal custom harness extensions, then install or publish them into one or
    more workspace catalogs.
-4. User-specific launch mechanics live on `workspace_user_execution_targets`, because launch
-   wrappers, flags, terminal choices, and local shell assumptions are specific to one user on one
-   execution target.
+4. User-specific launch mechanics live on `user_execution_target_preferences`, because launch
+   wrappers, flags, terminal choices, and local shell assumptions are specific to one user and one
+   stable target fingerprint, and should follow that user across workspace memberships.
 5. Per-objective launch changes live on `objectives.launch_config_json`, keyed by execution
    target and agent or harness key.
 
 This means `agent_flags_json` should be treated as a temporary name. The durable contract should
-rename it to `agent_configs_json` where it stores more than raw flags, and the canonical per-user
-launch mechanics should move to `workspace_user_execution_targets.agent_configs_json`.
+rename it to `agent_configs_json` where it stores more than raw flags, and the canonical reusable
+per-user launch mechanics should move to `user_execution_target_preferences.agent_configs_json`.
 
 ## Current Overlord Shape
 
@@ -35,14 +35,16 @@ The current schema already has most of the right boundaries:
 | Future `user_harness_extensions` | User-authored extension definitions | Personal draft/private harnesses reusable across workspaces. |
 | Future `workspace_harness_extensions` | Workspace-installed extension entries | Shared workspace catalog entries, normally created from a user extension version. |
 | `execution_targets` | Target identity and connection metadata | Keep as target identity. Do not make it the canonical home for user launch wrappers. |
-| `workspace_user_execution_targets` | User access and target preferences | Make this the canonical home for per-user/per-target launch mechanics. |
+| `workspace_user_execution_targets` | Workspace-user access to targets | Keep as the workspace access bridge, not the reusable preference home. |
+| `user_execution_target_preferences` | User target preferences | Make this the canonical home for reusable per-user/per-target launch mechanics. |
 | `objectives.assigned_agent`, `model`, `reasoning_effort` | Objective selection | Keep as the objective's selected agent/model fields. |
 | `objectives.launch_config_json` | Per-objective launch override | Keep, but make the JSON shape target-keyed and agent-keyed. |
 | `execution_requests.launch_flags_json` | Queued launch snapshot | Keep as the resolved launch snapshot used by a runner claim. |
 
 The important change is semantic: `execution_targets` can describe the target and non-secret
-connection metadata, but `workspace_user_execution_targets` owns the user's local launch
-behavior for that target.
+connection metadata, `workspace_user_execution_targets` owns access, and
+`user_execution_target_preferences` owns the user's local launch behavior for that stable target
+fingerprint.
 
 ## Ownership Boundaries
 
@@ -53,7 +55,7 @@ behavior for that target.
 | Personal custom harness extensions | User | `user_harness_extensions` | User-owned source of truth for draft/private custom connectors. |
 | Workspace custom harness extensions | Workspace admin/member with permission | `workspace_harness_extensions` | Workspace-installed catalog entries, optionally copied from a personal extension version. |
 | Last/default selected agent/model/reasoning | Workspace user, scoped to project | `project_user_preferences.preferences_json` | Preference only. Not launch mechanics. |
-| Local flags, pre-command, terminal profile | Workspace user + execution target | `workspace_user_execution_targets.agent_configs_json` and `terminal_profile_json` | The same target can be used differently by different users. |
+| Local flags, pre-command, terminal profile | Profile + stable target fingerprint | `user_execution_target_preferences.agent_configs_json` and `terminal_profile_json` | The same user target can be reused across workspace memberships. |
 | Target identity and connection metadata | Workspace/project admin or local setup | `execution_targets.connection_json` | No raw credentials and no user-specific shell wrappers. |
 | Per-objective launch override | Objective + execution target + agent/harness | `objectives.launch_config_json` | Explicit one-objective override. |
 | Queued launch snapshot | Request service/runner | `execution_requests.launch_flags_json` | Snapshot after resolution, not a preference source. |
@@ -65,6 +67,7 @@ erDiagram
   workspaces ||--o{ projects : contains
   workspaces ||--o{ execution_targets : defines
   users ||--o{ workspace_users : joins
+  users ||--o{ user_execution_target_preferences : configures
   users ||--o{ user_harness_extensions : authors
   workspaces ||--o{ workspace_harness_extensions : installs
   user_harness_extensions ||--o{ workspace_harness_extensions : promotes
@@ -110,12 +113,18 @@ erDiagram
   execution_targets {
     text type
     json connection_json
-    json terminal_profile_json
   }
 
   workspace_user_execution_targets {
     text workspace_user_id
     text execution_target_id
+    text access_status
+  }
+
+  user_execution_target_preferences {
+    text profile_id
+    text target_type
+    text target_fingerprint
     json agent_configs_json
     json terminal_profile_json
   }
@@ -162,7 +171,7 @@ flowchart TD
   Start["Launch objective"] --> Selected["Resolve selected target and agent/harness"]
   Selected --> HasOverride{"Objective override for target + agent/harness?"}
   HasOverride -- yes --> UseOverride["Use objectives.launch_config_json[targetId][agentKey] exactly"]
-  HasOverride -- no --> HasUserTarget{"workspace_user_execution_targets.agent_configs_json[agentKey] exists?"}
+  HasOverride -- no --> HasUserTarget{"user_execution_target_preferences.agent_configs_json[agentKey] exists?"}
   HasUserTarget -- yes --> UseUserTarget["Use per-user target config"]
   HasUserTarget -- no --> HasWorkspaceDefault{"Workspace launch default exists?"}
   HasWorkspaceDefault -- yes --> UseWorkspaceDefault["Use shared workspace default"]
@@ -295,7 +304,7 @@ This is the workspace default catalog for the CLI-first MVP. Projects may refere
 agents or harnesses through objective selection and user preferences, but they must not define
 model availability or shared model defaults.
 
-### `workspace_user_execution_targets.agent_configs_json`
+### `user_execution_target_preferences.agent_configs_json`
 
 ```json
 {
@@ -373,7 +382,7 @@ flowchart LR
 
 Recommended boundaries:
 
-- `ovld setup <agent>` installs connector files and updates connector status, not per-objective
+- `ovld agent-setup <agent>` installs connector files and updates connector status, not per-objective
   launch overrides.
 - `ovld workspace config` or equivalent manages workspace default agent, model, and shared harness
   availability.
@@ -382,7 +391,7 @@ Recommended boundaries:
   record and local bundle.
 - `ovld workspace extension add <extension>` installs a selected personal extension version into
   `workspace_harness_extensions`.
-- `ovld target config` manages `workspace_user_execution_targets.agent_configs_json` and
+- `ovld target config` manages `user_execution_target_preferences.agent_configs_json` and
   `terminal_profile_json`.
 - Manual run UI/CLI shows inherited launch config from the selected execution target and saves
   edits as objective overrides only when the user explicitly changes the launch config for that
@@ -397,10 +406,10 @@ Recommended implementation sequence:
 
 1. Rename `agent_flags_json` to `agent_configs_json` in contract language where values include
    flags, pre-command, command templates, environment hints, or connector-specific launch settings.
-2. Make `workspace_user_execution_targets.agent_configs_json` the canonical place for per-user and
-   per-target launch mechanics.
-3. Remove launch-mechanics fallback behavior from `execution_targets.agent_flags_json`. If the
-   column remains temporarily, treat it as legacy or as shared non-user defaults only.
+2. Make `user_execution_target_preferences.agent_configs_json` the canonical place for reusable
+   per-user and per-target launch mechanics.
+3. Remove launch-mechanics storage from `execution_targets` and
+   `workspace_user_execution_targets`; both should stay focused on identity and access.
 4. Remove `projects.default_agent`, `default_model`, and `default_reasoning_effort`; model
    availability and shared defaults belong to the workspace catalog.
 5. Store last selected agent/model/reasoning/target in
@@ -415,8 +424,8 @@ Recommended implementation sequence:
 ## Non-Goals
 
 - Do not store raw credentials, API keys, or session secrets in any config JSON.
-- Do not store local launch wrappers on `execution_targets` as the canonical source; the same
-  target may be used by different workspace users with different shell setup.
+- Do not store local launch wrappers on `execution_targets` as the canonical source; target
+  identity and reusable user preferences have different owners.
 - Do not make projects responsible for model availability, shared model defaults, local
   pre-commands, or per-target flags.
 - Do not let an objective override apply across agents or harnesses on the same target.

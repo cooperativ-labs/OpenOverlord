@@ -1,43 +1,21 @@
-import {
-  AlertTriangle,
-  Check,
-  CheckCircle2,
-  ChevronDown,
-  FastForward,
-  Loader2,
-  X
-} from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, FastForward, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
-import type { ObjectiveDto, ObjectiveState } from '../../../shared/contract.ts';
-import { useDeleteObjective, useUpdateObjective } from '../../lib/queries.ts';
+import type { ObjectiveDto } from '../../../shared/contract.ts';
+import { useUpdateObjective } from '../../lib/queries.ts';
 import { cn } from '../../lib/utils.ts';
 import { InlineEditField } from '../InlineEditField.tsx';
-import { Badge, Button, OBJECTIVE_STATE_LABEL, objectiveStateClasses } from '../ui.tsx';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible.tsx';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from '../ui/dropdown-menu.tsx';
 
-const OBJECTIVE_STATES: ObjectiveState[] = [
-  'future',
-  'draft',
-  'submitted',
-  'launching',
-  'executing',
-  'pending_delivery',
-  'complete'
-];
+import { ObjectiveMenuButton } from './ObjectiveMenuButton.tsx';
 
 /**
  * A collapsed, read-first view of an objective that has left the editable
  * stages (executing, pending delivery, or complete). The header summarises the
- * objective with a state icon, title, and state badge; expanding it reveals the
- * full instruction text. In-flight objectives (executing / pending delivery)
- * carry a shimmer sweep so live work is visible at a glance.
+ * objective with a state icon, title, and a kebab actions menu
+ * ({@link ObjectiveMenuButton}); expanding it reveals the full instruction
+ * text. In-flight objectives (executing / pending delivery) carry a shimmer
+ * sweep so live work is visible at a glance.
  */
 export function ObjectiveCollapsibleItem({
   objective,
@@ -47,7 +25,6 @@ export function ObjectiveCollapsibleItem({
   index: number;
 }) {
   const update = useUpdateObjective();
-  const remove = useDeleteObjective();
   const [open, setOpen] = useState(false);
 
   const isExecuting = objective.state === 'executing';
@@ -103,39 +80,7 @@ export function ObjectiveCollapsibleItem({
               </div>
             ) : null}
           </CollapsibleTrigger>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              className="cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-              title="Change state"
-            >
-              <Badge className={objectiveStateClasses(objective.state)}>
-                {OBJECTIVE_STATE_LABEL[objective.state]}
-              </Badge>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[160px]">
-              {OBJECTIVE_STATES.map(s => (
-                <DropdownMenuItem
-                  key={s}
-                  className="gap-2 text-xs"
-                  onClick={() => update.mutate({ id: objective.id, body: { state: s } })}
-                >
-                  <span>{OBJECTIVE_STATE_LABEL[s]}</span>
-                  {s === objective.state && (
-                    <Check className="ml-auto h-3 w-3 text-muted-foreground" />
-                  )}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button
-            variant="ghost"
-            aria-label="Delete objective"
-            onClick={() => {
-              if (confirm('Delete this objective?')) remove.mutate(objective.id);
-            }}
-          >
-            <X className="h-3.5 w-3.5" />
-          </Button>
+          <ObjectiveMenuButton objectiveId={objective.id} state={objective.state} />
         </div>
         <CollapsibleContent className="border-b px-3 pb-2 pt-1">
           <div className="text-sm leading-relaxed text-muted-foreground">

@@ -17,8 +17,8 @@ CLI/terminal config, the auth mechanism, or the DB schema (those belong to the
 ## 2. Window & security baseline
 
 - A single `BrowserWindow` with `contextIsolation: true`, `sandbox: true`,
-  `nodeIntegration: false`, `webSecurity: true`, and a `preload` exposed through
-  `contextBridge`. These are non-negotiable.
+  `nodeIntegration: false`, `webSecurity: true`, `spellcheck: true`, and a
+  `preload` exposed through `contextBridge`. These are non-negotiable.
 - A loopback-scoped **CSP** applied via `session.webRequest.onHeadersReceived`:
   `default-src 'self'`, `script-src 'self'`, inline styles allowed,
   `connect-src 'self'` + the loopback `http`/`ws` origin, `object-src 'none'`,
@@ -27,6 +27,24 @@ CLI/terminal config, the auth mechanism, or the DB schema (those belong to the
 - **External-navigation handling**: `will-navigate` and `setWindowOpenHandler`
   send any off-origin URL to the system browser; in-app navigation stays on the
   loopback origin.
+
+### Title bar & native chrome (macOS)
+
+On macOS the native title bar is removed (`titleBarStyle: 'hiddenInset'`) and the
+traffic lights are inset at `{ x: 14, y: 14 }`, so the webapp's own top nav is the
+title bar — there is no separate "Overlord" chrome strip above the UI. The SPA
+*feature-detects* the shell (`window.overlord`) to make the nav header / sidebar
+header a window-drag region (`-webkit-app-region`) and to reserve room under the
+inset lights; in a browser those styles are inert. This stays within the shell's
+ownership of the window baseline and uses only the existing `window.overlord`
+bridge — it does not fork or modify the SPA.
+
+A **native context menu** is registered on the renderer's `context-menu` event
+(`registerNativeContextMenu`). Because the renderer is sandboxed with no Node
+access, the shell supplies the OS-native menu: in editable fields it offers
+spellcheck suggestions (from `spellcheck: true`) plus undo/redo/cut/copy/paste/
+select-all; over a plain text selection it offers copy/select-all; elsewhere it
+stays out of the way.
 
 ## 3. Process lifecycle
 
@@ -102,7 +120,7 @@ report as unavailable.
 
 Launching is unchanged: the webapp's **Launch** button queues an
 `execution_request`; an `ovld runner` claims it and `ovld launch` opens the agent
-in the terminal configured by `terminal_launcher` (CLI-owned). The desktop may
+in the terminal profile stored on the local execution target (CLI-owned). The desktop may
 supervise a runner so the button works with zero manual setup. The shell adds no
 terminal configuration of its own.
 

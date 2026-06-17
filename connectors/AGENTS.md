@@ -144,4 +144,4 @@ No adapter implementations have landed yet. When they do, the Claude and Codex a
 - [ ] New hook type or capability flag → update `contract/extension-points.yaml` first
 - [ ] Hook scripts → use `ovld protocol` commands only, no direct DB writes
 - [ ] Conformance manifest created and validated for every new connector
-- [ ] `ovld setup <agent>` and `ovld doctor` behavior documented
+- [ ] `ovld agent-setup <agent>` and `ovld doctor` behavior documented

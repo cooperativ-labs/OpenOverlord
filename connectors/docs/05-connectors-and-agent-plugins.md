@@ -181,7 +181,7 @@ Future requirement:
 
 ## Setup And Doctor Requirements
 
-`ovld setup <agent>`:
+`ovld agent-setup <agent>`:
 
 - Detect the agent binary if needed.
 - Install or update plugin files.

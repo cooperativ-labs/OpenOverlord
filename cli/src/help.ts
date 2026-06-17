@@ -7,6 +7,8 @@ General:
   ${primaryCommand} auth login                   Configure backend and log in
   ${primaryCommand} help                         Show this help message
   ${primaryCommand} version [--json]             Show the installed CLI version
+  ${primaryCommand} update [--check] [--force] [--json]
+                                                 Check for or install the latest published CLI
   ${primaryCommand} init [--json]                Create overlord.toml with a local backend URL
   ${primaryCommand} serve [--host <h>] [--port <p>] [--db <path>] [--json]
                                                  Boot the web/REST server (creates + migrates the DB on first run)
@@ -15,11 +17,13 @@ General:
   ${primaryCommand} config set                   Choose local/cloud backend interactively
   ${primaryCommand} config set local [url]       Use a local backend URL (default: http://127.0.0.1:4310)
   ${primaryCommand} config set cloud <url>       Use a hosted backend URL
+  ${primaryCommand} setup [--json]               Configure backend, agents, and terminal interactively
 
 Connectors:
-  ${primaryCommand} setup [--json]               List installable agent connectors
-  ${primaryCommand} setup <agent> [--dry-run]    Install/repair one connector (e.g. claude)
-  ${primaryCommand} setup all [--dry-run]        Install/repair all supported connectors
+  ${primaryCommand} agent-setup [--json]         List installable agent connectors
+  ${primaryCommand} agent-setup <agent> [--dry-run]
+                                                 Install/repair one connector (e.g. claude)
+  ${primaryCommand} agent-setup all [--dry-run]  Install/repair all supported connectors
 
 Projects:
   ${primaryCommand} create-project --name "<name>" [--directory <path>|--no-directory]

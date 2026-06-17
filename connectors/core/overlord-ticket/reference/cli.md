@@ -67,6 +67,13 @@ ovld protocol deliver --session-key <sessionKey> \
 
 Use `--payload-json` when the full delivery object fits comfortably inline. For larger delivery payloads, prefer `--payload-file -` and stream the full JSON on stdin so no scratch file needs to be created or removed. If you use `--payload-file`, `--artifacts-file`, or `--change-rationales-file` with a real path, treat that file as ephemeral scratch data under `.overlord/tmp` and remove it after delivery.
 
+Changed files are captured for you: the CLI records a VCS baseline at attach and, at deliver, reports the run-attributable delta (current `git status` minus baseline) automatically — you do not pass `--changed-files-json`. Deliver rejects with a `missing_rationale` error listing any changed file that still needs a rationale; coverage is aggregated per objective. If the run changed no files, declare it explicitly:
+
+```bash
+ovld protocol deliver --session-key <sessionKey> --ticket-id $TICKET_ID \
+  --summary "Investigated X; no code changes were required." --no-file-changes
+```
+
 Ordinary deliver artifacts should use `next_steps`, `test_results`, `migration`, `note`, `url`, or `decision`.
 
 ## Revert

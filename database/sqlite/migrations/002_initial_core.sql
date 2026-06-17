@@ -158,8 +158,6 @@ CREATE TABLE execution_targets (
   label TEXT NOT NULL CHECK (length(trim(label)) > 0),
   status TEXT NOT NULL CHECK (status IN ('active', 'disabled', 'unavailable')),
   connection_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(connection_json)),
-  agent_flags_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(agent_flags_json)),
-  terminal_profile_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(terminal_profile_json)),
   created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
   updated_at TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??.???Z'),
   deleted_at TEXT CHECK (deleted_at IS NULL OR deleted_at GLOB '????-??-??T??:??:??.???Z'),
@@ -178,8 +176,6 @@ CREATE TABLE workspace_user_execution_targets (
   default_username TEXT,
   access_status TEXT NOT NULL CHECK (access_status IN ('active', 'pending', 'disabled', 'error')),
   last_connected_at TEXT CHECK (last_connected_at IS NULL OR last_connected_at GLOB '????-??-??T??:??:??.???Z'),
-  agent_flags_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(agent_flags_json)),
-  terminal_profile_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(terminal_profile_json)),
   created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
   updated_at TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??.???Z'),
   deleted_at TEXT CHECK (deleted_at IS NULL OR deleted_at GLOB '????-??-??T??:??:??.???Z'),
@@ -189,6 +185,23 @@ CREATE TABLE workspace_user_execution_targets (
 CREATE UNIQUE INDEX idx_wuet_active_user_target ON workspace_user_execution_targets (workspace_user_id, execution_target_id)
   WHERE deleted_at IS NULL;
 CREATE INDEX idx_wuet_workspace_target_status ON workspace_user_execution_targets (workspace_id, execution_target_id, access_status);
+
+CREATE TABLE user_execution_target_preferences (
+  id TEXT PRIMARY KEY,
+  profile_id TEXT NOT NULL REFERENCES profiles (id) ON DELETE CASCADE,
+  target_type TEXT NOT NULL CHECK (length(trim(target_type)) > 0),
+  target_fingerprint TEXT NOT NULL CHECK (length(trim(target_fingerprint)) > 0),
+  agent_configs_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(agent_configs_json)),
+  terminal_profile_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(terminal_profile_json)),
+  created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
+  updated_at TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??.???Z'),
+  deleted_at TEXT CHECK (deleted_at IS NULL OR deleted_at GLOB '????-??-??T??:??:??.???Z'),
+  revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)
+);
+
+CREATE UNIQUE INDEX idx_uetp_active_profile_target ON user_execution_target_preferences (profile_id, target_type, target_fingerprint)
+  WHERE deleted_at IS NULL;
+CREATE INDEX idx_uetp_profile_type_updated ON user_execution_target_preferences (profile_id, target_type, updated_at);
 
 CREATE TABLE project_resources (
   id TEXT PRIMARY KEY,

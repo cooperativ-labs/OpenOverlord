@@ -18,7 +18,8 @@ import {
   launchObjective,
   refreshAgentCatalog,
   updateAgentLaunchConfig,
-  updateLaunchPreference
+  updateLaunchPreference,
+  updateTerminalProfile
 } from './launch.ts';
 import { runProtocolSubcommand } from './protocol.ts';
 import { realtime } from './realtime.ts';
@@ -547,6 +548,10 @@ app.get(
 app.patch(
   '/api/launch-settings/agents/:agentKey',
   handle(req => updateAgentLaunchConfig(req.params.agentKey, req.body), { mutates: true })
+);
+app.patch(
+  '/api/launch-settings/terminal-profile',
+  handle(req => updateTerminalProfile(req.body), { mutates: true })
 );
 app.get(
   '/api/projects/:id/launch-preference',

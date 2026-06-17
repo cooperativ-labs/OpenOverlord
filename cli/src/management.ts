@@ -129,7 +129,6 @@ async function configureBackendFromArgs({
       console.log(`web_host=${current.webHost}`);
       console.log(`web_port=${current.webPort}`);
       console.log(`default_agent=${current.defaultAgent}`);
-      console.log(`terminal_launcher=${current.terminalLauncher ?? '(inline)'}`);
     }
     return;
   }
@@ -142,8 +141,7 @@ async function configureBackendFromArgs({
       backend_url: resolveBackendUrl(current),
       web_host: current.webHost,
       web_port: current.webPort,
-      default_agent: current.defaultAgent,
-      terminal_launcher: current.terminalLauncher
+      default_agent: current.defaultAgent
     };
     if (!(key in values)) throw new CliError({ message: `Unknown config key: ${key}` });
     if (json) printJson({ key, value: values[key] });
@@ -247,7 +245,7 @@ async function runAuthCommand({ rest, json }: { rest: string[]; json: boolean })
 
 /**
  * Local management commands that do NOT require the database/service layer:
- * `init`, `doctor`, `setup`, `config`, and `auth login`. These are dispatched separately from the
+ * `update`, `init`, `doctor`, `setup`, `agent-setup`, `config`, and `auth login`. These are dispatched separately from the
  * DB-backed commands in `commands.ts` so they never statically import the
  * service layer — keeping them runnable from a globally installed `ovld`
  * binary (where the root project `dist/` is not on disk).
@@ -263,6 +261,11 @@ export async function runLocalCommand({
   const json = flagBoolean(parsed.flags, '--json');
 
   switch (command) {
+    case 'update': {
+      const { runUpdateCommand } = await import('./update.js');
+      await runUpdateCommand({ rest });
+      return;
+    }
     case 'init': {
       const { DEFAULT_LOCAL_BACKEND_URL, writeConfig, resolveRepoPath } =
         await import('./config.js');
@@ -286,6 +289,11 @@ export async function runLocalCommand({
     case 'setup': {
       const { runSetupCommand } = await import('./setup.js');
       await runSetupCommand({ rest, json });
+      return;
+    }
+    case 'agent-setup': {
+      const { runAgentSetupCommand } = await import('./setup.js');
+      await runAgentSetupCommand({ rest, json });
       return;
     }
     case 'config': {
@@ -320,7 +328,7 @@ export async function runLocalCommand({
             name: `connector:${agentKey}`,
             ok: true,
             required: false,
-            detail: `not installed — run \`ovld setup ${agentKey}\``
+            detail: `not installed — run \`ovld agent-setup ${agentKey}\``
           });
         } else {
           checks.push({

@@ -793,6 +793,75 @@ export function heartbeatSession({
   return { ok: true };
 }
 
+/**
+ * Upsert mechanically-observed changed files for a session/objective, keyed by
+ * normalized path so repeated observations revise the same row. Stores only
+ * metadata (path + status), never diffs or file contents. Must run inside a
+ * transaction supplied by the caller.
+ */
+function upsertChangedFiles({
+  ctx,
+  ticket,
+  session,
+  files,
+  eventId,
+  now
+}: {
+  ctx: ServiceContext;
+  ticket: { id: string; projectId: string };
+  session: { id: string; objective_id: string };
+  files: Array<{ filePath: string; vcsStatus?: string | null }>;
+  /** Observing event id, or null when no event row exists yet (e.g. deliver). */
+  eventId: string | null;
+  now: string;
+}): void {
+  for (const file of files) {
+    const normalizedPath = file.filePath.replace(/\\/g, '/');
+    const existing = ctx.db
+      .prepare(
+        `SELECT id FROM changed_files
+         WHERE session_id = ? AND objective_id = ? AND file_path = ? AND deleted_at IS NULL`
+      )
+      .get(session.id, session.objective_id, normalizedPath) as { id: string } | undefined;
+
+    if (existing) {
+      ctx.db
+        .prepare(
+          `UPDATE changed_files
+           SET vcs_status = ?, current_diff_state = 'present', last_observed_at = ?,
+               last_observed_event_id = COALESCE(?, last_observed_event_id),
+               updated_at = ?, revision = revision + 1
+           WHERE id = ?`
+        )
+        .run(file.vcsStatus ?? null, now, eventId, now, existing.id);
+    } else {
+      ctx.db
+        .prepare(
+          `INSERT INTO changed_files
+             (id, workspace_id, project_id, ticket_id, objective_id, session_id,
+              file_path, vcs_status, current_diff_state, first_observed_at, last_observed_at,
+              last_observed_event_id, observed_metadata_json, created_at, updated_at, revision)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'present', ?, ?, ?, '{}', ?, ?, 1)`
+        )
+        .run(
+          newId(),
+          ctx.workspace.id,
+          ticket.projectId,
+          ticket.id,
+          session.objective_id,
+          session.id,
+          normalizedPath,
+          file.vcsStatus ?? null,
+          now,
+          now,
+          eventId,
+          now,
+          now
+        );
+    }
+  }
+}
+
 export function updateSession({
   ctx,
   ticketId,
@@ -915,50 +984,7 @@ export function updateSession({
     }
 
     if (changedFiles && changedFiles.length > 0) {
-      for (const file of changedFiles) {
-        const normalizedPath = file.filePath.replace(/\\/g, '/');
-        const existing = ctx.db
-          .prepare(
-            `SELECT id FROM changed_files
-             WHERE session_id = ? AND objective_id = ? AND file_path = ? AND deleted_at IS NULL`
-          )
-          .get(session.id, session.objective_id, normalizedPath) as { id: string } | undefined;
-
-        if (existing) {
-          ctx.db
-            .prepare(
-              `UPDATE changed_files
-               SET vcs_status = ?, current_diff_state = 'present', last_observed_at = ?,
-                   last_observed_event_id = ?, updated_at = ?, revision = revision + 1
-               WHERE id = ?`
-            )
-            .run(file.vcsStatus ?? null, now, eventId, now, existing.id);
-        } else {
-          ctx.db
-            .prepare(
-              `INSERT INTO changed_files
-                 (id, workspace_id, project_id, ticket_id, objective_id, session_id,
-                  file_path, vcs_status, current_diff_state, first_observed_at, last_observed_at,
-                  last_observed_event_id, observed_metadata_json, created_at, updated_at, revision)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'present', ?, ?, ?, '{}', ?, ?, 1)`
-            )
-            .run(
-              newId(),
-              ctx.workspace.id,
-              ticket.projectId,
-              ticket.id,
-              session.objective_id,
-              session.id,
-              normalizedPath,
-              file.vcsStatus ?? null,
-              now,
-              now,
-              eventId,
-              now,
-              now
-            );
-        }
-      }
+      upsertChangedFiles({ ctx, ticket, session, files: changedFiles, eventId, now });
     }
   });
 
@@ -1032,6 +1058,8 @@ export function deliverSession({
   summary,
   artifacts = [],
   changeRationales = [],
+  changedFiles,
+  noFileChanges = false,
   payloadJson,
   verificationSummary,
   followUpNotes
@@ -1042,6 +1070,10 @@ export function deliverSession({
   summary: string;
   artifacts?: Array<{ type: string; label: string; content?: string | null; url?: string | null }>;
   changeRationales?: ChangeRationaleInput[];
+  /** Mechanically observed changes for this run (client-side VCS delta). */
+  changedFiles?: Array<{ filePath: string; vcsStatus?: string | null }> | null;
+  /** Agent's explicit assertion that this run changed no files. */
+  noFileChanges?: boolean;
   payloadJson?: Record<string, unknown> | null;
   verificationSummary?: string | null;
   followUpNotes?: string | null;
@@ -1057,42 +1089,63 @@ export function deliverSession({
     throw new ServiceError('Session key does not match ticket', 'invalid_session', 401);
   }
 
-  const changedFiles = ctx.db
-    .prepare(
-      `SELECT id, file_path FROM changed_files
-       WHERE session_id = ? AND objective_id = ? AND deleted_at IS NULL
-         AND current_diff_state = 'present'`
-    )
-    .all(session.id, session.objective_id) as Array<{ id: string; file_path: string }>;
-
-  const meaningfulFiles = changedFiles.filter(file => !file.file_path.includes('package-lock'));
-  if (meaningfulFiles.length > 0) {
-    for (const file of meaningfulFiles) {
-      const rationale = changeRationales.find(r => r.file_path === file.file_path);
-      if (!rationale) {
-        throw new ServiceError(
-          `Missing change rationale for ${file.file_path}. Every meaningful tracked file change requires a rationale.`,
-          'missing_rationale',
-          400
-        );
-      }
-      for (const field of ['label', 'summary', 'why', 'impact'] as const) {
-        if (!rationale[field]?.trim()) {
-          throw new ServiceError(
-            `Change rationale for ${file.file_path} is missing required field: ${field}`,
-            'invalid_rationale',
-            400
-          );
-        }
-      }
-    }
-  }
-
   const now = nowIso();
   const deliveryId = newId();
   const eventId = newId();
 
+  // Populated inside the transaction once the run's changed files are recorded,
+  // then used to link rationales to their changed-file rows.
+  let changedFileIdByPath = new Map<string, string>();
+
   const tx = ctx.db.transaction(() => {
+    // Record the run's mechanically-observed changed files (client-side VCS
+    // delta) so review reflects what actually changed — unless the agent
+    // explicitly declared this run made no file changes.
+    if (!noFileChanges && changedFiles && changedFiles.length > 0) {
+      // The delivery event row is inserted later in this transaction, so there is
+      // no observing event to link yet; pass null (COALESCE keeps prior links).
+      upsertChangedFiles({ ctx, ticket, session, files: changedFiles, eventId: null, now });
+    }
+
+    // Coverage is objective-scoped: aggregate observed changes across every
+    // session for the objective (and no-session record-work records).
+    const objectiveChangedFiles = ctx.db
+      .prepare(
+        `SELECT id, file_path, current_diff_state FROM changed_files
+         WHERE objective_id = ? AND deleted_at IS NULL`
+      )
+      .all(session.objective_id) as Array<{
+      id: string;
+      file_path: string;
+      current_diff_state: string | null;
+    }>;
+    changedFileIdByPath = new Map(objectiveChangedFiles.map(row => [row.file_path, row.id]));
+
+    if (!noFileChanges) {
+      const meaningfulFiles = objectiveChangedFiles.filter(
+        file => file.current_diff_state === 'present' && !file.file_path.includes('package-lock')
+      );
+      for (const file of meaningfulFiles) {
+        const rationale = changeRationales.find(r => r.file_path === file.file_path);
+        if (!rationale) {
+          throw new ServiceError(
+            `Missing change rationale for ${file.file_path}. Every meaningful tracked file change requires a rationale.`,
+            'missing_rationale',
+            400
+          );
+        }
+        for (const field of ['label', 'summary', 'why', 'impact'] as const) {
+          if (!rationale[field]?.trim()) {
+            throw new ServiceError(
+              `Change rationale for ${file.file_path} is missing required field: ${field}`,
+              'invalid_rationale',
+              400
+            );
+          }
+        }
+      }
+    }
+
     ctx.db
       .prepare(
         `INSERT INTO deliveries
@@ -1109,7 +1162,10 @@ export function deliverSession({
         session.objective_id,
         session.id,
         trimmedSummary,
-        JSON.stringify(payloadJson ?? {}),
+        JSON.stringify({
+          ...(payloadJson ?? {}),
+          ...(noFileChanges ? { noFileChanges: true } : {})
+        }),
         verificationSummary ?? null,
         followUpNotes ?? null,
         now,
@@ -1144,7 +1200,7 @@ export function deliverSession({
     }
 
     for (const rationale of changeRationales) {
-      const changedFile = meaningfulFiles.find(f => f.file_path === rationale.file_path);
+      const changedFileId = changedFileIdByPath.get(rationale.file_path) ?? null;
       ctx.db
         .prepare(
           `INSERT INTO change_rationales
@@ -1161,7 +1217,7 @@ export function deliverSession({
           session.objective_id,
           session.id,
           deliveryId,
-          changedFile?.id ?? null,
+          changedFileId,
           rationale.file_path,
           rationale.label,
           rationale.summary,
@@ -1295,12 +1351,12 @@ export function deliverSession({
 export function protocolCreate({
   ctx,
   projectId,
-  objective,
+  objectives,
   title
 }: {
   ctx: ServiceContext;
   projectId?: string | null;
-  objective: string;
+  objectives: Array<{ objective: string; title?: string | null; autoAdvance?: boolean }>;
   title?: string | null;
 }): { ticket: TicketSummary; objectives: ObjectiveSummary[] } {
   const resolvedProjectId = projectId
@@ -1309,7 +1365,7 @@ export function protocolCreate({
   return createTicketWithObjectives({
     ctx,
     projectId: resolvedProjectId,
-    objectives: [{ objective }],
+    objectives,
     ...(title !== undefined ? { title } : {})
   });
 }
@@ -1317,14 +1373,14 @@ export function protocolCreate({
 export function protocolPrompt({
   ctx,
   projectId,
-  objective,
+  objectives,
   title,
   agentIdentifier = 'unknown',
   externalSessionId
 }: {
   ctx: ServiceContext;
   projectId?: string | null;
-  objective: string;
+  objectives: Array<{ objective: string; title?: string | null; autoAdvance?: boolean }>;
   title?: string | null;
   agentIdentifier?: string;
   externalSessionId?: string | null;
@@ -1335,7 +1391,7 @@ export function protocolPrompt({
   const created = createTicketWithObjectives({
     ctx,
     projectId: discovery.projectId,
-    objectives: [{ objective }],
+    objectives,
     ...(title !== undefined ? { title } : {})
   });
 

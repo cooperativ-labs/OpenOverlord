@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -29,7 +29,6 @@ sql_studio_port = 3030
 sql_studio_binary = "/opt/sql-studio/bin/sql-studio"
 default_agent = "codex"
 default_model = "gpt-5"
-terminal_launcher = "iTerm2"
 `
   );
 
@@ -37,7 +36,6 @@ terminal_launcher = "iTerm2"
   assert.equal(config.instanceName, 'Test Instance');
   assert.equal(config.backendMode, 'local');
   assert.equal(resolveBackendUrl(config), DEFAULT_LOCAL_BACKEND_URL);
-  assert.equal(config.terminalLauncher, 'iTerm2');
   assert.equal(config.databasePath, 'db.sqlite');
   assert.equal(config.webHost, '0.0.0.0');
   assert.equal(config.webPort, 9999);
@@ -109,16 +107,12 @@ backend_url = "https://overlord.example.com"
   assert.equal(resolveBackendUrl(config), 'https://overlord.example.com');
 });
 
-test('writeConfig round-trips a set terminal_launcher and defaults to inline when unset', () => {
+test('writeConfig no longer writes terminal launcher keys', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
-
-  const withLauncher = path.join(dir, 'with.toml');
-  writeConfig({ targetPath: withLauncher, config: { terminalLauncher: 'Terminal' } });
-  assert.equal(loadConfig(withLauncher).terminalLauncher, 'Terminal');
-
-  const withoutLauncher = path.join(dir, 'without.toml');
-  writeConfig({ targetPath: withoutLauncher, config: { instanceName: 'Local Overlord' } });
-  assert.equal(loadConfig(withoutLauncher).terminalLauncher, null);
+  const configPath = path.join(dir, 'config.toml');
+  writeConfig({ targetPath: configPath, config: { instanceName: 'Local Overlord' } });
+  const raw = readFileSync(configPath, 'utf8');
+  assert.ok(!raw.includes('terminal_launcher'));
 });
 
 test('loadConfig parses agent_catalog tables', () => {
@@ -141,7 +135,6 @@ reasoning_options = ["low", "high"]
   );
 
   const config = loadConfig(configPath);
-  assert.equal(config.terminalLauncher, null);
   assert.ok(config.agentCatalog);
   assert.equal(config.agentCatalog?.claude.label, 'My Claude');
   assert.deepEqual(config.agentCatalog?.claude.models, [

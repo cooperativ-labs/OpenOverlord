@@ -2,7 +2,7 @@
 
 Part of the [master test plan](../../TEST_PLAN.md). Covers the `connector`
 contract component: core workflow, per-agent adapters, hook scripts, and
-`ovld setup`/`ovld doctor`. Normative sources:
+`ovld agent-setup`/`ovld doctor`. Normative sources:
 [05-connectors-and-agent-plugins.md](05-connectors-and-agent-plugins.md) and
 [agent-harness-configuration-architecture.md](agent-harness-configuration-architecture.md).
 
@@ -66,9 +66,9 @@ For `connectors/**/scripts/*.sh`
   `user_follow_up` and the `PermissionRequest` hook records a `permission_request`
   with the documented flags. No real DB, no real agent.
 
-## D. `ovld setup` / `ovld doctor`
+## D. `ovld agent-setup` / `ovld doctor`
 
-- `ovld setup <agent>` installs exactly the manifest's `managedFiles` to the
+- `ovld agent-setup <agent>` installs exactly the manifest's `managedFiles` to the
   documented `installPath`; re-running is idempotent (no duplication, no clobbering
   user edits beyond managed files).
 - `ovld doctor` reports a healthy install as healthy, and detects a missing or

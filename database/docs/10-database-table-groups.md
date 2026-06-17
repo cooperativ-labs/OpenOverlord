@@ -35,7 +35,8 @@ Every Overlord installation needs these. They cover the fundamental workflow: cr
 | `project_statuses`                 | Configurable ticket workflow states per project.         |
 | `devices`                          | Local and remote runner-capable machine identities.      |
 | `execution_targets`                | Where objectives can run (local device, SSH host, etc.). |
-| `workspace_user_execution_targets` | Per-user access and preferences for an execution target. |
+| `workspace_user_execution_targets` | Per-workspace-user access to an execution target. |
+| `user_execution_target_preferences` | Reusable per-profile terminal and agent launch preferences for a stable target fingerprint. |
 | `project_resources`                | Links a project to a directory on an execution target.   |
 | `project_user_preferences`         | Per-user project UI/config defaults.                     |
 

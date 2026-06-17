@@ -86,12 +86,23 @@ Rules:
 - Record rationales during `update`, via `record-change-rationales`, or during `deliver`.
 - Delivery should validate rationale coverage unless explicitly skipped.
 
+## Mechanical Changed File Capture
+
+Changed-file capture must not depend on the agent remembering to enumerate what it
+changed. The client CLI captures changes from VCS automatically:
+
+- When a work session begins (`attach`, `resume-follow-up`), the CLI records a **baseline** — the set of changed file paths from local `git status` for the working directory.
+- At `deliver`, the CLI reads `git status` again and computes the **run-attributable delta** (current changed paths minus the baseline), then injects it as `--changed-files-json`. This subtracts files that were already dirty before the session started (including concurrent work in a shared working directory).
+- VCS is read **on the client only**; the CLI persists only metadata (normalized path and status), never full diffs, patch bodies, or file contents.
+- An agent that genuinely changed no files passes `--no-file-changes` at deliver to skip rationale-coverage enforcement. If the CLI still observes a non-empty delta, it warns.
+- Exact per-run attribution under concurrency requires per-run worktree isolation in the runner; until then the baseline-delta approach is the best client-side approximation.
+
 ## Update-Time Changed File Tracking
 
-Agents should be able to make changed files visible before delivery without increasing protocol call volume:
+Agents may also make changed files visible before delivery without increasing protocol call volume:
 
-- `ovld protocol update` may include changed-file tracking in the same call already used for progress.
-- The CLI may populate changed files from local VCS status, but it must persist only metadata such as normalized path, status, session, objective, and optional rationale fields.
+- `ovld protocol update` may include changed-file tracking (`--changed-files-json` / `--changed-files-file`) in the same call already used for progress.
+- The CLI persists only metadata such as normalized path, status, session, objective, and optional rationale fields.
 - Full diffs, patch bodies, and file contents must not be persisted as update-time changed-file records.
 - Each changed file should be stored once per session/objective/path and updated in place on later updates.
 - Delivery coverage is objective-scoped: it should aggregate changed-file observations across all sessions for the objective and any no-session `record-work` records.
@@ -108,7 +119,7 @@ CLI-first requirements:
 - `ovld changes status --ticket-id <id> [--objective-id <id>]`: summarize changed files and rationale coverage for the ticket or objective.
 - `ovld changes diff --ticket-id <id> [--objective-id <id>] [--path <path>]`: show read-only local VCS diffs grouped by objective context where possible.
 - `ovld changes rationales --ticket-id <id> [--objective-id <id>]`: show rationale coverage grouped by objective and file.
-- `ovld protocol deliver` should warn when tracked changes lack rationales.
+- `ovld protocol deliver` rejects delivery when run-attributable tracked changes lack rationales, unless `--no-file-changes` is passed; coverage is aggregated per objective across all sessions.
 - Diffs should be annotated with recorded rationale labels and hunk headers when available.
 - Changes that cannot be associated with a specific objective should be shown as unassigned/current workspace changes, not silently attached to the wrong objective.
 

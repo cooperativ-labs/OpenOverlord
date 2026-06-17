@@ -3,40 +3,39 @@
 The `ovld` command-line surface — Overlord's primary, CLI-first product.
 This module is the home for everything a user or agent invokes as `ovld …`.
 
-## Contract Components
-
-This module is the developer-facing home for three components defined in
-[`CONTRACT.md`](../CONTRACT.md):
-
-| Component      | Stable id  | What it owns                                                                                                                                                                        |
-| -------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CLI Layer      | `cli`      | Management command names/shapes, project linking & discovery, config file locations (`overlord.toml`, `.overlord/project.json`), human-readable output conventions                  |
-| Protocol Layer | `protocol` | `ovld protocol` subcommands and flags, session lifecycle (`attach → (update\|heartbeat)* → (ask\|deliver)`), context-assembly format, delivery payload + change-rationale recording |
-| Runner Layer   | `runner`   | `execution_requests` queue claiming and launch, working-directory resolution, `ovld runner` commands, execution-target selection                                                    |
-
-These stay distinct components in the contract (separate interaction surfaces
-and ownership). They are grouped into one developer module because they are all
-the `ovld` command surface and tend to be worked on together.
-
-## Documentation
-
-Requirements and behavior specs are colocated in this module's
-[`docs/`](docs/) folder (see the root [README](../README.md#modules) for the
-colocation convention):
-
-- [01 — Core Domain and Lifecycle](docs/01-core-domain-and-lifecycle.md): projects, tickets, objectives, sessions, events, statuses, state transitions.
-- [02 — CLI-First Product Surface](docs/02-cli-first-product-surface.md): management commands, configuration, project linking, output contracts.
-- [03 — Agent Protocol](docs/03-agent-protocol.md): `ovld protocol` lifecycle, context assembly, updates, delivery, attachments.
-- [04 — Runner and Launch Execution](docs/04-runner-and-launch-execution.md): execution requests, local runner, launch command generation, auto-advance.
-- [05 — Review, Artifacts, and Change Tracking](docs/05-review-artifacts-and-change-tracking.md): delivery review records, artifacts, rationale coverage, local diff support.
-- [Test Plan](docs/testing.md): test plan for the `cli`, `protocol`, and `runner` components — management commands, protocol lifecycle/attach-shape/validation conformance, runner queue atomicity, and surface smoke tests. Part of the root [TEST_PLAN.md](../TEST_PLAN.md).
-
 ## Setup
 
 The CLI is **client-only**. Management commands, protocol sessions, and runner
 queue operations all reach persistence through the backend URL you configure — only
 `help` and `version` work without one. First-time setup is about **pointing
 `ovld` at a backend** and verifying it is reachable.
+
+### First run
+
+Install the published package:
+```bash
+install -g open-overlord
+```
+
+After installing the published package:
+
+```bash
+ovld auth login
+```
+
+Login verifies that a backend is configured. If none is set yet, it walks through
+`ovld config` first — local setup offers `http://127.0.0.1:4310` as the default
+backend URL; cloud setup accepts a hosted backend URL.
+
+Then confirm the connection and continue with projects, tickets, and agents:
+
+```bash
+ovld doctor
+ovld config list
+```
+
+See [Getting Started](../docs/getting-started.md) for the full walkthrough from
+install through first delivered ticket.
 
 ### How the published CLI works
 
@@ -74,7 +73,9 @@ backend is reachable.
 
 Environment overrides (useful in scripts and CI):
 
-- `OVLD_HOME` — relocate the global `~/.ovld` directory
+- `OVLD_HOME` — relocate the entire global `~/.ovld` data directory (SQLite, object storage, VCS baselines, native-session caches)
+- `OVERLORD_BACKEND_URL` — backend the CLI targets; takes precedence over the resolved `overlord.toml` `backend_url`
+- `OVERLORD_WEB_PORT` — port the local backend binds when launched
 - `OVERLORD_USER_TOKEN` / `USER_TOKEN` — bearer token sent to hosted backends when set
 
 The local backend/Desktop package owns SQLite and migrations. The published npm
@@ -83,8 +84,10 @@ CLI only stores the backend URL and sends HTTP requests.
 ### What requires the backend
 
 These commands work without a backend: `ovld help`, `ovld version`,
-`ovld config ...`, and connector setup/inspection commands that only touch local
-files. Commands that read or mutate Overlord state — projects, tickets,
+`ovld update`, `ovld config ...`, and connector setup/inspection commands that only touch local
+files. `ovld update --check` compares the installed package version with the latest
+published npm version, and `ovld update` upgrades the global `open-overlord`
+install through npm. Commands that read or mutate Overlord state — projects, tickets,
 protocol calls, runner queue operations, and launch context assembly — call the
 configured backend URL.
 
@@ -92,27 +95,36 @@ configured backend URL.
 backend API, then spawns the selected agent process on your machine in the
 resolved project directory. The queue state remains in the backend.
 
-### First run
 
-After installing the published package:
 
-```bash
-ovld auth login
-```
+## Contract Components
 
-Login verifies that a backend is configured. If none is set yet, it walks through
-`ovld config` first — local setup offers `http://127.0.0.1:4310` as the default
-backend URL; cloud setup accepts a hosted backend URL.
+This module is the developer-facing home for three components defined in
+[`CONTRACT.md`](../CONTRACT.md):
 
-Then confirm the connection and continue with projects, tickets, and agents:
+| Component      | Stable id  | What it owns                                                                                                                                                                        |
+| -------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CLI Layer      | `cli`      | Management command names/shapes, project linking & discovery, config file locations (`overlord.toml`, `.overlord/project.json`), human-readable output conventions                  |
+| Protocol Layer | `protocol` | `ovld protocol` subcommands and flags, session lifecycle (`attach → (update\|heartbeat)* → (ask\|deliver)`), context-assembly format, delivery payload + change-rationale recording |
+| Runner Layer   | `runner`   | `execution_requests` queue claiming and launch, working-directory resolution, `ovld runner` commands, execution-target selection                                                    |
 
-```bash
-ovld doctor
-ovld config list
-```
+These stay distinct components in the contract (separate interaction surfaces
+and ownership). They are grouped into one developer module because they are all
+the `ovld` command surface and tend to be worked on together.
 
-See [Getting Started](../docs/getting-started.md) for the full walkthrough from
-install through first delivered ticket.
+## Documentation
+
+Requirements and behavior specs are colocated in this module's
+[`docs/`](docs/) folder (see the root [README](../README.md#modules) for the
+colocation convention):
+
+- [01 — Core Domain and Lifecycle](docs/01-core-domain-and-lifecycle.md): projects, tickets, objectives, sessions, events, statuses, state transitions.
+- [02 — CLI-First Product Surface](docs/02-cli-first-product-surface.md): management commands, configuration, project linking, output contracts.
+- [03 — Agent Protocol](docs/03-agent-protocol.md): `ovld protocol` lifecycle, context assembly, updates, delivery, attachments.
+- [04 — Runner and Launch Execution](docs/04-runner-and-launch-execution.md): execution requests, local runner, launch command generation, auto-advance.
+- [05 — Review, Artifacts, and Change Tracking](docs/05-review-artifacts-and-change-tracking.md): delivery review records, artifacts, rationale coverage, local diff support.
+- [Test Plan](docs/testing.md): test plan for the `cli`, `protocol`, and `runner` components — management commands, protocol lifecycle/attach-shape/validation conformance, runner queue atomicity, and surface smoke tests. Part of the root [TEST_PLAN.md](../TEST_PLAN.md).
+
 
 ## Code & Tests
 
@@ -139,6 +151,39 @@ cli/
 The CLI ships command parsing, config/auth onboarding, connector setup, backend
 client calls, and local runner/agent launch logic. Run `yarn build` before using
 the compiled CLI (`node cli/bin/ovld.mjs …`).
+
+## In-repo build vs installed CLI
+
+Project-management work (`ovld protocol attach/update/deliver`, ticket creation,
+launching) uses the **installed** `ovld` so those calls hit the installed
+Desktop instance and real ticket data. Bare `ovld` on `PATH` always resolves to
+the global install — keep it that way.
+
+Testing in-repo CLI/Desktop changes must never touch that installed instance
+(`~/.ovld`, `:4310`). Run the in-repo build against an **isolated, throwaway
+`OVLD_HOME`** instead:
+
+- `yarn ovld:dev <args>` builds and runs `cli/bin/ovld.mjs` under a fresh
+  ephemeral `OVLD_HOME` and a dev backend port (`:4320`), e.g.
+  `yarn ovld:dev version` or `yarn ovld:dev protocol discover-project`.
+- The test suite (`yarn test`, `yarn test:cli`, …) runs under the same isolation
+  via `scripts/with-ovld-home.mjs`, so tests can never read or write the
+  installed instance.
+
+For a persistent local instance to smoke-test an in-repo Desktop/server build,
+export a stable home + dev port once, then run the server and CLI under it:
+
+```bash
+export OVLD_HOME="$(mktemp -d)"          # or any throwaway dir outside the repo
+export OVERLORD_WEB_PORT=4320
+export OVERLORD_BACKEND_URL=http://127.0.0.1:4320
+yarn workspace @overlord/webapp start    # isolated backend on :4320
+node cli/bin/ovld.mjs doctor             # in-repo CLI → the isolated backend
+```
+
+**Never `yarn link` / `npm link` the workspace CLI** (there is deliberately no
+`load:cli` script): linking shadows the global `ovld`, so `ovld protocol` calls
+would run untested working-tree code against your real ticket data.
 
 ## Interaction Boundaries
 

@@ -22,7 +22,7 @@ import type { AgentModelSelection } from './AgentModelSelector.tsx';
  *   `model`, `reasoning_effort`) and the project launch preference, so the
  *   next objective in this project starts from the same choice.
  * - Launch-config (pre-command/flags) edits persist to the user's per-target
- *   agent configs (`workspace_user_execution_targets.agent_flags_json`) —
+ *   agent configs (`user_execution_target_preferences.agent_configs_json`) —
  *   launch mechanics, not preference.
  */
 export function useObjectiveAgentSelection(objective: ObjectiveDto) {

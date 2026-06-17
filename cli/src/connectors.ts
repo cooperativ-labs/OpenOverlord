@@ -20,7 +20,7 @@ import { CliError } from './errors.js';
 
 /**
  * Connector setup/doctor for the Connector Layer (see CONTRACT.md → Connector
- * Layer). `ovld setup <agent>` materializes a connector adapter's declared
+ * Layer). `ovld agent-setup <agent>` materializes a connector adapter's declared
  * `managedFiles` into the agent's native plugin install path and records a
  * local install manifest so `ovld doctor` can detect stale, missing, or
  * modified files. Installs are idempotent and never touch files outside the
@@ -524,7 +524,7 @@ function configureCodexHarness({
       return warnings;
     }
     warnings.push(
-      `Could not install the Codex plugin via the Codex CLI. Re-run \`ovld setup codex\` to retry.`
+      `Could not install the Codex plugin via the Codex CLI. Re-run \`ovld agent-setup codex\` to retry.`
     );
   }
 
@@ -605,14 +605,14 @@ function configureClaudeHarness({
     return warnings;
   }
   // `marketplace add` fails when the marketplace already exists; refresh it from
-  // source instead so re-running `ovld setup claude` picks up plugin changes.
+  // source instead so re-running `ovld agent-setup claude` picks up plugin changes.
   if (add.status !== 0) {
     const output = `${add.stdout ?? ''}${add.stderr ?? ''}`;
     if (/already|exists/i.test(output)) {
       runClaude(['plugin', 'marketplace', 'update', CLAUDE_MARKETPLACE_NAME]);
     } else {
       warnings.push(
-        `Could not register the Claude marketplace. Re-run \`ovld setup claude\` to retry.`
+        `Could not register the Claude marketplace. Re-run \`ovld agent-setup claude\` to retry.`
       );
       return warnings;
     }
@@ -626,7 +626,7 @@ function configureClaudeHarness({
       runClaude(['plugin', 'update', CLAUDE_PLUGIN_KEY]);
     } else {
       warnings.push(
-        `Could not install the Claude plugin via the Claude CLI. Re-run \`ovld setup claude\` to retry.`
+        `Could not install the Claude plugin via the Claude CLI. Re-run \`ovld agent-setup claude\` to retry.`
       );
     }
   }
@@ -798,7 +798,7 @@ export function inspectConnector({
   if (staleContractVersion) {
     problems.push(
       `Installed against contract ${state.contractVersion}; connector now declares ` +
-        `${manifest.contractVersion}. Re-run \`ovld setup ${agentKey}\`.`
+        `${manifest.contractVersion}. Re-run \`ovld agent-setup ${agentKey}\`.`
     );
   }
 
