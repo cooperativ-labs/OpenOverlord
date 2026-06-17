@@ -31,7 +31,8 @@
     "overlord",
     "ai",
     "agents",
-    "cli"
+    "cli",
+    "ovld"
   ],
   "license": "MIT",
   "publishConfig": {

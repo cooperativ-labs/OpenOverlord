@@ -22,7 +22,17 @@
  * the server, stages the SPA + CLI, then runs electron-builder.
  */
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -222,6 +232,10 @@ function main(): void {
     path.join(desktopDir, 'build', 'icon.png')
   );
 
+  // 2b. Rebuild the lone native dependency (better-sqlite3) against the Electron
+  // ABI so the packed addon loads at runtime instead of throwing ERR_DLOPEN_FAILED.
+  stageNativeAddon(args.arch);
+
   // 3. Run electron-builder.
   runElectronBuilder(args);
 
@@ -244,6 +258,133 @@ function stageCli(): void {
   cpSync(path.join(repoRoot, 'cli', 'bin'), path.join(cliStaging, 'bin'), { recursive: true });
   cpSync(path.join(repoRoot, 'cli', 'dist'), path.join(cliStaging, 'dist'), { recursive: true });
   cpSync(path.join(repoRoot, 'cli', 'package.json'), path.join(cliStaging, 'package.json'));
+}
+
+/**
+ * Rebuild better-sqlite3 — the app's only native dependency — for the Electron ABI
+ * and stage it where electron-builder will pack it.
+ *
+ * In this yarn-workspace repo, better-sqlite3 is hoisted to the root node_modules
+ * and compiled for the *system Node* ABI (yarn builds it against the running node
+ * at install time). electron-builder's `npmRebuild` does not rebuild that hoisted
+ * copy for the *Electron* ABI, so the packed addon stays Node-ABI and the server's
+ * `require('better-sqlite3')` throws ERR_DLOPEN_FAILED at launch — the desktop shell
+ * then reports "The Overlord server did not become ready at 127.0.0.1:4310".
+ *
+ * Fix: stage a desktop-local copy of better-sqlite3 (which shadows the hoisted root
+ * one during electron-builder's dependency resolution, so the *packed* addon is
+ * Electron-ABI) and drop into it an addon compiled in an isolated temp project. The
+ * isolation matters: electron-rebuild rebuilds every copy of the module it finds
+ * while walking the workspace dependency tree, so pointing it at the desktop dir
+ * would also rebuild the hoisted root copy and break the node-side `ovld` CLI/tests.
+ * Building under a throwaway project outside the repo keeps the root copy Node-ABI.
+ * The build then fails loudly unless the staged addon loads under the Electron ABI,
+ * so a future toolchain change can't silently reintroduce the mismatch.
+ */
+function stageNativeAddon(arch: Args['arch']): void {
+  if (arch === 'universal') {
+    fail(
+      'Universal native rebuild is not wired up: better-sqlite3 must be built per ' +
+        'arch (arm64 + x64) and lipo-merged. Build --arch arm64 and --arch x64 ' +
+        'separately, or build for a single arch.'
+    );
+  }
+
+  const electronVersion = installedElectronVersion();
+  if (!electronVersion) {
+    fail('Could not determine the installed Electron version for the native rebuild.');
+  }
+
+  const src = path.join(repoRoot, 'node_modules', 'better-sqlite3');
+  if (!existsSync(src)) {
+    fail('better-sqlite3 is not installed at the repo root. Run `yarn install` first.');
+  }
+
+  // The copy electron-builder packs: a desktop-local module that shadows the hoisted
+  // root one. Its addon is replaced below with the Electron-ABI build.
+  const dest = path.join(desktopDir, 'node_modules', 'better-sqlite3');
+  rmSync(dest, { recursive: true, force: true });
+  mkdirSync(path.dirname(dest), { recursive: true });
+  cpSync(src, dest, { recursive: true });
+
+  // Compile the Electron-ABI addon in a throwaway project outside the workspace so
+  // electron-rebuild's tree-walk can't also rebuild the hoisted root copy.
+  const buildRoot = mkdtempSync(path.join(os.tmpdir(), 'ovld-native-'));
+  try {
+    const isolated = path.join(buildRoot, 'node_modules', 'better-sqlite3');
+    mkdirSync(path.dirname(isolated), { recursive: true });
+    cpSync(src, isolated, { recursive: true });
+    writeFileSync(
+      path.join(buildRoot, 'package.json'),
+      JSON.stringify({
+        name: 'ovld-native-build',
+        private: true,
+        dependencies: { 'better-sqlite3': '*' }
+      })
+    );
+
+    // `--force` is required because the copied build/Release/*.node already exists.
+    run(
+      resolveBin('electron-rebuild'),
+      [
+        '--version',
+        electronVersion,
+        '--arch',
+        arch,
+        '--module-dir',
+        buildRoot,
+        '--only',
+        'better-sqlite3',
+        '--force'
+      ],
+      buildRoot
+    );
+
+    const builtAddon = path.join(isolated, 'build', 'Release', 'better_sqlite3.node');
+    if (!existsSync(builtAddon)) fail(`Native rebuild produced no addon at ${builtAddon}.`);
+    const packedAddon = path.join(dest, 'build', 'Release', 'better_sqlite3.node');
+    mkdirSync(path.dirname(packedAddon), { recursive: true });
+    cpSync(builtAddon, packedAddon);
+    assertElectronAbi(packedAddon, electronVersion);
+  } finally {
+    rmSync(buildRoot, { recursive: true, force: true });
+  }
+}
+
+/** Fail the build unless `addonPath` loads under the packaged Electron's Node ABI. */
+function assertElectronAbi(addonPath: string, electronVersion: string): void {
+  if (!existsSync(addonPath)) {
+    fail(`Native rebuild produced no addon at ${addonPath}.`);
+  }
+  // ELECTRON_RUN_AS_NODE runs the Electron binary as plain Node; dlopen of a
+  // Node-ABI addon throws ERR_DLOPEN_FAILED (NODE_MODULE_VERSION mismatch).
+  const probe = `process.dlopen({ exports: {} }, ${JSON.stringify(addonPath)})`;
+  const result = spawnSync(electronExecutable(), ['-e', probe], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+  });
+  if (result.status !== 0) {
+    fail(
+      `Staged better-sqlite3 is not built for the Electron ${electronVersion} ABI; ` +
+        'the server would fail to start with ERR_DLOPEN_FAILED:\n' +
+        `${(result.stderr || result.stdout || '').trim()}`
+    );
+  }
+}
+
+/** Absolute path to the installed Electron executable (for ELECTRON_RUN_AS_NODE probes). */
+function electronExecutable(): string {
+  for (const dir of [desktopDir, repoRoot]) {
+    const electronDir = path.join(dir, 'node_modules', 'electron');
+    const pathTxt = path.join(electronDir, 'path.txt');
+    if (!existsSync(pathTxt)) continue;
+    const bin = path.join(electronDir, 'dist', readFileSync(pathTxt, 'utf8').trim());
+    if (existsSync(bin)) return bin;
+  }
+  fail(
+    'Could not locate the Electron executable (node_modules/electron/dist). Run `yarn install`.'
+  );
 }
 
 function runElectronBuilder(args: Args): void {

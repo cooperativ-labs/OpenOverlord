@@ -19,9 +19,12 @@ directories:
   buildResources: build
 
 # App files packed into app.asar. node_modules production dependencies are
-# included automatically by electron-builder's dependency analysis (and the
-# native better-sqlite3 addon is rebuilt for the Electron ABI when npmRebuild is
-# on). The server bundle is staged into ./server before packaging.
+# included automatically by electron-builder's dependency analysis. The native
+# better-sqlite3 addon is rebuilt for the Electron ABI by scripts/build-desktop.ts
+# (stageNativeAddon) into the desktop-local node_modules before packaging — its
+# npmRebuild does not rebuild the hoisted-to-root copy in this yarn workspace, which
+# would otherwise ship a Node-ABI addon. The server bundle is staged into ./server
+# before packaging.
 files:
   - dist-electron/**/*
   - server/**/*
@@ -47,6 +50,8 @@ extraResources:
   - from: staging/cli
     to: cli
 
+# Left on as a fallback; the authoritative native rebuild is the explicit
+# stageNativeAddon step in scripts/build-desktop.ts (see the asar note above).
 npmRebuild: true
 
 mac:
