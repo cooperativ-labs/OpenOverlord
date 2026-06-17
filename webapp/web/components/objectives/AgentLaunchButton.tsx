@@ -1,8 +1,9 @@
-import { Bot, Check, ChevronDown, Copy, Loader2 } from 'lucide-react';
+import { AlertTriangle, Bot, Check, ChevronDown, Copy, Loader2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 import type { ExecutionRequestDto, ObjectiveDto } from '../../../shared/contract.ts';
 import { api } from '../../lib/api.ts';
+import { primaryResourceConnection } from '../../lib/project-resources.ts';
 import { useLaunchObjective, useProjectResources } from '../../lib/queries.ts';
 import { cn } from '../../lib/utils.ts';
 import {
@@ -72,15 +73,17 @@ export function AgentLaunchButton({
   const [error, setError] = useState<string | null>(null);
   const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const hasActiveDirectory = (resourcesQ.data ?? []).some(
-    r => r.status === 'active' && r.type === 'local_directory'
-  );
+  const primaryConnection = primaryResourceConnection(resourcesQ.data ?? []);
   const isQueued = Boolean(activeRequest);
   const isLaunching = launch.isPending;
-  const isDisabled = !selectionLoaded || isLaunching;
+  const isDisabled = !selectionLoaded || isLaunching || !primaryConnection.connected;
   const styles = sizeStyles[size];
 
   function queueLaunch() {
+    if (!primaryConnection.connected) {
+      setError(primaryConnection.message);
+      return;
+    }
     setError(null);
     launch.mutate(
       {
@@ -184,11 +187,11 @@ export function AgentLaunchButton({
           <span className={cn('inline-flex', isDisabled && 'cursor-not-allowed')}>{runButton}</span>
         }
       />
-      <TooltipContent side="top" hidden={!isDisabled && hasActiveDirectory}>
+      <TooltipContent side="top" hidden={!isDisabled || primaryConnection.connected}>
         {!selectionLoaded
           ? 'Loading your agent model selection.'
-          : !hasActiveDirectory
-            ? 'No active project directory — a runner will need one to launch. Add a resource in project settings or via `ovld add-cwd`.'
+          : !primaryConnection.connected
+            ? primaryConnection.message
             : 'Queueing…'}
       </TooltipContent>
     </Tooltip>
@@ -196,6 +199,15 @@ export function AgentLaunchButton({
 
   return (
     <div className="flex flex-col items-end gap-1">
+      {!primaryConnection.connected && selectionLoaded ? (
+        <div
+          role="alert"
+          className="flex max-w-[280px] items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-right text-[11px] text-amber-800 dark:text-amber-200"
+        >
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+          <p>{primaryConnection.message}</p>
+        </div>
+      ) : null}
       <div
         className={cn(
           'inline-flex items-stretch rounded-md border border-input bg-background text-sm shadow-sm transition-all',

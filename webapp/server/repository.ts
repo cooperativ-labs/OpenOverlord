@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
 
 import { readRepositoryTree, RepositoryReadError } from '../../src/repository/git-tree.ts';
 import type {
@@ -312,6 +313,8 @@ function toStatusDto(r: ProjectStatusRow): ProjectStatusDto {
 }
 
 function toProjectResourceDto(r: ProjectResourceRow): ProjectResourceDto {
+  const status =
+    r.status === 'archived' ? 'archived' : existsSync(r.path) ? 'active' : 'missing';
   return {
     id: r.id,
     workspaceId: r.workspace_id,
@@ -321,7 +324,7 @@ function toProjectResourceDto(r: ProjectResourceRow): ProjectResourceDto {
     label: r.label,
     path: r.path,
     isPrimary: r.is_primary === 1,
-    status: r.status as ProjectResourceDto['status'],
+    status,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     revision: r.revision

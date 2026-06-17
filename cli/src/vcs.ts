@@ -349,7 +349,20 @@ function isRunAttributableChange({
   return currentHash !== base.contentHash;
 }
 
-/** Keep only paths whose worktree state differs from the session baseline. */
+/**
+ * Keep only paths this run is responsible for.
+ *
+ * A path qualifies when its worktree state differs from the session baseline AND
+ * — when the connector's edit hook recorded a touched-files log — this agent
+ * actually edited it. The intersection is what makes attribution exact under
+ * concurrency: a file dirtied by another ticket *after* this session attached has
+ * no baseline entry (so it passes the `!base` check) but is absent from the
+ * touched-files log, so it is excluded here. Hookless connectors get `null` from
+ * `readTouchedPaths` and fall back to the baseline-only behavior.
+ *
+ * `git status --porcelain` paths are repo-root-relative, so we resolve them
+ * against the repo root before comparing with the absolute touched paths.
+ */
 export function filterRunAttributableChanges({
   workingDirectory,
   ticketId,
@@ -360,7 +373,16 @@ export function filterRunAttributableChanges({
   files: ChangedFile[];
 }): ChangedFile[] {
   const baseline = readBaselineSnapshot({ workingDirectory, ticketId });
-  return files.filter(entry => isRunAttributableChange({ workingDirectory, entry, baseline }));
+  const touched = readTouchedPaths({ workingDirectory, ticketId });
+  const repoRoot = gitRepoRoot(workingDirectory) ?? workingDirectory;
+  return files.filter(entry => {
+    if (!isRunAttributableChange({ workingDirectory, entry, baseline })) return false;
+    if (touched) {
+      const absolute = normalizeAbsolute(path.resolve(repoRoot, entry.filePath));
+      if (!touched.has(absolute)) return false;
+    }
+    return true;
+  });
 }
 
 /** Files whose worktree state changed since the session began. */

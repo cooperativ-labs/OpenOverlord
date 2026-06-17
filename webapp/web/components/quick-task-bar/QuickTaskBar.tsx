@@ -1,10 +1,11 @@
-import { ArrowUp, Loader2, Plus } from 'lucide-react';
+import { ArrowUp, AlertTriangle, Loader2, Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AgentModelChooserButton } from '@/components/objectives/AgentModelChooserButton.tsx';
 import type { AgentModelSelection } from '@/components/objectives/AgentModelSelector.tsx';
 import { RepositoryMentionTextarea } from '@/components/RepositoryMentionTextarea.tsx';
 import { api } from '@/lib/api.ts';
+import { primaryResourceConnection } from '@/lib/project-resources.ts';
 import {
   useAgentCatalog,
   useCreateTicket,
@@ -12,6 +13,7 @@ import {
   useLaunchPreference,
   useLaunchSettings,
   useProjects,
+  useProjectResources,
   useUpdateAgentLaunchConfig,
   useUpdateLaunchPreference,
   useUpdateObjective
@@ -73,6 +75,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
   }, []);
 
   const preferenceQ = useLaunchPreference(selectedProjectId);
+  const resourcesQ = useProjectResources(selectedProjectId);
   const updatePreference = useUpdateLaunchPreference(selectedProjectId);
   const updateAgentConfig = useUpdateAgentLaunchConfig();
 
@@ -103,6 +106,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
   }, [defaultSelection]);
 
   const selectedProject = projects.find(project => project.id === selectedProjectId) ?? null;
+  const primaryConnection = primaryResourceConnection(resourcesQ.data ?? []);
 
   useEffect(() => {
     setSelectedProjectId(current => {
@@ -240,6 +244,10 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
     const filesToUpload = stagedFiles;
 
     try {
+      if (shouldLaunch && !primaryConnection.connected) {
+        throw new Error(primaryConnection.message ?? 'Primary resource is not connected.');
+      }
+
       const detail = await createTicket.mutateAsync({
         projectId: selectedProject.id,
         firstObjective: trimmed
@@ -440,6 +448,15 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
         </div>
 
         {submitError ? <p className="text-xs text-red-400">{submitError}</p> : null}
+        {!primaryConnection.connected && selectionLoaded ? (
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-800 dark:text-amber-200"
+          >
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+            <p>{primaryConnection.message}</p>
+          </div>
+        ) : null}
       </div>
 
       {activeMenu === 'project' ? (

@@ -6,7 +6,7 @@ import type { ServiceContext } from './context.js';
 import { resolveProjectId, resolveTicketId } from './context.js';
 import { getDevice } from './devices.js';
 import { ServiceError } from './errors.js';
-import { listProjectResources } from './projects.js';
+import { assertPrimaryResourceConnected } from './projects.js';
 import { newId, nowIso } from './util.js';
 
 const ACTIVE_STATUSES = ['queued', 'claimed', 'launching'] as const;
@@ -118,11 +118,13 @@ function getExecutionRequest({
 function resolveWorkingDirectory({
   ctx,
   projectId,
-  explicitWorkingDirectory
+  explicitWorkingDirectory,
+  executionTargetId = null
 }: {
   ctx: ServiceContext;
   projectId: string;
   explicitWorkingDirectory?: string | null | undefined;
+  executionTargetId?: string | null;
 }): { workingDirectory: string; resourceId: string | null } {
   if (explicitWorkingDirectory?.trim()) {
     const resolved = path.resolve(explicitWorkingDirectory);
@@ -135,16 +137,11 @@ function resolveWorkingDirectory({
     return { workingDirectory: resolved, resourceId: null };
   }
 
-  const resources = listProjectResources({ ctx, projectId });
-  const usable = resources.find(resource => resource.isPrimary) ?? resources[0] ?? null;
-  if (usable && existsSync(usable.path)) {
-    return { workingDirectory: usable.path, resourceId: usable.id };
-  }
-
-  throw new ServiceError(
-    'No usable working directory found. Run `ovld add-cwd` or pass `--working-directory`.',
-    'working_directory_missing'
-  );
+  const connected = assertPrimaryResourceConnected({ ctx, projectId, executionTargetId });
+  return {
+    workingDirectory: connected.workingDirectory,
+    resourceId: connected.resource.id
+  };
 }
 
 export function createExecutionRequest({
@@ -348,7 +345,7 @@ export function claimNextExecutionRequest({
 
   const candidate = ctx.db
     .prepare(
-      `SELECT er.id, er.project_id, er.resolved_working_directory
+      `SELECT er.id, er.project_id, er.execution_target_id, er.resolved_working_directory
        FROM execution_requests er
        JOIN objectives o ON o.id = er.objective_id
        WHERE ${conditions.join(' AND ')}
@@ -356,16 +353,35 @@ export function claimNextExecutionRequest({
        LIMIT 1`
     )
     .get(...params) as
-    | { id: string; project_id: string; resolved_working_directory: string | null }
+    | {
+        id: string;
+        project_id: string;
+        execution_target_id: string | null;
+        resolved_working_directory: string | null;
+      }
     | undefined;
 
   if (!candidate) return null;
 
-  const { workingDirectory, resourceId } = resolveWorkingDirectory({
-    ctx,
-    projectId: candidate.project_id,
-    explicitWorkingDirectory: candidate.resolved_working_directory
-  });
+  let workingDirectory: string;
+  let resourceId: string | null;
+  try {
+    ({ workingDirectory, resourceId } = resolveWorkingDirectory({
+      ctx,
+      projectId: candidate.project_id,
+      explicitWorkingDirectory: candidate.resolved_working_directory,
+      executionTargetId: candidate.execution_target_id
+    }));
+  } catch (error) {
+    if (
+      error instanceof ServiceError &&
+      (error.code === 'primary_resource_not_connected' || error.code === 'working_directory_missing')
+    ) {
+      markExecutionFailed({ ctx, requestId: candidate.id, error: error.message });
+      return null;
+    }
+    throw error;
+  }
 
   const now = nowIso();
   const expires = new Date(Date.now() + claimTtlMs).toISOString();

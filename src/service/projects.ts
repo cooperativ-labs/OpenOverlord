@@ -26,7 +26,21 @@ export type ProjectResourceSummary = {
   path: string;
   isPrimary: boolean;
   status: string;
+  executionTargetId?: string | null;
 };
+
+export const PRIMARY_RESOURCE_REPAIR_HINT =
+  'Run `ovld add-cwd` from your project checkout or link a directory in project settings.';
+
+export type PrimaryResourceConnection = {
+  resource: ProjectResourceSummary;
+  workingDirectory: string;
+};
+
+function effectiveResourceStatus(resource: { status: string; path: string }): string {
+  if (resource.status === 'archived') return 'archived';
+  return existsSync(resource.path) ? 'active' : 'missing';
+}
 
 export type ProjectDiscovery = {
   projectId: string;
@@ -264,7 +278,7 @@ export function listProjectResources({
   const resolvedProjectId = resolveProjectId(ctx, projectId);
   const rows = ctx.db
     .prepare(
-      `SELECT id, project_id, type, label, path, is_primary, status
+      `SELECT id, project_id, execution_target_id, type, label, path, is_primary, status
        FROM project_resources
        WHERE project_id = ? AND deleted_at IS NULL
        ORDER BY is_primary DESC, created_at ASC`
@@ -272,6 +286,7 @@ export function listProjectResources({
     .all(resolvedProjectId) as Array<{
     id: string;
     project_id: string;
+    execution_target_id: string | null;
     type: string;
     label: string | null;
     path: string;
@@ -282,12 +297,105 @@ export function listProjectResources({
   return rows.map(row => ({
     id: row.id,
     projectId: row.project_id,
+    executionTargetId: row.execution_target_id,
     type: row.type,
     label: row.label,
     path: row.path,
     isPrimary: row.is_primary === 1,
-    status: row.status
+    status: effectiveResourceStatus(row)
   }));
+}
+
+export function findPrimaryProjectResource({
+  ctx,
+  projectId,
+  executionTargetId = null
+}: {
+  ctx: ServiceContext;
+  projectId: string;
+  executionTargetId?: string | null;
+}): ProjectResourceSummary | null {
+  const resolvedProjectId = resolveProjectId(ctx, projectId);
+  const targetPredicate =
+    executionTargetId === null
+      ? ''
+      : 'AND (execution_target_id = @execution_target_id OR execution_target_id IS NULL)';
+  const row = ctx.db
+    .prepare(
+      `SELECT id, project_id, execution_target_id, type, label, path, is_primary, status
+       FROM project_resources
+       WHERE project_id = @project_id
+         AND deleted_at IS NULL
+         AND is_primary = 1
+         ${targetPredicate}
+       ORDER BY
+         CASE WHEN execution_target_id = @execution_target_id THEN 0 ELSE 1 END,
+         created_at ASC
+       LIMIT 1`
+    )
+    .get({ project_id: resolvedProjectId, execution_target_id: executionTargetId }) as
+    | {
+        id: string;
+        project_id: string;
+        execution_target_id: string | null;
+        type: string;
+        label: string | null;
+        path: string;
+        is_primary: number;
+        status: string;
+      }
+    | undefined;
+
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    executionTargetId: row.execution_target_id,
+    type: row.type,
+    label: row.label,
+    path: row.path,
+    isPrimary: true,
+    status: effectiveResourceStatus(row)
+  };
+}
+
+export function assertPrimaryResourceConnected({
+  ctx,
+  projectId,
+  executionTargetId = null
+}: {
+  ctx: ServiceContext;
+  projectId: string;
+  executionTargetId?: string | null;
+}): PrimaryResourceConnection {
+  const primary = findPrimaryProjectResource({ ctx, projectId, executionTargetId });
+  if (!primary) {
+    throw new ServiceError(
+      `No primary resource is linked for this project. ${PRIMARY_RESOURCE_REPAIR_HINT}`,
+      'primary_resource_not_connected',
+      409
+    );
+  }
+  if (primary.status === 'missing') {
+    throw new ServiceError(
+      `Primary working directory is missing (${primary.path}). ${PRIMARY_RESOURCE_REPAIR_HINT}`,
+      'primary_resource_not_connected',
+      409
+    );
+  }
+  if (primary.type !== 'local_directory') {
+    throw new ServiceError(
+      `Primary resource type "${primary.type}" is not supported for local agent runs yet.`,
+      'primary_resource_not_connected',
+      409
+    );
+  }
+
+  return {
+    resource: primary,
+    workingDirectory: path.resolve(primary.path)
+  };
 }
 
 export function discoverProject({

@@ -23,6 +23,7 @@ import {
   ensureLocalExecutionTarget,
   updateTerminalProfile as persistTerminalProfile
 } from '../../src/service/execution-targets.ts';
+import { assertPrimaryResourceConnected } from '../../src/service/projects.ts';
 import type {
   AgentCatalogAgentDto,
   AgentCatalogDto,
@@ -688,6 +689,12 @@ export const launchObjective = db.transaction(
 
     const target = ensureLocalLaunchTarget();
     const now = nowIso();
+
+    assertPrimaryResourceConnected({
+      ctx: serviceContext(),
+      projectId: objective.project_id,
+      executionTargetId: target.executionTargetId
+    });
 
     // Persist the selection (and explicit override) onto the objective so the
     // queue snapshot and the objective row never disagree about what was asked.

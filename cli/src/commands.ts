@@ -22,6 +22,7 @@ import {
   computeRunDelta,
   filterRunAttributableChanges,
   readChangedFiles,
+  resetTouchedFiles,
   writeBaseline
 } from './vcs.js';
 
@@ -312,6 +313,7 @@ export async function runProtocolCommand({
       ticketId,
       files: readChangedFiles(workingDirectory)
     });
+    resetTouchedFiles({ workingDirectory, ticketId });
   }
 
   const resultRecord = asRecord(result);

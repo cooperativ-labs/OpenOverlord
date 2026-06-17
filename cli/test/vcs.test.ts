@@ -1,123 +1,112 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
 import {
   computeRunDelta,
-  filterRunAttributableChanges,
   readChangedFiles,
+  recordTouchedFiles,
+  resetTouchedFiles,
   writeBaseline
 } from '../src/vcs.ts';
 
-function initGitRepo(dir: string): void {
-  execFileSync('git', ['init'], { cwd: dir });
-  execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir });
-  execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: dir });
-  writeFileSync(path.join(dir, 'README.md'), '# test\n');
-  execFileSync('git', ['add', 'README.md'], { cwd: dir });
-  execFileSync('git', ['commit', '-m', 'init'], { cwd: dir });
+const TICKET_ID = 'coo:9';
+
+function git(cwd: string, args: string[]): void {
+  execFileSync('git', args, { cwd, stdio: ['ignore', 'ignore', 'ignore'] });
 }
 
-test('readChangedFiles returns normalized paths from git status', () => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'overlord-vcs-'));
-  initGitRepo(dir);
-  writeFileSync(path.join(dir, 'tracked.ts'), 'export const x = 1;\n');
-  execFileSync('git', ['add', 'tracked.ts'], { cwd: dir });
-  execFileSync('git', ['commit', '-m', 'add tracked'], { cwd: dir });
-  writeFileSync(path.join(dir, 'tracked.ts'), 'export const x = 2;\n');
-  writeFileSync(path.join(dir, 'new-file.ts'), 'export const y = 1;\n');
+/** A throwaway git repo with one committed file, plus an isolated OVLD_HOME. */
+function makeRepo(): string {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'ovld-vcs-home-'));
+  process.env.OVLD_HOME = home;
+  const repo = mkdtempSync(path.join(os.tmpdir(), 'ovld-vcs-repo-'));
+  git(repo, ['init']);
+  git(repo, ['config', 'user.email', 'test@example.com']);
+  git(repo, ['config', 'user.name', 'Test']);
+  writeFileSync(path.join(repo, 'committed.txt'), 'base\n');
+  git(repo, ['add', '.']);
+  git(repo, ['commit', '-m', 'init']);
+  return repo;
+}
 
-  const files = readChangedFiles(dir);
-  assert.deepEqual(files.map(entry => entry.filePath).sort(), ['new-file.ts', 'tracked.ts']);
+function paths(repo: string): string[] {
+  return computeRunDelta({ workingDirectory: repo, ticketId: TICKET_ID })
+    .map(entry => entry.filePath)
+    .sort();
+}
+
+test('computeRunDelta reports only files this agent touched, excluding concurrent edits', () => {
+  const repo = makeRepo();
+  writeBaseline({ workingDirectory: repo, ticketId: TICKET_ID, files: readChangedFiles(repo) });
+  resetTouchedFiles({ workingDirectory: repo, ticketId: TICKET_ID });
+
+  const mine = path.join(repo, 'mine.ts');
+  writeFileSync(mine, 'export const mine = 1;\n');
+  recordTouchedFiles({ workingDirectory: repo, ticketId: TICKET_ID, files: [mine] });
+
+  // Concurrent ticket dirties another file; NOT recorded as touched here.
+  writeFileSync(path.join(repo, 'concurrent.ts'), 'export const other = 2;\n');
+
+  assert.deepEqual(paths(repo), ['mine.ts']);
 });
 
-test('computeRunDelta excludes unchanged dirty paths from the session baseline', () => {
-  const home = mkdtempSync(path.join(tmpdir(), 'overlord-vcs-home-'));
-  const dir = mkdtempSync(path.join(tmpdir(), 'overlord-vcs-repo-'));
-  const previousHome = process.env.OVLD_HOME;
-  process.env.OVLD_HOME = home;
-  try {
-    initGitRepo(dir);
-    writeFileSync(path.join(dir, 'pre-existing.ts'), 'pre\n');
-    writeFileSync(path.join(dir, 'agent-made.ts'), 'agent\n');
-    writeBaseline({
-      workingDirectory: dir,
-      ticketId: 'coo:15',
-      files: readChangedFiles(dir)
-    });
+test('a touched file already dirty (committed) earlier is still reported', () => {
+  const repo = makeRepo();
+  writeBaseline({ workingDirectory: repo, ticketId: TICKET_ID, files: readChangedFiles(repo) });
+  resetTouchedFiles({ workingDirectory: repo, ticketId: TICKET_ID });
 
-    const delta = computeRunDelta({ workingDirectory: dir, ticketId: 'coo:15' });
-    assert.deepEqual(
-      delta.map(entry => entry.filePath),
-      []
-    );
-  } finally {
-    if (previousHome === undefined) delete process.env.OVLD_HOME;
-    else process.env.OVLD_HOME = previousHome;
-  }
+  const committed = path.join(repo, 'committed.txt');
+  writeFileSync(committed, 'base\nmore\n');
+  recordTouchedFiles({ workingDirectory: repo, ticketId: TICKET_ID, files: [committed] });
+
+  assert.deepEqual(paths(repo), ['committed.txt']);
 });
 
-test('computeRunDelta includes edits to files that were already dirty at attach', () => {
-  const home = mkdtempSync(path.join(tmpdir(), 'overlord-vcs-home-'));
-  const dir = mkdtempSync(path.join(tmpdir(), 'overlord-vcs-repo-'));
-  const previousHome = process.env.OVLD_HOME;
-  process.env.OVLD_HOME = home;
-  try {
-    initGitRepo(dir);
-    writeFileSync(path.join(dir, 'already-dirty.ts'), 'before attach\n');
-    writeBaseline({
-      workingDirectory: dir,
-      ticketId: 'coo:15',
-      files: readChangedFiles(dir)
-    });
-    writeFileSync(path.join(dir, 'already-dirty.ts'), 'after attach\n');
-    writeFileSync(path.join(dir, 'agent-made.ts'), 'new file\n');
+test('without a touched log, deliver falls back to baseline-delta (hookless connectors)', () => {
+  const repo = makeRepo();
+  writeBaseline({ workingDirectory: repo, ticketId: TICKET_ID, files: readChangedFiles(repo) });
+  resetTouchedFiles({ workingDirectory: repo, ticketId: TICKET_ID });
 
-    const delta = computeRunDelta({ workingDirectory: dir, ticketId: 'coo:15' });
-    assert.deepEqual(delta.map(entry => entry.filePath).sort(), [
-      'agent-made.ts',
-      'already-dirty.ts'
-    ]);
-  } finally {
-    if (previousHome === undefined) delete process.env.OVLD_HOME;
-    else process.env.OVLD_HOME = previousHome;
-  }
+  writeFileSync(path.join(repo, 'a.ts'), 'a\n');
+  writeFileSync(path.join(repo, 'b.ts'), 'b\n');
+
+  assert.deepEqual(paths(repo), ['a.ts', 'b.ts']);
 });
 
-test('filterRunAttributableChanges drops unchanged baseline paths from explicit payloads', () => {
-  const home = mkdtempSync(path.join(tmpdir(), 'overlord-vcs-home-'));
-  const dir = mkdtempSync(path.join(tmpdir(), 'overlord-vcs-repo-'));
-  const previousHome = process.env.OVLD_HOME;
-  process.env.OVLD_HOME = home;
-  try {
-    initGitRepo(dir);
-    writeFileSync(path.join(dir, 'already-dirty.ts'), 'unchanged\n');
-    writeBaseline({
-      workingDirectory: dir,
-      ticketId: 'coo:15',
-      files: readChangedFiles(dir)
-    });
-    writeFileSync(path.join(dir, 'agent-made.ts'), 'new\n');
+test('files dirty before the session began are excluded from the run delta', () => {
+  const repo = makeRepo();
+  const preexisting = path.join(repo, 'preexisting.ts');
+  writeFileSync(preexisting, 'pre\n');
+  writeBaseline({ workingDirectory: repo, ticketId: TICKET_ID, files: readChangedFiles(repo) });
+  resetTouchedFiles({ workingDirectory: repo, ticketId: TICKET_ID });
 
-    const filtered = filterRunAttributableChanges({
-      workingDirectory: dir,
-      ticketId: 'coo:15',
-      files: [
-        { filePath: 'already-dirty.ts', vcsStatus: 'M' },
-        { filePath: 'agent-made.ts', vcsStatus: 'M' },
-        { filePath: 'concurrent-edit.ts', vcsStatus: 'M' }
-      ]
-    });
+  const mine = path.join(repo, 'mine.ts');
+  writeFileSync(mine, 'mine\n');
+  recordTouchedFiles({ workingDirectory: repo, ticketId: TICKET_ID, files: [mine] });
 
-    assert.deepEqual(filtered.map(entry => entry.filePath).sort(), [
-      'agent-made.ts',
-      'concurrent-edit.ts'
-    ]);
-  } finally {
-    if (previousHome === undefined) delete process.env.OVLD_HOME;
-    else process.env.OVLD_HOME = previousHome;
-  }
+  assert.deepEqual(paths(repo), ['mine.ts']);
+});
+
+test('resetTouchedFiles clears a prior session log so its edits are not re-attributed to the next session', () => {
+  const repo = makeRepo();
+  writeBaseline({ workingDirectory: repo, ticketId: TICKET_ID, files: readChangedFiles(repo) });
+
+  // Session A edits stale.ts.
+  const stale = path.join(repo, 'stale.ts');
+  writeFileSync(stale, 'stale\n');
+  recordTouchedFiles({ workingDirectory: repo, ticketId: TICKET_ID, files: [stale] });
+  assert.deepEqual(paths(repo), ['stale.ts']);
+
+  // Session B (re)attaches — reset clears A's log — then edits only mine.ts.
+  resetTouchedFiles({ workingDirectory: repo, ticketId: TICKET_ID });
+  const mine = path.join(repo, 'mine.ts');
+  writeFileSync(mine, 'mine\n');
+  recordTouchedFiles({ workingDirectory: repo, ticketId: TICKET_ID, files: [mine] });
+
+  // stale.ts is still dirty but belongs to the prior session, so it is excluded.
+  assert.deepEqual(paths(repo), ['mine.ts']);
 });

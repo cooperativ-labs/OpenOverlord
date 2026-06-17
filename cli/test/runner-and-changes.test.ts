@@ -1,10 +1,12 @@
 import { migrateDatabase } from '@overlord/database';
 import Database from 'better-sqlite3';
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import test from 'node:test';
 
 import { listChangedFilesForReview, listRationalesForReview } from '../dist/src/service/changes.js';
 import { createServiceContext } from '../dist/src/service/context.js';
+import { newId } from '../dist/src/service/util.js';
 import {
   claimNextExecutionRequest,
   clearExecutionRequests,
@@ -23,6 +25,105 @@ function createContext() {
   migrateDatabase(db);
   return { db, ctx: createServiceContext({ db, source: 'cli' }) };
 }
+
+test('execution request queue rejects when no primary resource is linked', () => {
+  const { db, ctx } = createContext();
+  const project = createProject({ ctx, name: 'No Primary Resource Test' });
+  const { ticket, objectives } = createTicketWithObjectives({
+    ctx,
+    projectId: project.id,
+    objectives: [{ objective: 'Should not queue without a primary resource' }]
+  });
+
+  assert.throws(
+    () =>
+      createExecutionRequest({
+        ctx,
+        ticketId: ticket.displayId,
+        objectiveId: objectives[0]?.id,
+        requestedAgent: 'codex',
+        requestedSource: 'cli'
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message.includes('No primary resource is linked') &&
+      'code' in error &&
+      (error as { code: string }).code === 'primary_resource_not_connected'
+  );
+
+  db.close();
+});
+
+test('execution request queue rejects when the primary resource path is missing', () => {
+  const { db, ctx } = createContext();
+  const project = createProject({ ctx, name: 'Missing Primary Path Test' });
+  addProjectResource({
+    ctx,
+    projectId: project.id,
+    directoryPath: path.join(process.cwd(), '.overlord-missing-primary-test'),
+    isPrimary: true
+  });
+  const { ticket, objectives } = createTicketWithObjectives({
+    ctx,
+    projectId: project.id,
+    objectives: [{ objective: 'Should not queue with a missing primary path' }]
+  });
+
+  assert.throws(
+    () =>
+      createExecutionRequest({
+        ctx,
+        ticketId: ticket.displayId,
+        objectiveId: objectives[0]?.id,
+        requestedAgent: 'codex',
+        requestedSource: 'cli'
+      }),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message.includes('Primary working directory is missing') &&
+      'code' in error &&
+      (error as { code: string }).code === 'primary_resource_not_connected'
+  );
+
+  db.close();
+});
+
+test('claiming a queued request fails when the primary resource is missing', () => {
+  const { db, ctx } = createContext();
+  const project = createProject({ ctx, name: 'Claim Missing Primary Test' });
+  const resourcePath = path.join(process.cwd(), '.overlord-missing-primary-claim-test');
+  addProjectResource({
+    ctx,
+    projectId: project.id,
+    directoryPath: resourcePath,
+    isPrimary: true
+  });
+  const { ticket, objectives } = createTicketWithObjectives({
+    ctx,
+    projectId: project.id,
+    objectives: [{ objective: 'Queued before the primary path disappeared' }]
+  });
+
+  const requestId = newId();
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO execution_requests
+       (id, workspace_id, project_id, ticket_id, objective_id, requested_agent,
+        launch_mode, launch_flags_json, target_kind, requested_source, status,
+        created_at, updated_at, revision)
+     VALUES (?, ?, ?, ?, ?, 'codex', 'run', '{}', 'local', 'webapp', 'queued', ?, ?, 1)`
+  ).run(requestId, ctx.workspace.id, project.id, ticket.id, objectives[0]?.id, now, now);
+
+  assert.equal(claimNextExecutionRequest({ ctx }), null);
+
+  const failed = db
+    .prepare(`SELECT status, last_error FROM execution_requests WHERE id = ?`)
+    .get(requestId) as { status: string; last_error: string };
+  assert.equal(failed.status, 'failed');
+  assert.match(failed.last_error, /Primary working directory is missing/);
+
+  db.close();
+});
 
 test('execution request queue can create, claim, launch, and clear active requests', () => {
   const { db, ctx } = createContext();

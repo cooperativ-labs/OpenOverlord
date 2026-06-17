@@ -10,6 +10,7 @@ connector:
     - followUpHook
     - permissionHook
     - stopHook
+    - editHook
     - modelFlag
     - effortFlag
     - contextFilePrompt
@@ -18,6 +19,7 @@ connector:
   hookTypes:
     - UserPromptSubmit
     - PermissionRequest
+    - PostToolUse
     - Stop
   installPath: "~/.ovld/claude/marketplace/plugins/overlord"
   managedFiles:
@@ -34,6 +36,7 @@ connector:
     - "commands/spawn.md"
     - "hooks/hooks.json"
     - "scripts/permission-hook.sh"
+    - "scripts/post-tool-use-hook.sh"
     - "scripts/stop-hook.sh"
     - "scripts/user-prompt-submit-hook.sh"
     - "skills/overlord-ticket/SKILL.md"

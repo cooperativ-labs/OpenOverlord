@@ -1,4 +1,6 @@
-import { db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
+import { assertPrimaryResourceConnected } from '../../src/service/projects.ts';
+
+import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';
 
 type ExecutionRequestRow = {
@@ -83,17 +85,58 @@ function activeRows(projectId?: string | null): ExecutionRequestRow[] {
     .all({ workspace_id: WORKSPACE.id, project_id: projectId ?? null }) as ExecutionRequestRow[];
 }
 
-function primaryWorkingDirectory(projectId: string): { id: string | null; path: string | null } {
-  const row = db
-    .prepare(
-      `SELECT id, path
-         FROM project_resources
-        WHERE workspace_id = ? AND project_id = ? AND deleted_at IS NULL AND status = 'active'
-        ORDER BY is_primary DESC, created_at ASC
-        LIMIT 1`
-    )
-    .get(WORKSPACE.id, projectId) as { id: string; path: string } | undefined;
-  return { id: row?.id ?? null, path: row?.path ?? null };
+function serviceContext() {
+  return {
+    db,
+    workspace: { id: WORKSPACE.id, slug: WORKSPACE.slug, name: WORKSPACE.name },
+    actorWorkspaceUserId: ACTOR_WORKSPACE_USER_ID,
+    source: 'runner' as const
+  };
+}
+
+function failQueuedRequest({
+  row,
+  error
+}: {
+  row: ExecutionRequestRow;
+  error: string;
+}): void {
+  const now = nowIso();
+  const revision = row.revision + 1;
+  db.prepare(
+    `UPDATE execution_requests
+        SET status = 'failed',
+            last_error = @error,
+            launch_completed_at = @now,
+            updated_at = @now,
+            revision = @revision
+      WHERE id = @id AND status = 'queued'`
+  ).run({ id: row.id, error, now, revision });
+  recordChange({
+    entityType: 'execution_request',
+    entityId: row.id,
+    operation: 'update',
+    entityRevision: revision,
+    projectId: row.project_id,
+    ticketId: row.ticket_id,
+    objectiveId: row.objective_id,
+    changedFields: ['status', 'last_error']
+  });
+  db.prepare(
+    `INSERT INTO ticket_events
+       (id, workspace_id, project_id, ticket_id, objective_id, type, phase, summary,
+        payload_json, source, actor_workspace_user_id, created_at)
+     VALUES (?, ?, ?, ?, ?, 'status_change', 'execute', ?, ?, 'runner', NULL, ?)`
+  ).run(
+    newId(),
+    WORKSPACE.id,
+    row.project_id,
+    row.ticket_id,
+    row.objective_id,
+    'Agent run failed: primary resource is not connected.',
+    JSON.stringify({ executionRequestId: row.id, error }),
+    now
+  );
 }
 
 export function runnerStatus(projectId?: string | null): Record<string, unknown> {
@@ -129,8 +172,24 @@ export const claimRunnerRequest = db.transaction(
 
     if (!row) return { request: null };
 
+    let connected;
+    try {
+      connected = assertPrimaryResourceConnected({
+        ctx: serviceContext(),
+        projectId: row.project_id,
+        executionTargetId: row.execution_target_id
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failQueuedRequest({ row, error: message });
+      return { request: null };
+    }
+
     const now = nowIso();
-    const resource = primaryWorkingDirectory(row.project_id);
+    const resource = {
+      id: connected.resource.id,
+      path: connected.workingDirectory
+    };
     const revision = row.revision + 1;
     db.prepare(
       `UPDATE execution_requests

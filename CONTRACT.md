@@ -1,6 +1,6 @@
 # Overlord Component Interaction Contract
 
-Contract Version: `0.15-draft`
+Contract Version: `0.16-draft`
 
 ## Purpose
 
@@ -19,12 +19,13 @@ See `.claude/skills/component-contract.md` for the enforced agent workflow.
 
 ## Contract Version
 
-Current version: `0.15-draft`
+Current version: `0.16-draft`
 
 The contract version is incremented when any stable interface changes. All conformance manifests must declare the contract version they were validated against.
 
 | Version      | Changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0.16-draft` | Makes changed-file capture attribute files to the agent that actually edited them under concurrency. In addition to the attach-time VCS baseline (0.12), a connector that ships a `PostToolUse` edit hook writes a per-session "touched files" log (`<OVLD_HOME|~/.ovld>/vcs-touched/<sha256(abspath(cwd)+NUL+TICKET_ID)>.json`) listing the exact paths it edited. At `deliver`, the client run-attributable set becomes the VCS working-tree delta **intersected with** the touched-files log, so files dirtied by other tickets after this session attached (which have no baseline entry) are excluded. The CLI clears the log at `attach`/`resume-follow-up` (alongside the baseline). Connectors without an edit hook write no log and fall back to the 0.12 baseline-delta behavior unchanged. Adds the `editHook` connector capability and the `PostToolUse` hook type to the Claude connector. Client-only and additive; no schema, vocabulary, or migration impact. |
 | `0.15-draft` | Moves reusable per-user execution-target launch preferences from workspace-scoped target/access rows into `user_execution_target_preferences`, keyed by profile, target type, and stable target fingerprint. `execution_targets` now owns target identity/connection metadata only; `workspace_user_execution_targets` owns workspace-member access only. `ovld setup` continues configuring the default terminal through the REST launch-settings surface, but persistence now writes `user_execution_target_preferences.terminal_profile_json`. Breaking database schema change; the reset schema no longer includes `agent_flags_json` / `terminal_profile_json` on `execution_targets` or `workspace_user_execution_targets`. |
 | `0.14-draft` | Adds the `OVERLORD_BACKEND_URL` environment override for the client CLI/protocol backend target, mirroring the existing `OVLD_HOME` / `OVERLORD_SQLITE_PATH` / `OVERLORD_WEB_PORT` / `OVERLORD_USER_TOKEN` overrides. It takes precedence over the resolved `overlord.toml` `backend_url`, letting an in-repo build target an isolated local instance (e.g. a dev backend on `:4320`) without editing a committed `overlord.toml`. Also clarifies that `OVLD_HOME` relocates the *entire* per-user data dir — VCS baselines and native-session caches now resolve under it too, not just the SQLite database. Additive; no schema, vocabulary, or migration impact. |
 | `0.13-draft` | Moves per-agent connector installation from `ovld setup <agent>` / `ovld setup all` to `ovld agent-setup <agent>` / `ovld agent-setup all`. `ovld setup` becomes the CLI-owned interactive first-run configuration flow for backend selection, agent connector setup, and `terminal_launcher` selection. Additive to config shape and REST/database boundaries; no schema or migration impact. |
@@ -271,9 +272,10 @@ These are the **only sanctioned paths** between components. Bypassing these surf
 
 ### Connector → Protocol (Hook Surface)
 
-- **Hooks**: `UserPromptSubmit`, `PermissionRequest`, `Stop` (future)
+- **Hooks**: `UserPromptSubmit`, `PermissionRequest`, `PostToolUse`, `Stop` (future)
 - **Transport**: Shell scripts invoking `ovld protocol hook-event` or `update`
 - **Rule**: Hook scripts must not write to the database directly; use protocol commands only
+- **Edit capture**: a connector's `PostToolUse` edit hook records the files the agent edits into the per-session touched-files log read by the client at `deliver` to make changed-file attribution exact under concurrency (see the `0.16-draft` change-tracking notes). The hook writes only normalized absolute paths — never diffs or file contents — and must not write to the database directly
 - **Follow-up capture**: `UserPromptSubmit` records `user_follow_up` activity even when the original delivery ended the session; it must not reopen implementation work by itself
 
 ### Runner → Database (Queue Surface)
