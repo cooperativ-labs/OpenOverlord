@@ -9,6 +9,11 @@ import {
 import path from 'node:path';
 
 import { registerIpc } from './ipc.js';
+import {
+  hideQuickTaskWindow,
+  initQuickTaskWindow,
+  unregisterQuickTaskHotkey
+} from './quick-task-window.js';
 import { findFreePort, startServer, stopServer, waitForHealth } from './server.js';
 import { DesktopUpdater } from './updater.js';
 import { applyCsp, createWindow, guardNavigation } from './window.js';
@@ -56,7 +61,7 @@ if (!app.requestSingleInstanceLock()) {
 async function boot(): Promise<void> {
   updater = new DesktopUpdater(() => mainWindow);
   installApplicationMenu(updater);
-  registerIpc(() => mainWindow, updater);
+  registerIpc({ getWindow: () => mainWindow, updater, preloadPath: PRELOAD });
 
   // In connect-only dev mode the origin is the running dev server; otherwise we
   // claim a free loopback port and the supervised server binds to it.
@@ -67,6 +72,7 @@ async function boot(): Promise<void> {
   applyCsp(session.defaultSession, appOrigin);
 
   await openMainWindow();
+  initQuickTaskWindow({ appOrigin, preloadPath: PRELOAD });
   updater.startAutomaticChecks();
 
   app.on('activate', () => {
@@ -124,6 +130,8 @@ async function showStartupError(): Promise<void> {
 
 app.on('before-quit', () => {
   updater?.stopAutomaticChecks();
+  unregisterQuickTaskHotkey();
+  hideQuickTaskWindow();
   stopServer();
 });
 

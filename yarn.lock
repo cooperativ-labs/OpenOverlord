@@ -1732,6 +1732,7 @@ __metadata:
     "@dnd-kit/utilities": "npm:^3.2.2"
     "@fontsource-variable/geist": "npm:^5.2.9"
     "@google/genai": "npm:^2.8.0"
+    "@overlord/auth": "workspace:*"
     "@overlord/automations": "workspace:*"
     "@tailwindcss/vite": "npm:^4.0.0"
     "@tanstack/react-query": "npm:^5.62.0"
@@ -1741,6 +1742,7 @@ __metadata:
     "@types/react": "npm:^19.0.0"
     "@types/react-dom": "npm:^19.0.0"
     "@vitejs/plugin-react": "npm:^4.3.4"
+    better-auth: "npm:^1.2.7"
     better-sqlite3: "npm:^12.11.1"
     class-variance-authority: "npm:^0.7.1"
     clsx: "npm:^2.1.1"
@@ -7508,8 +7510,6 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "open-overlord@workspace:cli"
   dependencies:
-    "@overlord/database": "workspace:*"
-    better-sqlite3: "npm:^12.11.1"
     smol-toml: "npm:^1.6.1"
   bin:
     overlord: bin/ovld.mjs

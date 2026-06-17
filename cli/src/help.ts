@@ -43,8 +43,15 @@ Launch and runner:
 
 Changes:
   ${primaryCommand} changes status --ticket-id <id> [--objective-id <id>] [--json]
-  ${primaryCommand} changes diff --ticket-id <id> [--path <path>] [--json]
   ${primaryCommand} changes rationales --ticket-id <id> [--objective-id <id>] [--json]
+
+Agents:
+  Built-in agents (claude, codex, cursor) need an installed connector
+  (${primaryCommand} agent-setup <agent>). Launch with:
+  ${primaryCommand} launch <agent> --ticket-id <ticketId>
+  Use ${primaryCommand} protocol help for the full ticket lifecycle reference.
+  Key protocol commands: auth-status, discover-project, create, prompt, attach,
+  connect, load-context, update, heartbeat, ask, deliver.
 
 Protocol (JSON output by default):
   ${primaryCommand} protocol attach --ticket-id <id>

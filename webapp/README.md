@@ -7,8 +7,10 @@ through `better-sqlite3`.
 
 A first slice has landed: a realtime console for **projects, tickets, and
 objectives** — list/create/edit each, with the UI reflecting database changes
-(including writes made by the CLI) live over Server-Sent Events. Configuring
-execution targets and launching agents from the UI remain CLI-only for now.
+(including writes made by the CLI) live over Server-Sent Events. The settings
+surface now covers per-user local execution-target launch defaults (terminal
+profile plus per-agent flags/pre-commands); launching objectives still follows
+the existing ticket/objective controls.
 
 ## Running the web app
 
@@ -59,6 +61,10 @@ camelCase per the [REST API Boundary](../database/docs/09-database-schema-contra
 | `GET /api/meta` | Workspace + capability flags (what this build supports), plus `needsSetup` while the seeded first workspace is still unnamed |
 | `POST /api/setup` | One-time initial instance setup: names the first workspace and sets the slug that prefixes ticket identifiers (`<slug>:<sequence>`) |
 | `GET /api/stream` | SSE realtime feed of `entity_changes` deltas |
+| `GET /api/agent-catalog`, `POST /api/agent-catalog/refresh` | Workspace agent catalog for launch/settings surfaces |
+| `GET /api/launch-settings` | The acting user's local execution-target launch defaults |
+| `PATCH /api/launch-settings/agents/:agentKey` | Persist per-agent pre-command / flags to `user_execution_target_preferences.agent_configs_json` |
+| `PATCH /api/launch-settings/terminal-profile` | Persist the local terminal launcher profile to `user_execution_target_preferences.terminal_profile_json` |
 | `GET/POST /api/projects`, `GET/PATCH /api/projects/:id` | Projects (PATCH covers rename / describe / archive) |
 | `GET /api/projects/:id/statuses` | Project workflow statuses (for board columns) |
 | `POST /api/projects/:id/statuses` | Add a project status |

@@ -1,19 +1,28 @@
+import { readFileSync } from 'node:fs';
+
 import { flagBoolean, flagValue, parseArgs, requireFlag } from './args.js';
 import { loadConfig } from './config.js';
 import { CliError } from './errors.js';
 import { launchAgent } from './launch.js';
 import { resolveNativeSessionId } from './native-session.js';
 import { printJson, printKeyValue } from './output.js';
+import { pruneStaleProjectTmp } from './project-tmp.js';
+import { printProtocolHelp } from './protocol-help.js';
 import type { CliRuntime } from './runtime.js';
 import { promptForProject } from './select-prompt.js';
 import type { TerminalLaunchSettings } from './terminal-launcher.js';
 import { fetchTerminalProfile, terminalProfileToLaunchSettings } from './terminal-profile.js';
-import { computeRunDelta, readChangedFiles, writeBaseline } from './vcs.js';
+import {
+  computeRunDelta,
+  filterRunAttributableChanges,
+  readChangedFiles,
+  writeBaseline
+} from './vcs.js';
 
 type ChangedFileEntry = { filePath: string; vcsStatus?: string | null };
 
 /** Parse an inline `--changed-files-json` value into entries (best-effort). */
-function parseChangedFilesFlag(value: unknown): ChangedFileEntry[] {
+function parseChangedFilesJson(value: unknown): ChangedFileEntry[] {
   if (typeof value !== 'string' || value.trim() === '') return [];
   try {
     const parsed = JSON.parse(value) as unknown;
@@ -29,23 +38,64 @@ function parseChangedFilesFlag(value: unknown): ChangedFileEntry[] {
   }
 }
 
+/** Read `--changed-files-json` or `--changed-files-file` entries (best-effort). */
+function readChangedFilesFromFlags(
+  flags: Record<string, string | true>,
+  stdin?: string
+): ChangedFileEntry[] {
+  const fileFlag = flags['--changed-files-file'];
+  if (typeof fileFlag === 'string') {
+    const raw =
+      fileFlag === '-'
+        ? (stdin ?? '')
+        : (() => {
+            try {
+              return readFileSync(fileFlag, 'utf8');
+            } catch {
+              return '';
+            }
+          })();
+    return parseChangedFilesJson(raw);
+  }
+  return parseChangedFilesJson(flags['--changed-files-json']);
+}
+
+function writeFilteredChangedFilesToFlags({
+  flags,
+  files
+}: {
+  flags: Record<string, string | true>;
+  files: ChangedFileEntry[];
+}): void {
+  delete flags['--changed-files-file'];
+  if (files.length === 0) {
+    delete flags['--changed-files-json'];
+    return;
+  }
+  flags['--changed-files-json'] = JSON.stringify(files);
+}
+
 /**
- * At deliver, auto-inject the run-attributable changed-file delta (current dirty
- * paths minus the session baseline) as `--changed-files-json` so reporting does
- * not depend on the agent enumerating files. `--no-file-changes` opts out and
- * only warns if VCS still shows changes.
+ * Filter protocol changed-file payloads so only run-attributable paths (not in
+ * the session baseline) are sent. At deliver, also merges the VCS delta when the
+ * agent did not enumerate files.
  */
-function applyDeliverChangedFiles({
+function applySessionChangedFiles({
   flags,
   workingDirectory,
-  ticketId
+  ticketId,
+  subcommand,
+  stdin
 }: {
   flags: Record<string, string | true>;
   workingDirectory: string;
   ticketId: string;
+  subcommand: string;
+  stdin?: string;
 }): void {
   const noFileChanges =
-    flags['--no-file-changes'] === true || flags['--no-file-changes'] === 'true';
+    subcommand === 'deliver' &&
+    (flags['--no-file-changes'] === true || flags['--no-file-changes'] === 'true');
   const delta = computeRunDelta({ workingDirectory, ticketId });
 
   if (noFileChanges) {
@@ -56,23 +106,29 @@ function applyDeliverChangedFiles({
           .join(', ')}`
       );
     }
+    delete flags['--changed-files-json'];
+    delete flags['--changed-files-file'];
     return;
   }
 
-  // Respect an explicit file-variant payload rather than clobbering it.
-  if ('--changed-files-file' in flags) return;
-  if (delta.length === 0) return;
+  const hasExplicitPayload = '--changed-files-json' in flags || '--changed-files-file' in flags;
+  if (subcommand === 'update' && !hasExplicitPayload) return;
 
-  const byPath = new Map<string, ChangedFileEntry>();
-  for (const entry of parseChangedFilesFlag(flags['--changed-files-json'])) {
-    byPath.set(entry.filePath, entry);
-  }
-  for (const entry of delta) {
-    if (!byPath.has(entry.filePath)) {
-      byPath.set(entry.filePath, { filePath: entry.filePath, vcsStatus: entry.vcsStatus });
-    }
-  }
-  flags['--changed-files-json'] = JSON.stringify(Array.from(byPath.values()));
+  const explicit = readChangedFilesFromFlags(flags, stdin);
+  const merged = subcommand === 'deliver' ? (hasExplicitPayload ? explicit : delta) : explicit;
+  const attributable = filterRunAttributableChanges({
+    workingDirectory,
+    ticketId,
+    files: merged.map(entry => ({
+      filePath: entry.filePath,
+      vcsStatus: entry.vcsStatus ?? 'changed'
+    }))
+  }).map(entry => ({
+    filePath: entry.filePath,
+    vcsStatus: entry.vcsStatus
+  }));
+
+  writeFilteredChangedFilesToFlags({ flags, files: attributable });
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -159,19 +215,18 @@ export async function runProtocolCommand({
   runtime,
   subcommand,
   args,
-  stdin
+  stdin,
+  primaryCommand = 'ovld'
 }: {
   runtime: CliRuntime;
   subcommand: string;
   args: string[];
   stdin?: string;
+  primaryCommand?: string;
 }): Promise<void> {
   const parsed = parseArgs(args);
   if (subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
-    printJson({
-      backend: runtime.backend.baseUrl,
-      note: 'Protocol commands are forwarded to the configured Overlord backend.'
-    });
+    printProtocolHelp({ primaryCommand });
     return;
   }
 
@@ -179,10 +234,12 @@ export async function runProtocolCommand({
   const ticketId = flagValue(parsed.flags, '--ticket-id') ?? parsed.positional[0];
   const flags = Object.fromEntries(parsed.flags);
 
+  pruneStaleProjectTmp({ workingDirectory });
+
   // Client-side VCS capture: read git status here (the agent's machine), never on
-  // the backend. At deliver, inject the run-attributable changed-file delta.
-  if (subcommand === 'deliver' && ticketId) {
-    applyDeliverChangedFiles({ flags, workingDirectory, ticketId });
+  // the backend. Filter explicit payloads and, at deliver, merge the run delta.
+  if ((subcommand === 'deliver' || subcommand === 'update') && ticketId) {
+    applySessionChangedFiles({ flags, workingDirectory, ticketId, subcommand, stdin });
   }
 
   const result = await runtime.backend.post<unknown>({
@@ -209,7 +266,7 @@ export async function runProtocolCommand({
     writeBaseline({
       workingDirectory,
       ticketId,
-      paths: readChangedFiles(workingDirectory).map(entry => entry.filePath)
+      files: readChangedFiles(workingDirectory)
     });
   }
 

@@ -47,6 +47,8 @@ export interface WorkspaceDto {
   projectCount: number;
   /** Count of active members in the workspace (read-side aggregate). */
   memberCount: number;
+  /** Whether SQL Studio is enabled for this workspace (admin-managed). */
+  sqlStudioEnabled: boolean;
   createdAt: string;
 }
 
@@ -59,6 +61,8 @@ export interface CreateWorkspaceBody {
 /** Partial update of a workspace. Omitted fields are left unchanged. */
 export interface UpdateWorkspaceBody {
   name?: string;
+  /** Admin-only: enable or disable SQL Studio for this workspace. */
+  sqlStudioEnabled?: boolean;
 }
 
 /**
@@ -241,6 +245,8 @@ export interface ObjectiveDto {
   createdAt: string;
   updatedAt: string;
   revision: number;
+  /** Native harness session/resume ID from the objective's latest agent session, when captured. */
+  externalSessionId: string | null;
 }
 
 export type ArtifactType =
@@ -608,6 +614,8 @@ export interface ProfileDto {
   kind: string;
   /** Identity provider, when the account is externally federated. */
   authProvider: string | null;
+  /** RBAC role keys assigned in the active workspace (`ADMIN`, `MEMBER`, …). */
+  roles: string[];
   createdAt: string;
 }
 

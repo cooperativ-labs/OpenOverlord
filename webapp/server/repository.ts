@@ -33,8 +33,8 @@ import type {
 } from '../shared/contract.ts';
 
 import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
-import { ApiError } from './errors.ts';
 import { dequeueObjective, LAUNCHABLE_STATES, listTicketExecutionRequests } from './launch.ts';
+import { loadActorRoles } from './rbac.ts';
 import {
   initialTitleFromInstruction,
   scheduleObjectiveTitleGeneration,
@@ -277,6 +277,7 @@ interface ObjectiveRow {
   created_at: string;
   updated_at: string;
   revision: number;
+  external_session_id?: string | null;
 }
 
 // ---- serializers ---------------------------------------------------------
@@ -377,7 +378,8 @@ function toObjectiveDto(r: ObjectiveRow): ObjectiveDto {
     reasoningEffort: r.reasoning_effort,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
-    revision: r.revision
+    revision: r.revision,
+    externalSessionId: r.external_session_id ?? null
   };
 }
 
@@ -1200,19 +1202,26 @@ function cascadeTicketProjectId({
   ).run({ project_id: newProjectId, ticket_id: ticketId, workspace_id: WORKSPACE.id, now });
 }
 
-function getTicketRow(id: string): TicketRow {
-  const row = db
+function getTicketRow(ticketRef: string): TicketRow {
+  const byId = db
     .prepare(`${selectTicketsSql} AND t.id = @id`)
-    .get({ workspace_id: WORKSPACE.id, id }) as TicketRow | undefined;
-  if (!row) throw new ApiError(404, 'Ticket not found');
-  return row;
+    .get({ workspace_id: WORKSPACE.id, id: ticketRef }) as TicketRow | undefined;
+  if (byId) return byId;
+
+  const byDisplayId = db
+    .prepare(`${selectTicketsSql} AND t.display_id = @display_id`)
+    .get({ workspace_id: WORKSPACE.id, display_id: ticketRef }) as TicketRow | undefined;
+  if (byDisplayId) return byDisplayId;
+
+  throw new ApiError(404, 'Ticket not found');
 }
 
-export function getTicketDetail(id: string): TicketDetailDto {
-  const ticket = toTicketDto(getTicketRow(id));
-  const objectives = listObjectives(id);
+export function getTicketDetail(ticketRef: string): TicketDetailDto {
+  const row = getTicketRow(ticketRef);
+  const ticket = toTicketDto(row);
+  const objectives = listObjectives(row.id);
   const statuses = listProjectStatuses(ticket.projectId);
-  const executionRequests = listTicketExecutionRequests(id);
+  const executionRequests = listTicketExecutionRequests(row.id);
   return { ...ticket, objectives, statuses, executionRequests };
 }
 
@@ -1233,9 +1242,8 @@ interface TicketEventRow {
  * `ticket_events` is append-only, so there is no soft-delete filter; the
  * workspace scope guards against cross-workspace reads.
  */
-export function listTicketEvents(ticketId: string, limit = 200): TicketEventDto[] {
-  // Validate the ticket exists and belongs to the active workspace (throws 404).
-  getTicketRow(ticketId);
+export function listTicketEvents(ticketRef: string, limit = 200): TicketEventDto[] {
+  const ticket = getTicketRow(ticketRef);
   const rows = db
     .prepare(
       `SELECT id, ticket_id, objective_id, type, phase, summary, source, external_url, created_at
@@ -1244,7 +1252,7 @@ export function listTicketEvents(ticketId: string, limit = 200): TicketEventDto[
         ORDER BY created_at DESC, id DESC
         LIMIT @limit`
     )
-    .all({ ticket_id: ticketId, workspace_id: WORKSPACE.id, limit }) as TicketEventRow[];
+    .all({ ticket_id: ticket.id, workspace_id: WORKSPACE.id, limit }) as TicketEventRow[];
   return rows.map(row => ({
     id: row.id,
     ticketId: row.ticket_id,
@@ -1279,9 +1287,8 @@ interface FileChangeRow {
  * invalidates the client query so changes recorded by the agent or CLI in
  * another process stream into the panel without a manual refresh.
  */
-export function listTicketFileChanges(ticketId: string, limit = 200): FileChangeDto[] {
-  // Validate the ticket exists and belongs to the active workspace (throws 404).
-  getTicketRow(ticketId);
+export function listTicketFileChanges(ticketRef: string, limit = 200): FileChangeDto[] {
+  const ticket = getTicketRow(ticketRef);
   const rows = db
     .prepare(
       `SELECT cr.id, cr.ticket_id, cr.objective_id, cr.file_path, cr.label, cr.summary,
@@ -1295,7 +1302,7 @@ export function listTicketFileChanges(ticketId: string, limit = 200): FileChange
         ORDER BY cr.created_at DESC, cr.id DESC
         LIMIT @limit`
     )
-    .all({ ticket_id: ticketId, workspace_id: WORKSPACE.id, limit }) as FileChangeRow[];
+    .all({ ticket_id: ticket.id, workspace_id: WORKSPACE.id, limit }) as FileChangeRow[];
   return rows.map(row => ({
     id: row.id,
     ticketId: row.ticket_id,
@@ -1329,8 +1336,8 @@ interface ArtifactRow {
   updated_at: string;
 }
 
-export function listArtifacts(ticketId: string, limit = 200): ArtifactDto[] {
-  getTicketRow(ticketId);
+export function listArtifacts(ticketRef: string, limit = 200): ArtifactDto[] {
+  const ticket = getTicketRow(ticketRef);
   const rows = db
     .prepare(
       `SELECT id, workspace_id, project_id, ticket_id, objective_id, session_id, delivery_id,
@@ -1340,7 +1347,7 @@ export function listArtifacts(ticketId: string, limit = 200): ArtifactDto[] {
         ORDER BY created_at DESC, id DESC
         LIMIT @limit`
     )
-    .all({ ticket_id: ticketId, workspace_id: WORKSPACE.id, limit }) as ArtifactRow[];
+    .all({ ticket_id: ticket.id, workspace_id: WORKSPACE.id, limit }) as ArtifactRow[];
   return rows.map(row => ({
     id: row.id,
     workspaceId: row.workspace_id,
@@ -1840,9 +1847,17 @@ export const reorderBoardColumn = db.transaction(
 export function listObjectives(ticketId: string): ObjectiveDto[] {
   const rows = db
     .prepare(
-      `SELECT * FROM objectives
-         WHERE ticket_id = ? AND deleted_at IS NULL
-         ORDER BY position ASC`
+      `SELECT o.*,
+         (
+           SELECT s.external_session_id
+             FROM agent_sessions s
+            WHERE s.objective_id = o.id AND s.deleted_at IS NULL
+            ORDER BY s.started_at DESC
+            LIMIT 1
+         ) AS external_session_id
+         FROM objectives o
+        WHERE o.ticket_id = ? AND o.deleted_at IS NULL
+        ORDER BY o.position ASC`
     )
     .all(ticketId) as ObjectiveRow[];
   return rows.map(toObjectiveDto);
@@ -2302,6 +2317,7 @@ function toProfileDto(row: UserRow): ProfileDto {
     avatarUrl: avatarUrlFromMetadata(row.metadata_json),
     kind: row.kind,
     authProvider: 'better-auth',
+    roles: loadActorRoles(),
     createdAt: row.created_at
   };
 }

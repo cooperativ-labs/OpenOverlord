@@ -22,6 +22,20 @@ test('ovld help exits zero without requiring a database', async () => {
   assert.match(result.stdout, /ovld update/);
   assert.match(result.stdout, /ovld setup/);
   assert.match(result.stdout, /ovld agent-setup/);
+  assert.match(result.stdout, /Agents:/);
+  assert.match(result.stdout, /ovld protocol help/);
+});
+
+test('ovld protocol help prints agent lifecycle reference without a backend', async () => {
+  const result = await runOvld({ args: ['protocol', 'help'] });
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  assert.match(result.stdout, /ovld protocol attach --ticket-id/);
+  assert.match(result.stdout, /Agent workflow \(required\)/);
+  assert.match(result.stdout, /resume-follow-up/);
+  assert.match(result.stdout, /auth-status/);
+  assert.doesNotMatch(result.stdout, /pending-tickets/);
+  assert.doesNotMatch(result.stdout, /claim-execution/);
 });
 
 test('ovld rejects unknown commands with a non-zero exit', async () => {

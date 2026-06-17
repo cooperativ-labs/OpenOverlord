@@ -30,3 +30,24 @@ export const DRAG_REGION: CSSProperties = { WebkitAppRegion: 'drag' } as CSSProp
 
 /** Opts an interactive element out of the surrounding drag region. */
 export const NO_DRAG_REGION: CSSProperties = { WebkitAppRegion: 'no-drag' } as CSSProperties;
+
+/**
+ * Sets `data-electron` / `data-mac-desktop` on `<html>` before first paint so
+ * vibrancy-aware styles apply without a flash of opaque chrome.
+ */
+export function applyDesktopChromeDocumentAttributes(): void {
+  if (typeof document === 'undefined') return;
+
+  const { isDesktop, isMacDesktop } = getDesktopChrome();
+  if (isDesktop) {
+    document.documentElement.dataset.electron = '';
+  } else {
+    delete document.documentElement.dataset.electron;
+  }
+
+  if (isMacDesktop) {
+    document.documentElement.dataset.macDesktop = '';
+  } else {
+    delete document.documentElement.dataset.macDesktop;
+  }
+}

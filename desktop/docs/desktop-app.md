@@ -39,6 +39,11 @@ inset lights; in a browser those styles are inert. This stays within the shell's
 ownership of the window baseline and uses only the existing `window.overlord`
 bridge — it does not fork or modify the SPA.
 
+The macOS window also sets `vibrancy: 'sidebar'` with a transparent
+`backgroundColor` so the left sidebar column can show the native sidebar material.
+The SPA sets `data-mac-desktop` on `<html>` and makes only `[data-slot="sidebar-inner"]`
+transparent; main content (`SidebarInset`, setup/auth screens) stays opaque.
+
 A **native context menu** is registered on the renderer's `context-menu` event
 (`registerNativeContextMenu`). Because the renderer is sandboxed with no Node
 access, the shell supplies the OS-native menu: in editable fields it offers
@@ -98,8 +103,23 @@ A minimal, audited surface the SPA **feature-detects** (`if (window.overlord)`):
 | `updates.check()` | check the configured update feed |
 | `updates.install()` | install a downloaded update and relaunch |
 | `updates.onStatus(callback)` | subscribe to update state changes |
+| `quickTask.getHotkey()` | read the registered global quick-task shortcut |
+| `quickTask.setHotkey(accelerator)` | change the global quick-task shortcut |
+| `quickTask.close()` | hide the quick-task capture window |
+| `quickTask.setHeight(height)` / `quickTask.setBounds({ height, barOffsetTop })` | resize the frameless quick-task window |
+| `quickTask.onShown(callback)` | run when the quick-task window is shown (e.g. reset focus) |
 
 No tokens, Node access, or product logic cross this boundary.
+
+## 6.1 Quick task window
+
+The desktop shell registers a global shortcut (default **Cmd+Shift+O** on macOS,
+**Ctrl+Shift+O** elsewhere) that toggles a small always-on-top frameless window
+loading `/quick-task` on the loopback origin. The SPA route renders
+`QuickTaskBar`: a compact objective composer with project picker, agent/model
+selection, optional attachments, and Enter / Cmd+Enter submit semantics. Window
+position and hotkey preference persist in the shell's `settings.json` under the
+app user-data directory.
 
 ## 6. Updates
 
@@ -167,5 +187,5 @@ A verified `--no-sign` arm64 + x64 build with Electron 42.4.0 produces
 - Better Auth login UI in the SPA (loopback stays single-trusted-operator by
   default; in-app auth would use Better Auth session cookies, spawned CLI a
   `USER_TOKEN`).
-- "Install CLI" shim, Tailscale, quick-task/feed windows, connector/plugin
-  auto-install. These remain CLI surfaces or future work.
+- "Install CLI" shim, Tailscale, feed window, connector/plugin auto-install.
+  These remain CLI surfaces or future work.

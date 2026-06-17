@@ -16,6 +16,7 @@ import type {
   ObjectiveState
 } from '../../../shared/contract.ts';
 import { useDeleteObjective, useUpdateObjective } from '../../lib/queries.ts';
+import { useRepositoryMentionOptions } from '../../lib/useRepositoryMentionOptions.ts';
 import { cn } from '../../lib/utils.ts';
 import { InlineEditField } from '../InlineEditField.tsx';
 import { Button, OBJECTIVE_STATE_LABEL } from '../ui.tsx';
@@ -69,6 +70,9 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
   const remove = useDeleteObjective();
   const { catalog, agentConfigs, selection, setSelection, commitLaunchConfig, loaded } =
     useObjectiveAgentSelection(objective);
+  const { mentionPaths, projectMentionOptions, ticketMentionOptions } = useRepositoryMentionOptions(
+    objective.projectId
+  );
   const [isFutureExpanded, setIsFutureExpanded] = useState(false);
 
   const isFuture = objective.state === 'future';
@@ -239,6 +243,9 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
             className="block whitespace-pre-wrap"
             inputClassName="text-sm"
             ariaLabel="Objective instruction"
+            mentionPaths={mentionPaths}
+            projectMentionOptions={projectMentionOptions}
+            ticketMentionOptions={ticketMentionOptions}
             onSave={instructionText =>
               update.mutate({ id: objective.id, body: { instructionText } })
             }

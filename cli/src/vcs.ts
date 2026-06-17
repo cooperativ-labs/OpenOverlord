@@ -9,9 +9,10 @@ import { resolveGlobalDataDir } from './config.js';
  * Client-side VCS change capture.
  *
  * Changed-file reporting must not depend on the agent remembering to enumerate
- * what it changed. Instead the CLI records a baseline of already-dirty paths when
- * a work session begins (`attach` / `resume-follow-up`) and, at `deliver`,
- * computes the run-attributable delta (current changed paths minus baseline).
+ * what it changed. Instead the CLI records a baseline snapshot of dirty paths
+ * (path, status, worktree content hash) when a work session begins (`attach` /
+ * `resume-follow-up`) and, at `deliver`, computes the run-attributable delta:
+ * paths whose worktree state differs from that baseline.
  *
  * VCS is read on the client only — we never send diffs or file contents, just
  * normalized paths and short status codes. Everything here is best-effort: outside
@@ -19,6 +20,18 @@ import { resolveGlobalDataDir } from './config.js';
  */
 
 export type ChangedFile = { filePath: string; vcsStatus: string };
+
+type BaselineFile = {
+  filePath: string;
+  vcsStatus: string;
+  /** `null` means this row came from a legacy path-only baseline. */
+  contentHash: string | null;
+};
+
+type BaselineSnapshot = {
+  capturedAt: string;
+  files: BaselineFile[];
+};
 
 function normalizePath(filePath: string): string {
   return filePath.replace(/\\/g, '/').trim();
@@ -39,6 +52,24 @@ function parsePorcelainLine(line: string): ChangedFile | null {
   }
   const filePath = normalizePath(pathPart);
   return filePath ? { filePath, vcsStatus } : null;
+}
+
+function hashWorktreeFile({
+  workingDirectory,
+  filePath
+}: {
+  workingDirectory: string;
+  filePath: string;
+}): string | null {
+  try {
+    return execFileSync('git', ['hash-object', filePath], {
+      cwd: workingDirectory,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).trim();
+  } catch {
+    return null;
+  }
 }
 
 /** Current changed files from `git status --porcelain`; `[]` when not a git repo. */
@@ -74,47 +105,123 @@ function baselineFilePath({
   return path.join(resolveGlobalDataDir(), 'vcs-baselines', `${key}.json`);
 }
 
-/** Record the baseline set of already-dirty paths for a session's working dir. */
+function snapshotBaselineFiles({
+  workingDirectory,
+  files
+}: {
+  workingDirectory: string;
+  files: ChangedFile[];
+}): BaselineFile[] {
+  return files.map(entry => ({
+    filePath: entry.filePath,
+    vcsStatus: entry.vcsStatus,
+    contentHash: hashWorktreeFile({ workingDirectory, filePath: entry.filePath })
+  }));
+}
+
+/** Record the baseline snapshot for a session's working dir. */
 export function writeBaseline({
   workingDirectory,
   ticketId,
-  paths
+  files
 }: {
   workingDirectory: string;
   ticketId: string;
-  paths: string[];
+  files: ChangedFile[];
 }): void {
   try {
     const target = baselineFilePath({ workingDirectory, ticketId });
     mkdirSync(path.dirname(target), { recursive: true });
-    writeFileSync(target, JSON.stringify({ capturedAt: new Date().toISOString(), paths }));
+    const snapshot: BaselineSnapshot = {
+      capturedAt: new Date().toISOString(),
+      files: snapshotBaselineFiles({ workingDirectory, files })
+    };
+    writeFileSync(target, JSON.stringify(snapshot));
   } catch {
     // Best-effort: a missing baseline just means deliver treats every dirty path
     // as run-attributable, which is safe (errs toward completeness).
   }
 }
 
-/** Read a previously recorded baseline; `[]` when none exists. */
-export function readBaseline({
+function readBaselineSnapshot({
   workingDirectory,
   ticketId
 }: {
   workingDirectory: string;
   ticketId: string;
-}): string[] {
+}): Map<string, BaselineFile> {
   try {
     const target = baselineFilePath({ workingDirectory, ticketId });
-    if (!existsSync(target)) return [];
-    const raw = JSON.parse(readFileSync(target, 'utf8')) as { paths?: unknown };
-    return Array.isArray(raw.paths)
-      ? raw.paths.filter((p): p is string => typeof p === 'string')
-      : [];
+    if (!existsSync(target)) return new Map();
+    const raw = JSON.parse(readFileSync(target, 'utf8')) as {
+      files?: unknown;
+      paths?: unknown;
+    };
+    if (Array.isArray(raw.files)) {
+      const byPath = new Map<string, BaselineFile>();
+      for (const entry of raw.files) {
+        if (
+          typeof entry === 'object' &&
+          entry !== null &&
+          typeof (entry as BaselineFile).filePath === 'string'
+        ) {
+          const file = entry as BaselineFile;
+          byPath.set(file.filePath, {
+            filePath: file.filePath,
+            vcsStatus: typeof file.vcsStatus === 'string' ? file.vcsStatus : 'changed',
+            contentHash: typeof file.contentHash === 'string' ? file.contentHash : null
+          });
+        }
+      }
+      return byPath;
+    }
+    // Legacy path-only baselines cannot detect further edits within the same path.
+    if (Array.isArray(raw.paths)) {
+      const byPath = new Map<string, BaselineFile>();
+      for (const filePath of raw.paths) {
+        if (typeof filePath === 'string') {
+          byPath.set(filePath, { filePath, vcsStatus: 'changed', contentHash: null });
+        }
+      }
+      return byPath;
+    }
+    return new Map();
   } catch {
-    return [];
+    return new Map();
   }
 }
 
-/** Files changed now that were not already dirty when the session began. */
+function isRunAttributableChange({
+  workingDirectory,
+  entry,
+  baseline
+}: {
+  workingDirectory: string;
+  entry: ChangedFile;
+  baseline: Map<string, BaselineFile>;
+}): boolean {
+  const base = baseline.get(entry.filePath);
+  if (!base) return true;
+  if (base.contentHash === null) return false;
+  const currentHash = hashWorktreeFile({ workingDirectory, filePath: entry.filePath });
+  return currentHash !== base.contentHash;
+}
+
+/** Keep only paths whose worktree state differs from the session baseline. */
+export function filterRunAttributableChanges({
+  workingDirectory,
+  ticketId,
+  files
+}: {
+  workingDirectory: string;
+  ticketId: string;
+  files: ChangedFile[];
+}): ChangedFile[] {
+  const baseline = readBaselineSnapshot({ workingDirectory, ticketId });
+  return files.filter(entry => isRunAttributableChange({ workingDirectory, entry, baseline }));
+}
+
+/** Files whose worktree state changed since the session began. */
 export function computeRunDelta({
   workingDirectory,
   ticketId
@@ -122,7 +229,9 @@ export function computeRunDelta({
   workingDirectory: string;
   ticketId: string;
 }): ChangedFile[] {
-  const current = readChangedFiles(workingDirectory);
-  const baseline = new Set(readBaseline({ workingDirectory, ticketId }));
-  return current.filter(entry => !baseline.has(entry.filePath));
+  return filterRunAttributableChanges({
+    workingDirectory,
+    ticketId,
+    files: readChangedFiles(workingDirectory)
+  });
 }

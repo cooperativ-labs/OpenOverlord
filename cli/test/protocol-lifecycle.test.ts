@@ -5,7 +5,12 @@ import test from 'node:test';
 
 import { createServiceContext } from '../dist/src/service/context.js';
 import { addProjectResource, createProject } from '../dist/src/service/projects.js';
-import { attachSession, deliverSession, updateSession } from '../dist/src/service/protocol.js';
+import {
+  attachSession,
+  deliverSession,
+  recordHookEvent,
+  updateSession
+} from '../dist/src/service/protocol.js';
 import { createTicketWithObjectives } from '../dist/src/service/tickets.js';
 
 test('protocol lifecycle: attach → update → deliver', () => {
@@ -107,6 +112,40 @@ test('attach records and clears native external session id', () => {
     .prepare(`SELECT external_session_id FROM agent_sessions WHERE id = ?`)
     .get(attached.session.id) as { external_session_id: string | null };
   assert.equal(sessionRow.external_session_id, null);
+
+  db.close();
+});
+
+test('hook-event persists external session id on the active agent session', () => {
+  const db = new Database(':memory:');
+  db.pragma('foreign_keys = ON');
+  migrateDatabase(db);
+  const ctx = createServiceContext({ db, source: 'protocol' });
+
+  const project = createProject({ ctx, name: 'Hook external session test' });
+  const { ticket, objectives } = createTicketWithObjectives({
+    ctx,
+    projectId: project.id,
+    objectives: [{ objective: 'Capture hook session id' }]
+  });
+  ctx.db.prepare(`UPDATE objectives SET state = 'submitted' WHERE id = ?`).run(objectives[0]?.id);
+
+  const attached = attachSession({ ctx, ticketId: ticket.id, agentIdentifier: 'cursor' });
+
+  recordHookEvent({
+    ctx,
+    ticketId: ticket.displayId,
+    hookType: 'UserPromptSubmit',
+    prompt: 'Follow-up from the harness',
+    sessionKey: attached.sessionKey,
+    externalSessionId: 'cursor-conversation-abc',
+    turnIndex: '1'
+  });
+
+  const sessionRow = ctx.db
+    .prepare(`SELECT external_session_id FROM agent_sessions WHERE id = ?`)
+    .get(attached.session.id) as { external_session_id: string | null };
+  assert.equal(sessionRow.external_session_id, 'cursor-conversation-abc');
 
   db.close();
 });

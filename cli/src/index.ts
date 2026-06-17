@@ -108,7 +108,7 @@ async function dispatchCommand({
       const { runProtocolCommand } = await import('./commands.js');
       const runtime = openCliRuntime();
       try {
-        await runProtocolCommand({ runtime, subcommand, args: rest, stdin });
+        await runProtocolCommand({ runtime, subcommand, args: rest, stdin, primaryCommand });
       } finally {
         runtime.close();
       }

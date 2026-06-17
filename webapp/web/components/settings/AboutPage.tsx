@@ -82,7 +82,8 @@ export function AboutPage({ open }: AboutPageProps) {
         >
           ovld.ai
         </a>
-        . Agent launch, execution targets, and connector setup remain available through the CLI.
+        . Connector setup remains CLI-first; launch defaults for this machine now live under{' '}
+        Execution Targets.
       </p>
     </div>
   );

@@ -18,6 +18,9 @@ import {
   WORKSPACE
 } from './db.ts';
 import { ApiError } from './errors.ts';
+import { requireAdmin } from './rbac.ts';
+import { syncSqlStudioForWorkspace } from './sql-studio-manager.ts';
+import { readSqlStudioEnabled, writeSqlStudioEnabled } from './workspace-settings.ts';
 
 // ---- row shapes ----------------------------------------------------------
 
@@ -40,6 +43,7 @@ function toWorkspaceDto(r: WorkspaceListRow): WorkspaceDto {
     isActive: r.id === WORKSPACE.id,
     projectCount: r.project_count,
     memberCount: r.member_count,
+    sqlStudioEnabled: readSqlStudioEnabled({ workspaceId: r.id }),
     createdAt: r.created_at
   };
 }
@@ -294,24 +298,45 @@ const updateWorkspaceTx = db.transaction((id: string, body: UpdateWorkspaceBody)
     .get(id) as WorkspaceRevisionRow | undefined;
   if (!existing) throw new ApiError(404, 'Workspace not found');
 
-  if (body.name === undefined) return;
-  const name = body.name.trim();
-  if (!name) throw new ApiError(400, 'Workspace name cannot be empty');
-  if (name === existing.name) return;
+  const changed: string[] = [];
 
-  const revision = existing.revision + 1;
-  db.prepare(
-    `UPDATE workspaces SET name = @name, updated_at = @now, revision = @revision WHERE id = @id`
-  ).run({ id, name, now: nowIso(), revision });
+  if (body.name !== undefined) {
+    const name = body.name.trim();
+    if (!name) throw new ApiError(400, 'Workspace name cannot be empty');
+    if (name !== existing.name) {
+      db.prepare(
+        `UPDATE workspaces SET name = @name, updated_at = @now, revision = revision + 1 WHERE id = @id`
+      ).run({ id, name, now: nowIso() });
+      changed.push('name');
+    }
+  }
+
+  if (body.sqlStudioEnabled !== undefined) {
+    requireAdmin();
+    const current = readSqlStudioEnabled({ workspaceId: id });
+    if (body.sqlStudioEnabled !== current) {
+      writeSqlStudioEnabled({ workspaceId: id, enabled: body.sqlStudioEnabled });
+      changed.push('settings_json');
+      if (id === WORKSPACE.id) {
+        syncSqlStudioForWorkspace({ enabled: body.sqlStudioEnabled });
+      }
+    }
+  }
+
+  if (changed.length === 0) return;
+
+  const latest = db
+    .prepare(`SELECT revision FROM workspaces WHERE id = ? AND deleted_at IS NULL`)
+    .get(id) as { revision: number };
 
   recordChange({
     entityType: 'workspace',
     entityId: id,
     operation: 'update',
-    entityRevision: revision,
+    entityRevision: latest.revision,
     workspaceId: id,
     actorWorkspaceUserId: resolveActorForWorkspace(id),
-    changedFields: ['name']
+    changedFields: changed
   });
 });
 
@@ -431,5 +456,6 @@ export function activateWorkspace(id: string): WorkspaceDto[] {
     throw new ApiError(404, 'Workspace not found or no active membership');
   }
   if (!setActiveWorkspace(id)) throw new ApiError(404, 'Workspace not found');
+  syncSqlStudioForWorkspace({ enabled: readSqlStudioEnabled({ workspaceId: id }) });
   return listWorkspaces();
 }

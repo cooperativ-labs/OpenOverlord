@@ -1,7 +1,16 @@
-import { AlertTriangle, CheckCircle2, ChevronDown, FastForward, Loader2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  Copy,
+  FastForward,
+  Loader2
+} from 'lucide-react';
 import { useState } from 'react';
 
 import type { ObjectiveDto } from '../../../shared/contract.ts';
+import { useCopyToClipboard } from '../../lib/hooks/use-copy-to-clipboard.ts';
 import { useUpdateObjective } from '../../lib/queries.ts';
 import { cn } from '../../lib/utils.ts';
 import { InlineEditField } from '../InlineEditField.tsx';
@@ -25,6 +34,7 @@ export function ObjectiveCollapsibleItem({
   index: number;
 }) {
   const update = useUpdateObjective();
+  const { copied, copy } = useCopyToClipboard();
   const [open, setOpen] = useState(false);
 
   const isExecuting = objective.state === 'executing';
@@ -80,9 +90,33 @@ export function ObjectiveCollapsibleItem({
               </div>
             ) : null}
           </CollapsibleTrigger>
+          {objective.externalSessionId ? (
+            <button
+              type="button"
+              aria-label="Copy agent session"
+              title="Copy agent session ID"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+              onClick={async event => {
+                event.preventDefault();
+                event.stopPropagation();
+                await copy(objective.externalSessionId ?? '');
+              }}
+            >
+              {copied ? (
+                <Check className="h-3.5 w-3.5 text-green-600" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+            </button>
+          ) : null}
           <ObjectiveMenuButton objectiveId={objective.id} state={objective.state} />
         </div>
         <CollapsibleContent className="border-b px-3 pb-2 pt-1">
+          {objective.externalSessionId ? (
+            <p className="mb-2 truncate font-mono text-[11px] text-muted-foreground/80">
+              Agent session: {objective.externalSessionId}
+            </p>
+          ) : null}
           <div className="text-sm leading-relaxed text-muted-foreground">
             <InlineEditField
               multiline

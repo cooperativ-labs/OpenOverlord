@@ -143,6 +143,15 @@ export function setActiveWorkspace(id: string): WorkspaceRow | null {
 }
 
 /**
+ * Point request attribution at the workspace user resolved from an
+ * authenticated web session. The web server still has one active workspace at
+ * a time, but the signed-in account should own subsequent mutations.
+ */
+export function setActiveWorkspaceUser(workspaceUserId: string | null): void {
+  ACTOR_WORKSPACE_USER_ID = workspaceUserId;
+}
+
+/**
  * Re-read the active workspace row after it was mutated in place (e.g. a
  * rename) so the `WORKSPACE` live binding — and everything derived from it,
  * like `/api/meta` — reflects the new values.

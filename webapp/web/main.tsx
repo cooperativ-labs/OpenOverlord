@@ -5,14 +5,18 @@ import { RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { AuthGate } from './components/auth/AuthGate.tsx';
 import {
   SystemNotificationProvider,
   SystemNotificationRoot
 } from './components/system-notifications';
 import { ThemeProvider } from './components/theme-provider.tsx';
 import { TooltipProvider } from './components/ui/tooltip.tsx';
+import { applyDesktopChromeDocumentAttributes } from './lib/desktop-chrome.ts';
 import { RealtimeProvider } from './lib/realtime.tsx';
 import { router } from './router.tsx';
+
+applyDesktopChromeDocumentAttributes();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,12 +37,14 @@ createRoot(rootElement).render(
     <ThemeProvider>
       <TooltipProvider>
         <QueryClientProvider client={queryClient}>
-          <SystemNotificationProvider>
-            <RealtimeProvider>
-              <RouterProvider router={router} />
-            </RealtimeProvider>
-            <SystemNotificationRoot />
-          </SystemNotificationProvider>
+          <AuthGate>
+            <SystemNotificationProvider>
+              <RealtimeProvider>
+                <RouterProvider router={router} />
+              </RealtimeProvider>
+              <SystemNotificationRoot />
+            </SystemNotificationProvider>
+          </AuthGate>
         </QueryClientProvider>
       </TooltipProvider>
     </ThemeProvider>

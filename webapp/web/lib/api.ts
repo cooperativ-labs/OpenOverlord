@@ -35,6 +35,7 @@ import type {
   UpdateProfileBody,
   UpdateProjectBody,
   UpdateProjectStatusBody,
+  UpdateTerminalProfileBody,
   UpdateTicketBody,
   UpdateUserTokenBody,
   UpdateWorkspaceBody,
@@ -64,6 +65,7 @@ async function request<T>(
   const isRaw = rawHeaders !== undefined;
   const res = await fetch(url, {
     method,
+    credentials: 'same-origin',
     headers: isRaw
       ? rawHeaders
       : body !== undefined
@@ -212,6 +214,8 @@ export const api = {
       `/api/launch-settings/agents/${encodeURIComponent(agentKey)}`,
       body
     ),
+  updateTerminalProfile: (body: UpdateTerminalProfileBody) =>
+    request<LaunchSettingsDto>('PATCH', '/api/launch-settings/terminal-profile', body),
   getLaunchPreference: (projectId: string) =>
     request<LaunchPreferenceDto>('GET', `/api/projects/${projectId}/launch-preference`),
   updateLaunchPreference: (projectId: string, body: UpdateLaunchPreferenceBody) =>

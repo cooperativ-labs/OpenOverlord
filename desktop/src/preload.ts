@@ -35,6 +35,28 @@ const api = {
     ipcRenderer.invoke('overlord:open-external', url),
   /** Reveal a path in the OS file manager. */
   revealInFinder: (path: string): Promise<boolean> => ipcRenderer.invoke('overlord:reveal', path),
+  quickTask: {
+    getHotkey: (): Promise<{ accelerator: string; defaultAccelerator: string }> =>
+      ipcRenderer.invoke('overlord:quick-task:get-hotkey'),
+    setHotkey: (
+      accelerator: string
+    ): Promise<{ ok: boolean; accelerator: string; error?: string }> =>
+      ipcRenderer.invoke('overlord:quick-task:set-hotkey', accelerator),
+    close: (): Promise<void> => ipcRenderer.invoke('overlord:quick-task:close'),
+    setHeight: (height: number): Promise<void> =>
+      ipcRenderer.invoke('overlord:quick-task:set-height', height),
+    setBounds: (args: { height: number; barOffsetTop: number }): Promise<void> =>
+      ipcRenderer.invoke('overlord:quick-task:set-bounds', args),
+    onShown: (callback: () => void): (() => void) => {
+      const listener = () => {
+        callback();
+      };
+      ipcRenderer.on('overlord:quick-task-shown', listener);
+      return () => {
+        ipcRenderer.removeListener('overlord:quick-task-shown', listener);
+      };
+    }
+  },
   updates: {
     getStatus: (): Promise<DesktopUpdateStatus> =>
       ipcRenderer.invoke('overlord:updates:get-status'),

@@ -1,5 +1,4 @@
-import path from 'node:path';
-
+import { projectTmpDir } from './project-tmp.js';
 import {
   appleScriptKeystrokeClause,
   parseTerminalLaunchChord,
@@ -36,7 +35,7 @@ function appleScriptString(value: string): string {
     `"${segment.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
   const segments = value.split(/\r\n|\r|\n/);
   if (segments.length === 1) return literal(value);
-  return segments.map(literal).join(' & linefeed & ');
+  return `(${segments.map(literal).join(' & linefeed & ')})`;
 }
 
 /** Map a configured launcher value to a built-in launcher, or null for a raw prefix. */
@@ -63,7 +62,7 @@ export function extractAppNameFromLauncher(launcher: string): string | null {
 
 /** The TMPDIR-family environment Overlord pins to the project `.overlord/tmp/`. */
 export function tmpEnvFor(workingDirectory: string): Record<string, string> {
-  const tmpDir = path.join(workingDirectory, '.overlord', 'tmp');
+  const tmpDir = projectTmpDir(workingDirectory);
   return { TMPDIR: tmpDir, TMP: tmpDir, TEMP: tmpDir, OVERLORD_TMPDIR: tmpDir };
 }
 
@@ -139,6 +138,31 @@ function buildItermAppleScript({
     return lines.join('\n');
   }
 
+  const splitKind = placement === 'chord' ? resolveItermSplitKind(chord) : null;
+  if (splitKind === 'keystroke' && chordClause) {
+    return [
+      'set overlordHadItermWindow to false',
+      'tell application "iTerm"',
+      'activate',
+      'if (count of windows) = 0 then',
+      'set newWindow to (create window with default profile)',
+      `tell current session of newWindow to write text ${appleScriptString(inner)}`,
+      'else',
+      'set overlordHadItermWindow to true',
+      'end if',
+      'end tell',
+      'if overlordHadItermWindow then',
+      'tell application "System Events"',
+      chordClause,
+      'end tell',
+      'delay 0.2',
+      'tell application "iTerm"',
+      `tell current session of current window to write text ${appleScriptString(inner)}`,
+      'end tell',
+      'end if'
+    ].join('\n');
+  }
+
   lines.push(
     'if (count of windows) = 0 then',
     'set newWindow to (create window with default profile)',
@@ -153,25 +177,14 @@ function buildItermAppleScript({
       `tell current session to write text ${appleScriptString(inner)}`
     );
   } else {
-    const splitKind = resolveItermSplitKind(chord);
-    if (splitKind === 'keystroke' && chordClause) {
-      lines.push(
-        'tell application "System Events"',
-        chordClause,
-        'end tell',
-        'delay 0.2',
-        `tell current session to write text ${appleScriptString(inner)}`
-      );
-    } else {
-      const splitVerb = splitKind === 'horizontal' ? 'horizontally' : 'vertically';
-      lines.push(
-        'tell current session',
-        `split ${splitVerb} with default profile`,
-        'end tell',
-        'tell second session of current tab',
-        `write text ${appleScriptString(inner)}`
-      );
-    }
+    const splitVerb = splitKind === 'horizontal' ? 'horizontally' : 'vertically';
+    lines.push(
+      'tell current session',
+      `split ${splitVerb} with default profile`,
+      'end tell',
+      'tell second session of current tab',
+      `write text ${appleScriptString(inner)}`
+    );
   }
 
   lines.push('end tell', 'end if', 'end tell');

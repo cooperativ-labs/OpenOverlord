@@ -162,3 +162,28 @@
 *::-webkit-scrollbar-track {
   background: transparent;
 }
+
+html[data-electron] .electron-drag-region {
+  -webkit-app-region: drag;
+}
+
+html[data-electron] .electron-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* macOS desktop: Electron window vibrancy shows through the sidebar column. */
+html[data-mac-desktop] body {
+  background: transparent;
+}
+
+html[data-mac-desktop] [data-slot='sidebar-inner'] {
+  background: transparent;
+}
+
+html[data-quick-task],
+html[data-quick-task] body,
+html[data-quick-task] #root {
+  height: auto;
+  overflow: visible;
+  background: transparent;
+}

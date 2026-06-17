@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../../cli/src/config.ts';
 import { ServiceError } from '../../src/service/errors.ts';
 
+import { authNodeHandler, requireAuthenticatedSession } from './auth.ts';
 import { DATABASE_PATH, WORKSPACE } from './db.ts';
 import {
   getAgentCatalog,
@@ -66,7 +67,11 @@ import {
   runnerStatus,
   updateRunnerRequestStatus
 } from './runner.ts';
-import { startSqlStudio } from './sql-studio.ts';
+import {
+  getSqlStudioState,
+  initSqlStudioManager,
+  syncSqlStudioForWorkspace
+} from './sql-studio-manager.ts';
 import {
   deleteObjectiveAttachment,
   listObjectiveAttachments,
@@ -76,6 +81,7 @@ import {
   uploadObjectiveAttachment,
   uploadUserImage
 } from './storage.ts';
+import { readSqlStudioEnabled } from './workspace-settings.ts';
 import {
   activateWorkspace,
   completeInitialSetup,
@@ -105,18 +111,29 @@ const bindHost = process.env.OVERLORD_WEB_HOST ?? config.webHost;
 const bindPort = Number(process.env.OVERLORD_WEB_PORT ?? config.webPort);
 const sqlStudioHost = process.env.OVERLORD_SQL_STUDIO_HOST ?? config.sqlStudioHost;
 const sqlStudioPort = Number(process.env.OVERLORD_SQL_STUDIO_PORT ?? config.sqlStudioPort);
-const sqlStudio = startSqlStudio({
-  enabled: process.env.OVERLORD_SQL_STUDIO_ENABLED
-    ? process.env.OVERLORD_SQL_STUDIO_ENABLED === 'true'
-    : config.sqlStudioEnabled,
-  binary: process.env.OVERLORD_SQL_STUDIO_BINARY ?? config.sqlStudioBinary,
+const sqlStudioBinary = process.env.OVERLORD_SQL_STUDIO_BINARY ?? config.sqlStudioBinary;
+
+initSqlStudioManager({
+  binary: sqlStudioBinary,
   host: sqlStudioHost,
   port: sqlStudioPort,
   databasePath: DATABASE_PATH
 });
 
+const envSqlStudioEnabled =
+  process.env.OVERLORD_SQL_STUDIO_ENABLED === 'true'
+    ? true
+    : process.env.OVERLORD_SQL_STUDIO_ENABLED === 'false'
+      ? false
+      : null;
+
+syncSqlStudioForWorkspace({
+  enabled: envSqlStudioEnabled ?? readSqlStudioEnabled({ workspaceId: WORKSPACE.id })
+});
+
 const app = express();
 app.use(cors());
+app.all('/api/auth/*', authNodeHandler);
 app.use(express.json());
 
 // Small wrapper so handlers can throw ApiError / Error and get a clean response.
@@ -137,6 +154,8 @@ function handle(fn: (req: Request, res: Response) => unknown, options: { mutates
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
+app.use('/api', requireAuthenticatedSession);
+
 app.get(
   '/api/meta',
   handle(() => ({
@@ -150,10 +169,7 @@ app.get(
       port: bindPort,
       url: `http://${bindHost === '0.0.0.0' ? '127.0.0.1' : bindHost}:${bindPort}`
     },
-    sqlStudio: {
-      enabled: Boolean(sqlStudio.url),
-      url: sqlStudio.url
-    },
+    sqlStudio: getSqlStudioState(),
     // Capabilities scoped to what this build supports. Launching queues
     // execution requests for a runner; execution-target management remains
     // CLI-only.
@@ -162,7 +178,7 @@ app.get(
       tickets: true,
       objectives: true,
       realtime: true,
-      sqlStudio: Boolean(sqlStudio.url),
+      sqlStudio: getSqlStudioState().enabled,
       launchAgents: true,
       executionTargets: false
     }

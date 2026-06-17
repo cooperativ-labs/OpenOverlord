@@ -10,7 +10,7 @@ type SqlStudioConfig = {
   databasePath: string;
 };
 
-type SqlStudioHandle = {
+export type SqlStudioHandle = {
   url: string | null;
   stop: () => void;
 };
@@ -90,9 +90,6 @@ export function startSqlStudio(config: SqlStudioConfig): SqlStudioHandle {
       child.kill('SIGTERM');
     }
   };
-  process.once('SIGINT', stop);
-  process.once('SIGTERM', stop);
-  process.once('exit', stop);
 
   return { url, stop };
 }

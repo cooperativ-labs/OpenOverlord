@@ -1,14 +1,9 @@
-import { type ComponentPropsWithoutRef, useMemo } from 'react';
+import { type ComponentPropsWithoutRef } from 'react';
 
+import { useRepositoryMentionOptions } from '@/lib/useRepositoryMentionOptions.ts';
 import { cn } from '@/lib/utils';
 
-import { useProjectRepository, useProjects, useTickets } from '../lib/queries.ts';
-
-import {
-  MentionableTextarea,
-  type ProjectMentionOption,
-  type TicketMentionOption
-} from './MentionableTextarea.tsx';
+import { MentionableTextarea } from './MentionableTextarea.tsx';
 
 // Mirrors the app Textarea chrome (see components/ui/textarea.tsx) so a mention
 // field is visually indistinguishable from a plain one.
@@ -38,32 +33,8 @@ export function RepositoryMentionTextarea({
   className,
   ...props
 }: RepositoryMentionTextareaProps) {
-  const repository = useProjectRepository(projectId, null);
-  const projects = useProjects();
-  const tickets = useTickets(projectId);
-
-  const mentionPaths = useMemo(
-    () =>
-      (repository.data?.entries ?? [])
-        .filter(entry => entry.type === 'file')
-        .map(entry => entry.path),
-    [repository.data]
-  );
-
-  const projectMentionOptions = useMemo<ProjectMentionOption[]>(
-    () => (projects.data ?? []).map(project => ({ id: project.id, name: project.name })),
-    [projects.data]
-  );
-
-  const ticketMentionOptions = useMemo<TicketMentionOption[]>(
-    () =>
-      (tickets.data ?? []).map(ticket => ({
-        id: ticket.id,
-        displayId: ticket.displayId,
-        title: ticket.title
-      })),
-    [tickets.data]
-  );
+  const { mentionPaths, projectMentionOptions, ticketMentionOptions } =
+    useRepositoryMentionOptions(projectId);
 
   return (
     <MentionableTextarea

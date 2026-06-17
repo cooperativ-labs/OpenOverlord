@@ -103,6 +103,7 @@ Requirements:
 
 - Fetch or assemble ticket context before launching.
 - Write large context payloads to `.overlord/tmp/` when a project directory is known.
+- Opportunistically prune stale `.overlord/tmp/` entries before writing new launch scratch files.
 - Export `TMPDIR`, `TMP`, `TEMP`, and `OVERLORD_TMPDIR` to the project `.overlord/tmp/`.
 - Pass concise prompt text or context-file references to the agent.
 - Preserve model/thinking/flags.

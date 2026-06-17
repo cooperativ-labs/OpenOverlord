@@ -23,6 +23,7 @@ import type {
   UpdateProfileBody,
   UpdateProjectBody,
   UpdateProjectStatusBody,
+  UpdateTerminalProfileBody,
   UpdateTicketBody,
   UpdateUserTokenBody,
   UpdateWorkspaceBody
@@ -516,6 +517,14 @@ export function useUpdateAgentLaunchConfig() {
   return useMutation({
     mutationFn: ({ agentKey, body }: { agentKey: string; body: UpdateAgentLaunchConfigBody }) =>
       api.updateAgentLaunchConfig(agentKey, body),
+    onSuccess: data => qc.setQueryData(keys.launchSettings, data)
+  });
+}
+
+export function useUpdateTerminalProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateTerminalProfileBody) => api.updateTerminalProfile(body),
     onSuccess: data => qc.setQueryData(keys.launchSettings, data)
   });
 }

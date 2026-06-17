@@ -6,7 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { LoadingButton } from '@/components/ui/loading-button';
-import { useUpdateWorkspace } from '@/lib/queries';
+import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
+import { useMeta, useProfile, useUpdateWorkspace } from '@/lib/queries';
 
 import type { WorkspaceDto } from '../../../../shared/contract.ts';
 
@@ -17,11 +19,17 @@ type GeneralPageProps = {
 
 export function GeneralPage({ open, workspace }: GeneralPageProps) {
   const updateWorkspace = useUpdateWorkspace();
+  const profile = useProfile();
+  const meta = useMeta();
+  const isAdmin = (profile.data?.roles ?? []).includes('ADMIN');
   const [name, setName] = useState(workspace.name);
   const [savedName, setSavedName] = useState(workspace.name);
   const [nameSaveState, setNameSaveState] = useState<ButtonLoadingState>('default');
   const [nameError, setNameError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [sqlStudioEnabled, setSqlStudioEnabled] = useState(workspace.sqlStudioEnabled);
+  const [sqlStudioError, setSqlStudioError] = useState<string | null>(null);
+  const [sqlStudioPending, setSqlStudioPending] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -30,6 +38,9 @@ export function GeneralPage({ open, workspace }: GeneralPageProps) {
     setNameSaveState('default');
     setNameError(null);
     setCopied(false);
+    setSqlStudioEnabled(workspace.sqlStudioEnabled);
+    setSqlStudioError(null);
+    setSqlStudioPending(false);
   }, [open, workspace]);
 
   async function handleSaveName() {
@@ -57,6 +68,25 @@ export function GeneralPage({ open, workspace }: GeneralPageProps) {
       setTimeout(() => setCopied(false), 2000);
     } catch {
       /* clipboard unavailable */
+    }
+  }
+
+  async function handleSqlStudioToggle(next: boolean) {
+    setSqlStudioPending(true);
+    setSqlStudioError(null);
+    const previous = sqlStudioEnabled;
+    setSqlStudioEnabled(next);
+
+    try {
+      await updateWorkspace.mutateAsync({
+        id: workspace.id,
+        body: { sqlStudioEnabled: next }
+      });
+    } catch (error) {
+      setSqlStudioEnabled(previous);
+      setSqlStudioError(error instanceof Error ? error.message : 'Failed to update SQL Studio.');
+    } finally {
+      setSqlStudioPending(false);
     }
   }
 
@@ -126,6 +156,49 @@ export function GeneralPage({ open, workspace }: GeneralPageProps) {
           Stable identifier used by the CLI and protocol surfaces.
         </p>
       </div>
+
+      {isAdmin ? (
+        <>
+          <Separator />
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-medium">SQL Studio</h3>
+              <p className="text-sm text-muted-foreground">
+                Launch a local database browser for this workspace&apos;s SQLite database.
+              </p>
+            </div>
+            <div className="flex max-w-lg items-center justify-between gap-4 rounded-lg border p-4">
+              <div className="space-y-1">
+                <Label htmlFor="workspace-sql-studio-toggle">Enable SQL Studio</Label>
+                <p className="text-xs text-muted-foreground">
+                  Requires the <code className="font-mono">sql-studio</code> binary on the server
+                  host. Keep disabled on shared or production instances.
+                </p>
+                {meta.data?.sqlStudio.url ? (
+                  <p className="text-xs text-muted-foreground">
+                    Running at{' '}
+                    <a
+                      href={meta.data.sqlStudio.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono underline-offset-4 hover:underline"
+                    >
+                      {meta.data.sqlStudio.url}
+                    </a>
+                  </p>
+                ) : null}
+              </div>
+              <Switch
+                id="workspace-sql-studio-toggle"
+                checked={sqlStudioEnabled}
+                disabled={sqlStudioPending}
+                onCheckedChange={next => void handleSqlStudioToggle(next)}
+              />
+            </div>
+            {sqlStudioError ? <p className="text-xs text-destructive">{sqlStudioError}</p> : null}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

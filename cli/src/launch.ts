@@ -1,8 +1,9 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { resolveAgentBinary } from './agent-binaries.js';
+import { ensureProjectTmpDir, pruneStaleProjectTmp } from './project-tmp.js';
 import type { CliRuntime } from './runtime.js';
 import {
   type LaunchExecution,
@@ -137,8 +138,8 @@ export async function buildLaunchPlan({
   options: LaunchOptions;
 }): Promise<LaunchPlan> {
   const context = await loadTicketContext({ runtime, ticketId: options.ticketId });
-  const tmpDir = path.join(options.workingDirectory, '.overlord', 'tmp');
-  mkdirSync(tmpDir, { recursive: true });
+  pruneStaleProjectTmp({ workingDirectory: options.workingDirectory, create: true });
+  const tmpDir = ensureProjectTmpDir(options.workingDirectory);
   const contextFile = path.join(
     tmpDir,
     `ticket-${context.displayId.replace(/[^a-zA-Z0-9_-]/g, '-')}.md`

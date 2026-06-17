@@ -128,6 +128,66 @@ function getLatestSessionByExternalId({
     .get(ctx.workspace.id, ticketId, externalSessionId) as SessionRow | undefined;
 }
 
+function getLatestSessionForObjective({
+  ctx,
+  objectiveId,
+  openOnly = false
+}: {
+  ctx: ServiceContext;
+  objectiveId: string;
+  openOnly?: boolean;
+}): SessionRow | undefined {
+  const endedFilter = openOnly ? 'AND ended_at IS NULL' : '';
+  return ctx.db
+    .prepare(
+      `SELECT id, ticket_id, objective_id, phase, delivery_state, ended_at, external_session_id
+       FROM agent_sessions
+       WHERE workspace_id = ? AND objective_id = ? AND deleted_at IS NULL ${endedFilter}
+       ORDER BY started_at DESC LIMIT 1`
+    )
+    .get(ctx.workspace.id, objectiveId) as SessionRow | undefined;
+}
+
+function persistExternalSessionId({
+  ctx,
+  session,
+  externalSessionId,
+  ticket
+}: {
+  ctx: ServiceContext;
+  session: SessionRow;
+  externalSessionId: string;
+  ticket: TicketSummary;
+}): void {
+  if (session.external_session_id === externalSessionId) return;
+
+  const now = nowIso();
+  ctx.db
+    .prepare(
+      `UPDATE agent_sessions SET external_session_id = ?, updated_at = ?, revision = revision + 1
+       WHERE id = ?`
+    )
+    .run(externalSessionId, now, session.id);
+
+  const revision = (
+    ctx.db.prepare(`SELECT revision FROM agent_sessions WHERE id = ?`).get(session.id) as
+      | { revision: number }
+      | undefined
+  )?.revision;
+
+  recordChange({
+    ctx,
+    entityType: 'agent_session',
+    entityId: session.id,
+    operation: 'update',
+    entityRevision: revision ?? null,
+    projectId: ticket.projectId,
+    ticketId: ticket.id,
+    objectiveId: session.objective_id,
+    changedFields: ['external_session_id']
+  });
+}
+
 function assemblePromptContext({
   ticket,
   objective,
@@ -508,13 +568,22 @@ export function recordHookEvent({
 
   const ticket = getTicketSummary({ ctx, ticketId });
   const objectives = listObjectives({ ctx, ticketId: ticket.id });
-  const { objective, session } = resolveFollowUpObjective({
+  let { objective, session } = resolveFollowUpObjective({
     ctx,
     ticket,
     objectives,
     sessionKey: sessionKey ?? null,
     externalSessionId: externalSessionId ?? null
   });
+
+  if (!session && sessionKey) {
+    session = getSessionByKeyMaybeEnded(ctx, sessionKey, { includeEnded: true });
+  }
+
+  if (!session && objective && ['executing', 'pending_delivery'].includes(objective.state)) {
+    session = getLatestSessionForObjective({ ctx, objectiveId: objective.id, openOnly: true });
+  }
+
   const hash = promptHash(trimmedPrompt);
   const dedupeParts = [
     hookType,
@@ -575,6 +644,10 @@ export function recordHookEvent({
       idempotencyKey,
       now
     );
+
+  if (externalSessionId && session) {
+    persistExternalSessionId({ ctx, session, externalSessionId, ticket });
+  }
 
   return { eventId, objectiveId: objective?.id ?? null, sessionId: session?.id ?? null };
 }

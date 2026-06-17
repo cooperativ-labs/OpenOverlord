@@ -1,4 +1,4 @@
-import { ChevronsUpDown, Monitor, Moon, Settings, Sun } from 'lucide-react';
+import { ChevronsUpDown, LogOut, Monitor, Moon, Settings, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
 import type { SettingsNavSection } from '@/components/settings/SettingsModal';
@@ -21,6 +21,7 @@ import {
   SidebarMenuItem,
   useSidebar
 } from '@/components/ui/sidebar';
+import { authClient } from '@/lib/auth-client';
 import { useMeta, useProfile } from '@/lib/queries';
 
 type NavUserProps = {
@@ -117,6 +118,16 @@ export function NavUser({ onOpenSettings }: NavUserProps) {
                   </DropdownMenuItem>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={async () => {
+                  await authClient.signOut();
+                  window.location.reload();
+                }}
+              >
+                <LogOut />
+                Sign out
+              </DropdownMenuItem>
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>

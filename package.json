@@ -1,6 +1,6 @@
 {
   "name": "overlord",
-  "version": "0.2606171148.0",
+  "version": "0.2606171315.0",
   "description": "Open-source management and coordination layer for AI coding agents",
   "type": "module",
   "private": true,
@@ -29,7 +29,7 @@
   "scripts": {
     "install:all": "yarn install && yarn --cwd webapp install",
     "setup": "yarn install && yarn build && yarn db:start && yarn db:codegen && yarn install",
-    "new": "rm -rf node_modules cli/node_modules webapp/node_modules rm -rf dist webapp/dist webapp/dist-server desktop/dist-electron && yarn install",
+    "new": "rm -rf node_modules cli/node_modules webapp/node_modules rm -rf dist webapp/dist webapp/dist-server desktop/dist-electron && yarn install && yarn --cwd webapp install",
     "dev": "yarn dev:webapp",
     "dev:webapp": "yarn workspace @overlord/webapp dev",
     "dev:server": "yarn workspace @overlord/webapp dev:server",

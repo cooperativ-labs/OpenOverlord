@@ -26,6 +26,16 @@ declare global {
     chooseDirectory: () => Promise<string | null>;
     openExternal: (url: string) => Promise<boolean>;
     revealInFinder: (path: string) => Promise<boolean>;
+    quickTask?: {
+      getHotkey: () => Promise<{ accelerator: string; defaultAccelerator: string }>;
+      setHotkey: (
+        accelerator: string
+      ) => Promise<{ ok: boolean; accelerator: string; error?: string }>;
+      close: () => Promise<void>;
+      setHeight: (height: number) => Promise<void>;
+      setBounds?: (args: { height: number; barOffsetTop: number }) => Promise<void>;
+      onShown: (callback: () => void) => () => void;
+    };
     updates: {
       getStatus: () => Promise<DesktopUpdateStatus>;
       check: () => Promise<DesktopUpdateStatus>;

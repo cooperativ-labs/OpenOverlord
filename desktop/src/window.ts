@@ -20,6 +20,10 @@ const isMac = process.platform === 'darwin';
  * title bar — there is no separate "Overlord" chrome above the UI. The webapp
  * feature-detects the shell (`window.overlord`) to make that strip draggable and
  * to reserve space for the inset traffic lights.
+ *
+ * macOS also uses `vibrancy: 'sidebar'` with a transparent window background so
+ * the SPA's translucent sidebar column shows the native sidebar material. Main
+ * content stays opaque via `bg-background` in the renderer.
  */
 export function createWindow(preloadPath: string): BrowserWindow {
   const window = new BrowserWindow({
@@ -27,13 +31,14 @@ export function createWindow(preloadPath: string): BrowserWindow {
     height: 860,
     minWidth: 720,
     minHeight: 480,
-    backgroundColor: '#0b0b0f',
+    backgroundColor: isMac ? '#00000000' : '#0b0b0f',
     show: false,
     title: 'Overlord',
     ...(isMac
       ? {
           titleBarStyle: 'hiddenInset' as const,
-          trafficLightPosition: { x: 14, y: 14 }
+          trafficLightPosition: { x: 14, y: 14 },
+          vibrancy: 'sidebar' as const
         }
       : {}),
     webPreferences: {

@@ -1,6 +1,6 @@
 {
   "name": "Overlord",
-  "version": "0.2606171148.0",
+  "version": "0.2606171315.0",
   "private": true,
   "author": "Cooperativ Labs",
   "description": "Optional Electron desktop shell that wraps the OpenOverlord web control center (the @overlord/webapp SPA + REST/realtime server).",

@@ -69,6 +69,23 @@ test('iTerm2 chord placement splits vertically for cmd+d', () => {
   assert.ok(script.includes('tell second session of current tab'));
 });
 
+test('iTerm2 custom chord sends System Events outside the iTerm tell block', () => {
+  const exec = resolveLaunchExecution({
+    ...AGENT,
+    terminalLauncher: 'iTerm2',
+    terminalLaunchPlacement: 'chord',
+    terminalLaunchChord: 'cmd+k'
+  });
+  const script = exec.args[1] ?? '';
+  const exitIterm = script.indexOf('end tell\nif overlordHadItermWindow then');
+  const systemEvents = script.indexOf('tell application "System Events"');
+  const reenterIterm = script.indexOf('tell application "iTerm"', systemEvents + 1);
+  assert.ok(exitIterm > -1);
+  assert.ok(systemEvents > exitIterm);
+  assert.ok(reenterIterm > systemEvents);
+  assert.ok(script.includes('keystroke "k" using {command down}'));
+});
+
 test('Terminal tab placement opens in the front window', () => {
   const exec = resolveLaunchExecution({
     ...AGENT,
@@ -143,6 +160,7 @@ test('multi-line agent prompts are valid AppleScript expressions', () => {
   });
   const script = exec.args[1] ?? '';
   assert.ok(script.includes(' & linefeed & '));
+  assert.ok(script.includes('write text ("cd '));
   assert.ok(script.includes('"if this prompt leaks, AppleScript fails"'));
 });
 

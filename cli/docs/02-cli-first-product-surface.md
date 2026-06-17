@@ -151,6 +151,8 @@ Requirements:
 Requirements:
 
 - Reserved for context files, connector hook diagnostics, temporary settings, and launch scratch files.
+- CLI commands that run inside a linked project should opportunistically prune stale `.overlord/tmp/` entries instead of letting the directory grow without bound.
+- Pruning must be best-effort and age-based so recent follow-up context remains available across short ticket-review windows.
 - Must be gitignored by generated `.gitignore` suggestions.
 - Do not gitignore the whole `.overlord/` directory by default because `project.json` is durable metadata.
 

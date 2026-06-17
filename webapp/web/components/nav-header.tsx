@@ -16,14 +16,18 @@ import { TicketSearch } from './nav-header/TicketSearch.tsx';
  * opt out so they stay clickable.
  */
 export function NavHeader() {
-  const { isDesktop } = getDesktopChrome();
+  const { isDesktop, isMacDesktop } = getDesktopChrome();
   const handleHardRefresh = () => {
     window.location.reload();
   };
 
   return (
     <header
-      className="flex h-11 shrink-0 flex-row items-center justify-between gap-2 border-b border-border bg-sidebar px-4 py-1 text-sidebar-foreground"
+      className={
+        isMacDesktop
+          ? 'flex h-11 shrink-0 flex-row items-center justify-between gap-2 border-b border-border bg-background px-4 py-1 text-foreground'
+          : 'flex h-11 shrink-0 flex-row items-center justify-between gap-2 border-b border-border bg-sidebar px-4 py-1 text-sidebar-foreground'
+      }
       style={isDesktop ? DRAG_REGION : undefined}
     >
       <div

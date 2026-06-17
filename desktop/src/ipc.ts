@@ -1,5 +1,13 @@
-import { type BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 
+import {
+  DEFAULT_QUICK_TASK_HOTKEY,
+  getStoredQuickTaskHotkey,
+  hideQuickTaskWindow,
+  registerQuickTaskHotkey,
+  setQuickTaskWindowBounds,
+  setQuickTaskWindowSize
+} from './quick-task-window.js';
 import type { DesktopUpdater } from './updater.js';
 
 /**
@@ -8,7 +16,15 @@ import type { DesktopUpdater } from './updater.js';
  * capability (file picking, opening things in the OS) — no product logic, no DB
  * access. The SPA feature-detects these; it never requires them.
  */
-export function registerIpc(getWindow: () => BrowserWindow | null, updater: DesktopUpdater): void {
+export function registerIpc({
+  getWindow,
+  updater,
+  preloadPath
+}: {
+  getWindow: () => BrowserWindow | null;
+  updater: DesktopUpdater;
+  preloadPath: string;
+}): void {
   // Pick a local directory (e.g. to link a project to a checkout).
   ipcMain.handle('overlord:choose-directory', async () => {
     const window = getWindow();
@@ -48,4 +64,49 @@ export function registerIpc(getWindow: () => BrowserWindow | null, updater: Desk
   ipcMain.handle('overlord:updates:get-status', () => updater.getStatus());
   ipcMain.handle('overlord:updates:check', () => updater.checkForUpdates());
   ipcMain.handle('overlord:updates:install', () => updater.installDownloadedUpdate());
+
+  ipcMain.handle('overlord:quick-task:get-hotkey', () => ({
+    accelerator: getStoredQuickTaskHotkey(),
+    defaultAccelerator: DEFAULT_QUICK_TASK_HOTKEY
+  }));
+
+  ipcMain.handle('overlord:quick-task:set-hotkey', (_event, accelerator: unknown) => {
+    if (typeof accelerator !== 'string') {
+      return { ok: false, accelerator: getStoredQuickTaskHotkey(), error: 'Invalid accelerator' };
+    }
+    return registerQuickTaskHotkey({ preloadPath, accelerator });
+  });
+
+  ipcMain.handle('overlord:quick-task:close', event => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (window) {
+      window.hide();
+    } else {
+      hideQuickTaskWindow();
+    }
+    return true;
+  });
+
+  ipcMain.handle('overlord:quick-task:set-height', (_event, height: unknown) => {
+    if (typeof height === 'number' && Number.isFinite(height)) {
+      setQuickTaskWindowSize(height);
+    }
+    return true;
+  });
+
+  ipcMain.handle(
+    'overlord:quick-task:set-bounds',
+    (_event, args: { height: number; barOffsetTop: number }) => {
+      if (
+        args &&
+        typeof args.height === 'number' &&
+        Number.isFinite(args.height) &&
+        typeof args.barOffsetTop === 'number' &&
+        Number.isFinite(args.barOffsetTop)
+      ) {
+        setQuickTaskWindowBounds(args);
+      }
+      return true;
+    }
+  );
 }
