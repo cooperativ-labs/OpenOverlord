@@ -65,7 +65,21 @@ ovld protocol deliver --session-key <sessionKey> \
   --change-rationales-json '[{"label":"Short reviewer title","file_path":"path/to/file.ts","summary":"What changed.","why":"Why it changed.","impact":"Behavioral impact.","hunks":[{"header":"@@ -10,6 +10,14 @@"}]}]'
 ```
 
-Use `--payload-json` when the full delivery object fits comfortably inline. For larger delivery payloads, prefer `--payload-file -` and stream the full JSON on stdin so no scratch file needs to be created or removed. If you use `--payload-file`, `--artifacts-file`, or `--change-rationales-file` with a real path, treat that file as ephemeral scratch data under `.overlord/tmp` and remove it after delivery.
+Use `--payload-json` when the full delivery object fits comfortably inline (roughly under 8 KB). Larger inline `--*-json` values are **rejected** — use `--payload-file -`, `--change-rationales-file -`, or `--artifacts-file -` and stream JSON on stdin so no scratch file needs to be created or removed. If you use `--payload-file`, `--artifacts-file`, or `--change-rationales-file` with a real path, treat that file as ephemeral scratch data under `.overlord/tmp` and remove it after delivery.
+
+When delivery includes many change rationales, keep `--summary` inline and pipe rationales on stdin:
+
+```bash
+ovld protocol deliver --session-key <sessionKey> --ticket-id $TICKET_ID \
+  --summary "Narrative: what you did and next steps." \
+  --change-rationales-file - <<'EOF'
+[
+  {"label":"Add backoff","file_path":"lib/api.ts","summary":"Added retry.","why":"Transient failures.","impact":"Retries 3x."}
+]
+EOF
+```
+
+If `heartbeat` succeeds but `deliver` or `update` fails, the session is likely fine — retry with large JSON on stdin instead of inline `--*-json`.
 
 Changed files are captured for you: the CLI records a VCS baseline at attach and, at deliver, reports the run-attributable delta (current `git status` minus baseline) automatically — you do not pass `--changed-files-json`. Deliver rejects with a `missing_rationale` error listing any changed file that still needs a rationale; coverage is aggregated per objective. If the run changed no files, declare it explicitly:
 
@@ -86,7 +100,7 @@ ovld protocol revert --objective-id <objective-id>
 
 ## Record Change Rationales
 
-These are structured protocol payloads that Overlord stores as first-class rows in the `file_changes` table. Prefer inline JSON or the dedicated command below. Use `--payload-json` for compact full delivery payloads, or `--payload-file -` when the JSON is larger or quote-sensitive so summary, artifacts, and change rationales stay in one JSON document without creating a temporary file.
+These are structured protocol payloads that Overlord stores as first-class rows in the `file_changes` table. Inline `--change-rationales-json` is fine for a few entries; larger arrays are **rejected** — use `--change-rationales-file -` and stream JSON on stdin. The same ~8 KB inline limit applies to `--payload-json` and other `--*-json` flags.
 
 **Required fields per entry:** `file_path`, `label`, `summary`, `why`, `impact` (all strings). Do not use `filePath` or `rationale` — those are the internal API shape and will fail CLI validation.
 

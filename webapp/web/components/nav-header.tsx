@@ -1,7 +1,7 @@
 import { RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { SidebarTrigger } from '@/components/ui/sidebar';
+import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { DRAG_REGION, getDesktopChrome, NO_DRAG_REGION } from '@/lib/desktop-chrome';
 
 import { TicketSearch } from './nav-header/TicketSearch.tsx';
@@ -17,6 +17,7 @@ import { TicketSearch } from './nav-header/TicketSearch.tsx';
  */
 export function NavHeader() {
   const { isDesktop, isMacDesktop } = getDesktopChrome();
+  const { state } = useSidebar();
   const handleHardRefresh = () => {
     window.location.reload();
   };
@@ -34,7 +35,9 @@ export function NavHeader() {
         className="flex shrink-0 items-center gap-1"
         style={isDesktop ? NO_DRAG_REGION : undefined}
       >
-        <SidebarTrigger />
+        <SidebarTrigger
+          className={isMacDesktop && state === 'collapsed' ? 'ml-5' : undefined}
+        />
         <Button
           type="button"
           variant="ghost"

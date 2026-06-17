@@ -88,7 +88,9 @@ If your run genuinely changed no files (investigation, discussion, or read-only 
 
 Each rationale entry requires these fields: `file_path`, `label`, `summary`, `why`, `impact` — all strings. Do **not** use `filePath` or `rationale`; those are a different internal shape and will cause a validation error.
 
-For more than a handful of entries, use `--change-rationales-file` with a temp file or stdin (`-`) instead of inline `--change-rationales-json` to avoid shell quoting failures with large arrays.
+Oversized inline `--*-json` arguments (including `--change-rationales-json`) are **rejected** by the CLI. For more than a handful of rationale entries, pipe JSON via `--change-rationales-file -` with a single-quoted heredoc (`<<'EOF'`) and keep the delivery `--summary` inline. The same rule applies to `--payload-json`, `--artifacts-json`, and other `--*-json` flags — use the paired `--*-file -` flag instead.
+
+If `heartbeat` succeeds but `deliver` or `update` fails unexpectedly, the session is likely fine. Retry with rationales (or other large JSON) on stdin rather than inline JSON.
 
 For the `record-change-rationales` command and full payload shape with optional `hunks` see [reference/cli.md](reference/cli.md).
 
@@ -119,4 +121,4 @@ For the `record-change-rationales` command and full payload shape with optional 
 - [reference/context.md](reference/context.md) — Shared state, attachments, and large artifact policy
 - [reference/shell-escaping.md](reference/shell-escaping.md) — Heredoc stdin piping for special characters in summaries and payloads
 
-<!-- version: 0.5.13 -->
+<!-- version: 0.5.14 -->

@@ -41,6 +41,7 @@ Required content:
 - Deliver last with summary, artifacts, and change rationales.
 - Record all meaningful file changes as structured rationales.
 - Use stdin/file flags for shell-special content.
+- Use stdin/file flags for oversized JSON payloads (`--*-json` values above ~8 KB are rejected; use `--*-file -`).
 - Do not continue implementation after delivery unless follow-up execution is explicitly requested.
 - Run local repair/diagnostic commands before asking the user to fix connector setup.
 

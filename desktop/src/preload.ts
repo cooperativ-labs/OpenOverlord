@@ -35,6 +35,9 @@ const api = {
     ipcRenderer.invoke('overlord:open-external', url),
   /** Reveal a path in the OS file manager. */
   revealInFinder: (path: string): Promise<boolean> => ipcRenderer.invoke('overlord:reveal', path),
+  /** Sync Electron nativeTheme with the SPA theme (macOS vibrancy follows this). */
+  setNativeThemeSource: (source: 'light' | 'dark' | 'system'): Promise<boolean> =>
+    ipcRenderer.invoke('overlord:set-native-theme-source', source),
   quickTask: {
     getHotkey: (): Promise<{ accelerator: string; defaultAccelerator: string }> =>
       ipcRenderer.invoke('overlord:quick-task:get-hotkey'),

@@ -26,6 +26,7 @@ declare global {
     chooseDirectory: () => Promise<string | null>;
     openExternal: (url: string) => Promise<boolean>;
     revealInFinder: (path: string) => Promise<boolean>;
+    setNativeThemeSource?: (source: 'light' | 'dark' | 'system') => Promise<boolean>;
     quickTask?: {
       getHotkey: () => Promise<{ accelerator: string; defaultAccelerator: string }>;
       setHotkey: (

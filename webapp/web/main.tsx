@@ -13,10 +13,12 @@ import {
 import { ThemeProvider } from './components/theme-provider.tsx';
 import { TooltipProvider } from './components/ui/tooltip.tsx';
 import { applyDesktopChromeDocumentAttributes } from './lib/desktop-chrome.ts';
+import { syncDesktopNativeTheme } from './lib/desktop-native-theme.ts';
 import { RealtimeProvider } from './lib/realtime.tsx';
 import { router } from './router.tsx';
 
 applyDesktopChromeDocumentAttributes();
+syncDesktopNativeTheme();
 
 const queryClient = new QueryClient({
   defaultOptions: {

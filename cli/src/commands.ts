@@ -1,6 +1,12 @@
 import { readFileSync } from 'node:fs';
 
-import { flagBoolean, flagValue, parseArgs, requireFlag } from './args.js';
+import {
+  flagBoolean,
+  flagValue,
+  parseArgs,
+  rejectOversizedInlineJson,
+  requireFlag
+} from './args.js';
 import { loadConfig } from './config.js';
 import { CliError } from './errors.js';
 import { launchAgent } from './launch.js';
@@ -200,6 +206,41 @@ function ticketDisplayId(ticket: unknown): string {
       : 'unknown';
 }
 
+const PROTOCOL_FILE_FLAGS = [
+  '--summary-file',
+  '--question-file',
+  '--payload-file',
+  '--artifacts-file',
+  '--change-rationales-file',
+  '--objectives-file',
+  '--changed-files-file',
+  '--value-file',
+  '--prompt-file'
+] as const;
+
+/** Read piped stdin or a `--*-file` path into the protocol request `stdin` field. */
+async function resolveProtocolStdin({
+  flags,
+  stdin
+}: {
+  flags: Map<string, string | true>;
+  stdin?: string;
+}): Promise<string | undefined> {
+  if (stdin !== undefined) return stdin;
+
+  for (const flagName of PROTOCOL_FILE_FLAGS) {
+    const filePath = flagValue(flags, flagName);
+    if (!filePath) continue;
+    if (filePath === '-') {
+      if (process.stdin.isTTY) return undefined;
+      return readFileSync(0, 'utf8');
+    }
+    return readFileSync(filePath, 'utf8');
+  }
+
+  return undefined;
+}
+
 async function discoverProjectId(runtime: CliRuntime, explicit?: string): Promise<string> {
   if (explicit) return explicit;
   const projects = await runtime.backend.get<unknown[]>('/api/projects');
@@ -230,16 +271,19 @@ export async function runProtocolCommand({
     return;
   }
 
+  rejectOversizedInlineJson({ flags: parsed.flags });
+
   const workingDirectory = process.cwd();
   const ticketId = flagValue(parsed.flags, '--ticket-id') ?? parsed.positional[0];
   const flags = Object.fromEntries(parsed.flags);
+  const protocolStdin = await resolveProtocolStdin({ flags: parsed.flags, stdin });
 
   pruneStaleProjectTmp({ workingDirectory });
 
   // Client-side VCS capture: read git status here (the agent's machine), never on
   // the backend. Filter explicit payloads and, at deliver, merge the run delta.
   if ((subcommand === 'deliver' || subcommand === 'update') && ticketId) {
-    applySessionChangedFiles({ flags, workingDirectory, ticketId, subcommand, stdin });
+    applySessionChangedFiles({ flags, workingDirectory, ticketId, subcommand, stdin: protocolStdin });
   }
 
   const result = await runtime.backend.post<unknown>({
@@ -248,7 +292,7 @@ export async function runProtocolCommand({
       args,
       positional: parsed.positional,
       flags,
-      stdin,
+      stdin: protocolStdin,
       externalSessionId:
         flagValue(parsed.flags, '--external-session-id') ??
         resolveNativeSessionId({

@@ -1,3 +1,5 @@
+import { CliError } from './errors.js';
+
 export type ParsedArgs = {
   positional: string[];
   flags: Map<string, string | true>;
@@ -94,6 +96,36 @@ export function parseJsonFlag(
   const raw = flagValue(flags, flagName);
   if (!raw) return undefined;
   return JSON.parse(raw) as Record<string, unknown>;
+}
+
+/** Inline `--*-json` values larger than this are rejected; use the paired `--*-file -` flag. */
+export const MAX_INLINE_JSON_CHARS = 8_192;
+
+const INLINE_JSON_FLAG_PAIRS = [
+  { jsonFlag: '--change-rationales-json', fileFlag: '--change-rationales-file' },
+  { jsonFlag: '--payload-json', fileFlag: '--payload-file' },
+  { jsonFlag: '--artifacts-json', fileFlag: '--artifacts-file' },
+  { jsonFlag: '--objectives-json', fileFlag: '--objectives-file' },
+  { jsonFlag: '--changed-files-json', fileFlag: '--changed-files-file' },
+  { jsonFlag: '--value-json', fileFlag: '--value-file' }
+] as const;
+
+export function rejectOversizedInlineJson({
+  flags
+}: {
+  flags: Map<string, string | true>;
+}): void {
+  for (const { jsonFlag, fileFlag } of INLINE_JSON_FLAG_PAIRS) {
+    const value = flagValue(flags, jsonFlag);
+    if (value === undefined || value.length <= MAX_INLINE_JSON_CHARS) continue;
+
+    throw new CliError({
+      message:
+        `${jsonFlag} is too large (${value.length} chars; limit ${MAX_INLINE_JSON_CHARS}). ` +
+        `Pass the JSON via ${fileFlag} - and stream it on stdin instead. ` +
+        'Keep short values like --summary inline.'
+    });
+  }
 }
 
 export function parseCsvFlag(value: string | undefined): string[] | undefined {

@@ -1,4 +1,4 @@
-import { createAuth } from '@overlord/auth';
+import { createAuth, verifyUserToken } from '@overlord/auth';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
 import type { NextFunction, Request, Response } from 'express';
 
@@ -21,6 +21,13 @@ process.env.BETTER_AUTH_URL ??= `http://${authBaseHost}:${authBasePort}`;
 
 export const auth = createAuth(DATABASE_PATH);
 export const authNodeHandler = toNodeHandler(auth);
+
+function extractBearerToken(req: Request): string | null {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) return null;
+  const token = header.slice('Bearer '.length).trim();
+  return token || null;
+}
 
 function usesNonBrowserAuthSurface(req: Request): boolean {
   const path = req.path || req.url || req.originalUrl;
@@ -111,14 +118,26 @@ export async function requireAuthenticatedSession(
     }
 
     const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
-    if (!session) {
-      res.status(401).json({ error: 'Authentication required' });
+    if (session) {
+      const workspaceUserId = ensureWorkspaceUser(session.user.id);
+      setActiveWorkspaceUser(workspaceUserId);
+      next();
       return;
     }
 
-    const workspaceUserId = ensureWorkspaceUser(session.user.id);
-    setActiveWorkspaceUser(workspaceUserId);
-    next();
+    const bearerToken = extractBearerToken(req);
+    if (bearerToken?.startsWith('out_')) {
+      const verified = await verifyUserToken(db, bearerToken, WORKSPACE.id);
+      if (!verified) {
+        res.status(401).json({ error: 'Invalid or expired USER_TOKEN' });
+        return;
+      }
+      setActiveWorkspaceUser(verified.workspaceUserId);
+      next();
+      return;
+    }
+
+    res.status(401).json({ error: 'Authentication required' });
   } catch (err) {
     next(err);
   }

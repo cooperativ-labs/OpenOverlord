@@ -23,7 +23,8 @@ const isMac = process.platform === 'darwin';
  *
  * macOS also uses `vibrancy: 'sidebar'` with a transparent window background so
  * the SPA's translucent sidebar column shows the native sidebar material. Main
- * content stays opaque via `bg-background` in the renderer.
+ * content stays opaque via `bg-background` in the renderer. The SPA syncs
+ * `nativeTheme.themeSource` via IPC so vibrancy follows the app's theme toggle.
  */
 export function createWindow(preloadPath: string): BrowserWindow {
   const window = new BrowserWindow({

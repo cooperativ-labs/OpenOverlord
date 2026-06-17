@@ -8,7 +8,21 @@ What you did and why — including `backticks`, "quotes", and $variables are all
 EOF
 ```
 
-Use `--payload-json` when the full delivery object fits comfortably inline. For larger delivery payloads, prefer `--payload-file -` and stream the full JSON on stdin so no scratch file needs to be created or removed.
+## Inline JSON size limits
+
+Oversized inline `--*-json` arguments are **rejected** by the CLI (limit ~8 KB per flag). This includes `--change-rationales-json`, `--payload-json`, `--artifacts-json`, and `--objectives-json`. Pass large JSON via the paired `--*-file -` flag and a single-quoted heredoc instead:
+
+```bash
+ovld protocol deliver --session-key <sessionKey> --ticket-id $TICKET_ID \
+  --summary "Short narrative summary stays inline." \
+  --change-rationales-file - <<'EOF'
+[{"label":"Example","file_path":"lib/api.ts","summary":"...","why":"...","impact":"..."}]
+EOF
+```
+
+If `heartbeat` succeeds but `deliver` or `update` fails, the session is likely fine — retry with JSON on stdin rather than inline `--*-json`.
+
+Use `--payload-file -` when the full delivery object (summary, artifacts, and change rationales together) exceeds the inline limit.
 
 If the summary contains special characters, use `--summary-file -` and pipe via a single-quoted heredoc (`<<'EOF'`) to prevent shell expansion.
 

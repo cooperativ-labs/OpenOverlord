@@ -1,10 +1,13 @@
 export function printHelp({ primaryCommand }: { primaryCommand: string }): void {
   console.log(`Overlord CLI
+    
+INSTRUCTIONS FOR AI AGENTS: run \`${primaryCommand} protocol help\` for the full ticket lifecycle reference.
 
 Primary command: ${primaryCommand}
 
 General:
-  ${primaryCommand} auth login                   Configure backend and log in
+  ${primaryCommand} auth login [--token <out_...>]   Configure backend and log in
+  ${primaryCommand} auth status [--json]           Show backend URL and login status
   ${primaryCommand} help                         Show this help message
   ${primaryCommand} version [--json]             Show the installed CLI version
   ${primaryCommand} update [--check] [--force] [--json]

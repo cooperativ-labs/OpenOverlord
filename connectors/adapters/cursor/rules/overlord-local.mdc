@@ -10,3 +10,4 @@ alwaysApply: true
 - If you need other protocol commands or flags, run `ovld protocol help` instead of guessing.
 
 Always include `changeRationales` on delivery for meaningful behavioral file changes.
+Oversized inline `--change-rationales-json` is rejected — pipe rationales with `--change-rationales-file -` and keep `--summary` inline.

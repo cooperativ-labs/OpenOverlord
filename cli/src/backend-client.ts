@@ -1,3 +1,4 @@
+import { resolveAuthBearerToken } from './auth-credentials.js';
 import { loadConfig, resolveBackendUrl } from './config.js';
 import { CliError } from './errors.js';
 
@@ -14,8 +15,8 @@ function normalizeBaseUrl(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
-function authHeaders(): Record<string, string> {
-  const token = process.env.OVERLORD_USER_TOKEN ?? process.env.USER_TOKEN;
+function authHeaders({ baseUrl }: { baseUrl: string }): Record<string, string> {
+  const token = resolveAuthBearerToken({ backendUrl: baseUrl });
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
@@ -59,7 +60,7 @@ export function createBackendClient(): BackendClient {
         headers: {
           Accept: 'application/json',
           ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-          ...authHeaders()
+          ...authHeaders({ baseUrl })
         },
         body: body === undefined ? undefined : JSON.stringify(body)
       });

@@ -43,6 +43,10 @@ The macOS window also sets `vibrancy: 'sidebar'` with a transparent
 `backgroundColor` so the left sidebar column can show the native sidebar material.
 The SPA sets `data-mac-desktop` on `<html>` and makes only `[data-slot="sidebar-inner"]`
 transparent; main content (`SidebarInset`, setup/auth screens) stays opaque.
+Vibrancy follows Electron `nativeTheme`, which the SPA keeps in sync with its
+`overlord-theme` preference via `window.overlord.setNativeThemeSource()` so the
+sidebar material respects the app's light/dark/system toggle (not just the OS
+appearance).
 
 A **native context menu** is registered on the renderer's `context-menu` event
 (`registerNativeContextMenu`). Because the renderer is sandboxed with no Node
@@ -99,6 +103,7 @@ A minimal, audited surface the SPA **feature-detects** (`if (window.overlord)`):
 | `chooseDirectory()` | native directory picker → absolute path or `null` |
 | `openExternal(url)` | open an http(s) URL in the system browser |
 | `revealInFinder(path)` | reveal a path in the OS file manager |
+| `setNativeThemeSource(source)` | mirror the SPA theme (`light` / `dark` / `system`) to Electron `nativeTheme` for macOS vibrancy |
 | `updates.getStatus()` | current update state |
 | `updates.check()` | check the configured update feed |
 | `updates.install()` | install a downloaded update and relaunch |

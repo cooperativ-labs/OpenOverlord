@@ -1,5 +1,6 @@
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 
+import { isNativeThemeSource, setNativeThemeSource } from './native-theme.js';
 import {
   DEFAULT_QUICK_TASK_HOTKEY,
   getStoredQuickTaskHotkey,
@@ -58,6 +59,12 @@ export function registerIpc({
   ipcMain.handle('overlord:reveal', (_event, targetPath: unknown) => {
     if (typeof targetPath !== 'string' || targetPath.length === 0) return false;
     shell.showItemInFolder(targetPath);
+    return true;
+  });
+
+  ipcMain.handle('overlord:set-native-theme-source', (_event, source: unknown) => {
+    if (!isNativeThemeSource(source)) return false;
+    setNativeThemeSource(source);
     return true;
   });
 

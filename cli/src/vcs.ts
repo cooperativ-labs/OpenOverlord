@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { resolveGlobalDataDir } from './config.js';
@@ -13,6 +13,15 @@ import { resolveGlobalDataDir } from './config.js';
  * (path, status, worktree content hash) when a work session begins (`attach` /
  * `resume-follow-up`) and, at `deliver`, computes the run-attributable delta:
  * paths whose worktree state differs from that baseline.
+ *
+ * The worktree baseline cannot tell concurrent sessions apart: when several
+ * tickets run against the same repo at once, a file another ticket edits *after*
+ * this session attached has no baseline entry, so the worktree delta alone would
+ * wrongly attribute it here. To stay accurate the CLI also consumes a per-session
+ * "touched files" log written by the agent's PostToolUse edit hook (the exact set
+ * of files this agent edited). When that log exists, the run-attributable set is
+ * the worktree delta INTERSECT the agent-edited paths — so files this agent never
+ * touched are never reported, even if they are dirty for unrelated reasons.
  *
  * VCS is read on the client only — we never send diffs or file contents, just
  * normalized paths and short status codes. Everything here is best-effort: outside
@@ -92,6 +101,24 @@ export function readChangedFiles(workingDirectory: string): ChangedFile[] {
   }
 }
 
+/**
+ * Stable per-session key for the working dir + ticket. MUST stay in sync with the
+ * key the agents' PostToolUse edit hooks compute, so the touched-files log written
+ * by the hook resolves to the same file the CLI reads at deliver. The hook mirror
+ * is `sha256(abspath(cwd) + "\0" + TICKET_ID)`.
+ */
+function sessionKeyHash({
+  workingDirectory,
+  ticketId
+}: {
+  workingDirectory: string;
+  ticketId: string;
+}): string {
+  return createHash('sha256')
+    .update(`${path.resolve(workingDirectory)}\0${ticketId}`)
+    .digest('hex');
+}
+
 function baselineFilePath({
   workingDirectory,
   ticketId
@@ -99,10 +126,125 @@ function baselineFilePath({
   workingDirectory: string;
   ticketId: string;
 }): string {
-  const key = createHash('sha256')
-    .update(`${path.resolve(workingDirectory)}\0${ticketId}`)
-    .digest('hex');
-  return path.join(resolveGlobalDataDir(), 'vcs-baselines', `${key}.json`);
+  return path.join(
+    resolveGlobalDataDir(),
+    'vcs-baselines',
+    `${sessionKeyHash({ workingDirectory, ticketId })}.json`
+  );
+}
+
+function touchedFilesPath({
+  workingDirectory,
+  ticketId
+}: {
+  workingDirectory: string;
+  ticketId: string;
+}): string {
+  return path.join(
+    resolveGlobalDataDir(),
+    'vcs-touched',
+    `${sessionKeyHash({ workingDirectory, ticketId })}.json`
+  );
+}
+
+/** Absolute, slash-normalized path for cross-checking VCS and touched entries. */
+function normalizeAbsolute(filePath: string): string {
+  return path.resolve(filePath).replace(/\\/g, '/');
+}
+
+/** Repo root for the working dir, or `null` outside a git repo. */
+function gitRepoRoot(workingDirectory: string): string | null {
+  try {
+    const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: workingDirectory,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).trim();
+    return root || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Clear any touched-files log for this session so a freshly (re)started session
+ * starts from an empty edit set. Called alongside `writeBaseline`.
+ */
+export function resetTouchedFiles({
+  workingDirectory,
+  ticketId
+}: {
+  workingDirectory: string;
+  ticketId: string;
+}): void {
+  try {
+    const target = touchedFilesPath({ workingDirectory, ticketId });
+    if (existsSync(target)) rmSync(target);
+  } catch {
+    // Best-effort: a stale log at worst keeps prior edits in scope; the worktree
+    // delta still gates what is reported.
+  }
+}
+
+/**
+ * Append the files an agent just edited to this session's touched-files log. Used
+ * by edit hooks (and tests); paths are stored absolute and slash-normalized.
+ */
+export function recordTouchedFiles({
+  workingDirectory,
+  ticketId,
+  files
+}: {
+  workingDirectory: string;
+  ticketId: string;
+  files: string[];
+}): void {
+  try {
+    const additions = files
+      .map(filePath => (filePath ?? '').trim())
+      .filter(Boolean)
+      .map(filePath => normalizeAbsolute(path.resolve(workingDirectory, filePath)));
+    if (additions.length === 0) return;
+    const target = touchedFilesPath({ workingDirectory, ticketId });
+    mkdirSync(path.dirname(target), { recursive: true });
+    const existing = readTouchedPaths({ workingDirectory, ticketId }) ?? new Set<string>();
+    for (const filePath of additions) existing.add(filePath);
+    writeFileSync(
+      target,
+      JSON.stringify({ updatedAt: new Date().toISOString(), paths: Array.from(existing) })
+    );
+  } catch {
+    // Best-effort: a failed write just means deliver falls back to the worktree
+    // baseline for this session.
+  }
+}
+
+/**
+ * Absolute paths this agent edited this session, or `null` when no log exists
+ * (i.e. the connector has no edit hook). `null` disables the intersection so
+ * hookless agents keep the legacy worktree-baseline behavior.
+ */
+function readTouchedPaths({
+  workingDirectory,
+  ticketId
+}: {
+  workingDirectory: string;
+  ticketId: string;
+}): Set<string> | null {
+  try {
+    const target = touchedFilesPath({ workingDirectory, ticketId });
+    if (!existsSync(target)) return null;
+    const raw = JSON.parse(readFileSync(target, 'utf8')) as { paths?: unknown };
+    const result = new Set<string>();
+    if (Array.isArray(raw.paths)) {
+      for (const entry of raw.paths) {
+        if (typeof entry === 'string' && entry.trim()) result.add(normalizeAbsolute(entry));
+      }
+    }
+    return result;
+  } catch {
+    return null;
+  }
 }
 
 function snapshotBaselineFiles({

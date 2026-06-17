@@ -198,10 +198,41 @@ async function configureBackendFromArgs({
   }
 }
 
+async function runAuthStatusCommand({ json }: { json: boolean }): Promise<void> {
+  const { resolveAuthStatus } = await import('./auth-status.js');
+  const status = await resolveAuthStatus();
+
+  if (json) {
+    printJson(status);
+    return;
+  }
+
+  console.log(`backend_url=${status.backendUrl}`);
+  console.log(`backend_mode=${status.backendMode}`);
+  console.log(`config_path=${status.configPath ?? '(not configured)'}`);
+  console.log(`logged_in=${status.loggedIn ? 'true' : 'false'}`);
+  console.log(`credential_source=${status.credentialSource}`);
+  if (status.credentialType) console.log(`credential_type=${status.credentialType}`);
+  if (status.credentialsPath) console.log(`credentials_path=${status.credentialsPath}`);
+  if (status.validationError) console.log(`validation_error=${status.validationError}`);
+}
+
 async function runAuthCommand({ rest, json }: { rest: string[]; json: boolean }): Promise<void> {
   const parsed = parseArgs(rest);
   const sub = parsed.positional[0] ?? 'login';
-  if (sub !== 'login') throw new CliError({ message: 'Usage: ovld auth login [--json]' });
+
+  if (sub === 'status') {
+    await runAuthStatusCommand({ json });
+    return;
+  }
+
+  if (sub !== 'login') {
+    throw new CliError({
+      message: 'Usage: ovld auth login [--token <out_...>] | ovld auth status [--json]'
+    });
+  }
+
+  const tokenFlag = flagValue(parsed.flags, '--token');
 
   const { findEffectiveConfigPath, hasExplicitBackendConfig, loadConfig } =
     await import('./config.js');
@@ -223,10 +254,14 @@ async function runAuthCommand({ rest, json }: { rest: string[]; json: boolean })
   const { resolveBackendUrl } = await import('./config.js');
   const mode = config.backendMode;
   const backendUrl = resolveBackendUrl(config);
+  const { loginWithUserToken, runInteractiveAuthLogin } = await import('./auth-login.js');
+  const login = tokenFlag
+    ? await loginWithUserToken({ backendUrl, token: tokenFlag })
+    : await runInteractiveAuthLogin({ backendUrl });
+
   if (json) {
     printJson({
-      ok: true,
-      authMode: mode === 'local' ? 'local_implicit' : 'cloud_configured',
+      ...login,
       backend: {
         mode,
         url: backendUrl,
@@ -234,18 +269,17 @@ async function runAuthCommand({ rest, json }: { rest: string[]; json: boolean })
       },
       configuredDuringLogin: setup !== null
     });
-  } else if (mode === 'local') {
-    console.log(`Configured local backend at ${backendUrl}.`);
-    console.log('Authentication will use the configured backend.');
   } else {
-    console.log(`Configured cloud backend at ${backendUrl}.`);
-    console.log('Interactive cloud account authentication is not available in this CLI build yet.');
+    const methodLabel =
+      login.authMethod === 'user_token' ? 'USER_TOKEN' : 'username and password';
+    console.log(`Logged in to ${backendUrl} using ${methodLabel}.`);
+    console.log(`Saved credentials to ${login.credentialsPath}`);
   }
 }
 
 /**
  * Local management commands that do NOT require the database/service layer:
- * `update`, `init`, `doctor`, `setup`, `agent-setup`, `config`, and `auth login`. These are dispatched separately from the
+ * `update`, `init`, `doctor`, `setup`, `agent-setup`, `config`, `auth login`, and `auth status`. These are dispatched separately from the
  * DB-backed commands in `commands.ts` so they never statically import the
  * service layer — keeping them runnable from a globally installed `ovld`
  * binary (where the root project `dist/` is not on disk).

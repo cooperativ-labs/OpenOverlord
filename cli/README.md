@@ -76,10 +76,54 @@ Environment overrides (useful in scripts and CI):
 - `OVLD_HOME` — relocate the entire global `~/.ovld` data directory (SQLite, object storage, VCS baselines, native-session caches)
 - `OVERLORD_BACKEND_URL` — backend the CLI targets; takes precedence over the resolved `overlord.toml` `backend_url`
 - `OVERLORD_WEB_PORT` — port the local backend binds when launched
-- `OVERLORD_USER_TOKEN` / `USER_TOKEN` — bearer token sent to hosted backends when set
+- `OVERLORD_USER_TOKEN` / `OVLD_USER_TOKEN` / `USER_TOKEN` — bearer token sent to the backend when set (checked in that order; takes precedence over stored credentials)
+- `DATABASE_URL` — Postgres connection string read by a backend you run yourself (service layer + Better Auth); the client-only CLI does not open it
 
 The local backend/Desktop package owns SQLite and migrations. The published npm
 CLI only stores the backend URL and sends HTTP requests.
+
+### Headless / container setup
+
+In a container, CI job, or any non-TTY environment, configure `ovld` entirely
+through environment variables and non-interactive flags — no interactive prompts
+are required. Each item below is a single command:
+
+```bash
+# 1. Database URL — Postgres persistence for a backend you run in the same
+#    container (consumed by the service layer + Better Auth). Omit if the CLI
+#    only talks to an already-running remote backend.
+export DATABASE_URL="postgres://user:password@host:5432/overlord"
+
+# 2. Backend URL — where the CLI sends HTTP /api/* requests.
+export OVERLORD_BACKEND_URL="https://overlord.example.com"
+
+# 3. Auth token — bearer USER_TOKEN sent with every backend request.
+#    Generate one in Overlord Desktop: Settings > Tokens.
+export OVERLORD_USER_TOKEN="out_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# 4. Agent connector — write the local agent connector config (non-interactive).
+ovld agent-setup claude            # one of: claude | codex | cursor | all
+```
+
+Then verify the backend is reachable and authenticated:
+
+```bash
+ovld doctor
+```
+
+Notes for headless use:
+
+- **No `ovld auth login` needed.** The token env vars (`OVERLORD_USER_TOKEN`,
+  `OVLD_USER_TOKEN`, or `USER_TOKEN`) are read directly and take precedence over
+  stored credentials. To persist a token to `~/.ovld/auth.json` instead, run the
+  non-interactive `ovld auth login --token out_...` (works without a TTY).
+- `ovld agent-setup` accepts `--home <dir>` to target a specific `OVLD_HOME`,
+  `--dry-run` to preview, and `--json` for machine-readable output. List
+  installable connectors with `ovld agent-setup --json`.
+- Set `OVLD_HOME=/some/writable/dir` if the default `~/.ovld` is not writable in
+  your container; it relocates the entire CLI data directory.
+- Interactive `ovld auth login` / `ovld config set` (no args) and `ovld setup`
+  require a TTY; use the env vars and explicit flags above in their place.
 
 ### What requires the backend
 

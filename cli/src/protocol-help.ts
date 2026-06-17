@@ -235,6 +235,7 @@ update:
     --change-rationales-json / --change-rationales-file <path|->
   Notes:
     Pass --summary-file - to read the summary from stdin and avoid shell quoting issues.
+    Inline --*-json values larger than ~8 KB are rejected; use the paired --*-file - flag.
     After delivery, pass --begin-follow-up-work before posting execution updates.
 
 heartbeat:
@@ -275,6 +276,8 @@ deliver:
     and injects the run-attributable delta at deliver. Meaningful tracked changes
     require rationales unless --no-file-changes is passed. Do not continue
     implementation after delivery without explicit follow-up.
+    Inline --*-json values larger than ~8 KB are rejected; use --change-rationales-file -
+    (or --payload-file -) and stream JSON on stdin. Keep --summary inline.
 
 resume-follow-up:
   Purpose:

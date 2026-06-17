@@ -184,15 +184,12 @@ function main(): void {
   const args = parseArgs(process.argv.slice(2));
   configureNodeGypPython();
 
-  const electronInstalled = [
-    path.join(desktopDir, 'node_modules', 'electron'),
-    path.join(repoRoot, 'node_modules', 'electron')
-  ].some(existsSync);
-  if (!electronInstalled) {
+  if (!electronInstallDir()) {
     fail(
       'Desktop dependencies are not installed. Run `yarn install` (the desktop workspace pulls Electron) first.'
     );
   }
+  ensureElectronBinary();
 
   if (args.notarize) {
     const missing = ['APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID'].filter(
@@ -373,8 +370,16 @@ function assertElectronAbi(addonPath: string, electronVersion: string): void {
   }
 }
 
-/** Absolute path to the installed Electron executable (for ELECTRON_RUN_AS_NODE probes). */
-function electronExecutable(): string {
+function electronInstallDir(): string | null {
+  for (const dir of [desktopDir, repoRoot]) {
+    const electronDir = path.join(dir, 'node_modules', 'electron');
+    if (existsSync(path.join(electronDir, 'package.json'))) return electronDir;
+  }
+  return null;
+}
+
+/** Absolute path to the installed Electron executable, or null when only the npm wrapper is present. */
+function resolveElectronExecutable(): string | null {
   for (const dir of [desktopDir, repoRoot]) {
     const electronDir = path.join(dir, 'node_modules', 'electron');
     const pathTxt = path.join(electronDir, 'path.txt');
@@ -382,8 +387,40 @@ function electronExecutable(): string {
     const bin = path.join(electronDir, 'dist', readFileSync(pathTxt, 'utf8').trim());
     if (existsSync(bin)) return bin;
   }
-  fail(
-    'Could not locate the Electron executable (node_modules/electron/dist). Run `yarn install`.'
+  return null;
+}
+
+/** Download the Electron binary when install was skipped (e.g. ELECTRON_SKIP_BINARY_DOWNLOAD). */
+function ensureElectronBinary(): void {
+  if (resolveElectronExecutable()) return;
+
+  const electronDir = electronInstallDir();
+  if (!electronDir) {
+    fail(
+      'Desktop dependencies are not installed. Run `yarn install` (the desktop workspace pulls Electron) first.'
+    );
+  }
+
+  if (process.env.ELECTRON_SKIP_BINARY_DOWNLOAD === '1') {
+    fail(
+      'Electron binary download was skipped (ELECTRON_SKIP_BINARY_DOWNLOAD=1). ' +
+        'Unset it or run `node node_modules/electron/install.js`, then retry `yarn desktop:package`.'
+    );
+  }
+
+  console.log('\n→ Electron binary not found; downloading via electron/install.js');
+  run(process.execPath, [path.join(electronDir, 'install.js')]);
+
+  if (!resolveElectronExecutable()) {
+    fail('Electron binary download finished but the executable is still missing.');
+  }
+}
+
+/** Absolute path to the installed Electron executable (for ELECTRON_RUN_AS_NODE probes). */
+function electronExecutable(): string {
+  return (
+    resolveElectronExecutable() ??
+    fail('Could not locate the Electron executable after install. Retry `yarn desktop:package`.')
   );
 }
 

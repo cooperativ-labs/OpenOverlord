@@ -173,11 +173,28 @@ function CreateTokenForm() {
 
 /** The one-time reveal of a freshly created token secret, with copy-to-clipboard. */
 function NewSecret({ secret, onDismiss }: { secret: string; onDismiss: () => void }) {
+  const cliLoginCommand = `ovld auth login --token ${secret}`;
+
+  return (
+    <div className="space-y-3 rounded-md border border-primary/40 bg-primary/5 p-3">
+      <p className="text-xs font-medium">Copy your token now — it won&apos;t be shown again.</p>
+
+      <CopyField label="Token" value={secret} />
+      <CopyField label="CLI login" value={cliLoginCommand} />
+
+      <Button type="button" variant="ghost" size="sm" className="h-7" onClick={onDismiss}>
+        Done
+      </Button>
+    </div>
+  );
+}
+
+function CopyField({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(secret);
+      await navigator.clipboard.writeText(value);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -186,11 +203,11 @@ function NewSecret({ secret, onDismiss }: { secret: string; onDismiss: () => voi
   }
 
   return (
-    <div className="space-y-2 rounded-md border border-primary/40 bg-primary/5 p-3">
-      <p className="text-xs font-medium">Copy your token now — it won&apos;t be shown again.</p>
+    <div className="space-y-1">
+      <p className="text-xs text-muted-foreground">{label}</p>
       <div className="flex items-center gap-2">
         <code className="min-w-0 flex-1 truncate rounded bg-background px-2 py-1.5 font-mono text-xs">
-          {secret}
+          {value}
         </code>
         <Button
           type="button"
@@ -203,9 +220,6 @@ function NewSecret({ secret, onDismiss }: { secret: string; onDismiss: () => voi
           {copied ? 'Copied' : 'Copy'}
         </Button>
       </div>
-      <Button type="button" variant="ghost" size="sm" className="h-7" onClick={onDismiss}>
-        Done
-      </Button>
     </div>
   );
 }
