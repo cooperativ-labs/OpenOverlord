@@ -4,7 +4,31 @@ Optional AI automations for Open Overlord. Developers register simple automation
 a shared `Automation` interface; the reference implementation is Gemini-backed text
 summarization and objective title generation.
 
-## Contract Component
+## Table of Contents
+
+- [For Users](#for-users)
+  - [Configuration](#configuration)
+- [For Developers](#for-developers)
+  - [Contract Component](#contract-component)
+  - [Documentation](#documentation)
+  - [Code & Tests](#code--tests)
+  - [Interaction Boundaries](#interaction-boundaries)
+
+## For Users
+
+### Configuration
+
+Copy [`.env.example`](../.env.example) to `.env` and set `GEMINI_API_KEY` to enable
+Gemini-backed automations. When the key is missing or a call fails, automations return `null` and
+callers should use deterministic local fallbacks (see `deriveTitleFromInstructionText`).
+
+When enabled, ticket and objective titles are refined asynchronously with Gemini
+after an immediate local title is set. Title updates stream through the
+`entity_changes` feed so the web board refreshes live.
+
+## For Developers
+
+### Contract Component
 
 Maps to the **Automations Layer** (`automations`) in [`CONTRACT.md`](../CONTRACT.md), which owns:
 
@@ -16,14 +40,14 @@ Maps to the **Automations Layer** (`automations`) in [`CONTRACT.md`](../CONTRACT
 It does **not** own database schema, ticket/objective lifecycle, or agent protocol
 behavior.
 
-## Documentation
+### Documentation
 
 - [01 — Automations Overview](docs/01-automations-overview.md): automation model, Gemini setup, and extension guide
 - [02 — Branch Strategy Automation](docs/02-branch-strategy-automation.md): proposed plan for base-branch selection and branch-per-ticket/objective launch automation
 - [03 — Worktree Storage Layout](docs/03-worktree-storage-layout.md): where git worktrees should live (central `~/.ovld/worktrees`, outside the synced repo) and how worktrees fold into the branch-strategy plan
 - [Test Plan](docs/testing.md): unit coverage for title derivation, fallbacks, and registry behavior
 
-## Code & Tests
+### Code & Tests
 
 Implementation lives under [`src/`](src):
 
@@ -45,13 +69,7 @@ Colocated tests:
 - `src/title-summarizer/objectives/generate-objective-title.test.ts`
 - `src/registry.test.ts`
 
-## Configuration
-
-Copy [`.env.example`](../.env.example) to `.env` and set `GEMINI_API_KEY` to enable
-Gemini-backed automations. When the key is missing or a call fails, automations return `null` and
-callers should use deterministic local fallbacks (see `deriveTitleFromInstructionText`).
-
-## Interaction Boundaries
+### Interaction Boundaries
 
 Other components consume automations only through the `@overlord/automations` package API.
 Persistence must go through injected callbacks such as `ObjectiveTitleStore`; the

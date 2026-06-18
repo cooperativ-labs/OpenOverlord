@@ -20,7 +20,42 @@ turns these designs into a dependency-ordered build sequence (contract-first API
 realtime spine first, a vertical slice, then breadth, then capability-gated
 surfaces).
 
-## How to read this set
+## Table of Contents
+
+- [For Users](#for-users)
+  - [Scope boundaries](#scope-boundaries)
+- [For Developers](#for-developers)
+  - [How to read this set](#how-to-read-this-set)
+  - [Source material](#source-material)
+
+## For Users
+
+### Scope boundaries
+
+These constraints come from the contract and module specs and shape every screen
+in the design set:
+
+- **The UI is a peer of the CLI, not the source of truth.** Every lifecycle
+  transition runs through the same service layer as `ovld`. The web app calls
+  REST endpoints that mirror `ovld protocol`; it never owns state transitions.
+- **Realtime is driven by `entity_changes`.** The UI subscribes to `/realtime`
+  (SSE/WebSocket backed by the change feed) and catches up via `/sync/changes?after=<seq>`.
+  Active agent work must update on screen without a manual refresh.
+- **VCS access is strictly read-only.** The UI may display status, diffs, and
+  rationale coverage, but it must never create commits, branches, resets, or any
+  other VCS mutation, and it must not upload repository contents unless the user
+  explicitly attaches a file.
+- **Capability gating is first-class.** Overlord installs in
+  [core + à-la-carte table groups](../../../database/docs/10-database-table-groups.md).
+  Pages and panels that depend on a group (auth, tags, search, connector
+  monitoring) must degrade gracefully when that group is absent.
+- **No secrets in the UI.** Raw `USER_TOKEN` and session-key secrets are shown
+  exactly once at creation and never re-displayed; the change feed and DTOs are
+  already secret-redacted.
+
+## For Developers
+
+### How to read this set
 
 Start with the structure document, then read the page documents in order. Each
 page document is self-contained and follows the same template (purpose, route,
@@ -41,30 +76,7 @@ gating, acceptance criteria).
 | 09 | [Users, Roles & Tokens](09-users-roles-and-tokens.md) | Multi-user admin, RBAC roles, `USER_TOKEN` lifecycle (capability-gated) |
 | 10 | [Search & Command Palette](10-search-and-command-palette.md) | Global search, command palette, keyboard navigation |
 
-## Scope boundaries that shape every page
-
-These constraints come from the contract and module specs and are repeated here
-because they constrain every screen below:
-
-- **The UI is a peer of the CLI, not the source of truth.** Every lifecycle
-  transition runs through the same service layer as `ovld`. The web app calls
-  REST endpoints that mirror `ovld protocol`; it never owns state transitions.
-- **Realtime is driven by `entity_changes`.** The UI subscribes to `/realtime`
-  (SSE/WebSocket backed by the change feed) and catches up via `/sync/changes?after=<seq>`.
-  Active agent work must update on screen without a manual refresh.
-- **VCS access is strictly read-only.** The UI may display status, diffs, and
-  rationale coverage, but it must never create commits, branches, resets, or any
-  other VCS mutation, and it must not upload repository contents unless the user
-  explicitly attaches a file.
-- **Capability gating is first-class.** Overlord installs in
-  [core + à-la-carte table groups](../../../database/docs/10-database-table-groups.md).
-  Pages and panels that depend on a group (auth, tags, search, connector
-  monitoring) must degrade gracefully when that group is absent.
-- **No secrets in the UI.** Raw `USER_TOKEN` and session-key secrets are shown
-  exactly once at creation and never re-displayed; the change feed and DTOs are
-  already secret-redacted.
-
-## Source material
+### Source material
 
 These designs were derived from the Overlord specs current in the repo:
 the root [README](../../../README.md) and [CONTRACT](../../../CONTRACT.md);
@@ -74,5 +86,3 @@ the auth/RBAC specs under [`auth/docs/`](../../../auth/docs/);
 the [schema contract](../../../database/docs/09-database-schema-contract.md) and
 [table groups](../../../database/docs/10-database-table-groups.md);
 and the existing [web-app requirements](../web-app.md).
-</content>
-</invoke>

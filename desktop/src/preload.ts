@@ -35,6 +35,9 @@ const api = {
     ipcRenderer.invoke('overlord:open-external', url),
   /** Reveal a path in the OS file manager. */
   revealInFinder: (path: string): Promise<boolean> => ipcRenderer.invoke('overlord:reveal', path),
+  /** Show a native desktop notification. */
+  showNotification: (payload: { title: string; body: string; tag?: string }): Promise<boolean> =>
+    ipcRenderer.invoke('overlord:show-notification', payload),
   /** Sync Electron nativeTheme with the SPA theme (macOS vibrancy follows this). */
   setNativeThemeSource: (source: 'light' | 'dark' | 'system'): Promise<boolean> =>
     ipcRenderer.invoke('overlord:set-native-theme-source', source),

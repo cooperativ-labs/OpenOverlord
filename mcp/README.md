@@ -3,12 +3,27 @@
 A Model Context Protocol (MCP) server surface that would expose Overlord
 capabilities (tickets, objectives, protocol operations) to MCP-aware clients.
 
-> **Status: not yet implemented.** MCP is a Phase 5 expansion item (see "Phase 5:
-> Expansion" in the [feature-plans README](../planning/feature-plans/README.md)).
-> This directory reserves the module slot and records the intended design so the
-> surface lands in a consistent place when work begins.
+## Table of Contents
 
-## Contract Component
+- [For Users](#for-users)
+  - [Status](#status)
+- [For Developers](#for-developers)
+  - [Contract Component](#contract-component)
+  - [Documentation](#documentation)
+
+## For Users
+
+### Status
+
+> **Not yet implemented.** MCP is a Phase 5 expansion item (see "Phase 5:
+> Expansion" in the [feature-plans README](../planning/feature-plans/README.md)).
+> There is no MCP server to install or configure today. Agent connectors such as
+> Claude, Codex, and Cursor already ship their own MCP bridges to `ovld protocol`
+> — see the [connectors module](../connectors/README.md).
+
+## For Developers
+
+### Contract Component
 
 MCP is **not yet a component** in [`CONTRACT.md`](../CONTRACT.md). When this
 module is implemented it will become a new component connected via the contract,
@@ -23,7 +38,10 @@ must be updated **before** any MCP implementation code lands:
 Like REST and the CLI protocol, an MCP server should reach persistence only
 through the shared **service layer**, never by touching tables directly.
 
-## Documentation
+This directory reserves the module slot and records the intended design so the
+surface lands in a consistent place when work begins.
+
+### Documentation
 
 No dedicated feature plan exists yet. The expansion intent is noted in the
 [feature-plans README](../planning/feature-plans/README.md). Add an

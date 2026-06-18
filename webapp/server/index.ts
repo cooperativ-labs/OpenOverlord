@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { loadConfig } from '../../cli/src/config.ts';
 import { ServiceError } from '../../src/service/errors.ts';
-import { loadRepoEnv } from '../load-repo-env.ts';
+import { loadRepoEnvFiles } from '../load-repo-env.ts';
 
 import { authNodeHandler, requireAuthenticatedSession } from './auth.ts';
 import { DATABASE_PATH, WORKSPACE } from './db.ts';
@@ -106,9 +106,13 @@ const distDir = process.env.OVERLORD_WEBAPP_DIST
   ? path.resolve(process.env.OVERLORD_WEBAPP_DIST)
   : path.resolve(here, '..', 'dist');
 
-// Load repo `.env` when present (dev). Only backfill unset/blank vars so real
-// process-level overrides still win, but empty exports do not mask repo config.
-loadRepoEnv(path.join(repoRoot, '.env'));
+// Load packaged/default `.env` first. Source-server development also overlays
+// `.env.local`, letting local ports/state differ from a packaged production
+// instance without changing the production env file. Explicit shell exports win.
+loadRepoEnvFiles([
+  path.join(repoRoot, '.env'),
+  ...(here === path.join(repoRoot, 'webapp', 'server') ? [path.join(repoRoot, '.env.local')] : [])
+]);
 
 const config = loadConfig();
 const bindHost = process.env.OVERLORD_WEB_HOST ?? config.webHost;

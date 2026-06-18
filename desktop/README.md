@@ -5,6 +5,43 @@ not reimplement product logic: it loads the unmodified `@overlord/webapp` SPA in
 a hardened `BrowserWindow` over a loopback origin, supervises the local
 REST/realtime server the SPA depends on, and gives Overlord a native app shell.
 
+## Table of Contents
+
+- [For Users](#for-users)
+  - [What Desktop provides](#what-desktop-provides)
+  - [Updates](#updates)
+- [For Developers](#for-developers)
+  - [Module scope](#module-scope)
+  - [How it works](#how-it-works)
+  - [Scripts](#scripts)
+  - [Dev loop (connect-only)](#dev-loop-connect-only)
+  - [Packaging & signing](#packaging--signing)
+  - [Publishing releases](#publishing-releases)
+
+## For Users
+
+### What Desktop provides
+
+Desktop is the native macOS app for Overlord. It supervises the local backend and
+SQLite database, then loads the web control center in a hardened window. The
+published `ovld` CLI talks to the same backend URL (by default
+`http://127.0.0.1:4310`) and uses the same `/api/*` surface the SPA uses — you
+do not need to run a separate server when Desktop is running.
+
+Download packaged releases from
+[GitHub Releases](https://github.com/cooperativ-labs/OpenOverlord/releases/latest).
+
+### Updates
+
+Release builds embed a generic electron-updater feed pointing at
+[GitHub Releases](https://github.com/cooperativ-labs/OpenOverlord/releases/latest/download/)
+(`latest-mac.yml` plus `.zip` / `.blockmap` assets). Installed apps check that
+feed on startup and every four hours.
+
+## For Developers
+
+### Module scope
+
 This module is **optional** and **excluded from the default `build` / `dev` /
 `test` / `typecheck` aggregate scripts** — a contributor who never touches the
 desktop never builds or tests it. It is a workspace (so `workspace:*` deps and
@@ -16,7 +53,7 @@ the desktop. The dependency arrow points one way only: `desktop` depends on
 
 Maps to the `desktop` contract component (`desktop/docs/desktop-app.md`).
 
-## How it works
+### How it works
 
 - **Window & security.** One `BrowserWindow` with `contextIsolation`, `sandbox`,
   `nodeIntegration: false`, and a `preload` bridge. A loopback-scoped CSP,
@@ -34,7 +71,7 @@ Maps to the `desktop` contract component (`desktop/docs/desktop-app.md`).
   (`chooseDirectory`, `openExternal`, `revealInFinder`), which the SPA
   feature-detects and never requires.
 
-## Scripts
+### Scripts
 
 ```bash
 # From the repo root (gated; `yarn install` once to pull the Electron deps):
@@ -58,12 +95,16 @@ yarn desktop:dev      # Electron window connects to it
 
 Override the URL with `OVERLORD_DESKTOP_URL`.
 
-## Packaging & signing
+### Packaging & signing
 
 `yarn desktop:package` (→ `scripts/build-desktop.ts`) builds the modules + server
 bundle + SPA, stages the CLI, and runs electron-builder to emit a signed,
 notarized `.dmg`/`.zip` into `--out`. Signing/notarization credentials are read
 from the environment (`.env` at the repo root):
+
+Each packaging run deletes the existing `desktop/release` contents before
+electron-builder writes the next release, so stale versioned artifacts do not
+bleed into subsequent publishable builds.
 
 | Variable | Purpose |
 | --- | --- |
@@ -72,12 +113,6 @@ from the environment (`.env` at the repo root):
 | `APPLE_TEAM_ID` | Developer Team ID |
 | `OVERLORD_UPDATE_FEED_URL` | Override the default GitHub Releases update feed (see `desktop/update-feed.ts`) |
 
-Release builds embed a generic electron-updater feed pointing at
-[GitHub Releases](https://github.com/cooperativ-labs/OpenOverlord/releases/latest/download/)
-(`latest-mac.yml` plus `.zip` / `.blockmap` assets). `yarn desktop:publish` uploads
-those files to the repo's Releases page; installed apps check that feed on startup
-and every four hours.
-
 The Developer ID Application signing identity is auto-discovered from the login
 keychain (or set `CSC_LINK`/`CSC_KEY_PASSWORD`). Use `--no-sign` for an ad-hoc
 local build that needs no Apple account.
@@ -85,6 +120,8 @@ local build that needs no Apple account.
 See
 [`docs/desktop-app.md`](docs/desktop-app.md) for the full behavior spec and
 [`docs/testing.md`](docs/testing.md) for the test plan.
+
+### Publishing releases
 
 To push the packaged desktop artifacts to GitHub Releases, run
 `yarn desktop:package` (artifacts land in `desktop/release` by default), then:

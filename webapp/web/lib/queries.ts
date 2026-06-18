@@ -88,8 +88,12 @@ export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: ap
 export const useProject = (id: string) =>
   useQuery({ queryKey: keys.project(id), queryFn: () => api.getProject(id) });
 
-export const useProjectStatuses = (id: string) =>
-  useQuery({ queryKey: keys.projectStatuses(id), queryFn: () => api.listProjectStatuses(id) });
+export const useProjectStatuses = (id: string | null) =>
+  useQuery({
+    queryKey: keys.projectStatuses(id ?? '__none__'),
+    queryFn: () => api.listProjectStatuses(id ?? ''),
+    enabled: Boolean(id)
+  });
 
 export const useProjectResources = (id: string) =>
   useQuery({ queryKey: keys.projectResources(id), queryFn: () => api.listProjectResources(id) });

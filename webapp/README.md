@@ -12,14 +12,55 @@ surface now covers per-user local execution-target launch defaults (terminal
 profile plus per-agent flags/pre-commands); launching objectives still follows
 the existing ticket/objective controls.
 
-## Running the web app
+## Table of Contents
+
+- [For Users](#for-users)
+  - [Using the web app](#using-the-web-app)
+  - [AI title summarization](#ai-title-summarization)
+- [For Developers](#for-developers)
+  - [Running the web app](#running-the-web-app)
+  - [Module Layout](#module-layout)
+  - [REST surface (as built)](#rest-surface-as-built)
+  - [Contract Component](#contract-component)
+  - [Documentation](#documentation)
+  - [Status](#status)
+  - [Code & Tests](#code--tests)
+
+## For Users
+
+### Using the web app
+
+The web app runs as part of a backend process at the configured host/port. In
+packaged local mode, Desktop supervises that backend. The current local default
+is `http://127.0.0.1:4310`, which is also the CLI's default `backend_url`.
+
+Open that URL in your browser to manage projects, tickets, and objectives on a
+realtime Kanban board. Changes made through the CLI appear live without a
+manual refresh. The settings surface lets you configure per-user local
+execution-target launch defaults (terminal profile plus per-agent flags and
+pre-commands).
+
+### AI title summarization
+
+Ticket and objective titles are derived from instruction text via the
+[`automations`](../automations/README.md) module (`serviceToAutomations`):
+
+- On create (and when an objective's instruction changes without an explicit
+  title edit), the server sets an immediate local title, then asynchronously
+  refines it with Gemini when `GEMINI_API_KEY` is set in the repo-root `.env`.
+- Title updates are written through the same `entity_changes` feed, so the
+  board and ticket panel refresh live.
+
+## For Developers
+
+### Running the web app
 
 The module is a self-contained Yarn sub-project (its own `package.json`):
 
 ```bash
 cd webapp
 yarn install           # first time only
-yarn dev               # server (:8787) + Vite dev server (:5173) together
+yarn dev               # server (:4310) + Vite dev server (:5173) together
 # open http://localhost:5173
 ```
 
@@ -27,14 +68,20 @@ yarn dev               # server (:8787) + Vite dev server (:5173) together
 dev server (which proxies `/api` to it). For a production-style run:
 
 ```bash
-yarn build && yarn start   # builds the SPA, serves it + the API on :8787
+yarn build && yarn start   # builds the SPA, serves it + the API on :4310
 ```
 
-The server opens `database/.local/Overlord.sqlite` by default (configured in
-`overlord.toml`, override with `OVERLORD_SQLITE_PATH`). Initialise that database first with
-`yarn start:local` from the repo root.
+The source server and Vite load repo-root `.env`, then overlay `.env.local`.
+Keep packaged/production values in `.env` and copy `.env.local.example` for
+development-specific ports and `OVLD_HOME`. This lets a packaged production
+instance keep using `OVERLORD_WEB_PORT=4310` while development runs on a
+different API port and data directory.
 
-## Module Layout
+The server opens the global SQLite database under `OVLD_HOME` by default
+(override with `OVERLORD_SQLITE_PATH` or `overlord.toml` `database_path`).
+Initialise that database first with `yarn start:local` from the repo root.
+
+### Module Layout
 
 ```
 webapp/
@@ -51,7 +98,7 @@ the same transaction, and the server polls that feed (with a `PRAGMA
 data_version` safety net for external table writes) and streams compact deltas
 to the browser, which invalidates its TanStack Query cache.
 
-## REST surface (as built)
+### REST surface (as built)
 
 All under an `/api` prefix so the SPA can own the root path-space. DTO fields are
 camelCase per the [REST API Boundary](../database/docs/09-database-schema-contract.md#rest-api-boundary).
@@ -78,17 +125,6 @@ camelCase per the [REST API Boundary](../database/docs/09-database-schema-contra
 | `GET /api/tickets/:id/objectives` | Objectives of a ticket |
 | `POST /api/objectives`, `PATCH/DELETE /api/objectives/:id` | Objectives |
 
-### AI title summarization
-
-Ticket and objective titles are derived from instruction text via the
-[`automations`](../automations/README.md) module (`serviceToAutomations`):
-
-- On create (and when an objective's instruction changes without an explicit
-  title edit), the server sets an immediate local title, then asynchronously
-  refines it with Gemini when `GEMINI_API_KEY` is set in the repo-root `.env`.
-- Title updates are written through the same `entity_changes` feed, so the
-  board and ticket panel refresh live.
-
 **Deviations from the recommended boundary, to ratify:** the realtime endpoint
 is `GET /api/stream` (vs the doc's `/realtime` + `/sync/changes`) and pushes the
 compact deltas inline; `/api/meta` and `/api/projects/:id/statuses` are new
@@ -97,7 +133,7 @@ per-request auth/authorization or use idempotency keys — both are required
 before any multi-user/hosted deployment and before the shared service layer
 lands.
 
-## Contract Component
+### Contract Component
 
 Maps to the **REST API Layer** (`rest`) in [`CONTRACT.md`](../CONTRACT.md), which owns:
 
@@ -109,7 +145,7 @@ Maps to the **REST API Layer** (`rest`) in [`CONTRACT.md`](../CONTRACT.md), whic
 It does **not** own the database schema (→ [Database module](../database/README.md))
 or the protocol CLI surface (→ [CLI module](../cli/README.md)).
 
-## Documentation
+### Documentation
 
 - [Web App Requirements](docs/web-app.md): deferred UI / control-center requirements, kept separate from the CLI-first implementation.
 - [Framework Recommendation](docs/framework-recommendation.md): why the first implementation should prefer Vite + React + TanStack Router/Query + Serwist over Next.js.
@@ -118,7 +154,7 @@ or the protocol CLI surface (→ [CLI module](../cli/README.md)).
 - REST API Boundary: see the "REST API Boundary" section of [09 — Database Schema Contract](../database/docs/09-database-schema-contract.md) (owned by the [Database module](../database/README.md)).
 - [Test Plan](docs/testing.md): REST API conformance (routing, camelCase DTO shape, auth/authorization, idempotency, realtime/sync) plus the framework-agnostic web-UI test plan. Part of the root [TEST_PLAN.md](../TEST_PLAN.md).
 
-## Status
+### Status
 
 A first realtime slice has landed (projects / tickets / objectives CRUD +
 live updates). The remaining surfaces described in the [UI design
@@ -132,7 +168,7 @@ users/roles/tokens — are still deferred and remain CLI-only.
 > layer lands, the REST handlers in `server/` should be moved onto it per
 > `AGENTS.md` so business logic is not duplicated.
 
-## Code & Tests
+### Code & Tests
 
 - `server/` — Express REST + SSE realtime over `better-sqlite3` (`db.ts`,
   `repository.ts`, `realtime.ts`, `index.ts`).

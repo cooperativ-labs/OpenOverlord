@@ -179,6 +179,13 @@ function stageFile(from: string, to: string): void {
   cpSync(from, to);
 }
 
+function resetReleaseDir(): void {
+  const releaseDir = path.join(desktopDir, 'release');
+  rmSync(releaseDir, { recursive: true, force: true });
+  mkdirSync(releaseDir, { recursive: true });
+  console.log(`\n→ Cleared ${path.relative(repoRoot, releaseDir)} before packaging`);
+}
+
 function main(): void {
   loadEnv();
   const args = parseArgs(process.argv.slice(2));
@@ -228,6 +235,10 @@ function main(): void {
     path.join(repoRoot, 'webapp', 'public', 'images', '512.png'),
     path.join(desktopDir, 'build', 'icon.png')
   );
+
+  // Start each package build from a clean electron-builder output directory so
+  // stale release artifacts cannot survive into the next run.
+  resetReleaseDir();
 
   // 2b. Rebuild the lone native dependency (better-sqlite3) against the Electron
   // ABI so the packed addon loads at runtime instead of throwing ERR_DLOPEN_FAILED.

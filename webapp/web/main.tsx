@@ -43,8 +43,8 @@ createRoot(rootElement).render(
             <SystemNotificationProvider>
               <RealtimeProvider>
                 <RouterProvider router={router} />
+                <SystemNotificationRoot />
               </RealtimeProvider>
-              <SystemNotificationRoot />
             </SystemNotificationProvider>
           </AuthGate>
         </QueryClientProvider>

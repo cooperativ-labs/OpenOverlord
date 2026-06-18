@@ -3,7 +3,25 @@
 The `ovld` command-line surface — Overlord's primary, CLI-first product.
 This module is the home for everything a user or agent invokes as `ovld …`.
 
-## Setup
+## Table of Contents
+
+- [For Users](#for-users)
+  - [Setup](#setup)
+  - [First run](#first-run)
+  - [How the published CLI works](#how-the-published-cli-works)
+  - [Point the CLI at a backend](#point-the-cli-at-a-backend)
+  - [Headless / container setup](#headless--container-setup)
+  - [What requires the backend](#what-requires-the-backend)
+- [For Developers](#for-developers)
+  - [Contract Components](#contract-components)
+  - [Documentation](#documentation)
+  - [Code & Tests](#code--tests)
+  - [In-repo build vs installed CLI](#in-repo-build-vs-installed-cli)
+  - [Interaction Boundaries](#interaction-boundaries)
+
+## For Users
+
+### Setup
 
 The CLI is **client-only**. Management commands, protocol sessions, and runner
 queue operations all reach persistence through the backend URL you configure — only
@@ -139,9 +157,9 @@ configured backend URL.
 backend API, then spawns the selected agent process on your machine in the
 resolved project directory. The queue state remains in the backend.
 
+## For Developers
 
-
-## Contract Components
+### Contract Components
 
 This module is the developer-facing home for three components defined in
 [`CONTRACT.md`](../CONTRACT.md):
@@ -156,7 +174,7 @@ These stay distinct components in the contract (separate interaction surfaces
 and ownership). They are grouped into one developer module because they are all
 the `ovld` command surface and tend to be worked on together.
 
-## Documentation
+### Documentation
 
 Requirements and behavior specs are colocated in this module's
 [`docs/`](docs/) folder (see the root [README](../README.md#modules) for the
@@ -169,8 +187,7 @@ colocation convention):
 - [05 — Review, Artifacts, and Change Tracking](docs/05-review-artifacts-and-change-tracking.md): delivery review records, artifacts, rationale coverage, local diff support.
 - [Test Plan](docs/testing.md): test plan for the `cli`, `protocol`, and `runner` components — management commands, protocol lifecycle/attach-shape/validation conformance, runner queue atomicity, and surface smoke tests. Part of the root [TEST_PLAN.md](../TEST_PLAN.md).
 
-
-## Code & Tests
+### Code & Tests
 
 The packaged CLI lives in this module as a self-contained Yarn sub-project:
 
@@ -196,7 +213,7 @@ The CLI ships command parsing, config/auth onboarding, connector setup, backend
 client calls, and local runner/agent launch logic. Run `yarn build` before using
 the compiled CLI (`node cli/bin/ovld.mjs …`).
 
-## In-repo build vs installed CLI
+### In-repo build vs installed CLI
 
 Project-management work (`ovld protocol attach/update/deliver`, ticket creation,
 launching) uses the **installed** `ovld` so those calls hit the installed
@@ -229,7 +246,7 @@ node cli/bin/ovld.mjs doctor             # in-repo CLI → the isolated backend
 `load:cli` script): linking shadows the global `ovld`, so `ovld protocol` calls
 would run untested working-tree code against your real ticket data.
 
-## Interaction Boundaries
+### Interaction Boundaries
 
 Per the contract, the CLI/protocol/runner surfaces reach persistence only
 through the configured **REST/backend API** — never direct table writes.

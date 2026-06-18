@@ -3,3 +3,4 @@ export { SystemNotificationProvider, useSystemNotifications } from './SystemNoti
 export { SystemNotificationRoot } from './SystemNotificationRoot';
 export type { SystemNotification, SystemNotificationType } from './types';
 export { useAppUpdateNotifications } from './useAppUpdateNotifications';
+export { useNativeWorkflowNotifications } from './useNativeWorkflowNotifications';

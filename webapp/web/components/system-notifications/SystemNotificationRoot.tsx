@@ -1,5 +1,6 @@
 import { SystemNotificationBanner } from './SystemNotificationBanner';
 import { useAppUpdateNotifications } from './useAppUpdateNotifications';
+import { useNativeWorkflowNotifications } from './useNativeWorkflowNotifications';
 
 /**
  * Root component that renders the system notification banner and wires up
@@ -9,6 +10,7 @@ import { useAppUpdateNotifications } from './useAppUpdateNotifications';
  */
 export function SystemNotificationRoot() {
   useAppUpdateNotifications();
+  useNativeWorkflowNotifications();
 
   return <SystemNotificationBanner />;
 }

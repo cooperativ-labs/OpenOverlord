@@ -15,6 +15,7 @@ import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { useMatch, useNavigate, useParams } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { NewTicketModal } from '@/components/NewTicketModal.tsx';
 import type { TicketDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 import { ProjectSettingsSection } from '../components/projects/ProjectSettingsSection.tsx';
 import { Button, EmptyState, Spinner } from '../components/ui.tsx';
@@ -37,7 +38,6 @@ import {
   storeBoardView
 } from './board-shared.ts';
 import { BoardColumn } from './BoardColumn.tsx';
-import { NewTicketModal } from './NewTicketModal.tsx';
 import { SortableTicketCard } from './SortableTicketCard.tsx';
 import { TicketListView } from './TicketListView.tsx';
 import { TicketsViewToggle } from './TicketsViewToggle.tsx';
@@ -364,9 +364,6 @@ export function BoardPage() {
             }
           />
           <TicketsViewToggle value={view} onChange={handleViewChange} />
-          <Button variant="primary" onClick={() => setModalOpen(true)}>
-            + New ticket
-          </Button>
         </div>
       </header>
 
@@ -471,8 +468,7 @@ export function BoardPage() {
       <NewTicketModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        projectId={projectId}
-        statuses={statuses}
+        defaultProjectId={projectId}
       />
     </div>
   );

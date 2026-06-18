@@ -4,7 +4,30 @@ This directory contains the machine-readable counterparts to `CONTRACT.md`.
 
 **The authoritative narrative contract lives in [`CONTRACT.md`](../CONTRACT.md) at the project root. Read that first.**
 
-## Files
+## Table of Contents
+
+- [For Users](#for-users)
+  - [Understanding the contract](#understanding-the-contract)
+- [For Developers](#for-developers)
+  - [Files](#files)
+  - [How to Use](#how-to-use)
+  - [For shipped components](#for-shipped-components-connectors-extensions-adapters)
+  - [For agents](#for-agents)
+
+## For Users
+
+### Understanding the contract
+
+The contract defines how Overlord's modules interact — what each component owns,
+which surfaces are stable, and how extensions plug in. If you are configuring or
+extending Overlord (custom connectors, auth providers, schema extensions), start
+with the narrative spec in [`CONTRACT.md`](../CONTRACT.md). The YAML files in
+this directory are the machine-readable version of that spec, used by tooling and
+agents.
+
+## For Developers
+
+### Files
 
 | File | Purpose |
 | --- | --- |
@@ -13,9 +36,9 @@ This directory contains the machine-readable counterparts to `CONTRACT.md`.
 | `extension-points.yaml` | Sanctioned extension points, approved capability flags, open/closed vocabularies |
 | `conformance-manifest.schema.yaml` | JSON Schema (YAML format) for component conformance manifests |
 
-## How to Use
+### How to Use
 
-### For implementors
+#### For implementors
 
 Before writing code that crosses a module boundary, read `CONTRACT.md` and the relevant YAML file for the surface you are using.
 

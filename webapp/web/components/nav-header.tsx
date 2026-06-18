@@ -1,6 +1,10 @@
-import { RefreshCw } from 'lucide-react';
+import { useParams } from '@tanstack/react-router';
+import { Plus, RefreshCw } from 'lucide-react';
+import { useState } from 'react';
 
+import { NewTicketModal } from '@/components/NewTicketModal.tsx';
 import { Button } from '@/components/ui/button';
+import { useProjects } from '@/lib/queries.ts';
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { DRAG_REGION, getDesktopChrome, NO_DRAG_REGION } from '@/lib/desktop-chrome';
 
@@ -18,6 +22,10 @@ import { TicketSearch } from './nav-header/TicketSearch.tsx';
 export function NavHeader() {
   const { isDesktop, isMacDesktop } = getDesktopChrome();
   const { state } = useSidebar();
+  const { projectId } = useParams({ strict: false }) as { projectId?: string };
+  const projectsQ = useProjects();
+  const [isNewTicketOpen, setIsNewTicketOpen] = useState(false);
+  const hasProjects = (projectsQ.data?.length ?? 0) > 0;
   const handleHardRefresh = () => {
     window.location.reload();
   };
@@ -54,7 +62,26 @@ export function NavHeader() {
           <TicketSearch />
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-3" />
+      <div
+        className="flex shrink-0 items-center gap-2"
+        style={isDesktop ? NO_DRAG_REGION : undefined}
+      >
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setIsNewTicketOpen(true)}
+          disabled={!hasProjects}
+        >
+          <Plus />
+          New ticket
+        </Button>
+      </div>
+      <NewTicketModal
+        open={isNewTicketOpen}
+        onClose={() => setIsNewTicketOpen(false)}
+        defaultProjectId={projectId ?? null}
+      />
     </header>
   );
 }

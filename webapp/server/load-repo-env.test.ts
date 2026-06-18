@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { afterEach, describe, it } from 'node:test';
 
-import { loadRepoEnv } from '../load-repo-env.ts';
+import { loadRepoEnv, loadRepoEnvFiles } from '../load-repo-env.ts';
 
 const ENV_KEYS = ['GEMINI_API_KEY', 'OVERLORD_WEB_PORT'] as const;
 
@@ -79,6 +79,18 @@ describe('loadRepoEnv', () => {
       loadRepoEnv(envPath);
 
       assert.equal(process.env.GEMINI_API_KEY, 'from-process');
+    });
+  });
+
+  it('lets later env files override earlier files before writing process env', () => {
+    withCleanEnv(() => {
+      const prodEnvPath = makeEnvFile('OVERLORD_WEB_PORT=4310\nGEMINI_API_KEY=from-prod\n');
+      const localEnvPath = makeEnvFile('OVERLORD_WEB_PORT=4320\n');
+
+      loadRepoEnvFiles([prodEnvPath, localEnvPath]);
+
+      assert.equal(process.env.OVERLORD_WEB_PORT, '4320');
+      assert.equal(process.env.GEMINI_API_KEY, 'from-prod');
     });
   });
 });

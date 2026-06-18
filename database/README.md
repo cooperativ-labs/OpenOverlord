@@ -6,7 +6,50 @@ database. The schema is defined as a portable contract so adapters can implement
 it and pass conformance tests. This module also hosts the **extension system** —
 the sanctioned ways to extend the schema without forking it.
 
-## Contract Components
+## Table of Contents
+
+- [For Users](#for-users)
+  - [Persistence modes](#persistence-modes)
+  - [Extension surface](#extension-surface)
+- [For Developers](#for-developers)
+  - [Contract Components](#contract-components)
+  - [Documentation](#documentation)
+  - [Code & Tests (colocated)](#code--tests-colocated)
+  - [Applying Locally](#applying-locally)
+  - [Migrations](#migrations)
+
+## For Users
+
+### Persistence modes
+
+Overlord stores projects, tickets, objectives, events, and other data behind a
+backend service. Local mode uses a backend running on your machine (Desktop
+today, and possibly a future db-only local backend) that owns SQLite and
+migrations. Cloud mode uses a hosted backend that owns Postgres. The published
+`open-overlord` CLI is a client of one of those backends; it does not open
+SQLite directly or ship `better-sqlite3`.
+
+Configure the backend target in `overlord.toml` (`backend_url`) or through
+`ovld config set local|cloud`. See the [CLI module README](../cli/README.md) for
+setup details.
+
+The first-pass portable schema proposal is documented in the
+[schema contract](docs/09-database-schema-contract.md). Users can extend or
+customize the schema through component-scoped migrations, namespaced metadata,
+and documented extension points — see [Extension surface](#extension-surface)
+below.
+
+### Extension surface
+
+Extend the schema only through the sanctioned paths: `ext_<name>_`-prefixed
+tables with `schema_migrations.component = 'ext:<name>'`, namespaced JSON
+metadata keys, and reactions via service APIs / `entity_changes` / `outbox_messages`
+— never direct writes to core tables. See the Extension Points section of
+[`CONTRACT.md`](../CONTRACT.md) and [`contract/extension-points.yaml`](../contract/extension-points.yaml).
+
+## For Developers
+
+### Contract Components
 
 This module is the developer-facing home for two components in
 [`CONTRACT.md`](../CONTRACT.md):
@@ -19,7 +62,7 @@ This module is the developer-facing home for two components in
 The Database Layer does **not** own service-layer business logic or REST
 response shapes (→ [webapp module](../webapp/README.md)).
 
-## Documentation
+### Documentation
 
 - [09 — Database Schema Contract](docs/09-database-schema-contract.md): column/index/FK definitions, default-DB recommendation, core tables, realtime/sync, migration discipline, REST API Boundary, and Extension Points.
 - [09 — Schema Contract Review](docs/09-database-schema-contract-review.md): review notes on the schema contract.
@@ -29,7 +72,7 @@ response shapes (→ [webapp module](../webapp/README.md)).
 - [13 — Database Seeding Framework](docs/13-database-seeding-framework.md): recommendation for how to seed development/test data — a first-party Kysely + faker seed runner over the service layer, and why a third-party seeding framework (Prisma/Drizzle/Snaplet) is the wrong fit.
 - [Test Plan](docs/testing.md): adapter-parity test plan implementing the schema contract's Adapter Conformance Suite (DDL, concurrency, change feed, uniqueness, queue claiming, soft delete, extension migrations) across SQLite and Postgres. Part of the root [TEST_PLAN.md](../TEST_PLAN.md).
 
-## Code & Tests (colocated)
+### Code & Tests (colocated)
 
 This module is the `@overlord/database` workspace package. Its runtime lives in
 [`database/src/`](src/) and is consumed by backend processes, the root service
@@ -54,34 +97,9 @@ The published `open-overlord` CLI does not bundle this package. It talks to a
 configured backend URL; local/cloud backend packages own database adapters and
 migrations.
 
-Migrations live here, numbered sequentially:
+Migrations live here, numbered sequentially — see [Migrations](#migrations).
 
-### `sqlite/migrations/001_initial_core.sql` and `postgres/migrations/001_initial_core.sql`
-Core MVP slice: all tables for the local ticket/objective/session workflow, the
-change feed, and idempotency. Seeds deterministic rows for the default local
-workspace, implicit user, workspace membership, and workspace-scoped ticket sequence.
-
-The PostgreSQL migration uses native `jsonb`, `boolean`, `timestamptz`, and a
-`bigint` identity cursor for `entity_changes.seq`. It also adds a claimable
-queue index for `execution_requests` so service-layer runner claims can use
-`FOR UPDATE SKIP LOCKED` efficiently.
-
-### `sqlite/migrations/002_rbac.sql` and `postgres/migrations/002_rbac.sql`
-Group 1 (Multi-User Access and API Tokens):
-- `role_assignments` — durable workspace-user-to-role membership. Empty-string sentinels for `resource_type`/`resource_id` represent workspace-level scope so the unique-active-assignment index works on both SQLite and Postgres.
-- `user_tokens` — USER_TOKEN metadata and hashes only; raw secrets are never stored.
-- `user_token_scopes` — reserved for future token-level permission restrictions.
-
-Seeds an `ADMIN` role assignment for the implicit local workspace user. This
-provides the schema foundation for the [Auth module](../auth/README.md); the
-authorization logic itself lives above the database layer.
-
-### `sqlite/migrations/003_better_auth.sql` and `postgres/migrations/003_better_auth.sql`
-Auth-owned Better Auth implementation tables (`user`, `session`, `account`,
-`verification`) in the same adapter database. No other component should read or
-write these tables directly.
-
-## Applying Locally
+### Applying Locally
 
 Use the Node-based local launcher for the default SQLite development database:
 
@@ -133,10 +151,29 @@ checksum after each migration commits. Real initialization code may replace the
 seed IDs with generated stable IDs, but tests can rely on the deterministic
 values from these migrations.
 
-## Extension Surface
+### Migrations
 
-Extend the schema only through the sanctioned paths: `ext_<name>_`-prefixed
-tables with `schema_migrations.component = 'ext:<name>'`, namespaced JSON
-metadata keys, and reactions via service APIs / `entity_changes` / `outbox_messages`
-— never direct writes to core tables. See the Extension Points section of
-[`CONTRACT.md`](../CONTRACT.md) and [`contract/extension-points.yaml`](../contract/extension-points.yaml).
+#### `sqlite/migrations/001_initial_core.sql` and `postgres/migrations/001_initial_core.sql`
+Core MVP slice: all tables for the local ticket/objective/session workflow, the
+change feed, and idempotency. Seeds deterministic rows for the default local
+workspace, implicit user, workspace membership, and workspace-scoped ticket sequence.
+
+The PostgreSQL migration uses native `jsonb`, `boolean`, `timestamptz`, and a
+`bigint` identity cursor for `entity_changes.seq`. It also adds a claimable
+queue index for `execution_requests` so service-layer runner claims can use
+`FOR UPDATE SKIP LOCKED` efficiently.
+
+#### `sqlite/migrations/002_rbac.sql` and `postgres/migrations/002_rbac.sql`
+Group 1 (Multi-User Access and API Tokens):
+- `role_assignments` — durable workspace-user-to-role membership. Empty-string sentinels for `resource_type`/`resource_id` represent workspace-level scope so the unique-active-assignment index works on both SQLite and Postgres.
+- `user_tokens` — USER_TOKEN metadata and hashes only; raw secrets are never stored.
+- `user_token_scopes` — reserved for future token-level permission restrictions.
+
+Seeds an `ADMIN` role assignment for the implicit local workspace user. This
+provides the schema foundation for the [Auth module](../auth/README.md); the
+authorization logic itself lives above the database layer.
+
+#### `sqlite/migrations/003_better_auth.sql` and `postgres/migrations/003_better_auth.sql`
+Auth-owned Better Auth implementation tables (`user`, `session`, `account`,
+`verification`) in the same adapter database. No other component should read or
+write these tables directly.

@@ -1,14 +1,21 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
 
+import type { EntityChangeDto } from '../../shared/contract.ts';
+
 export type LinkState = 'connecting' | 'live' | 'reconnecting';
 
 interface RealtimeValue {
   state: LinkState;
   lastSeq: number;
+  lastChanges: EntityChangeDto[];
 }
 
-const RealtimeContext = createContext<RealtimeValue>({ state: 'connecting', lastSeq: 0 });
+const RealtimeContext = createContext<RealtimeValue>({
+  state: 'connecting',
+  lastSeq: 0,
+  lastChanges: []
+});
 
 /**
  * Holds one SSE connection to `GET /api/stream` for the whole app. Every delta
@@ -19,6 +26,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [state, setState] = useState<LinkState>('connecting');
   const [lastSeq, setLastSeq] = useState(0);
+  const [lastChanges, setLastChanges] = useState<EntityChangeDto[]>([]);
 
   useEffect(() => {
     const source = new EventSource('/api/stream');
@@ -38,7 +46,12 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     source.addEventListener('change', event => {
       onLive();
       try {
-        setLastSeq(JSON.parse((event as MessageEvent).data).cursor ?? 0);
+        const payload = JSON.parse((event as MessageEvent).data) as {
+          cursor?: number;
+          changes?: EntityChangeDto[];
+        };
+        setLastSeq(payload.cursor ?? 0);
+        setLastChanges(Array.isArray(payload.changes) ? payload.changes : []);
       } catch {
         /* ignore */
       }
@@ -56,7 +69,11 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     return () => source.close();
   }, [queryClient]);
 
-  return <RealtimeContext.Provider value={{ state, lastSeq }}>{children}</RealtimeContext.Provider>;
+  return (
+    <RealtimeContext.Provider value={{ state, lastSeq, lastChanges }}>
+      {children}
+    </RealtimeContext.Provider>
+  );
 }
 
 export function useRealtime(): RealtimeValue {

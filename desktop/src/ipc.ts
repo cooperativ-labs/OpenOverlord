@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { BrowserWindow, Notification, dialog, ipcMain, shell } from 'electron';
 
 import { isNativeThemeSource, setNativeThemeSource } from './native-theme.js';
 import {
@@ -59,6 +59,21 @@ export function registerIpc({
   ipcMain.handle('overlord:reveal', (_event, targetPath: unknown) => {
     if (typeof targetPath !== 'string' || targetPath.length === 0) return false;
     shell.showItemInFolder(targetPath);
+    return true;
+  });
+
+  ipcMain.handle('overlord:show-notification', (_event, payload: unknown) => {
+    if (!Notification.isSupported()) return false;
+    if (!payload || typeof payload !== 'object') return false;
+
+    const { title, body } = payload as { title?: unknown; body?: unknown };
+    if (typeof title !== 'string' || title.trim().length === 0) return false;
+    if (typeof body !== 'string' || body.trim().length === 0) return false;
+
+    new Notification({
+      title: title.slice(0, 120),
+      body: body.slice(0, 500)
+    }).show();
     return true;
   });
 
