@@ -76,7 +76,18 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
       activeNav={activeNav}
       onActiveNavChange={name => setActiveNav(name as SettingsNavSection)}
       showClose
-      sidebarFooter={<RealtimeStatus sqlStudio={meta.data?.sqlStudio} />}
+      sidebarFooter={<>
+        <RealtimeStatus sqlStudio={meta.data?.sqlStudio} />
+        {meta.data?.databasePath && (
+          <p
+            className="truncate px-2 text-[10px] text-muted-foreground"
+            title={meta.data.databasePath}
+          >
+            {meta.data.databasePath.split('/').slice(-2).join('/')}
+          </p>
+        )}
+      </>
+      }
     >
       {activeNav === 'Application' && <ApplicationPage />}
       {activeNav === 'Notifications' && <NotificationsPage />}

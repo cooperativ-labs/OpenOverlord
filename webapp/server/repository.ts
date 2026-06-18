@@ -334,6 +334,111 @@ function toProjectResourceDto(r: ProjectResourceRow): ProjectResourceDto {
   };
 }
 
+function executionTargetBelongsToWorkspace(executionTargetId: string): boolean {
+  const row = db
+    .prepare(
+      `SELECT id FROM execution_targets
+        WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
+    )
+    .get(executionTargetId, WORKSPACE.id) as { id: string } | undefined;
+  return Boolean(row);
+}
+
+function resolveResourceExecutionTargetId(
+  executionTargetId: string | null | undefined
+): string | null {
+  if (executionTargetId === undefined) {
+    return ensureLocalExecutionTarget({
+      ctx: {
+        db,
+        workspace: { id: WORKSPACE.id, slug: WORKSPACE.slug, name: WORKSPACE.name },
+        actorWorkspaceUserId: ACTOR_WORKSPACE_USER_ID,
+        source: 'webapp'
+      }
+    }).executionTargetId;
+  }
+
+  if (executionTargetId === null) return null;
+
+  const trimmed = executionTargetId.trim();
+  if (!trimmed) return null;
+  if (!executionTargetBelongsToWorkspace(trimmed)) {
+    throw new ApiError(404, 'Execution target not found');
+  }
+  return trimmed;
+}
+
+function getProjectResourceRow(projectId: string, resourceId: string): ProjectResourceRow {
+  getProject(projectId);
+  const row = db
+    .prepare(
+      `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
+              is_primary, status, created_at, updated_at, revision
+         FROM project_resources
+        WHERE id = ? AND project_id = ? AND deleted_at IS NULL`
+    )
+    .get(resourceId, projectId) as ProjectResourceRow | undefined;
+  if (!row) throw new ApiError(404, 'Resource not found');
+  return row;
+}
+
+function clearPrimaryResourcesForTarget({
+  projectId,
+  executionTargetId,
+  now
+}: {
+  projectId: string;
+  executionTargetId: string | null;
+  now: string;
+}): void {
+  const targetPredicate =
+    executionTargetId === null
+      ? 'execution_target_id IS NULL'
+      : 'execution_target_id = @execution_target_id';
+  db.prepare(
+    `UPDATE project_resources
+        SET is_primary = 0, updated_at = @now, revision = revision + 1
+      WHERE project_id = @project_id
+        AND deleted_at IS NULL
+        AND is_primary = 1
+        AND ${targetPredicate}`
+  ).run({ project_id: projectId, execution_target_id: executionTargetId, now });
+}
+
+function promoteFallbackPrimary({
+  projectId,
+  executionTargetId,
+  now
+}: {
+  projectId: string;
+  executionTargetId: string | null;
+  now: string;
+}): void {
+  const targetPredicate =
+    executionTargetId === null
+      ? 'execution_target_id IS NULL'
+      : 'execution_target_id = @execution_target_id';
+  const fallback = db
+    .prepare(
+      `SELECT id FROM project_resources
+        WHERE project_id = @project_id
+          AND deleted_at IS NULL
+          AND ${targetPredicate}
+        ORDER BY created_at ASC
+        LIMIT 1`
+    )
+    .get({ project_id: projectId, execution_target_id: executionTargetId }) as
+    | { id: string }
+    | undefined;
+  if (!fallback) return;
+
+  db.prepare(
+    `UPDATE project_resources
+        SET is_primary = 1, updated_at = @now, revision = revision + 1
+      WHERE id = @id`
+  ).run({ id: fallback.id, now });
+}
+
 function parseAvailableTools(json: string): string[] {
   try {
     const arr = JSON.parse(json);
@@ -855,21 +960,15 @@ export function listProjectResources(projectId: string): ProjectResourceDto[] {
 }
 
 export const createProjectResource = db.transaction(
-  (
-    projectId: string,
-    body: { directoryPath?: string; path?: string; label?: string | null; isPrimary?: boolean }
-  ): ProjectResourceDto => {
+  (projectId: string, body: CreateProjectResourceBody & { path?: string }): ProjectResourceDto => {
     const project = getProject(projectId);
     const resourcePath = (body.directoryPath ?? body.path ?? '').trim();
     if (!resourcePath) throw new ApiError(400, 'directoryPath is required');
+    const executionTargetId = resolveResourceExecutionTargetId(body.executionTargetId);
 
     const now = nowIso();
     if (body.isPrimary !== false) {
-      db.prepare(
-        `UPDATE project_resources
-            SET is_primary = 0, updated_at = @now, revision = revision + 1
-          WHERE project_id = @project_id AND deleted_at IS NULL`
-      ).run({ project_id: projectId, now });
+      clearPrimaryResourcesForTarget({ projectId, executionTargetId, now });
     }
 
     const id = newId();
@@ -877,11 +976,12 @@ export const createProjectResource = db.transaction(
       `INSERT INTO project_resources
          (id, workspace_id, project_id, execution_target_id, type, label, path,
           is_primary, status, metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, NULL, 'local_directory', ?, ?, ?, 'active', '{}', ?, ?, 1)`
+       VALUES (?, ?, ?, ?, 'local_directory', ?, ?, ?, 'active', '{}', ?, ?, 1)`
     ).run(
       id,
       project.workspaceId,
       projectId,
+      executionTargetId,
       body.label ?? null,
       resourcePath,
       body.isPrimary === false ? 0 : 1,
@@ -908,6 +1008,64 @@ export const createProjectResource = db.transaction(
     return toProjectResourceDto(row);
   }
 );
+
+export const updateProjectResource = db.transaction(
+  (projectId: string, resourceId: string, body: UpdateProjectResourceBody): ProjectResourceDto => {
+    const existing = getProjectResourceRow(projectId, resourceId);
+    const now = nowIso();
+
+    if (body.isPrimary === true && existing.is_primary !== 1) {
+      clearPrimaryResourcesForTarget({
+        projectId,
+        executionTargetId: existing.execution_target_id,
+        now
+      });
+      db.prepare(
+        `UPDATE project_resources
+            SET is_primary = 1, updated_at = @now, revision = revision + 1
+          WHERE id = @id`
+      ).run({ id: resourceId, now });
+      recordChange({
+        entityType: 'project_resource',
+        entityId: resourceId,
+        operation: 'update',
+        entityRevision: existing.revision + 1,
+        projectId,
+        changedFields: ['is_primary']
+      });
+    }
+
+    return toProjectResourceDto(getProjectResourceRow(projectId, resourceId));
+  }
+);
+
+export const deleteProjectResource = db.transaction((projectId: string, resourceId: string): void => {
+  const existing = getProjectResourceRow(projectId, resourceId);
+  const now = nowIso();
+  const revision = existing.revision + 1;
+
+  db.prepare(
+    `UPDATE project_resources
+        SET deleted_at = @now, updated_at = @now, revision = @revision
+      WHERE id = @id`
+  ).run({ id: resourceId, now, revision });
+
+  if (existing.is_primary === 1) {
+    promoteFallbackPrimary({
+      projectId,
+      executionTargetId: existing.execution_target_id,
+      now
+    });
+  }
+
+  recordChange({
+    entityType: 'project_resource',
+    entityId: resourceId,
+    operation: 'delete',
+    entityRevision: revision,
+    projectId
+  });
+});
 
 function getProjectRepositoryResource(
   projectId: string,

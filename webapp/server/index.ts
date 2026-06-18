@@ -35,6 +35,7 @@ import {
   createUserToken,
   deleteObjective,
   deleteProject,
+  deleteProjectResource,
   deleteProjectStatus,
   deleteProjectTag,
   deleteTicket,
@@ -61,6 +62,7 @@ import {
   updateObjective,
   updateProfile,
   updateProject,
+  updateProjectResource,
   updateProjectStatus,
   updateProjectTag,
   updateTicket
@@ -443,6 +445,22 @@ app.get(
 app.post(
   '/api/projects/:id/resources',
   handle(req => createProjectResource(req.params.id, req.body), { mutates: true })
+);
+app.patch(
+  '/api/projects/:id/resources/:resourceId',
+  handle(req => updateProjectResource(req.params.id, req.params.resourceId, req.body), {
+    mutates: true
+  })
+);
+app.delete(
+  '/api/projects/:id/resources/:resourceId',
+  handle(
+    req => {
+      deleteProjectResource(req.params.id, req.params.resourceId);
+      return { ok: true as const };
+    },
+    { mutates: true }
+  )
 );
 app.get(
   '/api/projects/:id/repository',

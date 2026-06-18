@@ -5,6 +5,7 @@ import path from 'node:path';
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import { resolveProjectId } from './context.js';
+import { ensureLocalExecutionTarget } from './execution-targets.js';
 import { ServiceError } from './errors.js';
 import { initialTitleFromInstruction, newId, nowIso, slugify } from './util.js';
 
@@ -211,6 +212,7 @@ export function addProjectResource({
 }): ProjectResourceSummary {
   const resolvedProjectId = resolveProjectId(ctx, projectId);
   const resolvedPath = path.resolve(directoryPath);
+  const executionTargetId = ensureLocalExecutionTarget({ ctx }).executionTargetId;
   const now = nowIso();
   const id = newId();
 
@@ -218,22 +220,23 @@ export function addProjectResource({
     ctx.db
       .prepare(
         `UPDATE project_resources SET is_primary = 0, updated_at = ?, revision = revision + 1
-         WHERE project_id = ? AND deleted_at IS NULL AND is_primary = 1`
+         WHERE project_id = ? AND deleted_at IS NULL AND is_primary = 1 AND execution_target_id = ?`
       )
-      .run(now, resolvedProjectId);
+      .run(now, resolvedProjectId, executionTargetId);
   }
 
   ctx.db
     .prepare(
       `INSERT INTO project_resources
-         (id, workspace_id, project_id, type, label, path, is_primary, status,
+         (id, workspace_id, project_id, execution_target_id, type, label, path, is_primary, status,
           metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, 'local_directory', ?, ?, ?, 'active', '{}', ?, ?, 1)`
+       VALUES (?, ?, ?, ?, 'local_directory', ?, ?, ?, 'active', '{}', ?, ?, 1)`
     )
     .run(
       id,
       ctx.workspace.id,
       resolvedProjectId,
+      executionTargetId,
       label?.trim() || path.basename(resolvedPath),
       resolvedPath,
       isPrimary ? 1 : 0,
@@ -260,6 +263,7 @@ export function addProjectResource({
   return {
     id,
     projectId: resolvedProjectId,
+    executionTargetId,
     type: 'local_directory',
     label: label?.trim() || path.basename(resolvedPath),
     path: resolvedPath,

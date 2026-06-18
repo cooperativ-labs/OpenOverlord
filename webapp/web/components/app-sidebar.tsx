@@ -165,14 +165,7 @@ export function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
-          {meta.data?.databasePath && (
-            <p
-              className="truncate px-2 text-[10px] text-muted-foreground"
-              title={meta.data.databasePath}
-            >
-              {meta.data.databasePath.split('/').slice(-2).join('/')}
-            </p>
-          )}
+
           <SidebarSeparator className="mx-0" />
           <NavUser onOpenSettings={openSettings} />
         </SidebarFooter>

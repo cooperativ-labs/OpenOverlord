@@ -1,7 +1,27 @@
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
-import { useProjectResources } from '@/lib/queries';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  useCreateProjectResource,
+  useDeleteProjectResource,
+  useLaunchSettings,
+  useProjectResources,
+  useUpdateProjectResource
+} from '@/lib/queries';
+
+import type { ProjectResourceDto } from '../../../../shared/contract.ts';
 
 type ResourcesPageProps = {
   open: boolean;
@@ -22,18 +42,80 @@ function resourceStatusLabel(status: string): string {
 }
 
 export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
-  const resources = useProjectResources(projectId);
-  const rows = open ? (resources.data ?? []) : [];
-  const hasMissingPrimary = rows.some(
-    resource => resource.isPrimary && resource.status === 'missing'
-  );
+  const resourcesQ = useProjectResources(projectId);
+  const launchSettingsQ = useLaunchSettings();
+  const createResource = useCreateProjectResource(projectId);
+  const updateResource = useUpdateProjectResource(projectId);
+  const deleteResource = useDeleteProjectResource(projectId);
+
+  const rows = open ? (resourcesQ.data ?? []) : [];
+  const localExecutionTargetId = launchSettingsQ.data?.executionTargetId ?? null;
+  const deviceLabel = launchSettingsQ.data?.deviceLabel ?? 'This device';
+  const hasMissingPrimary = rows.some(resource => resource.isPrimary && resource.status === 'missing');
+  const hasLocalPrimary =
+    localExecutionTargetId !== null &&
+    rows.some(resource => resource.executionTargetId === localExecutionTargetId && resource.isPrimary);
+
+  const [directoryPath, setDirectoryPath] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ProjectResourceDto | null>(null);
+
+  function targetLabel(resource: ProjectResourceDto): string {
+    if (resource.executionTargetId === null) return 'Any target';
+    if (resource.executionTargetId === localExecutionTargetId) return `${deviceLabel} (this device)`;
+    return resource.executionTargetId;
+  }
+
+  async function handleAddResource() {
+    const trimmed = directoryPath.trim();
+    if (!trimmed) {
+      setAddError('Enter a directory path.');
+      return;
+    }
+
+    setAddError(null);
+    try {
+      await createResource.mutateAsync({
+        directoryPath: trimmed,
+        executionTargetId: localExecutionTargetId,
+        isPrimary: !hasLocalPrimary
+      });
+      setDirectoryPath('');
+    } catch (error) {
+      setAddError(error instanceof Error ? error.message : 'Failed to add directory.');
+    }
+  }
+
+  async function handleSetPrimary(resource: ProjectResourceDto) {
+    if (resource.isPrimary) return;
+    setRowError(null);
+    try {
+      await updateResource.mutateAsync({ resourceId: resource.id, body: { isPrimary: true } });
+    } catch (error) {
+      setRowError(error instanceof Error ? error.message : 'Failed to update primary resource.');
+    }
+  }
+
+  async function handleDeleteResource() {
+    if (!deleteTarget) return;
+    setDeleteError(null);
+    try {
+      await deleteResource.mutateAsync(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Failed to remove directory.');
+    }
+  }
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-base font-medium">Resource directories</h2>
         <p className="text-sm text-muted-foreground">
-          Local paths linked to this project for runner launch and repository context.
+          Add, remove, and set the primary working directory for this device. Existing
+          project-wide fallback resources remain visible here too.
         </p>
       </div>
 
@@ -41,56 +123,108 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
         <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <p>
-            The primary working directory is missing. Link a directory with{' '}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">ovld add-cwd</code> before
-            launching agents.
+            A primary working directory is missing. Set another directory as primary before
+            launching agents from this project.
           </p>
         </div>
       ) : null}
 
-      {resources.isLoading ? (
+      <div className="rounded-lg border p-4">
+        <h3 className="text-sm font-medium">Add directory</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          New directories are linked to <span className="font-medium">{deviceLabel}</span>.
+        </p>
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="grid flex-1 gap-1.5">
+            <Label htmlFor="resource-directory-path">Directory path</Label>
+            <Input
+              id="resource-directory-path"
+              value={directoryPath}
+              onChange={event => setDirectoryPath(event.target.value)}
+              placeholder="/path/to/checkout"
+              className="h-8"
+              onKeyDown={event => {
+                if (event.key === 'Enter') void handleAddResource();
+              }}
+            />
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 gap-1.5"
+            disabled={createResource.isPending || launchSettingsQ.isLoading}
+            onClick={() => void handleAddResource()}
+          >
+            <Plus className="size-3.5" />
+            Add directory
+          </Button>
+        </div>
+        {addError ? <p className="mt-2 text-xs text-destructive">{addError}</p> : null}
+      </div>
+
+      {resourcesQ.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading resources…</p>
       ) : rows.length === 0 ? (
         <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-          <p className="mb-2">No directories linked yet.</p>
-          <p>
-            From a checkout directory, run{' '}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">ovld add-cwd</code> to link it to
-            this project.
-          </p>
+          No directories linked yet.
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border">
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
               <tr>
+                <th className="px-3 py-2 font-medium">Execution target</th>
                 <th className="px-3 py-2 font-medium">Path</th>
-                <th className="px-3 py-2 font-medium">Type</th>
                 <th className="px-3 py-2 font-medium">Primary</th>
                 <th className="px-3 py-2 font-medium">State</th>
+                <th className="px-3 py-2 font-medium" />
               </tr>
             </thead>
             <tbody>
               {rows.map(resource => (
                 <tr key={resource.id} className="border-t">
+                  <td className="px-3 py-2 text-muted-foreground">{targetLabel(resource)}</td>
                   <td
                     className="max-w-xs truncate px-3 py-2 font-mono text-xs"
                     title={resource.path}
                   >
                     {resource.path}
                   </td>
-                  <td className="px-3 py-2 text-muted-foreground">{resource.type}</td>
                   <td className="px-3 py-2">
                     {resource.isPrimary ? (
                       <Badge variant="secondary">Primary</Badge>
                     ) : (
-                      <span className="text-muted-foreground">—</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7"
+                        disabled={updateResource.isPending}
+                        onClick={() => void handleSetPrimary(resource)}
+                      >
+                        Make primary
+                      </Button>
                     )}
                   </td>
                   <td className="px-3 py-2">
                     <Badge variant={resource.status === 'missing' ? 'destructive' : 'secondary'}>
                       {resourceStatusLabel(resource.status)}
                     </Badge>
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="size-7 text-destructive hover:text-destructive"
+                      onClick={() => {
+                        setDeleteError(null);
+                        setDeleteTarget(resource);
+                      }}
+                      aria-label={`Remove ${resource.path}`}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -99,10 +233,45 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
         </div>
       )}
 
+      {rowError ? <p className="text-xs text-destructive">{rowError}</p> : null}
+
       <p className="text-xs text-muted-foreground">
-        Directory linking from the browser requires a local backend with filesystem access. Use the
-        CLI when the web app cannot see your machine.
+        This browser currently manages resources for the local execution target only. Resources for
+        other devices still need a surface that exposes target selection.
       </p>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={nextOpen => {
+          if (!nextOpen) {
+            setDeleteTarget(null);
+            setDeleteError(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove directory</DialogTitle>
+            <DialogDescription>
+              Remove &ldquo;{deleteTarget?.path}&rdquo; from this project?
+            </DialogDescription>
+          </DialogHeader>
+          {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleteResource.isPending}
+              onClick={() => void handleDeleteResource()}
+            >
+              Remove directory
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

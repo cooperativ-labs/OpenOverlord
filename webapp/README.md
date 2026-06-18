@@ -119,6 +119,9 @@ camelCase per the [REST API Boundary](../database/docs/09-database-schema-contra
 | `PATCH /api/projects/:id/statuses/reorder` | Reorder project statuses |
 | `DELETE /api/projects/:id/statuses/:statusId` | Soft-delete a project status |
 | `GET /api/projects/:id/resources` | Linked project resources, including execution-target-specific working directories |
+| `POST /api/projects/:id/resources` | Add a linked project resource for an execution target |
+| `PATCH /api/projects/:id/resources/:resourceId` | Set a project resource as primary |
+| `DELETE /api/projects/:id/resources/:resourceId` | Remove a linked project resource |
 | `GET /api/projects/:id/repository?executionTargetId=...` | Git repository metadata and file tree for the selected linked resource |
 | `GET /api/projects/:id/tickets` | Tickets in a project |
 | `POST /api/tickets`, `GET/PATCH/DELETE /api/tickets/:id` | Tickets (DELETE soft-deletes ticket + objectives) |

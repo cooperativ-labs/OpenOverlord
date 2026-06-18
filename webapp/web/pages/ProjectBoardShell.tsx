@@ -1,5 +1,6 @@
 import { Outlet, useParams } from '@tanstack/react-router';
 
+import { ProjectWorkspaceErrorBoundary } from '../components/ProjectWorkspaceErrorBoundary.tsx';
 import { ProjectRepositoryProvider } from '../components/projects/ProjectRepositoryContext.tsx';
 import { ProjectSettingsProvider } from '../components/projects/ProjectSettingsContext.tsx';
 
@@ -13,9 +14,13 @@ export function ProjectBoardShell() {
       <ProjectSettingsProvider projectId={projectId}>
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <BoardPage />
+            <ProjectWorkspaceErrorBoundary region="board">
+              <BoardPage />
+            </ProjectWorkspaceErrorBoundary>
           </main>
-          <Outlet />
+          <ProjectWorkspaceErrorBoundary region="ticket panel">
+            <Outlet />
+          </ProjectWorkspaceErrorBoundary>
         </div>
       </ProjectSettingsProvider>
     </ProjectRepositoryProvider>

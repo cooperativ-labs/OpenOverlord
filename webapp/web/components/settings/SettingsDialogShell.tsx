@@ -17,6 +17,7 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { SidebarFooter } from '../ui/sidebar';
 
 export type SettingsNavItem = {
   name: string;
@@ -103,7 +104,7 @@ export function SettingsDialogShell({
               ))}
             </nav>
             {sidebarFooter ? (
-              <div className="mt-auto shrink-0 border-t border-border p-3">{sidebarFooter}</div>
+              <SidebarFooter>  {sidebarFooter}</SidebarFooter>
             ) : null}
           </aside>
 
