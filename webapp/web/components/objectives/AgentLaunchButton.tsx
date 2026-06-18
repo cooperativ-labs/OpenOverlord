@@ -76,7 +76,11 @@ export function AgentLaunchButton({
   const primaryConnection = primaryResourceConnection(resourcesQ.data ?? []);
   const isQueued = Boolean(activeRequest);
   const isLaunching = launch.isPending;
-  const isDisabled = !selectionLoaded || isLaunching || !primaryConnection.connected;
+  // Blank draft slots can exist for inline authoring — they must not be launched
+  // until an instruction has been written.
+  const hasInstruction = objective.instructionText.trim().length > 0;
+  const isDisabled =
+    !selectionLoaded || isLaunching || !primaryConnection.connected || !hasInstruction;
   const styles = sizeStyles[size];
 
   function queueLaunch() {
@@ -187,12 +191,14 @@ export function AgentLaunchButton({
           <span className={cn('inline-flex', isDisabled && 'cursor-not-allowed')}>{runButton}</span>
         }
       />
-      <TooltipContent side="top" hidden={!isDisabled || primaryConnection.connected}>
-        {!selectionLoaded
-          ? 'Loading your agent model selection.'
-          : !primaryConnection.connected
-            ? primaryConnection.message
-            : 'Queueing…'}
+      <TooltipContent side="top" hidden={!isDisabled || (primaryConnection.connected && hasInstruction)}>
+        {!hasInstruction
+          ? 'Write an instruction before launching.'
+          : !selectionLoaded
+            ? 'Loading your agent model selection.'
+            : !primaryConnection.connected
+              ? primaryConnection.message
+              : 'Queueing…'}
       </TooltipContent>
     </Tooltip>
   );

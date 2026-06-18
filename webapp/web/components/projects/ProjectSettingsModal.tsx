@@ -1,9 +1,10 @@
-import { FolderTree, GitBranch, Settings, Trash2 } from 'lucide-react';
+import { FolderTree, GitBranch, Settings, Tag, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { DangerZonePage } from '@/components/projects/project-settings/DangerZonePage.tsx';
 import { GeneralPage } from '@/components/projects/project-settings/GeneralPage.tsx';
 import { ResourcesPage } from '@/components/projects/project-settings/ResourcesPage.tsx';
+import { TagsPage } from '@/components/projects/project-settings/TagsPage.tsx';
 import { WorkflowPage } from '@/components/projects/project-settings/WorkflowPage.tsx';
 import {
   SettingsDialogShell,
@@ -16,6 +17,7 @@ const navItems: SettingsNavItem[] = [
   { name: 'General', icon: Settings },
   { name: 'Resources', icon: FolderTree },
   { name: 'Workflow', icon: GitBranch },
+  { name: 'Tags', icon: Tag },
   { name: 'Danger zone', icon: Trash2 }
 ];
 
@@ -65,6 +67,7 @@ export function ProjectSettingsModal({
       )}
       {activeNav === 'Resources' && <ResourcesPage open={open} projectId={project.id} />}
       {activeNav === 'Workflow' && <WorkflowPage projectId={project.id} statuses={statuses} />}
+      {activeNav === 'Tags' && <TagsPage projectId={project.id} />}
       {activeNav === 'Danger zone' && (
         <DangerZonePage
           projectId={project.id}

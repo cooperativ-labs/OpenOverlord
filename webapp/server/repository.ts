@@ -7,6 +7,7 @@ import type {
   CreateObjectiveBody,
   CreateProjectBody,
   CreateProjectStatusBody,
+  CreateProjectTagBody,
   CreateTicketBody,
   CreateUserTokenBody,
   CreateUserTokenResultDto,
@@ -17,6 +18,7 @@ import type {
   ProjectRepositoryDto,
   ProjectResourceDto,
   ProjectStatusDto,
+  ProjectTagDto,
   ReorderBoardColumnBody,
   ReorderFutureObjectivesBody,
   ReorderProjectStatusesBody,
@@ -28,12 +30,14 @@ import type {
   UpdateProfileBody,
   UpdateProjectBody,
   UpdateProjectStatusBody,
+  UpdateProjectTagBody,
   UpdateTicketBody,
   UpdateUserTokenBody,
   UserTokenDto
 } from '../shared/contract.ts';
 
 import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
+import { ApiError } from './errors.ts';
 import { dequeueObjective, LAUNCHABLE_STATES, listTicketExecutionRequests } from './launch.ts';
 import { loadActorRoles } from './rbac.ts';
 import {
@@ -42,7 +46,7 @@ import {
   scheduleTicketTitleGeneration
 } from './title-automation.ts';
 
-export { ApiError } from './errors.ts';
+export { ApiError };
 
 // The default workflow seeded for every new project. The schema enforces (via
 // partial unique indexes) at most one default, one `execute`, and one `review`
@@ -313,8 +317,7 @@ function toStatusDto(r: ProjectStatusRow): ProjectStatusDto {
 }
 
 function toProjectResourceDto(r: ProjectResourceRow): ProjectResourceDto {
-  const status =
-    r.status === 'archived' ? 'archived' : existsSync(r.path) ? 'active' : 'missing';
+  const status = r.status === 'archived' ? 'archived' : existsSync(r.path) ? 'active' : 'missing';
   return {
     id: r.id,
     workspaceId: r.workspace_id,
@@ -343,7 +346,7 @@ function parseAvailableTools(json: string): string[] {
   }
 }
 
-function toTicketDto(r: TicketRow): TicketDto {
+function toTicketDto(r: TicketRow, tags: ProjectTagDto[] = []): TicketDto {
   return {
     id: r.id,
     workspaceId: r.workspace_id,
@@ -361,8 +364,68 @@ function toTicketDto(r: TicketRow): TicketDto {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     revision: r.revision,
-    objectiveCount: r.objective_count
+    objectiveCount: r.objective_count,
+    tags
   };
+}
+
+interface ProjectTagRow {
+  id: string;
+  workspace_id: string;
+  project_id: string;
+  label: string;
+  color: string | null;
+  active: number;
+  revision: number;
+}
+
+function toProjectTagDto(r: ProjectTagRow): ProjectTagDto {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    label: r.label,
+    color: r.color,
+    active: r.active === 1
+  };
+}
+
+/** Tags assigned to one ticket, ordered by label for stable rendering. */
+function getTicketTags(ticketId: string): ProjectTagDto[] {
+  const rows = db
+    .prepare(
+      `SELECT pt.id, pt.workspace_id, pt.project_id, pt.label, pt.color, pt.active, pt.revision
+         FROM ticket_tags tt
+         JOIN project_tags pt ON pt.id = tt.tag_id AND pt.deleted_at IS NULL
+        WHERE tt.ticket_id = ?
+        ORDER BY pt.label COLLATE NOCASE ASC`
+    )
+    .all(ticketId) as ProjectTagRow[];
+  return rows.map(toProjectTagDto);
+}
+
+/**
+ * Batch-resolve tags for many tickets in one query, returning a map keyed by
+ * ticket id so board/list reads avoid an N+1 of per-ticket tag lookups.
+ */
+function getTagsByTicket(ticketIds: string[]): Map<string, ProjectTagDto[]> {
+  const byTicket = new Map<string, ProjectTagDto[]>();
+  if (ticketIds.length === 0) return byTicket;
+  const placeholders = ticketIds.map(() => '?').join(', ');
+  const rows = db
+    .prepare(
+      `SELECT tt.ticket_id, pt.id, pt.workspace_id, pt.project_id, pt.label, pt.color, pt.active, pt.revision
+         FROM ticket_tags tt
+         JOIN project_tags pt ON pt.id = tt.tag_id AND pt.deleted_at IS NULL
+        WHERE tt.ticket_id IN (${placeholders})
+        ORDER BY pt.label COLLATE NOCASE ASC`
+    )
+    .all(...ticketIds) as Array<ProjectTagRow & { ticket_id: string }>;
+  for (const row of rows) {
+    const list = byTicket.get(row.ticket_id) ?? [];
+    list.push(toProjectTagDto(row));
+    byTicket.set(row.ticket_id, list);
+  }
+  return byTicket;
 }
 
 function toObjectiveDto(r: ObjectiveRow): ObjectiveDto {
@@ -630,6 +693,151 @@ export const reorderProjectStatuses = db.transaction(
     return listProjectStatuses(projectId);
   }
 );
+
+// ---- Project tags --------------------------------------------------------
+
+const selectProjectTagColumns = `id, workspace_id, project_id, label, color, active, revision`;
+
+function getProjectTagRow(projectId: string, tagId: string): ProjectTagRow {
+  getProject(projectId);
+  const row = db
+    .prepare(
+      `SELECT ${selectProjectTagColumns} FROM project_tags
+        WHERE id = ? AND project_id = ? AND workspace_id = ? AND deleted_at IS NULL`
+    )
+    .get(tagId, projectId, WORKSPACE.id) as ProjectTagRow | undefined;
+  if (!row) throw new ApiError(404, 'Tag not found');
+  return row;
+}
+
+export function listProjectTags(projectId: string): ProjectTagDto[] {
+  getProject(projectId);
+  const rows = db
+    .prepare(
+      `SELECT ${selectProjectTagColumns} FROM project_tags
+        WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL
+        ORDER BY label COLLATE NOCASE ASC`
+    )
+    .all(projectId, WORKSPACE.id) as ProjectTagRow[];
+  return rows.map(toProjectTagDto);
+}
+
+function normalizeTagColor(color: string | null | undefined): string | null {
+  if (color === null || color === undefined) return null;
+  const trimmed = color.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export const createProjectTag = db.transaction(
+  (projectId: string, body: CreateProjectTagBody): ProjectTagDto => {
+    getProject(projectId);
+    const label = (body.label ?? '').trim();
+    if (!label) throw new ApiError(400, 'Tag label cannot be empty');
+
+    const duplicate = db
+      .prepare(
+        `SELECT 1 FROM project_tags
+          WHERE project_id = ? AND label = ? AND deleted_at IS NULL`
+      )
+      .get(projectId, label);
+    if (duplicate) throw new ApiError(409, 'A tag with this label already exists');
+
+    const now = nowIso();
+    const id = newId();
+    db.prepare(
+      `INSERT INTO project_tags
+         (id, workspace_id, project_id, label, color, active, created_at, updated_at, revision)
+       VALUES (@id, @workspace_id, @project_id, @label, @color, 1, @now, @now, 1)`
+    ).run({
+      id,
+      workspace_id: WORKSPACE.id,
+      project_id: projectId,
+      label,
+      color: normalizeTagColor(body.color),
+      now
+    });
+
+    recordChange({
+      entityType: 'project_tag',
+      entityId: id,
+      operation: 'insert',
+      entityRevision: 1,
+      projectId
+    });
+
+    return toProjectTagDto(getProjectTagRow(projectId, id));
+  }
+);
+
+export const updateProjectTag = db.transaction(
+  (projectId: string, tagId: string, body: UpdateProjectTagBody): ProjectTagDto => {
+    const existing = getProjectTagRow(projectId, tagId);
+
+    const fields: string[] = [];
+    const params: Record<string, unknown> = { id: tagId, project_id: projectId };
+
+    if (body.label !== undefined) {
+      const label = body.label.trim();
+      if (!label) throw new ApiError(400, 'Tag label cannot be empty');
+      const duplicate = db
+        .prepare(
+          `SELECT 1 FROM project_tags
+            WHERE project_id = ? AND label = ? AND id != ? AND deleted_at IS NULL`
+        )
+        .get(projectId, label, tagId);
+      if (duplicate) throw new ApiError(409, 'A tag with this label already exists');
+      fields.push('label = @label');
+      params.label = label;
+    }
+    if (body.color !== undefined) {
+      fields.push('color = @color');
+      params.color = normalizeTagColor(body.color);
+    }
+    if (body.active !== undefined) {
+      fields.push('active = @active');
+      params.active = body.active ? 1 : 0;
+    }
+    if (fields.length === 0) return toProjectTagDto(existing);
+
+    const now = nowIso();
+    const revision = existing.revision + 1;
+    db.prepare(
+      `UPDATE project_tags SET ${fields.join(', ')}, updated_at = @now, revision = @revision
+         WHERE id = @id AND project_id = @project_id`
+    ).run({ ...params, now, revision });
+
+    recordChange({
+      entityType: 'project_tag',
+      entityId: tagId,
+      operation: 'update',
+      entityRevision: revision,
+      projectId
+    });
+
+    return toProjectTagDto(getProjectTagRow(projectId, tagId));
+  }
+);
+
+export const deleteProjectTag = db.transaction((projectId: string, tagId: string): void => {
+  const existing = getProjectTagRow(projectId, tagId);
+  const now = nowIso();
+  const revision = existing.revision + 1;
+  // Soft-delete the definition; `ticket_tags` rows cascade away via the FK so the
+  // tag disappears from any ticket that carried it.
+  db.prepare(`DELETE FROM ticket_tags WHERE tag_id = ?`).run(tagId);
+  db.prepare(
+    `UPDATE project_tags SET deleted_at = @now, updated_at = @now, revision = @revision
+       WHERE id = @id AND project_id = @project_id`
+  ).run({ id: tagId, project_id: projectId, now, revision });
+
+  recordChange({
+    entityType: 'project_tag',
+    entityId: tagId,
+    operation: 'delete',
+    entityRevision: revision,
+    projectId
+  });
+});
 
 export function listProjectResources(projectId: string): ProjectResourceDto[] {
   getProject(projectId);
@@ -1012,7 +1220,8 @@ export function listTickets(projectId: string): TicketDto[] {
          ORDER BY t.board_position ASC, t.sequence_number DESC`
     )
     .all({ workspace_id: WORKSPACE.id, project_id: projectId }) as TicketRow[];
-  return rows.map(toTicketDto);
+  const tagsByTicket = getTagsByTicket(rows.map(row => row.id));
+  return rows.map(row => toTicketDto(row, tagsByTicket.get(row.id) ?? []));
 }
 
 /**
@@ -1052,7 +1261,8 @@ export function searchTickets({
     const rows = db
       .prepare(sql)
       .all({ workspace_id: WORKSPACE.id, project_id: projectId ?? null, limit }) as TicketRow[];
-    return rows.map(toTicketDto);
+    const tagsByTicket = getTagsByTicket(rows.map(row => row.id));
+    return rows.map(row => toTicketDto(row, tagsByTicket.get(row.id) ?? []));
   }
 
   const projectFilter = projectId ? ' AND t.project_id = @project_id' : '';
@@ -1088,13 +1298,14 @@ export function searchTickets({
     byTicket.set(row.id, { row, relevance: row.doc_score });
   }
 
-  return [...byTicket.values()]
+  const ranked = [...byTicket.values()]
     .sort(
       (left, right) =>
         right.relevance - left.relevance || right.row.updated_at.localeCompare(left.row.updated_at)
     )
-    .slice(0, limit)
-    .map(entry => toTicketDto(entry.row));
+    .slice(0, limit);
+  const tagsByTicket = getTagsByTicket(ranked.map(entry => entry.row.id));
+  return ranked.map(entry => toTicketDto(entry.row, tagsByTicket.get(entry.row.id) ?? []));
 }
 
 // New cards drop in at the top of their column. Gap-based: one step (100) above
@@ -1221,7 +1432,7 @@ function getTicketRow(ticketRef: string): TicketRow {
 
 export function getTicketDetail(ticketRef: string): TicketDetailDto {
   const row = getTicketRow(ticketRef);
-  const ticket = toTicketDto(row);
+  const ticket = toTicketDto(row, getTicketTags(row.id));
   const objectives = listObjectives(row.id);
   const statuses = listProjectStatuses(ticket.projectId);
   const executionRequests = listTicketExecutionRequests(row.id);
@@ -1499,8 +1710,45 @@ const createTicketTx = db.transaction((body: CreateTicketBody): CreateTicketResu
     objectiveIds.push(objective.id);
   }
 
+  assignTicketTags({ ticketId: id, projectId: body.projectId, tagIds: body.tagIds, now });
+
   return { detail: getTicketDetail(id), objectiveIds, instruction };
 });
+
+/**
+ * Assign tag definitions to a ticket. De-duplicates the input and validates that
+ * every tag belongs to the ticket's project (and is not soft-deleted) so a ticket
+ * can never carry a foreign-project tag. Intended to run inside the create
+ * transaction. Unknown or cross-project tag ids raise a 400.
+ */
+function assignTicketTags({
+  ticketId,
+  projectId,
+  tagIds,
+  now
+}: {
+  ticketId: string;
+  projectId: string;
+  tagIds: string[] | undefined;
+  now: string;
+}): void {
+  if (!tagIds || tagIds.length === 0) return;
+  const unique = [...new Set(tagIds.map(value => value.trim()).filter(Boolean))];
+  if (unique.length === 0) return;
+
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO ticket_tags (ticket_id, tag_id, created_at) VALUES (?, ?, ?)`
+  );
+  const lookup = db.prepare(
+    `SELECT id FROM project_tags
+       WHERE id = ? AND project_id = ? AND workspace_id = ? AND deleted_at IS NULL`
+  );
+  for (const tagId of unique) {
+    const tag = lookup.get(tagId, projectId, WORKSPACE.id) as { id: string } | undefined;
+    if (!tag) throw new ApiError(400, 'Tag does not belong to this project');
+    insert.run(ticketId, tagId, now);
+  }
+}
 
 export function createTicket(body: CreateTicketBody): TicketDetailDto {
   const { detail, objectiveIds, instruction } = createTicketTx(body);
@@ -1955,7 +2203,6 @@ export const reorderFutureObjectives = db.transaction(
 // Assumes it runs within a transaction.
 function insertObjective(body: CreateObjectiveBody): ObjectiveDto {
   const instruction = (body.instructionText ?? '').trim();
-  if (!instruction) throw new ApiError(400, 'Objective instruction is required');
 
   const ticket = db
     .prepare(
@@ -1975,6 +2222,15 @@ function insertObjective(body: CreateObjectiveBody): ObjectiveDto {
     )
     .get(body.ticketId, WORKSPACE.id) as { id: string } | undefined;
   const state = requestedState === 'draft' && draftRow ? 'future' : requestedState;
+
+  // Blank instructions are allowed only for editable slots that are authored
+  // inline afterwards (`draft`/`future`) — the add-objective affordance creates
+  // such a slot and renders it directly as a DraftObjective card. Submitted and
+  // later states still require instruction text.
+  const allowsBlankInstruction = state === 'draft' || state === 'future';
+  if (!instruction && !allowsBlankInstruction) {
+    throw new ApiError(400, 'Objective instruction is required');
+  }
 
   const maxRow = db
     .prepare(
@@ -1998,7 +2254,9 @@ function insertObjective(body: CreateObjectiveBody): ObjectiveDto {
     project_id: ticket.project_id,
     ticket_id: body.ticketId,
     position,
-    title: body.title?.trim() || initialTitleFromInstruction(instruction),
+    title:
+      body.title?.trim() ||
+      (instruction ? initialTitleFromInstruction(instruction) : 'New objective'),
     instruction,
     state,
     auto_advance: body.autoAdvance ? 1 : 0,
@@ -2025,7 +2283,7 @@ const createObjectiveTx = db.transaction(insertObjective);
 export function createObjective(body: CreateObjectiveBody): ObjectiveDto {
   const objective = createObjectiveTx(body);
 
-  if (!body.title?.trim()) {
+  if (!body.title?.trim() && objective.instructionText.trim()) {
     scheduleObjectiveTitleGeneration({
       objectiveId: objective.id,
       projectId: objective.projectId,

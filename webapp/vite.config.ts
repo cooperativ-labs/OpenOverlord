@@ -1,12 +1,12 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { config as loadEnv } from 'dotenv';
 import path from 'node:path';
 import { defineConfig } from 'vite';
+import { loadRepoEnv } from './load-repo-env';
 
 // Load the repo-root `.env` so the dev server honors the same OVERLORD_WEB_*
-// overrides as the API process (server/index.ts loads it via dotenv too).
-loadEnv({ path: path.resolve(__dirname, '..', '.env') });
+// overrides as the API process (server/index.ts uses the same backfill logic).
+loadRepoEnv(path.resolve(__dirname, '..', '.env'));
 
 // The dev server hosts the React SPA and proxies the REST + realtime (SSE)
 // surface to the local server process (server/index.ts).

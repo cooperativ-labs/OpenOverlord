@@ -5,6 +5,7 @@ import type {
   CreateObjectiveBody,
   CreateProjectBody,
   CreateProjectStatusBody,
+  CreateProjectTagBody,
   CreateTicketBody,
   CreateUserTokenBody,
   CreateWorkspaceBody,
@@ -12,6 +13,7 @@ import type {
   LaunchPreferenceDto,
   ObjectiveAttachmentDto,
   ProjectStatusDto,
+  ProjectTagDto,
   ReorderFutureObjectivesBody,
   ReorderProjectStatusesBody,
   StatusType,
@@ -23,6 +25,7 @@ import type {
   UpdateProfileBody,
   UpdateProjectBody,
   UpdateProjectStatusBody,
+  UpdateProjectTagBody,
   UpdateTerminalProfileBody,
   UpdateTicketBody,
   UpdateUserTokenBody,
@@ -41,6 +44,7 @@ export const keys = {
   project: (id: string) => ['project', id] as const,
   projectStatuses: (id: string) => ['project', id, 'statuses'] as const,
   projectResources: (id: string) => ['project', id, 'resources'] as const,
+  projectTags: (id: string) => ['project', id, 'tags'] as const,
   projectRepository: (id: string, executionTargetId: string | null) =>
     ['project', id, 'repository', executionTargetId ?? 'primary'] as const,
   tickets: (projectId: string) => ['project', projectId, 'tickets'] as const,
@@ -89,6 +93,13 @@ export const useProjectStatuses = (id: string) =>
 
 export const useProjectResources = (id: string) =>
   useQuery({ queryKey: keys.projectResources(id), queryFn: () => api.listProjectResources(id) });
+
+export const useProjectTags = (id: string | null) =>
+  useQuery({
+    queryKey: keys.projectTags(id ?? 'none'),
+    queryFn: () => api.listProjectTags(id as string),
+    enabled: Boolean(id)
+  });
 
 export const useProjectRepository = (id: string, executionTargetId: string | null) =>
   useQuery({
@@ -284,6 +295,36 @@ export function useReorderProjectStatuses(projectId: string) {
       qc.setQueryData(keys.projectStatuses(projectId), data);
       void qc.invalidateQueries({ queryKey: keys.projectStatuses(projectId) });
     }
+  });
+}
+
+export function useCreateProjectTag(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateProjectTagBody) => api.createProjectTag(projectId, body),
+    onSuccess: data => {
+      qc.setQueryData(keys.projectTags(projectId), (prev: ProjectTagDto[] | undefined) =>
+        prev ? [...prev, data].sort((a, b) => a.label.localeCompare(b.label)) : [data]
+      );
+      void qc.invalidateQueries({ queryKey: keys.projectTags(projectId) });
+    }
+  });
+}
+
+export function useUpdateProjectTag(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tagId, body }: { tagId: string; body: UpdateProjectTagBody }) =>
+      api.updateProjectTag(projectId, tagId, body),
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
+export function useDeleteProjectTag(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (tagId: string) => api.deleteProjectTag(projectId, tagId),
+    onSuccess: () => invalidateAll(qc)
   });
 }
 

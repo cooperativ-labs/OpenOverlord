@@ -242,13 +242,19 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
             value={objective.instructionText}
             className="block whitespace-pre-wrap"
             inputClassName="text-sm"
+            placeholder="Describe what the agent should do… (@ file, # project, $ ticket)"
             ariaLabel="Objective instruction"
+            commitEmpty={objective.state === 'future'}
             mentionPaths={mentionPaths}
             projectMentionOptions={projectMentionOptions}
             ticketMentionOptions={ticketMentionOptions}
-            onSave={instructionText =>
-              update.mutate({ id: objective.id, body: { instructionText } })
-            }
+            onSave={instructionText => {
+              if (!instructionText.trim() && objective.state === 'future') {
+                remove.mutate(objective.id);
+                return;
+              }
+              update.mutate({ id: objective.id, body: { instructionText } });
+            }}
           />
         </div>
         {isFuture && isFutureExpanded ? (

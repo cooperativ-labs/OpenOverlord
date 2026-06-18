@@ -4,3 +4,5 @@ Always use '===' and instead of '=='  eqeqeq
 Always use '!==' and instead of '!='  eqeqeq
 
 Feature planning documents should be saved in the planning/feature-plans directory.
+
+In an agent-pod, be sure to use the env variable `OVERLORD_USER_TOKEN` to authenticate with the backend.

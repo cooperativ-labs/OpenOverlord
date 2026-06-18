@@ -245,6 +245,7 @@ function expandTilde(input: string): string {
 
 export function resolveDatabasePath(config: OverlordConfig, startDir = process.cwd()): string {
   const explicit = process.env.OVERLORD_SQLITE_PATH;
+  console.log('explicit', explicit);
   if (explicit) {
     const expanded = expandTilde(explicit);
     return path.isAbsolute(expanded)

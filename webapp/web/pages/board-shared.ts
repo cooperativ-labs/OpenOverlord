@@ -7,25 +7,17 @@ export type BoardView = 'board' | 'list';
 export type ColumnMap = Record<string, string[]>;
 
 export type TicketTagFilterOption = { id: string; label: string; color: string | null };
-type TicketTagValue =
-  | string
-  | { id?: string; label?: string; name?: string; color?: string | null };
-type TicketWithOptionalTags = TicketDto & {
-  tags?: TicketTagValue[];
-};
 
 export function getTicketTags(ticket: TicketDto): TicketTagFilterOption[] {
-  const rawTags = (ticket as TicketWithOptionalTags).tags;
-  if (!Array.isArray(rawTags)) return [];
+  if (!Array.isArray(ticket.tags)) return [];
 
-  return rawTags
+  return ticket.tags
     .map(tag => {
-      if (typeof tag === 'string') return { id: tag, label: tag, color: null };
       const id = tag.id?.trim();
       if (!id) return null;
       return {
         id,
-        label: tag.label?.trim() || tag.name?.trim() || id,
+        label: tag.label?.trim() || id,
         color: tag.color ?? null
       };
     })

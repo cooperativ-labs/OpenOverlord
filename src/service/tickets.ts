@@ -217,9 +217,6 @@ export function insertObjective({
   autoAdvance?: boolean;
 }): ObjectiveSummary {
   const instruction = instructionText.trim();
-  if (!instruction) {
-    throw new ServiceError('Objective instruction is required', 'validation_error');
-  }
 
   const ticket = resolveTicketId(ctx, ticketId);
   const requestedState = state ?? 'draft';
@@ -235,6 +232,10 @@ export function insertObjective({
     )
     .get(ticket.id) as { id: string } | undefined;
   const resolvedState = requestedState === 'draft' && draftRow ? 'future' : requestedState;
+  const allowsBlankInstruction = resolvedState === 'draft' || resolvedState === 'future';
+  if (!instruction && !allowsBlankInstruction) {
+    throw new ServiceError('Objective instruction is required', 'validation_error');
+  }
 
   const maxRow = ctx.db
     .prepare(
@@ -259,7 +260,7 @@ export function insertObjective({
       ticket.projectId,
       ticket.id,
       position,
-      title?.trim() || initialTitleFromInstruction(instruction),
+      title?.trim() || (instruction ? initialTitleFromInstruction(instruction) : 'New objective'),
       instruction,
       resolvedState,
       autoAdvance ? 1 : 0,
@@ -671,7 +672,7 @@ export function discussObjective({
   const now = nowIso();
   ctx.db
     .prepare(
-      `UPDATE objectives SET state = 'submitted', updated_at = ?, revision = revision + 1
+      `UPDATE objectives SET state = 'launching', updated_at = ?, revision = revision + 1
        WHERE id = ? AND ticket_id = ?`
     )
     .run(now, draft.id, draft.ticketId);
@@ -687,7 +688,7 @@ export function discussObjective({
     changedFields: ['state']
   });
 
-  return { ...draft, state: 'submitted' };
+  return { ...draft, state: 'launching' };
 }
 
 export function listTicketEvents({

@@ -1,57 +1,273 @@
-import { Badge, STATUS_LABEL, statusClasses } from '@/components/ui.tsx';
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  type DragOverEvent,
+  DragOverlay,
+  type DragStartEvent,
+  KeyboardSensor,
+  PointerSensor,
+  pointerWithin,
+  useSensor,
+  useSensors
+} from '@dnd-kit/core';
+import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import { Ban, CheckCheck, CircleSlash, Eye, NotebookPen, Play } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import type { ProjectStatusDto, TicketDto } from '../../shared/contract.ts';
+import type {
+  ProjectStatusDto,
+  StatusType,
+  TicketDto,
+  WorkspaceMemberDto
+} from '../../shared/contract.ts';
+import { useReorderBoardColumn } from '../lib/queries.ts';
 
-import type { ColumnMap } from './board-shared.ts';
-import { TicketListRow } from './TicketListRow.tsx';
+import { type ColumnMap, columnMapsEqual } from './board-shared.ts';
+import { TicketListCard } from './TicketListCard.tsx';
+import { type StatusListStyle, TicketListStatusGroup } from './TicketListStatusGroup.tsx';
+
+function getStatusStyle(type: StatusType): StatusListStyle {
+  switch (type) {
+    case 'execute':
+      return {
+        text: 'text-blue-600 dark:text-blue-400',
+        bg: 'bg-blue-500/15',
+        rail: 'border-l-blue-500/40',
+        icon: Play
+      };
+    case 'complete':
+      return {
+        text: 'text-emerald-600 dark:text-emerald-400',
+        bg: 'bg-emerald-500/15',
+        rail: 'border-l-emerald-500/40',
+        icon: CheckCheck
+      };
+    case 'review':
+      return {
+        text: 'text-amber-600 dark:text-amber-400',
+        bg: 'bg-amber-500/15',
+        rail: 'border-l-amber-500/40',
+        icon: Eye
+      };
+    case 'blocked':
+      return {
+        text: 'text-red-600 dark:text-red-400',
+        bg: 'bg-red-500/15',
+        rail: 'border-l-red-500/40',
+        icon: Ban
+      };
+    case 'cancelled':
+      return {
+        text: 'text-zinc-500 dark:text-zinc-400',
+        bg: 'bg-zinc-500/15',
+        rail: 'border-l-zinc-500/40',
+        icon: CircleSlash
+      };
+    case 'draft':
+    default:
+      return {
+        text: 'text-muted-foreground',
+        bg: 'bg-muted',
+        rail: 'border-l-border',
+        icon: NotebookPen
+      };
+  }
+}
 
 export function TicketListView({
   statuses,
   columns,
   ticketById,
   projectId,
-  selectedTicketId
+  projectName,
+  projectColor,
+  membersByWorkspaceUserId,
+  selectedTicketId,
+  draggable = true
 }: {
   statuses: ProjectStatusDto[];
   columns: ColumnMap;
   ticketById: Map<string, TicketDto>;
   projectId: string;
+  projectName: string;
+  projectColor: string | null;
+  membersByWorkspaceUserId: Map<string, WorkspaceMemberDto>;
   selectedTicketId?: string;
+  draggable?: boolean;
 }) {
-  return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
-      {statuses.map(status => {
-        const tickets = (columns[status.id] ?? [])
+  const reorder = useReorderBoardColumn();
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [override, setOverride] = useState<ColumnMap | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+
+  // Drop the optimistic override once the real columns catch up to it.
+  useEffect(() => {
+    if (activeId === null && override !== null && columnMapsEqual(override, columns)) {
+      setOverride(null);
+    }
+  }, [activeId, override, columns]);
+
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+  // When the list is showing a filtered subset, reordering would corrupt the
+  // hidden order, so disable drag activation entirely (mirrors the board view).
+  const noSensors = useSensors();
+  const sensors = draggable ? dndSensors : noSensors;
+
+  const collisionDetection = useCallback((...args: Parameters<typeof pointerWithin>) => {
+    const hits = pointerWithin(...args);
+    return hits.length > 0 ? hits : closestCenter(...args);
+  }, []);
+
+  const toggleCollapse = useCallback((statusId: string) => {
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      if (next.has(statusId)) next.delete(statusId);
+      else next.add(statusId);
+      return next;
+    });
+  }, []);
+
+  const displayColumns = override ?? columns;
+
+  const findColumn = (id: string): string | undefined => {
+    if (id in columns) return id;
+    return Object.keys(columns).find(statusId => columns[statusId]?.includes(id));
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(String(event.active.id));
+    setOverride(columns);
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+    const activeTicketId = String(active.id);
+    const overId = String(over.id);
+    const fromCol = findColumn(activeTicketId);
+    const toCol = findColumn(overId);
+    if (!fromCol || !toCol || fromCol === toCol) return;
+
+    setOverride(prev => {
+      const source = prev ?? columns;
+      const fromItems = source[fromCol] ?? [];
+      const toItems = source[toCol] ?? [];
+      const overIndex = toItems.indexOf(overId);
+      const insertAt = overIndex >= 0 ? overIndex : toItems.length;
+      return {
+        ...source,
+        [fromCol]: fromItems.filter(id => id !== activeTicketId),
+        [toCol]: [...toItems.slice(0, insertAt), activeTicketId, ...toItems.slice(insertAt)]
+      };
+    });
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    const id = String(active.id);
+    const dropColumn = over ? findColumn(String(over.id)) : undefined;
+
+    setActiveId(null);
+
+    if (!dropColumn) {
+      setOverride(null);
+      return;
+    }
+
+    const source = override ?? columns;
+    const items = source[dropColumn] ?? [];
+    const fromIndex = items.indexOf(id);
+    const overIndex =
+      over && String(over.id) !== dropColumn ? items.indexOf(String(over.id)) : items.length - 1;
+    const finalItems =
+      fromIndex !== -1 && overIndex !== -1 && fromIndex !== overIndex
+        ? arrayMove(items, fromIndex, overIndex)
+        : items;
+
+    const finalColumns: ColumnMap = { ...source, [dropColumn]: finalItems };
+    setOverride(finalColumns);
+
+    if (columnMapsEqual(finalColumns, columns)) {
+      setOverride(null);
+      return;
+    }
+
+    const status = statuses.find(s => s.id === dropColumn);
+    if (!status) {
+      setOverride(null);
+      return;
+    }
+
+    reorder.mutate({
+      projectId,
+      statusId: dropColumn,
+      statusType: status.type,
+      orderedTicketIds: finalItems
+    });
+  };
+
+  const activeTicket = activeId ? ticketById.get(activeId) : undefined;
+  const activeAssignee = activeTicket?.assignedWorkspaceUserId
+    ? membersByWorkspaceUserId.get(activeTicket.assignedWorkspaceUserId)
+    : undefined;
+
+  const groups = useMemo(
+    () =>
+      statuses.map(status => {
+        const tickets = (displayColumns[status.id] ?? [])
           .map(id => ticketById.get(id))
           .filter((ticket): ticket is TicketDto => ticket !== undefined);
+        return { status, tickets };
+      }),
+    [statuses, displayColumns, ticketById]
+  );
 
-        return (
-          <section key={status.id} className="rounded-lg border border-border bg-card">
-            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-              <Badge className={statusClasses(status.type)}>
-                {status.name}
-                <span className="ml-1.5 opacity-60">{STATUS_LABEL[status.type]}</span>
-              </Badge>
-              <span className="text-xs text-muted-foreground">{tickets.length}</span>
-            </div>
-            {tickets.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-muted-foreground">No tickets in this status.</p>
-            ) : (
-              <div className="divide-y divide-border p-1">
-                {tickets.map(ticket => (
-                  <TicketListRow
-                    key={ticket.id}
-                    ticket={ticket}
-                    projectId={projectId}
-                    statuses={statuses}
-                    selected={ticket.id === selectedTicketId}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-        );
-      })}
-    </div>
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={collisionDetection}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => {
+        setActiveId(null);
+        setOverride(null);
+      }}
+    >
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-3">
+        {groups.map(({ status, tickets }) => (
+          <TicketListStatusGroup
+            key={status.id}
+            status={status}
+            style={getStatusStyle(status.type)}
+            tickets={tickets}
+            projectId={projectId}
+            projectName={projectName}
+            projectColor={projectColor}
+            membersByWorkspaceUserId={membersByWorkspaceUserId}
+            selectedTicketId={selectedTicketId}
+            isCollapsed={collapsed.has(status.id)}
+            onToggleCollapse={toggleCollapse}
+          />
+        ))}
+      </div>
+      <DragOverlay>
+        {activeTicket ? (
+          <TicketListCard
+            ticket={activeTicket}
+            projectId={projectId}
+            projectName={projectName}
+            projectColor={projectColor}
+            assignee={activeAssignee}
+            selected={activeTicket.id === selectedTicketId}
+            isDragOverlay
+          />
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   );
 }

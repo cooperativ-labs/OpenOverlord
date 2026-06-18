@@ -1,6 +1,5 @@
 import { loadExternalAutomations } from '@overlord/automations';
 import cors from 'cors';
-import { config as loadEnv } from 'dotenv';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -8,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { loadConfig } from '../../cli/src/config.ts';
 import { ServiceError } from '../../src/service/errors.ts';
+import { loadRepoEnv } from '../load-repo-env.ts';
 
 import { authNodeHandler, requireAuthenticatedSession } from './auth.ts';
 import { DATABASE_PATH, WORKSPACE } from './db.ts';
@@ -30,11 +30,13 @@ import {
   createProject,
   createProjectResource,
   createProjectStatus,
+  createProjectTag,
   createTicket,
   createUserToken,
   deleteObjective,
   deleteProject,
   deleteProjectStatus,
+  deleteProjectTag,
   deleteTicket,
   getProfile,
   getProject,
@@ -45,6 +47,7 @@ import {
   listProjectResources,
   listProjects,
   listProjectStatuses,
+  listProjectTags,
   listTicketEvents,
   listTicketFileChanges,
   listTickets,
@@ -59,6 +62,7 @@ import {
   updateProfile,
   updateProject,
   updateProjectStatus,
+  updateProjectTag,
   updateTicket
 } from './repository.ts';
 import {
@@ -102,9 +106,9 @@ const distDir = process.env.OVERLORD_WEBAPP_DIST
   ? path.resolve(process.env.OVERLORD_WEBAPP_DIST)
   : path.resolve(here, '..', 'dist');
 
-// Load repo `.env` when present (dev). Harmless no-op in packaged mode where no
-// repo `.env` exists; secrets there come from the process environment.
-loadEnv({ path: path.join(repoRoot, '.env') });
+// Load repo `.env` when present (dev). Only backfill unset/blank vars so real
+// process-level overrides still win, but empty exports do not mask repo config.
+loadRepoEnv(path.join(repoRoot, '.env'));
 
 const config = loadConfig();
 const bindHost = process.env.OVERLORD_WEB_HOST ?? config.webHost;
@@ -401,6 +405,28 @@ app.delete(
   handle(
     req => {
       deleteProjectStatus(req.params.id, req.params.statusId);
+      return { ok: true as const };
+    },
+    { mutates: true }
+  )
+);
+app.get(
+  '/api/projects/:id/tags',
+  handle(req => listProjectTags(req.params.id))
+);
+app.post(
+  '/api/projects/:id/tags',
+  handle(req => createProjectTag(req.params.id, req.body), { mutates: true })
+);
+app.patch(
+  '/api/projects/:id/tags/:tagId',
+  handle(req => updateProjectTag(req.params.id, req.params.tagId, req.body), { mutates: true })
+);
+app.delete(
+  '/api/projects/:id/tags/:tagId',
+  handle(
+    req => {
+      deleteProjectTag(req.params.id, req.params.tagId);
       return { ok: true as const };
     },
     { mutates: true }

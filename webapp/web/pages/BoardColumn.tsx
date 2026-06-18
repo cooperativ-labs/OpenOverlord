@@ -1,7 +1,7 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Plus } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { Badge, STATUS_LABEL, statusClasses } from '@/components/ui.tsx';
 
@@ -47,33 +47,45 @@ export function BoardColumn({
   ) => Promise<void> | void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status.id });
-  const scrollRef = useRef<HTMLDivElement | null>(null);
   const [isAddingBottom, setIsAddingBottom] = useState(false);
+  const [isAddingTop, setIsAddingTop] = useState(false);
   const [focusEditorCount, setFocusEditorCount] = useState(0);
+  const [topFocusEditorCount, setTopFocusEditorCount] = useState(0);
   const inputId = `board-column-input-${status.id}`;
+  const topInputId = `board-column-input-top-${status.id}`;
 
-  const handleStartAddingBottom = useCallback(() => {
-    setIsAddingBottom(true);
-    setTimeout(() => {
-      const el = scrollRef.current;
-      if (el) el.scrollTop = el.scrollHeight;
-    }, 0);
-  }, []);
+  // The BlankTicketCard scrolls itself into view once it mounts (see its
+  // scroll-into-view effect), so opening here only needs to reveal the card.
+  const handleStartAddingBottom = useCallback(() => setIsAddingBottom(true), []);
 
   const handleCloseBlankCard = useCallback(() => setIsAddingBottom(false), []);
 
+  const handleStartAddingTop = useCallback(() => setIsAddingTop(true), []);
+
+  const handleCloseTopBlankCard = useCallback(() => setIsAddingTop(false), []);
+
   const content = (
     <div
-      ref={node => {
-        setNodeRef(node);
-        scrollRef.current = node;
-      }}
+      ref={setNodeRef}
       className={`flex min-h-16 flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-1 transition-colors ${
         isOver
           ? 'bg-[var(--color-surface-2)]/40 ring-1 ring-inset ring-[var(--color-accent)]/30'
           : ''
       }`}
     >
+      {isAddingTop ? (
+        <BlankTicketCard
+          inputId={topInputId}
+          statusId={status.id}
+          position="top"
+          projectId={projectId}
+          onCreateTicket={onCreateTicket}
+          onCreateAndOpenTicket={onCreateAndOpenTicket}
+          onClose={handleCloseTopBlankCard}
+          onSubmitted={() => setTopFocusEditorCount(c => c + 1)}
+          focusTrigger={topFocusEditorCount}
+        />
+      ) : null}
       {tickets.map(ticket => {
         const assignee = ticket.assignedWorkspaceUserId
           ? membersByWorkspaceUserId.get(ticket.assignedWorkspaceUserId)
@@ -126,7 +138,17 @@ export function BoardColumn({
           {status.name}
           <span className="ml-1.5 opacity-60">{STATUS_LABEL[status.type]}</span>
         </Badge>
-        <span className="text-xs text-[var(--color-ink-dim)]">{count}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-[var(--color-ink-dim)]">{count}</span>
+          <button
+            type="button"
+            onClick={handleStartAddingTop}
+            aria-label="Add ticket to top of column"
+            className="rounded-md p-0.5 text-muted-foreground/40 transition-colors hover:bg-[var(--color-surface-2)]/60 hover:text-muted-foreground/80"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
       {draggable ? (
         <SortableContext items={tickets.map(t => t.id)} strategy={verticalListSortingStrategy}>

@@ -636,7 +636,7 @@ One ordered agent pass inside a ticket.
 | `ticket_id` | Id | yes | FK to `tickets`. |
 | `position` | integer | yes | Ordered within ticket. |
 | `title` | text | no |  |
-| `instruction_text` | text | yes | Agent-facing objective text. |
+| `instruction_text` | text | yes | Agent-facing objective text. May be empty only while an objective is an inline-authored `draft`/`future` slot; submitted and later objectives require non-empty text at the service/API boundary. |
 | `state` | text | yes | `future`, `draft`, `submitted`, `launching`, `executing`, `pending_delivery`, `complete`. |
 | `assigned_agent` | text | no | Connector/agent identifier. |
 | `model` | text | no | Model identifier. |
@@ -661,6 +661,46 @@ Indexes:
 - `(ticket_id, state, position)`.
 
 Services should set `completed_at` when an objective enters `complete`. A null `launch_config_json` means the runner should inherit execution-target or user-target launch defaults; a non-null object means the objective intentionally overrides those defaults, even when the override contains empty flags or no pre-command.
+
+### `project_tags`
+
+Per-project tag definition. Tags are authored in project settings and assigned to tickets via `ticket_tags`.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes | Stable tag ID. |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `project_id` | Id | yes | FK to `projects`. |
+| `label` | text | yes | Human-readable tag label; unique per project among non-deleted rows. |
+| `color` | text | no | Optional display color (e.g. hex). |
+| `active` | Bool | yes | Inactive tags are hidden from the ticket-create picker but kept for history. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `deleted_at` | TimestampUTC | no | Tombstone. |
+| `revision` | integer | yes |  |
+
+Indexes:
+
+- Unique active `(project_id, label)`.
+- Unique `(project_id, id)` — composite FK target for `ticket_tags`-style joins.
+- `(project_id, active)`.
+
+### `ticket_tags`
+
+Assignment of a `project_tags` definition to a ticket. The composite primary key makes an assignment idempotent.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `ticket_id` | Id | yes | FK to `tickets`; `ON DELETE CASCADE`. |
+| `tag_id` | Id | yes | FK to `project_tags`; `ON DELETE CASCADE`. |
+| `created_at` | TimestampUTC | yes |  |
+
+Indexes:
+
+- Primary key `(ticket_id, tag_id)`.
+- `(tag_id)` — reverse lookup of tickets carrying a tag.
+
+A ticket and its tags must belong to the same project; the service layer validates `tag_id` against the ticket's `project_id` before inserting.
 
 ### `agent_sessions`
 

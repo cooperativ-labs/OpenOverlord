@@ -227,6 +227,8 @@ export interface TicketDto {
   revision: number;
   /** Count of non-deleted objectives (read-side aggregate). */
   objectiveCount: number;
+  /** Tags assigned to this ticket, resolved from its project's `project_tags`. */
+  tags: ProjectTagDto[];
 }
 
 export interface ObjectiveDto {
@@ -497,6 +499,28 @@ export interface CreateProjectBody {
   color?: string;
 }
 
+/** A per-project tag definition. Authored in project settings, assigned to tickets. */
+export interface ProjectTagDto {
+  id: string;
+  projectId: string;
+  label: string;
+  /** Optional display color (e.g. `#fecdd3`), or `null`. */
+  color: string | null;
+  /** Inactive tags are hidden from the create-ticket picker but kept for history. */
+  active: boolean;
+}
+
+export interface CreateProjectTagBody {
+  label: string;
+  color?: string | null;
+}
+
+export interface UpdateProjectTagBody {
+  label?: string;
+  color?: string | null;
+  active?: boolean;
+}
+
 export interface UpdateProjectBody {
   name?: string;
   description?: string | null;
@@ -515,6 +539,8 @@ export interface CreateTicketBody {
   firstObjective?: string;
   /** Optional ordered objective instructions; creates objective #1 as draft and the rest as future. */
   objectives?: Array<{ objective: string; title?: string | null; autoAdvance?: boolean }>;
+  /** Optional `project_tags.id` values to assign to the new ticket. Must belong to `projectId`. */
+  tagIds?: string[];
 }
 
 export interface UpdateTicketBody {
@@ -576,7 +602,7 @@ export interface UpdateObjectiveBody {
  * Queue an execution request for an objective. The server persists the
  * selection onto the objective, resolves the launch config (objective override
  * → user target config → workspace default → empty), snapshots it into the
- * request, and moves a draft objective to `submitted`.
+ * request, and moves a draft objective to `launching`.
  */
 export interface LaunchObjectiveBody {
   agent: string;

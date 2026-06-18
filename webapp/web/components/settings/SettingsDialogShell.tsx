@@ -38,6 +38,7 @@ type SettingsDialogShellProps = {
   activeNav: string;
   onActiveNavChange: (name: string) => void;
   showClose?: boolean;
+  sidebarFooter?: ReactNode;
   children: ReactNode;
 };
 
@@ -51,6 +52,7 @@ export function SettingsDialogShell({
   activeNav,
   onActiveNavChange,
   showClose = false,
+  sidebarFooter,
   children
 }: SettingsDialogShellProps) {
   const flatNavItems = navGroups.flatMap(group => group.items);
@@ -65,8 +67,8 @@ export function SettingsDialogShell({
         <DialogDescription className="sr-only">{description}</DialogDescription>
 
         <div className="flex items-start">
-          <aside className="hidden w-52 shrink-0 border-r border-border bg-muted/30 md:flex md:flex-col h-full">
-            <nav className="flex flex-col gap-4 p-3">
+          <aside className="hidden h-full w-52 shrink-0 flex-col border-r border-border bg-muted/30 md:flex">
+            <nav className="flex flex-1 flex-col gap-4 overflow-y-auto p-3">
               {navGroups.map((group, index) => (
                 <div key={group.label ?? `group-${index}`} className="space-y-1">
                   {group.label ? (
@@ -100,6 +102,9 @@ export function SettingsDialogShell({
                 </div>
               ))}
             </nav>
+            {sidebarFooter ? (
+              <div className="mt-auto shrink-0 border-t border-border p-3">{sidebarFooter}</div>
+            ) : null}
           </aside>
 
           <main className="flex h-dvh min-w-0 flex-1 flex-col overflow-hidden md:max-h-[80%]">

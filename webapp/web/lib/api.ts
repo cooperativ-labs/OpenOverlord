@@ -5,6 +5,7 @@ import type {
   CreateObjectiveBody,
   CreateProjectBody,
   CreateProjectStatusBody,
+  CreateProjectTagBody,
   CreateTicketBody,
   CreateUserTokenBody,
   CreateUserTokenResultDto,
@@ -22,6 +23,7 @@ import type {
   ProjectRepositoryDto,
   ProjectResourceDto,
   ProjectStatusDto,
+  ProjectTagDto,
   ReorderBoardColumnBody,
   ReorderFutureObjectivesBody,
   ReorderProjectStatusesBody,
@@ -35,6 +37,7 @@ import type {
   UpdateProfileBody,
   UpdateProjectBody,
   UpdateProjectStatusBody,
+  UpdateProjectTagBody,
   UpdateTerminalProfileBody,
   UpdateTicketBody,
   UpdateUserTokenBody,
@@ -142,6 +145,13 @@ export const api = {
     request<{ ok: true }>('DELETE', `/api/projects/${projectId}/statuses/${statusId}`),
   reorderProjectStatuses: (projectId: string, body: ReorderProjectStatusesBody) =>
     request<ProjectStatusDto[]>('PATCH', `/api/projects/${projectId}/statuses/reorder`, body),
+  listProjectTags: (id: string) => request<ProjectTagDto[]>('GET', `/api/projects/${id}/tags`),
+  createProjectTag: (projectId: string, body: CreateProjectTagBody) =>
+    request<ProjectTagDto>('POST', `/api/projects/${projectId}/tags`, body),
+  updateProjectTag: (projectId: string, tagId: string, body: UpdateProjectTagBody) =>
+    request<ProjectTagDto>('PATCH', `/api/projects/${projectId}/tags/${tagId}`, body),
+  deleteProjectTag: (projectId: string, tagId: string) =>
+    request<{ ok: true }>('DELETE', `/api/projects/${projectId}/tags/${tagId}`),
   listProjectResources: (id: string) =>
     request<ProjectResourceDto[]>('GET', `/api/projects/${id}/resources`),
   getProjectRepository: (id: string, executionTargetId?: string | null) => {

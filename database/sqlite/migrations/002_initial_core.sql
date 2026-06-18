@@ -294,7 +294,7 @@ CREATE TABLE objectives (
   ticket_id TEXT NOT NULL REFERENCES tickets (id) ON DELETE RESTRICT,
   position INTEGER NOT NULL CHECK (position >= 0),
   title TEXT,
-  instruction_text TEXT NOT NULL CHECK (length(trim(instruction_text)) > 0),
+  instruction_text TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('future', 'draft', 'submitted', 'launching', 'executing', 'pending_delivery', 'complete')),
   assigned_agent TEXT,
   model TEXT,

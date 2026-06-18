@@ -1,6 +1,7 @@
 import { UPDATE_EVENT_TYPES, UPDATE_PHASES } from '@overlord/database';
 import { createHash } from 'node:crypto';
 
+import { listRationalesForReview, type RationaleReview } from './changes.js';
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import { resolveProjectId, resolveTicketId } from './context.js';
@@ -62,17 +63,18 @@ type SessionRow = {
   external_session_id: string | null;
 };
 
-const PROTOCOL_WORKFLOW = `Required protocol workflow:
-1. Attach first with \`ovld protocol attach --ticket-id <id>\`.
-2. Post progress with \`ovld protocol update\` or liveness with \`ovld protocol heartbeat\`.
-3. Ask blocking questions with \`ovld protocol ask\` and stop work.
-4. Deliver with \`ovld protocol deliver\` when work is complete.
-5. Do not continue implementation after delivery without \`--begin-follow-up-work\`.`;
+const PROTOCOL_WORKFLOW = `
+1. Load the overlord plugin/skill if available.
+2. Attach first with \`ovld protocol attach --ticket-id <id>\`.
+3. Post progress with \`ovld protocol update\` or liveness with \`ovld protocol heartbeat\`.
+4. Ask blocking questions with \`ovld protocol ask\` and stop work.
+5. Deliver with \`ovld protocol deliver\` when work is complete.
+6. Do not continue implementation after delivery without \`--begin-follow-up-work\`.`;
 
 function resolveActiveObjective(objectives: ObjectiveSummary[]): ObjectiveSummary {
   const active =
     objectives.find(o => o.state === 'executing') ??
-    objectives.find(o => o.state === 'submitted') ??
+    objectives.find(o => o.state === 'launching') ??
     objectives.find(o => o.state === 'pending_delivery') ??
     objectives.find(o => o.state === 'draft') ??
     objectives.find(o => o.state !== 'complete');
@@ -188,6 +190,29 @@ function persistExternalSessionId({
   });
 }
 
+function previousCompletedObjectives({
+  objectives,
+  currentObjective
+}: {
+  objectives: ObjectiveSummary[];
+  currentObjective: ObjectiveSummary;
+}): ObjectiveSummary[] {
+  return objectives.filter(
+    candidate => candidate.position < currentObjective.position && candidate.state === 'complete'
+  );
+}
+
+function formatFileChangeLine(change: RationaleReview): string {
+  return `- **${change.filePath}** (${change.label}): ${change.summary} — Why: ${change.why}. Impact: ${change.impact}`;
+}
+
+function formatPreviousObjectiveLine(objective: ObjectiveSummary): string {
+  const heading = objective.title
+    ? `### ${objective.title}`
+    : `### Objective ${objective.position + 1}`;
+  return [heading, objective.objective].join('\n');
+}
+
 function assemblePromptContext({
   ticket,
   objective,
@@ -195,7 +220,9 @@ function assemblePromptContext({
   history,
   artifacts,
   attachments,
-  sharedState
+  sharedState,
+  fileChanges,
+  previousObjectives
 }: {
   ticket: TicketSummary;
   objective: ObjectiveSummary;
@@ -204,6 +231,8 @@ function assemblePromptContext({
   artifacts: ArtifactSummary[];
   attachments: AttachmentSummary[];
   sharedState: SharedContextEntry[];
+  fileChanges: RationaleReview[];
+  previousObjectives: ObjectiveSummary[];
 }): string {
   const recentHistory = history
     .slice(-10)
@@ -215,9 +244,17 @@ function assemblePromptContext({
   const sharedLines = sharedState
     .map(entry => `- ${entry.key}: ${JSON.stringify(entry.value)}`)
     .join('\n');
+  const fileChangesLines = fileChanges.map(formatFileChangeLine).join('\n');
+  const previousObjectivesLines = previousObjectives.map(formatPreviousObjectiveLine).join('\n\n');
 
   return [
-    `# ${ticket.title}`,
+    `# Overlord Agent Instructions`,
+    `You are an AI coding agent working on ticket **${ticket.displayId}** via Overlord.`,
+    `Complete the Objective described below. Follow the required protocol workflow.`,
+    ``,
+    `Required protocol workflow:`,
+    PROTOCOL_WORKFLOW,
+    ``,
     '',
     `Ticket ID: ${ticket.displayId}`,
     `Objective ID: ${objective.id}`,
@@ -229,14 +266,17 @@ function assemblePromptContext({
     '## Recent Activity',
     recentHistory || '- (none)',
     '',
-    artifacts.length > 0 ? '## Artifacts' : '',
-    artifacts.length > 0 ? artifactLines : '',
     attachments.length > 0 ? '## Attachments' : '',
     attachments.length > 0 ? attachmentLines : '',
+    fileChanges.length > 0 ? '## Previous file Changes' : '',
+    fileChanges.length > 0 ? fileChangesLines : '',
+    artifacts.length > 0 ? '## Artifacts' : '',
+    artifacts.length > 0 ? artifactLines : '',
     sharedState.length > 0 ? '## Shared Context' : '',
     sharedState.length > 0 ? sharedLines : '',
-    '',
-    PROTOCOL_WORKFLOW
+    previousObjectives.length > 0 ? '## Previous Objectives (already completed)' : '',
+    previousObjectives.length > 0 ? previousObjectivesLines : '',
+    ''
   ]
     .filter((line, index, arr) => !(line === '' && arr[index - 1] === ''))
     .join('\n');
@@ -256,6 +296,14 @@ function contextForObjective({
   const artifacts = listArtifacts({ ctx, ticketId: ticket.id });
   const attachments = listAttachments({ ctx, ticketId: ticket.id, objectiveId: objective.id });
   const sharedState = listSharedContext({ ctx, ticketId: ticket.id });
+  const completedObjectives = previousCompletedObjectives({
+    objectives,
+    currentObjective: objective
+  });
+  const previousObjectiveIds = new Set(completedObjectives.map(entry => entry.id));
+  const fileChanges = listRationalesForReview({ ctx, ticketId: ticket.id }).filter(change =>
+    previousObjectiveIds.has(change.objectiveId)
+  );
 
   const project = ctx.db
     .prepare(`SELECT name FROM projects WHERE id = ?`)
@@ -276,7 +324,9 @@ function contextForObjective({
       history,
       artifacts,
       attachments,
-      sharedState
+      sharedState,
+      fileChanges,
+      previousObjectives: completedObjectives
     })
   };
 }
@@ -1361,7 +1411,7 @@ export function deliverSession({
     if (nextObjective.auto_advance === 1) {
       ctx.db
         .prepare(
-          `UPDATE objectives SET state = 'submitted', updated_at = ?, revision = revision + 1
+          `UPDATE objectives SET state = 'launching', updated_at = ?, revision = revision + 1
            WHERE id = ?`
         )
         .run(eventNow, nextObjective.id);
@@ -1470,7 +1520,7 @@ export function protocolPrompt({
 
   const submitted = ctx.db
     .prepare(
-      `UPDATE objectives SET state = 'submitted', updated_at = ?, revision = revision + 1
+      `UPDATE objectives SET state = 'launching', updated_at = ?, revision = revision + 1
        WHERE id = ?`
     )
     .run(nowIso(), created.objectives[0]?.id);

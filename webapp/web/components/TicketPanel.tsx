@@ -1,6 +1,6 @@
+import { deriveObjectiveLifecycleView, objectiveHasInstructionText } from '@overlord/automations';
 import { useNavigate } from '@tanstack/react-router';
 import { ArrowRightToLine } from 'lucide-react';
-import { useState } from 'react';
 
 import type { TicketDetailDto } from '../../shared/contract.ts';
 import { useCreateObjective, useTicket, useUpdateTicket } from '../lib/queries.ts';
@@ -9,70 +9,40 @@ import { TicketObjectivesSection } from './objectives/TicketObjectivesSection.ts
 import { InlineEditField } from './InlineEditField.tsx';
 import { LiveActivityFeed } from './LiveActivityFeed.tsx';
 import { LiveFileChanges } from './LiveFileChanges.tsx';
-import { RepositoryMentionTextarea } from './RepositoryMentionTextarea.tsx';
 import { TicketArtifactsSection } from './TicketArtifactsSection.tsx';
 import { TicketPanelHeader } from './TicketPanelHeader.tsx';
 import { TicketToolsAndCriteria } from './TicketToolsAndCriteria.tsx';
-import { Button, Card, Field, Spinner } from './ui.tsx';
+import { Button, Spinner } from './ui.tsx';
 
-function AddObjective({ ticketId, projectId }: { ticketId: string; projectId: string }) {
+/**
+ * Adds a new objective by creating a blank editable slot rather than opening a
+ * separate composer. The slot renders directly as a {@link TicketObjectivesSection}
+ * `DraftObjective` card for inline authoring (with `@`/`#`/`$` mentions). The
+ * server promotes it to `future` automatically when a draft already exists, so a
+ * draft is always the next-up slot and extra slots queue behind it. The button
+ * disables while a blank slot already awaits input to avoid stacking empties.
+ */
+function AddObjective({ ticket }: { ticket: TicketDetailDto }) {
   const create = useCreateObjective();
-  const [instruction, setInstruction] = useState('');
-  const [open, setOpen] = useState(false);
+  const lifecycleView = deriveObjectiveLifecycleView(ticket.objectives);
 
-  if (!open) {
-    return (
-      <Button variant="secondary" onClick={() => setOpen(true)}>
-        + Add objective
-      </Button>
-    );
-  }
+  const hasBlankSlot = [...lifecycleView.editableObjectives, ...lifecycleView.futureObjectives].some(
+    objective => !objectiveHasInstructionText(objective)
+  );
+  const disabled = hasBlankSlot || create.isPending;
 
-  const submit = () => {
-    if (!instruction.trim()) return;
-    create.mutate(
-      { ticketId, instructionText: instruction.trim() },
-      {
-        onSuccess: () => {
-          setInstruction('');
-          setOpen(false);
-        }
-      }
-    );
+  const addObjective = () => {
+    if (disabled) return;
+    create.mutate({ ticketId: ticket.id, instructionText: '', state: 'draft' });
   };
 
   return (
-    <Card className="space-y-3 p-3">
-      <Field label="New objective instruction">
-        <RepositoryMentionTextarea
-          autoFocus
-          rows={3}
-          projectId={projectId}
-          value={instruction}
-          placeholder="Describe what the agent should do… (@ file, # project, $ ticket)"
-          onValueChange={setInstruction}
-        />
-      </Field>
+    <div className="space-y-1">
+      <Button variant="secondary" onClick={addObjective} disabled={disabled}>
+        {create.isPending ? 'Adding…' : '+ Add objective'}
+      </Button>
       {create.isError && <p className="text-xs text-red-400">{(create.error as Error).message}</p>}
-      <div className="flex justify-end gap-2">
-        <Button
-          variant="ghost"
-          onClick={() => {
-            setOpen(false);
-            setInstruction('');
-          }}
-        >
-          Cancel
-        </Button>
-        <Button
-          variant="primary"
-          onClick={submit}
-          disabled={!instruction.trim() || create.isPending}
-        >
-          {create.isPending ? 'Adding…' : 'Add objective'}
-        </Button>
-      </div>
-    </Card>
+    </div>
   );
 }
 
@@ -152,7 +122,7 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
           <div className="mb-3 px-5"></div>
           <div className="flex flex-col gap-3 px-5 pb-1">
             <TicketObjectivesSection ticket={ticket} />
-            <AddObjective ticketId={ticket.id} projectId={ticket.projectId} />
+            <AddObjective ticket={ticket} />
           </div>
         </section>
 

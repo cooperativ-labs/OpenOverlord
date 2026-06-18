@@ -162,8 +162,6 @@ export function BoardPage() {
       position: 'top' | 'bottom';
       ticketId: string;
     }) => {
-      if (position !== 'bottom') return;
-
       const status = statuses.find(s => s.id === statusId);
       if (!status) return;
 
@@ -172,11 +170,14 @@ export function BoardPage() {
         .sort((a, b) => a.boardPosition - b.boardPosition)
         .map(ticket => ticket.id);
 
+      const orderedTicketIds =
+        position === 'top' ? [ticketId, ...existingIds] : [...existingIds, ticketId];
+
       await reorder.mutateAsync({
         projectId,
         statusId,
         statusType: status.type,
-        orderedTicketIds: [...existingIds, ticketId]
+        orderedTicketIds
       });
     },
     [projectId, reorder, statuses, tickets]
@@ -187,14 +188,21 @@ export function BoardPage() {
       statusId: string,
       objective: string,
       position: 'top' | 'bottom',
-      _options?: BlankTicketCreateOptions
+      options?: BlankTicketCreateOptions
     ) => {
+      const targetProjectId = options?.projectId ?? projectId;
+      const tagIds = options?.tagIds ?? [];
       const detail = await createTicket.mutateAsync({
-        projectId,
+        projectId: targetProjectId,
         firstObjective: objective,
-        statusId
+        ...(statusId ? { statusId } : {}),
+        ...(tagIds.length > 0 ? { tagIds } : {})
       });
-      await placeCreatedTicket({ statusId, position, ticketId: detail.id });
+      // Reposition only when the ticket actually landed in this board column;
+      // a different project/status means it lives on another board.
+      if (statusId && targetProjectId === projectId) {
+        await placeCreatedTicket({ statusId, position, ticketId: detail.id });
+      }
     },
     [createTicket, placeCreatedTicket, projectId]
   );
@@ -204,17 +212,22 @@ export function BoardPage() {
       statusId: string,
       objective: string,
       position: 'top' | 'bottom',
-      _options?: BlankTicketCreateOptions
+      options?: BlankTicketCreateOptions
     ) => {
+      const targetProjectId = options?.projectId ?? projectId;
+      const tagIds = options?.tagIds ?? [];
       const detail = await createTicket.mutateAsync({
-        projectId,
+        projectId: targetProjectId,
         firstObjective: objective,
-        statusId
+        ...(statusId ? { statusId } : {}),
+        ...(tagIds.length > 0 ? { tagIds } : {})
       });
-      await placeCreatedTicket({ statusId, position, ticketId: detail.id });
+      if (statusId && targetProjectId === projectId) {
+        await placeCreatedTicket({ statusId, position, ticketId: detail.id });
+      }
       navigate({
         to: '/projects/$projectId/tickets/$ticketId',
-        params: { projectId, ticketId: detail.id }
+        params: { projectId: targetProjectId, ticketId: detail.id }
       });
     },
     [createTicket, navigate, placeCreatedTicket, projectId]
@@ -446,7 +459,11 @@ export function BoardPage() {
             columns={visibleColumns}
             ticketById={ticketById}
             projectId={projectId}
+            projectName={projectName}
+            projectColor={projectColor}
+            membersByWorkspaceUserId={membersByWorkspaceUserId}
             selectedTicketId={selectedTicketId}
+            draggable={!isTagFilterActive}
           />
         )}
       </div>

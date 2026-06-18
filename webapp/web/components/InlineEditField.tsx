@@ -27,6 +27,8 @@ export type InlineEditFieldProps = {
   ticketMentionOptions?: TicketMentionOption[];
   /** Render the value as static, non-editable text. */
   disabled?: boolean;
+  /** Commit an empty trimmed value instead of reverting to the previous value. */
+  commitEmpty?: boolean;
   /** Accessible label for the editor. */
   ariaLabel?: string;
 };
@@ -52,6 +54,7 @@ export function InlineEditField({
   projectMentionOptions,
   ticketMentionOptions,
   disabled = false,
+  commitEmpty = false,
   ariaLabel
 }: InlineEditFieldProps) {
   const [editing, setEditing] = React.useState(false);
@@ -74,8 +77,9 @@ export function InlineEditField({
     setEditing(false);
     const trimmed = draft.trim();
     if (trimmed && trimmed !== value) onSave(trimmed);
+    else if (!trimmed && commitEmpty) onSave('');
     else setDraft(value);
-  }, [draft, value, onSave]);
+  }, [commitEmpty, draft, value, onSave]);
 
   const cancel = React.useCallback(() => {
     setDraft(value);

@@ -660,7 +660,7 @@ function resolveLaunchConfig(
  * Queue an execution request for an objective. Persists the agent/model
  * selection onto the objective, stores an explicit launch override when one is
  * supplied, resolves the effective launch config, moves a draft objective to
- * `submitted`, and writes the `execution_requests` row plus the
+ * `launching`, and writes the `execution_requests` row plus the
  * `ticket_events` / `entity_changes` records in one transaction.
  */
 export const launchObjective = db.transaction(
@@ -741,7 +741,7 @@ export const launchObjective = db.transaction(
       changed.push('launch_config_json');
     }
     if (objective.state === 'draft') {
-      fields.push(`state = 'submitted'`);
+      fields.push(`state = 'launching'`);
       changed.push('state');
     }
 

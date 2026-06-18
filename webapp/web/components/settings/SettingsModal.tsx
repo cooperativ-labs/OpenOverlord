@@ -1,10 +1,12 @@
-import { Info, KeyRound, MonitorDown, Palette, Terminal, User } from 'lucide-react';
+import { Info, Keyboard, KeyRound, MonitorDown, Palette, Terminal, User } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
+import { RealtimeStatus } from '@/components/RealtimeStatus';
 import { AboutPage } from '@/components/settings/AboutPage';
 import { ApplicationPage } from '@/components/settings/ApplicationPage';
 import { DesktopUpdatesPage } from '@/components/settings/DesktopUpdatesPage';
 import { ExecutionTargetsPage } from '@/components/settings/ExecutionTargetsPage';
+import { HotkeysPage } from '@/components/settings/HotkeysPage';
 import {
   SettingsDialogShell,
   type SettingsNavGroup,
@@ -12,6 +14,7 @@ import {
 } from '@/components/settings/SettingsDialogShell';
 import { UserProfilePage } from '@/components/settings/UserProfilePage';
 import { UserTokensPage } from '@/components/settings/UserTokensPage';
+import { useMeta } from '@/lib/queries';
 
 type SettingsModalProps = {
   open: boolean;
@@ -29,7 +32,8 @@ const desktopNavItem: SettingsNavItem = { name: 'Desktop', icon: MonitorDown };
 
 const userNavItems: SettingsNavItem[] = [
   { name: 'Profile', icon: User },
-  { name: 'Tokens', icon: KeyRound }
+  { name: 'Tokens', icon: KeyRound },
+  { name: 'Hotkeys', icon: Keyboard }
 ];
 
 const navItems: SettingsNavItem[] = [...userNavItems, ...appNavItems, desktopNavItem];
@@ -38,6 +42,7 @@ export type SettingsNavSection = (typeof navItems)[number]['name'];
 
 export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalProps) {
   const [activeNav, setActiveNav] = useState<SettingsNavSection>('Profile');
+  const meta = useMeta();
   const isDesktop = typeof window !== 'undefined' && window.overlord?.isDesktop === true;
   const navGroups = useMemo<SettingsNavGroup[]>(
     () => [
@@ -69,12 +74,14 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
       activeNav={activeNav}
       onActiveNavChange={name => setActiveNav(name as SettingsNavSection)}
       showClose
+      sidebarFooter={<RealtimeStatus sqlStudio={meta.data?.sqlStudio} />}
     >
       {activeNav === 'Application' && <ApplicationPage />}
       {activeNav === 'Execution Targets' && <ExecutionTargetsPage />}
       {activeNav === 'Desktop' && <DesktopUpdatesPage />}
       {activeNav === 'Profile' && <UserProfilePage open={open} />}
       {activeNav === 'Tokens' && <UserTokensPage open={open} />}
+      {activeNav === 'Hotkeys' && <HotkeysPage />}
       {activeNav === 'About' && <AboutPage open={open} />}
     </SettingsDialogShell>
   );
