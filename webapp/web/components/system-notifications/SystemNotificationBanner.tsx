@@ -21,9 +21,9 @@ function notificationIcon(type: SystemNotificationType) {
 function notificationColor(type: SystemNotificationType) {
   switch (type) {
     case 'update':
-      return 'border-blue-500/30 bg-blue-500/50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300';
+      return 'border-blue-500/30 bg-blue-300/80 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300';
     case 'warning':
-      return 'border-amber-500/30 bg-amber-500/50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300';
+      return 'border-amber-500/30 bg-amber-300/80 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300';
     case 'info':
       return 'border-border bg-popover/50 text-popover-foreground dark:bg-popover/50 dark:text-popover-foreground';
   }
@@ -40,7 +40,7 @@ export function SystemNotificationBanner() {
       {notifications.map(notification => (
         <div
           key={notification.id}
-          className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 shadow-md backdrop-blur-md ${notificationColor(notification.type)}`}
+          className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 shadow-md backdrop-blur-lg ${notificationColor(notification.type)}`}
         >
           <div className="mt-0.5">{notificationIcon(notification.type)}</div>
           <div className="min-w-0 flex-1">
