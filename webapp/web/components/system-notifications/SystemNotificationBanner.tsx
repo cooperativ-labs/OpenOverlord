@@ -1,4 +1,4 @@
-import { AlertTriangle, Info, RefreshCw, X } from 'lucide-react';
+import { AlertTriangle, Check, Copy, Info, RefreshCw, X } from 'lucide-react';
 import { useState } from 'react';
 
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
@@ -32,6 +32,7 @@ function notificationColor(type: SystemNotificationType) {
 export function SystemNotificationBanner() {
   const { notifications, dismissNotification } = useSystemNotifications();
   const [actionStates, setActionStates] = useState<Record<string, ButtonLoadingState>>({});
+  const [copiedIds, setCopiedIds] = useState<Record<string, boolean>>({});
 
   if (notifications.length === 0) return null;
 
@@ -72,6 +73,36 @@ export function SystemNotificationBanner() {
                 size="sm"
                 className="mt-1.5 h-auto p-0 text-xs font-medium underline underline-offset-2 hover:no-underline"
               />
+            )}
+            {notification.copyCommand && (
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <code className="rounded bg-black/5 px-1.5 py-0.5 font-mono text-[11px] dark:bg-white/10">
+                  {notification.copyCommand}
+                </code>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(notification.copyCommand!);
+                    setCopiedIds(prev => ({ ...prev, [notification.id]: true }));
+                    window.setTimeout(() => {
+                      setCopiedIds(prev => ({ ...prev, [notification.id]: false }));
+                    }, 2000);
+                  }}
+                  className="inline-flex items-center gap-1 text-xs font-medium opacity-80 transition-opacity hover:opacity-100"
+                >
+                  {copiedIds[notification.id] ? (
+                    <>
+                      <Check className="h-3 w-3" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3 w-3" />
+                      Copy
+                    </>
+                  )}
+                </button>
+              </div>
             )}
           </div>
           <button

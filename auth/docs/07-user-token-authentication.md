@@ -48,7 +48,9 @@ Requirements:
 - User can create a token from the CLI.
 - Future web app can create a token from settings.
 - Token has a user-supplied label.
-- Optional expiration should be supported or at least reserved as a future field.
+- Token creation defaults `expires_at` to 90 days from creation when no expiry is supplied
+  (contract `0.20-draft`). Callers may pass an explicit expiry, or an explicit `null` to opt out
+  and mint a non-expiring token.
 - The raw token secret is shown exactly once at creation.
 - Persist only a secure hash of the token secret.
 - Store a non-secret token identifier/prefix for lookup, display, and audit.
@@ -177,9 +179,31 @@ Potential protocol commands:
 - Redact token-like values in diagnostics.
 - Treat tokens like passwords in docs and warnings.
 
-## Future Scoped Permission Extension
+## Scoped Permissions (implemented in `0.20-draft`)
 
-The initial full-user-permission behavior should be implemented through an authorization resolver that can later add scope checks.
+Token scopes are now implemented. A token is created with a `scope`:
+
+- `full` — no scope rows; the token inherits the full permissions of its creating user's roles.
+- `ticket_lifecycle` — persists grant patterns into `user_token_scopes`: `project:read`,
+  `ticket:*`, `objective:*`, `session:*`, `event:create`, `event:read`, `artifact:*`,
+  `attachment:*`, `execution_request:{create,read,claim}`. This is everything a runner/agent needs
+  and excludes project/user/role/connector administration and `user_token:self:*` (a scoped token
+  cannot mint further tokens).
+
+At authentication time the backend resolves an `Actor` and computes effective permissions as the
+token's creating-user role grants **intersected with** its scope grants (`grantCoversAction` over
+the scope patterns). Absence of scope rows means "no token-level restriction". Scopes can only
+restrict, never exceed, the user's current role — if the user's role is reduced, the token becomes
+less powerful automatically. Revocation and expiry are checked before scope evaluation. The
+`requirePermission` gate enforces this uniformly across REST, protocol, and runner routes.
+
+The `ovld user-token create --scope full|ticket-lifecycle` CLI flag and the webapp settings token
+form both surface these two presets.
+
+## Earlier Design Notes (now implemented)
+
+The initial full-user-permission behavior was implemented through an authorization resolver that
+later added scope checks, as described above.
 
 Future scope examples:
 

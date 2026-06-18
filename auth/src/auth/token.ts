@@ -10,8 +10,19 @@ import { type AuthDomainDatabase, execute, queryAll, queryOne } from './database
 const TOKEN_PREFIX = 'out_';
 const HASH_ALGORITHM = 'sha256';
 
+/**
+ * Tokens default to a bounded lifetime (security audit 2026-06-18). Callers pass
+ * an explicit `expiresAt`, or an explicit `null` to opt out (non-expiring).
+ */
+const DEFAULT_TOKEN_TTL_DAYS = 90;
+
 function isoNow(): string {
   return new Date().toISOString();
+}
+
+/** ISO timestamp `days` from now, used for the default token expiry. */
+function isoInDays(days: number): string {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
 function normalizeTimestamp(value: Date | string | null): string | null {
@@ -38,7 +49,15 @@ export interface CreateTokenParams {
   userId: string;
   workspaceUserId: string;
   label: string;
+  /** Explicit expiry; `null` opts out; omitting defaults to 90 days. */
   expiresAt?: string | null;
+  /**
+   * Scope grant patterns to persist in `user_token_scopes`. Empty/omitted means
+   * a `full` token (no token-level restriction). Each entry needs a freshly
+   * generated id for the row, supplied via `scopeRowIds` aligned by index.
+   */
+  scopeGrants?: readonly string[];
+  scopeRowIds?: readonly string[];
 }
 
 export interface UserTokenMeta {
@@ -66,6 +85,10 @@ export async function createUserToken(
   const tokenPrefix = displayPrefix(rawToken);
   const now = isoNow();
 
+  // Omitting `expiresAt` defaults to a bounded TTL; an explicit `null` opts out.
+  const expiresAt =
+    params.expiresAt === undefined ? isoInDays(DEFAULT_TOKEN_TTL_DAYS) : params.expiresAt;
+
   await execute(
     db,
     `INSERT INTO user_tokens (
@@ -88,11 +111,31 @@ export async function createUserToken(
       tokenPrefix,
       tokenHash,
       HASH_ALGORITHM,
-      params.expiresAt ?? null,
+      expiresAt,
       now,
       now
     ]
   );
+
+  // Persist scope grants (empty = `full`, no token-level restriction).
+  const scopeGrants = params.scopeGrants ?? [];
+  for (let i = 0; i < scopeGrants.length; i += 1) {
+    await execute(
+      db,
+      `INSERT INTO user_token_scopes (
+         id, workspace_id, token_id, permission, resource_type, resource_id,
+         created_at, updated_at, revision
+       ) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, 1)`,
+      [
+        params.scopeRowIds?.[i] ?? `${params.id}-scope-${i}`,
+        params.workspaceId,
+        params.id,
+        scopeGrants[i],
+        now,
+        now
+      ]
+    );
+  }
 
   const meta: UserTokenMeta = {
     id: params.id,
@@ -101,7 +144,7 @@ export async function createUserToken(
     label: params.label,
     tokenPrefix,
     status: 'active',
-    expiresAt: params.expiresAt ?? null,
+    expiresAt,
     lastUsedAt: null,
     createdAt: now
   };

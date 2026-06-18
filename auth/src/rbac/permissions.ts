@@ -4,6 +4,21 @@
  *  compile time and the permission surface stays easy to grep.
  */
 export const PERMISSIONS = {
+  // Workspaces (read is member-level; create/update/delete/activate are admin)
+  WORKSPACE_READ: 'workspace:read',
+  WORKSPACE_CREATE: 'workspace:create',
+  WORKSPACE_UPDATE: 'workspace:update',
+  WORKSPACE_DELETE: 'workspace:delete',
+  WORKSPACE_ACTIVATE: 'workspace:activate',
+
+  // Own account profile
+  PROFILE_SELF_READ: 'profile:self:read',
+  PROFILE_SELF_UPDATE: 'profile:self:update',
+
+  // Launch configuration (agent catalog, launch settings, terminal/launch prefs)
+  LAUNCH_READ: 'launch:read',
+  LAUNCH_CONFIGURE: 'launch:configure',
+
   // Projects
   PROJECT_CREATE: 'project:create',
   PROJECT_READ: 'project:read',
@@ -78,3 +93,42 @@ export const PERMISSIONS = {
 } as const;
 
 export type KnownPermission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
+
+/**
+ * Token scope presets surfaced to the CLI (`--scope`) and the webapp token form.
+ *
+ *  - `full` carries no scope rows, so the token inherits the full permissions of
+ *    its creating user's roles.
+ *  - `ticket_lifecycle` restricts the token to everything a runner/agent needs to
+ *    drive a ticket — ticket, objective, session, event, artifact, attachment, and
+ *    execution-request work — and deliberately excludes project/user/role/connector
+ *    administration and `user_token:self:*` (a scoped token must not be able to mint
+ *    further tokens).
+ *
+ *  Stored grants are wildcard patterns matched by `grantCoversAction`. A token's
+ *  effective permissions are always its creating user's role grants intersected
+ *  with these scope grants, so a scope can only ever restrict, never widen, access.
+ */
+export type TokenScope = 'full' | 'ticket_lifecycle';
+
+export const TICKET_LIFECYCLE_GRANTS: readonly string[] = [
+  'project:read',
+  'ticket:*',
+  'objective:*',
+  'session:*',
+  'event:create',
+  'event:read',
+  'artifact:*',
+  'attachment:*',
+  'execution_request:create',
+  'execution_request:read',
+  'execution_request:claim'
+] as const;
+
+/**
+ * Resolve the scope grant patterns to persist for a given preset. `full` returns
+ * an empty list — no `user_token_scopes` rows, meaning no token-level restriction.
+ */
+export function scopeGrantsForPreset(scope: TokenScope): string[] {
+  return scope === 'ticket_lifecycle' ? [...TICKET_LIFECYCLE_GRANTS] : [];
+}

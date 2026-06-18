@@ -1,3 +1,5 @@
+import { redactSecrets } from './redact-secrets.js';
+
 export class CliError extends Error {
   readonly exitCode: number;
 
@@ -10,12 +12,12 @@ export class CliError extends Error {
 
 export function formatCliError(error: unknown): string {
   if (error instanceof CliError) {
-    return error.message;
+    return redactSecrets(error.message);
   }
 
   if (error instanceof Error) {
-    return error.message;
+    return redactSecrets(error.message);
   }
 
-  return String(error);
+  return redactSecrets(String(error));
 }

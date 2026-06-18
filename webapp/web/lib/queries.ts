@@ -35,6 +35,7 @@ import type {
 } from '../../shared/contract.ts';
 
 import { api } from './api.ts';
+import { authClient, normalizeLocalUsername, usernameToLocalEmail } from './auth-client.ts';
 
 export const keys = {
   meta: ['meta'] as const,
@@ -145,6 +146,50 @@ export function useUpdateProfile() {
       qc.setQueryData(keys.profile, data);
       // The sidebar identity reads from the workspace meta, so refresh it too.
       void qc.invalidateQueries({ queryKey: keys.meta });
+    }
+  });
+}
+
+/**
+ * Change the account username through the Auth surface. The username is the
+ * local-part of the synthetic `<username>@overlord.local` sign-in email, so this
+ * updates both the Better Auth account name and email; the auth→profiles bridge
+ * then mirrors the new username into `profiles.handle`.
+ */
+export function useChangeUsername() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (rawUsername: string) => {
+      const username = normalizeLocalUsername(rawUsername);
+      const named = await authClient.updateUser({ name: username });
+      if (named.error) {
+        throw new Error(named.error.message ?? 'Failed to update username.');
+      }
+      const reemailed = await authClient.changeEmail({ newEmail: usernameToLocalEmail(username) });
+      if (reemailed.error) {
+        throw new Error(reemailed.error.message ?? 'Failed to update username.');
+      }
+      return username;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.profile });
+      void qc.invalidateQueries({ queryKey: keys.meta });
+    }
+  });
+}
+
+/** Change the account password through the Auth surface (requires the current password). */
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: async (input: { currentPassword: string; newPassword: string }) => {
+      const result = await authClient.changePassword({
+        currentPassword: input.currentPassword,
+        newPassword: input.newPassword,
+        revokeOtherSessions: true
+      });
+      if (result.error) {
+        throw new Error(result.error.message ?? 'Failed to update password.');
+      }
     }
   });
 }

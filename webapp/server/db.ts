@@ -143,12 +143,45 @@ export function setActiveWorkspace(id: string): WorkspaceRow | null {
 }
 
 /**
- * Point request attribution at the workspace user resolved from an
- * authenticated web session. The web server still has one active workspace at
- * a time, but the signed-in account should own subsequent mutations.
+ * Per-request token auth context. `ACTIVE_TOKEN_SCOPES` is the set of scope grant
+ * patterns carried by the authenticating `USER_TOKEN` (`null` = session/loopback
+ * auth or a `full` token, i.e. no token-level restriction). `ACTIVE_TOKEN_ID`
+ * attributes mutations to the token in the change feed. Both are live `let`
+ * bindings reset at the start of every authenticated request; the server handles
+ * requests sequentially with synchronous better-sqlite3 handlers, so a per-request
+ * global is safe and mirrors the existing `ACTOR_WORKSPACE_USER_ID` pattern.
+ */
+export let ACTIVE_TOKEN_SCOPES: string[] | null = null;
+export let ACTIVE_TOKEN_ID: string | null = null;
+
+/**
+ * Point request attribution at the workspace user resolved from an authenticated
+ * web session (or the loopback-trusted local operator). This auth method carries
+ * no token-level restriction, so token scope/id are cleared.
  */
 export function setActiveWorkspaceUser(workspaceUserId: string | null): void {
   ACTOR_WORKSPACE_USER_ID = workspaceUserId;
+  ACTIVE_TOKEN_SCOPES = null;
+  ACTIVE_TOKEN_ID = null;
+}
+
+/**
+ * Point request attribution at the workspace user a `USER_TOKEN` authenticated as,
+ * recording its scope grants (for the `requirePermission` gate) and id (for change
+ * attribution). `scopeGrants === null` means a `full` token (no restriction).
+ */
+export function setActiveTokenAuth({
+  workspaceUserId,
+  tokenId,
+  scopeGrants
+}: {
+  workspaceUserId: string | null;
+  tokenId: string | null;
+  scopeGrants: string[] | null;
+}): void {
+  ACTOR_WORKSPACE_USER_ID = workspaceUserId;
+  ACTIVE_TOKEN_ID = tokenId;
+  ACTIVE_TOKEN_SCOPES = scopeGrants && scopeGrants.length > 0 ? scopeGrants : null;
 }
 
 /**
@@ -171,7 +204,7 @@ const insertChangeStmt = db.prepare(`
   ) VALUES (
     @id, @workspace_id, @project_id, @ticket_id, @objective_id,
     @entity_type, @entity_id, @operation, @entity_revision,
-    @changed_fields_json, @actor_workspace_user_id, NULL, 'webapp', @occurred_at
+    @changed_fields_json, @actor_workspace_user_id, @actor_token_id, 'webapp', @occurred_at
   )
 `);
 
@@ -211,6 +244,7 @@ export function recordChange(input: RecordChangeInput): void {
       input.actorWorkspaceUserId !== undefined
         ? input.actorWorkspaceUserId
         : ACTOR_WORKSPACE_USER_ID,
+    actor_token_id: ACTIVE_TOKEN_ID,
     occurred_at: nowIso()
   });
 }

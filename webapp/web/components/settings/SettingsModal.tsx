@@ -1,8 +1,19 @@
-import { Bell, Info, Keyboard, KeyRound, MonitorDown, Palette, Terminal, User } from 'lucide-react';
+import {
+  Bell,
+  Info,
+  Keyboard,
+  KeyRound,
+  MonitorDown,
+  Palette,
+  ShieldCheck,
+  Terminal,
+  User
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { RealtimeStatus } from '@/components/RealtimeStatus';
 import { AboutPage } from '@/components/settings/AboutPage';
+import { AccountPage } from '@/components/settings/AccountPage';
 import { ApplicationPage } from '@/components/settings/ApplicationPage';
 import { DesktopUpdatesPage } from '@/components/settings/DesktopUpdatesPage';
 import { ExecutionTargetsPage } from '@/components/settings/ExecutionTargetsPage';
@@ -34,6 +45,7 @@ const desktopNavItem: SettingsNavItem = { name: 'Desktop', icon: MonitorDown };
 
 const userNavItems: SettingsNavItem[] = [
   { name: 'Profile', icon: User },
+  { name: 'Account', icon: ShieldCheck },
   { name: 'Tokens', icon: KeyRound },
   { name: 'Hotkeys', icon: Keyboard }
 ];
@@ -94,6 +106,7 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
       {activeNav === 'Execution Targets' && <ExecutionTargetsPage />}
       {activeNav === 'Desktop' && <DesktopUpdatesPage />}
       {activeNav === 'Profile' && <UserProfilePage open={open} />}
+      {activeNav === 'Account' && <AccountPage open={open} />}
       {activeNav === 'Tokens' && <UserTokensPage open={open} />}
       {activeNav === 'Hotkeys' && <HotkeysPage />}
       {activeNav === 'About' && <AboutPage open={open} />}

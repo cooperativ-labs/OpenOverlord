@@ -35,6 +35,9 @@ CREATE INDEX idx_profiles_status ON profiles (status);
 CREATE UNIQUE INDEX idx_profiles_handle_lower ON profiles (lower(handle)) WHERE handle IS NOT NULL;
 CREATE UNIQUE INDEX idx_profiles_email_lower ON profiles (lower(email)) WHERE email IS NOT NULL;
 
+-- The account username is stored as Better Auth `user.name` (set at sign-up
+-- and updated when the user changes their username). profiles.handle
+-- mirrors it and is not separately editable.
 CREATE FUNCTION create_profile_for_better_auth_user()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -47,7 +50,7 @@ BEGIN
     NEW."id",
     'human',
     COALESCE(NULLIF(btrim(NEW."name"), ''), NEW."email", 'User'),
-    NULL,
+    NULLIF(btrim(NEW."name"), ''),
     NEW."email",
     'active',
     '{}'::jsonb,
@@ -63,6 +66,28 @@ CREATE TRIGGER trg_better_auth_user_create_profile
 AFTER INSERT ON "user"
 FOR EACH ROW
 EXECUTE FUNCTION create_profile_for_better_auth_user();
+
+-- Keep the handle mirrored whenever the account username changes.
+CREATE FUNCTION sync_profile_handle_from_better_auth_user()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE profiles
+     SET handle = NULLIF(btrim(NEW."name"), ''),
+         updated_at = now(),
+         revision = revision + 1
+   WHERE id = NEW."id"
+     AND handle IS DISTINCT FROM NULLIF(btrim(NEW."name"), '');
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_better_auth_user_sync_profile_handle
+AFTER UPDATE OF "name" ON "user"
+FOR EACH ROW
+WHEN (NEW."name" IS DISTINCT FROM OLD."name")
+EXECUTE FUNCTION sync_profile_handle_from_better_auth_user();
 
 CREATE TABLE workspace_users (
   id text PRIMARY KEY,

@@ -108,6 +108,10 @@ A minimal, audited surface the SPA **feature-detects** (`if (window.overlord)`):
 | `updates.check()` | check the configured update feed |
 | `updates.install()` | install a downloaded update and relaunch |
 | `updates.onStatus(callback)` | subscribe to update state changes |
+| `cliUpdates.getStatus()` | current CLI update state |
+| `cliUpdates.check()` | check the installed CLI against npm |
+| `cliUpdates.update()` | run `ovld update` from the shell |
+| `cliUpdates.onStatus(callback)` | subscribe to CLI update state changes |
 | `quickTask.getHotkey()` | read the registered global quick-task shortcut |
 | `quickTask.setHotkey(accelerator)` | change the global quick-task shortcut |
 | `quickTask.close()` | hide the quick-task capture window |
@@ -140,6 +144,16 @@ is [GitHub Releases](https://github.com/cooperativ-labs/OpenOverlord/releases/la
 and `latest-mac.yml` files emitted by electron-builder — `yarn desktop:publish`
 uploads them automatically. In unsigned/dev builds without a feed, update checks
 report as unavailable.
+
+## 6.2 CLI updates
+
+The shell checks whether the installed `ovld` CLI is behind the latest published
+npm version on startup and every four hours, using `ovld update --check --json`.
+It prefers the `ovld` binary on `PATH` (what terminal sessions use) and falls
+back to the bundled CLI entry when packaged. When an update is available, the
+SPA surfaces an in-app system notification with an **Update now** action (runs
+`ovld update` in the main process) and a copyable `ovld update` command as a
+fallback.
 
 ## 7. Launching agents
 

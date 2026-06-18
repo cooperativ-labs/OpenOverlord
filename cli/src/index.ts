@@ -18,7 +18,8 @@ const DB_FREE_COMMANDS = new Set([
   'agent-setup',
   'serve',
   'config',
-  'auth'
+  'auth',
+  'user-token'
 ]);
 
 const KNOWN_COMMANDS = new Set([
@@ -89,7 +90,8 @@ async function dispatchCommand({
     case 'setup':
     case 'agent-setup':
     case 'config':
-    case 'auth': {
+    case 'auth':
+    case 'user-token': {
       const { runLocalCommand } = await import('./management.js');
       await runLocalCommand({ command, rest: args });
       return;
@@ -155,4 +157,5 @@ export async function runCli({
   }
 }
 
+export { redactSecrets } from './redact-secrets.js';
 export { getCliVersion } from './version.js';

@@ -15,7 +15,12 @@ import {
   useUserTokens
 } from '@/lib/queries';
 
-import type { UserTokenDto, UserTokenStatus } from '../../../shared/contract.ts';
+import type { TokenScope, UserTokenDto, UserTokenStatus } from '../../../shared/contract.ts';
+
+const SCOPE_LABELS: Record<TokenScope, string> = {
+  full: 'Full user privileges',
+  ticket_lifecycle: 'Ticket lifecycle + runner'
+};
 
 type UserTokensPageProps = {
   open: boolean;
@@ -87,6 +92,7 @@ function CreateTokenForm() {
   const createToken = useCreateUserToken();
   const [label, setLabel] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
+  const [scope, setScope] = useState<TokenScope>('full');
   const [createState, setCreateState] = useState<ButtonLoadingState>('default');
   const [error, setError] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
@@ -103,11 +109,13 @@ function CreateTokenForm() {
     try {
       const result = await createToken.mutateAsync({
         label: trimmed,
-        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null
+        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+        scope
       });
       setSecret(result.secret);
       setLabel('');
       setExpiresAt('');
+      setScope('full');
       setCreateState('success');
     } catch (err) {
       setCreateState('error');
@@ -150,6 +158,45 @@ function CreateTokenForm() {
               onChange={e => setExpiresAt(e.target.value)}
               disabled={createState === 'loading'}
             />
+          </div>
+          <div className="grid gap-2 sm:col-span-2">
+            <Label>Scope</Label>
+            <p className="text-xs text-muted-foreground">
+              Limit what this token can do. Scopes can only narrow your own permissions, never
+              exceed them.
+            </p>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4"
+                checked={scope === 'full'}
+                disabled={createState === 'loading'}
+                onChange={e => setScope(e.target.checked ? 'full' : 'ticket_lifecycle')}
+              />
+              <span>
+                <span className="font-medium">{SCOPE_LABELS.full}</span>
+                <span className="block text-xs text-muted-foreground">
+                  Everything you can do, including creating/deleting projects and changing settings.
+                  Disables the options below.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4"
+                checked={scope === 'ticket_lifecycle'}
+                disabled={scope === 'full' || createState === 'loading'}
+                onChange={e => setScope(e.target.checked ? 'ticket_lifecycle' : 'full')}
+              />
+              <span>
+                <span className="font-medium">{SCOPE_LABELS.ticket_lifecycle}</span>
+                <span className="block text-xs text-muted-foreground">
+                  Select, create, update, and delete tickets and objectives, plus everything a
+                  runner needs. No project, user, or admin changes.
+                </span>
+              </span>
+            </label>
           </div>
           <LoadingButton
             buttonState={createState}
@@ -297,6 +344,9 @@ function TokenRow({ token }: { token: UserTokenDto }) {
             </button>
           )}
           <Badge variant={STATUS_VARIANT[displayStatus]}>{displayStatus}</Badge>
+          {token.scope !== 'full' ? (
+            <Badge variant="outline">{SCOPE_LABELS[token.scope]}</Badge>
+          ) : null}
         </div>
         <p className="truncate font-mono text-xs text-muted-foreground">{token.tokenPrefix}…</p>
         <p className="text-xs text-muted-foreground">

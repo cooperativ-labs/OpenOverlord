@@ -21,9 +21,11 @@ export function SystemNotificationProvider({ children }: { children: ReactNode }
     }
 
     setNotifications(prev => {
-      // Don't add duplicates
-      if (prev.some(n => n.id === notification.id)) return prev;
-      return [...prev, notification];
+      const index = prev.findIndex(n => n.id === notification.id);
+      if (index === -1) return [...prev, notification];
+      const next = [...prev];
+      next[index] = notification;
+      return next;
     });
   }, []);
 

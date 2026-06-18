@@ -22,14 +22,19 @@ export type {
   AuthorizationResult,
   KnownPermission,
   Permission,
-  RoleDefinition
+  RoleDefinition,
+  TokenScope
 } from './rbac/index.js';
 export {
   Authorizer,
   can,
   DEFAULT_ROLE_DEFINITIONS,
   defaultAuthorizer,
+  grantCoversAction,
   makeActor,
   PERMISSIONS,
+  scopeGrantsForPreset,
+  TICKET_LIFECYCLE_GRANTS,
+  tokenScopeAllows,
   Role
 } from './rbac/index.js';

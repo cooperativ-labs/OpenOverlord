@@ -73,14 +73,12 @@ export function UserProfilePage({ open }: UserProfilePageProps) {
             errorFallbackVerb="name"
           />
           <Separator />
-          <ProfileField
+          <ReadOnlyProfileField
             id="profile-handle"
             label="Username"
             value={data.handle ?? ''}
-            placeholder="e.g. ada"
-            description="An optional short handle used to mention you."
-            toBody={value => ({ handle: value || null })}
-            errorFallbackVerb="username"
+            emptyText="Set from your account username"
+            description="Mirrors your account username. Change it under Account settings."
           />
           <Separator />
           <ProfileField
@@ -181,6 +179,43 @@ function AvatarUploader({ profile }: { profile: ProfileDto }) {
             : (error ?? 'Drag an image or click to upload a profile picture.')}
         </p>
       </div>
+    </div>
+  );
+}
+
+type ReadOnlyProfileFieldProps = {
+  id: string;
+  label: string;
+  value: string;
+  /** Shown muted in the field when the value is empty. */
+  emptyText?: string;
+  description?: string;
+};
+
+/**
+ * A non-editable profile field, used for values that mirror an authoritative
+ * source (e.g. the username, which mirrors the account username and is changed
+ * under Account settings) and so must not be edited directly here.
+ */
+function ReadOnlyProfileField({
+  id,
+  label,
+  value,
+  emptyText,
+  description
+}: ReadOnlyProfileFieldProps) {
+  return (
+    <div className="grid max-w-lg gap-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        value={value}
+        placeholder={emptyText}
+        className="h-8"
+        readOnly
+        disabled
+      />
+      {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
     </div>
   );
 }

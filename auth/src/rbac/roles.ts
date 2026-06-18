@@ -13,6 +13,9 @@ export const DEFAULT_ROLE_DEFINITIONS: Readonly<Record<Role, RoleDefinition>> = 
   [Role.MEMBER]: {
     description: 'Standard user or persistent agent account',
     grants: [
+      'workspace:read',
+      'profile:self:*',
+      'launch:*',
       'project:read',
       'ticket:*',
       'objective:*',

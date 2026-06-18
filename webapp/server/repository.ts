@@ -1,3 +1,4 @@
+import { scopeGrantsForPreset } from '@overlord/auth';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 
@@ -26,6 +27,7 @@ import type {
   TicketDetailDto,
   TicketDto,
   TicketEventDto,
+  TokenScope,
   UpdateObjectiveBody,
   UpdateProfileBody,
   UpdateProjectBody,
@@ -264,6 +266,7 @@ interface TicketRow {
   updated_at: string;
   revision: number;
   objective_count: number;
+  has_executing_objective: number;
 }
 
 interface ObjectiveRow {
@@ -470,6 +473,7 @@ function toTicketDto(r: TicketRow, tags: ProjectTagDto[] = []): TicketDto {
     updatedAt: r.updated_at,
     revision: r.revision,
     objectiveCount: r.objective_count,
+    hasExecutingObjective: r.has_executing_objective === 1,
     tags
   };
 }
@@ -1039,33 +1043,35 @@ export const updateProjectResource = db.transaction(
   }
 );
 
-export const deleteProjectResource = db.transaction((projectId: string, resourceId: string): void => {
-  const existing = getProjectResourceRow(projectId, resourceId);
-  const now = nowIso();
-  const revision = existing.revision + 1;
+export const deleteProjectResource = db.transaction(
+  (projectId: string, resourceId: string): void => {
+    const existing = getProjectResourceRow(projectId, resourceId);
+    const now = nowIso();
+    const revision = existing.revision + 1;
 
-  db.prepare(
-    `UPDATE project_resources
+    db.prepare(
+      `UPDATE project_resources
         SET deleted_at = @now, updated_at = @now, revision = @revision
       WHERE id = @id`
-  ).run({ id: resourceId, now, revision });
+    ).run({ id: resourceId, now, revision });
 
-  if (existing.is_primary === 1) {
-    promoteFallbackPrimary({
-      projectId,
-      executionTargetId: existing.execution_target_id,
-      now
+    if (existing.is_primary === 1) {
+      promoteFallbackPrimary({
+        projectId,
+        executionTargetId: existing.execution_target_id,
+        now
+      });
+    }
+
+    recordChange({
+      entityType: 'project_resource',
+      entityId: resourceId,
+      operation: 'delete',
+      entityRevision: revision,
+      projectId
     });
   }
-
-  recordChange({
-    entityType: 'project_resource',
-    entityId: resourceId,
-    operation: 'delete',
-    entityRevision: revision,
-    projectId
-  });
-});
+);
 
 function getProjectRepositoryResource(
   projectId: string,
@@ -1363,7 +1369,10 @@ const selectTicketsSql = `
          t.acceptance_criteria_text, t.available_tools_json,
          t.created_at, t.updated_at, t.revision,
          (SELECT COUNT(*) FROM objectives o
-            WHERE o.ticket_id = t.id AND o.deleted_at IS NULL) AS objective_count
+            WHERE o.ticket_id = t.id AND o.deleted_at IS NULL) AS objective_count,
+         (SELECT COUNT(*) > 0 FROM objectives o
+            WHERE o.ticket_id = t.id AND o.deleted_at IS NULL AND o.state = 'executing')
+            AS has_executing_objective
   FROM tickets t
   WHERE t.workspace_id = @workspace_id AND t.deleted_at IS NULL
 `;
@@ -1433,6 +1442,9 @@ export function searchTickets({
               t.created_at, t.updated_at, t.revision,
               (SELECT COUNT(*) FROM objectives o
                  WHERE o.ticket_id = t.id AND o.deleted_at IS NULL) AS objective_count,
+              (SELECT COUNT(*) > 0 FROM objectives o
+                 WHERE o.ticket_id = t.id AND o.deleted_at IS NULL AND o.state = 'executing')
+                 AS has_executing_objective,
               (CASE search_documents_fts.entity_type
                  WHEN 'ticket' THEN 3.0 WHEN 'objective' THEN 2.0 ELSE 1.0 END)
                 * (-bm25(search_documents_fts, 10.0, 1.0)) AS doc_score
@@ -2759,11 +2771,9 @@ export const updateProfile = db.transaction((body: UpdateProfileBody): ProfileDt
     params.display_name = displayName;
     changed.push('display_name');
   }
-  if (body.handle !== undefined) {
-    fields.push('handle = @handle');
-    params.handle = body.handle?.trim() || null;
-    changed.push('handle');
-  }
+  // `handle` is not directly editable: it mirrors the Better Auth account
+  // username via the auth→profiles bridge trigger. The username is changed
+  // through the Auth surface (Account settings), not this profile patch.
   if (body.email !== undefined) {
     const email = body.email?.trim() || null;
     if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
@@ -2817,6 +2827,13 @@ const USER_TOKEN_SCHEME = 'out';
 /** Algorithm recorded in `user_tokens.hash_algorithm` and used to hash secrets. */
 const USER_TOKEN_HASH_ALGORITHM = 'sha256';
 
+/**
+ * Tokens default to a bounded lifetime so a leaked-but-forgotten credential stops
+ * working on its own (security audit 2026-06-18). Callers can pass an explicit
+ * expiry, or an explicit `null` to opt out and mint a non-expiring token.
+ */
+const DEFAULT_TOKEN_TTL_DAYS = 90;
+
 const USER_TOKEN_COLUMNS =
   'id, label, token_prefix, status, expires_at, last_used_at, revoked_at, created_at';
 
@@ -2842,12 +2859,27 @@ interface OperatorIdentity {
   workspaceUserId: string;
 }
 
+/** Load the active scope grant patterns for a token (empty = full, no restriction). */
+function loadTokenScopeGrants(tokenId: string): string[] {
+  const rows = db
+    .prepare(
+      `SELECT permission FROM user_token_scopes
+         WHERE token_id = ? AND workspace_id = ? AND deleted_at IS NULL
+         ORDER BY permission ASC`
+    )
+    .all(tokenId, WORKSPACE.id) as Array<{ permission: string }>;
+  return rows.map(r => r.permission);
+}
+
 function toUserTokenDto(row: UserTokenRow): UserTokenDto {
+  const scopeGrants = loadTokenScopeGrants(row.id);
   return {
     id: row.id,
     label: row.label,
     tokenPrefix: row.token_prefix,
     status: row.status as UserTokenDto['status'],
+    scope: scopeGrants.length > 0 ? 'ticket_lifecycle' : 'full',
+    scopeGrants,
     expiresAt: row.expires_at,
     lastUsedAt: row.last_used_at,
     revokedAt: row.revoked_at,
@@ -2919,13 +2951,24 @@ export const createUserToken = db.transaction(
     const label = body.label?.trim();
     if (!label) throw new ApiError(400, 'Token label cannot be empty');
 
+    // Expiry resolution: an explicit value is validated and used; an explicit
+    // `null` opts out (non-expiring); omitting the field defaults to 90 days so a
+    // forgotten leaked token stops working on its own (security audit 2026-06-18).
     let expiresAt: string | null = null;
-    if (body.expiresAt !== null && body.expiresAt !== undefined && String(body.expiresAt).trim()) {
+    if (body.expiresAt === undefined) {
+      expiresAt = new Date(Date.now() + DEFAULT_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    } else if (body.expiresAt !== null && String(body.expiresAt).trim()) {
       const parsed = new Date(body.expiresAt);
       if (Number.isNaN(parsed.getTime())) throw new ApiError(400, 'Expiry must be a valid date');
       if (parsed.getTime() <= Date.now()) throw new ApiError(400, 'Expiry must be in the future');
       expiresAt = parsed.toISOString();
     }
+
+    const scope: TokenScope = body.scope ?? 'full';
+    if (scope !== 'full' && scope !== 'ticket_lifecycle') {
+      throw new ApiError(400, `Unknown token scope: ${String(scope)}`);
+    }
+    const scopeGrants = scopeGrantsForPreset(scope);
 
     const { userId, workspaceUserId } = loadOperatorIdentity();
 
@@ -2967,6 +3010,25 @@ export const createUserToken = db.transaction(
       expires_at: expiresAt,
       now
     });
+
+    // A `full` token carries no scope rows (no token-level restriction). A scoped
+    // token persists one grant pattern per row; auth-time enforcement intersects
+    // these with the creating user's role grants.
+    const insertScope = db.prepare(
+      `INSERT INTO user_token_scopes (
+         id, workspace_id, token_id, permission, resource_type, resource_id,
+         created_at, updated_at, revision
+       ) VALUES (@id, @workspace_id, @token_id, @permission, NULL, NULL, @now, @now, 1)`
+    );
+    for (const permission of scopeGrants) {
+      insertScope.run({
+        id: newId(),
+        workspace_id: WORKSPACE.id,
+        token_id: id,
+        permission,
+        now
+      });
+    }
 
     recordChange({
       entityType: 'user_token',

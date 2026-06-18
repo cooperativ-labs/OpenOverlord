@@ -12,6 +12,8 @@ export type SystemNotification = {
     successText?: string;
     onClick: () => void | Promise<void>;
   };
+  /** Optional CLI command with a copy button */
+  copyCommand?: string;
   /** If set, dismissal is persisted in localStorage under this key */
   dismissKey?: string;
 };

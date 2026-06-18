@@ -238,6 +238,8 @@ export interface TicketDto {
   revision: number;
   /** Count of non-deleted objectives (read-side aggregate). */
   objectiveCount: number;
+  /** True when at least one non-deleted objective on this ticket is `executing`. */
+  hasExecutingObjective: boolean;
   /** Tags assigned to this ticket, resolved from its project's `project_tags`. */
   tags: ProjectTagDto[];
 }
@@ -642,7 +644,7 @@ export interface ProfileDto {
   userId: string;
   /** `profiles.display_name` — required, non-empty. */
   displayName: string;
-  /** `profiles.handle` — an optional short username/handle. */
+  /** `profiles.handle` — the username, mirrored from the Better Auth account (read-only here). */
   handle: string | null;
   email: string | null;
   /** Optional avatar image URL stored in `profiles.metadata_json.avatarUrl`. */
@@ -664,7 +666,8 @@ export interface ProfileDto {
 /** Partial update of the local operator's profile. Omitted fields are left unchanged. */
 export interface UpdateProfileBody {
   displayName?: string;
-  handle?: string | null;
+  // `handle` is intentionally omitted: the profile username mirrors the Better
+  // Auth account username and is changed through the Auth surface, not here.
   email?: string | null;
   avatarUrl?: string | null;
   /** Replaces the user's saved custom agent instructions; pass null or "" to clear. */
@@ -734,6 +737,16 @@ export interface ObjectiveAttachmentDto {
 export type UserTokenStatus = 'active' | 'revoked' | 'expired' | 'rotated';
 
 /**
+ * Permission scope preset a `USER_TOKEN` is minted with.
+ *  - `full`: no token-level restriction — inherits the creating user's role grants.
+ *  - `ticket_lifecycle`: ticket/objective/session/runner work only (see `scopeGrants`).
+ *
+ * A token's effective permissions are always its creating user's role grants
+ * intersected with its scope grants, so a scope can only restrict, never widen.
+ */
+export type TokenScope = 'full' | 'ticket_lifecycle';
+
+/**
  * A `USER_TOKEN` as surfaced to the settings UI. Derived from the `user_tokens`
  * row owned by the local operator; the raw secret and its hash are never
  * included — only the non-secret display prefix.
@@ -745,6 +758,10 @@ export interface UserTokenDto {
   /** Non-secret lookup/display prefix, e.g. `out_ab12cd34`. */
   tokenPrefix: string;
   status: UserTokenStatus;
+  /** Permission scope preset; `full` unless the token was minted scoped. */
+  scope: TokenScope;
+  /** Resolved scope grant patterns; empty for a `full` token. */
+  scopeGrants: string[];
   /** Optional expiry; `null` means the token never expires. */
   expiresAt: string | null;
   /** Last time the token successfully authenticated, when recorded. */
@@ -756,8 +773,13 @@ export interface UserTokenDto {
 /** Create a new `USER_TOKEN` for the local operator. */
 export interface CreateUserTokenBody {
   label: string;
-  /** Optional ISO-8601 expiry; omitted or `null` means the token never expires. */
+  /**
+   * Optional ISO-8601 expiry. Omitting the field defaults to a 90-day expiry;
+   * an explicit `null` opts out and mints a non-expiring token.
+   */
   expiresAt?: string | null;
+  /** Permission scope preset; defaults to `full` when omitted. */
+  scope?: TokenScope;
 }
 
 /**

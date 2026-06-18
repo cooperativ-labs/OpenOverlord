@@ -39,6 +39,9 @@ export function TicketCard({
         })
       }
     >
+      {ticket.hasExecutingObjective ? (
+        <div className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer_2s_linear_infinite] bg-gradient-to-r from-transparent via-emerald-500/20 to-transparent" />
+      ) : null}
       <TicketCardBody
         ticket={ticket}
         projectId={projectId}

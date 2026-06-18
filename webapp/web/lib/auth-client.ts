@@ -12,6 +12,13 @@ export function usernameToLocalEmail(username: string): string {
   return `${normalizeLocalUsername(username)}@overlord.local`;
 }
 
+/** Recover the username (local-part) from a synthetic `<username>@overlord.local` email. */
+export function localEmailToUsername(email: string | null | undefined): string {
+  if (!email) return '';
+  const at = email.indexOf('@');
+  return at === -1 ? email : email.slice(0, at);
+}
+
 export function validateLocalUsername(username: string): string | null {
   const normalized = normalizeLocalUsername(username);
   if (normalized.length < 3) return 'Username must be at least 3 characters.';

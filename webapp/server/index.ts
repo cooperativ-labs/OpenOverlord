@@ -1,3 +1,4 @@
+import { type Permission, PERMISSIONS } from '@overlord/auth';
 import { loadExternalAutomations } from '@overlord/automations';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
@@ -23,6 +24,7 @@ import {
   updateTerminalProfile
 } from './launch.ts';
 import { runProtocolSubcommand } from './protocol.ts';
+import { requirePermission } from './rbac.ts';
 import { realtime } from './realtime.ts';
 import {
   ApiError,
@@ -148,9 +150,16 @@ app.use(express.json());
 
 // Small wrapper so handlers can throw ApiError / Error and get a clean response.
 // Also triggers an immediate realtime poll after mutations for snappy echoes.
-function handle(fn: (req: Request, res: Response) => unknown, options: { mutates?: boolean } = {}) {
+// `requires` declares the RBAC permission the route needs; it is enforced (role
+// grants ∩ token scope) before the handler runs, so a scoped USER_TOKEN — or any
+// under-privileged actor — is rejected uniformly with a 403.
+function handle(
+  fn: (req: Request, res: Response) => unknown,
+  options: { mutates?: boolean; requires?: Permission } = {}
+) {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
+      if (options.requires) requirePermission(options.requires);
       const result = fn(req, res);
       if (options.mutates) realtime.pollNow();
       if (!res.headersSent) res.json(result ?? { ok: true });
@@ -168,31 +177,34 @@ app.use('/api', requireAuthenticatedSession);
 
 app.get(
   '/api/meta',
-  handle(() => ({
-    workspace: WORKSPACE,
-    // True while the seeded first workspace is still unnamed; the web UI shows
-    // the one-time initial setup step until `POST /api/setup` completes.
-    needsSetup: needsInitialSetup(),
-    databasePath: DATABASE_PATH,
-    web: {
-      host: bindHost,
-      port: bindPort,
-      url: `http://${bindHost === '0.0.0.0' ? '127.0.0.1' : bindHost}:${bindPort}`
-    },
-    sqlStudio: getSqlStudioState(),
-    // Capabilities scoped to what this build supports. Launching queues
-    // execution requests for a runner; execution-target management remains
-    // CLI-only.
-    capabilities: {
-      projects: true,
-      tickets: true,
-      objectives: true,
-      realtime: true,
-      sqlStudio: getSqlStudioState().enabled,
-      launchAgents: true,
-      executionTargets: false
-    }
-  }))
+  handle(
+    () => ({
+      workspace: WORKSPACE,
+      // True while the seeded first workspace is still unnamed; the web UI shows
+      // the one-time initial setup step until `POST /api/setup` completes.
+      needsSetup: needsInitialSetup(),
+      databasePath: DATABASE_PATH,
+      web: {
+        host: bindHost,
+        port: bindPort,
+        url: `http://${bindHost === '0.0.0.0' ? '127.0.0.1' : bindHost}:${bindPort}`
+      },
+      sqlStudio: getSqlStudioState(),
+      // Capabilities scoped to what this build supports. Launching queues
+      // execution requests for a runner; execution-target management remains
+      // CLI-only.
+      capabilities: {
+        projects: true,
+        tickets: true,
+        objectives: true,
+        realtime: true,
+        sqlStudio: getSqlStudioState().enabled,
+        launchAgents: true,
+        executionTargets: false
+      }
+    }),
+    { requires: PERMISSIONS.WORKSPACE_READ }
+  )
 );
 
 // ---- Initial instance setup ----------------------------------------------
@@ -203,11 +215,14 @@ app.get(
 
 app.post(
   '/api/setup',
-  handle(req => {
-    const result = completeInitialSetup(req.body);
-    realtime.refreshAll();
-    return result;
-  })
+  handle(
+    req => {
+      const result = completeInitialSetup(req.body);
+      realtime.refreshAll();
+      return result;
+    },
+    { requires: PERMISSIONS.WORKSPACE_UPDATE }
+  )
 );
 
 // ---- Workspaces ----------------------------------------------------------
@@ -218,15 +233,18 @@ app.post(
 
 app.get(
   '/api/workspaces',
-  handle(() => listWorkspaces())
+  handle(() => listWorkspaces(), { requires: PERMISSIONS.WORKSPACE_READ })
 );
 app.post(
   '/api/workspaces',
-  handle(req => {
-    const result = createWorkspace(req.body);
-    realtime.refreshAll();
-    return result;
-  })
+  handle(
+    req => {
+      const result = createWorkspace(req.body);
+      realtime.refreshAll();
+      return result;
+    },
+    { mutates: true, requires: PERMISSIONS.WORKSPACE_CREATE }
+  )
 );
 app.patch(
   '/api/workspaces/:id',
@@ -237,29 +255,35 @@ app.patch(
       if (result.isActive) realtime.refreshAll();
       return result;
     },
-    { mutates: true }
+    { mutates: true, requires: PERMISSIONS.WORKSPACE_UPDATE }
   )
 );
 app.delete(
   '/api/workspaces/:id',
-  handle(req => {
-    const result = deleteWorkspace(req.params.id);
-    // Deleting may switch the active workspace; resync all subscribers.
-    realtime.refreshAll();
-    return result;
-  })
+  handle(
+    req => {
+      const result = deleteWorkspace(req.params.id);
+      // Deleting may switch the active workspace; resync all subscribers.
+      realtime.refreshAll();
+      return result;
+    },
+    { mutates: true, requires: PERMISSIONS.WORKSPACE_DELETE }
+  )
 );
 app.get(
   '/api/workspaces/:id/members',
-  handle(req => listWorkspaceMembers(req.params.id))
+  handle(req => listWorkspaceMembers(req.params.id), { requires: PERMISSIONS.WORKSPACE_READ })
 );
 app.post(
   '/api/workspaces/:id/activate',
-  handle(req => {
-    const result = activateWorkspace(req.params.id);
-    realtime.refreshAll();
-    return result;
-  })
+  handle(
+    req => {
+      const result = activateWorkspace(req.params.id);
+      realtime.refreshAll();
+      return result;
+    },
+    { mutates: true, requires: PERMISSIONS.WORKSPACE_ACTIVATE }
+  )
 );
 
 // ---- Profile -------------------------------------------------------------
@@ -270,11 +294,14 @@ app.post(
 
 app.get(
   '/api/profile',
-  handle(() => getProfile())
+  handle(() => getProfile(), { requires: PERMISSIONS.PROFILE_SELF_READ })
 );
 app.patch(
   '/api/profile',
-  handle(req => updateProfile(req.body), { mutates: true })
+  handle(req => updateProfile(req.body), {
+    mutates: true,
+    requires: PERMISSIONS.PROFILE_SELF_UPDATE
+  })
 );
 
 // ---- User tokens ---------------------------------------------------------
@@ -285,19 +312,28 @@ app.patch(
 
 app.get(
   '/api/user-tokens',
-  handle(() => listUserTokens())
+  handle(() => listUserTokens(), { requires: PERMISSIONS.USER_TOKEN_SELF_LIST })
 );
 app.post(
   '/api/user-tokens',
-  handle(req => createUserToken(req.body), { mutates: true })
+  handle(req => createUserToken(req.body), {
+    mutates: true,
+    requires: PERMISSIONS.USER_TOKEN_SELF_CREATE
+  })
 );
 app.patch(
   '/api/user-tokens/:id',
-  handle(req => renameUserToken(req.params.id, req.body), { mutates: true })
+  handle(req => renameUserToken(req.params.id, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.USER_TOKEN_SELF_ROTATE
+  })
 );
 app.post(
   '/api/user-tokens/:id/revoke',
-  handle(req => revokeUserToken(req.params.id), { mutates: true })
+  handle(req => revokeUserToken(req.params.id), {
+    mutates: true,
+    requires: PERMISSIONS.USER_TOKEN_SELF_REVOKE
+  })
 );
 
 // ---- Uploads / storage ---------------------------------------------------
@@ -329,7 +365,7 @@ app.post(
         contentType: req.header('content-type') ?? ''
       });
     },
-    { mutates: true }
+    { mutates: true, requires: PERMISSIONS.USER_IMAGE_SELF_CREATE }
   )
 );
 
@@ -342,6 +378,7 @@ app.get(
   '/api/storage/:bucketKey/:storageKey',
   (req: Request, res: Response, next: NextFunction) => {
     try {
+      requirePermission(PERMISSIONS.PROJECT_READ);
       const resolved = resolveStoredObject(req.params.bucketKey, req.params.storageKey);
       res.type(resolved.contentType);
       res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
@@ -362,6 +399,12 @@ app.get(
 // ---- Realtime ------------------------------------------------------------
 
 app.get('/api/stream', (req: Request, res: Response) => {
+  try {
+    requirePermission(PERMISSIONS.PROJECT_READ);
+  } catch {
+    res.status(403).json({ error: 'Permission denied: realtime stream' });
+    return;
+  }
   realtime.addClient(res);
   req.on('close', () => realtime.removeClient(res));
 });
@@ -370,40 +413,53 @@ app.get('/api/stream', (req: Request, res: Response) => {
 
 app.get(
   '/api/projects',
-  handle(() => listProjects())
+  handle(() => listProjects(), { requires: PERMISSIONS.PROJECT_READ })
 );
 app.post(
   '/api/projects',
-  handle(req => createProject(req.body), { mutates: true })
+  handle(req => createProject(req.body), { mutates: true, requires: PERMISSIONS.PROJECT_CREATE })
 );
 app.get(
   '/api/projects/:id',
-  handle(req => getProject(req.params.id))
+  handle(req => getProject(req.params.id), { requires: PERMISSIONS.PROJECT_READ })
 );
 app.patch(
   '/api/projects/:id',
-  handle(req => updateProject(req.params.id, req.body), { mutates: true })
+  handle(req => updateProject(req.params.id, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.PROJECT_UPDATE
+  })
 );
 app.delete(
   '/api/projects/:id',
-  handle(req => deleteProject(req.params.id), { mutates: true })
+  handle(req => deleteProject(req.params.id), {
+    mutates: true,
+    requires: PERMISSIONS.PROJECT_DELETE
+  })
 );
 app.get(
   '/api/projects/:id/statuses',
-  handle(req => listProjectStatuses(req.params.id))
+  handle(req => listProjectStatuses(req.params.id), { requires: PERMISSIONS.PROJECT_READ })
 );
 app.post(
   '/api/projects/:id/statuses',
-  handle(req => createProjectStatus(req.params.id, req.body), { mutates: true })
+  handle(req => createProjectStatus(req.params.id, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.PROJECT_UPDATE
+  })
 );
 app.patch(
   '/api/projects/:id/statuses/reorder',
-  handle(req => reorderProjectStatuses(req.params.id, req.body), { mutates: true })
+  handle(req => reorderProjectStatuses(req.params.id, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.PROJECT_UPDATE
+  })
 );
 app.patch(
   '/api/projects/:id/statuses/:statusId',
   handle(req => updateProjectStatus(req.params.id, req.params.statusId, req.body), {
-    mutates: true
+    mutates: true,
+    requires: PERMISSIONS.PROJECT_UPDATE
   })
 );
 app.delete(
@@ -413,20 +469,26 @@ app.delete(
       deleteProjectStatus(req.params.id, req.params.statusId);
       return { ok: true as const };
     },
-    { mutates: true }
+    { mutates: true, requires: PERMISSIONS.PROJECT_UPDATE }
   )
 );
 app.get(
   '/api/projects/:id/tags',
-  handle(req => listProjectTags(req.params.id))
+  handle(req => listProjectTags(req.params.id), { requires: PERMISSIONS.PROJECT_READ })
 );
 app.post(
   '/api/projects/:id/tags',
-  handle(req => createProjectTag(req.params.id, req.body), { mutates: true })
+  handle(req => createProjectTag(req.params.id, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.PROJECT_UPDATE
+  })
 );
 app.patch(
   '/api/projects/:id/tags/:tagId',
-  handle(req => updateProjectTag(req.params.id, req.params.tagId, req.body), { mutates: true })
+  handle(req => updateProjectTag(req.params.id, req.params.tagId, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.PROJECT_UPDATE
+  })
 );
 app.delete(
   '/api/projects/:id/tags/:tagId',
@@ -435,21 +497,25 @@ app.delete(
       deleteProjectTag(req.params.id, req.params.tagId);
       return { ok: true as const };
     },
-    { mutates: true }
+    { mutates: true, requires: PERMISSIONS.PROJECT_UPDATE }
   )
 );
 app.get(
   '/api/projects/:id/resources',
-  handle(req => listProjectResources(req.params.id))
+  handle(req => listProjectResources(req.params.id), { requires: PERMISSIONS.PROJECT_READ })
 );
 app.post(
   '/api/projects/:id/resources',
-  handle(req => createProjectResource(req.params.id, req.body), { mutates: true })
+  handle(req => createProjectResource(req.params.id, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.PROJECT_UPDATE
+  })
 );
 app.patch(
   '/api/projects/:id/resources/:resourceId',
   handle(req => updateProjectResource(req.params.id, req.params.resourceId, req.body), {
-    mutates: true
+    mutates: true,
+    requires: PERMISSIONS.PROJECT_UPDATE
   })
 );
 app.delete(
@@ -459,104 +525,131 @@ app.delete(
       deleteProjectResource(req.params.id, req.params.resourceId);
       return { ok: true as const };
     },
-    { mutates: true }
+    { mutates: true, requires: PERMISSIONS.PROJECT_UPDATE }
   )
 );
 app.get(
   '/api/projects/:id/repository',
-  handle(req => {
-    const executionTargetId =
-      typeof req.query.executionTargetId === 'string' && req.query.executionTargetId.trim()
-        ? req.query.executionTargetId.trim()
-        : null;
-    return getProjectRepository(req.params.id, executionTargetId);
-  })
+  handle(
+    req => {
+      const executionTargetId =
+        typeof req.query.executionTargetId === 'string' && req.query.executionTargetId.trim()
+          ? req.query.executionTargetId.trim()
+          : null;
+      return getProjectRepository(req.params.id, executionTargetId);
+    },
+    { requires: PERMISSIONS.PROJECT_READ }
+  )
 );
 app.get(
   '/api/projects/:id/tickets',
-  handle(req => listTickets(req.params.id))
+  handle(req => listTickets(req.params.id), { requires: PERMISSIONS.TICKET_READ })
 );
 app.patch(
   '/api/projects/:id/board/reorder',
-  handle(req => reorderBoardColumn(req.params.id, req.body), { mutates: true })
+  handle(req => reorderBoardColumn(req.params.id, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.TICKET_UPDATE
+  })
 );
 
 // ---- Tickets -------------------------------------------------------------
 
 app.get(
   '/api/tickets/search',
-  handle(req => {
-    const query = typeof req.query.q === 'string' ? req.query.q : null;
-    const projectId =
-      typeof req.query.projectId === 'string' && req.query.projectId.trim()
-        ? req.query.projectId.trim()
-        : null;
-    const parsedLimit = Number.parseInt(
-      typeof req.query.limit === 'string' ? req.query.limit : '',
-      10
-    );
-    const limit = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
-    return { tickets: searchTickets({ query, projectId, limit }) };
-  })
+  handle(
+    req => {
+      const query = typeof req.query.q === 'string' ? req.query.q : null;
+      const projectId =
+        typeof req.query.projectId === 'string' && req.query.projectId.trim()
+          ? req.query.projectId.trim()
+          : null;
+      const parsedLimit = Number.parseInt(
+        typeof req.query.limit === 'string' ? req.query.limit : '',
+        10
+      );
+      const limit = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
+      return { tickets: searchTickets({ query, projectId, limit }) };
+    },
+    { requires: PERMISSIONS.TICKET_READ }
+  )
 );
 app.post(
   '/api/tickets',
-  handle(req => createTicket(req.body), { mutates: true })
+  handle(req => createTicket(req.body), { mutates: true, requires: PERMISSIONS.TICKET_CREATE })
 );
 app.get(
   '/api/tickets/:id',
-  handle(req => getTicketDetail(req.params.id))
+  handle(req => getTicketDetail(req.params.id), { requires: PERMISSIONS.TICKET_READ })
 );
 app.patch(
   '/api/tickets/:id',
-  handle(req => updateTicket(req.params.id, req.body), { mutates: true })
+  handle(req => updateTicket(req.params.id, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.TICKET_UPDATE
+  })
 );
 app.delete(
   '/api/tickets/:id',
-  handle(req => deleteTicket(req.params.id), { mutates: true })
+  handle(req => deleteTicket(req.params.id), { mutates: true, requires: PERMISSIONS.TICKET_DELETE })
 );
 app.get(
   '/api/tickets/:id/objectives',
-  handle(req => listObjectives(req.params.id))
+  handle(req => listObjectives(req.params.id), { requires: PERMISSIONS.OBJECTIVE_READ })
 );
 app.patch(
   '/api/tickets/:id/objectives/reorder',
-  handle(req => reorderFutureObjectives(req.params.id, req.body), { mutates: true })
+  handle(req => reorderFutureObjectives(req.params.id, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.OBJECTIVE_UPDATE
+  })
 );
 app.get(
   '/api/tickets/:id/events',
-  handle(req => listTicketEvents(req.params.id))
+  handle(req => listTicketEvents(req.params.id), { requires: PERMISSIONS.EVENT_READ })
 );
 app.get(
   '/api/tickets/:id/artifacts',
-  handle(req => listArtifacts(req.params.id))
+  handle(req => listArtifacts(req.params.id), { requires: PERMISSIONS.ARTIFACT_READ })
 );
 app.get(
   '/api/tickets/:id/file-changes',
-  handle(req => listTicketFileChanges(req.params.id))
+  handle(req => listTicketFileChanges(req.params.id), { requires: PERMISSIONS.TICKET_READ })
 );
 
 // ---- Objectives ----------------------------------------------------------
 
 app.post(
   '/api/objectives',
-  handle(req => createObjective(req.body), { mutates: true })
+  handle(req => createObjective(req.body), {
+    mutates: true,
+    requires: PERMISSIONS.OBJECTIVE_UPDATE
+  })
 );
 app.patch(
   '/api/objectives/:id',
-  handle(req => updateObjective(req.params.id, req.body), { mutates: true })
+  handle(req => updateObjective(req.params.id, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.OBJECTIVE_UPDATE
+  })
 );
 app.delete(
   '/api/objectives/:id',
-  handle(req => deleteObjective(req.params.id), { mutates: true })
+  handle(req => deleteObjective(req.params.id), {
+    mutates: true,
+    requires: PERMISSIONS.OBJECTIVE_UPDATE
+  })
 );
 app.post(
   '/api/objectives/:id/launch',
-  handle(req => launchObjective(req.params.id, req.body), { mutates: true })
+  handle(req => launchObjective(req.params.id, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.EXECUTION_REQUEST_CREATE
+  })
 );
 app.get(
   '/api/objectives/:id/prompt',
-  handle(req => getObjectivePrompt(req.params.id))
+  handle(req => getObjectivePrompt(req.params.id), { requires: PERMISSIONS.OBJECTIVE_READ })
 );
 
 // ---- Objective attachments -----------------------------------------------
@@ -569,7 +662,7 @@ const rawAttachmentBody = express.raw({ type: () => true, limit: MAX_ATTACHMENT_
 
 app.get(
   '/api/objectives/:id/attachments',
-  handle(req => listObjectiveAttachments(req.params.id))
+  handle(req => listObjectiveAttachments(req.params.id), { requires: PERMISSIONS.ATTACHMENT_READ })
 );
 app.post(
   '/api/objectives/:id/attachments',
@@ -585,13 +678,14 @@ app.post(
         contentType: req.header('content-type') ?? ''
       });
     },
-    { mutates: true }
+    { mutates: true, requires: PERMISSIONS.ATTACHMENT_CREATE }
   )
 );
 app.delete(
   '/api/objectives/:id/attachments/:attachmentId',
   handle(req => deleteObjectiveAttachment(req.params.id, req.params.attachmentId), {
-    mutates: true
+    mutates: true,
+    requires: PERMISSIONS.ATTACHMENT_DELETE
   })
 );
 
@@ -599,31 +693,40 @@ app.delete(
 
 app.get(
   '/api/agent-catalog',
-  handle(() => getAgentCatalog())
+  handle(() => getAgentCatalog(), { requires: PERMISSIONS.LAUNCH_READ })
 );
 app.post(
   '/api/agent-catalog/refresh',
-  handle(() => refreshAgentCatalog(), { mutates: true })
+  handle(() => refreshAgentCatalog(), { mutates: true, requires: PERMISSIONS.LAUNCH_CONFIGURE })
 );
 app.get(
   '/api/launch-settings',
-  handle(() => getLaunchSettings())
+  handle(() => getLaunchSettings(), { requires: PERMISSIONS.LAUNCH_READ })
 );
 app.patch(
   '/api/launch-settings/agents/:agentKey',
-  handle(req => updateAgentLaunchConfig(req.params.agentKey, req.body), { mutates: true })
+  handle(req => updateAgentLaunchConfig(req.params.agentKey, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.LAUNCH_CONFIGURE
+  })
 );
 app.patch(
   '/api/launch-settings/terminal-profile',
-  handle(req => updateTerminalProfile(req.body), { mutates: true })
+  handle(req => updateTerminalProfile(req.body), {
+    mutates: true,
+    requires: PERMISSIONS.LAUNCH_CONFIGURE
+  })
 );
 app.get(
   '/api/projects/:id/launch-preference',
-  handle(req => getLaunchPreference(req.params.id))
+  handle(req => getLaunchPreference(req.params.id), { requires: PERMISSIONS.LAUNCH_READ })
 );
 app.put(
   '/api/projects/:id/launch-preference',
-  handle(req => updateLaunchPreference(req.params.id, req.body), { mutates: true })
+  handle(req => updateLaunchPreference(req.params.id, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.LAUNCH_CONFIGURE
+  })
 );
 
 // ---- CLI protocol / runner ------------------------------------------------
@@ -635,13 +738,16 @@ app.post(
 
 app.get(
   '/api/runner/status',
-  handle(req => {
-    const projectId =
-      typeof req.query.projectId === 'string' && req.query.projectId.trim()
-        ? req.query.projectId.trim()
-        : null;
-    return runnerStatus(projectId);
-  })
+  handle(
+    req => {
+      const projectId =
+        typeof req.query.projectId === 'string' && req.query.projectId.trim()
+          ? req.query.projectId.trim()
+          : null;
+      return runnerStatus(projectId);
+    },
+    { requires: PERMISSIONS.EXECUTION_REQUEST_READ }
+  )
 );
 app.post(
   '/api/runner/claim',
@@ -650,7 +756,7 @@ app.post(
       claimRunnerRequest({
         projectId: typeof req.body?.projectId === 'string' ? req.body.projectId : null
       }),
-    { mutates: true }
+    { mutates: true, requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM }
   )
 );
 app.post(
@@ -661,19 +767,21 @@ app.post(
         objectiveId: typeof req.body?.objectiveId === 'string' ? req.body.objectiveId : null,
         projectId: typeof req.body?.projectId === 'string' ? req.body.projectId : null
       }),
-    { mutates: true }
+    { mutates: true, requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM }
   )
 );
 app.post(
   '/api/runner/requests/:id/launching',
   handle(req => updateRunnerRequestStatus({ requestId: req.params.id, status: 'launching' }), {
-    mutates: true
+    mutates: true,
+    requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM
   })
 );
 app.post(
   '/api/runner/requests/:id/launched',
   handle(req => updateRunnerRequestStatus({ requestId: req.params.id, status: 'launched' }), {
-    mutates: true
+    mutates: true,
+    requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM
   })
 );
 app.post(
@@ -685,7 +793,7 @@ app.post(
         status: 'failed',
         error: typeof req.body?.error === 'string' ? req.body.error : null
       }),
-    { mutates: true }
+    { mutates: true, requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM }
   )
 );
 

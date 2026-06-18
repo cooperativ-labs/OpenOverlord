@@ -38,6 +38,9 @@ CREATE INDEX idx_profiles_status ON profiles (status);
 CREATE UNIQUE INDEX idx_profiles_handle_lower ON profiles (lower(handle)) WHERE handle IS NOT NULL;
 CREATE UNIQUE INDEX idx_profiles_email_lower ON profiles (lower(email)) WHERE email IS NOT NULL;
 
+-- The account username is stored as Better Auth `user.name` (set at sign-up
+-- and updated when the user changes their username). profiles.handle
+-- mirrors it and is not separately editable.
 CREATE TRIGGER trg_better_auth_user_create_profile
 AFTER INSERT ON "user"
 FOR EACH ROW
@@ -49,7 +52,7 @@ BEGIN
     NEW."id",
     'human',
     COALESCE(NULLIF(trim(NEW."name"), ''), NEW."email", 'User'),
-    NULL,
+    NULLIF(trim(NEW."name"), ''),
     NEW."email",
     'active',
     '{}',
@@ -63,6 +66,20 @@ BEGIN
     END,
     1
   );
+END;
+
+-- Keep the handle mirrored whenever the account username changes.
+CREATE TRIGGER trg_better_auth_user_sync_profile_handle
+AFTER UPDATE OF "name" ON "user"
+FOR EACH ROW
+WHEN NEW."name" IS NOT OLD."name"
+BEGIN
+  UPDATE profiles
+     SET handle = NULLIF(trim(NEW."name"), ''),
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+         revision = revision + 1
+   WHERE id = NEW."id"
+     AND handle IS NOT NULLIF(trim(NEW."name"), '');
 END;
 
 CREATE TABLE workspace_users (

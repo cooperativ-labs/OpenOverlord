@@ -9,6 +9,7 @@ import {
   setQuickTaskWindowBounds,
   setQuickTaskWindowSize
 } from './quick-task-window.js';
+import type { CliUpdater } from './cli-updater.js';
 import type { DesktopUpdater } from './updater.js';
 
 /**
@@ -20,10 +21,12 @@ import type { DesktopUpdater } from './updater.js';
 export function registerIpc({
   getWindow,
   updater,
+  cliUpdater,
   preloadPath
 }: {
   getWindow: () => BrowserWindow | null;
   updater: DesktopUpdater;
+  cliUpdater: CliUpdater;
   preloadPath: string;
 }): void {
   // Pick a local directory (e.g. to link a project to a checkout).
@@ -86,6 +89,10 @@ export function registerIpc({
   ipcMain.handle('overlord:updates:get-status', () => updater.getStatus());
   ipcMain.handle('overlord:updates:check', () => updater.checkForUpdates());
   ipcMain.handle('overlord:updates:install', () => updater.installDownloadedUpdate());
+
+  ipcMain.handle('overlord:cli-updates:get-status', () => cliUpdater.getStatus());
+  ipcMain.handle('overlord:cli-updates:check', () => cliUpdater.checkForUpdates());
+  ipcMain.handle('overlord:cli-updates:update', () => cliUpdater.runUpdate());
 
   ipcMain.handle('overlord:quick-task:get-hotkey', () => ({
     accelerator: getStoredQuickTaskHotkey(),

@@ -1,3 +1,4 @@
+import { type Permission, PERMISSIONS } from '@overlord/auth';
 import { SEED_WORKSPACE_USER_ID } from '@overlord/database';
 
 import type { ServiceContext } from '../../src/service/context.ts';
@@ -26,6 +27,7 @@ import {
 
 import { ACTOR_WORKSPACE_USER_ID, db, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';
+import { requirePermission } from './rbac.ts';
 
 // ---- Protocol command dispatch -------------------------------------------
 //
@@ -402,6 +404,36 @@ const handlers: Record<string, Handler> = {
 };
 
 /**
+ * RBAC permission each protocol subcommand requires. Enforced before dispatch so
+ * a scoped `USER_TOKEN` (and any under-privileged actor) is rejected uniformly —
+ * the `ticket_lifecycle` scope grants exactly the set used here. `auth-status` is
+ * intentionally ungated so any authenticated actor can check who it is.
+ */
+const SUBCOMMAND_PERMISSIONS: Record<string, Permission | null> = {
+  attach: PERMISSIONS.SESSION_ATTACH,
+  update: PERMISSIONS.EVENT_CREATE,
+  heartbeat: PERMISSIONS.EVENT_CREATE,
+  ask: PERMISSIONS.EVENT_CREATE,
+  deliver: PERMISSIONS.EVENT_CREATE,
+  'hook-event': PERMISSIONS.EVENT_CREATE,
+  'resume-follow-up': PERMISSIONS.SESSION_ATTACH,
+  create: PERMISSIONS.TICKET_CREATE,
+  prompt: PERMISSIONS.TICKET_CREATE,
+  'load-context': PERMISSIONS.TICKET_READ,
+  connect: PERMISSIONS.SESSION_ATTACH,
+  'search-tickets': PERMISSIONS.TICKET_READ,
+  'discuss-objective': PERMISSIONS.OBJECTIVE_SUBMIT,
+  'add-objectives': PERMISSIONS.OBJECTIVE_UPDATE,
+  'record-work': PERMISSIONS.TICKET_CREATE,
+  'read-context': PERMISSIONS.TICKET_READ,
+  'write-context': PERMISSIONS.TICKET_UPDATE,
+  'attachment-list': PERMISSIONS.ARTIFACT_READ,
+  'auth-status': null,
+  'discover-project': PERMISSIONS.PROJECT_READ,
+  'list-organizations': PERMISSIONS.PROJECT_READ
+};
+
+/**
  * Dispatch a single `ovld protocol <subcommand>` invocation to the service
  * layer. Throws `ApiError(404)` for unknown subcommands; service-layer
  * validation surfaces as `ServiceError` (mapped to HTTP status by the caller).
@@ -415,5 +447,7 @@ export function runProtocolSubcommand(subcommand: string, body: ProtocolRequestB
       `Supported subcommands: ${Object.keys(handlers).sort().join(', ')}`
     );
   }
+  const requiredPermission = SUBCOMMAND_PERMISSIONS[subcommand];
+  if (requiredPermission) requirePermission(requiredPermission);
   return handler(buildContext(), body);
 }

@@ -18,6 +18,24 @@ export type DesktopUpdateStatus = {
   progressPercent: number | null;
 };
 
+export type CliUpdateState =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'not-available'
+  | 'updating'
+  | 'error'
+  | 'unsupported';
+
+export type CliUpdateStatus = {
+  state: CliUpdateState;
+  currentVersion: string | null;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  message: string | null;
+  updateCommand: string;
+};
+
 /**
  * The `window.overlord` bridge. Kept deliberately tiny: a few shell-only
  * affordances the unmodified SPA can *feature-detect* (`if (window.overlord)`),
@@ -75,6 +93,21 @@ const api = {
       ipcRenderer.on('overlord:updates:status', listener);
       return () => {
         ipcRenderer.removeListener('overlord:updates:status', listener);
+      };
+    }
+  },
+  cliUpdates: {
+    getStatus: (): Promise<CliUpdateStatus> =>
+      ipcRenderer.invoke('overlord:cli-updates:get-status'),
+    check: (): Promise<CliUpdateStatus> => ipcRenderer.invoke('overlord:cli-updates:check'),
+    update: (): Promise<CliUpdateStatus> => ipcRenderer.invoke('overlord:cli-updates:update'),
+    onStatus: (callback: (status: CliUpdateStatus) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: CliUpdateStatus) => {
+        callback(status);
+      };
+      ipcRenderer.on('overlord:cli-updates:status', listener);
+      return () => {
+        ipcRenderer.removeListener('overlord:cli-updates:status', listener);
       };
     }
   }

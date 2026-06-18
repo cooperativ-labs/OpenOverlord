@@ -9,7 +9,7 @@ import { Actor, AuthorizationResult, Permission, Role, RoleDefinition } from './
  *   ticket:*          → matches any action in the ticket namespace
  *   user_token:self:* → matches any self-scoped token action
  */
-function grantCoversAction(grant: string, action: string): boolean {
+export function grantCoversAction(grant: string, action: string): boolean {
   if (grant === '*') return true;
   if (grant === action) return true;
 
@@ -101,4 +101,23 @@ export function can(actor: Actor, action: Permission): AuthorizationResult {
  */
 export function makeActor(workspaceUserId: string, roles: Role[]): Actor {
   return { workspaceUserId, roles };
+}
+
+/**
+ * Whether a token's scope grants permit an action.
+ *
+ * `scopeGrants === null` (or `undefined`) means the token carries no scope rows —
+ * i.e. no token-level restriction — and every action is permitted at the scope
+ * layer (the role layer still applies separately). Otherwise the action must be
+ * covered by at least one stored grant pattern.
+ *
+ * Scope is an additive *restriction*: callers intersect this with the role
+ * decision (see `Authorizer.can`) so a token can never exceed its user's role.
+ */
+export function tokenScopeAllows(
+  scopeGrants: readonly string[] | null | undefined,
+  action: Permission
+): boolean {
+  if (scopeGrants === null || scopeGrants === undefined) return true;
+  return scopeGrants.some(grant => grantCoversAction(grant, action));
 }

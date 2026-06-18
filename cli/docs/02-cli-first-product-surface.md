@@ -12,7 +12,7 @@ Requirements:
 
 - `ovld help`: print top-level command help.
 - `ovld version`: print CLI and local runtime version.
-- `ovld doctor`: validate backend reachability, connector installs, supported agent binaries, project metadata, and common permission/path problems.
+- `ovld doctor`: validate backend reachability, connector installs, supported agent binaries, project metadata, and common permission/path problems. Also warns when the credentials directory (`~/.ovld` / `OVLD_HOME`) is nested inside a known cloud-sync root (iCloud Drive, Dropbox, OneDrive, Google Drive), since that silently replicates the plaintext token off-device.
 - `ovld serve [--host <h>] [--port <p>] [--db <path>] [--json]`: local/backend-package command, not required in the published npm CLI. It boots the web/REST server that owns SQLite for local mode. The desktop app can ship and supervise this backend; a future db-only/local backend app may do the same.
 - `ovld update [--check] [--force] [--json]`: check npm for the latest published `open-overlord` version and, unless `--check` is passed, update the globally installed CLI via `npm install -g open-overlord@latest`.
 
@@ -28,7 +28,7 @@ Requirements:
 config set` opens the interactive backend selector; `ovld config set local
 [url]` points the CLI at a local backend URL (default
   `http://127.0.0.1:4310`); `ovld config set cloud <url>` points it at a hosted backend URL.
-- `ovld user-token create/list/rotate/revoke/rename`: manage user-owned non-interactive credentials once the `USER_TOKEN` module is enabled.
+- `ovld user-token create/list/revoke/rename`: manage user-owned non-interactive credentials. `create --label <l> [--expires-in 90d] [--no-expiry] [--scope full|ticket-lifecycle]` mints a token (defaulting to a 90-day expiry and `full` scope) and prints the secret exactly once; `--scope ticket-lifecycle` restricts the token to ticket/objective/session/runner permissions. `list [--json]`, `revoke <id>`, and `rename <id> <label>` manage existing tokens. Token secrets are never reprinted, and `out_…`-shaped values are redacted from CLI diagnostics.
 - `ovld create-project --name "<name>" [--directory <path>|--no-directory]`: create a project and optionally register the current directory.
 - `ovld add-cwd [--directory <path>] [--project-id <id-or-name>] [--primary true|false]`: link a checkout to a project. When `--project-id` is omitted on an interactive terminal, lists your projects and prompts you to pick one; non-interactively it falls back to the discovered or most recent project.
 - `ovld protocol discover-project [--working-directory <path>] [--project-id <id-or-name>]`: resolve the project for a path or explicit project.

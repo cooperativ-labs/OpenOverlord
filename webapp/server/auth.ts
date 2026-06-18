@@ -8,6 +8,8 @@ import {
   newId,
   nowIso,
   recordChange,
+  resolveActorForWorkspace,
+  setActiveTokenAuth,
   setActiveWorkspaceUser,
   WORKSPACE
 } from './db.ts';
@@ -37,6 +39,27 @@ function usesNonBrowserAuthSurface(req: Request): boolean {
     path === '/runner' ||
     path.startsWith('/runner/')
   );
+}
+
+/** Whether the request originated from the loopback interface (the local host). */
+function isLoopbackAddress(addr: string | null | undefined): boolean {
+  if (!addr) return false;
+  return addr === '::1' || addr === '::ffff:127.0.0.1' || addr.startsWith('127.');
+}
+
+function isLoopbackRequest(req: Request): boolean {
+  return isLoopbackAddress(req.ip) || isLoopbackAddress(req.socket?.remoteAddress);
+}
+
+/** Active scope grant patterns for a token (empty = `full`, no restriction). */
+function loadTokenScopeGrants(tokenId: string): string[] {
+  const rows = db
+    .prepare(
+      `SELECT permission FROM user_token_scopes
+         WHERE token_id = ? AND workspace_id = ? AND deleted_at IS NULL`
+    )
+    .all(tokenId, WORKSPACE.id) as Array<{ permission: string }>;
+  return rows.map(r => r.permission);
 }
 
 function ensureWorkspaceUser(profileId: string): string {
@@ -112,19 +135,22 @@ export async function requireAuthenticatedSession(
   next: NextFunction
 ): Promise<void> {
   try {
-    if (usesNonBrowserAuthSurface(req)) {
-      next();
-      return;
+    const nonBrowser = usesNonBrowserAuthSurface(req);
+
+    // 1. Browser session auth (Better Auth cookies). The CLI protocol/runner
+    //    surface never carries cookies, so skip the session lookup for it.
+    if (!nonBrowser) {
+      const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+      if (session) {
+        const workspaceUserId = ensureWorkspaceUser(session.user.id);
+        setActiveWorkspaceUser(workspaceUserId);
+        next();
+        return;
+      }
     }
 
-    const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
-    if (session) {
-      const workspaceUserId = ensureWorkspaceUser(session.user.id);
-      setActiveWorkspaceUser(workspaceUserId);
-      next();
-      return;
-    }
-
+    // 2. USER_TOKEN bearer auth (any surface). Resolve the token's scope grants so
+    //    the `requirePermission` gate can intersect them with the user's role.
     const bearerToken = extractBearerToken(req);
     if (bearerToken?.startsWith('out_')) {
       const verified = await verifyUserToken(db, bearerToken, WORKSPACE.id);
@@ -132,7 +158,24 @@ export async function requireAuthenticatedSession(
         res.status(401).json({ error: 'Invalid or expired USER_TOKEN' });
         return;
       }
-      setActiveWorkspaceUser(verified.workspaceUserId);
+      const scopeGrants = loadTokenScopeGrants(verified.id);
+      setActiveTokenAuth({
+        workspaceUserId: verified.workspaceUserId,
+        tokenId: verified.id,
+        scopeGrants: scopeGrants.length > 0 ? scopeGrants : null
+      });
+      next();
+      return;
+    }
+
+    // 3. Loopback-trusted local operator for the CLI protocol/runner surface,
+    //    which historically ran unauthenticated on localhost. The audit threat
+    //    model is a leaked token, not localhost, so a tokenless loopback CLI keeps
+    //    the single-trusted-user behavior — but now flows through actor resolution
+    //    so RBAC gates still apply (the local operator is ADMIN). Browser `/api`
+    //    routes deliberately do NOT get this fallback, preserving web login.
+    if (nonBrowser && isLoopbackRequest(req)) {
+      setActiveWorkspaceUser(resolveActorForWorkspace(WORKSPACE.id));
       next();
       return;
     }

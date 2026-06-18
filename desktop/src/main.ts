@@ -15,6 +15,7 @@ import {
   unregisterQuickTaskHotkey
 } from './quick-task-window.js';
 import { findFreePort, startServer, stopServer, waitForHealth } from './server.js';
+import { CliUpdater } from './cli-updater.js';
 import { DesktopUpdater } from './updater.js';
 import { applyCsp, createWindow, guardNavigation } from './window.js';
 
@@ -34,6 +35,7 @@ const DEV_URL = process.env.OVERLORD_DESKTOP_URL ?? `http://${HOST}:${PREFERRED_
 let mainWindow: BrowserWindow | null = null;
 let appOrigin = `http://${HOST}:${PREFERRED_PORT}`;
 let updater: DesktopUpdater | null = null;
+let cliUpdater: CliUpdater | null = null;
 
 // Expose the version to the preload bridge.
 process.env.OVERLORD_DESKTOP_VERSION = app.getVersion();
@@ -60,8 +62,14 @@ if (!app.requestSingleInstanceLock()) {
 
 async function boot(): Promise<void> {
   updater = new DesktopUpdater(() => mainWindow);
+  cliUpdater = new CliUpdater(() => mainWindow);
   installApplicationMenu(updater);
-  registerIpc({ getWindow: () => mainWindow, updater, preloadPath: PRELOAD });
+  registerIpc({
+    getWindow: () => mainWindow,
+    updater,
+    cliUpdater,
+    preloadPath: PRELOAD
+  });
 
   // In connect-only dev mode the origin is the running dev server; otherwise we
   // claim a free loopback port and the supervised server binds to it.
@@ -74,6 +82,7 @@ async function boot(): Promise<void> {
   await openMainWindow();
   initQuickTaskWindow({ appOrigin, preloadPath: PRELOAD });
   updater.startAutomaticChecks();
+  cliUpdater.startAutomaticChecks();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) void openMainWindow();
@@ -130,6 +139,7 @@ async function showStartupError(): Promise<void> {
 
 app.on('before-quit', () => {
   updater?.stopAutomaticChecks();
+  cliUpdater?.stopAutomaticChecks();
   unregisterQuickTaskHotkey();
   hideQuickTaskWindow();
   stopServer();

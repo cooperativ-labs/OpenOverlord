@@ -1,5 +1,6 @@
 import { SystemNotificationBanner } from './SystemNotificationBanner';
 import { useAppUpdateNotifications } from './useAppUpdateNotifications';
+import { useCliUpdateNotifications } from './useCliUpdateNotifications';
 import { useNativeWorkflowNotifications } from './useNativeWorkflowNotifications';
 
 /**
@@ -10,6 +11,7 @@ import { useNativeWorkflowNotifications } from './useNativeWorkflowNotifications
  */
 export function SystemNotificationRoot() {
   useAppUpdateNotifications();
+  useCliUpdateNotifications();
   useNativeWorkflowNotifications();
 
   return <SystemNotificationBanner />;

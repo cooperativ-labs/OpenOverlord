@@ -19,6 +19,24 @@ declare global {
     progressPercent: number | null;
   };
 
+  type CliUpdateState =
+    | 'idle'
+    | 'checking'
+    | 'available'
+    | 'not-available'
+    | 'updating'
+    | 'error'
+    | 'unsupported';
+
+  type CliUpdateStatus = {
+    state: CliUpdateState;
+    currentVersion: string | null;
+    latestVersion: string | null;
+    updateAvailable: boolean;
+    message: string | null;
+    updateCommand: string;
+  };
+
   type OverlordDesktopBridge = {
     isDesktop: true;
     platform: NodeJS.Platform;
@@ -43,6 +61,12 @@ declare global {
       check: () => Promise<DesktopUpdateStatus>;
       install: () => Promise<DesktopUpdateStatus>;
       onStatus: (callback: (status: DesktopUpdateStatus) => void) => () => void;
+    };
+    cliUpdates?: {
+      getStatus: () => Promise<CliUpdateStatus>;
+      check: () => Promise<CliUpdateStatus>;
+      update: () => Promise<CliUpdateStatus>;
+      onStatus: (callback: (status: CliUpdateStatus) => void) => () => void;
     };
   };
 

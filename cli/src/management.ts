@@ -270,8 +270,7 @@ async function runAuthCommand({ rest, json }: { rest: string[]; json: boolean })
       configuredDuringLogin: setup !== null
     });
   } else {
-    const methodLabel =
-      login.authMethod === 'user_token' ? 'USER_TOKEN' : 'username and password';
+    const methodLabel = login.authMethod === 'user_token' ? 'USER_TOKEN' : 'username and password';
     console.log(`Logged in to ${backendUrl} using ${methodLabel}.`);
     console.log(`Saved credentials to ${login.credentialsPath}`);
   }
@@ -338,6 +337,11 @@ export async function runLocalCommand({
       await runAuthCommand({ rest, json });
       return;
     }
+    case 'user-token': {
+      const { runUserTokenCommand } = await import('./user-token.js');
+      await runUserTokenCommand({ rest });
+      return;
+    }
     case 'doctor': {
       const { createBackendClient } = await import('./backend-client.js');
       const { inspectConnector, listAvailableConnectors } = await import('./connectors.js');
@@ -381,6 +385,26 @@ export async function runLocalCommand({
           detail: report.binaryFound
             ? `found on PATH`
             : `not found on PATH (install ${report.binaryName} to launch this agent)`
+        });
+      }
+
+      // Warn when the credentials directory is nested inside a cloud-sync root,
+      // which silently replicates the plaintext `auth.json` token off-device
+      // (security audit 2026-06-18).
+      {
+        const pathMod = await import('node:path');
+        const { authCredentialsPath } = await import('./auth-credentials.js');
+        const { detectCloudSyncRoot } = await import('./sync-root.js');
+        const credentialsDir = pathMod.dirname(authCredentialsPath());
+        const syncMatch = detectCloudSyncRoot(credentialsDir);
+        checks.push({
+          name: 'credentials-sync-root',
+          ok: syncMatch === null,
+          required: false,
+          detail:
+            syncMatch === null
+              ? `${credentialsDir} is not inside a known cloud-sync folder`
+              : `${credentialsDir} is inside ${syncMatch.provider} (${syncMatch.matchedSegment}); the plaintext token is replicated to cloud storage. Relocate it with OVLD_HOME or exclude this folder from sync.`
         });
       }
 
