@@ -33,11 +33,20 @@ async function readResponseJson(response: Response): Promise<unknown> {
 function errorMessageFromJson(value: unknown): string | null {
   if (!value || typeof value !== 'object') return null;
   const record = value as Record<string, unknown>;
-  return typeof record.error === 'string'
-    ? record.error
-    : typeof record.message === 'string'
-      ? record.message
-      : null;
+  const error =
+    typeof record.error === 'string'
+      ? record.error
+      : typeof record.message === 'string'
+        ? record.message
+        : null;
+  if (!error) return null;
+
+  const parts = [error];
+  const detail = typeof record.detail === 'string' ? record.detail.trim() : '';
+  if (detail && detail !== error) parts.push(detail);
+  const code = typeof record.code === 'string' ? record.code.trim() : '';
+  if (code) parts.push(`(${code})`);
+  return parts.join(' — ');
 }
 
 export function createBackendClient(): BackendClient {

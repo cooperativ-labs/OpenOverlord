@@ -35,6 +35,35 @@ function normalizeBaseUrl(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
+export function isBackendReachabilityError(error: unknown): boolean {
+  if (!(error instanceof CliError)) return false;
+  return error.message.startsWith('Could not reach Overlord backend at ');
+}
+
+export async function probeBackendReachability({
+  backendUrl
+}: {
+  backendUrl: string;
+}): Promise<{ reachable: boolean; error: string | null }> {
+  const baseUrl = normalizeBaseUrl(backendUrl);
+  try {
+    const response = await fetch(`${baseUrl}/api/health`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' }
+    });
+    if (response.ok) return { reachable: true, error: null };
+    return {
+      reachable: false,
+      error: `Backend at ${baseUrl} returned HTTP ${response.status}.`
+    };
+  } catch (error) {
+    return {
+      reachable: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
 async function promptLine({
   message,
   defaultValue

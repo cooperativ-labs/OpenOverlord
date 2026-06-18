@@ -1,4 +1,4 @@
-import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, FolderOpen, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -56,7 +56,11 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
     localExecutionTargetId !== null &&
     rows.some(resource => resource.executionTargetId === localExecutionTargetId && resource.isPrimary);
 
+  const canBrowseDirectories =
+    typeof window !== 'undefined' && typeof window.overlord?.chooseDirectory === 'function';
+
   const [directoryPath, setDirectoryPath] = useState('');
+  const [isBrowsing, setIsBrowsing] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -66,6 +70,22 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
     if (resource.executionTargetId === null) return 'Any target';
     if (resource.executionTargetId === localExecutionTargetId) return `${deviceLabel} (this device)`;
     return resource.executionTargetId;
+  }
+
+  async function handleBrowseDirectory() {
+    const chooseDirectory = window.overlord?.chooseDirectory;
+    if (!chooseDirectory) return;
+
+    setAddError(null);
+    setIsBrowsing(true);
+    try {
+      const chosen = await chooseDirectory();
+      if (chosen) setDirectoryPath(chosen);
+    } catch (error) {
+      setAddError(error instanceof Error ? error.message : 'Failed to choose directory.');
+    } finally {
+      setIsBrowsing(false);
+    }
   }
 
   async function handleAddResource() {
@@ -135,18 +155,33 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
           New directories are linked to <span className="font-medium">{deviceLabel}</span>.
         </p>
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="grid flex-1 gap-1.5">
+          <div className="grid min-w-0 flex-1 gap-1.5">
             <Label htmlFor="resource-directory-path">Directory path</Label>
-            <Input
-              id="resource-directory-path"
-              value={directoryPath}
-              onChange={event => setDirectoryPath(event.target.value)}
-              placeholder="/path/to/checkout"
-              className="h-8"
-              onKeyDown={event => {
-                if (event.key === 'Enter') void handleAddResource();
-              }}
-            />
+            <div className="flex gap-2">
+              <Input
+                id="resource-directory-path"
+                value={directoryPath}
+                onChange={event => setDirectoryPath(event.target.value)}
+                placeholder="/path/to/checkout"
+                className="h-8 min-w-0 flex-1"
+                onKeyDown={event => {
+                  if (event.key === 'Enter') void handleAddResource();
+                }}
+              />
+              {canBrowseDirectories ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 shrink-0 gap-1.5"
+                  disabled={isBrowsing}
+                  onClick={() => void handleBrowseDirectory()}
+                >
+                  <FolderOpen className="size-3.5" />
+                  Browse
+                </Button>
+              ) : null}
+            </div>
           </div>
           <Button
             type="button"

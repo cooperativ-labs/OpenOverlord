@@ -21,9 +21,9 @@ function notificationIcon(type: SystemNotificationType) {
 function notificationColor(type: SystemNotificationType) {
   switch (type) {
     case 'update':
-      return 'border-blue-500/30 bg-blue-300/80 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300';
+      return 'border-blue-500/30 bg-blue-200/80 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300';
     case 'warning':
-      return 'border-amber-500/30 bg-amber-300/80 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300';
+      return 'border-amber-500/30 bg-amber-200/80 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300';
     case 'info':
       return 'border-border bg-popover/50 text-popover-foreground dark:bg-popover/50 dark:text-popover-foreground';
   }

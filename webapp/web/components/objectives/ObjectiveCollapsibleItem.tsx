@@ -51,7 +51,7 @@ export function ObjectiveCollapsibleItem({
     <Collapsible open={open} onOpenChange={setOpen}>
       <div className="relative overflow-hidden rounded-md">
         {inFlight ? (
-          <div className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer_2s_linear_infinite] bg-gradient-to-r from-transparent via-emerald-500/20 to-transparent" />
+          <div className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer_2s_linear_infinite] bg-linear-to-r from-transparent via-emerald-500/20 to-transparent" />
         ) : null}
         <div className="flex items-center gap-1 overflow-hidden rounded-md pr-1 hover:bg-muted/40">
           <CollapsibleTrigger

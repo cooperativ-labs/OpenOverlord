@@ -116,7 +116,7 @@ export function InlineEditField({
         maxHeightPx={360}
         aria-label={ariaLabel}
         className={cn(
-          'min-h-[5rem] rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm leading-relaxed shadow-xs transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30',
+          'min-h-20 rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm leading-relaxed shadow-xs transition-colors dark:bg-input/30',
           inputClassName
         )}
         // Clicking outside (anywhere but the mention menu, whose buttons

@@ -11,8 +11,15 @@ import {
   setupConnector,
   type SetupResult
 } from './connectors.js';
+import { resolveAuthStatus } from './auth-status.js';
+import {
+  isBackendReachabilityError,
+  probeBackendReachability,
+  runInteractiveAuthLogin,
+  type AuthLoginResult
+} from './auth-login.js';
 import { CliError } from './errors.js';
-import { printJson, printLine } from './output.js';
+import { printJson, printLine, printStepTitle } from './output.js';
 import type { CliRuntime } from './runtime.js';
 import { openCliRuntime } from './runtime.js';
 import { parseTerminalLaunchChord, type TerminalLaunchPlacement } from './terminal-launch-chord.js';
@@ -101,7 +108,7 @@ async function configureBackendForSetup(): Promise<{
   const targetPath = resolveConfigWritePath();
   const current = loadConfig(targetPath);
 
-  printLine('Step 1: Choose the backend the CLI should use.');
+  printStepTitle('Step 1: Choose the backend the CLI should use.');
   const type = (
     await promptLine({ message: 'Backend type (local/cloud)', defaultValue: current.backendMode })
   ).toLowerCase();
@@ -149,6 +156,49 @@ async function configureBackendForSetup(): Promise<{
   return { mode: 'local', url: localUrl, path: targetPath };
 }
 
+async function configureAuthForSetup({
+  backendUrl
+}: {
+  backendUrl: string;
+}): Promise<AuthLoginResult> {
+  printLine('');
+  printStepTitle('Step 2: Authenticate with the backend.');
+
+  const status = await resolveAuthStatus();
+  if (status.loggedIn) {
+    const methodLabel =
+      status.credentialType === 'user_token' ? 'USER_TOKEN' : 'username and password';
+    printLine(`Already authenticated with ${status.backendUrl} using ${methodLabel}.`);
+    return {
+      ok: true,
+      authMethod: status.credentialType === 'user_token' ? 'user_token' : 'password',
+      credentialType: status.credentialType ?? 'session_bearer',
+      backendUrl: status.backendUrl,
+      credentialsPath: status.credentialsPath ?? ''
+    };
+  }
+
+  try {
+    const login = await runInteractiveAuthLogin({ backendUrl });
+    const methodLabel = login.authMethod === 'user_token' ? 'USER_TOKEN' : 'username and password';
+    printLine(`Authenticated with ${login.backendUrl} using ${methodLabel}.`);
+    return login;
+  } catch (error) {
+    const reachability = await probeBackendReachability({ backendUrl });
+    if (isBackendReachabilityError(error) || !reachability.reachable) {
+      printLine('');
+      printLine(
+        `Warning: Could not reach the backend at ${backendUrl}. ` +
+          'Check that `backend_url` in overlord.toml is correct and the backend is running.'
+      );
+      if (reachability.error) {
+        printLine(`  ${reachability.error}`);
+      }
+    }
+    throw error;
+  }
+}
+
 function parseAgentSelection(input: string): string[] {
   const available = listAvailableConnectors();
   const normalized = input.trim().toLowerCase();
@@ -171,7 +221,7 @@ function parseAgentSelection(input: string): string[] {
 async function configureAgentsForSetup(): Promise<SetupResult[]> {
   const available = listAvailableConnectors();
   printLine('');
-  printLine('Step 2: Configure agent connectors.');
+  printStepTitle('Step 3: Configure agent connectors.');
   printLine(`Available agents: ${available.join(', ')}`);
   const answer = await promptLine({
     message: 'Agents to configure (comma-separated, all, or none)',
@@ -349,7 +399,7 @@ async function configureTerminalForSetup({ runtime }: { runtime: CliRuntime }): 
   const current = await resolveCurrentTerminalProfile({ runtime });
 
   printLine('');
-  printLine('Step 3: Choose the default terminal for launched agents.');
+  printStepTitle('Step 4: Choose the default terminal for launched agents.');
   TERMINAL_OPTIONS.forEach((option, index) => {
     printLine(`  ${index + 1}. ${option.label}`);
   });
@@ -421,6 +471,7 @@ async function configureTerminalForSetup({ runtime }: { runtime: CliRuntime }): 
 
 async function runFullSetupCommand({ json }: { json: boolean }): Promise<void> {
   const backend = await configureBackendForSetup();
+  const auth = await configureAuthForSetup({ backendUrl: backend.url });
   const agents = await configureAgentsForSetup();
   const runtime = openCliRuntime();
   try {
@@ -430,6 +481,12 @@ async function runFullSetupCommand({ json }: { json: boolean }): Promise<void> {
       printJson({
         ok: true,
         backend,
+        auth: {
+          authMethod: auth.authMethod,
+          credentialType: auth.credentialType,
+          backendUrl: auth.backendUrl,
+          credentialsPath: auth.credentialsPath
+        },
         agents: agents.map(result => result.agentKey),
         terminal
       });

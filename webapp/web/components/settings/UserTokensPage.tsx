@@ -5,6 +5,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Separator } from '@/components/ui/separator';
@@ -21,6 +28,48 @@ const SCOPE_LABELS: Record<TokenScope, string> = {
   full: 'Full user privileges',
   ticket_lifecycle: 'Ticket lifecycle + runner'
 };
+
+type TokenExpiryPreset =
+  | 'one_week'
+  | 'one_month'
+  | 'three_months'
+  | 'six_months'
+  | 'one_year'
+  | 'no_expiration';
+
+const TOKEN_EXPIRY_PRESETS: { value: TokenExpiryPreset; label: string }[] = [
+  { value: 'one_week', label: 'One Week' },
+  { value: 'one_month', label: 'One Month' },
+  { value: 'three_months', label: 'Three Months' },
+  { value: 'six_months', label: 'Six Months' },
+  { value: 'one_year', label: 'One Year' },
+  { value: 'no_expiration', label: 'No Expiration' }
+];
+
+const DEFAULT_TOKEN_EXPIRY_PRESET: TokenExpiryPreset = 'three_months';
+
+/** Map a UI preset to the API `expiresAt` field (omit for the 90-day backend default). */
+function tokenExpiryPresetToExpiresAt(preset: TokenExpiryPreset): string | null | undefined {
+  if (preset === 'no_expiration') return null;
+  if (preset === 'three_months') return undefined;
+
+  const date = new Date();
+  switch (preset) {
+    case 'one_week':
+      date.setDate(date.getDate() + 7);
+      break;
+    case 'one_month':
+      date.setMonth(date.getMonth() + 1);
+      break;
+    case 'six_months':
+      date.setMonth(date.getMonth() + 6);
+      break;
+    case 'one_year':
+      date.setFullYear(date.getFullYear() + 1);
+      break;
+  }
+  return date.toISOString();
+}
 
 type UserTokensPageProps = {
   open: boolean;
@@ -91,7 +140,7 @@ export function UserTokensPage({ open }: UserTokensPageProps) {
 function CreateTokenForm() {
   const createToken = useCreateUserToken();
   const [label, setLabel] = useState('');
-  const [expiresAt, setExpiresAt] = useState('');
+  const [expiryPreset, setExpiryPreset] = useState<TokenExpiryPreset>(DEFAULT_TOKEN_EXPIRY_PRESET);
   const [scope, setScope] = useState<TokenScope>('full');
   const [createState, setCreateState] = useState<ButtonLoadingState>('default');
   const [error, setError] = useState<string | null>(null);
@@ -107,14 +156,15 @@ function CreateTokenForm() {
     setCreateState('loading');
     setError(null);
     try {
+      const expiresAt = tokenExpiryPresetToExpiresAt(expiryPreset);
       const result = await createToken.mutateAsync({
         label: trimmed,
-        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+        ...(expiresAt !== undefined ? { expiresAt } : {}),
         scope
       });
       setSecret(result.secret);
       setLabel('');
-      setExpiresAt('');
+      setExpiryPreset(DEFAULT_TOKEN_EXPIRY_PRESET);
       setScope('full');
       setCreateState('success');
     } catch (err) {
@@ -149,15 +199,23 @@ function CreateTokenForm() {
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="token-expiry">Expires (optional)</Label>
-            <Input
-              id="token-expiry"
-              type="date"
-              value={expiresAt}
-              className="h-8"
-              onChange={e => setExpiresAt(e.target.value)}
+            <Label htmlFor="token-expiry">Expires</Label>
+            <Select
+              value={expiryPreset}
+              onValueChange={value => setExpiryPreset(value as TokenExpiryPreset)}
               disabled={createState === 'loading'}
-            />
+            >
+              <SelectTrigger id="token-expiry" className="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TOKEN_EXPIRY_PRESETS.map(preset => (
+                  <SelectItem key={preset.value} value={preset.value}>
+                    {preset.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid gap-2 sm:col-span-2">
             <Label>Scope</Label>

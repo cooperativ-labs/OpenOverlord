@@ -8,3 +8,29 @@ export class ApiError extends Error {
     super(message);
   }
 }
+
+type SqliteErrorLike = {
+  code?: string;
+  message?: string;
+};
+
+/** Map better-sqlite3 constraint failures to actionable API errors. */
+export function apiErrorFromDatabaseError(error: unknown): ApiError | null {
+  if (!error || typeof error !== 'object') return null;
+  const { code, message = '' } = error as SqliteErrorLike;
+  if (!code?.startsWith('SQLITE_CONSTRAINT')) return null;
+
+  if (code === 'SQLITE_CONSTRAINT_UNIQUE' && message.includes('project_resources')) {
+    return new ApiError(
+      409,
+      'This directory is already linked to the project on this device.',
+      message
+    );
+  }
+
+  if (code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
+    return new ApiError(400, 'A related record is missing or invalid.', message);
+  }
+
+  return new ApiError(409, 'Database constraint violation.', message);
+}

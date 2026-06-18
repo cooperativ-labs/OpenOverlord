@@ -12,6 +12,7 @@ import { loadRepoEnvFiles } from '../load-repo-env.ts';
 
 import { authNodeHandler, requireAuthenticatedSession } from './auth.ts';
 import { DATABASE_PATH, WORKSPACE } from './db.ts';
+import { apiErrorFromDatabaseError } from './errors.ts';
 import {
   getAgentCatalog,
   getLaunchPreference,
@@ -820,10 +821,20 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     res.status(err.status).json({ error: err.message, code: err.code });
     return;
   }
-  // SQLite constraint failures and the like.
+  const databaseError = apiErrorFromDatabaseError(err);
+  if (databaseError) {
+    res.status(databaseError.status).json({
+      error: databaseError.message,
+      detail: databaseError.detail
+    });
+    return;
+  }
+
+  // Unexpected failures — include the underlying message so CLI/UI surfaces can
+  // show something actionable instead of a bare "Internal error".
   const message = err instanceof Error ? err.message : 'Internal error';
   console.error('[webapp] request failed:', message);
-  res.status(500).json({ error: 'Internal error', detail: message });
+  res.status(500).json({ error: message, detail: message });
 });
 
 // Boot the server. Wrapped in an async function (rather than a top-level await)

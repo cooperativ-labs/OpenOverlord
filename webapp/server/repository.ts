@@ -7,6 +7,7 @@ import type {
   ArtifactDto,
   CreateObjectiveBody,
   CreateProjectBody,
+  CreateProjectResourceBody,
   CreateProjectStatusBody,
   CreateProjectTagBody,
   CreateTicketBody,
@@ -31,12 +32,14 @@ import type {
   UpdateObjectiveBody,
   UpdateProfileBody,
   UpdateProjectBody,
+  UpdateProjectResourceBody,
   UpdateProjectStatusBody,
   UpdateProjectTagBody,
   UpdateTicketBody,
   UpdateUserTokenBody,
   UserTokenDto
 } from '../shared/contract.ts';
+import { ensureLocalExecutionTarget } from '../../src/service/execution-targets.ts';
 
 import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';

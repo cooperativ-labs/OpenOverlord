@@ -208,7 +208,7 @@ export function AgentLaunchButton({
       {!primaryConnection.connected && selectionLoaded ? (
         <div
           role="alert"
-          className="absolute bottom-full right-0 z-10 mb-1 flex max-w-[280px] items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-right text-[11px] text-amber-800 shadow-sm dark:text-amber-200"
+          className="absolute bottom-full right-0 z-10 mb-1.5 flex w-80 items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-200/90 px-3 py-2.5 text-left text-xs text-amber-800 shadow-md backdrop-blur-lg dark:bg-amber-950/80 dark:text-amber-300"
         >
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
           <p>{primaryConnection.message}</p>

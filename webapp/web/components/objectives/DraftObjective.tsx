@@ -232,7 +232,7 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
       <div
         className={cn(
           'relative px-3 pb-2 pt-3 transition-[max-height] duration-200 ease-in-out',
-          isFuture && !isFutureExpanded && 'max-h-[3.25rem] overflow-hidden',
+          isFuture && !isFutureExpanded && 'max-h-13 overflow-hidden',
           isFuture && isFutureExpanded && 'max-h-[500px] overflow-y-auto'
         )}
       >
@@ -271,7 +271,7 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
           </button>
         ) : null}
         {isFuture && !isFutureExpanded ? (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-background/80 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-linear-to-t from-background/80 to-transparent" />
         ) : null}
       </div>
 
