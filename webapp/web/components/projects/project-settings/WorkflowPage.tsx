@@ -1,5 +1,22 @@
-import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { GripVertical, Plus, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Badge, STATUS_LABEL, statusClasses } from '@/components/ui.tsx';
 import { Button } from '@/components/ui/button';
@@ -26,6 +43,7 @@ import {
   useReorderProjectStatuses,
   useUpdateProjectStatus
 } from '@/lib/queries';
+import { cn } from '@/lib/utils';
 
 import type { ProjectStatusDto, StatusType } from '../../../../shared/contract.ts';
 
@@ -43,6 +61,97 @@ type WorkflowPageProps = {
   statuses: ProjectStatusDto[];
 };
 
+function SortableStatusRow({
+  status,
+  updateStatus,
+  reorderStatuses,
+  onSetDefault,
+  onRename,
+  onDelete,
+  canDelete
+}: {
+  status: ProjectStatusDto;
+  updateStatus: ReturnType<typeof useUpdateProjectStatus>;
+  reorderStatuses: ReturnType<typeof useReorderProjectStatuses>;
+  onSetDefault: (status: ProjectStatusDto) => void;
+  onRename: (status: ProjectStatusDto, name: string) => void;
+  onDelete: (status: ProjectStatusDto) => void;
+  canDelete: (status: ProjectStatusDto) => boolean;
+}) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
+    useSortable({ id: status.id });
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn('border-t', isDragging && 'z-10 bg-muted/30 opacity-70')}
+    >
+      <td className="w-8 px-2 py-2">
+        <button
+          type="button"
+          ref={setActivatorNodeRef}
+          aria-label={`Reorder ${status.name}`}
+          disabled={reorderStatuses.isPending}
+          className="flex size-7 cursor-grab touch-none items-center justify-center rounded text-muted-foreground/40 hover:text-muted-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="size-4" />
+        </button>
+      </td>
+      <td className="px-3 py-2">
+        <Input
+          defaultValue={status.name}
+          className="h-8"
+          disabled={updateStatus.isPending}
+          onBlur={event => void onRename(status, event.target.value)}
+          onKeyDown={event => {
+            if (event.key === 'Enter') {
+              event.currentTarget.blur();
+            }
+          }}
+        />
+      </td>
+      <td className="px-3 py-2">
+        <Badge className={statusClasses(status.type)}>{STATUS_LABEL[status.type]}</Badge>
+      </td>
+      <td className="px-3 py-2">
+        {status.type === 'draft' ? (
+          <Button
+            type="button"
+            size="sm"
+            variant={status.isDefault ? 'secondary' : 'ghost'}
+            className="h-7"
+            disabled={status.isDefault || updateStatus.isPending}
+            onClick={() => void onSetDefault(status)}
+          >
+            {status.isDefault ? 'Default' : 'Set default'}
+          </Button>
+        ) : status.type === 'execute' || status.type === 'review' ? (
+          <span className="text-muted-foreground">Exclusive</span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </td>
+      <td className="px-3 py-2 text-right">
+        {canDelete(status) ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="size-7 text-destructive hover:text-destructive"
+            onClick={() => onDelete(status)}
+            aria-label={`Delete ${status.name}`}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        ) : null}
+      </td>
+    </tr>
+  );
+}
+
 export function WorkflowPage({ projectId, statuses }: WorkflowPageProps) {
   const ordered = useMemo(() => [...statuses].sort((a, b) => a.position - b.position), [statuses]);
   const createStatus = useCreateProjectStatus(projectId);
@@ -56,6 +165,32 @@ export function WorkflowPage({ projectId, statuses }: WorkflowPageProps) {
   const [rowError, setRowError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProjectStatusDto | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const [statusOrder, setStatusOrder] = useState<string[]>(() => ordered.map(status => status.id));
+
+  useEffect(() => {
+    const incomingIds = ordered.map(status => status.id);
+    setStatusOrder(previous => {
+      const previousSet = new Set(previous);
+      const incomingSet = new Set(incomingIds);
+      const sameMembership =
+        previous.length === incomingIds.length && previous.every(id => incomingSet.has(id));
+      if (sameMembership) return previous;
+      const kept = previous.filter(id => incomingSet.has(id));
+      const additions = incomingIds.filter(id => !previousSet.has(id));
+      return [...kept, ...additions];
+    });
+  }, [ordered]);
+
+  const orderedStatuses = useMemo(() => {
+    const byId = new Map(ordered.map(status => [status.id, status]));
+    return statusOrder.map(id => byId.get(id)).filter((status): status is ProjectStatusDto => Boolean(status));
+  }, [ordered, statusOrder]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   const hasExecute = ordered.some(status => status.type === 'execute');
   const hasReview = ordered.some(status => status.type === 'review');
@@ -89,20 +224,27 @@ export function WorkflowPage({ projectId, statuses }: WorkflowPageProps) {
     }
   }
 
-  async function handleMove(status: ProjectStatusDto, direction: 'up' | 'down') {
-    const index = ordered.findIndex(item => item.id === status.id);
-    const swapIndex = direction === 'up' ? index - 1 : index + 1;
-    if (swapIndex < 0 || swapIndex >= ordered.length) return;
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
 
-    const nextOrder = ordered.map(item => item.id);
-    [nextOrder[index], nextOrder[swapIndex]] = [nextOrder[swapIndex], nextOrder[index]];
+    const oldIndex = statusOrder.indexOf(String(active.id));
+    const newIndex = statusOrder.indexOf(String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
 
+    const nextOrder = arrayMove(statusOrder, oldIndex, newIndex);
+    setStatusOrder(nextOrder);
     setRowError(null);
-    try {
-      await reorderStatuses.mutateAsync({ orderedStatusIds: nextOrder });
-    } catch (error) {
-      setRowError(error instanceof Error ? error.message : 'Failed to reorder statuses.');
-    }
+
+    reorderStatuses.mutate(
+      { orderedStatusIds: nextOrder },
+      {
+        onError: error => {
+          setStatusOrder(ordered.map(status => status.id));
+          setRowError(error instanceof Error ? error.message : 'Failed to reorder statuses.');
+        }
+      }
+    );
   }
 
   async function handleAddStatus() {
@@ -148,106 +290,46 @@ export function WorkflowPage({ projectId, statuses }: WorkflowPageProps) {
         </p>
       </div>
 
-      {ordered.length === 0 ? (
+      {orderedStatuses.length === 0 ? (
         <p className="text-sm text-muted-foreground">No statuses configured.</p>
       ) : (
         <div className="overflow-hidden rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2 font-medium">Name</th>
-                <th className="px-3 py-2 font-medium">Type</th>
-                <th className="px-3 py-2 font-medium">Default</th>
-                <th className="px-3 py-2 font-medium">Order</th>
-                <th className="px-3 py-2 font-medium" />
-              </tr>
-            </thead>
-            <tbody>
-              {ordered.map((status, index) => (
-                <tr key={status.id} className="border-t">
-                  <td className="px-3 py-2">
-                    <Input
-                      defaultValue={status.name}
-                      className="h-8"
-                      disabled={updateStatus.isPending}
-                      onBlur={event => void handleRename(status, event.target.value)}
-                      onKeyDown={event => {
-                        if (event.key === 'Enter') {
-                          event.currentTarget.blur();
-                        }
-                      }}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <Badge className={statusClasses(status.type)}>
-                      {STATUS_LABEL[status.type]}
-                    </Badge>
-                  </td>
-                  <td className="px-3 py-2">
-                    {status.type === 'draft' ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={status.isDefault ? 'secondary' : 'ghost'}
-                        className="h-7"
-                        disabled={status.isDefault || updateStatus.isPending}
-                        onClick={() => void handleSetDefault(status)}
-                      >
-                        {status.isDefault ? 'Default' : 'Set default'}
-                      </Button>
-                    ) : status.type === 'execute' || status.type === 'review' ? (
-                      <span className="text-muted-foreground">Exclusive</span>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="size-7"
-                        disabled={index === 0 || reorderStatuses.isPending}
-                        onClick={() => void handleMove(status, 'up')}
-                        aria-label={`Move ${status.name} up`}
-                      >
-                        <ChevronUp className="size-4" />
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="size-7"
-                        disabled={index === ordered.length - 1 || reorderStatuses.isPending}
-                        onClick={() => void handleMove(status, 'down')}
-                        aria-label={`Move ${status.name} down`}
-                      >
-                        <ChevronDown className="size-4" />
-                      </Button>
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    {canDelete(status) ? (
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="size-7 text-destructive hover:text-destructive"
-                        onClick={() => {
-                          setDeleteError(null);
-                          setDeleteTarget(status);
-                        }}
-                        aria-label={`Delete ${status.name}`}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    ) : null}
-                  </td>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
+                <tr>
+                  <th className="w-8 px-2 py-2" aria-label="Reorder" />
+                  <th className="px-3 py-2 font-medium">Name</th>
+                  <th className="px-3 py-2 font-medium">Type</th>
+                  <th className="px-3 py-2 font-medium">Default</th>
+                  <th className="px-3 py-2 font-medium" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <SortableContext items={statusOrder} strategy={verticalListSortingStrategy}>
+                <tbody>
+                  {orderedStatuses.map(status => (
+                    <SortableStatusRow
+                      key={status.id}
+                      status={status}
+                      updateStatus={updateStatus}
+                      reorderStatuses={reorderStatuses}
+                      onSetDefault={status => void handleSetDefault(status)}
+                      onRename={(status, name) => void handleRename(status, name)}
+                      onDelete={status => {
+                        setDeleteError(null);
+                        setDeleteTarget(status);
+                      }}
+                      canDelete={canDelete}
+                    />
+                  ))}
+                </tbody>
+              </SortableContext>
+            </table>
+          </DndContext>
         </div>
       )}
 

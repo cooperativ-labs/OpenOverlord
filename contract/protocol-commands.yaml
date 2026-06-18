@@ -355,3 +355,4 @@ responseShapes:
       - attachments
       - artifacts
       - shared context
+      - user custom agent instructions

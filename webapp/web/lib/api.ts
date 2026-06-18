@@ -4,6 +4,7 @@ import type {
   CompleteInitialSetupBody,
   CreateObjectiveBody,
   CreateProjectBody,
+  CreateProjectResourceBody,
   CreateProjectStatusBody,
   CreateProjectTagBody,
   CreateTicketBody,
@@ -36,6 +37,7 @@ import type {
   UpdateObjectiveBody,
   UpdateProfileBody,
   UpdateProjectBody,
+  UpdateProjectResourceBody,
   UpdateProjectStatusBody,
   UpdateProjectTagBody,
   UpdateTerminalProfileBody,
@@ -154,6 +156,12 @@ export const api = {
     request<{ ok: true }>('DELETE', `/api/projects/${projectId}/tags/${tagId}`),
   listProjectResources: (id: string) =>
     request<ProjectResourceDto[]>('GET', `/api/projects/${id}/resources`),
+  createProjectResource: (projectId: string, body: CreateProjectResourceBody) =>
+    request<ProjectResourceDto>('POST', `/api/projects/${projectId}/resources`, body),
+  updateProjectResource: (projectId: string, resourceId: string, body: UpdateProjectResourceBody) =>
+    request<ProjectResourceDto>('PATCH', `/api/projects/${projectId}/resources/${resourceId}`, body),
+  deleteProjectResource: (projectId: string, resourceId: string) =>
+    request<{ ok: true }>('DELETE', `/api/projects/${projectId}/resources/${resourceId}`),
   getProjectRepository: (id: string, executionTargetId?: string | null) => {
     const params = new URLSearchParams();
     if (executionTargetId) params.set('executionTargetId', executionTargetId);

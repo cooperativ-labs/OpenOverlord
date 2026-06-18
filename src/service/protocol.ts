@@ -8,6 +8,7 @@ import { resolveProjectId, resolveTicketId } from './context.js';
 import { ServiceError } from './errors.js';
 import { createExecutionRequest } from './execution-requests.js';
 import { discoverProject } from './projects.js';
+import { loadAgentInstructionsForWorkspaceUser } from './profiles.js';
 import {
   addObjectivesToTicket,
   type ArtifactSummary,
@@ -68,8 +69,9 @@ const PROTOCOL_WORKFLOW = `
 2. Attach first with \`ovld protocol attach --ticket-id <id>\`.
 3. Post progress with \`ovld protocol update\` or liveness with \`ovld protocol heartbeat\`.
 4. Ask blocking questions with \`ovld protocol ask\` and stop work.
-5. Deliver with \`ovld protocol deliver\` when work is complete.
-6. Do not continue implementation after delivery without \`--begin-follow-up-work\`.`;
+5. Deliver with \`ovld protocol deliver\` with \`change-rationales\` when work is complete.
+6. Do not stage or commit changes unless explicitly instructed to do so.
+7. Do not continue implementation after delivery without \`--begin-follow-up-work\`.`;
 
 function resolveActiveObjective(objectives: ObjectiveSummary[]): ObjectiveSummary {
   const active =
@@ -222,7 +224,8 @@ function assemblePromptContext({
   attachments,
   sharedState,
   fileChanges,
-  previousObjectives
+  previousObjectives,
+  agentInstructions
 }: {
   ticket: TicketSummary;
   objective: ObjectiveSummary;
@@ -233,6 +236,7 @@ function assemblePromptContext({
   sharedState: SharedContextEntry[];
   fileChanges: RationaleReview[];
   previousObjectives: ObjectiveSummary[];
+  agentInstructions: string | null;
 }): string {
   const recentHistory = history
     .slice(-10)
@@ -254,7 +258,6 @@ function assemblePromptContext({
     ``,
     `Required protocol workflow:`,
     PROTOCOL_WORKFLOW,
-    ``,
     '',
     `Ticket ID: ${ticket.displayId}`,
     `Objective ID: ${objective.id}`,
@@ -276,8 +279,14 @@ function assemblePromptContext({
     sharedState.length > 0 ? sharedLines : '',
     previousObjectives.length > 0 ? '## Previous Objectives (already completed)' : '',
     previousObjectives.length > 0 ? previousObjectivesLines : '',
-    ''
+    '',
+    '## Important Notes',
+    `- Other agents may be working on the same branch as you, so you may notice file changes that are not yours. Exclude these from your change rationales.`,
+    agentInstructions ? '' : null,
+    agentInstructions ? '## Additional Instructions' : null,
+    agentInstructions
   ]
+    .filter((line): line is string => line !== null)
     .filter((line, index, arr) => !(line === '' && arr[index - 1] === ''))
     .join('\n');
 }
@@ -309,6 +318,11 @@ function contextForObjective({
     .prepare(`SELECT name FROM projects WHERE id = ?`)
     .get(ticket.projectId) as { name: string };
 
+  const agentInstructions = loadAgentInstructionsForWorkspaceUser({
+    db: ctx.db,
+    workspaceUserId: ctx.actorWorkspaceUserId
+  });
+
   return {
     ticket,
     objective,
@@ -326,7 +340,8 @@ function contextForObjective({
       attachments,
       sharedState,
       fileChanges,
-      previousObjectives: completedObjectives
+      previousObjectives: completedObjectives,
+      agentInstructions
     })
   };
 }

@@ -204,11 +204,11 @@ export function AgentLaunchButton({
   );
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="relative">
       {!primaryConnection.connected && selectionLoaded ? (
         <div
           role="alert"
-          className="flex max-w-[280px] items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-right text-[11px] text-amber-800 dark:text-amber-200"
+          className="absolute bottom-full right-0 z-10 mb-1 flex max-w-[280px] items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-right text-[11px] text-amber-800 shadow-sm dark:text-amber-200"
         >
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
           <p>{primaryConnection.message}</p>
@@ -247,7 +247,11 @@ export function AgentLaunchButton({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {error ? <p className="max-w-[260px] text-right text-[11px] text-red-400">{error}</p> : null}
+      {error ? (
+        <p className="absolute top-full right-0 z-10 mt-1 max-w-[260px] text-right text-[11px] text-red-400">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import type { EntityChangeDto, ObjectiveDto, TicketEventDto } from '../../shared/contract.ts';
 
 import { api } from './api.ts';
+import { isNativeNotificationsEnabled } from './native-notification-preferences.ts';
 
 type NotificationPayload = {
   title: string;
@@ -46,6 +47,8 @@ async function showBrowserNotification(payload: NotificationPayload): Promise<bo
 }
 
 async function showNativeNotification(payload: NotificationPayload): Promise<void> {
+  if (!isNativeNotificationsEnabled()) return;
+
   const desktopNotifier = window.overlord?.showNotification;
   if (desktopNotifier) {
     const shown = await desktopNotifier(payload);

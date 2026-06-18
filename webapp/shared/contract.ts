@@ -150,6 +150,17 @@ export interface ReorderProjectStatusesBody {
 export type ProjectResourceType = 'local_directory' | 'remote_directory';
 export type ProjectResourceStatus = 'active' | 'missing' | 'archived';
 
+export interface CreateProjectResourceBody {
+  directoryPath: string;
+  label?: string | null;
+  isPrimary?: boolean;
+  executionTargetId?: string | null;
+}
+
+export interface UpdateProjectResourceBody {
+  isPrimary?: boolean;
+}
+
 export interface ProjectResourceDto {
   id: string;
   workspaceId: string;
@@ -624,8 +635,8 @@ export type UpdateLaunchPreferenceBody = Partial<LaunchPreferenceDto>;
 
 /**
  * The local operator's user-account profile. In this single-trusted-user build
- * the profile maps directly to the operator's `profiles` row; the avatar URL is
- * persisted in `profiles.metadata_json.avatarUrl`.
+ * the profile maps directly to the operator's `profiles` row. Avatar URL and
+ * custom agent instructions are persisted in `profiles.metadata_json`.
  */
 export interface ProfileDto {
   userId: string;
@@ -636,6 +647,11 @@ export interface ProfileDto {
   email: string | null;
   /** Optional avatar image URL stored in `profiles.metadata_json.avatarUrl`. */
   avatarUrl: string | null;
+  /**
+   * Optional custom agent instructions appended to every protocol `promptContext`
+   * for this user (`profiles.metadata_json.agentInstructions`).
+   */
+  agentInstructions: string | null;
   /** Open vocabulary (`human`, `service`). The local operator is `human`. */
   kind: string;
   /** Identity provider, when the account is externally federated. */
@@ -651,6 +667,8 @@ export interface UpdateProfileBody {
   handle?: string | null;
   email?: string | null;
   avatarUrl?: string | null;
+  /** Replaces the user's saved custom agent instructions; pass null or "" to clear. */
+  agentInstructions?: string | null;
 }
 
 // ---- Uploads (core upload service) ----

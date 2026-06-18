@@ -1,4 +1,4 @@
-import { Info, Keyboard, KeyRound, MonitorDown, Palette, Terminal, User } from 'lucide-react';
+import { Bell, Info, Keyboard, KeyRound, MonitorDown, Palette, Terminal, User } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { RealtimeStatus } from '@/components/RealtimeStatus';
@@ -7,6 +7,7 @@ import { ApplicationPage } from '@/components/settings/ApplicationPage';
 import { DesktopUpdatesPage } from '@/components/settings/DesktopUpdatesPage';
 import { ExecutionTargetsPage } from '@/components/settings/ExecutionTargetsPage';
 import { HotkeysPage } from '@/components/settings/HotkeysPage';
+import { NotificationsPage } from '@/components/settings/NotificationsPage';
 import {
   SettingsDialogShell,
   type SettingsNavGroup,
@@ -24,6 +25,7 @@ type SettingsModalProps = {
 
 const appNavItems: SettingsNavItem[] = [
   { name: 'Application', icon: Palette },
+  { name: 'Notifications', icon: Bell },
   { name: 'Execution Targets', icon: Terminal },
   { name: 'About', icon: Info }
 ];
@@ -77,6 +79,7 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
       sidebarFooter={<RealtimeStatus sqlStudio={meta.data?.sqlStudio} />}
     >
       {activeNav === 'Application' && <ApplicationPage />}
+      {activeNav === 'Notifications' && <NotificationsPage />}
       {activeNav === 'Execution Targets' && <ExecutionTargetsPage />}
       {activeNav === 'Desktop' && <DesktopUpdatesPage />}
       {activeNav === 'Profile' && <UserProfilePage open={open} />}

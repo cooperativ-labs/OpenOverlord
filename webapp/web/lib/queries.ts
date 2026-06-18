@@ -4,6 +4,7 @@ import type {
   CompleteInitialSetupBody,
   CreateObjectiveBody,
   CreateProjectBody,
+  CreateProjectResourceBody,
   CreateProjectStatusBody,
   CreateProjectTagBody,
   CreateTicketBody,
@@ -24,6 +25,7 @@ import type {
   UpdateObjectiveBody,
   UpdateProfileBody,
   UpdateProjectBody,
+  UpdateProjectResourceBody,
   UpdateProjectStatusBody,
   UpdateProjectTagBody,
   UpdateTerminalProfileBody,
@@ -312,6 +314,36 @@ export function useCreateProjectTag(projectId: string) {
       );
       void qc.invalidateQueries({ queryKey: keys.projectTags(projectId) });
     }
+  });
+}
+
+export function useCreateProjectResource(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateProjectResourceBody) => api.createProjectResource(projectId, body),
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
+export function useUpdateProjectResource(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      resourceId,
+      body
+    }: {
+      resourceId: string;
+      body: UpdateProjectResourceBody;
+    }) => api.updateProjectResource(projectId, resourceId, body),
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
+export function useDeleteProjectResource(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (resourceId: string) => api.deleteProjectResource(projectId, resourceId),
+    onSuccess: () => invalidateAll(qc)
   });
 }
 

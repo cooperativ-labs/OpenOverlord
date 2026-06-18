@@ -202,7 +202,7 @@ export function ObjectiveAttachmentUploadTrigger({
   children
 }: ObjectiveAttachmentUploadTriggerProps) {
   return (
-    <div className="flex min-w-0 items-center gap-2 overflow-hidden px-2 py-1.5">
+    <div className="flex min-w-0 items-center gap-2 px-2 py-1.5">
       <Button
         type="button"
         size="icon"
