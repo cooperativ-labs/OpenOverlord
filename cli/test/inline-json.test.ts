@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {
-  MAX_INLINE_JSON_CHARS,
-  parseArgs,
-  rejectOversizedInlineJson
-} from '../src/args.ts';
+import { MAX_INLINE_JSON_CHARS, parseArgs, rejectOversizedInlineJson } from '../src/args.ts';
 import { runProtocolCommand } from '../src/commands.ts';
 import type { CliRuntime } from '../src/runtime.ts';
 
@@ -23,14 +19,8 @@ test('rejectOversizedInlineJson rejects oversized change-rationales-json', () =>
   const oversized = 'x'.repeat(MAX_INLINE_JSON_CHARS + 1);
   const flags = parseArgs(['deliver', '--change-rationales-json', oversized]).flags;
 
-  assert.throws(
-    () => rejectOversizedInlineJson({ flags }),
-    /change-rationales-json is too large/
-  );
-  assert.throws(
-    () => rejectOversizedInlineJson({ flags }),
-    /--change-rationales-file -/
-  );
+  assert.throws(() => rejectOversizedInlineJson({ flags }), /change-rationales-json is too large/);
+  assert.throws(() => rejectOversizedInlineJson({ flags }), /--change-rationales-file -/);
 });
 
 test('runProtocolCommand rejects oversized inline JSON before calling the backend', async () => {

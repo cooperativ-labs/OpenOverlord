@@ -1,8 +1,8 @@
 import { Outlet, useParams } from '@tanstack/react-router';
 
-import { ProjectWorkspaceErrorBoundary } from '../components/ProjectWorkspaceErrorBoundary.tsx';
 import { ProjectRepositoryProvider } from '../components/projects/ProjectRepositoryContext.tsx';
 import { ProjectSettingsProvider } from '../components/projects/ProjectSettingsContext.tsx';
+import { ProjectWorkspaceErrorBoundary } from '../components/ProjectWorkspaceErrorBoundary.tsx';
 
 import { BoardPage } from './BoardPage.tsx';
 

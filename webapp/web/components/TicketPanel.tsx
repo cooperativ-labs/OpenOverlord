@@ -26,9 +26,10 @@ function AddObjective({ ticket }: { ticket: TicketDetailDto }) {
   const create = useCreateObjective();
   const lifecycleView = deriveObjectiveLifecycleView(ticket.objectives);
 
-  const hasBlankSlot = [...lifecycleView.editableObjectives, ...lifecycleView.futureObjectives].some(
-    objective => !objectiveHasInstructionText(objective)
-  );
+  const hasBlankSlot = [
+    ...lifecycleView.editableObjectives,
+    ...lifecycleView.futureObjectives
+  ].some(objective => !objectiveHasInstructionText(objective));
   const disabled = hasBlankSlot || create.isPending;
 
   const addObjective = () => {

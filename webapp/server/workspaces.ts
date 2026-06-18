@@ -57,6 +57,65 @@ function slugify(input: string): string {
   return base.length > 0 ? base : 'workspace';
 }
 
+function workspaceIdFromInput(input: string): string {
+  return slugify(input);
+}
+
+function desiredWorkspaceId(bodyId: string | undefined, name: string): string {
+  return bodyId?.trim() ? workspaceIdFromInput(bodyId) : workspaceIdFromInput(name);
+}
+
+function ensureWorkspaceIdAvailable(workspaceId: string, excludeWorkspaceId?: string): void {
+  const existing = db
+    .prepare(
+      `SELECT id FROM workspaces
+         WHERE id = @id AND deleted_at IS NULL
+           AND (@exclude IS NULL OR id IS NOT @exclude)
+         LIMIT 1`
+    )
+    .get({ id: workspaceId, exclude: excludeWorkspaceId ?? null }) as { id: string } | undefined;
+  if (existing) throw new ApiError(409, 'A workspace with this ID already exists');
+}
+
+function quoteIdentifier(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+const workspaceScopedTables = (
+  db
+    .prepare(
+      `SELECT name FROM sqlite_master
+       WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND sql IS NOT NULL
+       ORDER BY name ASC`
+    )
+    .all() as Array<{ name: string }>
+)
+  .map(row => row.name)
+  .filter(name => name !== 'workspaces')
+  .filter(name => {
+    const columns = db.prepare(`PRAGMA table_info(${quoteIdentifier(name)})`).all() as Array<{
+      name: string;
+    }>;
+    return columns.some(column => column.name === 'workspace_id');
+  });
+
+function rekeyWorkspaceReferences(oldWorkspaceId: string, newWorkspaceId: string): void {
+  if (oldWorkspaceId === newWorkspaceId) return;
+  db.exec('PRAGMA defer_foreign_keys = ON');
+  for (const table of workspaceScopedTables) {
+    db.prepare(
+      `UPDATE ${quoteIdentifier(table)}
+          SET workspace_id = @next
+        WHERE workspace_id = @previous`
+    ).run({ previous: oldWorkspaceId, next: newWorkspaceId });
+  }
+  db.prepare(
+    `UPDATE ticket_sequences
+        SET scope_id = @next
+      WHERE scope_type = 'workspace' AND scope_id = @previous`
+  ).run({ previous: oldWorkspaceId, next: newWorkspaceId });
+}
+
 // Workspace slugs are globally unique (idx_workspaces_slug). Append a numeric
 // suffix until we find a free slug so creation never trips the constraint.
 // `excludeWorkspaceId` lets re-slugging a workspace keep (or reuse) its own slug.
@@ -98,6 +157,42 @@ function resolveLocalUserId(): string {
   return fallback.id;
 }
 
+/** Grant workspace-level ADMIN when a member has no active role rows yet. */
+export function grantWorkspaceAdminRole({
+  workspaceId,
+  workspaceUserId,
+  assignedByWorkspaceUserId = workspaceUserId
+}: {
+  workspaceId: string;
+  workspaceUserId: string;
+  assignedByWorkspaceUserId?: string;
+}): void {
+  const existing = db
+    .prepare(
+      `SELECT 1 FROM role_assignments
+         WHERE workspace_id = ? AND workspace_user_id = ? AND deleted_at IS NULL
+         LIMIT 1`
+    )
+    .get(workspaceId, workspaceUserId);
+  if (existing) return;
+
+  const now = nowIso();
+  db.prepare(
+    `INSERT INTO role_assignments
+       (id, workspace_id, workspace_user_id, role_key, resource_type, resource_id,
+        assigned_by_workspace_user_id, created_at, updated_at, revision)
+     VALUES
+       (@id, @workspace_id, @workspace_user_id, 'ADMIN', '', '',
+        @assigned_by_workspace_user_id, @now, @now, 1)`
+  ).run({
+    id: newId(),
+    workspace_id: workspaceId,
+    workspace_user_id: workspaceUserId,
+    assigned_by_workspace_user_id: assignedByWorkspaceUserId,
+    now
+  });
+}
+
 // ---- operations ----------------------------------------------------------
 
 /** Every workspace the local operator is an active member of. */
@@ -126,13 +221,14 @@ const createWorkspaceTx = db.transaction((body: CreateWorkspaceBody): string => 
   const name = (body.name ?? '').trim();
   if (!name) throw new ApiError(400, 'Workspace name is required');
 
+  const workspaceId = desiredWorkspaceId(body.id, name);
+  ensureWorkspaceIdAvailable(workspaceId);
   const slug = uniqueWorkspaceSlug(
     body.slug?.trim() ? slugify(body.slug) : suggestSlugFromName(name)
   );
   const localUserId = resolveLocalUserId();
 
   const now = nowIso();
-  const workspaceId = newId();
   const workspaceUserId = newId();
 
   db.prepare(
@@ -153,6 +249,8 @@ const createWorkspaceTx = db.transaction((body: CreateWorkspaceBody): string => 
     now
   });
 
+  grantWorkspaceAdminRole({ workspaceId, workspaceUserId });
+
   recordChange({
     entityType: 'workspace',
     entityId: workspaceId,
@@ -162,10 +260,19 @@ const createWorkspaceTx = db.transaction((body: CreateWorkspaceBody): string => 
     actorWorkspaceUserId: workspaceUserId
   });
 
+  recordChange({
+    entityType: 'workspace_user',
+    entityId: workspaceUserId,
+    operation: 'insert',
+    entityRevision: 1,
+    workspaceId,
+    actorWorkspaceUserId: workspaceUserId
+  });
+
   return workspaceId;
 });
 
-/** Create a workspace, add the local operator as a member, and make it active. */
+/** Create a workspace, add the local operator as an admin member, and make it active. */
 export function createWorkspace(body: CreateWorkspaceBody): WorkspaceDto {
   const workspaceId = createWorkspaceTx(body);
   // New workspaces become the active one, mirroring the team switcher: creating
@@ -212,7 +319,7 @@ function parseSettings(raw: string): Record<string, unknown> {
   }
 }
 
-const completeInitialSetupTx = db.transaction((body: CompleteInitialSetupBody): void => {
+const completeInitialSetupTx = db.transaction((body: CompleteInitialSetupBody): string => {
   // Setup only ever names the untouched seeded workspace; once done (or after
   // the operator has renamed/created workspaces) this endpoint must not rename
   // whatever workspace happens to be active.
@@ -228,6 +335,9 @@ const completeInitialSetupTx = db.transaction((body: CompleteInitialSetupBody): 
     .get(WORKSPACE.id) as { id: string; settings_json: string; revision: number } | undefined;
   if (!existing) throw new ApiError(404, 'Workspace not found');
 
+  const workspaceId = desiredWorkspaceId(body.id, name);
+  ensureWorkspaceIdAvailable(workspaceId, existing.id);
+
   // Default the slug to the first three letters of the name, mirroring the
   // suggestion the setup UI shows.
   const desiredSlug = body.slug?.trim() ? slugify(body.slug) : suggestSlugFromName(name);
@@ -236,14 +346,17 @@ const completeInitialSetupTx = db.transaction((body: CompleteInitialSetupBody): 
   const settings = parseSettings(existing.settings_json);
   settings[SETUP_COMPLETED_KEY] = nowIso();
 
+  rekeyWorkspaceReferences(existing.id, workspaceId);
+
   const revision = existing.revision + 1;
   db.prepare(
     `UPDATE workspaces
-        SET name = @name, slug = @slug, settings_json = @settings,
+        SET id = @workspace_id, name = @name, slug = @slug, settings_json = @settings,
             updated_at = @now, revision = @revision
       WHERE id = @id`
   ).run({
     id: existing.id,
+    workspace_id: workspaceId,
     name,
     slug,
     settings: JSON.stringify(settings),
@@ -253,13 +366,15 @@ const completeInitialSetupTx = db.transaction((body: CompleteInitialSetupBody): 
 
   recordChange({
     entityType: 'workspace',
-    entityId: existing.id,
+    entityId: workspaceId,
     operation: 'update',
     entityRevision: revision,
-    workspaceId: existing.id,
-    actorWorkspaceUserId: resolveActorForWorkspace(existing.id),
-    changedFields: ['name', 'slug']
+    workspaceId: workspaceId,
+    actorWorkspaceUserId: resolveActorForWorkspace(workspaceId),
+    changedFields: workspaceId === existing.id ? ['name', 'slug'] : ['id', 'name', 'slug']
   });
+
+  return workspaceId;
 });
 
 /** First three letters of the name as a slug, matching the setup UI's hint. */
@@ -277,11 +392,12 @@ function suggestSlugFromName(name: string): string {
  * reappears (even when the chosen values match the seed defaults).
  */
 export function completeInitialSetup(body: CompleteInitialSetupBody): WorkspaceDto {
-  completeInitialSetupTx(body);
-  // The slug/name feed `/api/meta` and ticket display ids via the `WORKSPACE`
-  // live binding, so re-read it immediately.
-  reloadActiveWorkspace();
-  const updated = listWorkspaces().find(w => w.id === WORKSPACE.id);
+  const workspaceId = completeInitialSetupTx(body);
+  // Initial setup may re-key the seeded workspace. Re-point the live workspace
+  // binding when that happens so `/api/meta` and ticket display ids stay in sync.
+  if (workspaceId === WORKSPACE.id) reloadActiveWorkspace();
+  else setActiveWorkspace(workspaceId);
+  const updated = listWorkspaces().find(w => w.id === workspaceId);
   if (!updated) throw new ApiError(500, 'Workspace was updated but could not be loaded');
   return updated;
 }

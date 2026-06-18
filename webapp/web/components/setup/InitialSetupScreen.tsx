@@ -23,8 +23,16 @@ import { useCompleteSetup } from '@/lib/queries';
  */
 export function InitialSetupScreen() {
   const completeSetupMutation = useCompleteSetup();
-  const { name, setName, slug, setSlugFromInput, exampleSlug, getSubmitBody } =
-    useWorkspaceCreationForm();
+  const {
+    name,
+    setName,
+    workspaceId,
+    setWorkspaceIdFromInput,
+    slug,
+    setSlugFromInput,
+    exampleSlug,
+    getSubmitBody
+  } = useWorkspaceCreationForm();
   const [error, setError] = useState<string | null>(null);
   const [buttonState, setButtonState] = useState<ButtonLoadingState>('default');
 
@@ -74,10 +82,13 @@ export function InitialSetupScreen() {
           <WorkspaceCreationFields
             name={name}
             onNameChange={setName}
+            workspaceId={workspaceId}
+            onWorkspaceIdChange={setWorkspaceIdFromInput}
             slug={slug}
             onSlugChange={setSlugFromInput}
             exampleSlug={exampleSlug}
             nameInputId="setup-workspace-name"
+            workspaceIdInputId="setup-workspace-id"
             slugInputId="setup-workspace-slug"
             onEnter={() => void handleSubmit()}
           />

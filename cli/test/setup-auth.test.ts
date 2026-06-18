@@ -20,7 +20,7 @@ test('printStepTitle uses blue ANSI styling on a TTY', () => {
     printStepTitle('Step 2: Authenticate with the backend.');
 
     process.stdout.write = originalWrite;
-    assert.match(written, /\x1b\[34mStep 2: Authenticate with the backend\.\x1b\[0m/);
+    assert.equal(written, `\x1b[34mStep 2: Authenticate with the backend.\x1b[0m\n`);
   } finally {
     Object.defineProperty(process.stdout, 'isTTY', { value: originalIsTTY, configurable: true });
   }
@@ -29,11 +29,16 @@ test('printStepTitle uses blue ANSI styling on a TTY', () => {
 test('isBackendReachabilityError detects backend connection failures', () => {
   assert.equal(
     isBackendReachabilityError(
-      new CliError({ message: 'Could not reach Overlord backend at http://127.0.0.1:4310.\nECONNREFUSED' })
+      new CliError({
+        message: 'Could not reach Overlord backend at http://127.0.0.1:4310.\nECONNREFUSED'
+      })
     ),
     true
   );
-  assert.equal(isBackendReachabilityError(new CliError({ message: 'Authentication failed (401).' })), false);
+  assert.equal(
+    isBackendReachabilityError(new CliError({ message: 'Authentication failed (401).' })),
+    false
+  );
 });
 
 test('probeBackendReachability reports unreachable backends', async () => {
@@ -53,7 +58,8 @@ test('probeBackendReachability reports unreachable backends', async () => {
 
 test('probeBackendReachability reports healthy backends', async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => new Response(JSON.stringify({ ok: true }), { status: 200 })) as typeof fetch;
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ ok: true }), { status: 200 })) as typeof fetch;
 
   try {
     const result = await probeBackendReachability({ backendUrl: 'http://127.0.0.1:4310/' });

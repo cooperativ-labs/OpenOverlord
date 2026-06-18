@@ -45,14 +45,7 @@ describe('addProjectResource', () => {
          (id, workspace_id, device_id, owner_workspace_user_id, type, label, status,
           connection_json, created_at, updated_at, revision)
        VALUES (?, ?, ?, ?, 'local', 'Other device', 'active', '{}', ?, ?, 1)`
-    ).run(
-      'other-target',
-      ctx.workspace.id,
-      otherDeviceId,
-      ctx.actorWorkspaceUserId,
-      now,
-      now
-    );
+    ).run('other-target', ctx.workspace.id, otherDeviceId, ctx.actorWorkspaceUserId, now, now);
 
     db.prepare(
       `INSERT INTO project_resources
@@ -60,7 +53,14 @@ describe('addProjectResource', () => {
           metadata_json, created_at, updated_at, revision)
        VALUES (?, ?, ?, ?, 'local_directory', 'Old local', '/tmp/old-local', 1, 'active',
                '{}', ?, ?, 1)`
-    ).run('old-local-resource', ctx.workspace.id, project.id, localTarget.executionTargetId, now, now);
+    ).run(
+      'old-local-resource',
+      ctx.workspace.id,
+      project.id,
+      localTarget.executionTargetId,
+      now,
+      now
+    );
 
     db.prepare(
       `INSERT INTO project_resources
@@ -94,7 +94,11 @@ describe('addProjectResource', () => {
 
     assert.deepEqual(rows, [
       { id: added.id, execution_target_id: localTarget.executionTargetId, is_primary: 1 },
-      { id: 'old-local-resource', execution_target_id: localTarget.executionTargetId, is_primary: 0 },
+      {
+        id: 'old-local-resource',
+        execution_target_id: localTarget.executionTargetId,
+        is_primary: 0
+      },
       { id: 'other-target-resource', execution_target_id: 'other-target', is_primary: 1 }
     ]);
 

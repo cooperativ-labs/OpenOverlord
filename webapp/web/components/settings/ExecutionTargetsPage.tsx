@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { AgentLaunchFooter } from '@/components/objectives/AgentLaunchFooter';
+import { HotkeyCaptureButton } from '@/components/settings/HotkeyCaptureButton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,6 +14,7 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { acceleratorToTerminalChord, terminalChordToAccelerator } from '@/lib/accelerator';
 import {
   useAgentCatalog,
   useLaunchSettings,
@@ -264,15 +266,17 @@ export function ExecutionTargetsPage() {
 
         {draftProfile.launcher !== null && placement === 'chord' ? (
           <div className="space-y-2">
-            <Label htmlFor="execution-target-chord">Shortcut</Label>
-            <Input
-              id="execution-target-chord"
-              value={chord}
-              onChange={event => setChord(event.target.value)}
-              placeholder="cmd+d"
-            />
+            <Label>Shortcut</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <HotkeyCaptureButton
+                value={chord ? terminalChordToAccelerator(chord) : ''}
+                onCapture={accel => setChord(acceleratorToTerminalChord(accel))}
+                placeholder="Press to set"
+              />
+            </div>
             <p className="text-xs text-muted-foreground">
-              Type the shortcut name rather than pressing it, for example `cmd+d`.
+              Click the button and press the shortcut your terminal uses to split or open a new
+              pane, for example ⌘ D in iTerm2.
             </p>
           </div>
         ) : null}

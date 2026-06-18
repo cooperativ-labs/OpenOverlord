@@ -67,9 +67,7 @@ export function resolveAuthBearerToken({
   env?: NodeJS.ProcessEnv;
 } = {}): string | undefined {
   const fromEnv =
-    env.OVERLORD_USER_TOKEN?.trim() ||
-    env.OVLD_USER_TOKEN?.trim() ||
-    env.USER_TOKEN?.trim();
+    env.OVERLORD_USER_TOKEN?.trim() || env.OVLD_USER_TOKEN?.trim() || env.USER_TOKEN?.trim();
   if (fromEnv) return fromEnv;
 
   const stored = readStoredAuthCredentials();

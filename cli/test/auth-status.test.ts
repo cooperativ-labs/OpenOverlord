@@ -4,11 +4,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import {
-  resolveAuthCredentialSource,
-  resolveAuthStatus
-} from '../src/auth-status.ts';
 import { writeStoredAuthCredentials } from '../src/auth-credentials.ts';
+import { resolveAuthCredentialSource, resolveAuthStatus } from '../src/auth-status.ts';
 
 test('resolveAuthCredentialSource prefers environment tokens over stored credentials', () => {
   const home = mkdtempSync(path.join(tmpdir(), 'overlord-auth-status-'));

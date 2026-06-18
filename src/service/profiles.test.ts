@@ -1,4 +1,4 @@
-import { openInMemoryDatabase, SEED_USER_ID } from '@overlord/database';
+import { openInMemoryDatabase } from '@overlord/database';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
@@ -10,6 +10,7 @@ import {
 } from './profiles.js';
 import { createProject } from './projects.js';
 import { attachSession } from './protocol.js';
+import { seedServiceOperator } from './test-helpers.js';
 import { createTicketWithObjectives } from './tickets.js';
 
 describe('profile metadata helpers', () => {
@@ -25,16 +26,16 @@ describe('profile metadata helpers', () => {
 describe('promptContext custom agent instructions', () => {
   it('includes saved user instructions in attach promptContext', () => {
     const db = openInMemoryDatabase();
+    const workspaceUserId = seedServiceOperator({ db });
     const ctx = createServiceContext({ db, source: 'protocol' });
+    assert.equal(ctx.actorWorkspaceUserId, workspaceUserId);
 
-    db.prepare(
-      `UPDATE profiles SET metadata_json = ? WHERE id = ?`
-    ).run(
+    db.prepare(`UPDATE profiles SET metadata_json = ? WHERE id = ?`).run(
       mergeProfileMetadataJson({
         metadataJson: '{}',
         agentInstructions: 'Prefer yarn over npm.'
       }),
-      SEED_USER_ID
+      'operator-user'
     );
 
     assert.equal(

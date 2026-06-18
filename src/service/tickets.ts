@@ -207,7 +207,8 @@ export function insertObjective({
   instructionText,
   title,
   state,
-  autoAdvance = false
+  autoAdvance = false,
+  assignedAgent
 }: {
   ctx: ServiceContext;
   ticketId: string;
@@ -215,6 +216,7 @@ export function insertObjective({
   title?: string | null;
   state?: string;
   autoAdvance?: boolean;
+  assignedAgent?: string | null;
 }): ObjectiveSummary {
   const instruction = instructionText.trim();
 
@@ -245,14 +247,17 @@ export function insertObjective({
   const position = (maxRow.max_pos ?? -1) + 1;
   const now = nowIso();
   const id = newId();
+  const resolvedTitle =
+    title?.trim() || (instruction ? initialTitleFromInstruction(instruction) : 'New objective');
+  const resolvedAssignedAgent = assignedAgent?.trim() || null;
 
   ctx.db
     .prepare(
       `INSERT INTO objectives
          (id, workspace_id, project_id, ticket_id, position, title, instruction_text, state,
-          agent_flags_json, auto_advance, execution_metadata_json,
+          assigned_agent, agent_flags_json, auto_advance, execution_metadata_json,
           created_by_workspace_user_id, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, '{}', ?, ?, ?, 1)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, '{}', ?, ?, ?, 1)`
     )
     .run(
       id,
@@ -260,9 +265,10 @@ export function insertObjective({
       ticket.projectId,
       ticket.id,
       position,
-      title?.trim() || (instruction ? initialTitleFromInstruction(instruction) : 'New objective'),
+      resolvedTitle,
       instruction,
       resolvedState,
+      resolvedAssignedAgent,
       autoAdvance ? 1 : 0,
       ctx.actorWorkspaceUserId,
       now,
@@ -285,7 +291,7 @@ export function insertObjective({
     ticket_id: ticket.id,
     project_id: ticket.projectId,
     position,
-    title: title?.trim() || initialTitleFromInstruction(instruction),
+    title: resolvedTitle,
     instruction_text: instruction,
     state: resolvedState,
     auto_advance: autoAdvance ? 1 : 0

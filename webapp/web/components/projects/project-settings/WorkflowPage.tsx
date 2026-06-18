@@ -78,8 +78,15 @@ function SortableStatusRow({
   onDelete: (status: ProjectStatusDto) => void;
   canDelete: (status: ProjectStatusDto) => boolean;
 }) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
-    useSortable({ id: status.id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: status.id });
 
   return (
     <tr
@@ -184,7 +191,9 @@ export function WorkflowPage({ projectId, statuses }: WorkflowPageProps) {
 
   const orderedStatuses = useMemo(() => {
     const byId = new Map(ordered.map(status => [status.id, status]));
-    return statusOrder.map(id => byId.get(id)).filter((status): status is ProjectStatusDto => Boolean(status));
+    return statusOrder
+      .map(id => byId.get(id))
+      .filter((status): status is ProjectStatusDto => Boolean(status));
   }, [ordered, statusOrder]);
 
   const sensors = useSensors(

@@ -103,9 +103,7 @@ export function NewTicketModal({ open, onClose, defaultProjectId = null }: NewTi
               }}
               disabled={projects.length === 0}
             >
-              {projects.length === 0 ? (
-                <option value="">No projects</option>
-              ) : null}
+              {projects.length === 0 ? <option value="">No projects</option> : null}
               {projects.map(project => (
                 <option key={project.id} value={project.id}>
                   {project.name}
@@ -133,7 +131,9 @@ export function NewTicketModal({ open, onClose, defaultProjectId = null }: NewTi
               onChange={e => setStatusId(e.target.value)}
               disabled={!selectedProjectId || statusesQ.isLoading}
             >
-              <option value="">Default ({statuses.find(status => status.isDefault)?.name ?? '—'})</option>
+              <option value="">
+                Default ({statuses.find(status => status.isDefault)?.name ?? '—'})
+              </option>
               {statuses.map(status => (
                 <option key={status.id} value={status.id}>
                   {status.name}

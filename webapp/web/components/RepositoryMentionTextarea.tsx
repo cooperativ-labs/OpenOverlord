@@ -31,6 +31,7 @@ type RepositoryMentionTextareaProps = Omit<
 export function RepositoryMentionTextarea({
   projectId,
   className,
+  menuOwnerId,
   ...props
 }: RepositoryMentionTextareaProps) {
   const { mentionPaths, projectMentionOptions, ticketMentionOptions } =
@@ -42,6 +43,7 @@ export function RepositoryMentionTextarea({
       projectMentionOptions={projectMentionOptions}
       ticketMentionOptions={ticketMentionOptions}
       mentionMenuMode="portal"
+      menuOwnerId={menuOwnerId}
       className={cn(TEXTAREA_CHROME, className)}
       {...props}
     />

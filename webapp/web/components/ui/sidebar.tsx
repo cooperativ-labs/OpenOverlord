@@ -332,18 +332,10 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
 
 function SidebarRail({ className, ...props }: React.ComponentProps<'button'>) {
   const { toggleSidebar, state, widthPx, setWidthPx, setIsResizing } = useSidebar();
-  const dragRef = React.useRef<{ startX: number; startWidth: number; moved: boolean } | null>(
-    null
-  );
+  const dragRef = React.useRef<{ startX: number; startWidth: number; moved: boolean } | null>(null);
 
   const finishDrag = React.useCallback(
-    ({
-      moved,
-      finalWidth
-    }: {
-      moved: boolean;
-      finalWidth?: number;
-    }) => {
+    ({ moved, finalWidth }: { moved: boolean; finalWidth?: number }) => {
       dragRef.current = null;
       setIsResizing(false);
       document.body.style.removeProperty('user-select');
@@ -378,10 +370,8 @@ function SidebarRail({ className, ...props }: React.ComponentProps<'button'>) {
     const drag = dragRef.current;
     if (!drag) return;
 
-    const side =
-      event.currentTarget.closest<HTMLElement>('[data-side]')?.dataset.side ?? 'left';
-    const delta =
-      side === 'left' ? event.clientX - drag.startX : drag.startX - event.clientX;
+    const side = event.currentTarget.closest<HTMLElement>('[data-side]')?.dataset.side ?? 'left';
+    const delta = side === 'left' ? event.clientX - drag.startX : drag.startX - event.clientX;
 
     if (!drag.moved && Math.abs(delta) < SIDEBAR_RESIZE_DRAG_THRESHOLD_PX) return;
 
@@ -403,10 +393,8 @@ function SidebarRail({ className, ...props }: React.ComponentProps<'button'>) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
 
-    const side =
-      event.currentTarget.closest<HTMLElement>('[data-side]')?.dataset.side ?? 'left';
-    const delta =
-      side === 'left' ? event.clientX - drag.startX : drag.startX - event.clientX;
+    const side = event.currentTarget.closest<HTMLElement>('[data-side]')?.dataset.side ?? 'left';
+    const delta = side === 'left' ? event.clientX - drag.startX : drag.startX - event.clientX;
     const finalWidth = clampSidebarWidth(drag.startWidth + delta);
 
     finishDrag({ moved: drag.moved, finalWidth: drag.moved ? finalWidth : undefined });

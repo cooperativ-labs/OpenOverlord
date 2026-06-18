@@ -4,9 +4,9 @@ import { useState } from 'react';
 
 import { NewTicketModal } from '@/components/NewTicketModal.tsx';
 import { Button } from '@/components/ui/button';
-import { useProjects } from '@/lib/queries.ts';
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { DRAG_REGION, getDesktopChrome, NO_DRAG_REGION } from '@/lib/desktop-chrome';
+import { useProjects } from '@/lib/queries.ts';
 
 import { TicketSearch } from './nav-header/TicketSearch.tsx';
 
@@ -43,9 +43,7 @@ export function NavHeader() {
         className="flex shrink-0 items-center gap-1"
         style={isDesktop ? NO_DRAG_REGION : undefined}
       >
-        <SidebarTrigger
-          className={isMacDesktop && state === 'collapsed' ? 'ml-5' : undefined}
-        />
+        <SidebarTrigger className={isMacDesktop && state === 'collapsed' ? 'ml-5' : undefined} />
         <Button
           type="button"
           variant="ghost"

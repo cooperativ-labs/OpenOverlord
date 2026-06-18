@@ -1,8 +1,4 @@
-import {
-  type OverlordDatabase,
-  SEED_WORKSPACE_ID,
-  SEED_WORKSPACE_USER_ID
-} from '@overlord/database';
+import { type OverlordDatabase, SEED_WORKSPACE_ID } from '@overlord/database';
 
 import { ServiceError } from './errors.js';
 
@@ -52,7 +48,7 @@ export function createServiceContext({
   return {
     db,
     workspace,
-    actorWorkspaceUserId: actor?.id ?? SEED_WORKSPACE_USER_ID,
+    actorWorkspaceUserId: actor?.id ?? null,
     source
   };
 }

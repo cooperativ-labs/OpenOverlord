@@ -33,8 +33,8 @@ export {
   grantCoversAction,
   makeActor,
   PERMISSIONS,
+  Role,
   scopeGrantsForPreset,
   TICKET_LIFECYCLE_GRANTS,
-  tokenScopeAllows,
-  Role
+  tokenScopeAllows
 } from './rbac/index.js';

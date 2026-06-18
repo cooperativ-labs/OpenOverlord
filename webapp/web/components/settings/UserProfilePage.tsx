@@ -207,14 +207,7 @@ function ReadOnlyProfileField({
   return (
     <div className="grid max-w-lg gap-2">
       <Label htmlFor={id}>{label}</Label>
-      <Input
-        id={id}
-        value={value}
-        placeholder={emptyText}
-        className="h-8"
-        readOnly
-        disabled
-      />
+      <Input id={id} value={value} placeholder={emptyText} className="h-8" readOnly disabled />
       {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
     </div>
   );

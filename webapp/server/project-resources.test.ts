@@ -47,7 +47,10 @@ test('project resource mutations keep primaries scoped per execution target', ()
   deleteProjectResource(project.id, secondLocalResource.id);
 
   rows = listProjectResources(project.id);
-  assert.equal(rows.some(row => row.id === secondLocalResource.id), false);
+  assert.equal(
+    rows.some(row => row.id === secondLocalResource.id),
+    false
+  );
   assert.equal(rows.find(row => row.id === globalResource.id)?.isPrimary, true);
   assert.equal(rows.find(row => row.id === firstLocalResource.id)?.isPrimary, true);
 

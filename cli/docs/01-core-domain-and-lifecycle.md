@@ -20,7 +20,7 @@ Requirements:
 
 ### User
 
-A user is the human identity that owns tickets, creates credentials, and receives permissions once authentication is enabled. For the local MVP, Overlord can use one implicit trusted user.
+A user is the human identity that owns tickets, creates credentials, and receives permissions. For the local MVP, Overlord uses the first locally created authenticated account as the trusted operator.
 
 Requirements:
 

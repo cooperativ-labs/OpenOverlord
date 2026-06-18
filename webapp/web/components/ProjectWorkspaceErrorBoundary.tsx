@@ -35,7 +35,9 @@ export class ProjectWorkspaceErrorBoundary extends Component<
         <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center p-8">
           <EmptyState
             title={`Something went wrong in the ${this.props.region}`}
-            hint={this.state.error.message || 'An unexpected error occurred while rendering this view.'}
+            hint={
+              this.state.error.message || 'An unexpected error occurred while rendering this view.'
+            }
             action={
               <Button variant="primary" onClick={this.handleRetry}>
                 Try again

@@ -65,7 +65,9 @@ function earliestChangeTime(changes: EntityChangeDto[]): number {
 }
 
 export async function notifyWorkflowChanges(changes: EntityChangeDto[]): Promise<void> {
-  const ticketIds = [...new Set(changes.map(change => change.ticketId).filter(Boolean))] as string[];
+  const ticketIds = [
+    ...new Set(changes.map(change => change.ticketId).filter(Boolean))
+  ] as string[];
   if (ticketIds.length === 0) return;
 
   const sinceMs = earliestChangeTime(changes);

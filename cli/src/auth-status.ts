@@ -1,16 +1,16 @@
 import {
   authCredentialsPath,
+  type AuthCredentialType,
   readStoredAuthCredentials,
-  resolveAuthBearerToken,
-  type AuthCredentialType
+  resolveAuthBearerToken
 } from './auth-credentials.js';
 import { validateBearerToken } from './auth-login.js';
 import {
+  type BackendMode,
   findEffectiveConfigPath,
   hasExplicitBackendConfig,
   loadConfig,
-  resolveBackendUrl,
-  type BackendMode
+  resolveBackendUrl
 } from './config.js';
 
 export type AuthCredentialSource = 'environment' | 'stored' | 'stored_mismatch' | 'none';
@@ -46,9 +46,7 @@ export function resolveAuthCredentialSource({
   credentialsPath: string | null;
 } {
   const fromEnv =
-    env.OVERLORD_USER_TOKEN?.trim() ||
-    env.OVLD_USER_TOKEN?.trim() ||
-    env.USER_TOKEN?.trim();
+    env.OVERLORD_USER_TOKEN?.trim() || env.OVLD_USER_TOKEN?.trim() || env.USER_TOKEN?.trim();
   if (fromEnv) {
     return {
       source: 'environment',

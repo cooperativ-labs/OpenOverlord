@@ -8,6 +8,7 @@ import {
 } from 'electron';
 import path from 'node:path';
 
+import { CliUpdater } from './cli-updater.js';
 import { registerIpc } from './ipc.js';
 import {
   hideQuickTaskWindow,
@@ -15,7 +16,6 @@ import {
   unregisterQuickTaskHotkey
 } from './quick-task-window.js';
 import { findFreePort, startServer, stopServer, waitForHealth } from './server.js';
-import { CliUpdater } from './cli-updater.js';
 import { DesktopUpdater } from './updater.js';
 import { applyCsp, createWindow, guardNavigation } from './window.js';
 

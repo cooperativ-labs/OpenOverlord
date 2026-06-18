@@ -51,10 +51,14 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
   const rows = open ? (resourcesQ.data ?? []) : [];
   const localExecutionTargetId = launchSettingsQ.data?.executionTargetId ?? null;
   const deviceLabel = launchSettingsQ.data?.deviceLabel ?? 'This device';
-  const hasMissingPrimary = rows.some(resource => resource.isPrimary && resource.status === 'missing');
+  const hasMissingPrimary = rows.some(
+    resource => resource.isPrimary && resource.status === 'missing'
+  );
   const hasLocalPrimary =
     localExecutionTargetId !== null &&
-    rows.some(resource => resource.executionTargetId === localExecutionTargetId && resource.isPrimary);
+    rows.some(
+      resource => resource.executionTargetId === localExecutionTargetId && resource.isPrimary
+    );
 
   const canBrowseDirectories =
     typeof window !== 'undefined' && typeof window.overlord?.chooseDirectory === 'function';
@@ -68,7 +72,8 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
 
   function targetLabel(resource: ProjectResourceDto): string {
     if (resource.executionTargetId === null) return 'Any target';
-    if (resource.executionTargetId === localExecutionTargetId) return `${deviceLabel} (this device)`;
+    if (resource.executionTargetId === localExecutionTargetId)
+      return `${deviceLabel} (this device)`;
     return resource.executionTargetId;
   }
 
@@ -134,8 +139,8 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
       <div>
         <h2 className="text-base font-medium">Resource directories</h2>
         <p className="text-sm text-muted-foreground">
-          Add, remove, and set the primary working directory for this device. Existing
-          project-wide fallback resources remain visible here too.
+          Add, remove, and set the primary working directory for this device. Existing project-wide
+          fallback resources remain visible here too.
         </p>
       </div>
 

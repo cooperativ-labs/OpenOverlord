@@ -16,6 +16,7 @@ import { useMatch, useNavigate, useParams } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { NewTicketModal } from '@/components/NewTicketModal.tsx';
+
 import type { TicketDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 import { ProjectSettingsSection } from '../components/projects/ProjectSettingsSection.tsx';
 import { Button, EmptyState, Spinner } from '../components/ui.tsx';

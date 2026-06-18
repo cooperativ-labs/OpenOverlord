@@ -159,7 +159,11 @@ export const api = {
   createProjectResource: (projectId: string, body: CreateProjectResourceBody) =>
     request<ProjectResourceDto>('POST', `/api/projects/${projectId}/resources`, body),
   updateProjectResource: (projectId: string, resourceId: string, body: UpdateProjectResourceBody) =>
-    request<ProjectResourceDto>('PATCH', `/api/projects/${projectId}/resources/${resourceId}`, body),
+    request<ProjectResourceDto>(
+      'PATCH',
+      `/api/projects/${projectId}/resources/${resourceId}`,
+      body
+    ),
   deleteProjectResource: (projectId: string, resourceId: string) =>
     request<{ ok: true }>('DELETE', `/api/projects/${projectId}/resources/${resourceId}`),
   getProjectRepository: (id: string, executionTargetId?: string | null) => {

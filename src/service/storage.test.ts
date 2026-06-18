@@ -15,6 +15,7 @@ import {
   listWorkspaceImages,
   updateAttachment
 } from './storage.js';
+import { seedServiceOperator } from './test-helpers.js';
 
 function createMemberContext(adminCtx: ServiceContext): ServiceContext {
   const now = '2026-01-01T00:00:01.000Z';
@@ -63,6 +64,7 @@ describe('storage service', () => {
   it('seeds local storage buckets', () => {
     const db = openInMemoryDatabase();
     try {
+      seedServiceOperator({ db });
       const ctx = createServiceContext({ db, source: 'cli' });
       const buckets = listStorageBuckets({ ctx });
       assert.deepEqual(
@@ -81,6 +83,7 @@ describe('storage service', () => {
   it('allows public image reads but not workspace image writes', () => {
     const db = openInMemoryDatabase();
     try {
+      seedServiceOperator({ db });
       const adminCtx = createServiceContext({ db, source: 'cli' });
       const image = createWorkspaceImage({
         ctx: adminCtx,
@@ -110,6 +113,7 @@ describe('storage service', () => {
   it('allows members to manage attachments', () => {
     const db = openInMemoryDatabase();
     try {
+      seedServiceOperator({ db });
       const adminCtx = createServiceContext({ db, source: 'cli' });
       const memberCtx = createMemberContext(adminCtx);
       const attachment = createAttachment({
@@ -142,6 +146,7 @@ describe('storage service', () => {
   it('allows members to manage their own user images only', () => {
     const db = openInMemoryDatabase();
     try {
+      seedServiceOperator({ db });
       const adminCtx = createServiceContext({ db, source: 'cli' });
       const memberCtx = createMemberContext(adminCtx);
 

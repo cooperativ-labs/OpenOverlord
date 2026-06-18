@@ -17,6 +17,7 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+
 import { SidebarFooter } from '../ui/sidebar';
 
 export type SettingsNavItem = {
@@ -103,9 +104,7 @@ export function SettingsDialogShell({
                 </div>
               ))}
             </nav>
-            {sidebarFooter ? (
-              <SidebarFooter>  {sidebarFooter}</SidebarFooter>
-            ) : null}
+            {sidebarFooter ? <SidebarFooter> {sidebarFooter}</SidebarFooter> : null}
           </aside>
 
           <main className="flex h-dvh min-w-0 flex-1 flex-col overflow-hidden md:max-h-[80%]">

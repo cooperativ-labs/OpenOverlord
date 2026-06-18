@@ -145,8 +145,11 @@
 
 /* Shimmer sweep used to mark in-flight objectives (executing / pending delivery). */
 @keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
   100% {
-    transform: translateX(100%);
+    background-position: -200% 0;
   }
 }
 

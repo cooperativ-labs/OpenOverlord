@@ -4,10 +4,13 @@ import { Label } from '@/components/ui/label';
 type WorkspaceCreationFieldsProps = {
   name: string;
   onNameChange: (name: string) => void;
+  workspaceId: string;
+  onWorkspaceIdChange: (value: string) => void;
   slug: string;
   onSlugChange: (value: string) => void;
   exampleSlug: string;
   nameInputId: string;
+  workspaceIdInputId: string;
   slugInputId: string;
   namePlaceholder?: string;
   onEnter?: () => void;
@@ -16,10 +19,13 @@ type WorkspaceCreationFieldsProps = {
 export function WorkspaceCreationFields({
   name,
   onNameChange,
+  workspaceId,
+  onWorkspaceIdChange,
   slug,
   onSlugChange,
   exampleSlug,
   nameInputId,
+  workspaceIdInputId,
   slugInputId,
   namePlaceholder = 'e.g. Acme Engineering',
   onEnter
@@ -38,6 +44,23 @@ export function WorkspaceCreationFields({
             if (e.key === 'Enter') onEnter?.();
           }}
         />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={workspaceIdInputId}>Workspace ID</Label>
+        <Input
+          id={workspaceIdInputId}
+          value={workspaceId}
+          onChange={e => onWorkspaceIdChange(e.target.value)}
+          placeholder="acme-engineering"
+          className="font-mono"
+          onKeyDown={e => {
+            if (e.key === 'Enter') onEnter?.();
+          }}
+        />
+        <p className="text-xs text-muted-foreground">
+          Stable internal identifier. Defaults to the full workspace name in lowercase.
+        </p>
       </div>
 
       <div className="space-y-2">

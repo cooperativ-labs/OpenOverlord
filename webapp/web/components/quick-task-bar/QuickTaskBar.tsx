@@ -1,4 +1,4 @@
-import { ArrowUp, AlertTriangle, Loader2, Plus } from 'lucide-react';
+import { AlertTriangle, ArrowUp, Loader2, Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AgentModelChooserButton } from '@/components/objectives/AgentModelChooserButton.tsx';
@@ -12,8 +12,8 @@ import {
   useLaunchObjective,
   useLaunchPreference,
   useLaunchSettings,
-  useProjects,
   useProjectResources,
+  useProjects,
   useUpdateAgentLaunchConfig,
   useUpdateLaunchPreference,
   useUpdateObjective

@@ -375,7 +375,8 @@ export function claimNextExecutionRequest({
   } catch (error) {
     if (
       error instanceof ServiceError &&
-      (error.code === 'primary_resource_not_connected' || error.code === 'working_directory_missing')
+      (error.code === 'primary_resource_not_connected' ||
+        error.code === 'working_directory_missing')
     ) {
       markExecutionFailed({ ctx, requestId: candidate.id, error: error.message });
       return null;

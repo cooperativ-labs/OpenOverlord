@@ -191,7 +191,10 @@ export function AgentLaunchButton({
           <span className={cn('inline-flex', isDisabled && 'cursor-not-allowed')}>{runButton}</span>
         }
       />
-      <TooltipContent side="top" hidden={!isDisabled || (primaryConnection.connected && hasInstruction)}>
+      <TooltipContent
+        side="top"
+        hidden={!isDisabled || (primaryConnection.connected && hasInstruction)}
+      >
         {!hasInstruction
           ? 'Write an instruction before launching.'
           : !selectionLoaded

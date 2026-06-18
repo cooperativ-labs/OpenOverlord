@@ -1,14 +1,14 @@
 import { UPDATE_EVENT_TYPES, UPDATE_PHASES } from '@overlord/database';
 import { createHash } from 'node:crypto';
 
-import { listRationalesForReview, type RationaleReview } from './changes.js';
 import { recordChange } from './change-feed.js';
+import { listRationalesForReview, type RationaleReview } from './changes.js';
 import type { ServiceContext } from './context.js';
 import { resolveProjectId, resolveTicketId } from './context.js';
 import { ServiceError } from './errors.js';
 import { createExecutionRequest } from './execution-requests.js';
-import { discoverProject } from './projects.js';
 import { loadAgentInstructionsForWorkspaceUser } from './profiles.js';
+import { discoverProject } from './projects.js';
 import {
   addObjectivesToTicket,
   type ArtifactSummary,
@@ -410,14 +410,26 @@ export function attachSession({
   const { rawKey, prefix, hash } = generateSessionKey();
   const now = nowIso();
   const sessionId = newId();
+  const currentObjectiveAssignment = ctx.db
+    .prepare(
+      `SELECT assigned_agent
+       FROM objectives
+       WHERE id = ? AND ticket_id = ? AND deleted_at IS NULL`
+    )
+    .get(objective.id, context.ticket.id) as { assigned_agent: string | null } | undefined;
+  const inheritedDraftAgent = currentObjectiveAssignment?.assigned_agent?.trim() || agentIdentifier;
 
   const tx = ctx.db.transaction(() => {
     ctx.db
       .prepare(
-        `UPDATE objectives SET state = 'executing', updated_at = ?, revision = revision + 1
+        `UPDATE objectives
+         SET state = 'executing',
+             assigned_agent = COALESCE(assigned_agent, ?),
+             updated_at = ?,
+             revision = revision + 1
          WHERE id = ? AND ticket_id = ?`
       )
-      .run(now, objective.id, context.ticket.id);
+      .run(inheritedDraftAgent || null, now, objective.id, context.ticket.id);
 
     const existingDraft = ctx.db
       .prepare(
@@ -455,6 +467,14 @@ export function attachSession({
           ticketId: context.ticket.id,
           objectiveId: nextFuture.id,
           changedFields: ['state']
+        });
+      } else {
+        insertObjective({
+          ctx,
+          ticketId: context.ticket.id,
+          instructionText: '',
+          state: 'draft',
+          assignedAgent: inheritedDraftAgent || null
         });
       }
     }

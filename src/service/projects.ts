@@ -5,8 +5,8 @@ import path from 'node:path';
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import { resolveProjectId } from './context.js';
-import { ensureLocalExecutionTarget } from './execution-targets.js';
 import { ServiceError } from './errors.js';
+import { ensureLocalExecutionTarget } from './execution-targets.js';
 import { initialTitleFromInstruction, newId, nowIso, slugify } from './util.js';
 
 export type ProjectSummary = {

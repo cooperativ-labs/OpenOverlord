@@ -6,7 +6,6 @@ import test from 'node:test';
 
 import { listChangedFilesForReview, listRationalesForReview } from '../dist/src/service/changes.js';
 import { createServiceContext } from '../dist/src/service/context.js';
-import { newId } from '../dist/src/service/util.js';
 import {
   claimNextExecutionRequest,
   clearExecutionRequests,
@@ -18,6 +17,7 @@ import {
 import { addProjectResource, createProject } from '../dist/src/service/projects.js';
 import { attachSession, deliverSession, updateSession } from '../dist/src/service/protocol.js';
 import { createTicketWithObjectives } from '../dist/src/service/tickets.js';
+import { newId } from '../dist/src/service/util.js';
 
 function createContext() {
   const db = new Database(':memory:');

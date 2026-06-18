@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 
 import { readRepositoryTree, RepositoryReadError } from '../../src/repository/git-tree.ts';
+import { ensureLocalExecutionTarget } from '../../src/service/execution-targets.ts';
 import type {
   ArtifactDto,
   CreateObjectiveBody,
@@ -39,7 +40,6 @@ import type {
   UpdateUserTokenBody,
   UserTokenDto
 } from '../shared/contract.ts';
-import { ensureLocalExecutionTarget } from '../../src/service/execution-targets.ts';
 
 import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';
@@ -1836,15 +1836,19 @@ const createTicketTx = db.transaction((body: CreateTicketBody): CreateTicketResu
   const sequence = nextTicketSequence();
   const displayId = `${WORKSPACE.slug}:${sequence}`;
   const boardPosition = topBoardPosition(body.projectId, statusRow.id);
+  const assignedWorkspaceUserId =
+    body.assignedWorkspaceUserId === undefined
+      ? ACTOR_WORKSPACE_USER_ID
+      : resolveAssignedWorkspaceUserId(body.assignedWorkspaceUserId);
 
   db.prepare(
     `INSERT INTO tickets
        (id, workspace_id, project_id, display_id, sequence_number, title,
         status_id, status_type, board_position, priority, available_tools_json, execution_target_intent_json,
-        metadata_json, created_by_workspace_user_id, created_at, updated_at, revision)
+        metadata_json, created_by_workspace_user_id, assigned_workspace_user_id, created_at, updated_at, revision)
      VALUES (@id, @ws, @project_id, @display_id, @sequence, @title,
         @status_id, @status_type, @board_position, @priority, '[]', '{}',
-        '{}', @actor, @now, @now, 1)`
+        '{}', @actor, @assigned_workspace_user_id, @now, @now, 1)`
   ).run({
     id,
     ws: WORKSPACE.id,
@@ -1857,6 +1861,7 @@ const createTicketTx = db.transaction((body: CreateTicketBody): CreateTicketResu
     board_position: boardPosition,
     priority,
     actor: ACTOR_WORKSPACE_USER_ID,
+    assigned_workspace_user_id: assignedWorkspaceUserId,
     now
   });
 
@@ -2717,28 +2722,47 @@ function loadOperatorUserRow(): UserRow {
   return fallback;
 }
 
-function avatarUrlFromMetadata(metadataJson: string): string | null {
+function parseProfileMetadata(metadataJson: string): Record<string, unknown> {
   try {
-    const parsed = JSON.parse(metadataJson) as { avatarUrl?: unknown };
-    return typeof parsed.avatarUrl === 'string' && parsed.avatarUrl.trim()
-      ? parsed.avatarUrl
-      : null;
+    const parsed = JSON.parse(metadataJson) as unknown;
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
   } catch {
-    return null;
+    return {};
   }
 }
 
-/** Merge an avatar URL into the existing metadata JSON without dropping other keys. */
-function mergeAvatarMetadataJson(metadataJson: string, avatarUrl: string | null): string {
-  let parsed: Record<string, unknown> = {};
-  try {
-    const candidate = JSON.parse(metadataJson) as unknown;
-    if (candidate && typeof candidate === 'object') parsed = candidate as Record<string, unknown>;
-  } catch {
-    /* corrupt metadata is replaced rather than propagated */
-  }
+function avatarUrlFromMetadata(metadataJson: string): string | null {
+  const avatarUrl = parseProfileMetadata(metadataJson).avatarUrl;
+  return typeof avatarUrl === 'string' && avatarUrl.trim() ? avatarUrl : null;
+}
+
+function agentInstructionsFromMetadata(metadataJson: string): string | null {
+  const agentInstructions = parseProfileMetadata(metadataJson).agentInstructions;
+  return typeof agentInstructions === 'string' && agentInstructions.trim()
+    ? agentInstructions.trim()
+    : null;
+}
+
+/** Merge profile metadata without dropping unrelated keys. */
+function mergeProfileMetadataJson({
+  metadataJson,
+  avatarUrl,
+  agentInstructions
+}: {
+  metadataJson: string;
+  avatarUrl?: string | null;
+  agentInstructions?: string | null;
+}): string {
+  const parsed = parseProfileMetadata(metadataJson);
   if (avatarUrl) parsed.avatarUrl = avatarUrl;
-  else delete parsed.avatarUrl;
+  else if (avatarUrl !== undefined) delete parsed.avatarUrl;
+
+  if (agentInstructions !== undefined) {
+    const trimmed = agentInstructions?.trim() ?? '';
+    if (trimmed) parsed.agentInstructions = trimmed;
+    else delete parsed.agentInstructions;
+  }
+
   return JSON.stringify(parsed);
 }
 
@@ -2749,6 +2773,7 @@ function toProfileDto(row: UserRow): ProfileDto {
     handle: row.handle,
     email: row.email,
     avatarUrl: avatarUrlFromMetadata(row.metadata_json),
+    agentInstructions: agentInstructionsFromMetadata(row.metadata_json),
     kind: row.kind,
     authProvider: 'better-auth',
     roles: loadActorRoles(),
@@ -2793,9 +2818,22 @@ export const updateProfile = db.transaction((body: UpdateProfileBody): ProfileDt
     if (avatarUrl && !/^(https?:\/\/|\/)/i.test(avatarUrl)) {
       throw new ApiError(400, 'Avatar URL must be an http(s) URL or an uploaded image path');
     }
-    fields.push('metadata_json = @metadata_json');
-    params.metadata_json = mergeAvatarMetadataJson(existing.metadata_json, avatarUrl);
-    changed.push('metadata_json');
+    if (!fields.includes('metadata_json = @metadata_json'))
+      fields.push('metadata_json = @metadata_json');
+    params.metadata_json = mergeProfileMetadataJson({
+      metadataJson: existing.metadata_json,
+      avatarUrl
+    });
+    if (!changed.includes('metadata_json')) changed.push('metadata_json');
+  }
+  if (body.agentInstructions !== undefined) {
+    if (!fields.includes('metadata_json = @metadata_json'))
+      fields.push('metadata_json = @metadata_json');
+    params.metadata_json = mergeProfileMetadataJson({
+      metadataJson: (params.metadata_json as string | undefined) ?? existing.metadata_json,
+      agentInstructions: body.agentInstructions
+    });
+    if (!changed.includes('metadata_json')) changed.push('metadata_json');
   }
   if (fields.length === 0) return toProfileDto(existing);
 

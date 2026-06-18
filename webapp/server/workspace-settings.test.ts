@@ -1,17 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { db, setActiveWorkspaceUser } from './db.ts';
 import { actorIsAdmin, loadActorRoles } from './rbac.ts';
+import { seedAuthenticatedOperator } from './test-helpers.ts';
 import { readSqlStudioEnabled, writeSqlStudioEnabled } from './workspace-settings.ts';
 
-test('loadActorRoles returns ADMIN for the seeded local workspace user', () => {
+const operatorWorkspaceUserId = seedAuthenticatedOperator({ db });
+setActiveWorkspaceUser(operatorWorkspaceUserId);
+
+test('loadActorRoles returns ADMIN for the authenticated workspace operator', () => {
   const roles = loadActorRoles({
     workspaceId: 'local-workspace',
-    workspaceUserId: 'local-workspace-user'
+    workspaceUserId: operatorWorkspaceUserId
   });
   assert.deepEqual(roles, ['ADMIN']);
   assert.equal(
-    actorIsAdmin({ workspaceId: 'local-workspace', workspaceUserId: 'local-workspace-user' }),
+    actorIsAdmin({ workspaceId: 'local-workspace', workspaceUserId: operatorWorkspaceUserId }),
     true
   );
 });

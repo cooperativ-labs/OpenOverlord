@@ -1,4 +1,4 @@
-import { type BrowserWindow, app } from 'electron';
+import { app, type BrowserWindow } from 'electron';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -184,8 +184,7 @@ function resolveCliInvocation(): CliInvocation | null {
 function resolveOvldOnPath(): string | null {
   const pathEnv = process.env.PATH ?? '';
   const segments = pathEnv.split(pathSeparator());
-  const candidates =
-    process.platform === 'win32' ? ['ovld.cmd', 'ovld.exe', 'ovld'] : ['ovld'];
+  const candidates = process.platform === 'win32' ? ['ovld.cmd', 'ovld.exe', 'ovld'] : ['ovld'];
 
   for (const segment of segments) {
     for (const name of candidates) {

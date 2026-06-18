@@ -1,5 +1,6 @@
-import { BrowserWindow, Notification, dialog, ipcMain, shell } from 'electron';
+import { BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron';
 
+import type { CliUpdater } from './cli-updater.js';
 import { isNativeThemeSource, setNativeThemeSource } from './native-theme.js';
 import {
   DEFAULT_QUICK_TASK_HOTKEY,
@@ -9,7 +10,6 @@ import {
   setQuickTaskWindowBounds,
   setQuickTaskWindowSize
 } from './quick-task-window.js';
-import type { CliUpdater } from './cli-updater.js';
 import type { DesktopUpdater } from './updater.js';
 
 /**

@@ -12,7 +12,8 @@ export type PrimaryResourceConnectionState = {
 export function primaryResourceConnection(
   resources: ProjectResourceDto[]
 ): PrimaryResourceConnectionState {
-  const primary = resources.find(resource => resource.isPrimary && resource.status !== 'archived') ?? null;
+  const primary =
+    resources.find(resource => resource.isPrimary && resource.status !== 'archived') ?? null;
   if (!primary) {
     return {
       connected: false,

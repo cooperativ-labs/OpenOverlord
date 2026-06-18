@@ -1,6 +1,6 @@
-import { Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { HotkeyCaptureButton } from '@/components/settings/HotkeyCaptureButton';
 import { Button } from '@/components/ui/button';
 import { getDesktopChrome } from '@/lib/desktop-chrome';
 
@@ -9,89 +9,12 @@ type HotkeyItem = {
   shortcut: string;
 };
 
-const MODIFIER_KEYS = new Set(['Control', 'Shift', 'Alt', 'Meta']);
-
-/**
- * Translate a physical key code into a stable, layout-independent label so the
- * captured accelerator matches what Electron's `globalShortcut` expects.
- */
-function keyFromPhysicalCode(event: globalThis.KeyboardEvent): string | null {
-  const { code } = event;
-  if (/^Key[A-Z]$/.test(code)) {
-    return code.slice(3);
-  }
-  if (/^Digit\d$/.test(code)) {
-    return code.slice(5);
-  }
-  if (/^Numpad\d$/.test(code)) {
-    return `num${code.slice(6)}`;
-  }
-  return null;
-}
-
-/**
- * Build an Electron accelerator string (e.g. `Command+Shift+O`) from a keydown
- * event, or null when the event is not a usable shortcut (modifier-only press,
- * Escape, or no modifier held).
- */
-function eventToAccelerator(event: globalThis.KeyboardEvent): string | null {
-  if (MODIFIER_KEYS.has(event.key)) {
-    return null;
-  }
-
-  const parts: string[] = [];
-  if (event.metaKey) parts.push('Command');
-  if (event.ctrlKey) parts.push('Control');
-  if (event.altKey) parts.push('Alt');
-  if (event.shiftKey) parts.push('Shift');
-
-  let key = keyFromPhysicalCode(event) ?? event.key;
-  if (key.length === 1) {
-    key = key.toUpperCase();
-  } else if (/^F\d{1,2}$/.test(key)) {
-    // Function keys pass through unchanged.
-  } else if (key === ' ') {
-    key = 'Space';
-  } else if (key === 'ArrowUp') {
-    key = 'Up';
-  } else if (key === 'ArrowDown') {
-    key = 'Down';
-  } else if (key === 'ArrowLeft') {
-    key = 'Left';
-  } else if (key === 'ArrowRight') {
-    key = 'Right';
-  } else if (key === 'Escape') {
-    return null;
-  }
-
-  if (parts.length === 0) {
-    return null;
-  }
-
-  parts.push(key);
-  return parts.join('+');
-}
-
-/** Render an accelerator using the conventional glyphs shown elsewhere in the app. */
-function formatAcceleratorForDisplay(accel: string): string {
-  return accel
-    .replace(/CommandOrControl/gi, '⌘')
-    .replace(/Command/gi, '⌘')
-    .replace(/Cmd/gi, '⌘')
-    .replace(/Control/gi, 'Ctrl')
-    .replace(/Alt/gi, '⌥')
-    .replace(/Option/gi, '⌥')
-    .replace(/Shift/gi, '⇧')
-    .replace(/\+/g, ' ');
-}
-
 export function HotkeysPage() {
   const { isDesktop } = getDesktopChrome();
   const [items, setItems] = useState<HotkeyItem[]>([]);
 
   const [quickTaskAccelerator, setQuickTaskAccelerator] = useState<string | null>(null);
   const [defaultQuickTaskAccelerator, setDefaultQuickTaskAccelerator] = useState<string>('');
-  const [isCapturing, setIsCapturing] = useState(false);
   const [isSavingHotkey, setIsSavingHotkey] = useState(false);
   const [hotkeyError, setHotkeyError] = useState<string | null>(null);
 
@@ -140,25 +63,6 @@ export function HotkeysPage() {
     }
   }
 
-  useEffect(() => {
-    if (!isCapturing) return;
-    const handler = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setIsCapturing(false);
-        return;
-      }
-      const accel = eventToAccelerator(event);
-      if (!accel) return;
-      event.preventDefault();
-      event.stopPropagation();
-      setIsCapturing(false);
-      void persistHotkey(accel);
-    };
-    window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
-  }, [isCapturing]);
-
   return (
     <div className="space-y-6">
       <div>
@@ -185,28 +89,18 @@ export function HotkeysPage() {
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCapturing(true)}
+                <HotkeyCaptureButton
+                  value={quickTaskAccelerator}
+                  onCapture={accel => void persistHotkey(accel)}
                   disabled={isSavingHotkey}
-                  className="min-w-[88px] rounded border bg-muted px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted/70 disabled:opacity-60"
-                >
-                  {isCapturing ? (
-                    <span className="inline-flex items-center gap-1">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Press keys…
-                    </span>
-                  ) : (
-                    formatAcceleratorForDisplay(quickTaskAccelerator)
-                  )}
-                </button>
+                />
                 {quickTaskAccelerator !== defaultQuickTaskAccelerator ? (
                   <Button
                     type="button"
                     size="sm"
                     variant="ghost"
                     onClick={() => void persistHotkey(defaultQuickTaskAccelerator)}
-                    disabled={isSavingHotkey || isCapturing}
+                    disabled={isSavingHotkey}
                   >
                     Reset
                   </Button>

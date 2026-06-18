@@ -110,11 +110,7 @@ const INLINE_JSON_FLAG_PAIRS = [
   { jsonFlag: '--value-json', fileFlag: '--value-file' }
 ] as const;
 
-export function rejectOversizedInlineJson({
-  flags
-}: {
-  flags: Map<string, string | true>;
-}): void {
+export function rejectOversizedInlineJson({ flags }: { flags: Map<string, string | true> }): void {
   for (const { jsonFlag, fileFlag } of INLINE_JSON_FLAG_PAIRS) {
     const value = flagValue(flags, jsonFlag);
     if (value === undefined || value.length <= MAX_INLINE_JSON_CHARS) continue;

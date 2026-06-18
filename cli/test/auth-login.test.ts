@@ -19,10 +19,7 @@ import {
 } from '../src/auth-login.ts';
 
 test('formatUserTokenLoginCommand builds the non-interactive login command', () => {
-  assert.equal(
-    formatUserTokenLoginCommand('out_abc123'),
-    'ovld auth login --token out_abc123'
-  );
+  assert.equal(formatUserTokenLoginCommand('out_abc123'), 'ovld auth login --token out_abc123');
 });
 
 test('normalizeLocalUsername lowercases and trims', () => {

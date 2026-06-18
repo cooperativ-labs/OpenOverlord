@@ -13,6 +13,7 @@ import {
   setActiveWorkspaceUser,
   WORKSPACE
 } from './db.ts';
+import { grantWorkspaceAdminRole } from './workspaces.ts';
 
 const authBaseHost =
   process.env.OVERLORD_WEB_HOST && process.env.OVERLORD_WEB_HOST !== '0.0.0.0'
@@ -74,7 +75,13 @@ function ensureWorkspaceUser(profileId: string): string {
         LIMIT 1`
     )
     .get(WORKSPACE.id, profileId) as { id: string } | undefined;
-  if (existing) return existing.id;
+  if (existing) {
+    grantWorkspaceAdminRole({
+      workspaceId: WORKSPACE.id,
+      workspaceUserId: existing.id
+    });
+    return existing.id;
+  }
 
   const profile = db
     .prepare(`SELECT id FROM profiles WHERE id = ? AND deleted_at IS NULL LIMIT 1`)
@@ -85,7 +92,6 @@ function ensureWorkspaceUser(profileId: string): string {
 
   const now = nowIso();
   const workspaceUserId = newId();
-  const roleAssignmentId = newId();
 
   db.transaction(() => {
     db.prepare(
@@ -103,18 +109,9 @@ function ensureWorkspaceUser(profileId: string): string {
       now
     });
 
-    db.prepare(
-      `INSERT INTO role_assignments
-         (id, workspace_id, workspace_user_id, role_key, resource_type, resource_id,
-          assigned_by_workspace_user_id, created_at, updated_at, revision)
-       VALUES
-         (@id, @workspace_id, @workspace_user_id, 'ADMIN', '', '',
-          @workspace_user_id, @now, @now, 1)`
-    ).run({
-      id: roleAssignmentId,
-      workspace_id: WORKSPACE.id,
-      workspace_user_id: workspaceUserId,
-      now
+    grantWorkspaceAdminRole({
+      workspaceId: WORKSPACE.id,
+      workspaceUserId
     });
 
     recordChange({
@@ -169,11 +166,10 @@ export async function requireAuthenticatedSession(
     }
 
     // 3. Loopback-trusted local operator for the CLI protocol/runner surface,
-    //    which historically ran unauthenticated on localhost. The audit threat
-    //    model is a leaked token, not localhost, so a tokenless loopback CLI keeps
-    //    the single-trusted-user behavior — but now flows through actor resolution
-    //    so RBAC gates still apply (the local operator is ADMIN). Browser `/api`
-    //    routes deliberately do NOT get this fallback, preserving web login.
+    //    which historically ran unauthenticated on localhost. This resolves only
+    //    to an existing workspace user; on a fresh database, account creation must
+    //    happen first so RBAC has a real actor to evaluate. Browser `/api` routes
+    //    deliberately do NOT get this fallback, preserving web login.
     if (nonBrowser && isLoopbackRequest(req)) {
       setActiveWorkspaceUser(resolveActorForWorkspace(WORKSPACE.id));
       next();

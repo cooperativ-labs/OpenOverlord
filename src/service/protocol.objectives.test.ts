@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 
 import { createServiceContext } from './context.js';
 import { createProject } from './projects.js';
-import { protocolCreate, protocolPrompt } from './protocol.js';
+import { attachSession, protocolCreate, protocolPrompt } from './protocol.js';
 import { createTicketWithObjectives, insertObjective } from './tickets.js';
 
 describe('protocol objective creation', () => {
@@ -108,6 +108,42 @@ describe('protocol objective creation', () => {
     assert.equal(result.objective.objective, 'First prompt objective');
     assert.equal(result.objective.state, 'executing');
     assert.equal(result.objectives[1]?.state, 'draft');
+
+    db.close();
+  });
+
+  it('creates a blank draft slot when attach consumes the only next-up objective', () => {
+    const db = openInMemoryDatabase();
+    const ctx = createServiceContext({ db, source: 'protocol' });
+    const project = createProject({ ctx, name: 'Attach Refill' });
+    const { ticket, objectives } = createTicketWithObjectives({
+      ctx,
+      projectId: project.id,
+      objectives: [{ objective: 'Only objective' }]
+    });
+
+    ctx.db
+      .prepare(`UPDATE objectives SET assigned_agent = 'claude' WHERE id = ?`)
+      .run(objectives[0]?.id);
+
+    const attached = attachSession({
+      ctx,
+      ticketId: ticket.displayId,
+      agentIdentifier: 'codex'
+    });
+
+    assert.equal(attached.objective.state, 'executing');
+    assert.equal(attached.objectives.length, 2);
+
+    const draft = attached.objectives.find(objective => objective.state === 'draft');
+    assert.ok(draft);
+    assert.equal(draft.objective, '');
+    assert.equal(draft.title, 'New objective');
+
+    const draftRow = ctx.db
+      .prepare(`SELECT assigned_agent FROM objectives WHERE id = ?`)
+      .get(draft.id) as { assigned_agent: string | null };
+    assert.equal(draftRow.assigned_agent, 'claude');
 
     db.close();
   });

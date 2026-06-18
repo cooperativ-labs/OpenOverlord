@@ -22,4 +22,26 @@ describe('ticket reference resolution', () => {
     assert.equal(getTicketDetail(created.displayId).displayId, created.displayId);
     assert.doesNotThrow(() => listTicketEvents(created.displayId));
   });
+
+  it('assigns new tickets to the creator by default, unless explicitly unassigned', async () => {
+    const dir = mkdtempSync(path.join('/tmp', 'ovld-ticket-assignee-'));
+    process.env.OVERLORD_SQLITE_PATH = path.join(dir, 'Overlord.sqlite');
+
+    const { createProject, createTicket } = await import('./repository.ts');
+    const { ACTOR_WORKSPACE_USER_ID } = await import('./db.ts');
+
+    const project = createProject({ name: 'Ticket Assignee Test' });
+    const created = createTicket({
+      projectId: project.id,
+      firstObjective: 'Default assignee to creator'
+    });
+    assert.equal(created.assignedWorkspaceUserId, ACTOR_WORKSPACE_USER_ID);
+
+    const explicitlyUnassigned = createTicket({
+      projectId: project.id,
+      firstObjective: 'Allow explicit unassign on create',
+      assignedWorkspaceUserId: null
+    });
+    assert.equal(explicitlyUnassigned.assignedWorkspaceUserId, null);
+  });
 });

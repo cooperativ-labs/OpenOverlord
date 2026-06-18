@@ -124,7 +124,7 @@ export let WORKSPACE: { id: string; slug: string; name: string; kind: string } =
   kind: initialWorkspace.kind
 };
 
-/** The workspace user changes are attributed to (the local user for a local install). */
+/** The workspace user changes are attributed to, once a local account exists. */
 export let ACTOR_WORKSPACE_USER_ID: string | null = resolveActorForWorkspace(initialWorkspace.id);
 
 /**

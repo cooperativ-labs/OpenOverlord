@@ -284,7 +284,13 @@ export async function runProtocolCommand({
   // Client-side VCS capture: read git status here (the agent's machine), never on
   // the backend. Filter explicit payloads and, at deliver, merge the run delta.
   if ((subcommand === 'deliver' || subcommand === 'update') && ticketId) {
-    applySessionChangedFiles({ flags, workingDirectory, ticketId, subcommand, stdin: protocolStdin });
+    applySessionChangedFiles({
+      flags,
+      workingDirectory,
+      ticketId,
+      subcommand,
+      stdin: protocolStdin
+    });
   }
 
   const result = await runtime.backend.post<unknown>({

@@ -53,6 +53,8 @@ export interface WorkspaceDto {
 }
 
 export interface CreateWorkspaceBody {
+  /** Optional stable workspace ID; derived from the full name when omitted. */
+  id?: string;
   name: string;
   /** Optional slug; derived from the name (and uniquified) when omitted. */
   slug?: string;
@@ -71,6 +73,8 @@ export interface UpdateWorkspaceBody {
  * is suggested from the first three letters of the name.
  */
 export interface CompleteInitialSetupBody {
+  /** Optional stable workspace ID; derived from the full name when omitted. */
+  id?: string;
   name: string;
   slug?: string;
 }
@@ -548,6 +552,8 @@ export interface CreateTicketBody {
   title?: string;
   priority?: TicketPriority;
   statusId?: string;
+  /** Assign the ticket to a workspace member (`workspace_users.id`), or `null` to create unassigned. Defaults to the creator when omitted. */
+  assignedWorkspaceUserId?: string | null;
   /** Optional first objective instruction; creates objective #1 when present. */
   firstObjective?: string;
   /** Optional ordered objective instructions; creates objective #1 as draft and the rest as future. */

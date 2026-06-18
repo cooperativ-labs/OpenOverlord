@@ -67,9 +67,7 @@ function AgentInstructionsField({ value }: { value: string }) {
       setSaveState('success');
     } catch (err) {
       setSaveState('error');
-      setError(
-        err instanceof Error ? err.message : 'Failed to save custom agent instructions.'
-      );
+      setError(err instanceof Error ? err.message : 'Failed to save custom agent instructions.');
     }
   }
 

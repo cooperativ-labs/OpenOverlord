@@ -24,8 +24,17 @@ type WorkspaceCreatorModalProps = {
 export function WorkspaceCreatorModal({ open, onOpenChange }: WorkspaceCreatorModalProps) {
   const navigate = useNavigate();
   const createWorkspaceMutation = useCreateWorkspace();
-  const { name, setName, slug, setSlugFromInput, exampleSlug, reset, getSubmitBody } =
-    useWorkspaceCreationForm();
+  const {
+    name,
+    setName,
+    workspaceId,
+    setWorkspaceIdFromInput,
+    slug,
+    setSlugFromInput,
+    exampleSlug,
+    reset,
+    getSubmitBody
+  } = useWorkspaceCreationForm();
   const [error, setError] = useState<string | null>(null);
   const [createButtonState, setCreateButtonState] = useState<ButtonLoadingState>('default');
 
@@ -75,10 +84,13 @@ export function WorkspaceCreatorModal({ open, onOpenChange }: WorkspaceCreatorMo
           <WorkspaceCreationFields
             name={name}
             onNameChange={setName}
+            workspaceId={workspaceId}
+            onWorkspaceIdChange={setWorkspaceIdFromInput}
             slug={slug}
             onSlugChange={setSlugFromInput}
             exampleSlug={exampleSlug}
             nameInputId="workspace-name"
+            workspaceIdInputId="workspace-id"
             slugInputId="workspace-slug"
             onEnter={() => void handleCreate()}
           />

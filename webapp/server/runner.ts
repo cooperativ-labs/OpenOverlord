@@ -94,13 +94,7 @@ function serviceContext() {
   };
 }
 
-function failQueuedRequest({
-  row,
-  error
-}: {
-  row: ExecutionRequestRow;
-  error: string;
-}): void {
+function failQueuedRequest({ row, error }: { row: ExecutionRequestRow; error: string }): void {
   const now = nowIso();
   const revision = row.revision + 1;
   db.prepare(

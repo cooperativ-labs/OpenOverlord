@@ -160,7 +160,7 @@ If the same idempotency scope/key is reused with a different `request_hash`, the
 
 ## Identity And Tenancy
 
-The local MVP can run as one implicit trusted user in one implicit workspace. The schema should still reserve the future multi-user shape.
+The local MVP can run as one authenticated local operator in one seeded workspace. The first human identity is created through the Auth Layer, and the schema should still reserve the future multi-user shape.
 
 ### `workspaces`
 
@@ -1740,14 +1740,14 @@ Conflict handling can start simple:
 
 The first implementable migration does not need every table above. A practical MVP slice:
 
-1. Better Auth `user`, `workspaces`, `profiles`, `workspace_users` with one implicit local user profile and membership.
+1. Better Auth `user`, `workspaces`, `profiles`, `workspace_users`; the placeholder workspace is seeded, but the first human user/profile/membership is created by the Auth Layer account creation flow.
 2. `projects`, `project_statuses`, `devices`, `execution_targets`, `workspace_user_execution_targets`, `user_execution_target_preferences`, `project_resources`, `project_user_preferences`.
 3. `ticket_sequences`, `tickets`, `objectives`, `agent_sessions`.
 4. `ticket_events`, `shared_context_entries`, `objective_attachments`.
 5. `deliveries`, `artifacts`, `changed_files`, `change_rationales`.
 6. `execution_requests`, `idempotency_keys`.
 7. `entity_changes`, `schema_migrations`.
-8. Default seed rows for the local workspace/user/statuses/ticket sequence.
+8. Default seed rows for the local workspace/statuses/ticket sequence.
 
 Auth/RBAC expansion can then add:
 

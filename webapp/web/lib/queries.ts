@@ -373,13 +373,8 @@ export function useCreateProjectResource(projectId: string) {
 export function useUpdateProjectResource(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      resourceId,
-      body
-    }: {
-      resourceId: string;
-      body: UpdateProjectResourceBody;
-    }) => api.updateProjectResource(projectId, resourceId, body),
+    mutationFn: ({ resourceId, body }: { resourceId: string; body: UpdateProjectResourceBody }) =>
+      api.updateProjectResource(projectId, resourceId, body),
     onSuccess: () => invalidateAll(qc)
   });
 }

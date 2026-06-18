@@ -44,7 +44,7 @@ export function mergeProfileMetadataJson({
   }
 
   if (agentInstructions !== undefined) {
-    const trimmed = agentInstructions.trim();
+    const trimmed = agentInstructions?.trim() ?? '';
     if (trimmed) parsed.agentInstructions = trimmed;
     else delete parsed.agentInstructions;
   }

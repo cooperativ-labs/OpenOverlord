@@ -1,17 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { setActiveTokenAuth, setActiveWorkspaceUser } from './db.ts';
+import { db, setActiveTokenAuth, setActiveWorkspaceUser } from './db.ts';
 import { ApiError } from './errors.ts';
 import { actorCan, requirePermission } from './rbac.ts';
 import { createUserToken, listUserTokens } from './repository.ts';
+import { seedAuthenticatedOperator } from './test-helpers.ts';
 
-// These tests run against an isolated temp SQLite DB (OVERLORD_SQLITE_PATH set by
-// the test runner) seeded with the ADMIN local operator. They exercise the real
+// These tests create an explicit ADMIN local operator. They exercise the real
 // REST→service path for default expiry, scope persistence, and the unified RBAC
 // gate that intersects role grants with token scope.
 
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+const operatorWorkspaceUserId = seedAuthenticatedOperator({ db });
+setActiveWorkspaceUser(operatorWorkspaceUserId);
 
 test('createUserToken defaults to a ~90-day expiry when none is given', () => {
   const { token } = createUserToken({ label: 'default-expiry' });
@@ -55,7 +57,7 @@ test('a ticket_lifecycle token is denied admin/destructive actions but allowed t
     'execution_request:claim'
   ];
   setActiveTokenAuth({
-    workspaceUserId: 'local-workspace-user',
+    workspaceUserId: operatorWorkspaceUserId,
     tokenId: 'tok-test',
     scopeGrants
   });
@@ -73,7 +75,7 @@ test('a ticket_lifecycle token is denied admin/destructive actions but allowed t
 });
 
 test('a full token (session/loopback) keeps the operator ADMIN permissions', () => {
-  setActiveWorkspaceUser('local-workspace-user');
+  setActiveWorkspaceUser(operatorWorkspaceUserId);
   assert.equal(actorCan('project:delete'), true);
   assert.equal(actorCan('user:create'), true);
 });

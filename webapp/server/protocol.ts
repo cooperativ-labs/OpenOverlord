@@ -1,5 +1,4 @@
 import { type Permission, PERMISSIONS } from '@overlord/auth';
-import { SEED_WORKSPACE_USER_ID } from '@overlord/database';
 
 import type { ServiceContext } from '../../src/service/context.ts';
 import { discoverProject } from '../../src/service/projects.ts';
@@ -54,7 +53,7 @@ function buildContext(): ServiceContext {
   return {
     db,
     workspace: { id: WORKSPACE.id, slug: WORKSPACE.slug, name: WORKSPACE.name },
-    actorWorkspaceUserId: ACTOR_WORKSPACE_USER_ID ?? SEED_WORKSPACE_USER_ID,
+    actorWorkspaceUserId: ACTOR_WORKSPACE_USER_ID,
     source: 'protocol'
   };
 }

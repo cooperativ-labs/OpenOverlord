@@ -1,5 +1,12 @@
 import { flagBoolean, flagValue, parseArgs } from './args.js';
 import {
+  type AuthLoginResult,
+  isBackendReachabilityError,
+  probeBackendReachability,
+  runInteractiveAuthLogin
+} from './auth-login.js';
+import { resolveAuthStatus } from './auth-status.js';
+import {
   DEFAULT_LOCAL_BACKEND_URL,
   loadConfig,
   resolveConfigWritePath,
@@ -11,13 +18,6 @@ import {
   setupConnector,
   type SetupResult
 } from './connectors.js';
-import { resolveAuthStatus } from './auth-status.js';
-import {
-  isBackendReachabilityError,
-  probeBackendReachability,
-  runInteractiveAuthLogin,
-  type AuthLoginResult
-} from './auth-login.js';
 import { CliError } from './errors.js';
 import { printJson, printLine, printStepTitle } from './output.js';
 import type { CliRuntime } from './runtime.js';

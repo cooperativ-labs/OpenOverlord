@@ -45,6 +45,8 @@ type MentionableTextareaProps = Omit<
   autoListContinuation?: AutoListContinuationMode | false;
   /** When set, caps auto-grown height so the textarea scrolls internally instead of expanding past this pixel height. */
   maxHeightPx?: number;
+  /** Marks portal menus as owned by a parent interaction surface, such as an inline editor card. */
+  menuOwnerId?: string;
 };
 
 export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, MentionableTextareaProps>(
@@ -70,6 +72,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       onTicketMentionSelect,
       autoListContinuation = false,
       maxHeightPx,
+      menuOwnerId,
       ...props
     },
     forwardedRef
@@ -459,6 +462,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
     const mentionMenu = mentionMenuOpen ? (
       <div
         ref={mentionListRef}
+        data-blank-ticket-card-owner={menuOwnerId}
         className={cn(
           mentionMenuMode === 'portal'
             ? 'fixed z-50 w-max max-w-[min(64rem,calc(100vw-1rem))] overflow-x-auto overflow-y-auto rounded-md border bg-popover p-1 shadow-md'
@@ -500,6 +504,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
     const projectMentionMenu = projectMentionMenuOpen ? (
       <div
         ref={projectMentionListRef}
+        data-blank-ticket-card-owner={menuOwnerId}
         className={cn(
           mentionMenuMode === 'portal'
             ? 'fixed z-50 w-max max-w-[min(48rem,calc(100vw-1rem))] overflow-x-auto overflow-y-auto rounded-md border bg-popover p-1 shadow-md'
@@ -533,6 +538,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
     const ticketMentionMenu = ticketMentionMenuOpen ? (
       <div
         ref={ticketMentionListRef}
+        data-blank-ticket-card-owner={menuOwnerId}
         className={cn(
           mentionMenuMode === 'portal'
             ? 'fixed z-50 w-max max-w-[min(48rem,calc(100vw-1rem))] overflow-x-auto overflow-y-auto rounded-md border bg-popover p-1 shadow-md'

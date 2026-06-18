@@ -67,6 +67,7 @@ export function BlankTicketCard({
   const [selectedProjectId, setSelectedProjectId] = useState(projectId);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const cardRef = useRef<HTMLDivElement | null>(null);
+  const overlayOwnerId = inputId;
   const valueRef = useRef(value);
   const handleDismissRef = useRef<(currentValue: string) => Promise<void>>(async () => {});
 
@@ -131,7 +132,7 @@ export function BlankTicketCard({
     );
   }, []);
 
-  const handleBlur = useCallback(
+  const handleDismiss = useCallback(
     async (currentValue: string) => {
       if (isCreating) return;
       const trimmed = currentValue.trim();
@@ -149,12 +150,19 @@ export function BlankTicketCard({
     [isCreating, onClose, onCreateTicket, position, statusForSelection]
   );
 
-  handleDismissRef.current = handleBlur;
+  handleDismissRef.current = handleDismiss;
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target;
-      if (!(target instanceof Node) || cardRef.current?.contains(target)) return;
+      if (!(target instanceof Node)) return;
+
+      const targetElement = target instanceof Element ? target : target.parentElement;
+      const withinOwnedOverlay = targetElement?.closest(
+        `[data-blank-ticket-card-owner="${overlayOwnerId}"]`
+      );
+
+      if (cardRef.current?.contains(target) || withinOwnedOverlay) return;
 
       const active = document.activeElement;
       const input = document.getElementById(inputId);
@@ -166,7 +174,7 @@ export function BlankTicketCard({
 
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [inputId]);
+  }, [inputId, overlayOwnerId]);
 
   const handleKeyDown = useCallback(
     async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -222,14 +230,12 @@ export function BlankTicketCard({
           id={inputId}
           autoFocus
           projectId={selectedProjectId}
+          menuOwnerId={overlayOwnerId}
           value={value}
           onValueChange={setValue}
           placeholder="What needs to be done?"
           disabled={isCreating}
           onKeyDown={handleKeyDown}
-          onBlur={e => {
-            void handleBlur(e.currentTarget.value);
-          }}
           className={
             expand
               ? 'min-h-[156px] resize-none border-0 p-1 text-sm shadow-none focus-visible:ring-0'
@@ -277,7 +283,11 @@ export function BlankTicketCard({
                   </span>
                   <ChevronDown className="h-3 w-3 opacity-60" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent
+                  align="end"
+                  className="w-48"
+                  data-blank-ticket-card-owner={overlayOwnerId}
+                >
                   <DropdownMenuLabel>Project</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   {projects.map(project => (
@@ -318,7 +328,11 @@ export function BlankTicketCard({
                 >
                   <Tag className="h-3.5 w-3.5" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent
+                  align="end"
+                  className="w-48"
+                  data-blank-ticket-card-owner={overlayOwnerId}
+                >
                   {activeTags.map(tag => (
                     <DropdownMenuCheckboxItem
                       key={tag.id}
