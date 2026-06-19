@@ -3,7 +3,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Plus } from 'lucide-react';
 import { useCallback, useState } from 'react';
 
-import { Badge, STATUS_LABEL, statusClasses } from '@/components/ui.tsx';
+import { Badge, STATUS_CONFIG, statusClasses } from '@/components/ui.tsx';
 
 import type { ProjectStatusDto, TicketDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 
@@ -47,6 +47,7 @@ export function BoardColumn({
   ) => Promise<void> | void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status.id });
+  const StatusIcon = STATUS_CONFIG[status.type].icon;
   const [isAddingBottom, setIsAddingBottom] = useState(false);
   const [isAddingTop, setIsAddingTop] = useState(false);
   const [focusEditorCount, setFocusEditorCount] = useState(0);
@@ -136,7 +137,7 @@ export function BoardColumn({
       <div className="mb-2 flex shrink-0 items-center justify-between px-1">
         <Badge className={statusClasses(status.type)}>
           {status.name}
-          <span className="ml-1.5 opacity-60">{STATUS_LABEL[status.type]}</span>
+          <StatusIcon className="ml-1.5 h-3 w-3 opacity-60" />
         </Badge>
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-[var(--color-ink-dim)]">{count}</span>

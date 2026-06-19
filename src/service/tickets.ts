@@ -917,13 +917,14 @@ export function moveTicketToReview({
   const ticket = getTicketSummary({ ctx, ticketId });
   const reviewStatus = getReviewStatusId(ctx, ticket.projectId);
   const now = nowIso();
+  const boardPosition = topBoardPosition(ctx, ticket.projectId, reviewStatus.id);
 
   ctx.db
     .prepare(
-      `UPDATE tickets SET status_id = ?, status_type = ?, updated_at = ?, revision = revision + 1
+      `UPDATE tickets SET status_id = ?, status_type = ?, board_position = ?, updated_at = ?, revision = revision + 1
        WHERE id = ?`
     )
-    .run(reviewStatus.id, reviewStatus.type, now, ticket.id);
+    .run(reviewStatus.id, reviewStatus.type, boardPosition, now, ticket.id);
 
   recordChange({
     ctx,
@@ -932,7 +933,7 @@ export function moveTicketToReview({
     operation: 'update',
     projectId: ticket.projectId,
     ticketId: ticket.id,
-    changedFields: ['status_id', 'status_type']
+    changedFields: ['status_id', 'status_type', 'board_position']
   });
 }
 

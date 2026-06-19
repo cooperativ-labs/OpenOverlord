@@ -12,68 +12,16 @@ import {
   useSensors
 } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { Ban, CheckCheck, CircleSlash, Eye, NotebookPen, Play } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import type {
-  ProjectStatusDto,
-  StatusType,
-  TicketDto,
-  WorkspaceMemberDto
-} from '../../shared/contract.ts';
+import { STATUS_CONFIG } from '@/components/ui.tsx';
+
+import type { ProjectStatusDto, TicketDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 import { useReorderBoardColumn } from '../lib/queries.ts';
 
 import { type ColumnMap, columnMapsEqual } from './board-shared.ts';
 import { TicketListCard } from './TicketListCard.tsx';
-import { type StatusListStyle, TicketListStatusGroup } from './TicketListStatusGroup.tsx';
-
-function getStatusStyle(type: StatusType): StatusListStyle {
-  switch (type) {
-    case 'execute':
-      return {
-        text: 'text-blue-600 dark:text-blue-400',
-        bg: 'bg-blue-500/15',
-        rail: 'border-l-blue-500/40',
-        icon: Play
-      };
-    case 'complete':
-      return {
-        text: 'text-emerald-600 dark:text-emerald-400',
-        bg: 'bg-emerald-500/15',
-        rail: 'border-l-emerald-500/40',
-        icon: CheckCheck
-      };
-    case 'review':
-      return {
-        text: 'text-amber-600 dark:text-amber-400',
-        bg: 'bg-amber-500/15',
-        rail: 'border-l-amber-500/40',
-        icon: Eye
-      };
-    case 'blocked':
-      return {
-        text: 'text-red-600 dark:text-red-400',
-        bg: 'bg-red-500/15',
-        rail: 'border-l-red-500/40',
-        icon: Ban
-      };
-    case 'cancelled':
-      return {
-        text: 'text-zinc-500 dark:text-zinc-400',
-        bg: 'bg-zinc-500/15',
-        rail: 'border-l-zinc-500/40',
-        icon: CircleSlash
-      };
-    case 'draft':
-    default:
-      return {
-        text: 'text-muted-foreground',
-        bg: 'bg-muted',
-        rail: 'border-l-border',
-        icon: NotebookPen
-      };
-  }
-}
+import { TicketListStatusGroup } from './TicketListStatusGroup.tsx';
 
 export function TicketListView({
   statuses,
@@ -243,7 +191,7 @@ export function TicketListView({
           <TicketListStatusGroup
             key={status.id}
             status={status}
-            style={getStatusStyle(status.type)}
+            style={STATUS_CONFIG[status.type]}
             tickets={tickets}
             projectId={projectId}
             projectName={projectName}

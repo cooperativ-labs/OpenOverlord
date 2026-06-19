@@ -38,12 +38,10 @@ export function AgentModelChooserButton({
   const [open, setOpen] = useState(false);
   const agent = catalog?.agents.find(a => a.key === selection.agent);
   const model = agent?.models.find(m => m.id === selection.model);
-  const label = agent
-    ? model
-      ? `${agent.label} · ${model.displayName}`
-      : agent.label
-    : selection.agent;
-  const triggerLabel = `Choose agent and model: ${label}`;
+  const agentLabel = agent ? agent.label : selection.agent;
+  const fullLabel = model ? `${agentLabel} · ${model.displayName}` : agentLabel;
+  const label = model ? model.displayName : agentLabel;
+  const triggerLabel = `Choose agent and model: ${fullLabel}`;
   const agentIconKey = agent?.key ?? selection.agent;
   const hasAgentIcon = getAgentIcon(agentIconKey) !== null;
 
@@ -80,7 +78,7 @@ export function AgentModelChooserButton({
           }
         />
         <TooltipContent side="top" hidden={!compact}>
-          {label}
+          {fullLabel}
         </TooltipContent>
       </Tooltip>
       <PopoverContent align="end" className="w-auto min-w-[360px]">

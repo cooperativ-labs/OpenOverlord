@@ -1,19 +1,13 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { ChevronDown, ChevronRight, type LucideIcon } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
+import { type StatusStyle } from '@/components/ui.tsx';
 import { cn } from '@/lib/utils';
 
 import type { ProjectStatusDto, TicketDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 
 import { TicketListCard } from './TicketListCard.tsx';
-
-export interface StatusListStyle {
-  text: string;
-  bg: string;
-  rail: string;
-  icon: LucideIcon;
-}
 
 export function TicketListStatusGroup({
   status,
@@ -28,7 +22,7 @@ export function TicketListStatusGroup({
   onToggleCollapse
 }: {
   status: ProjectStatusDto;
-  style: StatusListStyle;
+  style: StatusStyle;
   tickets: TicketDto[];
   projectId: string;
   projectName: string;

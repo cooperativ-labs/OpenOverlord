@@ -1,4 +1,13 @@
 import {
+  Ban,
+  CheckCheck,
+  CircleSlash,
+  Eye,
+  type LucideIcon,
+  NotebookPen,
+  Play
+} from 'lucide-react';
+import {
   type ButtonHTMLAttributes,
   type ComponentProps,
   type InputHTMLAttributes,
@@ -20,14 +29,64 @@ import type { ObjectiveState, StatusType, TicketPriority } from '../../shared/co
 
 // ---- Status / priority vocab → presentation ------------------------------
 
-export const STATUS_LABEL: Record<StatusType, string> = {
-  draft: 'Draft',
-  execute: 'Execute',
-  review: 'Review',
-  complete: 'Complete',
-  blocked: 'Blocked',
-  cancelled: 'Cancelled'
+export interface StatusStyle {
+  label: string;
+  icon: LucideIcon;
+  text: string;
+  bg: string;
+  rail: string;
+}
+
+// Single source of truth for stage → icon/color across the board, list, and
+// workflow settings views.
+export const STATUS_CONFIG: Record<StatusType, StatusStyle> = {
+  draft: {
+    label: 'Draft',
+    icon: NotebookPen,
+    text: 'text-muted-foreground',
+    bg: 'bg-muted',
+    rail: 'border-l-border'
+  },
+  execute: {
+    label: 'Execute',
+    icon: Play,
+    text: 'text-blue-600 dark:text-blue-400',
+    bg: 'bg-blue-500/15',
+    rail: 'border-l-blue-500/40'
+  },
+  review: {
+    label: 'Review',
+    icon: Eye,
+    text: 'text-amber-600 dark:text-amber-400',
+    bg: 'bg-amber-500/15',
+    rail: 'border-l-amber-500/40'
+  },
+  complete: {
+    label: 'Complete',
+    icon: CheckCheck,
+    text: 'text-emerald-600 dark:text-emerald-400',
+    bg: 'bg-emerald-500/15',
+    rail: 'border-l-emerald-500/40'
+  },
+  blocked: {
+    label: 'Blocked',
+    icon: Ban,
+    text: 'text-red-600 dark:text-red-400',
+    bg: 'bg-red-500/15',
+    rail: 'border-l-red-500/40'
+  },
+  cancelled: {
+    label: 'Cancelled',
+    icon: CircleSlash,
+    text: 'text-zinc-500 dark:text-zinc-400',
+    bg: 'bg-zinc-500/15',
+    rail: 'border-l-zinc-500/40'
+  }
 };
+
+export const STATUS_LABEL: Record<StatusType, string> = Object.fromEntries(
+  Object.entries(STATUS_CONFIG).map(([type, style]) => [type, style.label])
+) as Record<StatusType, string>;
 
 export function statusClasses(type: StatusType): string {
   switch (type) {
