@@ -5,7 +5,12 @@ import { parse } from 'smol-toml';
 
 import { parseAgentCatalogFromToml } from './agent-catalog.ts';
 import type { CatalogAgent } from './agent-catalog-defaults.ts';
-import { isExplicitRuntimeEnv, loadEnvDefaults } from './env.ts';
+import {
+  type EnvProfile,
+  isExplicitRuntimeEnv,
+  loadEnvDefaults,
+  resolveLayeredEnv
+} from './env.ts';
 
 export const DEFAULT_LOCAL_BACKEND_DIR = '~/.ovld';
 export const DEFAULT_LOCAL_BACKEND_DATABASE_PATH = '~/.ovld/Overlord.sqlite';
@@ -160,9 +165,12 @@ export function resolveConfigWritePath(startDir = process.cwd()): string {
   return findConfigPath(startDir) ?? resolveGlobalConfigPath();
 }
 
-export function loadConfig(configPath?: string | null): OverlordConfig {
+export function loadConfig(
+  configPath?: string | null,
+  envProfile: EnvProfile = 'development'
+): OverlordConfig {
   const resolvedPath = configPath ?? findEffectiveConfigPath();
-  loadEnvDefaults(resolvedPath ? path.dirname(resolvedPath) : process.cwd());
+  loadEnvDefaults(resolvedPath ? path.dirname(resolvedPath) : process.cwd(), envProfile);
 
   if (!resolvedPath || !existsSync(resolvedPath)) {
     return { ...DEFAULT_CONFIG };
@@ -248,7 +256,7 @@ function expandTilde(input: string): string {
 
 export function resolveDatabasePath(config: OverlordConfig, startDir = process.cwd()): string {
   // A real runtime override (shell export, container launcher) beats the
-  // persisted `overlord.toml` value; a `.env`-backfilled value does not — see
+  // persisted `overlord.toml` value; an env-file-backfilled value does not — see
   // `isExplicitRuntimeEnv` in `env.ts`.
   const explicit = process.env.OVERLORD_SQLITE_PATH;
   if (explicit && isExplicitRuntimeEnv('OVERLORD_SQLITE_PATH')) {
@@ -265,7 +273,7 @@ export function resolveDatabasePath(config: OverlordConfig, startDir = process.c
     return path.isAbsolute(expanded) ? expanded : path.resolve(baseDir, expanded);
   }
 
-  // No explicit runtime override or toml override: fall back to a `.env`
+  // No explicit runtime override or toml override: fall back to an env-file
   // baked-in default if present, otherwise the per-user global default.
   if (explicit) {
     const expanded = expandTilde(explicit);
@@ -277,16 +285,16 @@ export function resolveDatabasePath(config: OverlordConfig, startDir = process.c
   return path.join(resolveGlobalDataDir(), 'Overlord.sqlite');
 }
 
-export function resolveBackendUrl(config: OverlordConfig): string {
+export function resolveBackendUrl(
+  config: OverlordConfig,
+  envProfile: EnvProfile = 'development'
+): string {
   // Precedence: explicit runtime env (shell export, container launcher) >
-  // persisted `overlord.toml` (user/Desktop-edited) > `.env`/`.env.local`
-  // baked-in default > hardcoded fallback. A value that only exists because
-  // `.env` backfilled `OVERLORD_BACKEND_URL` must NOT outrank `overlord.toml`,
-  // since the toml is shared/committed and the env file is meant to seed it,
-  // not override it. Mirrors the existing OVLD_HOME / OVERLORD_SQLITE_PATH /
-  // OVERLORD_WEB_PORT overrides.
+  // development `.env.local` or production `overlord.toml` (profile-dependent) >
+  // the other layer > hardcoded fallback.
   const override = process.env.OVERLORD_BACKEND_URL?.trim();
   if (override && isExplicitRuntimeEnv('OVERLORD_BACKEND_URL')) return override;
+  if (envProfile === 'development' && override) return override;
   if (config.backendUrl?.trim()) return config.backendUrl.trim();
   return override || DEFAULT_LOCAL_BACKEND_URL;
 }

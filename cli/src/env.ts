@@ -2,6 +2,12 @@ import { parse as parseDotenv } from 'dotenv';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
+export type EnvProfile = 'development' | 'production';
+
+export function resolveEnvFileNames(profile: EnvProfile): string[] {
+  return profile === 'production' ? ['.env.prod'] : ['.env.local'];
+}
+
 function snapshotRuntimeEnv(): Set<string> {
   return new Set(
     Object.entries(process.env)
@@ -25,6 +31,29 @@ export function isExplicitRuntimeEnv(key: string): boolean {
 }
 
 /**
+ * Profile-aware env resolution for keys mirrored in `overlord.toml`.
+ * Development: explicit runtime > env file > toml > fallback.
+ * Production: explicit runtime > toml > env file > fallback.
+ */
+export function resolveLayeredEnv({
+  envKey,
+  configValue,
+  fallback = '',
+  envProfile = 'development'
+}: {
+  envKey: string;
+  configValue: string;
+  fallback?: string;
+  envProfile?: EnvProfile;
+}): string {
+  const value = process.env[envKey]?.trim();
+  if (value && isExplicitRuntimeEnv(envKey)) return value;
+  if (envProfile === 'development' && value) return value;
+  if (configValue) return configValue;
+  return value || fallback;
+}
+
+/**
  * Test-only: re-snapshot the runtime environment. Production code never calls
  * this — the snapshot is meant to be captured exactly once, before any `.env`
  * file is loaded, for the lifetime of a single process. Tests that mutate
@@ -36,15 +65,14 @@ export function resetExplicitRuntimeEnvForTests(): void {
 }
 
 /**
- * Backfills `process.env` from `.env` then `.env.local` in `dir`, without
- * overwriting any value already present. This makes `.env` the lowest-priority
- * config layer: baked-in defaults that `overlord.toml` (user/Desktop-edited)
- * and explicit runtime env vars (shell export, container launcher) both take
- * precedence over. Missing files are silently skipped — most `ovld`
- * invocations (global installs, arbitrary working directories) have neither.
+ * Backfills `process.env` from the env file for `profile` in `dir`, without
+ * overwriting any value already present. Development workflows read `.env.local`
+ * only; production/packaged workflows read `.env.prod` only. Missing files are
+ * silently skipped — most `ovld` invocations (global installs, arbitrary
+ * working directories) have neither.
  */
-export function loadEnvDefaults(dir: string): void {
-  for (const file of ['.env', '.env.local']) {
+export function loadEnvDefaults(dir: string, profile: EnvProfile = 'development'): void {
+  for (const file of resolveEnvFileNames(profile)) {
     const filePath = path.join(dir, file);
     if (!existsSync(filePath)) continue;
     const parsed = parseDotenv(readFileSync(filePath, 'utf8'));

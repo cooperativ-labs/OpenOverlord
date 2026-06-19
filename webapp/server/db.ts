@@ -10,17 +10,22 @@ import {
   loadConfig,
   resolveDatabasePath as resolveConfiguredDatabasePath
 } from '../../cli/src/config.ts';
+import { loadEnvDefaults, type EnvProfile } from '../../cli/src/env.ts';
 import type { ChangeOperation } from '../shared/contract.ts';
 
 // webapp/server/db.ts -> repo root is two levels up from server/.
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const here = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(here, '..', '..');
+const envProfile: EnvProfile =
+  here === path.join(repoRoot, 'webapp', 'server') ? 'development' : 'production';
+loadEnvDefaults(repoRoot, envProfile);
 
 export function resolveDatabasePath(): string {
   const explicit = process.env.OVERLORD_SQLITE_PATH;
   if (explicit) {
     return path.isAbsolute(explicit) ? explicit : path.resolve(repoRoot, explicit);
   }
-  const config = loadConfig(path.join(repoRoot, 'overlord.toml'));
+  const config = loadConfig(path.join(repoRoot, 'overlord.toml'), envProfile);
   // Bridge any admin-configured cloud DB so auth and the shared adapter agree.
   applyDatabaseEnv(config);
   return resolveConfiguredDatabasePath(config, repoRoot);

@@ -97,6 +97,12 @@ function pingHealth(host: string, port: number): Promise<boolean> {
 
 /** Find a free TCP port on the loopback interface, starting at `preferred`. */
 export function findFreePort(preferred: number, host = '127.0.0.1'): Promise<number> {
+  if (!isValidPort(preferred)) {
+    return Promise.reject(
+      new Error(`Preferred port must be an integer from 0 to 65535; got ${preferred}`)
+    );
+  }
+
   return new Promise((resolve, reject) => {
     const tryPort = (candidate: number, attemptsLeft: number) => {
       const server = net.createServer();
@@ -115,6 +121,10 @@ export function findFreePort(preferred: number, host = '127.0.0.1'): Promise<num
     };
     tryPort(preferred, 20);
   });
+}
+
+function isValidPort(port: number): boolean {
+  return Number.isInteger(port) && port >= 0 && port < 65536;
 }
 
 function delay(ms: number): Promise<void> {

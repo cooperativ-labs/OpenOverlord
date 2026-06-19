@@ -100,9 +100,9 @@ Environment overrides (useful in scripts and CI):
 Each `ovld` invocation resolves its own config and backend target
 independently — it is **not** a single shared connection. Resolution order,
 highest precedence first: an explicit runtime env var set before the CLI
-loads any `.env` file → the resolved `overlord.toml` → a `.env`/`.env.local`
-file next to that `overlord.toml` (baked-in defaults, e.g. separate dev
-ports) → a hardcoded fallback. Because of this, a **committed/shared**
+loads any env file → the resolved `overlord.toml` → `.env.local` for
+development or `.env.prod` for production/package defaults next to that
+`overlord.toml` → a hardcoded fallback. Because of this, a **committed/shared**
 `overlord.toml` (e.g. a repo-root example file used by multiple checkouts or
 environments) should only ever hold a host-context-neutral `backend_url`
 (the loopback default). A context-specific target — a Docker-internal host
@@ -206,9 +206,9 @@ colocation convention):
 The packaged CLI lives in this module as a self-contained Yarn sub-project:
 
 ```bash
-yarn build:cli            # compile TypeScript to cli/dist/
+yarn build:cli:prod       # compile TypeScript to cli/dist/
 yarn test:cli             # unit + subprocess smoke tests
-yarn pack:cli             # produce an installable tarball
+yarn pack:cli:prod        # produce an installable tarball
 node cli/bin/ovld.mjs version
 ```
 
@@ -224,7 +224,7 @@ cli/
 ```
 
 The CLI ships command parsing, config/auth onboarding, connector setup, backend
-client calls, and local runner/agent launch logic. Run `yarn build` before using
+client calls, and local runner/agent launch logic. Run `yarn build:cli:prod` before using
 the compiled CLI (`node cli/bin/ovld.mjs …`).
 
 ### In-repo build vs installed CLI
@@ -234,26 +234,24 @@ launching) uses the **installed** `ovld` so those calls hit the installed
 Desktop instance and real ticket data. Bare `ovld` on `PATH` always resolves to
 the global install — keep it that way.
 
-Testing in-repo CLI/Desktop changes must never touch that installed instance
-(`~/.ovld`, `:4310`). Run the in-repo build against an **isolated, throwaway
-`OVLD_HOME`** instead:
+Testing in-repo CLI/Desktop changes must never touch the installed instance
+(`~/.ovld`, `:4310`). Copy `.env.local.example` to `.env.local` so source
+workflows use a repo-local dev home (`database/.local/dev-home`) and API on
+`:4320` while Desktop keeps `~/.ovld` and `:4310`.
 
-- `yarn ovld:dev <args>` builds and runs `cli/bin/ovld.mjs` under a fresh
-  ephemeral `OVLD_HOME` and a dev backend port (`:4320`), e.g.
-  `yarn ovld:dev version` or `yarn ovld:dev protocol discover-project`.
-- The test suite (`yarn test`, `yarn test:cli`, …) runs under the same isolation
-  via `scripts/with-ovld-home.mjs`, so tests can never read or write the
-  installed instance.
+- `yarn dev` / `yarn db:*` / `yarn ovld:dev` read `.env.local` and share the
+  persistent in-repo dev instance.
+- `yarn test` runs under `scripts/with-ovld-home.mjs` with a throwaway temp
+  home so tests never read or write `~/.ovld` or the dev-home database.
 
-For a persistent local instance to smoke-test an in-repo Desktop/server build,
-export a stable home + dev port once, then run the server and CLI under it:
+For a one-off isolated shell without `.env.local`:
 
 ```bash
-export OVLD_HOME="$(mktemp -d)"          # or any throwaway dir outside the repo
+export OVLD_HOME="$(mktemp -d)"
 export OVERLORD_WEB_PORT=4320
 export OVERLORD_BACKEND_URL=http://127.0.0.1:4320
-yarn workspace @overlord/webapp start    # isolated backend on :4320
-node cli/bin/ovld.mjs doctor             # in-repo CLI → the isolated backend
+yarn workspace @overlord/webapp start
+node cli/bin/ovld.mjs doctor
 ```
 
 **Never `yarn link` / `npm link` the workspace CLI** (there is deliberately no

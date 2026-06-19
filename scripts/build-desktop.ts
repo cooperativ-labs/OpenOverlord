@@ -2,10 +2,10 @@
  * Build, sign, and notarize the Overlord desktop app, emitting the artifacts to
  * a folder the operator specifies.
  *
- *   yarn desktop:package                                          # signed → desktop/release (for publish)
- *   yarn desktop:package --out ~/Desktop/overlord-dist            # signed (auto-discovered identity)
- *   yarn desktop:package --out ~/Desktop/overlord-dist --notarize # signed + notarized
- *   yarn desktop:package --out ./build --no-sign                  # ad-hoc, no Apple account
+ *   yarn desktop:package:prod                                          # signed → desktop/release (for publish)
+ *   yarn desktop:package:prod --out ~/Desktop/overlord-dist            # signed (auto-discovered identity)
+ *   yarn desktop:package:prod --out ~/Desktop/overlord-dist --notarize # signed + notarized
+ *   yarn desktop:package:prod --out ./build --no-sign                  # ad-hoc, no Apple account
  *
  * Flags:
  *   --out <dir>            where the .dmg/.zip are copied (default: desktop/release)
@@ -14,7 +14,7 @@
  *   --sign                 sign with the Developer ID Application identity (default)
  *   --notarize             implies --sign; notarize + staple via notarytool
  *
- * Signing/notarization credentials come from the environment (the repo `.env`):
+ * Signing/notarization credentials come from the environment (the repo `.env.prod`):
  *   APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
  *   (and optionally CSC_LINK / CSC_KEY_PASSWORD for an explicit .p12 identity).
  *
@@ -38,6 +38,8 @@ import { fileURLToPath } from 'node:url';
 
 import { DEFAULT_UPDATE_FEED_URL } from '../desktop/update-feed.ts';
 
+import { loadRepoEnvForProfile } from './load-repo-env.mjs';
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const desktopDir = path.join(repoRoot, 'desktop');
 const defaultOutDir = path.join(desktopDir, 'release');
@@ -48,6 +50,16 @@ type Args = {
   sign: boolean;
   notarize: boolean;
 };
+
+const PACKAGED_RUNTIME_ENV_KEYS = [
+  'GEMINI_API_KEY',
+  'GEMINI_MODEL',
+  'OVERLORD_WEB_HOST',
+  'OVERLORD_WEB_PORT',
+  'OVERLORD_SQL_STUDIO_HOST',
+  'OVERLORD_SQL_STUDIO_PORT',
+  'OVERLORD_SQL_STUDIO_BINARY'
+] as const;
 
 function parseArgs(argv: string[]): Args {
   const args: Args = {
@@ -91,21 +103,6 @@ function parseArgs(argv: string[]): Args {
 function fail(message: string): never {
   console.error(`\n✖ ${message}\n`);
   process.exit(1);
-}
-
-/** Minimal `.env` loader so the script is headless without extra deps. */
-function loadEnv(): void {
-  const envPath = path.join(repoRoot, '.env');
-  if (!existsSync(envPath)) return;
-  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
-    const match = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
-    if (!match) continue;
-    const key = match[1];
-    const rawValue = match[2];
-    if (!key || rawValue === undefined) continue;
-    if (process.env[key]) continue; // never override an existing env var
-    process.env[key] = rawValue.replace(/^["']|["']$/g, '');
-  }
 }
 
 function run(command: string, commandArgs: string[], cwd = repoRoot): void {
@@ -179,6 +176,49 @@ function stageFile(from: string, to: string): void {
   cpSync(from, to);
 }
 
+function parseEnvFile(filePath: string): Map<string, string> {
+  const values = new Map<string, string>();
+  if (!existsSync(filePath)) return values;
+
+  for (const line of readFileSync(filePath, 'utf8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const value = parseEnvValue(trimmed.slice(eq + 1));
+    values.set(key, value);
+  }
+
+  return values;
+}
+
+function parseEnvValue(rawValue: string): string {
+  let value = rawValue.trim();
+  let quote: '"' | "'" | null = null;
+
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i];
+    if ((char === '"' || char === "'") && (i === 0 || value[i - 1] !== '\\')) {
+      quote = quote === char ? null : quote ?? char;
+      continue;
+    }
+    if (char === '#' && !quote && (i === 0 || /\s/.test(value[i - 1]))) {
+      value = value.slice(0, i).trim();
+      break;
+    }
+  }
+
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1);
+  }
+
+  return value;
+}
+
 function resetReleaseDir(): void {
   const releaseDir = path.join(desktopDir, 'release');
   rmSync(releaseDir, { recursive: true, force: true });
@@ -187,7 +227,7 @@ function resetReleaseDir(): void {
 }
 
 function main(): void {
-  loadEnv();
+  loadRepoEnvForProfile({ repoRoot, profile: 'production' });
   const args = parseArgs(process.argv.slice(2));
   configureNodeGypPython();
 
@@ -203,7 +243,7 @@ function main(): void {
       key => !process.env[key]
     );
     if (missing.length > 0) {
-      fail(`--notarize needs ${missing.join(', ')} in the environment (set them in .env).`);
+      fail(`--notarize needs ${missing.join(', ')} in the environment (set them in .env.prod).`);
     }
   }
 
@@ -213,7 +253,7 @@ function main(): void {
   run('yarn', ['workspace', '@overlord/database', 'build']);
   run('yarn', ['workspace', '@overlord/auth', 'build']);
   run('yarn', ['workspace', '@overlord/automations', 'build']);
-  // The CLI is built directly (the root build:cli alias is name-sensitive).
+  // The CLI is built directly (the root build:cli:prod alias is name-sensitive).
   run(tsc, ['--project', path.join(repoRoot, 'cli', 'tsconfig.build.json')]);
   // SPA + server bundle.
   run('yarn', ['workspace', '@overlord/webapp', 'build']);
@@ -235,6 +275,7 @@ function main(): void {
     path.join(repoRoot, 'webapp', 'public', 'images', '512.png'),
     path.join(desktopDir, 'build', 'icon.png')
   );
+  stageProductionEnv();
 
   // Start each package build from a clean electron-builder output directory so
   // stale release artifacts cannot survive into the next run.
@@ -266,6 +307,40 @@ function stageCli(): void {
   cpSync(path.join(repoRoot, 'cli', 'bin'), path.join(cliStaging, 'bin'), { recursive: true });
   cpSync(path.join(repoRoot, 'cli', 'dist'), path.join(cliStaging, 'dist'), { recursive: true });
   cpSync(path.join(repoRoot, 'cli', 'package.json'), path.join(cliStaging, 'package.json'));
+}
+
+function stageProductionEnv(): void {
+  const exampleValues = parseEnvFile(path.join(repoRoot, '.env.prod.example'));
+  const prodValues = parseEnvFile(path.join(repoRoot, '.env.prod'));
+  const stagedLines = [
+    '# Runtime defaults packaged with the desktop app.',
+    '# Generated by scripts/build-desktop.ts from .env.prod.example plus runtime overrides.',
+    '# Build-only secrets such as APPLE_* signing credentials are intentionally excluded.',
+    ''
+  ];
+
+  for (const key of PACKAGED_RUNTIME_ENV_KEYS) {
+    const runtimeValue = process.env[key]?.trim();
+    const fileValue = prodValues.get(key)?.trim();
+    const exampleValue = exampleValues.get(key)?.trim();
+    const value = runtimeValue || fileValue || exampleValue || '';
+    stagedLines.push(`${key}=${value}`);
+  }
+
+  if (
+    !stagedLines
+      .find(line => line.startsWith('GEMINI_API_KEY='))
+      ?.slice('GEMINI_API_KEY='.length)
+      .trim()
+  ) {
+    fail(
+      'desktop:package:prod requires GEMINI_API_KEY in the environment or repo .env.prod so the packaged app ships with a default Gemini key.'
+    );
+  }
+
+  const target = path.join(desktopDir, 'staging', '.env.prod');
+  mkdirSync(path.dirname(target), { recursive: true });
+  writeFileSync(target, `${stagedLines.join('\n')}\n`);
 }
 
 /**
@@ -415,7 +490,7 @@ function ensureElectronBinary(): void {
   if (process.env.ELECTRON_SKIP_BINARY_DOWNLOAD === '1') {
     fail(
       'Electron binary download was skipped (ELECTRON_SKIP_BINARY_DOWNLOAD=1). ' +
-        'Unset it or run `node node_modules/electron/install.js`, then retry `yarn desktop:package`.'
+        'Unset it or run `node node_modules/electron/install.js`, then retry `yarn desktop:package:prod`.'
     );
   }
 
@@ -431,7 +506,9 @@ function ensureElectronBinary(): void {
 function electronExecutable(): string {
   return (
     resolveElectronExecutable() ??
-    fail('Could not locate the Electron executable after install. Retry `yarn desktop:package`.')
+    fail(
+      'Could not locate the Electron executable after install. Retry `yarn desktop:package:prod`.'
+    )
   );
 }
 

@@ -2,18 +2,32 @@ import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadConfig } from '../cli/src/config.ts';
-
-const VITE_DEV_PORT = 5173;
+import { loadConfig, resolveProjectRoot } from '../cli/src/config.ts';
+import { loadEnvDefaults, resolveLayeredEnv } from '../cli/src/env.ts';
 
 export function stopLocalDev(): void {
-  const config = loadConfig();
+  const repoRoot = resolveProjectRoot();
+  loadEnvDefaults(repoRoot, 'development');
+  const config = loadConfig(path.join(repoRoot, 'overlord.toml'), 'development');
+
+  const webPort = Number(
+    resolveLayeredEnv({
+      envKey: 'OVERLORD_WEB_PORT',
+      configValue: String(config.webPort),
+      envProfile: 'development'
+    })
+  );
+  const sqlStudioPort = Number(
+    resolveLayeredEnv({
+      envKey: 'OVERLORD_SQL_STUDIO_PORT',
+      configValue: String(config.sqlStudioPort),
+      envProfile: 'development'
+    })
+  );
+  const viteDevPort = Number(process.env.OVERLORD_WEB_DEV_PORT?.trim() || '5173');
+
   const ports = [
-    ...new Set([
-      config.webPort,
-      config.sqlStudioEnabled ? config.sqlStudioPort : null,
-      VITE_DEV_PORT
-    ])
+    ...new Set([webPort, config.sqlStudioEnabled ? sqlStudioPort : null, viteDevPort])
   ].filter((port): port is number => port !== null);
 
   for (const port of ports) {

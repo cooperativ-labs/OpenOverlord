@@ -240,7 +240,7 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
           <InlineEditField
             multiline
             value={objective.instructionText}
-            className="block whitespace-pre-wrap"
+            className="whitespace-pre-wrap"
             inputClassName="text-sm"
             placeholder="Describe what the agent should do… (@ file, # project, $ ticket)"
             ariaLabel="Objective instruction"

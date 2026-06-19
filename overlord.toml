@@ -1,7 +1,7 @@
 # Overlord local instance configuration
 instance_name = "Local Overlord"
 backend_mode = "local"
-backend_url = "http://127.0.0.1:4310"
+backend_url = "http://host.docker.internal:4310"
 
 # Published CLI backend target.
 # Local mode expects a Desktop/local backend listening on the loopback URL.

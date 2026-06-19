@@ -81,7 +81,7 @@ EOF
 
 If `heartbeat` succeeds but `deliver` or `update` fails, the session is likely fine — retry with large JSON on stdin instead of inline `--*-json`.
 
-Changed files are captured for you: the CLI records a VCS baseline at attach and, at deliver, reports the run-attributable delta (current `git status` minus baseline) automatically — you do not pass `--changed-files-json`. Deliver rejects with a `missing_rationale` error listing any changed file that still needs a rationale; coverage is aggregated per objective. If the run changed no files, declare it explicitly:
+Changed files are captured for you: the CLI records a VCS baseline at attach and, at deliver, reports the run-attributable delta (current `git status` minus baseline) automatically — you do not pass `--changed-files-json`. Include `changeRationales` only for meaningful file changes made as part of this ticket. Do not include other tracked worktree changes in the delivery report, payload, artifacts, or `changeRationales`, even to label them as pre-existing, concurrent, or unrelated. If `deliver` rejects with a `missing_rationale` error for a file you did not change for this ticket, do not add a rationale for that file; investigate attribution, send a progress update if needed, and resolve the delivery input so only this ticket's changes are reported. Coverage is aggregated per objective. If the run changed no files, declare it explicitly:
 
 ```bash
 ovld protocol deliver --session-key <sessionKey> --ticket-id $TICKET_ID \

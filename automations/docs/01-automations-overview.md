@@ -71,7 +71,7 @@ void generateAndSetObjectiveTitle({
 
 ## Configuration
 
-Environment variables (see [`.env.example`](../../.env.example)):
+Environment variables (see [`.env.local.example`](../../.env.local.example) and [`.env.prod.example`](../../.env.prod.example)):
 
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
@@ -90,7 +90,7 @@ persistence helpers. Shared module code (`types.ts`, `registry.ts`, `index.ts`) 
 
 1. Add new automations as folders under `automations/src/<automation-name>/`.
 2. Keep provider clients inside the automation folder (do not leak `@google/genai` into other modules).
-3. Document any new secrets in `.env.example`.
+3. Document any new secrets in `.env.local.example` and `.env.prod.example`.
 4. Never import database adapters from automations — pass store interfaces from callers.
 
 ## Downstream Automations

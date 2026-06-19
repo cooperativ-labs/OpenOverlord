@@ -16,7 +16,6 @@ export function TicketCardStateOverlay({ state }: { state: TicketCardState }) {
       {state.shimmer ? (
         <div className="pointer-events-none absolute inset-0 animate-[shimmer_2s_linear_infinite] bg-[length:200%_100%] bg-linear-to-r from-transparent via-emerald-500/20 to-transparent" />
       ) : null}
-
     </>
   );
 }

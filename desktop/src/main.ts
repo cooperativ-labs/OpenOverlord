@@ -6,6 +6,8 @@ import {
   type MenuItemConstructorOptions,
   session
 } from 'electron';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import { CliUpdater } from './cli-updater.js';
@@ -19,13 +21,15 @@ import { findFreePort, startServer, stopServer, waitForHealth } from './server.j
 import { DesktopUpdater } from './updater.js';
 import { applyCsp, createWindow, guardNavigation } from './window.js';
 
+loadDesktopEnvDefaults();
+
 // `__dirname` is the dist-electron directory (esbuild emits CJS). The preload
 // and splash assets are emitted alongside this bundle.
 const PRELOAD = path.join(__dirname, 'preload.cjs');
 const SPLASH = path.join(__dirname, 'splash.html');
 
 const HOST = process.env.OVERLORD_WEB_HOST ?? '127.0.0.1';
-const PREFERRED_PORT = Number(process.env.OVERLORD_WEB_PORT ?? '4310');
+const PREFERRED_PORT = parsePort(process.env.OVERLORD_WEB_PORT, 4310, 'OVERLORD_WEB_PORT');
 
 // Dev: connect to an already-running server (`yarn start` / `ovld serve`) instead
 // of forking the bundle, so a dev loop needs no Electron-ABI native rebuild.
@@ -61,6 +65,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 async function boot(): Promise<void> {
+  ensurePackagedConfig();
   updater = new DesktopUpdater(() => mainWindow);
   cliUpdater = new CliUpdater(() => mainWindow);
   installApplicationMenu(updater);
@@ -87,6 +92,103 @@ async function boot(): Promise<void> {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) void openMainWindow();
   });
+}
+
+function loadDesktopEnvDefaults(): void {
+  const envDir = app.isPackaged ? process.resourcesPath : path.resolve(app.getAppPath(), '..');
+  const fileName = app.isPackaged ? '.env.prod' : '.env.local';
+  loadEnvFile(path.join(envDir, fileName));
+}
+
+function ensurePackagedConfig(): void {
+  if (!app.isPackaged) return;
+  const targetPath = globalConfigPath();
+  if (existsSync(targetPath)) return;
+
+  const webHost = process.env.OVERLORD_WEB_HOST?.trim() || HOST;
+  const webPort = parsePort(process.env.OVERLORD_WEB_PORT, PREFERRED_PORT, 'OVERLORD_WEB_PORT');
+  const sqlStudioHost = process.env.OVERLORD_SQL_STUDIO_HOST?.trim() || '127.0.0.1';
+  const sqlStudioPort = parsePort(
+    process.env.OVERLORD_SQL_STUDIO_PORT,
+    4311,
+    'OVERLORD_SQL_STUDIO_PORT'
+  );
+  const sqlStudioBinary = process.env.OVERLORD_SQL_STUDIO_BINARY?.trim() || 'sql-studio';
+
+  mkdirSync(path.dirname(targetPath), { recursive: true });
+  writeFileSync(
+    targetPath,
+    `# Overlord local instance configuration
+instance_name = "Local Overlord"
+backend_mode = "local"
+backend_url = ${tomlString(`http://${webHost === '0.0.0.0' ? '127.0.0.1' : webHost}:${webPort}`)}
+web_host = ${tomlString(webHost)}
+web_port = ${webPort}
+sql_studio_enabled = false
+sql_studio_host = ${tomlString(sqlStudioHost)}
+sql_studio_port = ${sqlStudioPort}
+sql_studio_binary = ${tomlString(sqlStudioBinary)}
+default_agent = "claude"
+`
+  );
+}
+
+function loadEnvFile(filePath: string): void {
+  if (!existsSync(filePath)) return;
+  for (const line of readFileSync(filePath, 'utf8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const value = parseEnvValue(trimmed.slice(eq + 1));
+    if (!process.env[key]?.trim()) process.env[key] = value;
+  }
+}
+
+function parseEnvValue(rawValue: string): string {
+  let value = rawValue.trim();
+  let quote: '"' | "'" | null = null;
+
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i];
+    if ((char === '"' || char === "'") && (i === 0 || value[i - 1] !== '\\')) {
+      quote = quote === char ? null : quote ?? char;
+      continue;
+    }
+    if (char === '#' && !quote && (i === 0 || /\s/.test(value[i - 1]))) {
+      value = value.slice(0, i).trim();
+      break;
+    }
+  }
+
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1);
+  }
+
+  return value;
+}
+
+function parsePort(value: string | undefined, fallback: number, name: string): number {
+  const raw = value?.trim();
+  if (!raw) return fallback;
+
+  const port = Number(raw);
+  if (Number.isInteger(port) && port >= 0 && port < 65536) return port;
+
+  console.warn(`[desktop] ignoring invalid ${name}=${JSON.stringify(raw)}; using ${fallback}`);
+  return fallback;
+}
+
+function globalConfigPath(): string {
+  return path.join(process.env.OVLD_HOME?.trim() || path.join(os.homedir(), '.ovld'), 'overlord.toml');
+}
+
+function tomlString(value: string): string {
+  return JSON.stringify(value);
 }
 
 async function openMainWindow(): Promise<void> {

@@ -35,7 +35,7 @@ Follow the shared Connector Core lifecycle rules in the bundled reference files:
 1. Attach first with `ovld protocol attach --ticket-id <ticket_id>`.
 2. Post updates while working with `ovld protocol update` or liveness with `ovld protocol heartbeat`.
 3. Ask blocking questions with `ovld protocol ask` and stop work.
-4. Deliver with `ovld protocol deliver` when work is complete, including `changeRationales` for meaningful file changes.
+4. Deliver with `ovld protocol deliver` when work is complete, including `changeRationales` only for meaningful file changes made as part of this ticket. Do not include unrelated worktree changes in the delivery report or rationales, even to mark them as pre-existing.
 5. Do not continue implementation after delivery without `ovld protocol resume-follow-up` or `--begin-follow-up-work` on a still-live session.
 
 For full command syntax, flags, phase values, and event types see [reference/cli.md](reference/cli.md).

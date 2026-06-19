@@ -60,7 +60,10 @@ function tryLoad(): { ok: true } | { ok: false; error: string } {
 
 function rebuild(): boolean {
   console.log('check-native-runtime: rebuilding better-sqlite3 for this host...');
-  const result = spawnSync('yarn', ['rebuild', 'better-sqlite3'], { cwd: repoRoot, stdio: 'inherit' });
+  const result = spawnSync('yarn', ['rebuild', 'better-sqlite3'], {
+    cwd: repoRoot,
+    stdio: 'inherit'
+  });
   return result.status === 0;
 }
 
@@ -87,7 +90,7 @@ if (!result.ok) {
     );
     process.exit(1);
   }
-  if (!rebuild() || !(result = tryLoad()).ok) {
+  if (!rebuild() || !tryLoad().ok) {
     report('still failing after rebuild.');
     process.exit(1);
   }

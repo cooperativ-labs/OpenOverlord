@@ -33,6 +33,7 @@ export function SortableTicketCard({
     id: ticket.id,
     disabled: isDragOverlay
   });
+  const cardState = getTicketCardState(ticket);
 
   if (isDragOverlay) {
     return (
@@ -43,6 +44,7 @@ export function SortableTicketCard({
           projectName={projectName}
           projectColor={projectColor}
           assignee={assignee}
+          cardState={cardState}
         />
       </div>
     );
@@ -52,7 +54,6 @@ export function SortableTicketCard({
     transform: CSS.Transform.toString(transform),
     transition
   };
-  const cardState = getTicketCardState(ticket);
 
   return (
     <div
@@ -83,6 +84,7 @@ export function SortableTicketCard({
           projectName={projectName}
           projectColor={projectColor}
           assignee={assignee}
+          cardState={cardState}
         />
       </Card>
     </div>

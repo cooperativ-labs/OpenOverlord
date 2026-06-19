@@ -20,7 +20,7 @@ Use this mode when the prompt already contains a ticket ID or explicitly says th
    During long mechanical stretches with nothing meaningful to post, send `ovld protocol heartbeat --session-key <sessionKey> --ticket-id <ticket_id> [--phase execute] [--percent <0-100>] [--note "..."]` instead of an empty update.
 5. Follow-up messages after the initial ticket are captured automatically by the installed `UserPromptSubmit` hook and stay in discussion intent while the ticket is in review. Do not post `user_follow_up` manually unless the hook is unavailable.
 6. If blocked, call `ovld protocol ask --session-key <sessionKey> --ticket-id <ticket_id> --question "..."` and stop.
-7. Deliver last with `ovld protocol deliver --session-key <sessionKey> --ticket-id <ticket_id> --summary "..."`, including `changeRationales` for each meaningful behavioral file change.
+7. Deliver last with `ovld protocol deliver --session-key <sessionKey> --ticket-id <ticket_id> --summary "..."`, including `changeRationales` only for meaningful behavioral file changes made as part of this ticket.
 
 For full command syntax, flags, phase values, and event types see [reference/cli.md](reference/cli.md).
 
@@ -82,7 +82,7 @@ For ticket creation examples, project discovery, and `--objectives-json` format 
 
 Always include `changeRationales` when delivering. Optionally include them on updates during long-running work.
 
-Overlord captures *which* files changed for you: the CLI records a VCS baseline when you attach and, at `deliver`, automatically reports the files this run changed (current `git status` minus that baseline). You do **not** need to enumerate changed files by hand. Your job is to provide a rationale for each meaningful change — if `deliver` rejects with a missing-rationale error, it is listing files VCS shows you changed that still need a rationale. Record only meaningful behavioral changes; skip formatting-only noise. Do not send `file_changes` as an artifact.
+Overlord captures *which* files changed for you: the CLI records a VCS baseline when you attach and, at `deliver`, automatically reports the files this run changed (current `git status` minus that baseline). You do **not** need to enumerate changed files by hand. Your job is to provide a rationale for each meaningful change you made for this ticket. Do not include other tracked worktree changes in the delivery report, payload, artifacts, or `changeRationales`, even to label them as pre-existing, concurrent, or unrelated. If `deliver` rejects with a missing-rationale error for a file you did not change for this ticket, do not add a rationale for that file; investigate attribution, send a progress update if needed, and resolve the delivery input so only this ticket's changes are reported. Record only meaningful behavioral changes; skip formatting-only noise. Do not send `file_changes` as an artifact.
 
 If your run genuinely changed no files (investigation, discussion, or read-only work), deliver with `--no-file-changes` to declare that explicitly and skip rationale-coverage enforcement.
 

@@ -1,6 +1,8 @@
-import { createAuth, verifyUserToken } from '@overlord/auth';
+import { verifyUserToken } from '@overlord/auth';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
 import type { NextFunction, Request, Response } from 'express';
+
+import { createAuth } from '../../auth/src/auth/config.ts';
 
 import {
   DATABASE_PATH,
@@ -20,9 +22,31 @@ const authBaseHost =
     ? process.env.OVERLORD_WEB_HOST
     : '127.0.0.1';
 const authBasePort = process.env.OVERLORD_WEB_PORT ?? '4310';
-process.env.BETTER_AUTH_URL ??= `http://${authBaseHost}:${authBasePort}`;
+const authBaseUrl = process.env.BETTER_AUTH_URL ?? `http://${authBaseHost}:${authBasePort}`;
+process.env.BETTER_AUTH_URL ??= authBaseUrl;
 
-export const auth = createAuth(DATABASE_PATH);
+function resolveAuthTrustedOrigins({
+  baseUrl,
+  devPort
+}: {
+  baseUrl: string;
+  devPort: string | undefined;
+}): string[] {
+  const origins = new Set<string>([baseUrl]);
+  const vitePort = devPort ?? '5173';
+  // Vite dev server runs on a separate port; localhost and 127.0.0.1 are distinct origins.
+  origins.add(`http://localhost:${vitePort}`);
+  origins.add(`http://127.0.0.1:${vitePort}`);
+  return [...origins];
+}
+
+export const auth = createAuth({
+  database: { type: 'sqlite', path: DATABASE_PATH },
+  trustedOrigins: resolveAuthTrustedOrigins({
+    baseUrl: authBaseUrl,
+    devPort: process.env.OVERLORD_WEB_DEV_PORT
+  })
+});
 export const authNodeHandler = toNodeHandler(auth);
 
 function extractBearerToken(req: Request): string | null {

@@ -68,7 +68,7 @@ export function BoardColumn({
   const content = (
     <div
       ref={setNodeRef}
-      className={`flex min-h-16 flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-1 transition-colors ${
+      className={`flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-1 transition-colors ${
         isOver
           ? 'bg-[var(--color-surface-2)]/40 ring-1 ring-inset ring-[var(--color-accent)]/30'
           : ''

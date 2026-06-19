@@ -116,7 +116,7 @@ export function InlineEditField({
         maxHeightPx={360}
         aria-label={ariaLabel}
         className={cn(
-          'min-h-20 rounded-lg bg-transparent text-sm leading-relaxed shadow-xs transition-colors dark:bg-input/30',
+          'min-h-20 border-none bg-transparent text-sm hover:bg-transparent',
           inputClassName
         )}
         // Clicking outside (anywhere but the mention menu, whose buttons
@@ -141,7 +141,7 @@ export function InlineEditField({
     <Input
       autoFocus
       value={draft}
-      className={cn('h-8', inputClassName)}
+      className={cn('h-full border-none bg-transparent text-sm hover:bg-transparent', inputClassName)}
       aria-label={ariaLabel}
       onChange={event => setDraft(event.target.value)}
       onBlur={commit}

@@ -75,10 +75,10 @@ Maps to the `desktop` contract component (`desktop/docs/desktop-app.md`).
 
 ```bash
 # From the repo root (gated; `yarn install` once to pull the Electron deps):
-yarn desktop:build         # build the SPA + server bundle + Electron main/preload
+yarn desktop:build:prod    # build the SPA + server bundle + Electron main/preload
 yarn desktop:dev           # connect-only: wraps a running `ovld serve` / `yarn start`
 yarn desktop:typecheck     # typecheck the shell against the Electron type defs
-yarn desktop:package [--out <dir>] [--arch arm64|x64|universal] [--no-sign] [--notarize]
+yarn desktop:package:prod [--out <dir>] [--arch arm64|x64|universal] [--no-sign] [--notarize]
 yarn desktop:publish       # publish desktop/release artifacts to GitHub Releases via gh
 ```
 
@@ -88,7 +88,7 @@ yarn desktop:publish       # publish desktop/release artifacts to GitHub Release
 rebuild during development). Start a server first, then launch the shell:
 
 ```bash
-yarn build:webapp && yarn workspace @overlord/webapp build:server
+yarn build:webapp:prod && yarn workspace @overlord/webapp build:server
 ovld serve            # serves the SPA + API at http://127.0.0.1:4310 from a source checkout
 yarn desktop:dev      # Electron window connects to it
 ```
@@ -97,10 +97,11 @@ Override the URL with `OVERLORD_DESKTOP_URL`.
 
 ### Packaging & signing
 
-`yarn desktop:package` (→ `scripts/build-desktop.ts`) builds the modules + server
-bundle + SPA, stages the CLI, and runs electron-builder to emit a signed,
-notarized `.dmg`/`.zip` into `--out`. Signing/notarization credentials are read
-from the environment (`.env` at the repo root):
+`yarn desktop:package:prod` (→ `scripts/build-desktop.ts`) builds the modules + server
+bundle + SPA, stages the CLI, writes a runtime-only bundled `.env.prod`, and runs
+electron-builder to emit a signed, notarized `.dmg`/`.zip` into `--out`.
+Signing/notarization credentials are read from the environment (`.env.prod` at
+the repo root):
 
 Each packaging run deletes the existing `desktop/release` contents before
 electron-builder writes the next release, so stale versioned artifacts do not
@@ -113,6 +114,10 @@ bleed into subsequent publishable builds.
 | `APPLE_TEAM_ID` | Developer Team ID |
 | `OVERLORD_UPDATE_FEED_URL` | Override the default GitHub Releases update feed (see `desktop/update-feed.ts`) |
 
+The packaging step requires `GEMINI_API_KEY` so the desktop app ships with a
+default Gemini key, but it filters build-only secrets such as `APPLE_*` out of
+the bundled `.env.prod`.
+
 The Developer ID Application signing identity is auto-discovered from the login
 keychain (or set `CSC_LINK`/`CSC_KEY_PASSWORD`). Use `--no-sign` for an ad-hoc
 local build that needs no Apple account.
@@ -124,7 +129,7 @@ See
 ### Publishing releases
 
 To push the packaged desktop artifacts to GitHub Releases, run
-`yarn desktop:package` (artifacts land in `desktop/release` by default), then:
+`yarn desktop:package:prod` (artifacts land in `desktop/release` by default), then:
 
 ```bash
 yarn desktop:publish

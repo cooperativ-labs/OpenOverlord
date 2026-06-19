@@ -26,7 +26,7 @@ ticket in about ten minutes.
   npm install -g open-overlord-<version>.tgz
 
   # From source (builds the CLI, then symlinks or adds to PATH)
-  yarn build:cli
+  yarn build:cli:prod
   node cli/bin/ovld.mjs version   # smoke-test: prints the version
   ```
 

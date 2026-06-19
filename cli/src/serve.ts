@@ -20,7 +20,7 @@ import { printJson } from './output.js';
  *   1. `OVERLORD_SERVER_ENTRY` env — an explicit path (run with the matching
  *      runtime by extension: `.ts` via tsx, otherwise `node`).
  *   2. `<project>/webapp/dist-server/index.cjs` — the esbuild server bundle
- *      (`yarn build:server`), run with `node`. Preferred when present.
+ *      (`yarn build:server:prod`), run with `node`. Preferred when present.
  *   3. `<project>/webapp/server/index.ts` — the TypeScript source, run with
  *      tsx. The repo dev path.
  *
@@ -48,7 +48,7 @@ export async function runServeCommand({ rest }: { rest: string[] }): Promise<voi
         `Looked for ${path.join(projectRoot, 'webapp', 'dist-server', 'index.cjs')} (built bundle) ` +
         `and ${path.join(projectRoot, 'webapp', 'server', 'index.ts')} (source).\n` +
         'Run `ovld serve` from an OpenOverlord checkout, build the server bundle with ' +
-        '`yarn build:server`, or set OVERLORD_SERVER_ENTRY to the server entry file.'
+        '`yarn build:server:prod`, or set OVERLORD_SERVER_ENTRY to the server entry file.'
     });
   }
 

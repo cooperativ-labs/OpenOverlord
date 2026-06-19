@@ -17,6 +17,7 @@ When working inside an Overlord source checkout, read and follow that core befor
 - Permission capture: the installed `PermissionRequest` hook publishes permission activity through `ovld protocol`.
 - Stop hook: the installed `Stop` hook may print pending-delivery guidance but does not deliver for you.
 - Authentication: the plugin `user_token` config is passed to child `ovld protocol` calls as `Overlord_USER_TOKEN`, after preserving existing `Overlord_USER_TOKEN` / `OVLD_USER_TOKEN` environment fallback behavior.
+- Delivery reports: include `changeRationales` only for meaningful file changes made as part of the current ticket. Do not include unrelated worktree changes in the delivery report or rationales, even to mark them as pre-existing.
 
 ## Claude Command Mapping
 

@@ -26,6 +26,8 @@ export type AuthDatabaseConfig =
 
 export interface CreateAuthOptions {
   database: AuthDatabaseConfig;
+  /** Origins allowed to call Better Auth (e.g. the Vite dev server in split-port dev). */
+  trustedOrigins?: string[];
 }
 
 function postgresSearchPath(schema: string | undefined): string | undefined {
@@ -88,6 +90,7 @@ export function createAuth(dbPathOrOptions?: string | CreateAuthOptions) {
 
   return betterAuth({
     database: createBetterAuthDatabase(options.database),
+    ...(options.trustedOrigins ? { trustedOrigins: options.trustedOrigins } : {}),
     emailAndPassword: { enabled: true },
     // The account username is the local-part of the synthetic
     // `<username>@overlord.local` sign-in email, so changing the username means

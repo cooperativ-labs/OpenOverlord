@@ -266,7 +266,7 @@ interactionSurfaces:
     transport: function-calls
     rules:
       - 'Automations must not read or write domain tables directly'
-      - 'Provider secrets come from environment variables documented in .env.example'
+      - 'Provider secrets come from environment variables documented in .env.prod.example / .env.local.example'
       - 'Automations return null on provider unavailability or failure; callers supply deterministic fallbacks'
       - 'New built-in automations register through the automations registry, not ad hoc imports from other modules'
       - 'Downstream automations load via OVERLORD_AUTOMATIONS_MODULE (custom-automation extension point), not by editing the built-in registry'

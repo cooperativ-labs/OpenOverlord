@@ -7,9 +7,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadConfig } from '../../cli/src/config.ts';
-import { isExplicitRuntimeEnv } from '../../cli/src/env.ts';
+import { isExplicitRuntimeEnv, resolveLayeredEnv } from '../../cli/src/env.ts';
 import { ServiceError } from '../../src/service/errors.ts';
-import { loadRepoEnvFiles } from '../load-repo-env.ts';
+import { loadRepoEnvForProfile } from '../load-repo-env.ts';
 
 import { authNodeHandler, requireAuthenticatedSession } from './auth.ts';
 import { DATABASE_PATH, WORKSPACE } from './db.ts';
@@ -112,33 +112,28 @@ const distDir = process.env.OVERLORD_WEBAPP_DIST
   ? path.resolve(process.env.OVERLORD_WEBAPP_DIST)
   : path.resolve(here, '..', 'dist');
 
-// Load packaged/default `.env` first. Source-server development also overlays
-// `.env.local`, letting local ports/state differ from a packaged production
-// instance without changing the production env file. Explicit shell exports win.
-loadRepoEnvFiles([
-  path.join(repoRoot, '.env'),
-  ...(here === path.join(repoRoot, 'webapp', 'server') ? [path.join(repoRoot, '.env.local')] : [])
-]);
+// Source-server development reads `.env.local` only. The bundled production
+// server reads `.env.prod` only. Explicit shell exports win over both.
+const isSourceServer = here === path.join(repoRoot, 'webapp', 'server');
+const envProfile = isSourceServer ? 'development' : 'production';
+loadRepoEnvForProfile(repoRoot, envProfile);
 
-const config = loadConfig();
+const config = loadConfig(undefined, envProfile);
 
-// Precedence for every key below: explicit runtime env (shell export,
-// container launcher) > `overlord.toml` (user/Desktop-edited) > `.env`/
-// `.env.local` baked-in default loaded above > hardcoded config default. A
-// value that only exists because `.env` backfilled it must not outrank the
-// toml, since the toml is the persisted user override store.
+// Precedence for every key below is profile-aware — see `resolveLayeredEnv`.
 function resolveLayered(envKey: string, configValue: string): string {
-  const value = process.env[envKey]?.trim();
-  if (value && isExplicitRuntimeEnv(envKey)) return value;
-  if (configValue) return configValue;
-  return value || configValue;
+  return resolveLayeredEnv({ envKey, configValue, envProfile });
 }
 
 const bindHost = resolveLayered('OVERLORD_WEB_HOST', config.webHost);
-const bindPort = Number(resolveLayered('OVERLORD_WEB_PORT', String(config.webPort)));
+const bindPort = parsePort(
+  resolveLayered('OVERLORD_WEB_PORT', String(config.webPort)),
+  'OVERLORD_WEB_PORT'
+);
 const sqlStudioHost = resolveLayered('OVERLORD_SQL_STUDIO_HOST', config.sqlStudioHost);
-const sqlStudioPort = Number(
-  resolveLayered('OVERLORD_SQL_STUDIO_PORT', String(config.sqlStudioPort))
+const sqlStudioPort = parsePort(
+  resolveLayered('OVERLORD_SQL_STUDIO_PORT', String(config.sqlStudioPort)),
+  'OVERLORD_SQL_STUDIO_PORT'
 );
 const sqlStudioBinary = resolveLayered('OVERLORD_SQL_STUDIO_BINARY', config.sqlStudioBinary);
 
@@ -161,6 +156,14 @@ const envSqlStudioEnabled =
 syncSqlStudioForWorkspace({
   enabled: envSqlStudioEnabled ?? readSqlStudioEnabled({ workspaceId: WORKSPACE.id })
 });
+
+function parsePort(value: string, name: string): number {
+  const port = Number(value.trim());
+  if (Number.isInteger(port) && port >= 0 && port < 65536) return port;
+  throw new Error(
+    `${name} must be an integer port from 0 to 65535; got ${JSON.stringify(value)}`
+  );
+}
 
 const app = express();
 app.use(cors());
@@ -816,7 +819,7 @@ app.post(
   )
 );
 
-// ---- Static SPA (production: `yarn build` then `yarn start`) ------------
+// ---- Static SPA (production: `yarn build:prod` then `yarn start`) ------------
 
 if (existsSync(distDir)) {
   app.use(express.static(distDir));

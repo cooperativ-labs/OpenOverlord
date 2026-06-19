@@ -9,8 +9,8 @@ node_modules/
 **/node_modules/
 
 .env*
-!.env.example
 !.env.local.example
+!.env.prod.example
 
 dist/
 **/dist/

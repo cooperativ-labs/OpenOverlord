@@ -18,7 +18,8 @@ summarization and objective title generation.
 
 ### Configuration
 
-Copy [`.env.example`](../.env.example) to `.env` and set `GEMINI_API_KEY` to enable
+Copy [`.env.local.example`](../.env.local.example) to `.env.local` for development, or
+copy [`.env.prod.example`](../.env.prod.example) to `.env.prod` for packaged builds, and set `GEMINI_API_KEY` to enable
 Gemini-backed automations. When the key is missing or a call fails, automations return `null` and
 callers should use deterministic local fallbacks (see `deriveTitleFromInstructionText`).
 

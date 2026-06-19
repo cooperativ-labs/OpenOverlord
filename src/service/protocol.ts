@@ -281,7 +281,7 @@ function assemblePromptContext({
     previousObjectives.length > 0 ? previousObjectivesLines : '',
     '',
     '## Important Notes',
-    `- Other agents may be working on the same branch as you, so you may notice file changes that are not yours. Exclude these from your change rationales.`,
+    `- Other agents may be working on the same branch as you, so you may notice file changes that are not yours. EXCLUDE THESE FROM THE FILE CHANGES YOU REPORT.`,
     agentInstructions ? '' : null,
     agentInstructions ? '## Additional Instructions' : null,
     agentInstructions

@@ -27,6 +27,6 @@ the packaged app. It is excluded from the default `yarn test` aggregate.
 3. **Security.** External links open in the system browser; a second launch
    focuses the existing window; the renderer has no Node access
    (`window.require` is undefined).
-4. **Packaging.** `yarn desktop:package --out <dir> --no-sign` emits a launchable
+4. **Packaging.** `yarn desktop:package:prod --out <dir> --no-sign` emits a launchable
    `.app`/`.dmg`. With `--sign --notarize` (and Apple creds), the `.dmg` passes
    `spctl -a -vvv` and launches on a clean Mac.

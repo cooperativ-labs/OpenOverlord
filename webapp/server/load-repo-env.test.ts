@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 
-import { loadRepoEnv, loadRepoEnvFiles } from '../load-repo-env.ts';
+import { loadRepoEnv, loadRepoEnvFiles, loadRepoEnvForProfile } from '../load-repo-env.ts';
 
 const ENV_KEYS = ['GEMINI_API_KEY', 'OVERLORD_WEB_PORT'] as const;
 
@@ -82,14 +82,39 @@ describe('loadRepoEnv', () => {
     });
   });
 
-  it('lets later env files override earlier files before writing process env', () => {
+  it('loads development profile from .env.local only', () => {
     withCleanEnv(() => {
-      const prodEnvPath = makeEnvFile('OVERLORD_WEB_PORT=4310\nGEMINI_API_KEY=from-prod\n');
-      const localEnvPath = makeEnvFile('OVERLORD_WEB_PORT=4320\n');
+      const dir = mkdtempSync(path.join(os.tmpdir(), 'ovld-load-env-'));
+      tempDirs.push(dir);
+      writeFileSync(
+        path.join(dir, '.env.prod'),
+        'OVERLORD_WEB_PORT=4310\nGEMINI_API_KEY=from-prod\n'
+      );
+      writeFileSync(
+        path.join(dir, '.env.local'),
+        'OVERLORD_WEB_PORT=4320\nGEMINI_API_KEY=from-dev\n'
+      );
 
-      loadRepoEnvFiles([prodEnvPath, localEnvPath]);
+      loadRepoEnvForProfile(dir, 'development');
 
       assert.equal(process.env.OVERLORD_WEB_PORT, '4320');
+      assert.equal(process.env.GEMINI_API_KEY, 'from-dev');
+    });
+  });
+
+  it('loads production profile from .env.prod only', () => {
+    withCleanEnv(() => {
+      const dir = mkdtempSync(path.join(os.tmpdir(), 'ovld-load-env-'));
+      tempDirs.push(dir);
+      writeFileSync(
+        path.join(dir, '.env.prod'),
+        'OVERLORD_WEB_PORT=4310\nGEMINI_API_KEY=from-prod\n'
+      );
+      writeFileSync(path.join(dir, '.env.local'), 'OVERLORD_WEB_PORT=4320\n');
+
+      loadRepoEnvForProfile(dir, 'production');
+
+      assert.equal(process.env.OVERLORD_WEB_PORT, '4310');
       assert.equal(process.env.GEMINI_API_KEY, 'from-prod');
     });
   });

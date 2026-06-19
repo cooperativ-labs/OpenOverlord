@@ -3,14 +3,10 @@ import react from '@vitejs/plugin-react';
 import path from 'node:path';
 import { defineConfig } from 'vite';
 
-import { loadRepoEnvFiles } from './load-repo-env';
+import { loadRepoEnvForProfile } from './load-repo-env';
 
-// Load the repo-root `.env` plus the development-only `.env.local` overlay so
-// the dev server honors the same OVERLORD_WEB_* values as the API process.
-loadRepoEnvFiles([
-  path.resolve(__dirname, '..', '.env'),
-  path.resolve(__dirname, '..', '.env.local')
-]);
+// Development reads `.env.local` only so it never collides with production `.env.prod`.
+loadRepoEnvForProfile(path.resolve(__dirname, '..'), 'development');
 
 // The dev server hosts the React SPA and proxies the REST + realtime (SSE)
 // surface to the local server process (server/index.ts).

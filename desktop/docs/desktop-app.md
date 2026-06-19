@@ -138,7 +138,7 @@ automatically; installation is explicit through **Settings → Desktop** or the
 native **Check for Updates...** / **Install Update and Relaunch** menu items.
 
 Release builds can embed a generic update feed by setting
-`OVERLORD_UPDATE_FEED_URL` when running `yarn desktop:package`. The default feed
+`OVERLORD_UPDATE_FEED_URL` when running `yarn desktop:package:prod`. The default feed
 is [GitHub Releases](https://github.com/cooperativ-labs/OpenOverlord/releases/latest/download/)
 (see `desktop/update-feed.ts`). Each release must publish the `.zip`, `.blockmap`,
 and `latest-mac.yml` files emitted by electron-builder — `yarn desktop:publish`
@@ -165,8 +165,8 @@ terminal configuration of its own.
 
 ## 8. Packaging
 
-`scripts/build-desktop.ts` (`yarn desktop:package`) stages the server bundle, SPA,
-and CLI, then runs electron-builder:
+`scripts/build-desktop.ts` (`yarn desktop:package:prod`) stages the server bundle, SPA,
+CLI, and a runtime-only `.env.prod`, then runs electron-builder:
 
 - Targets: `dmg` + `zip` (mac, arm64 + x64), `AppImage` + `deb` (linux).
 - Before electron-builder runs, the script deletes and recreates `desktop/release`
@@ -180,6 +180,9 @@ and CLI, then runs electron-builder:
   `CSC_LINK`); notarization (`--notarize`) uses `APPLE_ID` /
   `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID`. `--no-sign` produces an ad-hoc
   build.
+- `GEMINI_API_KEY` is required for `desktop:package:prod` so packaged builds
+  ship with a default Gemini key, but the staged `.env.prod` is filtered to
+  runtime keys only and excludes build-only secrets such as `APPLE_*`.
 - `OVERLORD_UPDATE_FEED_URL` overrides the default GitHub Releases updater feed
   (`desktop/update-feed.ts`) and causes electron-builder to emit update metadata
   such as `latest-mac.yml`.
@@ -193,7 +196,7 @@ packaging, so the build machine needs:
   Electron 42's V8 (`v8::External::New` gained a required third argument). 12.10.1
   builds against Electron 42 cleanly.
 - **A node-gyp-compatible Python** — node-gyp's bundled gyp imports `distutils`,
-  which was removed in Python 3.12. `yarn desktop:package` uses `PYTHON` when
+  which was removed in Python 3.12. `yarn desktop:package:prod` uses `PYTHON` when
   set, otherwise it auto-selects an installed `python3.11`/`python3.10`/`python3.9`
   /`python3.8` if the default Python cannot import `distutils`. If none is
   available, install Python 3.11 or `pip install setuptools` for the default

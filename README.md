@@ -67,8 +67,8 @@ Each `ovld`/server process resolves these values independently — there is no
 single shared connection. Precedence, highest first: an explicit runtime env
 var (shell export, container/launcher injection — e.g.
 `OVERLORD_BACKEND_URL=http://host.docker.internal:4310` when launching a CLI
-process inside Docker) > the resolved `overlord.toml` > a `.env`/`.env.local`
-file next to it (baked-in defaults) > a hardcoded fallback. Keep a
+process inside Docker) > the resolved `overlord.toml` > `.env.local` for
+development or `.env.prod` for production/package defaults > a hardcoded fallback. Keep a
 **committed/shared** `overlord.toml` host-context-neutral (the loopback
 default); put any per-environment override in an env var at launch instead of
 editing the shared file, since every process that resolves that file
@@ -225,24 +225,43 @@ yarn dev     # run the webapp (API server + Vite)
 yarn check   # lint + typecheck + test — the "am I done?" command
 ```
 
-Production/package defaults live in `.env`. Development overrides belong in
-`.env.local` (copy `.env.local.example`), which the source web server and Vite
-dev server overlay on top of `.env`. Use different `OVERLORD_WEB_PORT`,
-`OVERLORD_WEB_DEV_PORT`, `OVERLORD_BACKEND_URL`, and `OVLD_HOME` values there
-so a packaged production instance and a source development instance can run at
-the same time.
+Production/package defaults live in `.env.prod` (read by bundled production and
+`yarn desktop:package:prod`). Development settings belong in `.env.local` (copy
+`.env.local.example`) — source `yarn dev`, `db:*`, and `yarn ovld:dev` read
+that file only.
+
+### Development vs production instances
+
+| | **Production / Desktop** | **In-repo development** |
+| --- | --- | --- |
+| Config | `.env.prod` + `overlord.toml` | `.env.local` |
+| Data dir | `~/.ovld` | `database/.local/dev-home` (gitignored) |
+| API port | `4310` | `4320` |
+| Vite port | — | `5173` |
+| CLI target | `http://127.0.0.1:4310` | `http://127.0.0.1:4320` |
+
+With `.env.local` in place, `yarn dev` and the global Desktop app can run
+simultaneously without sharing a database or port. `yarn test` uses throwaway
+temp homes so tests never touch either instance.
+
+```bash
+cp .env.local.example .env.local
+yarn db:start    # init the dev database once
+yarn dev         # API :4320 + Vite :5173
+yarn ovld:dev protocol help   # in-repo CLI → dev instance
+```
 
 Common tasks (every command is run from the repo root):
 
 | Command | What it does |
 | --- | --- |
-| `yarn build` | Build all workspaces (database, auth, automations, root, CLI, webapp) |
+| `yarn build:prod` | Build all workspaces (database, auth, automations, root, CLI, webapp) |
 | `yarn test` / `yarn test:watch` | Run all tests / watch the root suite |
 | `yarn typecheck` | Typecheck all workspaces |
 | `yarn db:start` | Launch the local SQLite database |
 | `yarn db:reset` | Wipe local state and relaunch the database |
 | `yarn db:codegen` | Regenerate `src/types/db.ts` from the local schema |
-| `yarn pack:cli` | Produce the publishable `open-overlord` tarball |
+| `yarn pack:cli:prod` | Produce the publishable `open-overlord` tarball |
 
 To work inside a single package, use `yarn workspace <name> <script>`
 (e.g. `yarn workspace @overlord/webapp dev`). Because the tree is synced across

@@ -47,7 +47,7 @@ Ticket and objective titles are derived from instruction text via the
 
 - On create (and when an objective's instruction changes without an explicit
   title edit), the server sets an immediate local title, then asynchronously
-  refines it with Gemini when `GEMINI_API_KEY` is set in the repo-root `.env`.
+  refines it with Gemini when `GEMINI_API_KEY` is set in the active env file.
 - Title updates are written through the same `entity_changes` feed, so the
   board and ticket panel refresh live.
 
@@ -71,11 +71,11 @@ dev server (which proxies `/api` to it). For a production-style run:
 yarn build && yarn start   # builds the SPA, serves it + the API on :4310
 ```
 
-The source server and Vite load repo-root `.env`, then overlay `.env.local`.
-Keep packaged/production values in `.env` and copy `.env.local.example` for
-development-specific ports and `OVLD_HOME`. This lets a packaged production
-instance keep using `OVERLORD_WEB_PORT=4310` while development runs on a
-different API port and data directory.
+The source server and Vite read repo-root `.env.local` only. Packaged/bundled
+production reads `.env.prod` only. Copy `.env.local.example` for development ports
+and `OVLD_HOME`. This lets a packaged production instance keep using
+`OVERLORD_WEB_PORT=4310` while development runs on a different API port and
+data directory.
 
 The server opens the global SQLite database under `OVLD_HOME` by default
 (override with `OVERLORD_SQLITE_PATH` or `overlord.toml` `database_path`).
@@ -178,6 +178,6 @@ users/roles/tokens — are still deferred and remain CLI-only.
 - `web/` — the React SPA (`main.tsx`, `router.tsx`, `lib/`, `components/`, `pages/`).
 - `shared/contract.ts` — the typed DTO contract.
 
-`yarn typecheck` and `yarn build` both pass. The realtime path is verified
+`yarn typecheck` and `yarn build:prod` both pass. The realtime path is verified
 end-to-end (a write from a separate process is reflected in the UI without a
 reload).

@@ -59,7 +59,7 @@ The current upstream preparation that matters for downstream work:
 - Downstream automations can load through `OVERLORD_AUTOMATIONS_MODULE` and
   register through `registerAutomation` / `registerAutomations`. Do not edit the
   upstream `builtInAutomations` array for closed automations.
-- `.env.example` now documents runtime env overrides the downstream app should
+- `.env.prod.example` and `.env.local.example` now document runtime env overrides the downstream app should
   preserve: `OVERLORD_WEB_HOST`, `OVERLORD_WEB_PORT`,
   `OVERLORD_SQL_STUDIO_ENABLED`, `OVERLORD_SQL_STUDIO_HOST`,
   `OVERLORD_SQL_STUDIO_PORT`, `OVERLORD_SQL_STUDIO_BINARY`, and
@@ -409,7 +409,7 @@ Overlord Lite should ship the CLI along with the GUI.
 
 Recommended v1:
 
-1. Use `yarn pack:cli` to produce the CLI package.
+1. Use `yarn pack:cli:prod` to produce the CLI package.
 2. Stage the packed CLI under the Lite app resources.
 3. Add an "Install CLI" menu item that symlinks `ovld` / `overlord` into
    `/usr/local/bin` or `~/.local/bin`.
@@ -517,7 +517,7 @@ Rules:
 - Do not fork the React SPA for Lite. Wrap it.
 - Do not put terminal settings in Electron-owned config. The CLI owns
   `terminal_launcher`.
-- Do not make root `yarn build` or `yarn test` require Electron.
+- Do not make root `yarn build:prod` or `yarn test` require Electron.
 - Do not add downstream automations to the upstream built-in registry.
 - Do not write directly to core tables from Lite, Cloud, Mobile, REST
   extensions, or automations.
@@ -532,11 +532,11 @@ Rules:
 Run the smallest checks that prove each boundary still works:
 
 ```bash
-yarn build:db
-yarn build:auth
-yarn build:automations
-yarn build:cli
-yarn build:webapp
+yarn build:db:prod
+yarn build:auth:prod
+yarn build:automations:prod
+yarn build:cli:prod
+yarn build:webapp:prod
 yarn workspace @overlord/lite build
 ```
 

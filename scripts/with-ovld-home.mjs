@@ -1,18 +1,11 @@
 #!/usr/bin/env node
-// Run a command against an isolated, throwaway Overlord home so in-repo builds
-// (the test suite and manual `yarn ovld:dev` runs) never read or write the
-// installed Desktop instance's data at `~/.ovld` / `:4310`.
+// Run a command against an isolated, throwaway Overlord home so the test suite
+// never reads or writes the installed Desktop instance (`~/.ovld`) or the
+// persistent in-repo dev instance (`database/.local/dev-home` from `.env.local`).
 //
-// Isolation knobs (all honour an already-set value so a persistent dev instance
-// can be pinned across processes):
-//   - OVLD_HOME            relocates the global `~/.ovld` data dir (DB, storage,
-//                          vcs-baselines, native-sessions). Defaults to a fresh
-//                          temp dir that is deleted when the command exits.
-//   - OVERLORD_WEB_PORT    port any backend started under this home binds to
-//                          (default 4320, never the installed `:4310`).
-//   - OVERLORD_BACKEND_URL backend the in-repo CLI targets (default the same
-//                          loopback dev port), so `ovld:dev` talks to the
-//                          isolated instance instead of the repo `overlord.toml`.
+// Loads dev port/backend defaults from `.env.local` but always uses a fresh
+// temp OVLD_HOME unless the shell already exported OVLD_HOME before this script
+// started.
 //
 // Usage: node scripts/with-ovld-home.mjs <command> [args...]
 
@@ -20,6 +13,18 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { loadRepoEnvForProfile } from './load-repo-env.mjs';
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const shellHome = process.env.OVLD_HOME?.trim();
+
+loadRepoEnvForProfile({
+  repoRoot: path.resolve(scriptDir, '..'),
+  profile: 'development',
+  skipKeys: ['OVLD_HOME']
+});
 
 const [, , command, ...args] = process.argv;
 if (!command) {
@@ -27,9 +32,8 @@ if (!command) {
   process.exit(2);
 }
 
-const reusedHome = process.env.OVLD_HOME?.trim();
-const ephemeral = !reusedHome;
-const home = reusedHome ?? mkdtempSync(path.join(tmpdir(), 'ovld-dev-home-'));
+const ephemeral = !shellHome;
+const home = shellHome ?? mkdtempSync(path.join(tmpdir(), 'ovld-test-home-'));
 
 const webPort = process.env.OVERLORD_WEB_PORT ?? '4320';
 const backendUrl = process.env.OVERLORD_BACKEND_URL ?? `http://127.0.0.1:${webPort}`;

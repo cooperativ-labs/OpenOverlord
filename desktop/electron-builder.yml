@@ -1,6 +1,6 @@
 # electron-builder configuration for the Overlord desktop shell.
 #
-# Driven by `scripts/build-desktop.ts` (`yarn desktop:package`), which stages the
+# Driven by `scripts/build-desktop.ts` (`yarn desktop:package:prod`), which stages the
 # server bundle, SPA, and CLI into this workspace before invoking electron-builder
 # and toggles signing/notarization via flags + env. See desktop/docs/desktop-app.md.
 appId: io.cooperativ.openoverlord
@@ -44,11 +44,14 @@ asarUnpack:
 # Static assets and the staged CLI, emitted next to the app (not in the asar):
 #   - webapp-dist: the built SPA the embedded server serves (OVERLORD_WEBAPP_DIST)
 #   - cli: the packed `ovld` CLI used to supervise a runner / Install CLI
+#   - .env.prod: production defaults packaged with this build
 extraResources:
   - from: webapp-dist
     to: webapp-dist
   - from: staging/cli
     to: cli
+  - from: staging/.env.prod
+    to: .env.prod
 
 # Off: the authoritative native rebuild is the explicit stageNativeAddon step in
 # scripts/build-desktop.ts (see the asar note above). Leaving this on lets

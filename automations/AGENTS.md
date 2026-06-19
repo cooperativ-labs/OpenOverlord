@@ -31,7 +31,7 @@ Read [`CONTRACT.md`](../CONTRACT.md) and the [component-contract skill](../.clau
 3. Export the automation's public API from `automations/src/<automation-name>/index.ts` and re-export from `automations/src/index.ts`.
 4. Register built-in tools in `automations/src/registry.ts` (or call `registerTypedAutomation` from module init code).
 5. Add colocated unit tests under the automation folder or next to shared module files.
-6. Document provider secrets in `.env.example` if the automation needs new environment variables.
+6. Document provider secrets in `.env.local.example` and `.env.prod.example` if the automation needs new environment variables.
 7. Update [`docs/01-automations-overview.md`](docs/01-automations-overview.md) with usage notes.
 
 Automations must return `null` when a provider is unavailable or a model call fails so callers can fall back deterministically.
@@ -75,6 +75,6 @@ automations/src/
 
 - [ ] Read `CONTRACT.md` Automations Layer and `serviceToAutomations` surface
 - [ ] No direct database access from `automations/src/`
-- [ ] New secrets documented in `.env.example`
+- [ ] New secrets documented in `.env.local.example` and `.env.prod.example`
 - [ ] Colocated tests for fallback and happy-path behavior
 - [ ] Contract update only if you add a new interaction surface or stable interface
