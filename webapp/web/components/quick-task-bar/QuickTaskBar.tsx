@@ -424,6 +424,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
                 updateAgentConfig.mutate({ agentKey, body: config });
               }}
               disabled={isSubmitting}
+              compact
             />
           </div>
 

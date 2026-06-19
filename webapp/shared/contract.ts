@@ -244,6 +244,14 @@ export interface TicketDto {
   objectiveCount: number;
   /** True when at least one non-deleted objective on this ticket is `executing`. */
   hasExecutingObjective: boolean;
+  /** True when at least one non-deleted objective on this ticket is `complete`. */
+  hasCompletedObjective: boolean;
+  /**
+   * True when at least one non-deleted `draft` or `future` objective on this
+   * ticket has non-empty instruction text (i.e. work still queued behind a
+   * completed objective).
+   */
+  hasPendingObjectiveWithInstructions: boolean;
   /** Tags assigned to this ticket, resolved from its project's `project_tags`. */
   tags: ProjectTagDto[];
 }

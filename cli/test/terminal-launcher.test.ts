@@ -69,7 +69,7 @@ test('iTerm2 chord placement splits vertically for cmd+d', () => {
   assert.ok(script.includes('tell second session of current tab'));
 });
 
-test('iTerm2 custom chord sends System Events outside the iTerm tell block', () => {
+test('iTerm2 custom chord runs the keystroke inside a single iTerm tell block', () => {
   const exec = resolveLaunchExecution({
     ...AGENT,
     terminalLauncher: 'iTerm2',
@@ -77,13 +77,22 @@ test('iTerm2 custom chord sends System Events outside the iTerm tell block', () 
     terminalLaunchChord: 'cmd+k'
   });
   const script = exec.args[1] ?? '';
-  const exitIterm = script.indexOf('end tell\nif overlordHadItermWindow then');
-  const systemEvents = script.indexOf('tell application "System Events"');
-  const reenterIterm = script.indexOf('tell application "iTerm"', systemEvents + 1);
-  assert.ok(exitIterm > -1);
-  assert.ok(systemEvents > exitIterm);
-  assert.ok(reenterIterm > systemEvents);
-  assert.ok(script.includes('keystroke "k" using {command down}'));
+  // Regression: the keystroke must not be emitted as a bare top-level `if`
+  // outside the tell block, which produced an AppleScript syntax error.
+  assert.equal(script.split('\n')[0], 'tell application "iTerm"');
+  assert.ok(!script.includes('overlordHadItermWindow'));
+  assert.equal((script.match(/tell application "iTerm"/g) ?? []).length, 1);
+  // The chord runs only when a window already exists (the else branch), via a
+  // one-line System Events tell, after iTerm has been activated.
+  assert.ok(
+    script.includes('tell application "System Events" to keystroke "k" using {command down}')
+  );
+  assert.ok(
+    script.includes(
+      'set overlordSession to current session of (create window with default profile)'
+    )
+  );
+  assert.ok(script.includes('tell overlordSession to write text'));
 });
 
 test('Terminal tab placement opens in the front window', () => {
@@ -172,6 +181,48 @@ test('a pre-command is wrapped inside the new terminal window', () => {
   });
   const script = exec.args[1] ?? '';
   assert.ok(script.includes(`mise exec -- 'claude'`));
+});
+
+/** Count `tell`/`end tell` and `if`/`end if` balance for a generated script. */
+function blockBalance(script: string): { tell: number; if: number } {
+  let tell = 0;
+  let ifs = 0;
+  for (const raw of script.split('\n')) {
+    const line = raw.trim();
+    // `tell ... to <command>` is a one-line form that opens no block.
+    if (/^tell .+ to /.test(line)) continue;
+    if (/^tell /.test(line)) tell += 1;
+    else if (line === 'end tell') tell -= 1;
+    else if (/^if .+ then$/.test(line)) ifs += 1;
+    else if (line === 'end if') ifs -= 1;
+  }
+  return { tell, if: ifs };
+}
+
+test('every osascript placement produces balanced tell/if blocks', () => {
+  const launchers = ['iTerm2', 'Terminal'];
+  const placements = ['window', 'tab', 'chord'] as const;
+  const chords = ['cmd+d', 'cmd+shift+d', 'cmd+k', 'cmd+t'];
+  for (const terminalLauncher of launchers) {
+    for (const terminalLaunchPlacement of placements) {
+      for (const terminalLaunchChord of chords) {
+        const exec = resolveLaunchExecution({
+          ...AGENT,
+          terminalLauncher,
+          terminalLaunchPlacement,
+          terminalLaunchChord
+        });
+        if (exec.command !== 'osascript') continue;
+        const script = exec.args[1] ?? '';
+        const balance = blockBalance(script);
+        assert.deepEqual(
+          balance,
+          { tell: 0, if: 0 },
+          `${terminalLauncher} ${terminalLaunchPlacement} ${terminalLaunchChord} unbalanced: ${JSON.stringify(balance)}\n${script}`
+        );
+      }
+    }
+  }
 });
 
 test('tmpEnvFor pins the TMPDIR family to the project .overlord/tmp', () => {

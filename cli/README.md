@@ -92,10 +92,24 @@ backend is reachable.
 Environment overrides (useful in scripts and CI):
 
 - `OVLD_HOME` — relocate the entire global `~/.ovld` data directory (SQLite, object storage, VCS baselines, native-session caches)
-- `OVERLORD_BACKEND_URL` — backend the CLI targets; takes precedence over the resolved `overlord.toml` `backend_url`
+- `OVERLORD_BACKEND_URL` — backend the CLI targets; an *explicit* runtime value (shell export, container/launcher injection) takes precedence over the resolved `overlord.toml` `backend_url`
 - `OVERLORD_WEB_PORT` — port the local backend binds when launched
 - `OVERLORD_USER_TOKEN` / `OVLD_USER_TOKEN` / `USER_TOKEN` — bearer token sent to the backend when set (checked in that order; takes precedence over stored credentials)
 - `DATABASE_URL` — Postgres connection string read by a backend you run yourself (service layer + Better Auth); the client-only CLI does not open it
+
+Each `ovld` invocation resolves its own config and backend target
+independently — it is **not** a single shared connection. Resolution order,
+highest precedence first: an explicit runtime env var set before the CLI
+loads any `.env` file → the resolved `overlord.toml` → a `.env`/`.env.local`
+file next to that `overlord.toml` (baked-in defaults, e.g. separate dev
+ports) → a hardcoded fallback. Because of this, a **committed/shared**
+`overlord.toml` (e.g. a repo-root example file used by multiple checkouts or
+environments) should only ever hold a host-context-neutral `backend_url`
+(the loopback default). A context-specific target — a Docker-internal host
+alias, a different machine's address — belongs in an explicit
+`OVERLORD_BACKEND_URL` set when that specific process is launched, not edited
+into the shared file; editing the shared file makes every other process that
+resolves it inherit a target that's wrong for its own network context.
 
 The local backend/Desktop package owns SQLite and migrations. The published npm
 CLI only stores the backend URL and sends HTTP requests.

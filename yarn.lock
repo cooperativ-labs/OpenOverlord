@@ -7510,6 +7510,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "open-overlord@workspace:cli"
   dependencies:
+    dotenv: "npm:^17.4.2"
     smol-toml: "npm:^1.6.1"
   bin:
     overlord: bin/ovld.mjs

@@ -270,6 +270,8 @@ interface TicketRow {
   revision: number;
   objective_count: number;
   has_executing_objective: number;
+  has_completed_objective: number;
+  has_pending_objective_with_instructions: number;
 }
 
 interface ObjectiveRow {
@@ -477,6 +479,8 @@ function toTicketDto(r: TicketRow, tags: ProjectTagDto[] = []): TicketDto {
     revision: r.revision,
     objectiveCount: r.objective_count,
     hasExecutingObjective: r.has_executing_objective === 1,
+    hasCompletedObjective: r.has_completed_objective === 1,
+    hasPendingObjectiveWithInstructions: r.has_pending_objective_with_instructions === 1,
     tags
   };
 }
@@ -1375,7 +1379,14 @@ const selectTicketsSql = `
             WHERE o.ticket_id = t.id AND o.deleted_at IS NULL) AS objective_count,
          (SELECT COUNT(*) > 0 FROM objectives o
             WHERE o.ticket_id = t.id AND o.deleted_at IS NULL AND o.state = 'executing')
-            AS has_executing_objective
+            AS has_executing_objective,
+         (SELECT COUNT(*) > 0 FROM objectives o
+            WHERE o.ticket_id = t.id AND o.deleted_at IS NULL AND o.state = 'complete')
+            AS has_completed_objective,
+         (SELECT COUNT(*) > 0 FROM objectives o
+            WHERE o.ticket_id = t.id AND o.deleted_at IS NULL
+              AND o.state IN ('draft', 'future') AND TRIM(o.instruction_text) != '')
+            AS has_pending_objective_with_instructions
   FROM tickets t
   WHERE t.workspace_id = @workspace_id AND t.deleted_at IS NULL
 `;
@@ -1448,6 +1459,13 @@ export function searchTickets({
               (SELECT COUNT(*) > 0 FROM objectives o
                  WHERE o.ticket_id = t.id AND o.deleted_at IS NULL AND o.state = 'executing')
                  AS has_executing_objective,
+              (SELECT COUNT(*) > 0 FROM objectives o
+                 WHERE o.ticket_id = t.id AND o.deleted_at IS NULL AND o.state = 'complete')
+                 AS has_completed_objective,
+              (SELECT COUNT(*) > 0 FROM objectives o
+                 WHERE o.ticket_id = t.id AND o.deleted_at IS NULL
+                   AND o.state IN ('draft', 'future') AND TRIM(o.instruction_text) != '')
+                 AS has_pending_objective_with_instructions,
               (CASE search_documents_fts.entity_type
                  WHEN 'ticket' THEN 3.0 WHEN 'objective' THEN 2.0 ELSE 1.0 END)
                 * (-bm25(search_documents_fts, 10.0, 1.0)) AS doc_score

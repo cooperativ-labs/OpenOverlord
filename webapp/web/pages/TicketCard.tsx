@@ -6,6 +6,8 @@ import { cn } from '@/lib/utils';
 import type { TicketDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 
 import { TicketCardBody } from './TicketCardBody.tsx';
+import { getTicketCardState } from './ticketCardState.ts';
+import { TicketCardStateOverlay } from './TicketCardStateOverlay.tsx';
 
 export function TicketCard({
   ticket,
@@ -23,6 +25,7 @@ export function TicketCard({
   selected?: boolean;
 }) {
   const navigate = useNavigate();
+  const cardState = getTicketCardState(ticket);
 
   return (
     <Card
@@ -39,15 +42,14 @@ export function TicketCard({
         })
       }
     >
-      {ticket.hasExecutingObjective ? (
-        <div className="pointer-events-none absolute inset-0 animate-[shimmer_2s_linear_infinite] bg-[length:200%_100%] bg-linear-to-r from-transparent via-emerald-500/20 to-transparent" />
-      ) : null}
+      <TicketCardStateOverlay state={cardState} />
       <TicketCardBody
         ticket={ticket}
         projectId={projectId}
         projectName={projectName}
         projectColor={projectColor}
         assignee={assignee}
+        cardState={cardState}
       />
     </Card>
   );

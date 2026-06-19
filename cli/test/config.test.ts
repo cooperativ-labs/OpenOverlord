@@ -13,6 +13,7 @@ import {
   resolveDatabasePath,
   writeConfig
 } from '../src/config.ts';
+import { resetExplicitRuntimeEnvForTests } from '../src/env.ts';
 
 test('loadConfig parses scalar keys from overlord.toml', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
@@ -32,20 +33,28 @@ default_model = "gpt-5"
 `
   );
 
-  const config = loadConfig(configPath);
-  assert.equal(config.instanceName, 'Test Instance');
-  assert.equal(config.backendMode, 'local');
-  assert.equal(resolveBackendUrl(config), DEFAULT_LOCAL_BACKEND_URL);
-  assert.equal(config.databasePath, 'db.sqlite');
-  assert.equal(config.webHost, '0.0.0.0');
-  assert.equal(config.webPort, 9999);
-  assert.equal(config.sqlStudioEnabled, true);
-  assert.equal(config.sqlStudioHost, '127.0.0.1');
-  assert.equal(config.sqlStudioPort, 3030);
-  assert.equal(config.sqlStudioBinary, '/opt/sql-studio/bin/sql-studio');
-  assert.equal(config.defaultAgent, 'codex');
-  assert.equal(config.defaultModel, 'gpt-5');
-  assert.equal(config.agentCatalog, null);
+  const previousBackendUrl = process.env.OVERLORD_BACKEND_URL;
+  delete process.env.OVERLORD_BACKEND_URL;
+  resetExplicitRuntimeEnvForTests();
+  try {
+    const config = loadConfig(configPath);
+    assert.equal(config.instanceName, 'Test Instance');
+    assert.equal(config.backendMode, 'local');
+    assert.equal(resolveBackendUrl(config), DEFAULT_LOCAL_BACKEND_URL);
+    assert.equal(config.databasePath, 'db.sqlite');
+    assert.equal(config.webHost, '0.0.0.0');
+    assert.equal(config.webPort, 9999);
+    assert.equal(config.sqlStudioEnabled, true);
+    assert.equal(config.sqlStudioHost, '127.0.0.1');
+    assert.equal(config.sqlStudioPort, 3030);
+    assert.equal(config.sqlStudioBinary, '/opt/sql-studio/bin/sql-studio');
+    assert.equal(config.defaultAgent, 'codex');
+    assert.equal(config.defaultModel, 'gpt-5');
+    assert.equal(config.agentCatalog, null);
+  } finally {
+    if (previousBackendUrl === undefined) delete process.env.OVERLORD_BACKEND_URL;
+    else process.env.OVERLORD_BACKEND_URL = previousBackendUrl;
+  }
 });
 
 test('defaults to the global database when database_path is unset', () => {
@@ -101,10 +110,74 @@ backend_url = "https://overlord.example.com"
 `
   );
 
-  const config = loadConfig(configPath);
-  assert.equal(config.backendMode, 'cloud');
-  assert.equal(config.backendUrl, 'https://overlord.example.com');
-  assert.equal(resolveBackendUrl(config), 'https://overlord.example.com');
+  const previousBackendUrl = process.env.OVERLORD_BACKEND_URL;
+  delete process.env.OVERLORD_BACKEND_URL;
+  try {
+    const config = loadConfig(configPath);
+    assert.equal(config.backendMode, 'cloud');
+    assert.equal(config.backendUrl, 'https://overlord.example.com');
+    assert.equal(resolveBackendUrl(config), 'https://overlord.example.com');
+  } finally {
+    if (previousBackendUrl === undefined) delete process.env.OVERLORD_BACKEND_URL;
+    else process.env.OVERLORD_BACKEND_URL = previousBackendUrl;
+    resetExplicitRuntimeEnvForTests();
+  }
+});
+
+test('an explicit runtime OVERLORD_BACKEND_URL beats overlord.toml', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
+  const configPath = path.join(dir, 'overlord.toml');
+  writeFileSync(configPath, `backend_url = "http://127.0.0.1:4310"\n`);
+
+  const previousBackendUrl = process.env.OVERLORD_BACKEND_URL;
+  process.env.OVERLORD_BACKEND_URL = 'http://host.docker.internal:4310';
+  resetExplicitRuntimeEnvForTests();
+  try {
+    const config = loadConfig(configPath);
+    assert.equal(resolveBackendUrl(config), 'http://host.docker.internal:4310');
+  } finally {
+    if (previousBackendUrl === undefined) delete process.env.OVERLORD_BACKEND_URL;
+    else process.env.OVERLORD_BACKEND_URL = previousBackendUrl;
+    resetExplicitRuntimeEnvForTests();
+  }
+});
+
+test('a .env-backfilled OVERLORD_BACKEND_URL does not beat overlord.toml', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
+  const configPath = path.join(dir, 'overlord.toml');
+  writeFileSync(configPath, `backend_url = "https://overlord.example.com"\n`);
+  writeFileSync(path.join(dir, '.env'), 'OVERLORD_BACKEND_URL=http://127.0.0.1:9999\n');
+
+  const previousBackendUrl = process.env.OVERLORD_BACKEND_URL;
+  delete process.env.OVERLORD_BACKEND_URL;
+  resetExplicitRuntimeEnvForTests();
+  try {
+    const config = loadConfig(configPath);
+    assert.equal(resolveBackendUrl(config), 'https://overlord.example.com');
+  } finally {
+    if (previousBackendUrl === undefined) delete process.env.OVERLORD_BACKEND_URL;
+    else process.env.OVERLORD_BACKEND_URL = previousBackendUrl;
+    resetExplicitRuntimeEnvForTests();
+  }
+});
+
+test('a .env-backfilled OVERLORD_BACKEND_URL is used when overlord.toml has no backend_url', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
+  const configPath = path.join(dir, 'overlord.toml');
+  writeFileSync(configPath, `instance_name = "No backend override"\n`);
+  writeFileSync(path.join(dir, '.env'), 'OVERLORD_BACKEND_URL=http://127.0.0.1:4320\n');
+
+  const previousBackendUrl = process.env.OVERLORD_BACKEND_URL;
+  delete process.env.OVERLORD_BACKEND_URL;
+  resetExplicitRuntimeEnvForTests();
+  try {
+    const config = loadConfig(configPath);
+    assert.equal(resolveBackendUrl(config), 'http://127.0.0.1:4320');
+  } finally {
+    if (previousBackendUrl === undefined) delete process.env.OVERLORD_BACKEND_URL;
+    else process.env.OVERLORD_BACKEND_URL = previousBackendUrl;
+    resetExplicitRuntimeEnvForTests();
+  }
 });
 
 test('writeConfig no longer writes terminal launcher keys', () => {

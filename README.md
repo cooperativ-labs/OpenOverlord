@@ -63,6 +63,17 @@ under `~/.ovld/`. It is used to configure:
 * An optional `[agent_catalog]` section to customize which agents and models are offered
 * Default terminal configuration (should include popular terminals commented out)
 
+Each `ovld`/server process resolves these values independently — there is no
+single shared connection. Precedence, highest first: an explicit runtime env
+var (shell export, container/launcher injection — e.g.
+`OVERLORD_BACKEND_URL=http://host.docker.internal:4310` when launching a CLI
+process inside Docker) > the resolved `overlord.toml` > a `.env`/`.env.local`
+file next to it (baked-in defaults) > a hardcoded fallback. Keep a
+**committed/shared** `overlord.toml` host-context-neutral (the loopback
+default); put any per-environment override in an env var at launch instead of
+editing the shared file, since every process that resolves that file
+inherits whatever it says.
+
 ### Core Concepts
 
 **Key relationship:** one **objective** maps to one **agent session**. A **ticket** is home to one or more objectives plus their shared context. Tickets live inside a **project**, and a project is mapped to a **git repository** (and optionally a working device).

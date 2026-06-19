@@ -140,26 +140,24 @@ function buildItermAppleScript({
 
   const splitKind = placement === 'chord' ? resolveItermSplitKind(chord) : null;
   if (splitKind === 'keystroke' && chordClause) {
+    // Keep every statement inside the single `tell application "iTerm"` block.
+    // A bare top-level `if` (outside any tell) is what produced the
+    // `Expected "tell", etc. but found "if"` syntax error when launching via a
+    // custom chord. When no window exists yet we open one and use it directly;
+    // only when a window is already open do we run the chord, after iTerm is
+    // activated, so the terminal is always open before the chord fires.
     return [
-      'set overlordHadItermWindow to false',
       'tell application "iTerm"',
       'activate',
       'if (count of windows) = 0 then',
-      'set newWindow to (create window with default profile)',
-      `tell current session of newWindow to write text ${appleScriptString(inner)}`,
+      'set overlordSession to current session of (create window with default profile)',
       'else',
-      'set overlordHadItermWindow to true',
-      'end if',
-      'end tell',
-      'if overlordHadItermWindow then',
-      'tell application "System Events"',
-      chordClause,
-      'end tell',
+      `tell application "System Events" to ${chordClause}`,
       'delay 0.2',
-      'tell application "iTerm"',
-      `tell current session of current window to write text ${appleScriptString(inner)}`,
-      'end tell',
-      'end if'
+      'set overlordSession to current session of current window',
+      'end if',
+      `tell overlordSession to write text ${appleScriptString(inner)}`,
+      'end tell'
     ].join('\n');
   }
 
@@ -183,7 +181,8 @@ function buildItermAppleScript({
       `split ${splitVerb} with default profile`,
       'end tell',
       'tell second session of current tab',
-      `write text ${appleScriptString(inner)}`
+      `write text ${appleScriptString(inner)}`,
+      'end tell'
     );
   }
 

@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadConfig } from '../../cli/src/config.ts';
+import { isExplicitRuntimeEnv } from '../../cli/src/env.ts';
 import { ServiceError } from '../../src/service/errors.ts';
 import { loadRepoEnvFiles } from '../load-repo-env.ts';
 
@@ -120,11 +121,26 @@ loadRepoEnvFiles([
 ]);
 
 const config = loadConfig();
-const bindHost = process.env.OVERLORD_WEB_HOST ?? config.webHost;
-const bindPort = Number(process.env.OVERLORD_WEB_PORT ?? config.webPort);
-const sqlStudioHost = process.env.OVERLORD_SQL_STUDIO_HOST ?? config.sqlStudioHost;
-const sqlStudioPort = Number(process.env.OVERLORD_SQL_STUDIO_PORT ?? config.sqlStudioPort);
-const sqlStudioBinary = process.env.OVERLORD_SQL_STUDIO_BINARY ?? config.sqlStudioBinary;
+
+// Precedence for every key below: explicit runtime env (shell export,
+// container launcher) > `overlord.toml` (user/Desktop-edited) > `.env`/
+// `.env.local` baked-in default loaded above > hardcoded config default. A
+// value that only exists because `.env` backfilled it must not outrank the
+// toml, since the toml is the persisted user override store.
+function resolveLayered(envKey: string, configValue: string): string {
+  const value = process.env[envKey]?.trim();
+  if (value && isExplicitRuntimeEnv(envKey)) return value;
+  if (configValue) return configValue;
+  return value || configValue;
+}
+
+const bindHost = resolveLayered('OVERLORD_WEB_HOST', config.webHost);
+const bindPort = Number(resolveLayered('OVERLORD_WEB_PORT', String(config.webPort)));
+const sqlStudioHost = resolveLayered('OVERLORD_SQL_STUDIO_HOST', config.sqlStudioHost);
+const sqlStudioPort = Number(
+  resolveLayered('OVERLORD_SQL_STUDIO_PORT', String(config.sqlStudioPort))
+);
+const sqlStudioBinary = resolveLayered('OVERLORD_SQL_STUDIO_BINARY', config.sqlStudioBinary);
 
 initSqlStudioManager({
   binary: sqlStudioBinary,
@@ -134,9 +150,11 @@ initSqlStudioManager({
 });
 
 const envSqlStudioEnabled =
+  isExplicitRuntimeEnv('OVERLORD_SQL_STUDIO_ENABLED') &&
   process.env.OVERLORD_SQL_STUDIO_ENABLED === 'true'
     ? true
-    : process.env.OVERLORD_SQL_STUDIO_ENABLED === 'false'
+    : isExplicitRuntimeEnv('OVERLORD_SQL_STUDIO_ENABLED') &&
+        process.env.OVERLORD_SQL_STUDIO_ENABLED === 'false'
       ? false
       : null;
 

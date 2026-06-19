@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import type { AgentCatalogDto, AgentLaunchConfigDto } from '../../../shared/contract.ts';
 import { cn } from '../../lib/utils.ts';
 
+import { AgentIcon } from './AgentIcon.tsx';
 import { AgentLaunchFooter } from './AgentLaunchFooter.tsx';
 
 /** The user's current agent/model/reasoning choice. */
@@ -110,6 +111,7 @@ export function AgentModelSelector({
                 onClick={() => handleAgentChange(agent.key)}
                 className={optionButtonClasses(isSelected)}
               >
+                <AgentIcon agentKey={agent.key} size={14} alt={agent.label} />
                 <span className="truncate">{agent.label}</span>
                 {isSelected && <Check className="ml-auto h-3 w-3 shrink-0" />}
               </button>

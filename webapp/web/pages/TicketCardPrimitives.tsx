@@ -69,7 +69,7 @@ export function TicketAssigneeSummary({
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
       <TicketAssigneeAvatar assignee={assignee} />
-      <span className="truncate">{label}</span>
+      {/* <span className="truncate">{label}</span> */}
     </span>
   );
 }

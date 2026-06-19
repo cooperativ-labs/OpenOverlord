@@ -50,9 +50,11 @@ extraResources:
   - from: staging/cli
     to: cli
 
-# Left on as a fallback; the authoritative native rebuild is the explicit
-# stageNativeAddon step in scripts/build-desktop.ts (see the asar note above).
-npmRebuild: true
+# Off: the authoritative native rebuild is the explicit stageNativeAddon step in
+# scripts/build-desktop.ts (see the asar note above). Leaving this on lets
+# electron-builder's own npmRebuild walk the workspace and rebuild the hoisted root
+# better-sqlite3 copy for the Electron ABI too, breaking the Node-side `ovld` CLI/tests.
+npmRebuild: false
 
 mac:
   icon: build/icon.png

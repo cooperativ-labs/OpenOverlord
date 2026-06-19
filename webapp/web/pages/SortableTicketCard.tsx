@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils';
 import type { TicketDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 
 import { TicketCardBody } from './TicketCardBody.tsx';
+import { getTicketCardState } from './ticketCardState.ts';
+import { TicketCardStateOverlay } from './TicketCardStateOverlay.tsx';
 
 export function SortableTicketCard({
   ticket,
@@ -50,6 +52,7 @@ export function SortableTicketCard({
     transform: CSS.Transform.toString(transform),
     transition
   };
+  const cardState = getTicketCardState(ticket);
 
   return (
     <div
@@ -73,9 +76,7 @@ export function SortableTicketCard({
           })
         }
       >
-        {ticket.hasExecutingObjective ? (
-          <div className="pointer-events-none absolute inset-0 animate-[shimmer_2s_linear_infinite] bg-[length:200%_100%] bg-linear-to-r from-transparent via-emerald-500/20 to-transparent" />
-        ) : null}
+        <TicketCardStateOverlay state={cardState} />
         <TicketCardBody
           ticket={ticket}
           projectId={projectId}

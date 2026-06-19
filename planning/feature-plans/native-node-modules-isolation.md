@@ -1,6 +1,6 @@
 # Native Node Modules Isolation Plan
 
-**Status:** Proposal (planning only)
+**Status:** Phases 3-4 implemented; Phases 1-2 remain operational/infra work outside this repo.
 **Contract baseline:** `0.18-draft`
 **Problem:** The same checkout is used by macOS host tooling, Linux agent-pod containers, and Electron desktop packaging. Native Node addons, especially `better-sqlite3`, are currently resolved from shared `node_modules` paths. That makes the active install depend on whichever runtime last installed or rebuilt the addon.
 
@@ -104,17 +104,21 @@ node -e "const Database=require('better-sqlite3'); const db=new Database(':memor
 
 The shell should resolve NVM's Node 24 before `/opt/homebrew/bin/node`. If agent tooling launches with a different `PATH`, fix the launcher environment rather than changing the project to Node 26.
 
-### Phase 3: Desktop packaging isolation
+### Phase 3: Desktop packaging isolation — done
 
 Keep Electron packaging's native rebuild explicit and local to `desktop/node_modules/better-sqlite3`.
 
-Planned code changes:
-
-1. Set `npmRebuild: false` in `desktop/electron-builder.yml`.
-2. Keep `scripts/build-desktop.ts` `stageNativeAddon()` as the only Electron ABI rebuild path.
-3. Add a post-package guard that verifies:
-   - staged desktop addon loads under Electron with `ELECTRON_RUN_AS_NODE=1`
-   - root addon still opens an in-memory SQLite DB under host Node
+1. `npmRebuild: false` is set in `desktop/electron-builder.yml`. Leaving it `true`
+   let electron-builder's own dependency-tree rebuild touch the hoisted root
+   `better-sqlite3` copy too, which would silently flip it to the Electron ABI and
+   break the Node-side `ovld` CLI/tests.
+2. `scripts/build-desktop.ts` `stageNativeAddon()` remains the only Electron ABI
+   rebuild path; `assertElectronAbi()` already guards it (the "post-package guard"
+   below was folded into that existing check rather than duplicated).
+3. Outstanding: a guard that the *root* addon still opens an in-memory SQLite DB
+   under host Node after a desktop package run is now covered by Phase 4's
+   `check:native` script — run it after `yarn desktop:package` if you want that
+   reassurance.
 
 Acceptance checks after `yarn desktop:package`:
 
@@ -123,18 +127,21 @@ node -e "const Database=require('better-sqlite3'); const db=new Database(':memor
 ELECTRON_RUN_AS_NODE=1 node_modules/electron/dist/Electron.app/Contents/MacOS/Electron -e "const Database=require('./desktop/node_modules/better-sqlite3'); const db=new Database(':memory:'); console.log(db.prepare('select 1 ok').get().ok); db.close()"
 ```
 
-### Phase 4: Automated preflight
+### Phase 4: Automated preflight — done
 
-Add a diagnostic script, for example `scripts/check-native-runtime.ts`, that prints and validates:
+`scripts/check-native-runtime.ts` validates the root addon by actually loading
+`better-sqlite3` and opening an in-memory DB (not just reading magic bytes —
+that alone misses Node/Electron ABI mismatches where the OS format matches but
+`NODE_MODULE_VERSION` doesn't). On failure it reports the addon's actual binary
+format vs what the host expects, and `--fix` reruns `yarn rebuild better-sqlite3`
+and re-validates.
 
-- Host `process.platform`, `process.arch`, `process.versions.modules`
-- `node` path
-- Root `better_sqlite3.node` magic bytes
-- Root in-memory SQLite load result
-- Electron runtime ABI when Electron is installed
-- Desktop staged addon load result when present
-
-This gives agents a cheap first check before running webapp/database tests.
+Wired in as `yarn check:native` (diagnose only) / `yarn check:native:fix`
+(auto-rebuild), and `yarn test` now runs `check:native:fix` as its first step —
+so a Linux-ELF or wrong-ABI addon left behind by an agent-pod run self-heals
+before the 20 unrelated-looking `ERR_DLOPEN_FAILED` test failures show up.
+`yarn dev`/`desktop:*` are not wired up yet; run `yarn check:native:fix`
+manually if a dev server hits the same error.
 
 ## 4. Operational Rules
 

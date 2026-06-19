@@ -21,11 +21,11 @@ function notificationIcon(type: SystemNotificationType) {
 function notificationColor(type: SystemNotificationType) {
   switch (type) {
     case 'update':
-      return 'border-blue-500/30 bg-blue-50/80 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300';
+      return 'border-blue-500/30 bg-blue-50/80 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300';
     case 'warning':
-      return 'border-amber-500/30 bg-amber-50/80 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300';
+      return 'border-amber-500/30 bg-amber-50/80 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300';
     case 'info':
-      return 'border-border bg-popover/50 text-popover-foreground dark:bg-popover/50 dark:text-popover-foreground';
+      return 'border-border bg-popover/50 text-popover-foreground dark:bg-popover/80 dark:text-popover-foreground';
   }
 }
 

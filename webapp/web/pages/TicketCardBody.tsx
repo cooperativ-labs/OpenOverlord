@@ -5,19 +5,23 @@ import type { TicketDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 import { getTicketTags } from './board-shared.ts';
 import { TicketCardHoverFooter } from './TicketCardHoverFooter.tsx';
 import { ProjectColorDot, TicketAssigneeSummary } from './TicketCardPrimitives.tsx';
+import { TicketCardState } from './ticketCardState.ts';
+import { cn } from '@/lib/utils.ts';
 
 export function TicketCardBody({
   ticket,
   projectId,
   projectName,
   projectColor,
-  assignee
+  assignee,
+  cardState
 }: {
   ticket: TicketDto;
   projectId: string;
   projectName: string;
   projectColor: string | null;
   assignee?: WorkspaceMemberDto | null;
+  cardState: TicketCardState;
 }) {
   const tags = getTicketTags(ticket);
 
@@ -34,6 +38,16 @@ export function TicketCardBody({
             </div>
             <div className="flex min-w-0 max-w-[55%] shrink justify-end">
               <TicketAssigneeSummary assignee={assignee} />
+              {cardState.objectiveCount > 0 ? (
+                <div
+                  className={cn(
+                    'pointer-events-none absolute bottom-1.5 right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-medium tabular-nums text-white',
+                    cardState.objectiveCountAlert ? 'bg-red-500' : 'bg-gray-400 dark:bg-gray-600'
+                  )}
+                >
+                  {cardState.objectiveCount}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
