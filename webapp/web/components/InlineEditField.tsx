@@ -31,7 +31,14 @@ export type InlineEditFieldProps = {
   commitEmpty?: boolean;
   /** Accessible label for the editor. */
   ariaLabel?: string;
+  /** Minimum visible line count when `multiline` (display + edit modes). */
+  minRows?: number;
 };
+
+/** Matches `leading-relaxed` (1.625) used on objective instruction surfaces. */
+function minRowsMinHeightStyle(minRows: number): React.CSSProperties {
+  return { minHeight: `${minRows * 1.625}em` };
+}
 
 /**
  * Inline click-to-edit text. Displays a value that turns into an editor on
@@ -55,8 +62,10 @@ export function InlineEditField({
   ticketMentionOptions,
   disabled = false,
   commitEmpty = false,
-  ariaLabel
+  ariaLabel,
+  minRows
 }: InlineEditFieldProps) {
+  const multilineMinRowsStyle = multiline && minRows ? minRowsMinHeightStyle(minRows) : undefined;
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(value);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
@@ -91,10 +100,12 @@ export function InlineEditField({
       <span
         className={cn(
           'rounded',
-          !disabled && 'cursor-text hover:bg-muted',
+          multilineMinRowsStyle && 'block',
+          !disabled && 'cursor-default',
           className,
           value ? '' : 'italic text-muted-foreground'
         )}
+        style={multilineMinRowsStyle}
         onClick={disabled ? undefined : () => setEditing(true)}
         title={disabled ? undefined : 'Click to edit'}
       >
@@ -114,9 +125,12 @@ export function InlineEditField({
         ticketMentionOptions={ticketMentionOptions}
         autoListContinuation="enter"
         maxHeightPx={360}
+        rows={minRows}
         aria-label={ariaLabel}
+        style={multilineMinRowsStyle}
         className={cn(
-          'min-h-20 border-none bg-transparent text-sm hover:bg-transparent',
+
+          'border-none bg-transparent ',
           inputClassName
         )}
         // Clicking outside (anywhere but the mention menu, whose buttons
@@ -141,7 +155,7 @@ export function InlineEditField({
     <Input
       autoFocus
       value={draft}
-      className={cn('h-full border-none bg-transparent text-sm hover:bg-transparent', inputClassName)}
+      className={cn('h-full border-none bg-transparent hover:bg-transparent', inputClassName)}
       aria-label={ariaLabel}
       onChange={event => setDraft(event.target.value)}
       onBlur={commit}

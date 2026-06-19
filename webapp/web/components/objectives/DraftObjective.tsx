@@ -87,9 +87,9 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
     handleRemove,
     dragState
   } = useObjectiveAttachmentState(objective.id, { dropDisabled: isFuture });
-  // `launching` is the pre-attach state; render it like `submitted`.
-  const isSubmitted = objective.state === 'submitted' || objective.state === 'launching';
-  const isLaunchable = objective.state === 'draft' || isSubmitted;
+  const isSubmitted = objective.state === 'submitted';
+  const isLaunching = objective.state === 'launching';
+  const isLaunchable = objective.state === 'draft' || isSubmitted || isLaunching;
   const canToggleAutoAdvance = AUTO_ADVANCE_TOGGLE_STATES.includes(objective.state);
   const hasActiveSibling = siblings.some(
     o => o.id !== objective.id && ACTIVE_SIBLING_STATES.includes(o.state)
@@ -218,11 +218,11 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
       disabled={isUploading || isFuture}
       dragState={dragState}
       className={cn(
-        'w-full overflow-hidden rounded-xl border transition-all focus-within:ring-1 focus-within:ring-ring/50',
+        'w-full overflow-hidden rounded-xl border transition-all focus-within:shadow-md dark:focus-within:ring-1 focus-within:ring-ring/50 md:min-w-[350px]',
         isFuture
           ? 'border-border/50 bg-muted/20 opacity-70 focus-within:opacity-100'
           : 'border-muted-foreground/20',
-        isSubmitted && 'border-sky-400/45 bg-sky-500/5 focus-within:ring-sky-400/30'
+        isLaunching && 'border-sky-400/45 bg-sky-500/5 focus-within:ring-sky-400/30'
       )}
       onFocusCapture={() => {
         if (isFuture) setIsFutureExpanded(true);
@@ -240,8 +240,9 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
           <InlineEditField
             multiline
             value={objective.instructionText}
-            className="whitespace-pre-wrap"
-            inputClassName="text-sm"
+            className="text-sm whitespace-pre-wrap"
+            inputClassName="text-sm whitespace-pre-wrap"
+            minRows={objective.state === 'draft' ? 5 : undefined}
             placeholder="Describe what the agent should do… (@ file, # project, $ ticket)"
             ariaLabel="Objective instruction"
             commitEmpty={objective.state === 'future'}

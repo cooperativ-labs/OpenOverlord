@@ -13,6 +13,7 @@ import { TicketArtifactsSection } from './TicketArtifactsSection.tsx';
 import { TicketPanelHeader } from './TicketPanelHeader.tsx';
 import { TicketToolsAndCriteria } from './TicketToolsAndCriteria.tsx';
 import { Button, Spinner } from './ui.tsx';
+import { Separator } from './ui/separator.tsx';
 
 /**
  * Adds a new objective by creating a blank editable slot rather than opening a
@@ -108,7 +109,7 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
   const ticket = ticketQ.data;
 
   return (
-    <div className="flex h-full min-h-0 min-w-[320px] flex-col bg-[var(--color-surface-1)]">
+    <div className="flex h-full min-h-0 min-w-[375px] flex-col bg-[var(--color-surface-1)]">
       <TicketPanelHeader
         ticket={ticket}
         projectId={ticket.projectId}
@@ -128,35 +129,37 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
         </section>
 
         {/* Subtle section — supporting context: tools and activity */}
-        <section className="flex flex-col gap-6 px-5 pt-5">
+        <section className="flex flex-col px-5 pt-5 bg-muted h-full">
           <TicketToolsAndCriteria
             ticketId={ticket.id}
             availableTools={ticket.availableTools}
             acceptanceCriteria={ticket.acceptanceCriteria}
           />
+          <Separator />
+          <div className="flex flex-col gap-6 mt-8">
 
-          <div className="space-y-3">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
-              Activity
-            </h2>
-            <LiveActivityFeed ticketId={ticket.id} />
-          </div>
+            <div className="space-y-3">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
+                Activity
+              </h2>
+              <LiveActivityFeed ticketId={ticket.id} />
+            </div>
 
-          <div className="space-y-3">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
-              Artifacts
-            </h2>
-            <TicketArtifactsSection ticketId={ticket.id} />
-          </div>
+            <div className="space-y-3">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
+                Artifacts
+              </h2>
+              <TicketArtifactsSection ticketId={ticket.id} />
+            </div>
 
-          <div className="space-y-3 pb-5">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
-              File Changes
-            </h2>
-            <LiveFileChanges ticketId={ticket.id} />
-          </div>
+            <div className="space-y-3 pb-5">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
+                File Changes
+              </h2>
+              <LiveFileChanges ticketId={ticket.id} />
+            </div> </div>
         </section>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 }

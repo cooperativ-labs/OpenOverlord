@@ -22,7 +22,7 @@ export function TicketToolsAndCriteria({
 
   return (
     <Accordion multiple>
-      <AccordionItem value="acceptance-criteria" className="border-b-0">
+      <AccordionItem value="acceptance-criteria" className="not-last:border-b-0 ">
         <AccordionTrigger className={accordionTriggerClassName}>
           Acceptance Criteria
         </AccordionTrigger>
@@ -39,7 +39,7 @@ export function TicketToolsAndCriteria({
           </div>
         </AccordionContent>
       </AccordionItem>
-      <AccordionItem value="tools" className="border-b-0">
+      <AccordionItem value="tools" >
         <AccordionTrigger className={accordionTriggerClassName}>Tools</AccordionTrigger>
         <AccordionContent>
           <div className="pb-2 pl-2">

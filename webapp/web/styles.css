@@ -1,89 +1,33 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
-@import '@fontsource-variable/geist';
+
+/* Display + mono faces. Space Grotesk (variable 300–700) drives sans/display;
+ * IBM Plex Mono (400/500) drives the mono surfaces (eyebrows, code). */
+@import '@fontsource-variable/space-grotesk';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
 
 @custom-variant dark (&:is(.dark *));
 
-/*
- * Overlord ops-console theme (shadcn neutral preset).
- * Dark is the default; light and system modes toggle the `.dark` class on <html>.
- */
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --radius: 0.625rem;
-
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-
-  /* Legacy aliases used by existing pages during migration. */
-  --color-surface-0: var(--background);
-  --color-surface-1: var(--card);
-  --color-surface-2: var(--muted);
-  --color-surface-3: var(--secondary);
-  --color-border: var(--border);
-  --color-ink: var(--foreground);
-  --color-ink-dim: var(--muted-foreground);
-  --color-accent: var(--primary);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.439 0 0);
+@theme {
+  /* Presentation screen breakpoints: 1080p / 2K / 4K */
+  --breakpoint-p1080: 1920px;
+  --breakpoint-p2k: 2560px;
+  --breakpoint-p4k: 3840px;
 }
 
 @theme inline {
-  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
-
+  --font-sans: var(--font-display);
+  --font-display: var(--font-display);
+  --font-mono: var(--font-mono);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -102,7 +46,11 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -111,12 +59,126 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-fg1: var(--fg1);
+  --color-fg2: var(--fg2);
+  --color-fg3: var(--fg3);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-bg-muted: var(--bg-muted);
+  --color-surface: var(--surface);
+  --color-sky: var(--sky);
+  --color-sky-dim: var(--sky-dim);
+  --tracking-tight: -0.04em;
+  --tracking-wide: 0.18em;
+  --tracking-wider: 0.22em;
+  --tracking-widest: 0.24em;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.1);
+  --shadow-side-left: -2px 0 4px -2px rgba(0, 0, 0, 0.1);
+}
 
-  --radius-xs: calc(var(--radius) * 0.5);
-  --radius-sm: calc(var(--radius) * 0.75);
-  --radius-md: calc(var(--radius) * 0.875);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.5);
+:root {
+  /* Display + mono font stacks consumed by the @theme inline aliases above. */
+  --font-display: 'Space Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
+
+  --radius: 0.625rem;
+  --background: oklch(0.99 0.002 106.423);
+  --foreground: oklch(0.147 0.004 49.25);
+  --card: oklch(0.99 0.002 106.423);
+  --card-foreground: oklch(0.147 0.004 49.25);
+  --popover: oklch(0.99 0.002 106.423);
+  --popover-foreground: oklch(0.147 0.004 49.25);
+  --primary: oklch(0.216 0.006 56.043);
+  --primary-foreground: oklch(0.985 0.001 106.423);
+  --secondary: oklch(0.97 0.001 106.424);
+  --secondary-foreground: oklch(0.216 0.006 56.043);
+  --muted: oklch(0.97 0.001 106.424);
+  --muted-foreground: oklch(0.553 0.013 58.071);
+  --accent: oklch(0.97 0.001 106.424);
+  --accent-foreground: oklch(0.216 0.006 56.043);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.923 0.003 48.717);
+  --input: oklch(0.923 0.003 48.717);
+  --ring: oklch(0.709 0.01 56.259);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0.001 106.423);
+  --sidebar-foreground: oklch(0.147 0.004 49.25);
+  --sidebar-primary: oklch(0.216 0.006 56.043);
+  --sidebar-primary-foreground: oklch(0.985 0.001 106.423);
+  --sidebar-accent: oklch(0.942 0.002 103);
+  --sidebar-accent-foreground: oklch(0.216 0.006 56.043);
+  --sidebar-border: oklch(0.918 0.003 100);
+  --sidebar-ring: oklch(0.709 0.01 56.259);
+
+  /* Overlord design system extensions */
+  --fg1: oklch(0.147 0.004 49.25);
+  --fg2: oklch(0.553 0.013 58.071);
+  --fg3: oklch(0.709 0.01 56.259);
+  --bg-subtle: oklch(0.97 0.001 106.424);
+  --bg-muted: oklch(0.97 0.001 106.424);
+  --surface: oklch(0.99 0.002 106.423);
+  --sky: #38bdf8;
+  --sky-dim: rgba(56, 189, 248, 0.12);
+
+  /* Legacy aliases used by existing pages during migration. */
+  --color-surface-0: var(--background);
+  --color-surface-1: var(--card);
+  --color-surface-2: var(--muted);
+  --color-surface-3: var(--secondary);
+  --color-border: var(--border);
+  --color-ink: var(--foreground);
+  --color-ink-dim: var(--muted-foreground);
+  --color-accent: var(--primary);
+}
+
+.dark {
+  --background: oklch(0.147 0.004 49.25);
+  --foreground: oklch(0.92 0.002 106.423);
+  --card: oklch(0.22 0.006 56.043);
+  --card-foreground: oklch(0.92 0.002 106.423);
+  --popover: oklch(0.26 0.006 56.043);
+  --popover-foreground: oklch(0.92 0.002 106.423);
+  --primary: oklch(0.923 0.003 48.717);
+  --primary-foreground: oklch(0.216 0.006 56.043);
+  --secondary: oklch(0.268 0.007 34.298);
+  --secondary-foreground: oklch(0.92 0.002 106.423);
+  --muted: oklch(0.268 0.007 34.298);
+  --muted-foreground: oklch(0.709 0.01 56.259);
+  --accent: oklch(0.268 0.007 34.298);
+  --accent-foreground: oklch(0.92 0.002 106.423);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.553 0.013 58.071);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.23 0.006 34.298);
+  --sidebar-foreground: oklch(0.92 0.002 106.423);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.92 0.002 106.423);
+  --sidebar-accent: oklch(0.268 0.007 34.298);
+  --sidebar-accent-foreground: oklch(0.92 0.002 106.423);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.553 0.013 58.071);
+  --shadow-side-left: -4px 0 12px -4px rgba(0, 0, 0, 0.1);
+
+  /* Overlord design system extensions */
+  --fg1: oklch(0.92 0.002 106.423);
+  --fg2: oklch(0.709 0.01 56.259);
+  --fg3: oklch(0.553 0.013 58.071);
+  --bg-subtle: oklch(0.268 0.007 34.298);
+  --bg-muted: oklch(0.268 0.007 34.298);
+  --surface: oklch(0.216 0.006 56.043);
+  --sky: #38bdf8;
+  --sky-dim: rgba(56, 189, 248, 0.12);
 }
 
 @layer base {
@@ -124,6 +186,7 @@
     @apply border-border outline-ring/50;
   }
 
+  /* Fixed ops-console layout: the shell owns its own scroll regions. */
   html,
   body,
   #root {
@@ -132,7 +195,7 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    @apply w-full bg-background text-foreground font-sans antialiased;
     margin: 0;
   }
 
@@ -140,6 +203,335 @@
   input,
   select {
     font-family: inherit;
+  }
+}
+
+/* ── Overlord semantic typography ─────────────────────────── */
+@layer components {
+  .h1 {
+    font-family: var(--font-display);
+    font-size: 2.25rem;
+    font-weight: 600;
+    letter-spacing: var(--tracking-tight);
+    line-height: 0.94;
+    color: var(--color-foreground);
+  }
+
+  .h2 {
+    font-family: var(--font-display);
+    font-size: 1.875rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    color: var(--color-foreground);
+  }
+
+  .h3 {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+    color: var(--color-foreground);
+  }
+
+  .h4 {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--color-foreground);
+  }
+
+  .body {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.6;
+    color: var(--color-foreground);
+  }
+
+  .body-sm {
+    font-family: var(--font-display);
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--color-muted-foreground);
+  }
+
+  .label {
+    font-family: var(--font-display);
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-foreground);
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-widest);
+    color: var(--color-fg3);
+  }
+
+  .eyebrow-accent {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-widest);
+    color: var(--color-sky);
+  }
+
+  /* Public changelog markdown — mirrors marketing email template; light + .dark */
+  .changelog-body {
+    font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+    font-size: 1rem;
+    line-height: 1.6;
+    color: #1c1917;
+  }
+
+  .dark .changelog-body {
+    color: #fafaf7;
+  }
+
+  .changelog-body > *:first-child {
+    margin-top: 0 !important;
+  }
+
+  .changelog-body > *:last-child {
+    margin-bottom: 0 !important;
+  }
+
+  .changelog-body h1,
+  .changelog-body h2,
+  .changelog-body h3,
+  .changelog-body h4 {
+    font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+    color: #1c1917;
+    letter-spacing: -0.01em;
+    margin: 2rem 0 0.875rem;
+  }
+
+  .dark .changelog-body h1,
+  .dark .changelog-body h2,
+  .dark .changelog-body h3,
+  .dark .changelog-body h4 {
+    color: #fafaf7;
+  }
+
+  .changelog-body h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+
+  .changelog-body h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+  }
+
+  /* Section labels (### Added / ### Fixed …) */
+  .changelog-body h3 {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #a8a29e;
+    margin: 2.25rem 0 0.875rem;
+    padding-bottom: 0.625rem;
+    border-bottom: 1px solid #e7e5e0;
+  }
+
+  .dark .changelog-body h3 {
+    color: #a8a29e;
+    border-bottom-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .changelog-body h3:first-child {
+    margin-top: 0;
+  }
+
+  .changelog-body h4 {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .changelog-body p {
+    margin: 0 0 0.875rem;
+    color: #57534e;
+  }
+
+  .dark .changelog-body p {
+    color: #d6d3d1;
+  }
+
+  .changelog-body strong {
+    color: #1c1917;
+    font-weight: 600;
+  }
+
+  .dark .changelog-body strong {
+    color: #fafaf7;
+  }
+
+  .changelog-body em {
+    font-style: italic;
+  }
+
+  .changelog-body ul,
+  .changelog-body ol {
+    margin: 0 0 1.125rem;
+    padding: 0;
+    list-style: none;
+  }
+
+  .changelog-body li {
+    position: relative;
+    padding: 0.625rem 0 0.625rem 1.375rem;
+    border-bottom: 1px solid #f1efe9;
+    color: #57534e;
+  }
+
+  .dark .changelog-body li {
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+    color: #d6d3d1;
+  }
+
+  .changelog-body li:last-child {
+    border-bottom: none;
+  }
+
+  .changelog-body li::before {
+    content: '';
+    position: absolute;
+    left: 0.25rem;
+    top: 1.125rem;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #1c1917;
+  }
+
+  .dark .changelog-body li::before {
+    background: #fafaf7;
+  }
+
+  .changelog-body li strong:first-child {
+    display: inline;
+    color: #1c1917;
+  }
+
+  .dark .changelog-body li strong:first-child {
+    color: #fafaf7;
+  }
+
+  .changelog-body a {
+    color: #1c1917;
+    text-decoration: none;
+    border-bottom: 1px solid #d6d3ce;
+  }
+
+  .dark .changelog-body a {
+    color: #7dd3fc;
+    border-bottom-color: rgba(125, 211, 252, 0.35);
+  }
+
+  .changelog-body a:hover {
+    border-bottom-color: #1c1917;
+  }
+
+  .dark .changelog-body a:hover {
+    border-bottom-color: #7dd3fc;
+  }
+
+  .changelog-body code {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.92em;
+    background: #f4f3ee;
+    border: 1px solid #e7e5e0;
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: #1c1917;
+  }
+
+  .dark .changelog-body code {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #fafaf7;
+  }
+
+  .changelog-body pre {
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 0.8125rem;
+    background: #f4f3ee;
+    border: 1px solid #e7e5e0;
+    border-radius: 8px;
+    padding: 0.875rem 1rem;
+    margin: 0 0 1rem;
+    overflow-x: auto;
+    line-height: 1.55;
+    color: #1c1917;
+  }
+
+  .dark .changelog-body pre {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #fafaf7;
+  }
+
+  .changelog-body pre code {
+    background: transparent;
+    border: none;
+    padding: 0;
+  }
+
+  .changelog-body blockquote {
+    margin: 0 0 1rem;
+    padding: 0.375rem 0 0.375rem 1rem;
+    border-left: 3px solid #e7e5e0;
+    color: #57534e;
+    font-style: normal;
+  }
+
+  .dark .changelog-body blockquote {
+    border-left-color: rgba(255, 255, 255, 0.15);
+    color: #d6d3d1;
+  }
+
+  .changelog-body hr {
+    border: none;
+    border-top: 1px solid #e7e5e0;
+    margin: 1.75rem 0;
+  }
+
+  .dark .changelog-body hr {
+    border-top-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .changelog-body img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 10px;
+    margin: 0.5rem 0;
+  }
+
+  .changelog-body table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    margin: 0 0 1rem;
+  }
+
+  .changelog-body th,
+  .changelog-body td {
+    border: 1px solid #e7e5e0;
+    padding: 0.5rem 0.625rem;
+    text-align: left;
+  }
+
+  .dark .changelog-body th,
+  .dark .changelog-body td {
+    border-color: rgba(255, 255, 255, 0.12);
   }
 }
 
@@ -166,12 +558,27 @@
   background: transparent;
 }
 
+/* Electron-only styles — active when ElectronDetector sets data-electron on <html> */
+.electron-titlebar {
+  display: none;
+}
+
+html[data-electron] .electron-titlebar {
+  display: block;
+  height: 1.5rem; /* 36px — matches trafficLightPosition */
+  background: var(--sidebar);
+}
+
 html[data-electron] .electron-drag-region {
   -webkit-app-region: drag;
 }
 
 html[data-electron] .electron-no-drag {
   -webkit-app-region: no-drag;
+}
+
+html[data-electron] .electron-traffic-pad {
+  padding-left: 5.25rem; /* 84px — clears macOS traffic lights (x=14 + ~70px) */
 }
 
 /* macOS desktop: Electron window vibrancy shows through the sidebar column. */

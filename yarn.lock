@@ -1423,10 +1423,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@fontsource-variable/geist@npm:^5.2.9":
-  version: 5.2.9
-  resolution: "@fontsource-variable/geist@npm:5.2.9"
-  checksum: 10c0/2f9b070bece1ab4cca0c3e434fb13a670eeae30481db17884a37ced494b7177ca81e9a384d30fc8c47fe05e4a55d861f854e377395c88d900a03ae3a8fe85e88
+"@fontsource-variable/space-grotesk@npm:^5.2.10":
+  version: 5.2.10
+  resolution: "@fontsource-variable/space-grotesk@npm:5.2.10"
+  checksum: 10c0/976123dc55a4c73d1986e0ca0c3f6210862cc48ebbec0fc4ba416f17195452e661e40504436ad4972692d34c530e1833cd5e9a0e377b4b9b062b781c6a4eeb74
+  languageName: node
+  linkType: hard
+
+"@fontsource/ibm-plex-mono@npm:^5.2.7":
+  version: 5.2.7
+  resolution: "@fontsource/ibm-plex-mono@npm:5.2.7"
+  checksum: 10c0/b104ae0f8054def5e6edca395f9c41d9a15b17ceeea522573b1ef223311bfa0d8f0fe3e2d3a56ecea59ff3e3ceee571e16d1ee942093bac97a66c3b8a72eaca3
   languageName: node
   linkType: hard
 
@@ -1730,7 +1737,8 @@ __metadata:
     "@dnd-kit/core": "npm:^6.3.1"
     "@dnd-kit/sortable": "npm:^10.0.0"
     "@dnd-kit/utilities": "npm:^3.2.2"
-    "@fontsource-variable/geist": "npm:^5.2.9"
+    "@fontsource-variable/space-grotesk": "npm:^5.2.10"
+    "@fontsource/ibm-plex-mono": "npm:^5.2.7"
     "@google/genai": "npm:^2.8.0"
     "@overlord/auth": "workspace:*"
     "@overlord/automations": "workspace:*"

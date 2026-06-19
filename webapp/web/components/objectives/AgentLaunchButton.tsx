@@ -208,7 +208,7 @@ export function AgentLaunchButton({
 
   return (
     <div className="relative">
-      {!primaryConnection.connected && selectionLoaded ? (
+      {/* {!primaryConnection.connected && selectionLoaded ? (
         <div
           role="alert"
           className="absolute bottom-full right-0 z-10 mb-1.5 flex w-80 items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-200/90 px-3 py-2.5 text-left text-xs text-amber-800 shadow-md backdrop-blur-lg dark:bg-amber-950/80 dark:text-amber-300"
@@ -216,7 +216,7 @@ export function AgentLaunchButton({
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
           <p>{primaryConnection.message}</p>
         </div>
-      ) : null}
+      ) : null} */}
       <div
         className={cn(
           'inline-flex items-stretch rounded-md border border-input bg-background text-sm shadow-sm transition-all',
@@ -228,18 +228,17 @@ export function AgentLaunchButton({
 
         <DropdownMenu>
           <DropdownMenuTrigger
-            disabled={isDisabled}
+
             className={cn(
               'inline-flex items-center rounded-r-md border-l transition-colors',
-              !isDisabled && 'cursor-pointer hover:bg-accent hover:text-accent-foreground',
-              isDisabled && 'cursor-not-allowed',
+
               styles.caretButton
             )}
           >
             <ChevronDown className={cn(styles.chevron, 'text-muted-foreground')} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-[180px]">
-            <DropdownMenuItem className="gap-2 text-xs" onClick={handleRun}>
+            <DropdownMenuItem className="gap-2 text-xs" onClick={handleRun} disabled={isDisabled}>
               <Bot className="h-3.5 w-3.5" />
               <span>Run</span>
             </DropdownMenuItem>
