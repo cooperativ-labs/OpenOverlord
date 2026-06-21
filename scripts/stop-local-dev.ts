@@ -33,6 +33,8 @@ export function stopLocalDev(): void {
   for (const port of ports) {
     stopListenersOnPort(port);
   }
+
+  stopRepoDevProcesses(repoRoot);
 }
 
 function stopListenersOnPort(port: number): void {
@@ -126,6 +128,100 @@ function killPids({ pids, port, via }: { pids: number[]; port: number; via: stri
       console.warn(`could not stop pid ${pid} on port ${port}: ${message}`);
     }
   }
+}
+
+type ProcessRow = {
+  pid: number;
+  ppid: number;
+  command: string;
+};
+
+function stopRepoDevProcesses(repoRoot: string): void {
+  const processes = listProcesses();
+  if (processes.length === 0) return;
+
+  const byPid = new Map(processes.map(row => [row.pid, row]));
+  const targetPids = new Set<number>();
+
+  for (const row of processes) {
+    if (!isRepoDevProcess(row, repoRoot)) continue;
+    for (let current: ProcessRow | undefined = row; current; current = byPid.get(current.ppid)) {
+      if (current.pid === process.pid || current.pid === 1) break;
+      if (!isRepoDevProcess(current, repoRoot) && !isDevWrapperProcess(current)) break;
+      targetPids.add(current.pid);
+    }
+  }
+
+  const targets = [...targetPids]
+    .map(pid => byPid.get(pid))
+    .filter((row): row is ProcessRow => Boolean(row))
+    .sort((left, right) => processDepth(left, byPid) - processDepth(right, byPid));
+
+  for (const target of targets) {
+    try {
+      process.kill(target.pid, 'SIGTERM');
+      console.log(`stopped dev process ${target.pid}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`could not stop dev process ${target.pid}: ${message}`);
+    }
+  }
+}
+
+function listProcesses(): ProcessRow[] {
+  try {
+    const output = execSync('ps -axo pid=,ppid=,command=', { encoding: 'utf8' });
+    return output
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .map(line => {
+        const match = /^(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+        if (!match) return null;
+        return {
+          pid: Number(match[1]),
+          ppid: Number(match[2]),
+          command: match[3]
+        };
+      })
+      .filter((row): row is ProcessRow => Boolean(row));
+  } catch {
+    return [];
+  }
+}
+
+function isRepoDevProcess(row: ProcessRow, repoRoot: string): boolean {
+  const command = row.command;
+  if (!command.includes(repoRoot)) return false;
+
+  return (
+    command.includes('/node_modules/concurrently/dist/bin/concurrently.js') ||
+    (command.includes('/node_modules/tsx/dist/cli.mjs') &&
+      command.includes('watch server/index.ts')) ||
+    command.includes('/node_modules/vite/bin/vite.js')
+  );
+}
+
+function isDevWrapperProcess(row: ProcessRow): boolean {
+  const command = row.command;
+  return (
+    command.endsWith('/bin/yarn dev') ||
+    command.includes('corepack/dist/yarn.js dev:webapp') ||
+    command.includes('corepack/dist/yarn.js workspace @overlord/webapp dev') ||
+    command.includes('corepack/dist/yarn.js dev:server') ||
+    command.includes('corepack/dist/yarn.js dev:web') ||
+    command.includes('scripts/with-dev-env.mjs yarn dev:webapp') ||
+    command.includes('scripts/with-dev-env.mjs yarn workspace @overlord/webapp dev')
+  );
+}
+
+function processDepth(row: ProcessRow, byPid: Map<number, ProcessRow>): number {
+  let depth = 0;
+  for (let current: ProcessRow | undefined = row; current; current = byPid.get(current.ppid)) {
+    depth += 1;
+    if (current.ppid === 1) break;
+  }
+  return depth;
 }
 
 function isOrbStackPid(pid: number): boolean {

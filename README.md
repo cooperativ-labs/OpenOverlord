@@ -51,9 +51,12 @@ interview script for an agent asked to set Overlord up for you.
 
 ### overlord.toml
 
-The `overlord.toml` file is used to configure the Open Overlord system. It is a
-TOML file discovered from the current directory upward, with a global fallback
-under `~/.ovld/`. It is used to configure:
+The `overlord.toml` file configures an Open Overlord instance. It is a
+**per-instance / per-deployment** file that is **not committed** (gitignored,
+like `.env.local`/`.env.prod`) — generate it for a deployment with `ovld init`
+or copy `overlord.toml.example`. Local development needs none: it runs off
+`.env.local` plus code defaults. It is discovered from the current directory
+upward, with a global fallback under `~/.ovld/`, and configures:
 * The instance/organization name
 * The CLI backend target (`backend_mode`, `backend_url`)
 * The host and port the web app will run on
@@ -64,15 +67,25 @@ under `~/.ovld/`. It is used to configure:
 * Default terminal configuration (should include popular terminals commented out)
 
 Each `ovld`/server process resolves these values independently — there is no
-single shared connection. Precedence, highest first: an explicit runtime env
-var (shell export, container/launcher injection — e.g.
-`OVERLORD_BACKEND_URL=http://host.docker.internal:4310` when launching a CLI
-process inside Docker) > the resolved `overlord.toml` > `.env.local` for
-development or `.env.prod` for production/package defaults > a hardcoded fallback. Keep a
-**committed/shared** `overlord.toml` host-context-neutral (the loopback
-default); put any per-environment override in an env var at launch instead of
-editing the shared file, since every process that resolves that file
-inherits whatever it says.
+single shared connection. Development and production read **separate** backend
+env vars so the two never collide: development uses `OVERLORD_BACKEND_URL_DEV`
+(`.env.local`, e.g. a dev backend on `:4320`) and production uses
+`OVERLORD_BACKEND_URL` (`.env.prod`, e.g. `:4310`). Backend-URL precedence,
+highest first: an explicit shell export of the channel variable (e.g.
+`OVERLORD_BACKEND_URL=http://host.docker.internal:4310` inside Docker, or
+`OVERLORD_BACKEND_URL_DEV` in dev) > the per-instance `overlord.toml` `backend_url`
+(e.g. what `ovld config set` writes) > the env-file default (`.env.local` /
+`.env.prod`) > a hardcoded fallback. A `.env.local` value is just the default when
+you have no `overlord.toml`; running `ovld config set` writes the toml and takes
+effect. Since `overlord.toml` is per-instance and uncommitted, dev and prod no
+longer share one config file to fight over.
+
+`OVERLORD_BACKEND_URL_DEV` is strictly a development variable — it is read only
+by the in-repo source build and the dev/test tooling that runs it (`yarn dev`,
+the test harness). An installed/published `ovld` (under `node_modules`) runs as
+production: it never auto-loads `.env.local` or reads `OVERLORD_BACKEND_URL_DEV`,
+even when invoked inside a dev checkout. For dev work against the source build,
+use `yarn ovld:dev` rather than a globally installed `ovld`.
 
 ### Core Concepts
 
@@ -238,7 +251,7 @@ that file only.
 | Data dir | `~/.ovld` | `database/.local/dev-home` (gitignored) |
 | API port | `4310` | `4320` |
 | Vite port | — | `5173` |
-| CLI target | `http://127.0.0.1:4310` | `http://127.0.0.1:4320` |
+| CLI target | `OVERLORD_BACKEND_URL=http://127.0.0.1:4310` | `OVERLORD_BACKEND_URL_DEV=http://127.0.0.1:4320` |
 
 With `.env.local` in place, `yarn dev` and the global Desktop app can run
 simultaneously without sharing a database or port. `yarn test` uses throwaway

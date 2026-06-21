@@ -128,11 +128,7 @@ export function InlineEditField({
         rows={minRows}
         aria-label={ariaLabel}
         style={multilineMinRowsStyle}
-        className={cn(
-
-          'border-none bg-transparent ',
-          inputClassName
-        )}
+        className={cn('border-none bg-transparent ', inputClassName)}
         // Clicking outside (anywhere but the mention menu, whose buttons
         // preventDefault on mousedown to keep focus) commits the edit.
         onBlur={commit}

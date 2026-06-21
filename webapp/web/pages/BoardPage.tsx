@@ -1,17 +1,4 @@
-import {
-  closestCenter,
-  DndContext,
-  type DragEndEvent,
-  type DragOverEvent,
-  DragOverlay,
-  type DragStartEvent,
-  KeyboardSensor,
-  PointerSensor,
-  pointerWithin,
-  useSensor,
-  useSensors
-} from '@dnd-kit/core';
-import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { useMatch, useNavigate, useParams } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -23,19 +10,20 @@ import { Button, EmptyState, Spinner } from '../components/ui.tsx';
 import {
   useCreateTicket,
   useProject,
-  useProjectStatuses,
   useReorderBoardColumn,
   useTickets,
-  useWorkspaceMembers
+  useWorkspaceMembers,
+  useWorkspaceStatuses
 } from '../lib/queries.ts';
 
 import type { BlankTicketCreateOptions } from './BlankTicketCard.tsx';
 import {
   type BoardView,
   type ColumnMap,
-  columnMapsEqual,
   getTicketTags,
   readStoredBoardView,
+  resolveAssignee,
+  resolveColumnTickets,
   storeBoardView
 } from './board-shared.ts';
 import { BoardColumn } from './BoardColumn.tsx';
@@ -43,6 +31,7 @@ import { SortableTicketCard } from './SortableTicketCard.tsx';
 import { TicketListView } from './TicketListView.tsx';
 import { TicketsViewToggle } from './TicketsViewToggle.tsx';
 import { TicketTagFilterDropdown } from './TicketTagFilterDropdown.tsx';
+import { useBoardColumnDnd } from './useBoardColumnDnd.ts';
 
 export function BoardPage() {
   const navigate = useNavigate();
@@ -53,16 +42,13 @@ export function BoardPage() {
   });
   const selectedTicketId = ticketMatch?.params.ticketId;
   const project = useProject(projectId);
-  const statusesQ = useProjectStatuses(projectId);
+  const statusesQ = useWorkspaceStatuses();
   const ticketsQ = useTickets(projectId);
   const createTicket = useCreateTicket();
   const reorder = useReorderBoardColumn();
   const [modalOpen, setModalOpen] = useState(false);
   const [view, setView] = useState<BoardView>(() => readStoredBoardView(projectId));
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [override, setOverride] = useState<ColumnMap | null>(null);
 
   const statuses = useMemo(() => statusesQ.data ?? [], [statusesQ.data]);
   const tickets = useMemo(() => ticketsQ.data ?? [], [ticketsQ.data]);
@@ -137,21 +123,11 @@ export function BoardPage() {
     return map;
   }, [baseColumns, filteredTickets, statuses]);
 
-  useEffect(() => {
-    if (activeId === null && override !== null && columnMapsEqual(override, baseColumns)) {
-      setOverride(null);
-    }
-  }, [activeId, override, baseColumns]);
-
-  const collisionDetection = useCallback((...args: Parameters<typeof pointerWithin>) => {
-    const hits = pointerWithin(...args);
-    return hits.length > 0 ? hits : closestCenter(...args);
-  }, []);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
+  const { activeId, displayColumns, dndContextProps } = useBoardColumnDnd({
+    columns: baseColumns,
+    statuses,
+    projectId
+  });
 
   const placeCreatedTicket = useCallback(
     async ({
@@ -184,13 +160,16 @@ export function BoardPage() {
     [projectId, reorder, statuses, tickets]
   );
 
-  const handleCreateTicketFromColumn = useCallback(
+  // Shared creation path for the two column callbacks below: create the ticket,
+  // then reposition it within this board column when it actually landed here
+  // (a different project/status means it lives on another board).
+  const createTicketInColumn = useCallback(
     async (
       statusId: string,
       objective: string,
       position: 'top' | 'bottom',
       options?: BlankTicketCreateOptions
-    ) => {
+    ): Promise<{ ticketId: string; targetProjectId: string }> => {
       const targetProjectId = options?.projectId ?? projectId;
       const tagIds = options?.tagIds ?? [];
       const detail = await createTicket.mutateAsync({
@@ -199,13 +178,24 @@ export function BoardPage() {
         ...(statusId ? { statusId } : {}),
         ...(tagIds.length > 0 ? { tagIds } : {})
       });
-      // Reposition only when the ticket actually landed in this board column;
-      // a different project/status means it lives on another board.
       if (statusId && targetProjectId === projectId) {
         await placeCreatedTicket({ statusId, position, ticketId: detail.id });
       }
+      return { ticketId: detail.id, targetProjectId };
     },
     [createTicket, placeCreatedTicket, projectId]
+  );
+
+  const handleCreateTicketFromColumn = useCallback(
+    async (
+      statusId: string,
+      objective: string,
+      position: 'top' | 'bottom',
+      options?: BlankTicketCreateOptions
+    ) => {
+      await createTicketInColumn(statusId, objective, position, options);
+    },
+    [createTicketInColumn]
   );
 
   const handleCreateAndOpenTicketFromColumn = useCallback(
@@ -215,23 +205,18 @@ export function BoardPage() {
       position: 'top' | 'bottom',
       options?: BlankTicketCreateOptions
     ) => {
-      const targetProjectId = options?.projectId ?? projectId;
-      const tagIds = options?.tagIds ?? [];
-      const detail = await createTicket.mutateAsync({
-        projectId: targetProjectId,
-        firstObjective: objective,
-        ...(statusId ? { statusId } : {}),
-        ...(tagIds.length > 0 ? { tagIds } : {})
-      });
-      if (statusId && targetProjectId === projectId) {
-        await placeCreatedTicket({ statusId, position, ticketId: detail.id });
-      }
+      const { ticketId, targetProjectId } = await createTicketInColumn(
+        statusId,
+        objective,
+        position,
+        options
+      );
       navigate({
         to: '/projects/$projectId/tickets/$ticketId',
-        params: { projectId: targetProjectId, ticketId: detail.id }
+        params: { projectId: targetProjectId, ticketId }
       });
     },
-    [createTicket, navigate, placeCreatedTicket, projectId]
+    [createTicketInColumn, navigate]
   );
 
   if (project.isLoading || statusesQ.isLoading || ticketsQ.isLoading) {
@@ -249,90 +234,12 @@ export function BoardPage() {
     );
   }
 
-  const columns = override ?? baseColumns;
   const isTagFilterActive = selectedTagIds.length > 0;
-  const visibleColumns = isTagFilterActive ? filteredColumns : columns;
-
-  const findColumn = (id: string): string | undefined => {
-    if (id in columns) return id;
-    return Object.keys(columns).find(statusId => columns[statusId].includes(id));
-  };
-
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(String(event.active.id));
-    setOverride(baseColumns);
-  };
-
-  const handleDragOver = (event: DragOverEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-    const activeId = String(active.id);
-    const overId = String(over.id);
-    const fromCol = findColumn(activeId);
-    const toCol = findColumn(overId);
-    if (!fromCol || !toCol || fromCol === toCol) return;
-
-    setOverride(prev => {
-      const source = prev ?? baseColumns;
-      const fromItems = source[fromCol];
-      const toItems = source[toCol];
-      const overIndex = toItems.indexOf(overId);
-      const insertAt = overIndex >= 0 ? overIndex : toItems.length;
-      return {
-        ...source,
-        [fromCol]: fromItems.filter(id => id !== activeId),
-        [toCol]: [...toItems.slice(0, insertAt), activeId, ...toItems.slice(insertAt)]
-      };
-    });
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    const id = String(active.id);
-    const dropColumn = over ? findColumn(String(over.id)) : undefined;
-
-    setActiveId(null);
-
-    if (!dropColumn) {
-      setOverride(null);
-      return;
-    }
-
-    const source = override ?? baseColumns;
-    const items = source[dropColumn];
-    const fromIndex = items.indexOf(id);
-    const overIndex =
-      over && String(over.id) !== dropColumn ? items.indexOf(String(over.id)) : items.length - 1;
-    const finalItems =
-      fromIndex !== -1 && overIndex !== -1 && fromIndex !== overIndex
-        ? arrayMove(items, fromIndex, overIndex)
-        : items;
-
-    const finalColumns: ColumnMap = { ...source, [dropColumn]: finalItems };
-    setOverride(finalColumns);
-
-    if (columnMapsEqual(finalColumns, baseColumns)) {
-      setOverride(null);
-      return;
-    }
-
-    const status = statuses.find(s => s.id === dropColumn);
-    if (!status) {
-      setOverride(null);
-      return;
-    }
-
-    reorder.mutate({
-      projectId,
-      statusId: dropColumn,
-      statusType: status.type,
-      orderedTicketIds: finalItems
-    });
-  };
+  const visibleColumns = isTagFilterActive ? filteredColumns : displayColumns;
 
   const activeTicket = activeId ? ticketById.get(activeId) : undefined;
-  const activeAssignee = activeTicket?.assignedWorkspaceUserId
-    ? membersByWorkspaceUserId.get(activeTicket.assignedWorkspaceUserId)
+  const activeAssignee = activeTicket
+    ? resolveAssignee(activeTicket, membersByWorkspaceUserId)
     : undefined;
 
   const columnProps = {
@@ -344,6 +251,21 @@ export function BoardPage() {
     onCreateTicket: handleCreateTicketFromColumn,
     onCreateAndOpenTicket: handleCreateAndOpenTicketFromColumn
   };
+
+  const renderBoardColumns = (columnsDraggable: boolean) =>
+    statuses.map(status => {
+      const colTickets = resolveColumnTickets(visibleColumns[status.id] ?? [], ticketById);
+      return (
+        <BoardColumn
+          key={status.id}
+          status={status}
+          tickets={colTickets}
+          count={colTickets.length}
+          draggable={columnsDraggable}
+          {...columnProps}
+        />
+      );
+    });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -390,52 +312,11 @@ export function BoardPage() {
             }
           />
         ) : view === 'board' && isTagFilterActive ? (
-          <div className="flex h-full min-h-0 items-stretch gap-4">
-            {statuses.map(status => {
-              const ids = visibleColumns[status.id] ?? [];
-              const colTickets = ids
-                .map(id => ticketById.get(id))
-                .filter((t): t is TicketDto => t !== undefined);
-              return (
-                <BoardColumn
-                  key={status.id}
-                  status={status}
-                  tickets={colTickets}
-                  count={colTickets.length}
-                  draggable={false}
-                  {...columnProps}
-                />
-              );
-            })}
-          </div>
+          <div className="flex h-full min-h-0 items-stretch gap-4">{renderBoardColumns(false)}</div>
         ) : view === 'board' ? (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={collisionDetection}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDragEnd={handleDragEnd}
-            onDragCancel={() => {
-              setActiveId(null);
-              setOverride(null);
-            }}
-          >
+          <DndContext {...dndContextProps}>
             <div className="flex h-full min-h-0 items-stretch gap-4">
-              {statuses.map(status => {
-                const ids = visibleColumns[status.id] ?? [];
-                const colTickets = ids
-                  .map(id => ticketById.get(id))
-                  .filter((t): t is TicketDto => t !== undefined);
-                return (
-                  <BoardColumn
-                    key={status.id}
-                    status={status}
-                    tickets={colTickets}
-                    count={colTickets.length}
-                    {...columnProps}
-                  />
-                );
-              })}
+              {renderBoardColumns(true)}
             </div>
             <DragOverlay>
               {activeTicket ? (

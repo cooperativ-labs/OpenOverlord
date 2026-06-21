@@ -16,6 +16,11 @@ import { pruneStaleProjectTmp } from './project-tmp.js';
 import { printProtocolHelp } from './protocol-help.js';
 import type { CliRuntime } from './runtime.js';
 import { promptForProject } from './select-prompt.js';
+import {
+  clearCachedSessionKey,
+  readCachedSessionKey,
+  writeCachedSessionKey
+} from './session-key.js';
 import type { TerminalLaunchSettings } from './terminal-launcher.js';
 import { fetchTerminalProfile, terminalProfileToLaunchSettings } from './terminal-profile.js';
 import {
@@ -219,27 +224,74 @@ const PROTOCOL_FILE_FLAGS = [
   '--prompt-file'
 ] as const;
 
-/** Read piped stdin or a `--*-file` path into the protocol request `stdin` field. */
-async function resolveProtocolStdin({
+/** Protocol subcommands that require a session key the cache can auto-inject. */
+const SESSION_KEY_SUBCOMMANDS = new Set([
+  'update',
+  'heartbeat',
+  'ask',
+  'deliver',
+  'record-change-rationales'
+]);
+
+/**
+ * Resolve EACH `--*-file` flag independently into a `fileInputs` map so multiple
+ * file payloads in one invocation no longer collide on a single `stdin` field.
+ * At most one flag may use literal `-` (true stdin); real file paths are unlimited.
+ * The single `-` payload is also returned as `stdin` so the backend keeps honoring
+ * `body.stdin` for backward compatibility.
+ */
+export async function resolveProtocolFileInputs({
   flags,
   stdin
 }: {
   flags: Map<string, string | true>;
   stdin?: string;
-}): Promise<string | undefined> {
-  if (stdin !== undefined) return stdin;
+}): Promise<{ fileInputs: Record<string, string>; stdin?: string }> {
+  const stdinFlags = PROTOCOL_FILE_FLAGS.filter(name => flagValue(flags, name) === '-');
+  if (stdinFlags.length > 1) {
+    throw new CliError({
+      message:
+        `Only one --*-file flag may read from stdin ('-') at a time, but received: ` +
+        `${stdinFlags.join(', ')}. Pipe a single payload on stdin and pass the others ` +
+        `as inline values or real file paths.`
+    });
+  }
+
+  let stdinContent: string | undefined;
+  const readStdinOnce = (): string => {
+    if (stdinContent !== undefined) return stdinContent;
+    if (stdin !== undefined) {
+      stdinContent = stdin;
+    } else if (process.stdin.isTTY) {
+      stdinContent = '';
+    } else {
+      stdinContent = readFileSync(0, 'utf8');
+    }
+    return stdinContent;
+  };
+
+  const fileInputs: Record<string, string> = {};
+  let stdinPayload: string | undefined;
 
   for (const flagName of PROTOCOL_FILE_FLAGS) {
     const filePath = flagValue(flags, flagName);
     if (!filePath) continue;
     if (filePath === '-') {
-      if (process.stdin.isTTY) return undefined;
-      return readFileSync(0, 'utf8');
+      const content = readStdinOnce();
+      fileInputs[flagName] = content;
+      stdinPayload = content;
+    } else {
+      fileInputs[flagName] = readFileSync(filePath, 'utf8');
     }
-    return readFileSync(filePath, 'utf8');
   }
 
-  return undefined;
+  // No file flags but a piped/explicit stdin was supplied: preserve it as the
+  // single backward-compatible payload (legacy behavior).
+  if (stdinPayload === undefined && stdin !== undefined && Object.keys(fileInputs).length === 0) {
+    stdinPayload = stdin;
+  }
+
+  return { fileInputs, stdin: stdinPayload };
 }
 
 async function discoverProjectId(runtime: CliRuntime, explicit?: string): Promise<string> {
@@ -277,7 +329,22 @@ export async function runProtocolCommand({
   const workingDirectory = process.cwd();
   const ticketId = flagValue(parsed.flags, '--ticket-id') ?? parsed.positional[0];
   const flags = Object.fromEntries(parsed.flags);
-  const protocolStdin = await resolveProtocolStdin({ flags: parsed.flags, stdin });
+  const { fileInputs, stdin: protocolStdin } = await resolveProtocolFileInputs({
+    flags: parsed.flags,
+    stdin
+  });
+
+  // Session-key cache: when a command that needs a session key is missing the
+  // flag, fall back to the key cached at attach for this (workingDir, ticket).
+  // An explicit --session-key always wins.
+  if (
+    SESSION_KEY_SUBCOMMANDS.has(subcommand) &&
+    ticketId &&
+    (typeof flags['--session-key'] !== 'string' || flags['--session-key'].trim() === '')
+  ) {
+    const cached = readCachedSessionKey({ ticketId, workingDirectory });
+    if (cached) flags['--session-key'] = cached;
+  }
 
   pruneStaleProjectTmp({ workingDirectory });
 
@@ -289,7 +356,7 @@ export async function runProtocolCommand({
       workingDirectory,
       ticketId,
       subcommand,
-      stdin: protocolStdin
+      stdin: fileInputs['--changed-files-file'] ?? protocolStdin
     });
   }
 
@@ -300,6 +367,7 @@ export async function runProtocolCommand({
       positional: parsed.positional,
       flags,
       stdin: protocolStdin,
+      fileInputs,
       externalSessionId:
         flagValue(parsed.flags, '--external-session-id') ??
         resolveNativeSessionId({
@@ -325,6 +393,16 @@ export async function runProtocolCommand({
   const resultRecord = asRecord(result);
   if (typeof resultRecord.sessionKey === 'string') {
     printKeyValue({ SESSION_KEY: resultRecord.sessionKey });
+    // Persist the freshly minted key so subsequent commands in other shells for
+    // this (workingDir, ticket) can auto-resolve it without --session-key.
+    if (ticketId) {
+      writeCachedSessionKey({ ticketId, workingDirectory, sessionKey: resultRecord.sessionKey });
+    }
+  }
+  // The session ends at deliver: drop the cached key so it can't bind to a later
+  // session for the same working dir + ticket.
+  if (subcommand === 'deliver' && ticketId) {
+    clearCachedSessionKey({ ticketId, workingDirectory });
   }
   if (typeof resultRecord.ticketId === 'string') {
     printKeyValue({ TICKET_ID: resultRecord.ticketId });

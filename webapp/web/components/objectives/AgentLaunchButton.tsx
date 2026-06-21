@@ -80,7 +80,7 @@ export function AgentLaunchButton({
   // until an instruction has been written.
   const hasInstruction = objective.instructionText.trim().length > 0;
   const isDisabled =
-    !selectionLoaded || isLaunching || !primaryConnection.connected || !hasInstruction;
+    !selectionLoaded || isLaunching || isQueued || !primaryConnection.connected || !hasInstruction;
   const styles = sizeStyles[size];
 
   function queueLaunch() {
@@ -228,7 +228,6 @@ export function AgentLaunchButton({
 
         <DropdownMenu>
           <DropdownMenuTrigger
-
             className={cn(
               'inline-flex items-center rounded-r-md border-l transition-colors',
 

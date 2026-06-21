@@ -5,9 +5,10 @@ import { useCallback, useState } from 'react';
 
 import { Badge, STATUS_CONFIG, statusClasses } from '@/components/ui.tsx';
 
-import type { ProjectStatusDto, TicketDto, WorkspaceMemberDto } from '../../shared/contract.ts';
+import type { TicketDto, WorkspaceMemberDto, WorkspaceStatusDto } from '../../shared/contract.ts';
 
 import { BlankTicketCard, type BlankTicketCreateOptions } from './BlankTicketCard.tsx';
+import { resolveAssignee } from './board-shared.ts';
 import { SortableTicketCard } from './SortableTicketCard.tsx';
 import { TicketCard } from './TicketCard.tsx';
 
@@ -24,7 +25,7 @@ export function BoardColumn({
   onCreateTicket,
   onCreateAndOpenTicket
 }: {
-  status: ProjectStatusDto;
+  status: WorkspaceStatusDto;
   tickets: TicketDto[];
   count: number;
   projectId: string;
@@ -88,9 +89,7 @@ export function BoardColumn({
         />
       ) : null}
       {tickets.map(ticket => {
-        const assignee = ticket.assignedWorkspaceUserId
-          ? membersByWorkspaceUserId.get(ticket.assignedWorkspaceUserId)
-          : undefined;
+        const assignee = resolveAssignee(ticket, membersByWorkspaceUserId);
         const selected = ticket.id === selectedTicketId;
         const cardProps = {
           ticket,

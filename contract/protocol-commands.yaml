@@ -10,6 +10,26 @@
 contractVersion: "0.13-draft"
 referenceSpec: "cli/docs/03-agent-protocol.md"
 
+# Transport-level shape shared by every protocol command, independent of subcommand.
+requestEnvelope:
+  fileInputs:
+    description: "Per-flag map of resolved --*-file payloads: { '--summary-file': '<content>', '--change-rationales-file': '<content>', ... }. The client CLI resolves EACH --*-file flag independently so multiple file payloads in one invocation no longer collide on a single field."
+    rules:
+      - "At most one --*-file flag may use literal '-' (true stdin) per invocation; passing two stdin flags fails fast on the client with a CliError naming the offending flags. Real file paths are unlimited."
+      - "Backward compatible: the legacy single `stdin` field is still populated for the lone '-' payload and still honored by the backend when `fileInputs` lacks an entry for a flag."
+    backwardCompatible: true
+  changeRationaleInput:
+    description: "Shape of each --change-rationales entry on deliver, update, record-change-rationales, and record-work."
+    requiredFields:
+      - file_path
+      - label
+      - summary
+      - why
+      - impact
+    fieldAliases:
+      filePath: "Accepted as an alias for file_path and normalized to the canonical snake_case shape, so an entry keyed by the camelCase changed-files casing no longer fails validation. file_path is the documented canonical form."
+    backwardCompatible: true
+
 sessionLifecycle:
 
   attach:
@@ -298,6 +318,7 @@ projectResources:
   addProjectResource:
     sideEffects:
       - creates-project-resource-record
+      - writes-project-json-file
 
   updateProjectResource:
     sideEffects:

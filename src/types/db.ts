@@ -251,6 +251,18 @@ export interface IdempotencyKeys {
   workspace_id: string;
 }
 
+export interface MyTicketPositions {
+  created_at: string;
+  id: string | null;
+  position: number;
+  revision: Generated<number>;
+  status_id: string;
+  ticket_id: string;
+  updated_at: string;
+  workspace_id: string;
+  workspace_user_id: string;
+}
+
 export interface ObjectiveAttachments {
   checksum_sha256: string | null;
   content_type: string | null;
@@ -283,7 +295,7 @@ export interface Objectives {
   deleted_at: string | null;
   execution_metadata_json: Generated<string>;
   id: string | null;
-  instruction_text: string;
+  instruction_text: string | null;
   launch_config_json: string | null;
   model: string | null;
   position: number;
@@ -343,19 +355,15 @@ export interface Projects {
   workspace_id: string;
 }
 
-export interface ProjectStatuses {
+export interface ProjectTags {
+  active: Generated<number>;
+  color: string | null;
   created_at: string;
   deleted_at: string | null;
   id: string | null;
-  is_default: Generated<number>;
-  is_terminal: Generated<number>;
-  key: string;
-  metadata_json: Generated<string>;
-  name: string;
-  position: number;
+  label: string;
   project_id: string;
   revision: Generated<number>;
-  type: string;
   updated_at: string;
   workspace_id: string;
 }
@@ -535,6 +543,12 @@ export interface TicketSequences {
   workspace_id: string;
 }
 
+export interface TicketTags {
+  created_at: string;
+  tag_id: string;
+  ticket_id: string;
+}
+
 export interface User {
   createdAt: string;
   email: string;
@@ -658,6 +672,22 @@ export interface Workspaces {
   updated_at: string;
 }
 
+export interface WorkspaceStatuses {
+  created_at: string;
+  deleted_at: string | null;
+  id: string | null;
+  is_default: Generated<number>;
+  is_terminal: Generated<number>;
+  key: string;
+  metadata_json: Generated<string>;
+  name: string;
+  position: number;
+  revision: Generated<number>;
+  type: string;
+  updated_at: string;
+  workspace_id: string;
+}
+
 export interface WorkspaceUserExecutionTargets {
   access_status: string;
   created_at: string;
@@ -698,11 +728,12 @@ export interface DB {
   execution_requests: ExecutionRequests;
   execution_targets: ExecutionTargets;
   idempotency_keys: IdempotencyKeys;
+  my_ticket_positions: MyTicketPositions;
   objective_attachments: ObjectiveAttachments;
   objectives: Objectives;
   profiles: Profiles;
   project_resources: ProjectResources;
-  project_statuses: ProjectStatuses;
+  project_tags: ProjectTags;
   project_user_preferences: ProjectUserPreferences;
   projects: Projects;
   role_assignments: RoleAssignments;
@@ -718,6 +749,7 @@ export interface DB {
   storage_buckets: StorageBuckets;
   ticket_events: TicketEvents;
   ticket_sequences: TicketSequences;
+  ticket_tags: TicketTags;
   tickets: Tickets;
   user: User;
   user_execution_target_preferences: UserExecutionTargetPreferences;
@@ -726,6 +758,7 @@ export interface DB {
   user_tokens: UserTokens;
   verification: Verification;
   workspace_images: WorkspaceImages;
+  workspace_statuses: WorkspaceStatuses;
   workspace_user_execution_targets: WorkspaceUserExecutionTargets;
   workspace_users: WorkspaceUsers;
   workspaces: Workspaces;

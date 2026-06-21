@@ -153,7 +153,7 @@ function parseEnvValue(rawValue: string): string {
   for (let i = 0; i < value.length; i += 1) {
     const char = value[i];
     if ((char === '"' || char === "'") && (i === 0 || value[i - 1] !== '\\')) {
-      quote = quote === char ? null : quote ?? char;
+      quote = quote === char ? null : (quote ?? char);
       continue;
     }
     if (char === '#' && !quote && (i === 0 || /\s/.test(value[i - 1]))) {
@@ -184,7 +184,10 @@ function parsePort(value: string | undefined, fallback: number, name: string): n
 }
 
 function globalConfigPath(): string {
-  return path.join(process.env.OVLD_HOME?.trim() || path.join(os.homedir(), '.ovld'), 'overlord.toml');
+  return path.join(
+    process.env.OVLD_HOME?.trim() || path.join(os.homedir(), '.ovld'),
+    'overlord.toml'
+  );
 }
 
 function tomlString(value: string): string {

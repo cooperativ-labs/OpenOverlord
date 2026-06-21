@@ -42,22 +42,24 @@ export function durationToIso(value: string, now: number = Date.now()): string {
   const amount = Number.parseInt(match[1], 10);
   const unit = match[2].toLowerCase();
   const date = new Date(now);
+  // Use UTC mutators so the arithmetic is timezone-independent; local-time
+  // mutators drift by an hour when the span crosses a DST boundary.
   switch (unit) {
     case 'h':
-      date.setHours(date.getHours() + amount);
+      date.setUTCHours(date.getUTCHours() + amount);
       break;
     case 'd':
-      date.setDate(date.getDate() + amount);
+      date.setUTCDate(date.getUTCDate() + amount);
       break;
     case 'w':
-      date.setDate(date.getDate() + amount * 7);
+      date.setUTCDate(date.getUTCDate() + amount * 7);
       break;
     case 'mo':
     case 'm':
-      date.setMonth(date.getMonth() + amount);
+      date.setUTCMonth(date.getUTCMonth() + amount);
       break;
     case 'y':
-      date.setFullYear(date.getFullYear() + amount);
+      date.setUTCFullYear(date.getUTCFullYear() + amount);
       break;
     default:
       throw new CliError({ message: `Unsupported duration unit in '${value}'.` });

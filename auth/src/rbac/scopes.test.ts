@@ -39,6 +39,7 @@ test('ticket_lifecycle scope permits ticket/objective/runner work', () => {
   assert.equal(effectiveCan([Role.ADMIN], scope, PERMISSIONS.SESSION_ATTACH), true);
   assert.equal(effectiveCan([Role.ADMIN], scope, PERMISSIONS.EXECUTION_REQUEST_CLAIM), true);
   assert.equal(effectiveCan([Role.ADMIN], scope, PERMISSIONS.EVENT_CREATE), true);
+  assert.equal(effectiveCan([Role.ADMIN], scope, PERMISSIONS.WORKSPACE_READ), true);
 });
 
 test('ticket_lifecycle scope denies admin/destructive actions even for an ADMIN user', () => {

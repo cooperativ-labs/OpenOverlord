@@ -3,8 +3,14 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { runOvld } from '../../../test/support/cli.ts';
+
+// Resolve fixtures relative to this file so the suite works regardless of the
+// cwd it is launched from (repo root vs. the cli workspace).
+const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures');
+const mockUpdateRunner = path.join(fixturesDir, 'mock-update-runner.mjs');
 
 test('ovld version prints the packaged CLI version', async () => {
   const result = await runOvld({ args: ['version'] });
@@ -66,11 +72,7 @@ test('ovld update --check reports the published version without installing', asy
     args: ['update', '--check', '--json'],
     env: {
       OVLD_UPDATE_BIN: process.execPath,
-      OVLD_UPDATE_VIEW_ARGS_JSON: JSON.stringify([
-        path.join(process.cwd(), 'cli', 'test', 'fixtures', 'mock-update-runner.mjs'),
-        'view',
-        '999.0.0'
-      ])
+      OVLD_UPDATE_VIEW_ARGS_JSON: JSON.stringify([mockUpdateRunner, 'view', '999.0.0'])
     }
   });
 
@@ -88,14 +90,13 @@ test('ovld update --check reports the published version without installing', asy
 test('ovld update installs through the configured package manager command', async () => {
   const sentinelDir = mkdtempSync(path.join(tmpdir(), 'ovld-update-'));
   const sentinelPath = path.join(sentinelDir, 'install.txt');
-  const fixturePath = path.join(process.cwd(), 'cli', 'test', 'fixtures', 'mock-update-runner.mjs');
 
   const result = await runOvld({
     args: ['update'],
     env: {
       OVLD_UPDATE_BIN: process.execPath,
-      OVLD_UPDATE_VIEW_ARGS_JSON: JSON.stringify([fixturePath, 'view', '999.0.0']),
-      OVLD_UPDATE_INSTALL_ARGS_JSON: JSON.stringify([fixturePath, 'install']),
+      OVLD_UPDATE_VIEW_ARGS_JSON: JSON.stringify([mockUpdateRunner, 'view', '999.0.0']),
+      OVLD_UPDATE_INSTALL_ARGS_JSON: JSON.stringify([mockUpdateRunner, 'install']),
       OVLD_UPDATE_SENTINEL: sentinelPath
     }
   });

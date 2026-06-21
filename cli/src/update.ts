@@ -7,6 +7,13 @@ import { getCliVersion } from './version.js';
 
 const PACKAGE_NAME = 'open-overlord';
 
+export const DEFAULT_UPDATE_INSTALL_ARGS = [
+  'install',
+  '-g',
+  '--no-fund',
+  `${PACKAGE_NAME}@latest`
+] as const;
+
 type SpawnResult = {
   exitCode: number;
   stdout: string;
@@ -25,6 +32,13 @@ type UpdateStatus = {
 function resolvePackageManager(): string {
   if (process.env.OVLD_UPDATE_BIN) return process.env.OVLD_UPDATE_BIN;
   return process.platform === 'win32' ? 'npm.cmd' : 'npm';
+}
+
+function resolveSpawnEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    NPM_CONFIG_FUND: 'false'
+  };
 }
 
 function resolveCommandArgs({
@@ -84,7 +98,7 @@ async function runCapturedCommand({
 }): Promise<SpawnResult> {
   return await new Promise((resolve, reject) => {
     const child = spawn(command, args, {
-      env: process.env,
+      env: resolveSpawnEnv(),
       stdio: ['ignore', 'pipe', 'pipe']
     });
 
@@ -113,7 +127,7 @@ async function runStreamingCommand({
 }): Promise<number> {
   return await new Promise((resolve, reject) => {
     const child = spawn(command, args, {
-      env: process.env,
+      env: resolveSpawnEnv(),
       stdio: 'inherit'
     });
 
@@ -186,7 +200,7 @@ export async function runUpdateCommand({ rest }: { rest: string[] }): Promise<vo
 
   const installArgs = resolveCommandArgs({
     envName: 'OVLD_UPDATE_INSTALL_ARGS_JSON',
-    fallback: ['install', '-g', `${PACKAGE_NAME}@latest`]
+    fallback: [...DEFAULT_UPDATE_INSTALL_ARGS]
   });
 
   if (!json) {

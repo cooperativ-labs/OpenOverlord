@@ -1,4 +1,4 @@
-import type { TicketDto } from '../../shared/contract.ts';
+import type { TicketDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
 export const BOARD_VIEW_STORAGE_PREFIX = 'overlord:project-board-view:';
@@ -51,6 +51,26 @@ export function storeBoardView(projectId: string, view: BoardView) {
   } catch {
     // Ignore private browsing or quota failures; view switching still works in memory.
   }
+}
+
+/** Look up a ticket's assignee from the workspace member map, if it has one. */
+export function resolveAssignee(
+  ticket: TicketDto,
+  membersByWorkspaceUserId: Map<string, WorkspaceMemberDto>
+): WorkspaceMemberDto | undefined {
+  return ticket.assignedWorkspaceUserId
+    ? membersByWorkspaceUserId.get(ticket.assignedWorkspaceUserId)
+    : undefined;
+}
+
+/** Resolve an ordered column of ticket ids into the tickets, dropping any unknown ids. */
+export function resolveColumnTickets<T extends { id: string }>(
+  ticketIds: string[],
+  ticketById: Map<string, T>
+): T[] {
+  return ticketIds
+    .map(id => ticketById.get(id))
+    .filter((ticket): ticket is T => ticket !== undefined);
 }
 
 export function columnMapsEqual(a: ColumnMap, b: ColumnMap): boolean {

@@ -1,15 +1,13 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useNavigate } from '@tanstack/react-router';
 
-import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 import type { TicketDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 
 import { TicketCardBody } from './TicketCardBody.tsx';
 import { getTicketCardState } from './ticketCardState.ts';
-import { TicketCardStateOverlay } from './TicketCardStateOverlay.tsx';
+import { TicketCardSurface } from './TicketCardSurface.tsx';
 
 export function SortableTicketCard({
   ticket,
@@ -18,7 +16,8 @@ export function SortableTicketCard({
   projectColor,
   assignee,
   selected,
-  isDragOverlay
+  isDragOverlay,
+  onOpen
 }: {
   ticket: TicketDto;
   projectId: string;
@@ -27,24 +26,24 @@ export function SortableTicketCard({
   assignee?: WorkspaceMemberDto | null;
   selected?: boolean;
   isDragOverlay?: boolean;
+  /** Override the default navigate-to-project-ticket click (e.g. the My Tickets board). */
+  onOpen?: () => void;
 }) {
-  const navigate = useNavigate();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: ticket.id,
     disabled: isDragOverlay
   });
-  const cardState = getTicketCardState(ticket);
 
   if (isDragOverlay) {
     return (
-      <div className="w-full rounded-md border border-dashed border-primary/40 bg-card shadow-lg">
+      <div className="w-full rounded-md border border-dashed pt-2 border-primary/40 bg-card shadow-lg">
         <TicketCardBody
           ticket={ticket}
           projectId={projectId}
           projectName={projectName}
           projectColor={projectColor}
           assignee={assignee}
-          cardState={cardState}
+          cardState={getTicketCardState(ticket)}
         />
       </div>
     );
@@ -63,30 +62,15 @@ export function SortableTicketCard({
       {...listeners}
       {...attributes}
     >
-      <Card
-        aria-label={`Open ticket: ${ticket.title}`}
-        className={cn(
-          'group relative overflow-hidden rounded-md border-gray-300/60 bg-linear-to-br from-gray-300/5 to-transparent transition-all hover:shadow-md dark:border-gray-700/40',
-          selected &&
-            'border-gray-600/60 bg-gray-100/90 dark:border-gray-500/70 dark:bg-gray-900/40'
-        )}
-        onClick={() =>
-          navigate({
-            to: '/projects/$projectId/tickets/$ticketId',
-            params: { projectId, ticketId: ticket.id }
-          })
-        }
-      >
-        <TicketCardStateOverlay state={cardState} />
-        <TicketCardBody
-          ticket={ticket}
-          projectId={projectId}
-          projectName={projectName}
-          projectColor={projectColor}
-          assignee={assignee}
-          cardState={cardState}
-        />
-      </Card>
+      <TicketCardSurface
+        ticket={ticket}
+        projectId={projectId}
+        projectName={projectName}
+        projectColor={projectColor}
+        assignee={assignee}
+        selected={selected}
+        onOpen={onOpen}
+      />
     </div>
   );
 }

@@ -1,3 +1,6 @@
+import { useProjectRepositoryContext } from '@/components/projects/ProjectRepositoryContext';
+import { useProfile } from '@/lib/queries';
+
 import { useTicketFileChanges } from '../lib/queries.ts';
 
 import { LiveFileChangeCard } from './LiveFileChangeCard.tsx';
@@ -13,6 +16,8 @@ import { Spinner } from './ui.tsx';
  */
 export function LiveFileChanges({ ticketId }: { ticketId: string }) {
   const fileChangesQ = useTicketFileChanges(ticketId);
+  const profileQ = useProfile();
+  const { repository } = useProjectRepositoryContext();
 
   if (fileChangesQ.isLoading) {
     return (
@@ -31,6 +36,8 @@ export function LiveFileChanges({ ticketId }: { ticketId: string }) {
   }
 
   const fileChanges = fileChangesQ.data ?? [];
+  const rootPath = repository?.rootPath ?? null;
+  const editorScheme = profileQ.data?.editorScheme ?? null;
   if (fileChanges.length === 0) {
     return <p className="text-sm italic text-[var(--color-ink-dim)]">No file changes yet.</p>;
   }
@@ -38,7 +45,12 @@ export function LiveFileChanges({ ticketId }: { ticketId: string }) {
   return (
     <div className="grid gap-3">
       {fileChanges.map(fileChange => (
-        <LiveFileChangeCard key={fileChange.id} fileChange={fileChange} />
+        <LiveFileChangeCard
+          key={fileChange.id}
+          fileChange={fileChange}
+          rootPath={rootPath}
+          editorScheme={editorScheme}
+        />
       ))}
     </div>
   );

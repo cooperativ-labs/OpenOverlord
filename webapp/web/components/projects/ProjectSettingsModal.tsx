@@ -1,22 +1,20 @@
-import { FolderTree, GitBranch, Settings, Tag, Trash2 } from 'lucide-react';
+import { FolderTree, Settings, Tag, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { DangerZonePage } from '@/components/projects/project-settings/DangerZonePage.tsx';
 import { GeneralPage } from '@/components/projects/project-settings/GeneralPage.tsx';
 import { ResourcesPage } from '@/components/projects/project-settings/ResourcesPage.tsx';
 import { TagsPage } from '@/components/projects/project-settings/TagsPage.tsx';
-import { WorkflowPage } from '@/components/projects/project-settings/WorkflowPage.tsx';
 import {
   SettingsDialogShell,
   type SettingsNavItem
 } from '@/components/settings/SettingsDialogShell.tsx';
 
-import type { ProjectDto, ProjectStatusDto } from '../../../shared/contract.ts';
+import type { ProjectDto } from '../../../shared/contract.ts';
 
 const navItems: SettingsNavItem[] = [
   { name: 'General', icon: Settings },
   { name: 'Resources', icon: FolderTree },
-  { name: 'Workflow', icon: GitBranch },
   { name: 'Tags', icon: Tag },
   { name: 'Danger zone', icon: Trash2 }
 ];
@@ -27,7 +25,6 @@ type ProjectSettingsModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   project: ProjectDto;
-  statuses: ProjectStatusDto[];
   initialNav?: ProjectSettingsNavSection;
 };
 
@@ -35,7 +32,6 @@ export function ProjectSettingsModal({
   open,
   onOpenChange,
   project,
-  statuses,
   initialNav
 }: ProjectSettingsModalProps) {
   const [activeNav, setActiveNav] = useState<ProjectSettingsNavSection>('General');
@@ -66,7 +62,6 @@ export function ProjectSettingsModal({
         <GeneralPage open={open} project={project} onOpenChange={onOpenChange} />
       )}
       {activeNav === 'Resources' && <ResourcesPage open={open} projectId={project.id} />}
-      {activeNav === 'Workflow' && <WorkflowPage projectId={project.id} statuses={statuses} />}
       {activeNav === 'Tags' && <TagsPage projectId={project.id} />}
       {activeNav === 'Danger zone' && (
         <DangerZonePage

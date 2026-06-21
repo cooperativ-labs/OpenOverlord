@@ -73,7 +73,7 @@ export function InitialSetupScreen() {
             <p>
               Before continuing, install the Overlord CLI by running{' '}
               <code className="rounded bg-muted px-1 py-0.5 text-xs">
-                npm install -g open-overlord
+                npm install -g --no-fund open-overlord
               </code>{' '}
               in your terminal.
             </p>

@@ -300,8 +300,13 @@ export async function runLocalCommand({
       return;
     }
     case 'init': {
-      const { DEFAULT_LOCAL_BACKEND_URL, writeConfig, resolveRepoPath } =
-        await import('./config.js');
+      const {
+        DEFAULT_LOCAL_BACKEND_URL,
+        writeConfig,
+        resolveRepoPath,
+        loadConfig,
+        resolveBackendUrl
+      } = await import('./config.js');
       const target = resolveRepoPath('overlord.toml');
       writeConfig({
         targetPath: target,
@@ -311,11 +316,14 @@ export async function runLocalCommand({
           backendUrl: DEFAULT_LOCAL_BACKEND_URL
         }
       });
+      // Report the URL that will actually be used: in development a repo-local
+      // `OVERLORD_BACKEND_URL_DEV` (.env.local) overrides the toml default.
+      const backendUrl = resolveBackendUrl(loadConfig(target));
       if (json) {
-        printJson({ ok: true, configPath: target, backendUrl: DEFAULT_LOCAL_BACKEND_URL });
+        printJson({ ok: true, configPath: target, backendUrl });
       } else {
         console.log(`Initialized Overlord at ${target}`);
-        console.log(`Configured local backend at ${DEFAULT_LOCAL_BACKEND_URL}`);
+        console.log(`Configured local backend at ${backendUrl}`);
       }
       return;
     }
@@ -340,6 +348,19 @@ export async function runLocalCommand({
     case 'user-token': {
       const { runUserTokenCommand } = await import('./user-token.js');
       await runUserTokenCommand({ rest });
+      return;
+    }
+    case 'prune': {
+      const { pruneProjectTmpContents } = await import('./project-tmp.js');
+      const workingDirectory = process.cwd();
+      const result = pruneProjectTmpContents(workingDirectory);
+      if (json) {
+        printJson({ ok: true, ...result });
+      } else if (result.warned) {
+        console.warn('Warning: no .overlord folder found in the current directory.');
+      } else {
+        console.log(`Removed ${result.removedCount} item(s) from .overlord/tmp.`);
+      }
       return;
     }
     case 'doctor': {

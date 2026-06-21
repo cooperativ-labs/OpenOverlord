@@ -20,7 +20,11 @@ function applyEnvFile(filePath, { skipKeys = [] } = {}) {
     const rawValue = parseEnvValue(trimmed.slice(eq + 1));
 
     if (!process.env[key]?.trim()) {
-      process.env[key] = rawValue;
+      process.env[key] = normalizeEnvFileValue({
+        key,
+        value: rawValue,
+        baseDir: path.dirname(filePath)
+      });
     }
   }
 }
@@ -32,7 +36,7 @@ function parseEnvValue(rawValue) {
   for (let i = 0; i < value.length; i += 1) {
     const char = value[i];
     if ((char === '"' || char === "'") && (i === 0 || value[i - 1] !== '\\')) {
-      quote = quote === char ? null : quote ?? char;
+      quote = quote === char ? null : (quote ?? char);
       continue;
     }
     if (char === '#' && !quote && (i === 0 || /\s/.test(value[i - 1]))) {
@@ -51,6 +55,12 @@ function parseEnvValue(rawValue) {
   return value;
 }
 
+function normalizeEnvFileValue({ key, value, baseDir }) {
+  if (key !== 'OVLD_HOME') return value;
+  if (!value.trim() || path.isAbsolute(value)) return value;
+  return path.resolve(baseDir, value);
+}
+
 /** @param {{ repoRoot?: string, profile?: 'development' | 'production', skipKeys?: string[] }} [options] */
 export function loadRepoEnvForProfile({
   repoRoot: root = repoRoot,
@@ -59,4 +69,7 @@ export function loadRepoEnvForProfile({
 } = {}) {
   const fileName = profile === 'production' ? '.env.prod' : '.env.local';
   applyEnvFile(path.join(root, fileName), { skipKeys });
+  // Development backend resolution reads `OVERLORD_BACKEND_URL_DEV` directly (see
+  // `resolveBackendUrl`); we intentionally do NOT mirror it into the production
+  // `OVERLORD_BACKEND_URL` so the two channels never collide.
 }

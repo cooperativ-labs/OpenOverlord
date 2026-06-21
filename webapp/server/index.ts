@@ -13,6 +13,7 @@ import { loadRepoEnvForProfile } from '../load-repo-env.ts';
 
 import { authNodeHandler, requireAuthenticatedSession } from './auth.ts';
 import { DATABASE_PATH, WORKSPACE } from './db.ts';
+import { ENV_PROFILE, REPO_ROOT } from './env-profile.ts';
 import { apiErrorFromDatabaseError } from './errors.ts';
 import {
   getAgentCatalog,
@@ -33,16 +34,16 @@ import {
   createObjective,
   createProject,
   createProjectResource,
-  createProjectStatus,
   createProjectTag,
   createTicket,
   createUserToken,
+  createWorkspaceStatus,
   deleteObjective,
   deleteProject,
   deleteProjectResource,
-  deleteProjectStatus,
   deleteProjectTag,
   deleteTicket,
+  deleteWorkspaceStatus,
   getProfile,
   getProject,
   getProjectRepository,
@@ -51,25 +52,27 @@ import {
   listObjectives,
   listProjectResources,
   listProjects,
-  listProjectStatuses,
   listProjectTags,
   listTicketEvents,
   listTicketFileChanges,
   listTickets,
   listUserTokens,
+  listWorkspaceMyTickets,
+  listWorkspaceStatuses,
   renameUserToken,
   reorderBoardColumn,
   reorderFutureObjectives,
-  reorderProjectStatuses,
+  reorderWorkspaceMyTickets,
+  reorderWorkspaceStatuses,
   revokeUserToken,
   searchTickets,
   updateObjective,
   updateProfile,
   updateProject,
   updateProjectResource,
-  updateProjectStatus,
   updateProjectTag,
-  updateTicket
+  updateTicket,
+  updateWorkspaceStatus
 } from './repository.ts';
 import {
   claimRunnerRequest,
@@ -104,7 +107,6 @@ import {
 } from './workspaces.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, '..', '..');
 // The built SPA. Defaults to `webapp/dist` next to this module (repo + server
 // bundle layouts both resolve correctly); the packaged desktop overrides it with
 // OVERLORD_WEBAPP_DIST so the embedded server serves the bundled static assets.
@@ -112,17 +114,16 @@ const distDir = process.env.OVERLORD_WEBAPP_DIST
   ? path.resolve(process.env.OVERLORD_WEBAPP_DIST)
   : path.resolve(here, '..', 'dist');
 
-// Source-server development reads `.env.local` only. The bundled production
-// server reads `.env.prod` only. Explicit shell exports win over both.
-const isSourceServer = here === path.join(repoRoot, 'webapp', 'server');
-const envProfile = isSourceServer ? 'development' : 'production';
-loadRepoEnvForProfile(repoRoot, envProfile);
+// Source-server development reads `.env.local` only; the bundled production server
+// reads `.env.prod` only (shared detection in `./env-profile.ts`). Explicit shell
+// exports win over both.
+loadRepoEnvForProfile(REPO_ROOT, ENV_PROFILE);
 
-const config = loadConfig(undefined, envProfile);
+const config = loadConfig(undefined, ENV_PROFILE);
 
 // Precedence for every key below is profile-aware — see `resolveLayeredEnv`.
 function resolveLayered(envKey: string, configValue: string): string {
-  return resolveLayeredEnv({ envKey, configValue, envProfile });
+  return resolveLayeredEnv({ envKey, configValue, envProfile: ENV_PROFILE });
 }
 
 const bindHost = resolveLayered('OVERLORD_WEB_HOST', config.webHost);
@@ -160,9 +161,7 @@ syncSqlStudioForWorkspace({
 function parsePort(value: string, name: string): number {
   const port = Number(value.trim());
   if (Number.isInteger(port) && port >= 0 && port < 65536) return port;
-  throw new Error(
-    `${name} must be an integer port from 0 to 65535; got ${JSON.stringify(value)}`
-  );
+  throw new Error(`${name} must be an integer port from 0 to 65535; got ${JSON.stringify(value)}`);
 }
 
 const app = express();
@@ -460,40 +459,54 @@ app.delete(
   })
 );
 app.get(
-  '/api/projects/:id/statuses',
-  handle(req => listProjectStatuses(req.params.id), { requires: PERMISSIONS.PROJECT_READ })
+  '/api/workspace/statuses',
+  handle(() => listWorkspaceStatuses(), { requires: PERMISSIONS.WORKSPACE_READ })
 );
 app.post(
-  '/api/projects/:id/statuses',
-  handle(req => createProjectStatus(req.params.id, req.body), {
+  '/api/workspace/statuses',
+  handle(req => createWorkspaceStatus(req.body), {
     mutates: true,
-    requires: PERMISSIONS.PROJECT_UPDATE
+    requires: PERMISSIONS.WORKSPACE_UPDATE
   })
 );
 app.patch(
-  '/api/projects/:id/statuses/reorder',
-  handle(req => reorderProjectStatuses(req.params.id, req.body), {
+  '/api/workspace/statuses/reorder',
+  handle(req => reorderWorkspaceStatuses(req.body), {
     mutates: true,
-    requires: PERMISSIONS.PROJECT_UPDATE
+    requires: PERMISSIONS.WORKSPACE_UPDATE
   })
 );
 app.patch(
-  '/api/projects/:id/statuses/:statusId',
-  handle(req => updateProjectStatus(req.params.id, req.params.statusId, req.body), {
+  '/api/workspace/statuses/:statusId',
+  handle(req => updateWorkspaceStatus(req.params.statusId, req.body), {
     mutates: true,
-    requires: PERMISSIONS.PROJECT_UPDATE
+    requires: PERMISSIONS.WORKSPACE_UPDATE
   })
 );
 app.delete(
-  '/api/projects/:id/statuses/:statusId',
+  '/api/workspace/statuses/:statusId',
   handle(
     req => {
-      deleteProjectStatus(req.params.id, req.params.statusId);
+      deleteWorkspaceStatus(req.params.statusId);
       return { ok: true as const };
     },
-    { mutates: true, requires: PERMISSIONS.PROJECT_UPDATE }
+    { mutates: true, requires: PERMISSIONS.WORKSPACE_UPDATE }
   )
 );
+
+// ---- My Tickets (selected-workspace aggregate) ---------------------------
+app.get(
+  '/api/workspace/my-tickets',
+  handle(() => listWorkspaceMyTickets(), { requires: PERMISSIONS.TICKET_READ })
+);
+app.patch(
+  '/api/workspace/my-tickets/order',
+  handle(req => reorderWorkspaceMyTickets(req.body), {
+    mutates: true,
+    requires: PERMISSIONS.TICKET_UPDATE
+  })
+);
+
 app.get(
   '/api/projects/:id/tags',
   handle(req => listProjectTags(req.params.id), { requires: PERMISSIONS.PROJECT_READ })
@@ -833,7 +846,7 @@ if (existsSync(distDir)) {
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof ApiError) {
-    res.status(err.status).json({ error: err.message, detail: err.detail });
+    res.status(err.status).json({ error: err.message, detail: err.detail, code: err.code });
     return;
   }
   // Service-layer validation (invalid session, no active objective, missing

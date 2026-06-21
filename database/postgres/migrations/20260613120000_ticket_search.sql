@@ -92,7 +92,7 @@ BEGIN
     title, body_text, source_revision, indexed_at
   ) VALUES (
     gen_random_uuid()::text, NEW.workspace_id, NEW.project_id, NEW.ticket_id, 'objective', NEW.id,
-    NEW.title, btrim(coalesce(NEW.title, '') || ' ' || NEW.instruction_text), NEW.revision, now()
+    NEW.title, btrim(coalesce(NEW.title, '') || ' ' || coalesce(NEW.instruction_text, '')), NEW.revision, now()
   )
   ON CONFLICT (workspace_id, entity_type, entity_id) DO UPDATE SET
     project_id = excluded.project_id,
@@ -159,7 +159,7 @@ INSERT INTO search_documents (
 )
 SELECT
   gen_random_uuid()::text, o.workspace_id, o.project_id, o.ticket_id, 'objective', o.id,
-  o.title, btrim(coalesce(o.title, '') || ' ' || o.instruction_text), o.revision
+  o.title, btrim(coalesce(o.title, '') || ' ' || coalesce(o.instruction_text, '')), o.revision
 FROM objectives o
 JOIN tickets t ON t.id = o.ticket_id AND t.deleted_at IS NULL
 WHERE o.deleted_at IS NULL;

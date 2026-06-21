@@ -3,7 +3,9 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
-    public detail?: string
+    public detail?: string,
+    /** Optional machine-readable code so clients can branch without parsing the message. */
+    public code?: string
   ) {
     super(message);
   }

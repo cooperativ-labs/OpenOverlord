@@ -159,7 +159,7 @@ closedVocabularies:
       followUp: "executing → pending_delivery (only after a prior delivery starts follow-up execution)"
       reopen: "complete → executing or pending_delivery via explicit follow-up or admin transition with ticket_events record"
 
-  project_statuses.type:
+  workspace_statuses.type:
     values:
       - draft
       - execute
@@ -168,9 +168,9 @@ closedVocabularies:
       - blocked
       - cancelled
     constraints:
-      - "Exactly one active status per project must have type=execute"
-      - "Exactly one active status per project must have type=review"
-      - "Exactly one active default status per project"
+      - "Exactly one active status per workspace must have type=execute"
+      - "Exactly one active status per workspace must have type=review"
+      - "Exactly one active default status per workspace"
 
   execution_requests.status:
     values:

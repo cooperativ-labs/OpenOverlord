@@ -8,6 +8,7 @@ import {
   ensureProjectTmpDir,
   PROJECT_TMP_RETENTION_MS,
   projectTmpDir,
+  pruneProjectTmpContents,
   pruneStaleProjectTmp
 } from '../src/project-tmp.ts';
 
@@ -62,4 +63,28 @@ test('pruneStaleProjectTmp does not create .overlord/tmp unless asked to', () =>
   const workingDirectory = mkdtempSync(path.join(os.tmpdir(), 'ovld-project-no-tmp-'));
   pruneStaleProjectTmp({ workingDirectory });
   assert.equal(readdirSync(workingDirectory).length, 0);
+});
+
+test('pruneProjectTmpContents removes every entry regardless of age', () => {
+  const workingDirectory = makeProjectDir();
+  const tmpDir = ensureProjectTmpDir(workingDirectory);
+  writeFileSync(path.join(tmpDir, 'fresh.md'), 'fresh\n');
+  mkdirSync(path.join(tmpDir, 'fresh-dir'), { recursive: true });
+
+  const result = pruneProjectTmpContents(workingDirectory);
+
+  assert.deepEqual(result, { warned: false, removedCount: 2 });
+  assert.deepEqual(readdirSync(tmpDir), []);
+});
+
+test('pruneProjectTmpContents is a no-op when .overlord/tmp does not exist', () => {
+  const workingDirectory = makeProjectDir();
+  const result = pruneProjectTmpContents(workingDirectory);
+  assert.deepEqual(result, { warned: false, removedCount: 0 });
+});
+
+test('pruneProjectTmpContents warns when there is no .overlord folder', () => {
+  const workingDirectory = mkdtempSync(path.join(os.tmpdir(), 'ovld-project-no-overlord-'));
+  const result = pruneProjectTmpContents(workingDirectory);
+  assert.deepEqual(result, { warned: true, removedCount: 0 });
 });

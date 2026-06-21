@@ -1,4 +1,3 @@
-import { DEFAULT_STATUSES } from '@overlord/database';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -92,28 +91,8 @@ export function createProject({
         now
       );
 
-    const insertStatus = ctx.db.prepare(
-      `INSERT INTO project_statuses
-         (id, workspace_id, project_id, key, name, type, position, is_default, is_terminal,
-          created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
-    );
-
-    for (const status of DEFAULT_STATUSES) {
-      insertStatus.run(
-        newId(),
-        ctx.workspace.id,
-        id,
-        status.key,
-        status.name,
-        status.type,
-        status.position,
-        status.isDefault ? 1 : 0,
-        status.isTerminal ? 1 : 0,
-        now,
-        now
-      );
-    }
+    // Card statuses are configured once per workspace (see `workspace_statuses`),
+    // so project creation no longer seeds its own status set.
 
     recordChange({
       ctx,

@@ -1,0 +1,56 @@
+# Overlord instance configuration — TEMPLATE.
+#
+# overlord.toml is a PER-INSTANCE / PER-DEPLOYMENT artifact and is NOT committed
+# (it is gitignored, like .env.local / .env.prod). Generate it for a deployment
+# with `ovld init`, or copy this file to `overlord.toml` and edit.
+#
+# Dev does not need this file at all: local development runs entirely off
+# `.env.local` (ports, OVLD_HOME, OVERLORD_BACKEND_URL_DEV) plus code defaults.
+# This file is for a production / standalone instance.
+#
+# Resolution precedence (highest first):
+#   1. explicit runtime env var (shell export / container launcher), where
+#      production uses OVERLORD_BACKEND_URL and development uses
+#      OVERLORD_BACKEND_URL_DEV — the two channels never collide;
+#   2. this overlord.toml;
+#   3. a profile env-file default (.env.prod for production, .env.local for dev);
+#   4. a hardcoded fallback.
+
+instance_name = "Local Overlord"
+
+# CLI/protocol backend target. Local mode expects a Desktop/local backend on the
+# loopback URL; cloud mode points at a hosted Overlord backend.
+backend_mode = "local"
+backend_url = "http://127.0.0.1:4310"
+# backend_mode = "cloud"
+# backend_url = "https://overlord.example.com"
+
+# Host/port the web app serves on.
+web_host = "127.0.0.1"
+web_port = 4310
+
+# Optional local-backend database overrides (consumed only by local/backend
+# packages such as Desktop; the published npm CLI does not open SQLite).
+# database_path = "./database/.local/Overlord.sqlite"
+# database_url = "postgres://user:password@host:5432/overlord"
+
+# Optional SQL Studio launch settings for local database inspection.
+sql_studio_enabled = false
+sql_studio_host = "127.0.0.1"
+sql_studio_port = 4311
+sql_studio_binary = "sql-studio"
+
+# Default agent/model for the web app run button.
+default_agent = "claude"
+# default_model = ""
+
+# Optional workspace agent catalog, merged over bundled defaults on first seed.
+# [agent_catalog.claude]
+# label = "Claude Code"
+# available_by_default = true
+# reasoning_label = "Thinking"
+#
+# [[agent_catalog.claude.models]]
+# id = "claude-sonnet-4-6"
+# display_name = "Sonnet 4.6"
+# reasoning_options = ["low", "medium", "high"]

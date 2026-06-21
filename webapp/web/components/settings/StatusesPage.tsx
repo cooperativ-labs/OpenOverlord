@@ -38,14 +38,15 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import {
-  useCreateProjectStatus,
-  useDeleteProjectStatus,
-  useReorderProjectStatuses,
-  useUpdateProjectStatus
+  useCreateWorkspaceStatus,
+  useDeleteWorkspaceStatus,
+  useReorderWorkspaceStatuses,
+  useUpdateWorkspaceStatus,
+  useWorkspaceStatuses
 } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
-import type { ProjectStatusDto, StatusType } from '../../../../shared/contract.ts';
+import type { StatusType, WorkspaceStatusDto } from '../../../shared/contract.ts';
 
 const ADDABLE_STATUS_TYPES: StatusType[] = [
   'draft',
@@ -56,11 +57,6 @@ const ADDABLE_STATUS_TYPES: StatusType[] = [
   'review'
 ];
 
-type WorkflowPageProps = {
-  projectId: string;
-  statuses: ProjectStatusDto[];
-};
-
 function SortableStatusRow({
   status,
   updateStatus,
@@ -70,13 +66,13 @@ function SortableStatusRow({
   onDelete,
   canDelete
 }: {
-  status: ProjectStatusDto;
-  updateStatus: ReturnType<typeof useUpdateProjectStatus>;
-  reorderStatuses: ReturnType<typeof useReorderProjectStatuses>;
-  onSetDefault: (status: ProjectStatusDto) => void;
-  onRename: (status: ProjectStatusDto, name: string) => void;
-  onDelete: (status: ProjectStatusDto) => void;
-  canDelete: (status: ProjectStatusDto) => boolean;
+  status: WorkspaceStatusDto;
+  updateStatus: ReturnType<typeof useUpdateWorkspaceStatus>;
+  reorderStatuses: ReturnType<typeof useReorderWorkspaceStatuses>;
+  onSetDefault: (status: WorkspaceStatusDto) => void;
+  onRename: (status: WorkspaceStatusDto, name: string) => void;
+  onDelete: (status: WorkspaceStatusDto) => void;
+  canDelete: (status: WorkspaceStatusDto) => boolean;
 }) {
   const {
     attributes,
@@ -159,18 +155,20 @@ function SortableStatusRow({
   );
 }
 
-export function WorkflowPage({ projectId, statuses }: WorkflowPageProps) {
+export function StatusesPage() {
+  const statusesQ = useWorkspaceStatuses();
+  const statuses = useMemo(() => statusesQ.data ?? [], [statusesQ.data]);
   const ordered = useMemo(() => [...statuses].sort((a, b) => a.position - b.position), [statuses]);
-  const createStatus = useCreateProjectStatus(projectId);
-  const updateStatus = useUpdateProjectStatus(projectId);
-  const deleteStatus = useDeleteProjectStatus(projectId);
-  const reorderStatuses = useReorderProjectStatuses(projectId);
+  const createStatus = useCreateWorkspaceStatus();
+  const updateStatus = useUpdateWorkspaceStatus();
+  const deleteStatus = useDeleteWorkspaceStatus();
+  const reorderStatuses = useReorderWorkspaceStatuses();
 
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<StatusType>('draft');
   const [addError, setAddError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<ProjectStatusDto | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<WorkspaceStatusDto | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [statusOrder, setStatusOrder] = useState<string[]>(() => ordered.map(status => status.id));
@@ -193,7 +191,7 @@ export function WorkflowPage({ projectId, statuses }: WorkflowPageProps) {
     const byId = new Map(ordered.map(status => [status.id, status]));
     return statusOrder
       .map(id => byId.get(id))
-      .filter((status): status is ProjectStatusDto => Boolean(status));
+      .filter((status): status is WorkspaceStatusDto => Boolean(status));
   }, [ordered, statusOrder]);
 
   const sensors = useSensors(
@@ -210,7 +208,7 @@ export function WorkflowPage({ projectId, statuses }: WorkflowPageProps) {
     return true;
   });
 
-  async function handleRename(status: ProjectStatusDto, name: string) {
+  async function handleRename(status: WorkspaceStatusDto, name: string) {
     const trimmed = name.trim();
     if (!trimmed || trimmed === status.name) return;
 
@@ -222,7 +220,7 @@ export function WorkflowPage({ projectId, statuses }: WorkflowPageProps) {
     }
   }
 
-  async function handleSetDefault(status: ProjectStatusDto) {
+  async function handleSetDefault(status: WorkspaceStatusDto) {
     if (status.isDefault || status.type !== 'draft') return;
 
     setRowError(null);
@@ -285,17 +283,18 @@ export function WorkflowPage({ projectId, statuses }: WorkflowPageProps) {
     }
   }
 
-  function canDelete(status: ProjectStatusDto): boolean {
+  function canDelete(status: WorkspaceStatusDto): boolean {
     return status.type !== 'execute' && status.type !== 'review' && !status.isDefault;
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-medium">Workflow / statuses</h2>
+        <h2 className="text-base font-medium">Card statuses</h2>
         <p className="text-sm text-muted-foreground">
-          Board columns for this project. Rename, reorder, add, or remove statuses. Type semantics
-          are fixed; exactly one execute and one review status are required.
+          Board columns shared across every project in this workspace. Rename, reorder, add, or
+          remove statuses. Type semantics are fixed; exactly one execute and one review status are
+          required.
         </p>
       </div>
 
@@ -405,8 +404,8 @@ export function WorkflowPage({ projectId, statuses }: WorkflowPageProps) {
           <DialogHeader>
             <DialogTitle>Delete status</DialogTitle>
             <DialogDescription>
-              Remove &ldquo;{deleteTarget?.name}&rdquo; from this project? Tickets must be moved off
-              this column first.
+              Remove &ldquo;{deleteTarget?.name}&rdquo; from this workspace? Tickets must be moved
+              off this column first.
             </DialogDescription>
           </DialogHeader>
           {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}

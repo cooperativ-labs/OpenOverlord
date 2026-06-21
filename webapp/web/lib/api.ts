@@ -5,17 +5,19 @@ import type {
   CreateObjectiveBody,
   CreateProjectBody,
   CreateProjectResourceBody,
-  CreateProjectStatusBody,
   CreateProjectTagBody,
   CreateTicketBody,
   CreateUserTokenBody,
   CreateUserTokenResultDto,
   CreateWorkspaceBody,
+  CreateWorkspaceStatusBody,
   ExecutionRequestDto,
   FileChangeDto,
   LaunchObjectiveBody,
   LaunchPreferenceDto,
   LaunchSettingsDto,
+  MyTicketReorderRequest,
+  MyTicketsResponse,
   ObjectiveAttachmentDto,
   ObjectiveDto,
   ObjectivePromptDto,
@@ -23,11 +25,10 @@ import type {
   ProjectDto,
   ProjectRepositoryDto,
   ProjectResourceDto,
-  ProjectStatusDto,
   ProjectTagDto,
   ReorderBoardColumnBody,
   ReorderFutureObjectivesBody,
-  ReorderProjectStatusesBody,
+  ReorderWorkspaceStatusesBody,
   StoredImageDto,
   TicketDetailDto,
   TicketDto,
@@ -38,15 +39,16 @@ import type {
   UpdateProfileBody,
   UpdateProjectBody,
   UpdateProjectResourceBody,
-  UpdateProjectStatusBody,
   UpdateProjectTagBody,
   UpdateTerminalProfileBody,
   UpdateTicketBody,
   UpdateUserTokenBody,
   UpdateWorkspaceBody,
+  UpdateWorkspaceStatusBody,
   UserTokenDto,
   WorkspaceDto,
-  WorkspaceMemberDto
+  WorkspaceMemberDto,
+  WorkspaceStatusDto
 } from '../../shared/contract.ts';
 
 export interface Meta {
@@ -57,6 +59,19 @@ export interface Meta {
   web: { host: string; port: number; url: string };
   sqlStudio: { enabled: boolean; url: string | null };
   capabilities: Record<string, boolean>;
+}
+
+/** Error thrown for a non-2xx REST response; carries the server's typed `code`. */
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    /** Machine-readable code (e.g. `STATUS_UNAVAILABLE_FOR_WORKSPACE`), when present. */
+    public code?: string
+  ) {
+    super(message);
+    this.name = 'ApiRequestError';
+  }
 }
 
 async function request<T>(
@@ -80,14 +95,16 @@ async function request<T>(
   });
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`;
+    let code: string | undefined;
     try {
-      const payload = (await res.json()) as { error?: string; detail?: string };
+      const payload = (await res.json()) as { error?: string; detail?: string; code?: string };
       message = payload.error ?? message;
       if (payload.detail) message += ` — ${payload.detail}`;
+      code = payload.code;
     } catch {
       /* non-JSON error body */
     }
-    throw new Error(message);
+    throw new ApiRequestError(message, res.status, code);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -137,16 +154,15 @@ export const api = {
   updateProject: (id: string, body: UpdateProjectBody) =>
     request<ProjectDto>('PATCH', `/api/projects/${id}`, body),
   deleteProject: (id: string) => request<{ ok: true }>('DELETE', `/api/projects/${id}`),
-  listProjectStatuses: (id: string) =>
-    request<ProjectStatusDto[]>('GET', `/api/projects/${id}/statuses`),
-  createProjectStatus: (projectId: string, body: CreateProjectStatusBody) =>
-    request<ProjectStatusDto>('POST', `/api/projects/${projectId}/statuses`, body),
-  updateProjectStatus: (projectId: string, statusId: string, body: UpdateProjectStatusBody) =>
-    request<ProjectStatusDto>('PATCH', `/api/projects/${projectId}/statuses/${statusId}`, body),
-  deleteProjectStatus: (projectId: string, statusId: string) =>
-    request<{ ok: true }>('DELETE', `/api/projects/${projectId}/statuses/${statusId}`),
-  reorderProjectStatuses: (projectId: string, body: ReorderProjectStatusesBody) =>
-    request<ProjectStatusDto[]>('PATCH', `/api/projects/${projectId}/statuses/reorder`, body),
+  listWorkspaceStatuses: () => request<WorkspaceStatusDto[]>('GET', `/api/workspace/statuses`),
+  createWorkspaceStatus: (body: CreateWorkspaceStatusBody) =>
+    request<WorkspaceStatusDto>('POST', `/api/workspace/statuses`, body),
+  updateWorkspaceStatus: (statusId: string, body: UpdateWorkspaceStatusBody) =>
+    request<WorkspaceStatusDto>('PATCH', `/api/workspace/statuses/${statusId}`, body),
+  deleteWorkspaceStatus: (statusId: string) =>
+    request<{ ok: true }>('DELETE', `/api/workspace/statuses/${statusId}`),
+  reorderWorkspaceStatuses: (body: ReorderWorkspaceStatusesBody) =>
+    request<WorkspaceStatusDto[]>('PATCH', `/api/workspace/statuses/reorder`, body),
   listProjectTags: (id: string) => request<ProjectTagDto[]>('GET', `/api/projects/${id}/tags`),
   createProjectTag: (projectId: string, body: CreateProjectTagBody) =>
     request<ProjectTagDto>('POST', `/api/projects/${projectId}/tags`, body),
@@ -179,6 +195,9 @@ export const api = {
     request<TicketDto[]>('GET', `/api/projects/${projectId}/tickets`),
   reorderBoardColumn: (projectId: string, body: ReorderBoardColumnBody) =>
     request<TicketDto[]>('PATCH', `/api/projects/${projectId}/board/reorder`, body),
+  listWorkspaceMyTickets: () => request<MyTicketsResponse>('GET', `/api/workspace/my-tickets`),
+  reorderWorkspaceMyTickets: (body: MyTicketReorderRequest) =>
+    request<MyTicketsResponse>('PATCH', `/api/workspace/my-tickets/order`, body),
 
   searchTickets: (query: string, options: { projectId?: string; limit?: number } = {}) => {
     const params = new URLSearchParams({ q: query });

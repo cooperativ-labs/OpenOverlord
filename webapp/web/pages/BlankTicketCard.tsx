@@ -17,6 +17,52 @@ import { useProjects, useProjectTags } from '@/lib/queries.ts';
 import type { TextareaHandle } from '@/lib/types/text-control';
 import { cn } from '@/lib/utils.ts';
 
+/**
+ * Walk up from `node` to the nearest ancestor that actually scrolls vertically
+ * (overflow-y of auto/scroll/overlay with real overflow). The board nests scroll
+ * regions — the column's `overflow-y-auto` content area inside the page's
+ * `overflow-auto` region — so we resolve the column's own scroller and move only
+ * that, instead of letting `scrollIntoView` also shift the whole board.
+ */
+function findScrollableParent(node: HTMLElement): HTMLElement | null {
+  let el: HTMLElement | null = node.parentElement;
+  while (el) {
+    const overflowY = getComputedStyle(el).overflowY;
+    if (
+      (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') &&
+      el.scrollHeight > el.clientHeight
+    ) {
+      return el;
+    }
+    el = el.parentElement;
+  }
+  return null;
+}
+
+/**
+ * Bring the whole `card` (footer included) into view within its own scroll
+ * container, and only when it overflows — a no-op when it already fits, so it
+ * never yanks the view while the user types. Falls back to the browser's
+ * `scrollIntoView` when no scrollable ancestor resolves.
+ */
+function revealCard(card: HTMLElement): void {
+  const scroller = findScrollableParent(card);
+  if (!scroller) {
+    card.scrollIntoView({ block: 'nearest' });
+    return;
+  }
+  const cardRect = card.getBoundingClientRect();
+  const viewRect = scroller.getBoundingClientRect();
+  const margin = 8;
+  const overflowBottom = cardRect.bottom - (viewRect.bottom - margin);
+  const overflowTop = viewRect.top + margin - cardRect.top;
+  if (overflowBottom > 0) {
+    scroller.scrollTop += overflowBottom;
+  } else if (overflowTop > 0) {
+    scroller.scrollTop -= overflowTop;
+  }
+}
+
 /** Options chosen in the card footer and forwarded to the create-ticket handler. */
 export type BlankTicketCreateOptions = {
   /** Target project; defaults to the board's project when the picker is unused. */
@@ -30,8 +76,6 @@ type BlankTicketCardProps = {
   statusId: string;
   position: 'top' | 'bottom';
   projectId: string;
-  expand?: boolean;
-  closeOnSubmit?: boolean;
   onCreateTicket: (
     statusId: string,
     objective: string,
@@ -54,8 +98,6 @@ export function BlankTicketCard({
   statusId,
   position,
   projectId,
-  expand = true,
-  closeOnSubmit = false,
   onCreateTicket,
   onCreateAndOpenTicket,
   onClose,
@@ -111,19 +153,38 @@ export function BlankTicketCard({
     textArea.setSelectionRange(cursor, cursor);
   }, [focusTrigger, inputId]);
 
-  // When this card opens at the bottom of a column it can extend below the
-  // window. autoFocus only scrolls the textarea into view, leaving the card's
-  // footer controls below the fold, so scroll the whole card into view. A rAF
-  // lets layout settle (including the textarea's measured height) before we
-  // read the scroll geometry. `block: 'nearest'` scrolls the column just enough
-  // to bring the card's bottom above the bottom of the window. Re-runs on
-  // focusTrigger so the card stays visible after each successive submit.
+  // When this card opens at the bottom of a column it is inserted below the
+  // current scroll position and can sit beneath the fold — or, when the column
+  // already fills the page, entirely below the bottom of the window. autoFocus
+  // only scrolls the textarea into view (and races our own scroll), and the
+  // card keeps growing *after* it mounts as its async project/tag pickers load
+  // and the textarea autosizes, so a single post-mount scroll lands too early
+  // and the card drifts back out of view. Reveal the whole card after layout
+  // settles, then keep it visible across those later size changes with a
+  // ResizeObserver. revealCard moves only the column's own scroller and only
+  // when the card overflows it, so it never shifts the board or fights typing.
+  // Re-runs on focusTrigger so the card stays visible after each submit.
   useEffect(() => {
     if (position !== 'bottom') return;
-    const raf = requestAnimationFrame(() => {
-      cardRef.current?.scrollIntoView({ block: 'nearest' });
+    const card = cardRef.current;
+    if (!card) return;
+
+    const reveal = () => revealCard(card);
+
+    // Defer past autoFocus's scroll and the first paint so we read final
+    // geometry instead of the card's initial (still-growing) height.
+    let raf = requestAnimationFrame(() => {
+      raf = requestAnimationFrame(reveal);
     });
-    return () => cancelAnimationFrame(raf);
+
+    // Keep the card in view as it grows once the pickers/textarea settle.
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(reveal) : null;
+    observer?.observe(card);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      observer?.disconnect();
+    };
   }, [position, focusTrigger]);
 
   const toggleTag = useCallback((tagId: string) => {
@@ -205,14 +266,10 @@ export function BlankTicketCard({
         } finally {
           setIsCreating(false);
         }
-        if (closeOnSubmit) {
-          onClose();
-        }
         onSubmitted?.();
       }
     },
     [
-      closeOnSubmit,
       isCreating,
       onClose,
       onCreateAndOpenTicket,
@@ -225,7 +282,7 @@ export function BlankTicketCard({
 
   return (
     <Card ref={cardRef} className="overflow-hidden rounded-md border-border/60 shadow-sm py-0">
-      <CardContent className="p-2 ">
+      <CardContent className="p-2 font-body">
         <RepositoryMentionTextarea
           id={inputId}
           autoFocus
@@ -236,12 +293,8 @@ export function BlankTicketCard({
           placeholder="What needs to be done?"
           disabled={isCreating}
           onKeyDown={handleKeyDown}
-          className={
-            expand
-              ? 'min-h-[156px] resize-none border-0 p-1 text-sm shadow-none focus-visible:ring-0'
-              : 'min-h-[78px] resize-none border-0 p-1 text-sm shadow-none focus-visible:ring-0'
-          }
-          rows={expand ? 7 : 4}
+          className="min-h-[156px] resize-none border-0 p-1 text-sm shadow-none focus-visible:ring-0"
+          rows={7}
         />
         <div
           className="mt-1 flex items-center justify-between gap-2 px-1"

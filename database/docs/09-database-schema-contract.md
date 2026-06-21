@@ -645,7 +645,7 @@ One ordered agent pass inside a ticket.
 | `ticket_id` | Id | yes | FK to `tickets`. |
 | `position` | integer | yes | Ordered within ticket. |
 | `title` | text | no |  |
-| `instruction_text` | text | yes | Agent-facing objective text. May be empty only while an objective is an inline-authored `draft`/`future` slot; submitted and later objectives require non-empty text at the service/API boundary. |
+| `instruction_text` | text | no | Agent-facing objective text. May be null or empty while an objective is an inline-authored `draft`/`future` slot (including clearing it back to blank after authoring); submitted and later objectives require non-empty text at the service/API boundary. |
 | `state` | text | yes | `future`, `draft`, `submitted`, `launching`, `executing`, `pending_delivery`, `complete`. |
 | `assigned_agent` | text | no | Connector/agent identifier. |
 | `model` | text | no | Model identifier. |
@@ -710,6 +710,31 @@ Indexes:
 - `(tag_id)` — reverse lookup of tickets carrying a tag.
 
 A ticket and its tags must belong to the same project; the service layer validates `tag_id` against the ticket's `project_id` before inserting.
+
+### `my_ticket_positions`
+
+Personal, per-status-column drag ordering for the **My Tickets** selected-workspace view. A row records where one operator (`workspace_user`) has manually placed one ticket within one status column on their My Tickets board. Distinct from `tickets.board_position`, which is the shared per-project board order: My Tickets ordering must never reorder another user's view or the source project boards.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes | Stable row ID. |
+| `workspace_id` | Id | yes | FK to `workspaces`; `ON DELETE CASCADE`. |
+| `workspace_user_id` | Id | yes | FK to `workspace_users`; the operator this ordering belongs to. `ON DELETE CASCADE`. |
+| `ticket_id` | Id | yes | FK to `tickets`; `ON DELETE CASCADE`. |
+| `status_id` | Id | yes | The status column the position applies to. A position only applies at read time when it matches the ticket's current `status_id`, so a status change made elsewhere self-corrects. |
+| `position` | Float | yes | Numeric order within the column; lower sorts first. Gap-based so inserts need not renumber the whole column. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `revision` | integer | yes |  |
+
+Indexes / constraints:
+
+- `UNIQUE (workspace_id, workspace_user_id, ticket_id)` — one position per operator per ticket.
+- Composite FK `(workspace_id, ticket_id) → tickets (workspace_id, id)` `ON DELETE CASCADE` — keeps the row in the ticket's own workspace.
+- Composite FK `(workspace_id, status_id) → workspace_statuses (workspace_id, id)` `ON DELETE CASCADE` — the column must be a status of the same workspace.
+- `(workspace_id, workspace_user_id, status_id, position)` — ordered reads of one operator's column.
+
+Rows are sparse: one exists only for a ticket the operator has dragged. Cascades fire only on **hard** delete; because tickets and statuses are soft-deleted, the read path filters non-deleted tickets and ignores positions whose `status_id` no longer matches the ticket's current column. Keyed by `workspace_id`, the table is forward-compatible with a future cross-workspace My Tickets board.
 
 ### `agent_sessions`
 
@@ -1670,6 +1695,7 @@ The REST API should be the primary remote access path. It should expose domain r
 Recommended boundary:
 
 - `/projects`, `/projects/:id/resources`, `/projects/:id/repository`, `/tickets`, `/tickets/:id/objectives`, `/tickets/:id/events`, `/tickets/:id/context`, `/tickets/:id/deliveries`.
+- `/workspace/my-tickets` (read: tickets assigned to the active actor across the active workspace, with personal `my_ticket_positions` ordering) and `/workspace/my-tickets/order` (persist a personal column reorder; a cross-column drag is a real ticket status change validated by the `(workspace_id, status_id)` composite FK).
 - `/protocol/*` endpoints mirroring `ovld protocol`.
 - `/execution-requests` for runner queue operations.
 - `/uploads/:bucketKey` (core upload service) accepts raw image bytes, persists them to the `storage_buckets` backend, records the matching object table row (e.g. `user_images`), and returns the stored descriptor; `/storage/:bucketKey/:storageKey` serves the bytes for a recorded object.

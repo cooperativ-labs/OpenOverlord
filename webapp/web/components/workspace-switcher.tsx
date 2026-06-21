@@ -65,9 +65,10 @@ export function WorkspaceSwitcher() {
   function handleSelect(workspace: WorkspaceDto) {
     if (workspace.isActive) return;
     activateWorkspace.mutate(workspace.id, {
-      // Land on the projects list — project routes from the old workspace no
-      // longer resolve under the newly active one.
-      onSuccess: () => void navigate({ to: '/projects' })
+      // Land on My Tickets for the newly active workspace. `/workspace` carries
+      // no workspace-specific ids, so it always resolves after a switch (unlike
+      // the old project routes, which no longer resolve under the new workspace).
+      onSuccess: () => void navigate({ to: '/workspace' })
     });
   }
 

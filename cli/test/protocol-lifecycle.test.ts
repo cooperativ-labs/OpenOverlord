@@ -3,15 +3,15 @@ import Database from 'better-sqlite3';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createServiceContext } from '../dist/src/service/context.js';
-import { addProjectResource, createProject } from '../dist/src/service/projects.js';
+import { createServiceContext } from '../../src/service/context.ts';
+import { addProjectResource, createProject } from '../../src/service/projects.ts';
 import {
   attachSession,
   deliverSession,
   recordHookEvent,
   updateSession
-} from '../dist/src/service/protocol.js';
-import { createTicketWithObjectives } from '../dist/src/service/tickets.js';
+} from '../../src/service/protocol.ts';
+import { createTicketWithObjectives } from '../../src/service/tickets.ts';
 
 test('protocol lifecycle: attach → update → deliver', () => {
   const db = new Database(':memory:');

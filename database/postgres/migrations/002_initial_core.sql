@@ -129,12 +129,11 @@ CREATE UNIQUE INDEX idx_projects_workspace_slug ON projects (workspace_id, slug)
 CREATE UNIQUE INDEX idx_projects_workspace_id ON projects (workspace_id, id);
 CREATE INDEX idx_projects_workspace_status_updated ON projects (workspace_id, status, updated_at);
 
-CREATE TABLE project_statuses (
+CREATE TABLE workspace_statuses (
   id text PRIMARY KEY,
   workspace_id text NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
-  project_id text NOT NULL REFERENCES projects (id) ON DELETE RESTRICT,
   key text NOT NULL CHECK (char_length(btrim(key)) > 0),
-  name text NOT NULL CHECK (char_length(btrim(name)) > 0),
+  name text NOT NULL CHECK (char_length(btrim(name)) > 0 AND name = btrim(name)),
   type text NOT NULL CHECK (type IN ('draft', 'execute', 'review', 'complete', 'blocked', 'cancelled')),
   position integer NOT NULL CHECK (position >= 0),
   is_default boolean NOT NULL DEFAULT false,
@@ -144,16 +143,17 @@ CREATE TABLE project_statuses (
   updated_at timestamptz NOT NULL,
   deleted_at timestamptz,
   revision integer NOT NULL DEFAULT 1 CHECK (revision >= 1),
-  FOREIGN KEY (workspace_id, project_id) REFERENCES projects (workspace_id, id) ON DELETE RESTRICT
+  UNIQUE (workspace_id, id)
 );
 
-CREATE UNIQUE INDEX idx_project_statuses_project_key ON project_statuses (project_id, key);
-CREATE UNIQUE INDEX idx_project_statuses_project_id ON project_statuses (project_id, id);
-CREATE UNIQUE INDEX idx_project_statuses_active_default ON project_statuses (project_id)
+CREATE UNIQUE INDEX idx_workspace_statuses_workspace_key ON workspace_statuses (workspace_id, key);
+CREATE UNIQUE INDEX idx_workspace_statuses_active_name ON workspace_statuses (workspace_id, lower(name))
+  WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_workspace_statuses_active_default ON workspace_statuses (workspace_id)
   WHERE is_default = true AND deleted_at IS NULL;
-CREATE UNIQUE INDEX idx_project_statuses_active_execute ON project_statuses (project_id)
+CREATE UNIQUE INDEX idx_workspace_statuses_active_execute ON workspace_statuses (workspace_id)
   WHERE type = 'execute' AND deleted_at IS NULL;
-CREATE UNIQUE INDEX idx_project_statuses_active_review ON project_statuses (project_id)
+CREATE UNIQUE INDEX idx_workspace_statuses_active_review ON workspace_statuses (workspace_id)
   WHERE type = 'review' AND deleted_at IS NULL;
 
 CREATE TABLE devices (
@@ -284,7 +284,7 @@ CREATE TABLE tickets (
   display_id text NOT NULL CHECK (char_length(btrim(display_id)) > 0),
   sequence_number bigint NOT NULL CHECK (sequence_number >= 1),
   title text NOT NULL CHECK (char_length(btrim(title)) > 0),
-  status_id text NOT NULL REFERENCES project_statuses (id) ON DELETE RESTRICT,
+  status_id text NOT NULL REFERENCES workspace_statuses (id) ON DELETE RESTRICT,
   status_type text NOT NULL CHECK (status_type IN ('draft', 'execute', 'review', 'complete', 'blocked', 'cancelled')),
   board_position integer NOT NULL DEFAULT 0,
   priority text CHECK (priority IS NULL OR priority IN ('low', 'normal', 'high', 'urgent')),
@@ -300,7 +300,8 @@ CREATE TABLE tickets (
   updated_at timestamptz NOT NULL,
   deleted_at timestamptz,
   revision integer NOT NULL DEFAULT 1 CHECK (revision >= 1),
-  FOREIGN KEY (workspace_id, project_id) REFERENCES projects (workspace_id, id) ON DELETE RESTRICT
+  FOREIGN KEY (workspace_id, project_id) REFERENCES projects (workspace_id, id) ON DELETE RESTRICT,
+  FOREIGN KEY (workspace_id, status_id) REFERENCES workspace_statuses (workspace_id, id) ON DELETE RESTRICT
 );
 
 CREATE UNIQUE INDEX idx_tickets_workspace_display_id ON tickets (workspace_id, display_id);
@@ -311,6 +312,29 @@ CREATE INDEX idx_tickets_project_status_updated ON tickets (project_id, status_t
 CREATE INDEX idx_tickets_project_status_board ON tickets (project_id, status_id, board_position);
 CREATE INDEX idx_tickets_workspace_creator_updated ON tickets (workspace_id, created_by_workspace_user_id, updated_at);
 
+-- Personal My Tickets ordering: per-operator, per-status-column drag order for
+-- the My Tickets selected-workspace view. Kept separate from
+-- tickets.board_position (the shared project board order) so a personal reorder
+-- never reorders another user's view or a source project board. Sparse: one row
+-- per ticket the operator has dragged.
+CREATE TABLE my_ticket_positions (
+  id text PRIMARY KEY,
+  workspace_id text NOT NULL REFERENCES workspaces (id) ON DELETE CASCADE,
+  workspace_user_id text NOT NULL REFERENCES workspace_users (id) ON DELETE CASCADE,
+  ticket_id text NOT NULL REFERENCES tickets (id) ON DELETE CASCADE,
+  status_id text NOT NULL REFERENCES workspace_statuses (id) ON DELETE CASCADE,
+  position double precision NOT NULL,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  revision integer NOT NULL DEFAULT 1 CHECK (revision >= 1),
+  UNIQUE (workspace_id, workspace_user_id, ticket_id),
+  FOREIGN KEY (workspace_id, ticket_id) REFERENCES tickets (workspace_id, id) ON DELETE CASCADE,
+  FOREIGN KEY (workspace_id, status_id) REFERENCES workspace_statuses (workspace_id, id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_my_ticket_positions_user_status
+  ON my_ticket_positions (workspace_id, workspace_user_id, status_id, position);
+
 CREATE TABLE objectives (
   id text PRIMARY KEY,
   workspace_id text NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
@@ -318,7 +342,7 @@ CREATE TABLE objectives (
   ticket_id text NOT NULL REFERENCES tickets (id) ON DELETE RESTRICT,
   position integer NOT NULL CHECK (position >= 0),
   title text,
-  instruction_text text NOT NULL,
+  instruction_text text,
   state text NOT NULL CHECK (state IN ('future', 'draft', 'submitted', 'launching', 'executing', 'pending_delivery', 'complete')),
   assigned_agent text,
   model text,
@@ -684,5 +708,24 @@ INSERT INTO ticket_sequences (
   'local-workspace-ticket-sequence', 'local-workspace', 'workspace',
   'local-workspace', 'ticket', 1, '2026-01-01T00:00:00.000Z'
 );
+
+INSERT INTO workspace_statuses (
+  id, workspace_id, key, name, type, position, is_default, is_terminal,
+  metadata_json, created_at, updated_at, revision
+) VALUES
+  ('local-workspace-status-backlog', 'local-workspace', 'backlog', 'Backlog', 'draft', 0, true, false,
+   '{}'::jsonb, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1),
+  ('local-workspace-status-next-up', 'local-workspace', 'next_up', 'Next Up', 'draft', 1, false, false,
+   '{}'::jsonb, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1),
+  ('local-workspace-status-in-progress', 'local-workspace', 'in_progress', 'In Progress', 'execute', 2, false, false,
+   '{}'::jsonb, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1),
+  ('local-workspace-status-in-review', 'local-workspace', 'in_review', 'In Review', 'review', 3, false, false,
+   '{}'::jsonb, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1),
+  ('local-workspace-status-done', 'local-workspace', 'done', 'Done', 'complete', 4, false, true,
+   '{}'::jsonb, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1),
+  ('local-workspace-status-blocked', 'local-workspace', 'blocked', 'Blocked', 'blocked', 5, false, false,
+   '{}'::jsonb, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1),
+  ('local-workspace-status-cancelled', 'local-workspace', 'cancelled', 'Cancelled', 'cancelled', 6, false, true,
+   '{}'::jsonb, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1);
 
 COMMIT;

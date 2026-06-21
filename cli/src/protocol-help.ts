@@ -97,7 +97,7 @@ Runner queue (management commands, not protocol):
 Environment fallback:
   --session-key  <- SESSION_KEY printed on stderr after attach/connect/prompt/resume-follow-up
   --ticket-id    <- ticket display id (e.g. coo:8) or UUID
-  backend URL    <- overlord.toml backend_url, or OVERLORD_BACKEND_URL override
+  backend URL    <- overlord.toml backend_url, OVERLORD_BACKEND_URL, or dev OVERLORD_BACKEND_URL_DEV
   auth token     <- OVERLORD_USER_TOKEN, OVLD_USER_TOKEN, or USER_TOKEN
 
 Common flags:

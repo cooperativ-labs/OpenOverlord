@@ -1,13 +1,6 @@
-import { useNavigate } from '@tanstack/react-router';
-
-import { Card } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
-
 import type { TicketDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 
-import { TicketCardBody } from './TicketCardBody.tsx';
-import { getTicketCardState } from './ticketCardState.ts';
-import { TicketCardStateOverlay } from './TicketCardStateOverlay.tsx';
+import { TicketCardSurface } from './TicketCardSurface.tsx';
 
 export function TicketCard({
   ticket,
@@ -24,33 +17,16 @@ export function TicketCard({
   assignee?: WorkspaceMemberDto | null;
   selected?: boolean;
 }) {
-  const navigate = useNavigate();
-  const cardState = getTicketCardState(ticket);
-
   return (
-    <Card
-      aria-label={`Open ticket: ${ticket.title}`}
+    <TicketCardSurface
+      ticket={ticket}
+      projectId={projectId}
+      projectName={projectName}
+      projectColor={projectColor}
+      assignee={assignee}
+      selected={selected}
       size="sm"
-      className={cn(
-        'group relative cursor-pointer overflow-hidden rounded-md border-gray-300/60 bg-linear-to-br from-gray-300/5 to-transparent transition-all hover:shadow-md dark:border-gray-700/40',
-        selected && 'border-gray-600/60 bg-gray-100/90 dark:border-gray-500/70 dark:bg-gray-900/40'
-      )}
-      onClick={() =>
-        navigate({
-          to: '/projects/$projectId/tickets/$ticketId',
-          params: { projectId, ticketId: ticket.id }
-        })
-      }
-    >
-      <TicketCardStateOverlay state={cardState} />
-      <TicketCardBody
-        ticket={ticket}
-        projectId={projectId}
-        projectName={projectName}
-        projectColor={projectColor}
-        assignee={assignee}
-        cardState={cardState}
-      />
-    </Card>
+      className="cursor-pointer"
+    />
   );
 }

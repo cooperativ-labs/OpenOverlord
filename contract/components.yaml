@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '0.23-draft'
+contractVersion: '0.32-draft'
 
 components:
   protocol:
@@ -16,6 +16,7 @@ components:
       - 'session lifecycle: attach → (update|heartbeat)* → (ask|deliver)'
       - 'context assembly format from attach'
       - 'delivery payload structure and validation rules'
+      - 'request envelope: per-flag fileInputs map (at most one stdin payload) and change-rationale file_path/filePath alias normalization'
       - 'changed-file and change-rationale recording protocol'
       - 'idempotency key scope naming: protocol.*'
     dependsOn:
@@ -57,6 +58,7 @@ components:
       - 'configuration file locations: overlord.toml, .overlord/project.json'
       - 'backend URL settings: backend_url and backend_mode (local/cloud)'
       - 'per-user terminal profiles on user_execution_target_preferences for opening launched agents in a terminal window'
+      - 'protocol session-key cache: persists the attach session key by (working directory, ticket) and auto-injects --session-key when the flag is absent; cleared at deliver'
       - 'human-readable CLI output format conventions'
     dependsOn:
       - auth

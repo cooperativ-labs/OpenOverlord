@@ -1,3 +1,5 @@
+import { DEFAULT_STATUSES } from '@overlord/database';
+
 import type {
   CompleteInitialSetupBody,
   CreateWorkspaceBody,
@@ -217,6 +219,30 @@ export function listWorkspaces(): WorkspaceDto[] {
   return rows.map(toWorkspaceDto);
 }
 
+/** Seed the workspace-level card statuses every new workspace starts with. */
+function seedWorkspaceStatuses({ workspaceId, now }: { workspaceId: string; now: string }): void {
+  const insertStatus = db.prepare(
+    `INSERT INTO workspace_statuses
+       (id, workspace_id, key, name, type, position, is_default, is_terminal,
+        created_at, updated_at, revision)
+     VALUES (@id, @workspace_id, @key, @name, @type, @position, @is_default, @is_terminal,
+        @now, @now, 1)`
+  );
+  for (const status of DEFAULT_STATUSES) {
+    insertStatus.run({
+      id: newId(),
+      workspace_id: workspaceId,
+      key: status.key,
+      name: status.name,
+      type: status.type,
+      position: status.position,
+      is_default: status.isDefault ? 1 : 0,
+      is_terminal: status.isTerminal ? 1 : 0,
+      now
+    });
+  }
+}
+
 const createWorkspaceTx = db.transaction((body: CreateWorkspaceBody): string => {
   const name = (body.name ?? '').trim();
   if (!name) throw new ApiError(400, 'Workspace name is required');
@@ -250,6 +276,8 @@ const createWorkspaceTx = db.transaction((body: CreateWorkspaceBody): string => 
   });
 
   grantWorkspaceAdminRole({ workspaceId, workspaceUserId });
+
+  seedWorkspaceStatuses({ workspaceId, now });
 
   recordChange({
     entityType: 'workspace',

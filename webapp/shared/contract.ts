@@ -119,9 +119,9 @@ export interface ProjectDto {
   ticketCount: number;
 }
 
-export interface ProjectStatusDto {
+export interface WorkspaceStatusDto {
   id: string;
-  projectId: string;
+  workspaceId: string;
   key: string;
   name: string;
   type: StatusType;
@@ -130,24 +130,24 @@ export interface ProjectStatusDto {
   isTerminal: boolean;
 }
 
-export interface CreateProjectStatusBody {
+export interface CreateWorkspaceStatusBody {
   name: string;
   type: StatusType;
   /** When true, clears the previous default. Only draft-type statuses may be default. */
   isDefault?: boolean;
 }
 
-export interface UpdateProjectStatusBody {
+export interface UpdateWorkspaceStatusBody {
   name?: string;
   /** When true, clears the previous default. Only draft-type statuses may be default. */
   isDefault?: boolean;
 }
 
 /**
- * Reorders every status on a project. `orderedStatusIds` lists status ids
+ * Reorders every status in the workspace. `orderedStatusIds` lists status ids
  * top-to-bottom after the move and must include every active status exactly once.
  */
-export interface ReorderProjectStatusesBody {
+export interface ReorderWorkspaceStatusesBody {
   orderedStatusIds: string[];
 }
 
@@ -242,6 +242,8 @@ export interface TicketDto {
   revision: number;
   /** Count of non-deleted objectives (read-side aggregate). */
   objectiveCount: number;
+  /** Count of non-deleted objectives in the `complete` state (read-side aggregate). */
+  completedObjectiveCount: number;
   /** True when at least one non-deleted objective on this ticket is `executing`. */
   hasExecutingObjective: boolean;
   /** True when at least one non-deleted objective on this ticket is `complete`. */
@@ -304,7 +306,7 @@ export interface ArtifactDto {
 
 export interface TicketDetailDto extends TicketDto {
   objectives: ObjectiveDto[];
-  statuses: ProjectStatusDto[];
+  statuses: WorkspaceStatusDto[];
   /** Active (queued/claimed/launching) execution requests for this ticket's objectives. */
   executionRequests: ExecutionRequestDto[];
 }
@@ -594,6 +596,45 @@ export interface ReorderBoardColumnBody {
   orderedTicketIds: string[];
 }
 
+/**
+ * A ticket on the **My Tickets** selected-workspace board. Extends `TicketDto`
+ * with the cross-project context the aggregate board needs and the operator's
+ * personal ordering slot.
+ */
+export interface MyTicketDto extends TicketDto {
+  /** Name of the ticket's project (My Tickets aggregates across projects). */
+  projectName: string;
+  /** Optional hex color of the ticket's project, for the card accent. */
+  projectColor: string | null;
+  /**
+   * Personal order within this ticket's My Tickets status column for the active
+   * operator. `null` when the operator has not dragged this ticket; it then
+   * sorts after positioned tickets by the default fallback order.
+   */
+  myPosition: number | null;
+}
+
+export interface MyTicketsResponse {
+  tickets: MyTicketDto[];
+}
+
+/**
+ * Persist a personal reorder of one My Tickets status column. `orderedTicketIds`
+ * lists every ticket assigned to the operator that should occupy `statusId`,
+ * top-to-bottom, after the move — mirroring `ReorderBoardColumnBody`. A
+ * within-column reorder writes only `my_ticket_positions` and never touches
+ * `tickets.board_position`. Any listed ticket whose current status differs is a
+ * real cross-column status change that also updates the ticket's `status_id`,
+ * `status_type`, and project-board `board_position`, subject to the
+ * `(workspace_id, status_id)` composite FK. When that FK (or status resolution)
+ * rejects a status the ticket's workspace lacks, the endpoint returns a typed
+ * `STATUS_UNAVAILABLE_FOR_WORKSPACE` error.
+ */
+export interface MyTicketReorderRequest {
+  statusId: string;
+  orderedTicketIds: string[];
+}
+
 export interface CreateObjectiveBody {
   ticketId: string;
   instructionText: string;
@@ -668,6 +709,12 @@ export interface ProfileDto {
    * for this user (`profiles.metadata_json.agentInstructions`).
    */
   agentInstructions: string | null;
+  /**
+   * The operator's preferred IDE/editor, used to open files Overlord links to
+   * (`profiles.metadata_json.editorScheme`). One of `EDITOR_SCHEME_OPTIONS`
+   * (`webapp/web/lib/helpers/editor-scheme.ts`); `null` defaults to VS Code.
+   */
+  editorScheme: string | null;
   /** Open vocabulary (`human`, `service`). The local operator is `human`. */
   kind: string;
   /** Identity provider, when the account is externally federated. */
@@ -686,6 +733,8 @@ export interface UpdateProfileBody {
   avatarUrl?: string | null;
   /** Replaces the user's saved custom agent instructions; pass null or "" to clear. */
   agentInstructions?: string | null;
+  /** Replaces the user's preferred IDE/editor scheme; pass null or "" to clear (defaults to VS Code). */
+  editorScheme?: string | null;
 }
 
 // ---- Uploads (core upload service) ----

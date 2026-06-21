@@ -2,7 +2,7 @@ import { createContext, type ReactNode, useContext, useMemo, useState } from 're
 
 import type { ProjectSettingsNavSection } from '@/components/projects/ProjectSettingsModal';
 import { ProjectSettingsModal } from '@/components/projects/ProjectSettingsModal';
-import { useProject, useProjectStatuses } from '@/lib/queries';
+import { useProject } from '@/lib/queries';
 
 type ProjectSettingsContextValue = {
   openProjectSettings: (nav?: ProjectSettingsNavSection) => void;
@@ -20,7 +20,6 @@ export function ProjectSettingsProvider({
   const [open, setOpen] = useState(false);
   const [initialNav, setInitialNav] = useState<ProjectSettingsNavSection | undefined>();
   const project = useProject(projectId);
-  const statuses = useProjectStatuses(projectId);
 
   const value = useMemo<ProjectSettingsContextValue>(
     () => ({
@@ -43,7 +42,6 @@ export function ProjectSettingsProvider({
             if (!nextOpen) setInitialNav(undefined);
           }}
           project={project.data}
-          statuses={statuses.data ?? []}
           initialNav={initialNav}
         />
       ) : null}

@@ -39,7 +39,7 @@ export function TicketToolsAndCriteria({
           </div>
         </AccordionContent>
       </AccordionItem>
-      <AccordionItem value="tools" >
+      <AccordionItem value="tools">
         <AccordionTrigger className={accordionTriggerClassName}>Tools</AccordionTrigger>
         <AccordionContent>
           <div className="pb-2 pl-2">

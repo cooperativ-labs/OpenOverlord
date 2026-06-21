@@ -6,11 +6,20 @@ import { parse } from 'smol-toml';
 import { parseAgentCatalogFromToml } from './agent-catalog.ts';
 import type { CatalogAgent } from './agent-catalog-defaults.ts';
 import {
+  detectCliEnvProfile,
   type EnvProfile,
   isExplicitRuntimeEnv,
   loadEnvDefaults,
   resolveLayeredEnv
 } from './env.ts';
+
+/**
+ * Default profile for bare CLI calls: `production` for an installed binary,
+ * `development` only for the source build. Keeps the dev-only
+ * `OVERLORD_BACKEND_URL_DEV` / `.env.local` out of the production CLI. Callers
+ * with their own context (webapp/server, desktop) pass an explicit profile.
+ */
+const CLI_ENV_PROFILE: EnvProfile = detectCliEnvProfile();
 
 export const DEFAULT_LOCAL_BACKEND_DIR = '~/.ovld';
 export const DEFAULT_LOCAL_BACKEND_DATABASE_PATH = '~/.ovld/Overlord.sqlite';
@@ -167,7 +176,7 @@ export function resolveConfigWritePath(startDir = process.cwd()): string {
 
 export function loadConfig(
   configPath?: string | null,
-  envProfile: EnvProfile = 'development'
+  envProfile: EnvProfile = CLI_ENV_PROFILE
 ): OverlordConfig {
   const resolvedPath = configPath ?? findEffectiveConfigPath();
   loadEnvDefaults(resolvedPath ? path.dirname(resolvedPath) : process.cwd(), envProfile);
@@ -287,15 +296,34 @@ export function resolveDatabasePath(config: OverlordConfig, startDir = process.c
 
 export function resolveBackendUrl(
   config: OverlordConfig,
-  envProfile: EnvProfile = 'development'
+  envProfile: EnvProfile = CLI_ENV_PROFILE
 ): string {
-  // Precedence: explicit runtime env (shell export, container launcher) >
-  // development `.env.local` or production `overlord.toml` (profile-dependent) >
-  // the other layer > hardcoded fallback.
+  // Precedence, highest first:
+  //   1. an explicit runtime export of the channel's variable (shell / launcher);
+  //   2. the per-instance `overlord.toml` `backend_url` (e.g. `ovld config set`);
+  //   3. the profile env-file default (`.env.local`/`.env.prod`, backfilled);
+  //   4. a hardcoded fallback.
+  // Development and production read SEPARATE variables so the two channels never
+  // collide: development uses `OVERLORD_BACKEND_URL_DEV` (`.env.local`), production
+  // uses `OVERLORD_BACKEND_URL` (`.env.prod`). A backfilled env-file value is only a
+  // default — an explicit `overlord.toml` (which is per-instance and uncommitted)
+  // outranks it, so `ovld config set` / `ovld init` take effect as expected. Only a
+  // deliberate shell export of the channel variable outranks the toml.
   const override = process.env.OVERLORD_BACKEND_URL?.trim();
   if (override && isExplicitRuntimeEnv('OVERLORD_BACKEND_URL')) return override;
-  if (envProfile === 'development' && override) return override;
+
+  const devOverride = process.env.OVERLORD_BACKEND_URL_DEV?.trim();
+  if (
+    envProfile === 'development' &&
+    devOverride &&
+    isExplicitRuntimeEnv('OVERLORD_BACKEND_URL_DEV')
+  ) {
+    return devOverride;
+  }
+
   if (config.backendUrl?.trim()) return config.backendUrl.trim();
+
+  if (envProfile === 'development') return devOverride || DEFAULT_LOCAL_BACKEND_URL;
   return override || DEFAULT_LOCAL_BACKEND_URL;
 }
 

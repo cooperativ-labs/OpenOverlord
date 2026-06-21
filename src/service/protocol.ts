@@ -1116,7 +1116,13 @@ export function updateSession({
         JSON.stringify({
           ...(payloadJson ?? {}),
           ...(followUpIntent ? { followUpIntent } : {}),
-          ...(changeRationales ? { changeRationales } : {})
+          ...(changeRationales
+            ? {
+                changeRationales: normalizeChangeRationales(
+                  changeRationales as ChangeRationaleInput[]
+                )
+              }
+            : {})
         }),
         externalUrl ?? null,
         ctx.source,
@@ -1201,13 +1207,49 @@ export function askQuestion({
 }
 
 export type ChangeRationaleInput = {
-  file_path: string;
+  /**
+   * Canonical camelCase path for the changed file, matching the `filePath` used by
+   * changed-files inputs. The snake_case `file_path` is accepted as a backward-
+   * compatible alias during migration.
+   */
+  filePath?: string;
+  /** @deprecated alias for {@link ChangeRationaleInput.filePath}. */
+  file_path?: string;
   label: string;
   summary: string;
   why: string;
   impact: string;
   hunks?: Array<{ header: string }>;
 };
+
+/** A change rationale after casing normalization — `filePath` is always present. */
+type NormalizedChangeRationale = {
+  filePath: string;
+  label: string;
+  summary: string;
+  why: string;
+  impact: string;
+  hunks?: Array<{ header: string }>;
+};
+
+/**
+ * Normalize change-rationale inputs to the canonical `filePath` casing, accepting
+ * the legacy snake_case `file_path` alias. Backslashes are converted to forward
+ * slashes so paths line up with the normalized `file_path` stored on changed-file
+ * rows (see `upsertChangedFiles`).
+ */
+function normalizeChangeRationales(
+  input: ReadonlyArray<ChangeRationaleInput>
+): NormalizedChangeRationale[] {
+  return input.map(rationale => ({
+    filePath: (rationale.filePath ?? rationale.file_path ?? '').replace(/\\/g, '/'),
+    label: rationale.label,
+    summary: rationale.summary,
+    why: rationale.why,
+    impact: rationale.impact,
+    ...(rationale.hunks ? { hunks: rationale.hunks } : {})
+  }));
+}
 
 export function deliverSession({
   ctx,
@@ -1247,6 +1289,8 @@ export function deliverSession({
     throw new ServiceError('Session key does not match ticket', 'invalid_session', 401);
   }
 
+  const normalizedRationales = normalizeChangeRationales(changeRationales);
+
   const now = nowIso();
   const deliveryId = newId();
   const eventId = newId();
@@ -1284,7 +1328,7 @@ export function deliverSession({
         file => file.current_diff_state === 'present' && !file.file_path.includes('package-lock')
       );
       for (const file of meaningfulFiles) {
-        const rationale = changeRationales.find(r => r.file_path === file.file_path);
+        const rationale = normalizedRationales.find(r => r.filePath === file.file_path);
         if (!rationale) {
           throw new ServiceError(
             `Missing change rationale for ${file.file_path}. Every meaningful tracked file change requires a rationale.`,
@@ -1357,8 +1401,8 @@ export function deliverSession({
         );
     }
 
-    for (const rationale of changeRationales) {
-      const changedFileId = changedFileIdByPath.get(rationale.file_path) ?? null;
+    for (const rationale of normalizedRationales) {
+      const changedFileId = changedFileIdByPath.get(rationale.filePath) ?? null;
       ctx.db
         .prepare(
           `INSERT INTO change_rationales
@@ -1376,7 +1420,7 @@ export function deliverSession({
           session.id,
           deliveryId,
           changedFileId,
-          rationale.file_path,
+          rationale.filePath,
           rationale.label,
           rationale.summary,
           rationale.why,
@@ -1658,7 +1702,7 @@ export function recordWork({
         );
     }
 
-    for (const rationale of changeRationales) {
+    for (const rationale of normalizeChangeRationales(changeRationales)) {
       ctx.db
         .prepare(
           `INSERT INTO change_rationales
@@ -1673,7 +1717,7 @@ export function recordWork({
           created.ticket.id,
           objectiveId,
           deliveryId,
-          rationale.file_path,
+          rationale.filePath,
           rationale.label,
           rationale.summary,
           rationale.why,

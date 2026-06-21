@@ -100,8 +100,9 @@ export type KnownPermission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
  *  - `full` carries no scope rows, so the token inherits the full permissions of
  *    its creating user's roles.
  *  - `ticket_lifecycle` restricts the token to everything a runner/agent needs to
- *    drive a ticket — ticket, objective, session, event, artifact, attachment, and
- *    execution-request work — and deliberately excludes project/user/role/connector
+ *    drive a ticket — workspace, project (read-only), ticket, objective, session,
+ *    event, artifact, attachment, and execution-request work — and deliberately
+ *    excludes project create/update/delete and user/role/connector
  *    administration and `user_token:self:*` (a scoped token must not be able to mint
  *    further tokens).
  *
@@ -112,6 +113,7 @@ export type KnownPermission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 export type TokenScope = 'full' | 'ticket_lifecycle';
 
 export const TICKET_LIFECYCLE_GRANTS: readonly string[] = [
+  'workspace:read',
   'project:read',
   'ticket:*',
   'objective:*',

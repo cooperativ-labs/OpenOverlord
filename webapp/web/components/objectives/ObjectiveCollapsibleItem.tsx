@@ -10,12 +10,15 @@ import {
 import { useState } from 'react';
 
 import type { ObjectiveDto } from '../../../shared/contract.ts';
+import { getAgentIcon } from '../../lib/helpers/agent-icons.ts';
 import { useCopyToClipboard } from '../../lib/hooks/use-copy-to-clipboard.ts';
-import { useUpdateObjective } from '../../lib/queries.ts';
+import { useAgentCatalog, useUpdateObjective } from '../../lib/queries.ts';
 import { cn } from '../../lib/utils.ts';
 import { InlineEditField } from '../InlineEditField.tsx';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible.tsx';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip.tsx';
 
+import { AgentIcon } from './AgentIcon.tsx';
 import { ObjectiveMenuButton } from './ObjectiveMenuButton.tsx';
 
 /**
@@ -36,6 +39,7 @@ export function ObjectiveCollapsibleItem({
   const update = useUpdateObjective();
   const { copied, copy } = useCopyToClipboard();
   const [open, setOpen] = useState(false);
+  const catalogQuery = useAgentCatalog();
 
   const isExecuting = objective.state === 'executing';
   const isPendingDelivery = objective.state === 'pending_delivery';
@@ -46,6 +50,15 @@ export function ObjectiveCollapsibleItem({
       ? 'Pending delivery since'
       : 'Completed';
   const objectiveTimestamp = new Date(objective.updatedAt).toLocaleString();
+
+  const catalogAgent = catalogQuery.data?.agents.find(a => a.key === objective.assignedAgent);
+  const catalogModel = catalogAgent?.models.find(m => m.id === objective.model);
+  const agentLabel = catalogAgent?.label ?? objective.assignedAgent;
+  const modelLabel = catalogModel?.displayName ?? objective.model;
+  const agentTooltip = modelLabel ? `${agentLabel} · ${modelLabel}` : agentLabel;
+  const hasAgentIcon = objective.assignedAgent
+    ? getAgentIcon(objective.assignedAgent) !== null
+    : false;
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -68,6 +81,23 @@ export function ObjectiveCollapsibleItem({
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
                 ) : objective.state === 'complete' ? (
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                ) : null}
+                {hasAgentIcon ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <span className="inline-flex shrink-0">
+                          <AgentIcon
+                            agentKey={objective.assignedAgent ?? ''}
+                            size={14}
+                            alt={agentLabel ?? ''}
+                            className="h-3.5 w-3.5"
+                          />
+                        </span>
+                      }
+                    />
+                    <TooltipContent side="top">{agentTooltip}</TooltipContent>
+                  </Tooltip>
                 ) : null}
                 <p
                   className="truncate text-sm font-medium"

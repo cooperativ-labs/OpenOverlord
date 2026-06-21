@@ -102,7 +102,7 @@ ovld protocol revert --objective-id <objective-id>
 
 These are structured protocol payloads that Overlord stores as first-class rows in the `file_changes` table. Inline `--change-rationales-json` is fine for a few entries; larger arrays are **rejected** — use `--change-rationales-file -` and stream JSON on stdin. The same ~8 KB inline limit applies to `--payload-json` and other `--*-json` flags.
 
-**Required fields per entry:** `file_path`, `label`, `summary`, `why`, `impact` (all strings). Do not use `filePath` or `rationale` — those are the internal API shape and will fail CLI validation.
+**Required fields per entry:** `file_path`, `label`, `summary`, `why`, `impact` (all strings). `filePath` (camelCase) is accepted as an alias for `file_path` and normalized to the canonical form, so matching the changed-files casing no longer fails validation. Do not wrap the entry under a `rationale` key — that is a different internal shape and will fail CLI validation.
 
 ```bash
 ovld protocol record-change-rationales --session-key <sessionKey> --ticket-id $TICKET_ID \

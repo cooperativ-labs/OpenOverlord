@@ -1,11 +1,12 @@
 import { migrateDatabase } from '@overlord/database';
 import Database from 'better-sqlite3';
 import assert from 'node:assert/strict';
+import { rmSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
-import { listChangedFilesForReview, listRationalesForReview } from '../dist/src/service/changes.js';
-import { createServiceContext } from '../dist/src/service/context.js';
+import { listChangedFilesForReview, listRationalesForReview } from '../../src/service/changes.ts';
+import { createServiceContext } from '../../src/service/context.ts';
 import {
   claimNextExecutionRequest,
   clearExecutionRequests,
@@ -13,11 +14,11 @@ import {
   listExecutionRequests,
   markExecutionLaunched,
   markExecutionLaunching
-} from '../dist/src/service/execution-requests.js';
-import { addProjectResource, createProject } from '../dist/src/service/projects.js';
-import { attachSession, deliverSession, updateSession } from '../dist/src/service/protocol.js';
-import { createTicketWithObjectives } from '../dist/src/service/tickets.js';
-import { newId } from '../dist/src/service/util.js';
+} from '../../src/service/execution-requests.ts';
+import { addProjectResource, createProject } from '../../src/service/projects.ts';
+import { attachSession, deliverSession, updateSession } from '../../src/service/protocol.ts';
+import { createTicketWithObjectives } from '../../src/service/tickets.ts';
+import { newId } from '../../src/service/util.ts';
 
 function createContext() {
   const db = new Database(':memory:');
@@ -57,12 +58,16 @@ test('execution request queue rejects when no primary resource is linked', () =>
 test('execution request queue rejects when the primary resource path is missing', () => {
   const { db, ctx } = createContext();
   const project = createProject({ ctx, name: 'Missing Primary Path Test' });
+  const resourcePath = path.join(process.cwd(), '.overlord-missing-primary-test');
   addProjectResource({
     ctx,
     projectId: project.id,
-    directoryPath: path.join(process.cwd(), '.overlord-missing-primary-test'),
+    directoryPath: resourcePath,
     isPrimary: true
   });
+  // Linking scaffolds the directory on disk; simulate it disappearing afterward
+  // so the primary-resource guard sees a `missing` status.
+  rmSync(resourcePath, { recursive: true, force: true });
   const { ticket, objectives } = createTicketWithObjectives({
     ctx,
     projectId: project.id,
@@ -98,6 +103,8 @@ test('claiming a queued request fails when the primary resource is missing', () 
     directoryPath: resourcePath,
     isPrimary: true
   });
+  // Linking scaffolds the directory; remove it so the claim sees it missing.
+  rmSync(resourcePath, { recursive: true, force: true });
   const { ticket, objectives } = createTicketWithObjectives({
     ctx,
     projectId: project.id,

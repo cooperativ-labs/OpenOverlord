@@ -5,8 +5,9 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { type StatusStyle } from '@/components/ui.tsx';
 import { cn } from '@/lib/utils';
 
-import type { ProjectStatusDto, TicketDto, WorkspaceMemberDto } from '../../shared/contract.ts';
+import type { TicketDto, WorkspaceMemberDto, WorkspaceStatusDto } from '../../shared/contract.ts';
 
+import { resolveAssignee } from './board-shared.ts';
 import { TicketListCard } from './TicketListCard.tsx';
 
 export function TicketListStatusGroup({
@@ -21,7 +22,7 @@ export function TicketListStatusGroup({
   isCollapsed,
   onToggleCollapse
 }: {
-  status: ProjectStatusDto;
+  status: WorkspaceStatusDto;
   style: StatusStyle;
   tickets: TicketDto[];
   projectId: string;
@@ -82,11 +83,7 @@ export function TicketListStatusGroup({
                   projectId={projectId}
                   projectName={projectName}
                   projectColor={projectColor}
-                  assignee={
-                    ticket.assignedWorkspaceUserId
-                      ? membersByWorkspaceUserId.get(ticket.assignedWorkspaceUserId)
-                      : undefined
-                  }
+                  assignee={resolveAssignee(ticket, membersByWorkspaceUserId)}
                   selected={ticket.id === selectedTicketId}
                 />
               ))

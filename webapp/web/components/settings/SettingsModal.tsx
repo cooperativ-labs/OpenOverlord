@@ -1,5 +1,7 @@
 import {
   Bell,
+  Code2,
+  GitBranch,
   Info,
   Keyboard,
   KeyRound,
@@ -18,12 +20,14 @@ import { ApplicationPage } from '@/components/settings/ApplicationPage';
 import { DesktopUpdatesPage } from '@/components/settings/DesktopUpdatesPage';
 import { ExecutionTargetsPage } from '@/components/settings/ExecutionTargetsPage';
 import { HotkeysPage } from '@/components/settings/HotkeysPage';
+import { IdePage } from '@/components/settings/IdePage';
 import { NotificationsPage } from '@/components/settings/NotificationsPage';
 import {
   SettingsDialogShell,
   type SettingsNavGroup,
   type SettingsNavItem
 } from '@/components/settings/SettingsDialogShell';
+import { StatusesPage } from '@/components/settings/StatusesPage';
 import { UserProfilePage } from '@/components/settings/UserProfilePage';
 import { UserTokensPage } from '@/components/settings/UserTokensPage';
 import { useMeta } from '@/lib/queries';
@@ -38,6 +42,7 @@ const appNavItems: SettingsNavItem[] = [
   { name: 'Application', icon: Palette },
   { name: 'Notifications', icon: Bell },
   { name: 'Execution Targets', icon: Terminal },
+  { name: 'Card statuses', icon: GitBranch },
   { name: 'About', icon: Info }
 ];
 
@@ -47,7 +52,8 @@ const userNavItems: SettingsNavItem[] = [
   { name: 'Profile', icon: User },
   { name: 'Account', icon: ShieldCheck },
   { name: 'Tokens', icon: KeyRound },
-  { name: 'Hotkeys', icon: Keyboard }
+  { name: 'Hotkeys', icon: Keyboard },
+  { name: 'IDE', icon: Code2 }
 ];
 
 const navItems: SettingsNavItem[] = [...userNavItems, ...appNavItems, desktopNavItem];
@@ -105,11 +111,13 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
       {activeNav === 'Application' && <ApplicationPage />}
       {activeNav === 'Notifications' && <NotificationsPage />}
       {activeNav === 'Execution Targets' && <ExecutionTargetsPage />}
+      {activeNav === 'Card statuses' && <StatusesPage />}
       {activeNav === 'Desktop' && <DesktopUpdatesPage />}
       {activeNav === 'Profile' && <UserProfilePage open={open} />}
       {activeNav === 'Account' && <AccountPage open={open} />}
       {activeNav === 'Tokens' && <UserTokensPage open={open} />}
       {activeNav === 'Hotkeys' && <HotkeysPage />}
+      {activeNav === 'IDE' && <IdePage open={open} />}
       {activeNav === 'About' && <AboutPage open={open} />}
     </SettingsDialogShell>
   );

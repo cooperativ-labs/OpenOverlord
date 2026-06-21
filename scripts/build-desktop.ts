@@ -56,6 +56,7 @@ const PACKAGED_RUNTIME_ENV_KEYS = [
   'GEMINI_MODEL',
   'OVERLORD_WEB_HOST',
   'OVERLORD_WEB_PORT',
+  'OVERLORD_BACKEND_URL',
   'OVERLORD_SQL_STUDIO_HOST',
   'OVERLORD_SQL_STUDIO_PORT',
   'OVERLORD_SQL_STUDIO_BINARY'
@@ -200,7 +201,7 @@ function parseEnvValue(rawValue: string): string {
   for (let i = 0; i < value.length; i += 1) {
     const char = value[i];
     if ((char === '"' || char === "'") && (i === 0 || value[i - 1] !== '\\')) {
-      quote = quote === char ? null : quote ?? char;
+      quote = quote === char ? null : (quote ?? char);
       continue;
     }
     if (char === '#' && !quote && (i === 0 || /\s/.test(value[i - 1]))) {

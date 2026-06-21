@@ -771,6 +771,22 @@ export const launchObjective = db.transaction(
       target.agentConfigs
     );
 
+    // An objective stays in `launching` state until the runner claims and
+    // launches its request; a second Run click in that window must not queue
+    // a duplicate. Once the prior request reaches a terminal status, this
+    // check clears and a relaunch is allowed.
+    const activeRequestRow = db
+      .prepare(
+        `SELECT ${EXECUTION_REQUEST_COLUMNS} FROM execution_requests
+          WHERE objective_id = ? AND deleted_at IS NULL
+            AND status IN (${ACTIVE_EXECUTION_STATUSES.map(() => '?').join(', ')})
+          ORDER BY created_at DESC LIMIT 1`
+      )
+      .get(objective.id, ...ACTIVE_EXECUTION_STATUSES) as ExecutionRequestRow | undefined;
+    if (activeRequestRow) {
+      return toExecutionRequestDto(activeRequestRow);
+    }
+
     const requestId = newId();
     db.prepare(
       `INSERT INTO execution_requests

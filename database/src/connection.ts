@@ -51,7 +51,10 @@ function applyMigration(
 
   if (applied) {
     if (applied.checksum !== migration.checksum) {
-      throw new Error(`Migration ${migration.version} checksum mismatch.`);
+      throw new Error(
+        `Migration ${migration.version} checksum mismatch ` +
+          `(stored ${applied.checksum}, file ${migration.checksum}).`
+      );
     }
     return;
   }

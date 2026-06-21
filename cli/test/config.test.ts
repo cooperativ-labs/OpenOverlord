@@ -13,7 +13,18 @@ import {
   resolveDatabasePath,
   writeConfig
 } from '../src/config.ts';
-import { resetExplicitRuntimeEnvForTests } from '../src/env.ts';
+import { isInstalledModulePath, resetExplicitRuntimeEnvForTests } from '../src/env.ts';
+
+test('isInstalledModulePath flags installed packages but not the source build', () => {
+  // An installed/published CLI runs as production and must never read the dev-only
+  // OVERLORD_BACKEND_URL_DEV; the in-repo source build stays development.
+  assert.equal(
+    isInstalledModulePath('/Users/x/.nvm/versions/node/v24/lib/node_modules/open-overlord/dist'),
+    true
+  );
+  assert.equal(isInstalledModulePath('/Users/x/Development/OpenOverlord/cli/dist'), false);
+  assert.equal(isInstalledModulePath('/Users/x/Development/OpenOverlord/cli/src'), false);
+});
 
 test('loadConfig parses scalar keys from overlord.toml', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
@@ -34,7 +45,9 @@ default_model = "gpt-5"
   );
 
   const previousBackendUrl = process.env.OVERLORD_BACKEND_URL;
+  const previousDevBackendUrl = process.env.OVERLORD_BACKEND_URL_DEV;
   delete process.env.OVERLORD_BACKEND_URL;
+  delete process.env.OVERLORD_BACKEND_URL_DEV;
   resetExplicitRuntimeEnvForTests();
   try {
     const config = loadConfig(configPath);
@@ -54,6 +67,8 @@ default_model = "gpt-5"
   } finally {
     if (previousBackendUrl === undefined) delete process.env.OVERLORD_BACKEND_URL;
     else process.env.OVERLORD_BACKEND_URL = previousBackendUrl;
+    if (previousDevBackendUrl === undefined) delete process.env.OVERLORD_BACKEND_URL_DEV;
+    else process.env.OVERLORD_BACKEND_URL_DEV = previousDevBackendUrl;
   }
 });
 
@@ -111,7 +126,9 @@ backend_url = "https://overlord.example.com"
   );
 
   const previousBackendUrl = process.env.OVERLORD_BACKEND_URL;
+  const previousDevBackendUrl = process.env.OVERLORD_BACKEND_URL_DEV;
   delete process.env.OVERLORD_BACKEND_URL;
+  delete process.env.OVERLORD_BACKEND_URL_DEV;
   try {
     const config = loadConfig(configPath);
     assert.equal(config.backendMode, 'cloud');
@@ -120,6 +137,8 @@ backend_url = "https://overlord.example.com"
   } finally {
     if (previousBackendUrl === undefined) delete process.env.OVERLORD_BACKEND_URL;
     else process.env.OVERLORD_BACKEND_URL = previousBackendUrl;
+    if (previousDevBackendUrl === undefined) delete process.env.OVERLORD_BACKEND_URL_DEV;
+    else process.env.OVERLORD_BACKEND_URL_DEV = previousDevBackendUrl;
     resetExplicitRuntimeEnvForTests();
   }
 });
@@ -161,33 +180,66 @@ test('a production .env.prod-backfilled OVERLORD_BACKEND_URL does not beat overl
   }
 });
 
-test('a development .env.local-backfilled OVERLORD_BACKEND_URL beats overlord.toml', () => {
+test('a development .env.local-backfilled OVERLORD_BACKEND_URL_DEV does not beat overlord.toml', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
   const configPath = path.join(dir, 'overlord.toml');
+  // An explicit per-instance `overlord.toml` (e.g. from `ovld config set`) outranks
+  // the `.env.local` dev default; only a deliberate shell export of the dev var would
+  // beat it. The dev value must also never leak into the production variable.
   writeFileSync(configPath, `backend_url = "https://overlord.example.com"\n`);
-  writeFileSync(path.join(dir, '.env.local'), 'OVERLORD_BACKEND_URL=http://127.0.0.1:9999\n');
+  writeFileSync(path.join(dir, '.env.local'), 'OVERLORD_BACKEND_URL_DEV=http://127.0.0.1:9999\n');
 
   const previousBackendUrl = process.env.OVERLORD_BACKEND_URL;
+  const previousDevBackendUrl = process.env.OVERLORD_BACKEND_URL_DEV;
   delete process.env.OVERLORD_BACKEND_URL;
+  delete process.env.OVERLORD_BACKEND_URL_DEV;
   resetExplicitRuntimeEnvForTests();
   try {
     const config = loadConfig(configPath, 'development');
-    assert.equal(resolveBackendUrl(config, 'development'), 'http://127.0.0.1:9999');
+    assert.equal(resolveBackendUrl(config, 'development'), 'https://overlord.example.com');
+    // The production variable is never set as a side effect.
+    assert.equal(process.env.OVERLORD_BACKEND_URL, undefined);
   } finally {
     if (previousBackendUrl === undefined) delete process.env.OVERLORD_BACKEND_URL;
     else process.env.OVERLORD_BACKEND_URL = previousBackendUrl;
+    if (previousDevBackendUrl === undefined) delete process.env.OVERLORD_BACKEND_URL_DEV;
+    else process.env.OVERLORD_BACKEND_URL_DEV = previousDevBackendUrl;
     resetExplicitRuntimeEnvForTests();
   }
 });
 
-test('a .env.local-backfilled OVERLORD_BACKEND_URL is used when overlord.toml has no backend_url', () => {
+test('an explicit runtime OVERLORD_BACKEND_URL_DEV beats overlord.toml in development', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
+  const configPath = path.join(dir, 'overlord.toml');
+  writeFileSync(configPath, `backend_url = "http://127.0.0.1:4310"\n`);
+
+  const previousBackendUrl = process.env.OVERLORD_BACKEND_URL;
+  const previousDevBackendUrl = process.env.OVERLORD_BACKEND_URL_DEV;
+  delete process.env.OVERLORD_BACKEND_URL;
+  process.env.OVERLORD_BACKEND_URL_DEV = 'http://127.0.0.1:4320';
+  resetExplicitRuntimeEnvForTests();
+  try {
+    const config = loadConfig(configPath, 'development');
+    assert.equal(resolveBackendUrl(config, 'development'), 'http://127.0.0.1:4320');
+  } finally {
+    if (previousBackendUrl === undefined) delete process.env.OVERLORD_BACKEND_URL;
+    else process.env.OVERLORD_BACKEND_URL = previousBackendUrl;
+    if (previousDevBackendUrl === undefined) delete process.env.OVERLORD_BACKEND_URL_DEV;
+    else process.env.OVERLORD_BACKEND_URL_DEV = previousDevBackendUrl;
+    resetExplicitRuntimeEnvForTests();
+  }
+});
+
+test('a .env.local-backfilled OVERLORD_BACKEND_URL_DEV is used when overlord.toml has no backend_url', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
   const configPath = path.join(dir, 'overlord.toml');
   writeFileSync(configPath, `instance_name = "No backend override"\n`);
-  writeFileSync(path.join(dir, '.env.local'), 'OVERLORD_BACKEND_URL=http://127.0.0.1:4320\n');
+  writeFileSync(path.join(dir, '.env.local'), 'OVERLORD_BACKEND_URL_DEV=http://127.0.0.1:4320\n');
 
   const previousBackendUrl = process.env.OVERLORD_BACKEND_URL;
+  const previousDevBackendUrl = process.env.OVERLORD_BACKEND_URL_DEV;
   delete process.env.OVERLORD_BACKEND_URL;
+  delete process.env.OVERLORD_BACKEND_URL_DEV;
   resetExplicitRuntimeEnvForTests();
   try {
     const config = loadConfig(configPath);
@@ -195,6 +247,8 @@ test('a .env.local-backfilled OVERLORD_BACKEND_URL is used when overlord.toml ha
   } finally {
     if (previousBackendUrl === undefined) delete process.env.OVERLORD_BACKEND_URL;
     else process.env.OVERLORD_BACKEND_URL = previousBackendUrl;
+    if (previousDevBackendUrl === undefined) delete process.env.OVERLORD_BACKEND_URL_DEV;
+    else process.env.OVERLORD_BACKEND_URL_DEV = previousDevBackendUrl;
     resetExplicitRuntimeEnvForTests();
   }
 });

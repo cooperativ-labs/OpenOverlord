@@ -36,7 +36,10 @@ const ephemeral = !shellHome;
 const home = shellHome ?? mkdtempSync(path.join(tmpdir(), 'ovld-test-home-'));
 
 const webPort = process.env.OVERLORD_WEB_PORT ?? '4320';
-const backendUrl = process.env.OVERLORD_BACKEND_URL ?? `http://127.0.0.1:${webPort}`;
+// Development/testing targets the dev backend through `OVERLORD_BACKEND_URL_DEV`
+// only — never the production `OVERLORD_BACKEND_URL` — so the test harness can
+// never point a command at a real production backend.
+const devBackendUrl = process.env.OVERLORD_BACKEND_URL_DEV ?? `http://127.0.0.1:${webPort}`;
 
 let cleaned = false;
 function cleanup() {
@@ -55,7 +58,7 @@ const child = spawn(command, args, {
     ...process.env,
     OVLD_HOME: home,
     OVERLORD_WEB_PORT: webPort,
-    OVERLORD_BACKEND_URL: backendUrl
+    OVERLORD_BACKEND_URL_DEV: devBackendUrl
   }
 });
 

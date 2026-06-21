@@ -131,7 +131,7 @@ BEGIN
     title, body_text, source_revision, indexed_at
   ) VALUES (
     lower(hex(randomblob(16))), new.workspace_id, new.project_id, new.ticket_id, 'objective', new.id,
-    new.title, trim(coalesce(new.title, '') || ' ' || new.instruction_text), new.revision,
+    new.title, trim(coalesce(new.title, '') || ' ' || coalesce(new.instruction_text, '')), new.revision,
     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
   )
   ON CONFLICT (workspace_id, entity_type, entity_id) DO UPDATE SET
@@ -151,7 +151,7 @@ BEGIN
     title, body_text, source_revision, indexed_at
   ) VALUES (
     lower(hex(randomblob(16))), new.workspace_id, new.project_id, new.ticket_id, 'objective', new.id,
-    new.title, trim(coalesce(new.title, '') || ' ' || new.instruction_text), new.revision,
+    new.title, trim(coalesce(new.title, '') || ' ' || coalesce(new.instruction_text, '')), new.revision,
     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
   )
   ON CONFLICT (workspace_id, entity_type, entity_id) DO UPDATE SET
@@ -220,7 +220,7 @@ INSERT INTO search_documents (
 )
 SELECT
   lower(hex(randomblob(16))), o.workspace_id, o.project_id, o.ticket_id, 'objective', o.id,
-  o.title, trim(coalesce(o.title, '') || ' ' || o.instruction_text), o.revision,
+  o.title, trim(coalesce(o.title, '') || ' ' || coalesce(o.instruction_text, '')), o.revision,
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 FROM objectives o
 JOIN tickets t ON t.id = o.ticket_id AND t.deleted_at IS NULL

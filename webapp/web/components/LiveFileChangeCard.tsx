@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, FileCode2, FileText } from 'lucide-react';
 import { useState } from 'react';
 
 import type { FileChangeDto } from '../../shared/contract.ts';
+import { buildEditorFileHref, getEditorSchemeLabel } from '../lib/helpers/editor-scheme.ts';
 
 import { Badge } from './ui.tsx';
 
@@ -17,17 +18,35 @@ function formatTimestamp(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 }
 
+function joinAbsolutePath(rootPath: string, filePath: string): string {
+  const trimmedRoot = rootPath.replace(/[\\/]+$/, '');
+  const trimmedFile = filePath.replace(/^[\\/]+/, '');
+  const separator = trimmedRoot.includes('\\') && !trimmedRoot.includes('/') ? '\\' : '/';
+  return `${trimmedRoot}${separator}${trimmedFile}`;
+}
+
 /**
  * A single collapsible file-change entry in the ticket panel's File Changes
  * section. Collapsed it shows the file name and recorded time; expanded it
  * reveals the full path and the structured change/why/impact rationale. Adapted
- * from the reference `LiveFileChangeCard` for this app's stack — there is no
- * editor deep-link or current-changes route here, so the path renders as plain
- * text rather than an external link.
+ * from the reference `LiveFileChangeCard` for this app's stack. When the
+ * linked resource root is available, the path deep-links into the operator's
+ * selected editor.
  */
-export function LiveFileChangeCard({ fileChange }: { fileChange: FileChangeDto }) {
+export function LiveFileChangeCard({
+  fileChange,
+  rootPath,
+  editorScheme
+}: {
+  fileChange: FileChangeDto;
+  rootPath: string | null;
+  editorScheme: string | null;
+}) {
   const [expanded, setExpanded] = useState(false);
   const isMd = isMarkdownFile(fileChange.fileName || fileChange.filePath);
+  const absolutePath = rootPath ? joinAbsolutePath(rootPath, fileChange.filePath) : null;
+  const editorHref = absolutePath ? buildEditorFileHref(absolutePath, editorScheme) : null;
+  const editorLabel = getEditorSchemeLabel(editorScheme);
 
   return (
     <article className="min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-1)]">
@@ -64,9 +83,21 @@ export function LiveFileChangeCard({ fileChange }: { fileChange: FileChangeDto }
 
       {expanded && (
         <div className="border-t border-[var(--color-border)] px-3 pb-3 pt-2">
-          <p className="mb-2 break-all text-xs text-[var(--color-ink-dim)]">
-            {fileChange.filePath}
-          </p>
+          {editorHref ? (
+            <a
+              href={editorHref}
+              className="mb-2 inline-flex break-all text-xs text-sky-600 underline decoration-sky-300 underline-offset-2 transition-colors hover:text-sky-500"
+            >
+              {fileChange.filePath}
+            </a>
+          ) : (
+            <p className="mb-2 break-all text-xs text-[var(--color-ink-dim)]">
+              {fileChange.filePath}
+            </p>
+          )}
+          {editorHref ? (
+            <p className="mb-2 text-[11px] text-[var(--color-ink-dim)]">Opens in {editorLabel}.</p>
+          ) : null}
           <div className="grid gap-2 text-sm">
             <div>
               <p className="text-[11px] uppercase tracking-wide text-[var(--color-ink-dim)]">

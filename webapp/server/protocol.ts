@@ -40,6 +40,12 @@ export interface ProtocolRequestBody {
   args?: string[];
   positional?: string[];
   flags?: Record<string, string | boolean>;
+  /**
+   * Per-flag file/stdin payloads, keyed by the `--*-file` flag name. Replaces the
+   * single `stdin` field so multiple file payloads in one call no longer collide.
+   */
+  fileInputs?: Record<string, string>;
+  /** Legacy single-payload field; still honored when `fileInputs` lacks the flag. */
   stdin?: string;
   externalSessionId?: string | null;
 }
@@ -82,10 +88,22 @@ function hasFlag(body: ProtocolRequestBody, name: string): boolean {
 }
 
 /**
+ * Resolve the per-flag file payload the CLI streamed for `fileFlag`, falling back
+ * to the legacy single `stdin` field for older clients. Each `--*-file` flag now
+ * carries its own content in `fileInputs`, so multiple file payloads in one call
+ * no longer collide.
+ */
+function fileInput(body: ProtocolRequestBody, fileFlag: string): string | undefined {
+  const perFlag = body.fileInputs?.[fileFlag];
+  if (typeof perFlag === 'string') return perFlag;
+  return body.stdin ?? '';
+}
+
+/**
  * Resolve text supplied either inline (`--summary "..."`) or via the file
- * variant (`--summary-file -`). The CLI streams file contents as the request
- * `stdin`, so any presence of the file flag means "use stdin" — this is how the
- * contract avoids shell-quoting failures for special characters.
+ * variant (`--summary-file -`). The CLI streams file contents in the `fileInputs`
+ * envelope, so any presence of the file flag means "use that payload" — this is
+ * how the contract avoids shell-quoting failures for special characters.
  */
 function resolveInput(
   body: ProtocolRequestBody,
@@ -94,7 +112,7 @@ function resolveInput(
 ): string | undefined {
   const direct = strFlag(body, valueFlag);
   if (direct !== undefined) return direct;
-  if (hasFlag(body, fileFlag)) return body.stdin ?? '';
+  if (hasFlag(body, fileFlag)) return fileInput(body, fileFlag);
   return undefined;
 }
 

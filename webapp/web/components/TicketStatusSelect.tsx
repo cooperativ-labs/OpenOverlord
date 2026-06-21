@@ -7,12 +7,12 @@ import {
 } from '@/components/ui/select';
 import { useUpdateTicket } from '@/lib/queries.ts';
 
-import type { ProjectStatusDto } from '../../shared/contract.ts';
+import type { WorkspaceStatusDto } from '../../shared/contract.ts';
 
 type TicketStatusSelectProps = {
   ticketId: string;
   currentStatusId: string;
-  statuses: ProjectStatusDto[];
+  statuses: WorkspaceStatusDto[];
 };
 
 export function TicketStatusSelect({

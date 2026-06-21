@@ -19,7 +19,8 @@ const DB_FREE_COMMANDS = new Set([
   'serve',
   'config',
   'auth',
-  'user-token'
+  'user-token',
+  'prune'
 ]);
 
 const KNOWN_COMMANDS = new Set([
@@ -91,7 +92,8 @@ async function dispatchCommand({
     case 'agent-setup':
     case 'config':
     case 'auth':
-    case 'user-token': {
+    case 'user-token':
+    case 'prune': {
       const { runLocalCommand } = await import('./management.js');
       await runLocalCommand({ command, rest: args });
       return;

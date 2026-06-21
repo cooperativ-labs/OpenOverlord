@@ -32,7 +32,7 @@ queue operations all reach persistence through the backend URL you configure —
 
 Install the published package:
 ```bash
-install -g open-overlord
+npm install -g --no-fund open-overlord
 ```
 
 After installing the published package:
@@ -77,8 +77,10 @@ and migrations; the CLI is a client of that backend.
 
 ### Point the CLI at a backend
 
-Configuration lives in `overlord.toml` (discovered from the current directory
-upward, or in `~/.ovld/overlord.toml` for a global install).
+Configuration lives in `overlord.toml` — a per-instance, uncommitted file
+(gitignored; generate it with `ovld init`, or copy `overlord.toml.example`),
+discovered from the current directory upward, or in `~/.ovld/overlord.toml` for a
+global install.
 
 | Mode | Config key | How to set it |
 | ---- | ---------- | ------------- |
@@ -92,24 +94,28 @@ backend is reachable.
 Environment overrides (useful in scripts and CI):
 
 - `OVLD_HOME` — relocate the entire global `~/.ovld` data directory (SQLite, object storage, VCS baselines, native-session caches)
-- `OVERLORD_BACKEND_URL` — backend the CLI targets; an *explicit* runtime value (shell export, container/launcher injection) takes precedence over the resolved `overlord.toml` `backend_url`
+- `OVERLORD_BACKEND_URL` — production/global backend target; an *explicit* runtime value (shell export, container/launcher injection) takes precedence over the resolved `overlord.toml` `backend_url`
+- `OVERLORD_BACKEND_URL_DEV` — **development-only** backend target, read solely by the in-repo source build and the dev/test tooling that runs it (`yarn dev`, the test harness). An installed/published `ovld` never reads it, and nothing aliases it into the production `OVERLORD_BACKEND_URL`
 - `OVERLORD_WEB_PORT` — port the local backend binds when launched
 - `OVERLORD_USER_TOKEN` / `OVLD_USER_TOKEN` / `USER_TOKEN` — bearer token sent to the backend when set (checked in that order; takes precedence over stored credentials)
 - `DATABASE_URL` — Postgres connection string read by a backend you run yourself (service layer + Better Auth); the client-only CLI does not open it
 
 Each `ovld` invocation resolves its own config and backend target
 independently — it is **not** a single shared connection. Resolution order,
-highest precedence first: an explicit runtime env var set before the CLI
-loads any env file → the resolved `overlord.toml` → `.env.local` for
-development or `.env.prod` for production/package defaults next to that
-`overlord.toml` → a hardcoded fallback. Because of this, a **committed/shared**
-`overlord.toml` (e.g. a repo-root example file used by multiple checkouts or
-environments) should only ever hold a host-context-neutral `backend_url`
-(the loopback default). A context-specific target — a Docker-internal host
-alias, a different machine's address — belongs in an explicit
-`OVERLORD_BACKEND_URL` set when that specific process is launched, not edited
-into the shared file; editing the shared file makes every other process that
-resolves it inherit a target that's wrong for its own network context.
+highest precedence first: an explicit runtime export of the channel variable
+(`OVERLORD_BACKEND_URL`, or `OVERLORD_BACKEND_URL_DEV` for the dev build) set
+before the CLI loads any env file → the per-instance `overlord.toml` `backend_url`
+(what `ovld config set` writes) → the env-file default next to that `overlord.toml`
+(`OVERLORD_BACKEND_URL_DEV` from `.env.local` for the source/dev build,
+`OVERLORD_BACKEND_URL` from `.env.prod` for production/package builds) → a
+hardcoded fallback. `overlord.toml` is a per-instance, **uncommitted** file
+(gitignored like `.env.*`; generate it with `ovld init` / `ovld config set`, see
+`overlord.toml.example`), so there is no shared config file to keep host-neutral.
+A context-specific target — a Docker-internal host alias, another machine's
+address — belongs in an explicit `OVERLORD_BACKEND_URL` set when that process is
+launched. The dev-only `OVERLORD_BACKEND_URL_DEV` is read **only** by the source
+build; an installed `ovld` resolves as production and ignores it (and `.env.local`)
+even inside a dev checkout.
 
 The local backend/Desktop package owns SQLite and migrations. The published npm
 CLI only stores the backend URL and sends HTTP requests.
@@ -160,7 +166,7 @@ Notes for headless use:
 ### What requires the backend
 
 These commands work without a backend: `ovld help`, `ovld version`,
-`ovld update`, `ovld config ...`, and connector setup/inspection commands that only touch local
+`ovld update`, `ovld config ...`, `ovld prune`, and connector setup/inspection commands that only touch local
 files. `ovld update --check` compares the installed package version with the latest
 published npm version, and `ovld update` upgrades the global `open-overlord`
 install through npm. Commands that read or mutate Overlord state — projects, tickets,
@@ -234,6 +240,13 @@ launching) uses the **installed** `ovld` so those calls hit the installed
 Desktop instance and real ticket data. Bare `ovld` on `PATH` always resolves to
 the global install — keep it that way.
 
+The two builds also choose their env profile by origin (`detectCliEnvProfile`):
+the **installed** CLI (under `node_modules`) runs as **production** — it never
+auto-loads `.env.local` or reads `OVERLORD_BACKEND_URL_DEV`, even when invoked
+inside this repo — while the **source** build (`node cli/bin/ovld.mjs`, `yarn
+ovld:dev`, the test harness) runs as **development** and reads `.env.local`. So
+in-repo dev work must go through the source build, never bare `ovld`.
+
 Testing in-repo CLI/Desktop changes must never touch the installed instance
 (`~/.ovld`, `:4310`). Copy `.env.local.example` to `.env.local` so source
 workflows use a repo-local dev home (`database/.local/dev-home`) and API on
@@ -249,7 +262,7 @@ For a one-off isolated shell without `.env.local`:
 ```bash
 export OVLD_HOME="$(mktemp -d)"
 export OVERLORD_WEB_PORT=4320
-export OVERLORD_BACKEND_URL=http://127.0.0.1:4320
+export OVERLORD_BACKEND_URL_DEV=http://127.0.0.1:4320
 yarn workspace @overlord/webapp start
 node cli/bin/ovld.mjs doctor
 ```

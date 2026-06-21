@@ -86,7 +86,7 @@ Overlord captures *which* files changed for you: the CLI records a VCS baseline 
 
 If your run genuinely changed no files (investigation, discussion, or read-only work), deliver with `--no-file-changes` to declare that explicitly and skip rationale-coverage enforcement.
 
-Each rationale entry requires these fields: `file_path`, `label`, `summary`, `why`, `impact` — all strings. Do **not** use `filePath` or `rationale`; those are a different internal shape and will cause a validation error.
+Each rationale entry requires these fields: `file_path`, `label`, `summary`, `why`, `impact` — all strings. The protocol also accepts `filePath` (camelCase) as an alias for `file_path` and normalizes either casing, so a path that matches the changed-files casing no longer fails — but `file_path` remains the documented canonical form. Do **not** wrap the entry under a `rationale` key; that is a different internal shape and will cause a validation error.
 
 Oversized inline `--*-json` arguments (including `--change-rationales-json`) are **rejected** by the CLI. For more than a handful of rationale entries, pipe JSON via `--change-rationales-file -` with a single-quoted heredoc (`<<'EOF'`) and keep the delivery `--summary` inline. The same rule applies to `--payload-json`, `--artifacts-json`, and other `--*-json` flags — use the paired `--*-file -` flag instead.
 

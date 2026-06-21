@@ -113,11 +113,11 @@ camelCase per the [REST API Boundary](../database/docs/09-database-schema-contra
 | `PATCH /api/launch-settings/agents/:agentKey` | Persist per-agent pre-command / flags to `user_execution_target_preferences.agent_configs_json` |
 | `PATCH /api/launch-settings/terminal-profile` | Persist the local terminal launcher profile to `user_execution_target_preferences.terminal_profile_json` |
 | `GET/POST /api/projects`, `GET/PATCH /api/projects/:id` | Projects (PATCH covers rename / describe / archive) |
-| `GET /api/projects/:id/statuses` | Project workflow statuses (for board columns) |
-| `POST /api/projects/:id/statuses` | Add a project status |
-| `PATCH /api/projects/:id/statuses/:statusId` | Rename a status or set the default |
-| `PATCH /api/projects/:id/statuses/reorder` | Reorder project statuses |
-| `DELETE /api/projects/:id/statuses/:statusId` | Soft-delete a project status |
+| `GET /api/workspace/statuses` | Workspace card statuses (board columns, shared across projects) |
+| `POST /api/workspace/statuses` | Add a workspace status |
+| `PATCH /api/workspace/statuses/:statusId` | Rename a status or set the default |
+| `PATCH /api/workspace/statuses/reorder` | Reorder workspace statuses |
+| `DELETE /api/workspace/statuses/:statusId` | Soft-delete a workspace status |
 | `GET /api/projects/:id/resources` | Linked project resources, including execution-target-specific working directories |
 | `POST /api/projects/:id/resources` | Add a linked project resource for an execution target |
 | `PATCH /api/projects/:id/resources/:resourceId` | Set a project resource as primary |
@@ -130,7 +130,7 @@ camelCase per the [REST API Boundary](../database/docs/09-database-schema-contra
 
 **Deviations from the recommended boundary, to ratify:** the realtime endpoint
 is `GET /api/stream` (vs the doc's `/realtime` + `/sync/changes`) and pushes the
-compact deltas inline; `/api/meta` and `/api/projects/:id/statuses` are new
+compact deltas inline; `/api/meta` and `/api/workspace/statuses` are new
 reads the board needs. As a local single-user console it does **not** yet do
 per-request auth/authorization or use idempotency keys — both are required
 before any multi-user/hosted deployment and before the shared service layer

@@ -6,6 +6,7 @@ import type { TicketDetailDto } from '../../shared/contract.ts';
 import { useCreateObjective, useTicket, useUpdateTicket } from '../lib/queries.ts';
 
 import { TicketObjectivesSection } from './objectives/TicketObjectivesSection.tsx';
+import { Separator } from './ui/separator.tsx';
 import { InlineEditField } from './InlineEditField.tsx';
 import { LiveActivityFeed } from './LiveActivityFeed.tsx';
 import { LiveFileChanges } from './LiveFileChanges.tsx';
@@ -13,7 +14,6 @@ import { TicketArtifactsSection } from './TicketArtifactsSection.tsx';
 import { TicketPanelHeader } from './TicketPanelHeader.tsx';
 import { TicketToolsAndCriteria } from './TicketToolsAndCriteria.tsx';
 import { Button, Spinner } from './ui.tsx';
-import { Separator } from './ui/separator.tsx';
 
 /**
  * Adds a new objective by creating a blank editable slot rather than opening a
@@ -64,11 +64,27 @@ function TicketTitle({ ticket }: { ticket: TicketDetailDto }) {
   );
 }
 
-export function TicketPanel({ projectId, ticketId }: { projectId: string; ticketId: string }) {
+export function TicketPanel({
+  projectId,
+  ticketId,
+  onClose,
+  onProjectChanged
+}: {
+  projectId: string;
+  ticketId: string;
+  /** Override the default close-to-project-board navigation (e.g. My Tickets → /workspace). */
+  onClose?: () => void;
+  /** Override the default navigation after a cross-project move. */
+  onProjectChanged?: (nextProjectId: string) => void;
+}) {
   const navigate = useNavigate();
   const ticketQ = useTicket(ticketId);
 
   const handleProjectChanged = (nextProjectId: string) => {
+    if (onProjectChanged) {
+      onProjectChanged(nextProjectId);
+      return;
+    }
     navigate({
       to: '/projects/$projectId/tickets/$ticketId',
       params: { projectId: nextProjectId, ticketId }
@@ -76,6 +92,10 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
   };
 
   const closeToProject = (targetProjectId: string) => {
+    if (onClose) {
+      onClose();
+      return;
+    }
     navigate({ to: '/projects/$projectId', params: { projectId: targetProjectId } });
   };
 
@@ -118,7 +138,7 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
       />
       <TicketTitle ticket={ticket} />
 
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[var(--color-surface-0)] pb-10">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[var(--color-surface-0)] ">
         {/* Card section — primary work surface: objectives */}
         <section className="border-b border-[var(--color-border)] bg-[var(--color-surface-1)] py-5">
           <div className="mb-3 px-5"></div>
@@ -129,7 +149,7 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
         </section>
 
         {/* Subtle section — supporting context: tools and activity */}
-        <section className="flex flex-col px-5 pt-5 bg-muted h-full">
+        <section className="flex flex-col px-5 pt-5 bg-muted h-full pb-10">
           <TicketToolsAndCriteria
             ticketId={ticket.id}
             availableTools={ticket.availableTools}
@@ -137,29 +157,27 @@ export function TicketPanel({ projectId, ticketId }: { projectId: string; ticket
           />
           <Separator />
           <div className="flex flex-col gap-6 mt-8">
-
             <div className="space-y-3">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
                 Activity
               </h2>
               <LiveActivityFeed ticketId={ticket.id} />
             </div>
-
             <div className="space-y-3">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
                 Artifacts
               </h2>
               <TicketArtifactsSection ticketId={ticket.id} />
             </div>
-
             <div className="space-y-3 pb-5">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
                 File Changes
               </h2>
               <LiveFileChanges ticketId={ticket.id} />
-            </div> </div>
+            </div>{' '}
+          </div>
         </section>
-      </div >
-    </div >
+      </div>
+    </div>
   );
 }

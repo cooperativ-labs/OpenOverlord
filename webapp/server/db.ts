@@ -3,32 +3,28 @@ import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import {
   applyDatabaseEnv,
   loadConfig,
   resolveDatabasePath as resolveConfiguredDatabasePath
 } from '../../cli/src/config.ts';
-import { loadEnvDefaults, type EnvProfile } from '../../cli/src/env.ts';
+import { loadEnvDefaults } from '../../cli/src/env.ts';
 import type { ChangeOperation } from '../shared/contract.ts';
 
-// webapp/server/db.ts -> repo root is two levels up from server/.
-const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, '..', '..');
-const envProfile: EnvProfile =
-  here === path.join(repoRoot, 'webapp', 'server') ? 'development' : 'production';
-loadEnvDefaults(repoRoot, envProfile);
+import { ENV_PROFILE, REPO_ROOT } from './env-profile.ts';
+
+loadEnvDefaults(REPO_ROOT, ENV_PROFILE);
 
 export function resolveDatabasePath(): string {
   const explicit = process.env.OVERLORD_SQLITE_PATH;
   if (explicit) {
-    return path.isAbsolute(explicit) ? explicit : path.resolve(repoRoot, explicit);
+    return path.isAbsolute(explicit) ? explicit : path.resolve(REPO_ROOT, explicit);
   }
-  const config = loadConfig(path.join(repoRoot, 'overlord.toml'), envProfile);
+  const config = loadConfig(path.join(REPO_ROOT, 'overlord.toml'), ENV_PROFILE);
   // Bridge any admin-configured cloud DB so auth and the shared adapter agree.
   applyDatabaseEnv(config);
-  return resolveConfiguredDatabasePath(config, repoRoot);
+  return resolveConfiguredDatabasePath(config, REPO_ROOT);
 }
 
 const databasePath = resolveDatabasePath();

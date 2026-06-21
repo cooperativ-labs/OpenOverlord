@@ -1,11 +1,35 @@
 import { parse as parseDotenv } from 'dotenv';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export type EnvProfile = 'development' | 'production';
 
 export function resolveEnvFileNames(profile: EnvProfile): string[] {
   return profile === 'production' ? ['.env.prod'] : ['.env.local'];
+}
+
+/** True when a built module lives inside an installed package (`node_modules`). */
+export function isInstalledModulePath(moduleDir: string): boolean {
+  return /[\\/]node_modules[\\/]/.test(moduleDir);
+}
+
+/**
+ * Default env profile for a bare `ovld` invocation. The **installed/published**
+ * CLI (under `node_modules`) runs as `production`: it never auto-loads `.env.local`
+ * and never reads the dev-only `OVERLORD_BACKEND_URL_DEV`, so a development variable
+ * can never leak into a production CLI even when it is run from inside a dev
+ * checkout. Only the in-repo source build — and the dev/test tooling that runs it
+ * (`yarn dev`, `with-ovld-home`) — defaults to `development`. Webapp/server and
+ * desktop pass their own profile explicitly and are unaffected.
+ */
+export function detectCliEnvProfile(): EnvProfile {
+  try {
+    const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+    return isInstalledModulePath(moduleDir) ? 'production' : 'development';
+  } catch {
+    return 'development';
+  }
 }
 
 function snapshotRuntimeEnv(): Set<string> {
@@ -78,8 +102,22 @@ export function loadEnvDefaults(dir: string, profile: EnvProfile = 'development'
     const parsed = parseDotenv(readFileSync(filePath, 'utf8'));
     for (const [key, value] of Object.entries(parsed)) {
       if (!process.env[key]?.trim()) {
-        process.env[key] = value;
+        process.env[key] = normalizeEnvFileValue({ key, value, baseDir: path.dirname(filePath) });
       }
     }
   }
+}
+
+function normalizeEnvFileValue({
+  key,
+  value,
+  baseDir
+}: {
+  key: string;
+  value: string;
+  baseDir: string;
+}): string {
+  if (key !== 'OVLD_HOME') return value;
+  if (!value.trim() || path.isAbsolute(value)) return value;
+  return path.resolve(baseDir, value);
 }

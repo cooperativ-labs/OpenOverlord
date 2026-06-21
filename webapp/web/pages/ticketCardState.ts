@@ -9,7 +9,7 @@ import type { TicketDto } from '../../shared/contract.ts';
 export interface TicketCardState {
   /** Shimmer overlay shown while at least one objective is actively executing. */
   shimmer: boolean;
-  /** Total non-deleted objective count, shown in the bottom-right badge. */
+  /** Count of completed objectives, shown in the bottom-right badge. */
   objectiveCount: number;
   /**
    * True when the badge should flag attention: a completed objective exists
@@ -22,7 +22,7 @@ export interface TicketCardState {
 export function getTicketCardState(ticket: TicketDto): TicketCardState {
   return {
     shimmer: ticket.hasExecutingObjective === true,
-    objectiveCount: ticket.objectiveCount,
+    objectiveCount: ticket.completedObjectiveCount,
     objectiveCountAlert:
       ticket.hasCompletedObjective === true && ticket.hasPendingObjectiveWithInstructions === true
   };

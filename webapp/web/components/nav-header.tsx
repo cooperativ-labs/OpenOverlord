@@ -1,14 +1,27 @@
 import { useParams } from '@tanstack/react-router';
 import { Plus, RefreshCw } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { NewTicketModal } from '@/components/NewTicketModal.tsx';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx';
 import { DRAG_REGION, getDesktopChrome, NO_DRAG_REGION } from '@/lib/desktop-chrome';
 import { useProjects } from '@/lib/queries.ts';
 
 import { TicketSearch } from './nav-header/TicketSearch.tsx';
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
+
+function isMacPlatform(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Mac|iPhone|iPad|iPod/.test(navigator.platform ?? navigator.userAgent);
+}
 
 /**
  * Top bar shown above the page content on every route. Holds the sidebar toggle
@@ -26,9 +39,30 @@ export function NavHeader() {
   const projectsQ = useProjects();
   const [isNewTicketOpen, setIsNewTicketOpen] = useState(false);
   const hasProjects = (projectsQ.data?.length ?? 0) > 0;
+  const [isMac] = useState(isMacPlatform);
   const handleHardRefresh = () => {
     window.location.reload();
   };
+
+  useEffect(() => {
+    const handleGlobalHotkeys = (event: globalThis.KeyboardEvent) => {
+      if (
+        event.key.toLowerCase() === 'n' &&
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        hasProjects &&
+        !isNewTicketOpen &&
+        !isTypingTarget(event.target)
+      ) {
+        event.preventDefault();
+        setIsNewTicketOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalHotkeys);
+    return () => window.removeEventListener('keydown', handleGlobalHotkeys);
+  }, [hasProjects, isNewTicketOpen]);
 
   return (
     <header
@@ -64,16 +98,25 @@ export function NavHeader() {
         className="flex shrink-0 items-center gap-2"
         style={isDesktop ? NO_DRAG_REGION : undefined}
       >
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => setIsNewTicketOpen(true)}
-          disabled={!hasProjects}
-        >
-          <Plus />
-          New ticket
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsNewTicketOpen(true)}
+                disabled={!hasProjects}
+              >
+                <Plus />
+                New ticket
+              </Button>
+            }
+          />
+          <TooltipContent side="bottom">
+            Press {isMac ? '⌘N' : 'Ctrl+N'} to create a new ticket
+          </TooltipContent>
+        </Tooltip>
       </div>
       <NewTicketModal
         open={isNewTicketOpen}

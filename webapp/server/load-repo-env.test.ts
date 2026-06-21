@@ -6,7 +6,13 @@ import { afterEach, describe, it } from 'node:test';
 
 import { loadRepoEnv, loadRepoEnvFiles, loadRepoEnvForProfile } from '../load-repo-env.ts';
 
-const ENV_KEYS = ['GEMINI_API_KEY', 'OVERLORD_WEB_PORT'] as const;
+const ENV_KEYS = [
+  'GEMINI_API_KEY',
+  'OVLD_HOME',
+  'OVERLORD_WEB_PORT',
+  'OVERLORD_BACKEND_URL',
+  'OVERLORD_BACKEND_URL_DEV'
+] as const;
 
 function withCleanEnv<T>(fn: () => T): T {
   const previous = Object.fromEntries(ENV_KEYS.map(key => [key, process.env[key]]));
@@ -99,6 +105,36 @@ describe('loadRepoEnv', () => {
 
       assert.equal(process.env.OVERLORD_WEB_PORT, '4320');
       assert.equal(process.env.GEMINI_API_KEY, 'from-dev');
+    });
+  });
+
+  it('loads the development backend URL without polluting the production variable', () => {
+    withCleanEnv(() => {
+      const dir = mkdtempSync(path.join(os.tmpdir(), 'overlord-env-'));
+      tempDirs.push(dir);
+      writeFileSync(
+        path.join(dir, '.env.local'),
+        'OVERLORD_BACKEND_URL_DEV=http://127.0.0.1:4320\n'
+      );
+
+      loadRepoEnvForProfile(dir, 'development');
+
+      // Development resolves the backend from OVERLORD_BACKEND_URL_DEV directly;
+      // the production OVERLORD_BACKEND_URL must stay untouched.
+      assert.equal(process.env.OVERLORD_BACKEND_URL_DEV, 'http://127.0.0.1:4320');
+      assert.equal(process.env.OVERLORD_BACKEND_URL, undefined);
+    });
+  });
+
+  it('resolves relative OVLD_HOME values from the env file directory', () => {
+    withCleanEnv(() => {
+      const dir = mkdtempSync(path.join(os.tmpdir(), 'overlord-env-'));
+      tempDirs.push(dir);
+      writeFileSync(path.join(dir, '.env.local'), 'OVLD_HOME=database/.local/dev-home\n');
+
+      loadRepoEnvForProfile(dir, 'development');
+
+      assert.equal(process.env.OVLD_HOME, path.join(dir, 'database/.local/dev-home'));
     });
   });
 

@@ -5,18 +5,18 @@ import type {
   CreateObjectiveBody,
   CreateProjectBody,
   CreateProjectResourceBody,
-  CreateProjectStatusBody,
   CreateProjectTagBody,
   CreateTicketBody,
   CreateUserTokenBody,
   CreateWorkspaceBody,
+  CreateWorkspaceStatusBody,
   LaunchObjectiveBody,
   LaunchPreferenceDto,
+  MyTicketsResponse,
   ObjectiveAttachmentDto,
-  ProjectStatusDto,
   ProjectTagDto,
   ReorderFutureObjectivesBody,
-  ReorderProjectStatusesBody,
+  ReorderWorkspaceStatusesBody,
   StatusType,
   TicketDetailDto,
   TicketDto,
@@ -26,12 +26,13 @@ import type {
   UpdateProfileBody,
   UpdateProjectBody,
   UpdateProjectResourceBody,
-  UpdateProjectStatusBody,
   UpdateProjectTagBody,
   UpdateTerminalProfileBody,
   UpdateTicketBody,
   UpdateUserTokenBody,
-  UpdateWorkspaceBody
+  UpdateWorkspaceBody,
+  UpdateWorkspaceStatusBody,
+  WorkspaceStatusDto
 } from '../../shared/contract.ts';
 
 import { api } from './api.ts';
@@ -45,12 +46,13 @@ export const keys = {
   workspaceMembers: (id: string) => ['workspace', id, 'members'] as const,
   projects: ['projects'] as const,
   project: (id: string) => ['project', id] as const,
-  projectStatuses: (id: string) => ['project', id, 'statuses'] as const,
+  workspaceStatuses: ['workspace', 'statuses'] as const,
   projectResources: (id: string) => ['project', id, 'resources'] as const,
   projectTags: (id: string) => ['project', id, 'tags'] as const,
   projectRepository: (id: string, executionTargetId: string | null) =>
     ['project', id, 'repository', executionTargetId ?? 'primary'] as const,
   tickets: (projectId: string) => ['project', projectId, 'tickets'] as const,
+  myTickets: ['workspace', 'my-tickets'] as const,
   ticket: (id: string) => ['ticket', id] as const,
   ticketEvents: (id: string) => ['ticket', id, 'events'] as const,
   ticketArtifacts: (id: string) => ['ticket', id, 'artifacts'] as const,
@@ -91,11 +93,10 @@ export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: ap
 export const useProject = (id: string) =>
   useQuery({ queryKey: keys.project(id), queryFn: () => api.getProject(id) });
 
-export const useProjectStatuses = (id: string | null) =>
+export const useWorkspaceStatuses = () =>
   useQuery({
-    queryKey: keys.projectStatuses(id ?? '__none__'),
-    queryFn: () => api.listProjectStatuses(id ?? ''),
-    enabled: Boolean(id)
+    queryKey: keys.workspaceStatuses,
+    queryFn: () => api.listWorkspaceStatuses()
   });
 
 export const useProjectResources = (id: string) =>
@@ -116,6 +117,12 @@ export const useProjectRepository = (id: string, executionTargetId: string | nul
 
 export const useTickets = (projectId: string) =>
   useQuery({ queryKey: keys.tickets(projectId), queryFn: () => api.listTickets(projectId) });
+
+// The active operator's assigned tickets across the selected workspace. The
+// global realtime SSE feed invalidates this whenever tickets change, and the
+// reorder mutation updates it optimistically.
+export const useWorkspaceMyTickets = () =>
+  useQuery({ queryKey: keys.myTickets, queryFn: () => api.listWorkspaceMyTickets() });
 
 export const useTicket = (id: string) =>
   useQuery({ queryKey: keys.ticket(id), queryFn: () => api.getTicket(id) });
@@ -308,43 +315,43 @@ export function useDeleteProject() {
   });
 }
 
-export function useCreateProjectStatus(projectId: string) {
+export function useCreateWorkspaceStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: CreateProjectStatusBody) => api.createProjectStatus(projectId, body),
+    mutationFn: (body: CreateWorkspaceStatusBody) => api.createWorkspaceStatus(body),
     onSuccess: data => {
-      qc.setQueryData(keys.projectStatuses(projectId), (prev: ProjectStatusDto[] | undefined) =>
+      qc.setQueryData(keys.workspaceStatuses, (prev: WorkspaceStatusDto[] | undefined) =>
         prev ? [...prev, data].sort((a, b) => a.position - b.position) : [data]
       );
-      void qc.invalidateQueries({ queryKey: keys.projectStatuses(projectId) });
+      void qc.invalidateQueries({ queryKey: keys.workspaceStatuses });
     }
   });
 }
 
-export function useUpdateProjectStatus(projectId: string) {
+export function useUpdateWorkspaceStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ statusId, body }: { statusId: string; body: UpdateProjectStatusBody }) =>
-      api.updateProjectStatus(projectId, statusId, body),
+    mutationFn: ({ statusId, body }: { statusId: string; body: UpdateWorkspaceStatusBody }) =>
+      api.updateWorkspaceStatus(statusId, body),
     onSuccess: () => invalidateAll(qc)
   });
 }
 
-export function useDeleteProjectStatus(projectId: string) {
+export function useDeleteWorkspaceStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (statusId: string) => api.deleteProjectStatus(projectId, statusId),
+    mutationFn: (statusId: string) => api.deleteWorkspaceStatus(statusId),
     onSuccess: () => invalidateAll(qc)
   });
 }
 
-export function useReorderProjectStatuses(projectId: string) {
+export function useReorderWorkspaceStatuses() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: ReorderProjectStatusesBody) => api.reorderProjectStatuses(projectId, body),
+    mutationFn: (body: ReorderWorkspaceStatusesBody) => api.reorderWorkspaceStatuses(body),
     onSuccess: data => {
-      qc.setQueryData(keys.projectStatuses(projectId), data);
-      void qc.invalidateQueries({ queryKey: keys.projectStatuses(projectId) });
+      qc.setQueryData(keys.workspaceStatuses, data);
+      void qc.invalidateQueries({ queryKey: keys.workspaceStatuses });
     }
   });
 }
@@ -494,6 +501,58 @@ export function useReorderBoardColumn() {
     },
     onSettled: (_data, _err, vars) => {
       void qc.invalidateQueries({ queryKey: keys.tickets(vars.projectId) });
+    }
+  });
+}
+
+export interface ReorderMyTicketsVars {
+  /** Destination column / status. */
+  statusId: string;
+  /** Destination column's semantic type — used only for the optimistic patch. */
+  statusType: StatusType;
+  /** Every ticket id that should occupy the column, top-to-bottom, after the move. */
+  orderedTicketIds: string[];
+}
+
+/**
+ * Reorders one My Tickets status column with an optimistic cache update. Within-
+ * column drags only move the personal slot; a cross-column drag also flips the
+ * moved ticket's status. On error (e.g. a status the workspace lacks) the caller
+ * reverts and surfaces the typed alert; here we just roll the cache back.
+ */
+export function useReorderMyTickets() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ statusId, orderedTicketIds }: ReorderMyTicketsVars) =>
+      api.reorderWorkspaceMyTickets({ statusId, orderedTicketIds }),
+    onMutate: async (vars: ReorderMyTicketsVars) => {
+      await qc.cancelQueries({ queryKey: keys.myTickets });
+      const previous = qc.getQueryData<MyTicketsResponse>(keys.myTickets);
+      if (previous) {
+        const positionById = new Map(
+          vars.orderedTicketIds.map((id, index) => [id, (index + 1) * 100])
+        );
+        qc.setQueryData<MyTicketsResponse>(keys.myTickets, {
+          tickets: previous.tickets.map(ticket => {
+            const position = positionById.get(ticket.id);
+            return position === undefined
+              ? ticket
+              : {
+                  ...ticket,
+                  statusId: vars.statusId,
+                  statusType: vars.statusType,
+                  myPosition: position
+                };
+          })
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) qc.setQueryData(keys.myTickets, context.previous);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: keys.myTickets });
     }
   });
 }

@@ -81,62 +81,53 @@ function nextTicketSequence(ctx: ServiceContext): number {
   return seq;
 }
 
-function getDefaultStatusId(
-  ctx: ServiceContext,
-  projectId: string
-): {
+function getDefaultStatusId(ctx: ServiceContext): {
   id: string;
   type: string;
 } {
   const row = ctx.db
     .prepare(
-      `SELECT id, type FROM project_statuses
-       WHERE project_id = ? AND is_default = 1 AND deleted_at IS NULL LIMIT 1`
+      `SELECT id, type FROM workspace_statuses
+       WHERE workspace_id = ? AND is_default = 1 AND deleted_at IS NULL LIMIT 1`
     )
-    .get(projectId) as { id: string; type: string } | undefined;
+    .get(ctx.workspace.id) as { id: string; type: string } | undefined;
 
   if (!row) {
-    throw new ServiceError('Project has no default status', 'validation_error', 409);
+    throw new ServiceError('Workspace has no default status', 'validation_error', 409);
   }
   return row;
 }
 
-function getReviewStatusId(
-  ctx: ServiceContext,
-  projectId: string
-): {
+function getReviewStatusId(ctx: ServiceContext): {
   id: string;
   type: string;
 } {
   const row = ctx.db
     .prepare(
-      `SELECT id, type FROM project_statuses
-       WHERE project_id = ? AND type = 'review' AND deleted_at IS NULL LIMIT 1`
+      `SELECT id, type FROM workspace_statuses
+       WHERE workspace_id = ? AND type = 'review' AND deleted_at IS NULL LIMIT 1`
     )
-    .get(projectId) as { id: string; type: string } | undefined;
+    .get(ctx.workspace.id) as { id: string; type: string } | undefined;
 
   if (!row) {
-    throw new ServiceError('Project has no review status', 'validation_error', 409);
+    throw new ServiceError('Workspace has no review status', 'validation_error', 409);
   }
   return row;
 }
 
-function getExecuteStatusId(
-  ctx: ServiceContext,
-  projectId: string
-): {
+function getExecuteStatusId(ctx: ServiceContext): {
   id: string;
   type: string;
 } {
   const row = ctx.db
     .prepare(
-      `SELECT id, type FROM project_statuses
-       WHERE project_id = ? AND type = 'execute' AND deleted_at IS NULL LIMIT 1`
+      `SELECT id, type FROM workspace_statuses
+       WHERE workspace_id = ? AND type = 'execute' AND deleted_at IS NULL LIMIT 1`
     )
-    .get(projectId) as { id: string; type: string } | undefined;
+    .get(ctx.workspace.id) as { id: string; type: string } | undefined;
 
   if (!row) {
-    throw new ServiceError('Project has no execute status', 'validation_error', 409);
+    throw new ServiceError('Workspace has no execute status', 'validation_error', 409);
   }
   return row;
 }
@@ -322,10 +313,7 @@ export function createTicketWithObjectives({
   }
 
   const ticketTitle = title?.trim() || initialTitleFromInstruction(firstInstruction);
-  const status =
-    statusType === 'review'
-      ? getReviewStatusId(ctx, resolvedProjectId)
-      : getDefaultStatusId(ctx, resolvedProjectId);
+  const status = statusType === 'review' ? getReviewStatusId(ctx) : getDefaultStatusId(ctx);
 
   const now = nowIso();
   const ticketId = newId();
@@ -915,7 +903,7 @@ export function moveTicketToReview({
   ticketId: string;
 }): void {
   const ticket = getTicketSummary({ ctx, ticketId });
-  const reviewStatus = getReviewStatusId(ctx, ticket.projectId);
+  const reviewStatus = getReviewStatusId(ctx);
   const now = nowIso();
   const boardPosition = topBoardPosition(ctx, ticket.projectId, reviewStatus.id);
 
@@ -945,7 +933,7 @@ export function moveTicketToExecute({
   ticketId: string;
 }): void {
   const ticket = getTicketSummary({ ctx, ticketId });
-  const executeStatus = getExecuteStatusId(ctx, ticket.projectId);
+  const executeStatus = getExecuteStatusId(ctx);
   if (ticket.statusId === executeStatus.id && ticket.statusType === executeStatus.type) {
     return;
   }

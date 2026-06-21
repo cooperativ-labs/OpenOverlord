@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { resolveGlobalDataDir } from './config.js';
@@ -147,9 +147,31 @@ function touchedFilesPath({
   );
 }
 
-/** Absolute, slash-normalized path for cross-checking VCS and touched entries. */
+/**
+ * Absolute, symlink-resolved, slash-normalized path for cross-checking VCS and
+ * touched entries. Resolving symlinks is what keeps both sides comparable: the
+ * touched log records paths against the agent's working directory, while the
+ * deliver-time intersection resolves them against `git rev-parse --show-toplevel`,
+ * which git already canonicalizes (e.g. macOS `/var` → `/private/var`). Without
+ * realpath here the two forms never match and every touched file is dropped.
+ *
+ * `realpathSync` needs the path to exist; for deleted files we resolve the
+ * nearest existing ancestor and re-append the basename, falling back to a plain
+ * resolve when even that is unavailable.
+ */
 function normalizeAbsolute(filePath: string): string {
-  return path.resolve(filePath).replace(/\\/g, '/');
+  const resolved = path.resolve(filePath);
+  try {
+    return realpathSync(resolved).replace(/\\/g, '/');
+  } catch {
+    try {
+      return path
+        .join(realpathSync(path.dirname(resolved)), path.basename(resolved))
+        .replace(/\\/g, '/');
+    } catch {
+      return resolved.replace(/\\/g, '/');
+    }
+  }
 }
 
 /** Repo root for the working dir, or `null` outside a git repo. */

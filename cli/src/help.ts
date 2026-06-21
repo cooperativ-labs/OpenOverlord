@@ -21,6 +21,7 @@ General:
   ${primaryCommand} serve [--host <h>] [--port <p>] [--db <path>] [--json]
                                                  Boot the web/REST server (creates + migrates the DB on first run)
   ${primaryCommand} doctor [--json]              Validate backend and connector installs
+  ${primaryCommand} prune [--json]               Delete the contents of .overlord/tmp in the current directory
   ${primaryCommand} config list [--json]         Show local configuration
   ${primaryCommand} config set                   Choose local/cloud backend interactively
   ${primaryCommand} config set local [url]       Use a local backend URL (default: http://127.0.0.1:4310)

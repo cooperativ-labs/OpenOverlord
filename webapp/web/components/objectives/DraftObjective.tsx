@@ -242,10 +242,10 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
             value={objective.instructionText}
             className="text-sm whitespace-pre-wrap"
             inputClassName="text-sm whitespace-pre-wrap"
-            minRows={objective.state === 'draft' ? 5 : undefined}
+            minRows={objective.state === 'draft' ? 4 : undefined}
             placeholder="Describe what the agent should do… (@ file, # project, $ ticket)"
             ariaLabel="Objective instruction"
-            commitEmpty={objective.state === 'future'}
+            commitEmpty={objective.state === 'future' || objective.state === 'draft'}
             mentionPaths={mentionPaths}
             projectMentionOptions={projectMentionOptions}
             ticketMentionOptions={ticketMentionOptions}

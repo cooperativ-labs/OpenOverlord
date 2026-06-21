@@ -2,9 +2,11 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 
-/* Display + mono faces. Space Grotesk (variable 300–700) drives sans/display;
- * IBM Plex Mono (400/500) drives the mono surfaces (eyebrows, code). */
+/* Display + body + mono faces. Space Grotesk (variable 300–700) drives display;
+ * Inter (variable) drives dense body/UI text where it stays simpler and cleaner
+ * at small sizes; IBM Plex Mono (400/500) drives the mono surfaces. */
 @import '@fontsource-variable/space-grotesk';
+@import '@fontsource-variable/inter';
 @import '@fontsource/ibm-plex-mono/400.css';
 @import '@fontsource/ibm-plex-mono/500.css';
 
@@ -20,6 +22,7 @@
 @theme inline {
   --font-sans: var(--font-display);
   --font-display: var(--font-display);
+  --font-body: var(--font-body);
   --font-mono: var(--font-mono);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -80,6 +83,7 @@
 :root {
   /* Display + mono font stacks consumed by the @theme inline aliases above. */
   --font-display: 'Space Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
 
   --radius: 0.625rem;

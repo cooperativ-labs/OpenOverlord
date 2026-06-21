@@ -12,6 +12,7 @@ import { NavHeader } from './components/nav-header.tsx';
 import { InitialSetupScreen } from './components/setup/InitialSetupScreen.tsx';
 import { SidebarInset, SidebarProvider } from './components/ui/sidebar.tsx';
 import { useMeta } from './lib/queries.ts';
+import { MyTicketsShell, WorkspaceTicketPanelRoute } from './pages/MyTicketsShell.tsx';
 import { ProjectBoardShell } from './pages/ProjectBoardShell.tsx';
 import { ProjectsPage } from './pages/ProjectsPage.tsx';
 import { QuickTaskPage } from './pages/QuickTaskPage.tsx';
@@ -74,6 +75,18 @@ const projectsRoute = createRoute({
   component: ProjectsPage
 });
 
+const myTicketsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/workspace',
+  component: MyTicketsShell
+});
+
+const myTicketsPanelRoute = createRoute({
+  getParentRoute: () => myTicketsRoute,
+  path: 'tickets/$ticketId',
+  component: WorkspaceTicketPanelRoute
+});
+
 const boardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects/$projectId',
@@ -90,6 +103,7 @@ export const routeTree = rootRoute.addChildren([
   quickTaskShellRoute.addChildren([quickTaskRoute]),
   indexRoute,
   projectsRoute,
+  myTicketsRoute.addChildren([myTicketsPanelRoute]),
   boardRoute,
   ticketRoute
 ]);

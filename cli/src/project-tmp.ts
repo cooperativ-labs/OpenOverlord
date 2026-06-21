@@ -31,6 +31,27 @@ export function pruneStaleProjectTmp({
   pruneChildren(tmpDir, cutoff);
 }
 
+export function pruneProjectTmpContents(workingDirectory: string): {
+  warned: boolean;
+  removedCount: number;
+} {
+  const overlordDir = path.join(workingDirectory, '.overlord');
+  if (!existsSync(overlordDir)) {
+    return { warned: true, removedCount: 0 };
+  }
+
+  const tmpDir = projectTmpDir(workingDirectory);
+  if (!existsSync(tmpDir)) {
+    return { warned: false, removedCount: 0 };
+  }
+
+  const entries = readdirSync(tmpDir, { withFileTypes: true, encoding: 'utf8' });
+  for (const entry of entries) {
+    rmSync(path.join(tmpDir, entry.name), { recursive: true, force: true });
+  }
+  return { warned: false, removedCount: entries.length };
+}
+
 function pruneChildren(directory: string, cutoff: number): void {
   let entries: Dirent<string>[];
   try {

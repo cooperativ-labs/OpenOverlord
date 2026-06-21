@@ -35,7 +35,6 @@ export type {
   Profiles,
   ProjectResources,
   Projects,
-  ProjectStatuses,
   ProjectUserPreferences,
   RoleAssignments,
   SchemaMigrations,
@@ -49,6 +48,7 @@ export type {
   UserTokenScopes,
   Verification,
   Workspaces,
+  WorkspaceStatuses,
   WorkspaceUserExecutionTargets,
   WorkspaceUsers
 } from './db.js';

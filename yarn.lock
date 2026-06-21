@@ -1423,6 +1423,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@fontsource-variable/inter@npm:^5.2.8":
+  version: 5.2.8
+  resolution: "@fontsource-variable/inter@npm:5.2.8"
+  checksum: 10c0/35b46df31c8c18f55f87228acf6297e4dac6cc9f38d0faaafdaf5a40e40c386cf1bfb115fb0fe0dcdb9b7e14f582843693ccf070d9c903072a5b2fc0f8dfde56
+  languageName: node
+  linkType: hard
+
 "@fontsource-variable/space-grotesk@npm:^5.2.10":
   version: 5.2.10
   resolution: "@fontsource-variable/space-grotesk@npm:5.2.10"
@@ -1737,6 +1744,7 @@ __metadata:
     "@dnd-kit/core": "npm:^6.3.1"
     "@dnd-kit/sortable": "npm:^10.0.0"
     "@dnd-kit/utilities": "npm:^3.2.2"
+    "@fontsource-variable/inter": "npm:^5.2.8"
     "@fontsource-variable/space-grotesk": "npm:^5.2.10"
     "@fontsource/ibm-plex-mono": "npm:^5.2.7"
     "@google/genai": "npm:^2.8.0"

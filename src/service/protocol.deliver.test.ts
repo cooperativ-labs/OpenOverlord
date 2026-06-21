@@ -76,6 +76,43 @@ describe('deliverSession mechanical change capture', () => {
     db.close();
   });
 
+  it('accepts the camelCase filePath alias for a rationale', () => {
+    const { db, ctx } = setup();
+    const { ticket } = submittedTicket(ctx, 'Rationale Alias');
+    const attached = attachSession({ ctx, ticketId: ticket.displayId });
+
+    // An agent that generalizes the changed-files `filePath` casing to a
+    // rationale must no longer be rejected; the alias normalizes to file_path
+    // and satisfies coverage for the same path.
+    deliverSession({
+      ctx,
+      ticketId: ticket.displayId,
+      sessionKey: attached.sessionKey,
+      summary: 'Deliver with camelCase rationale path',
+      changedFiles: [{ filePath: 'src/alias.ts', vcsStatus: 'M' }],
+      changeRationales: [
+        {
+          filePath: 'src/alias.ts',
+          label: 'Alias',
+          summary: 'Used camelCase path.',
+          why: 'Matches the changed-files casing.',
+          impact: 'Rationale is accepted without re-casing.'
+        }
+      ]
+    });
+
+    const files = listChangedFilesForReview({
+      ctx,
+      ticketId: ticket.displayId,
+      includeCurrent: false
+    });
+    assert.equal(files.length, 1);
+    assert.equal(files[0]?.filePath, 'src/alias.ts');
+    assert.equal(files[0]?.coverage, 'covered');
+
+    db.close();
+  });
+
   it('skips rationale coverage when the run declares no file changes', () => {
     const { db, ctx } = setup();
     const { ticket, objectiveId } = submittedTicket(ctx, 'No File Changes');
