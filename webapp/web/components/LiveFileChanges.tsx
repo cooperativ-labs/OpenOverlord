@@ -1,7 +1,4 @@
-import { useProjectRepositoryContext } from '@/components/projects/ProjectRepositoryContext';
-import { useProfile } from '@/lib/queries';
-
-import { useTicketFileChanges } from '../lib/queries.ts';
+import { useProfile, useProjectRepository, useTicketFileChanges } from '@/lib/queries';
 
 import { LiveFileChangeCard } from './LiveFileChangeCard.tsx';
 import { Spinner } from './ui.tsx';
@@ -14,10 +11,16 @@ import { Spinner } from './ui.tsx';
  * the agent or CLI in another process stream in without a manual refresh.
  * Adapted from the reference `LiveFileChanges` for this app's stack.
  */
-export function LiveFileChanges({ ticketId }: { ticketId: string }) {
+export function LiveFileChanges({
+  ticketId,
+  projectId
+}: {
+  ticketId: string;
+  projectId: string;
+}) {
   const fileChangesQ = useTicketFileChanges(ticketId);
   const profileQ = useProfile();
-  const { repository } = useProjectRepositoryContext();
+  const repositoryQ = useProjectRepository(projectId, null);
 
   if (fileChangesQ.isLoading) {
     return (
@@ -36,7 +39,7 @@ export function LiveFileChanges({ ticketId }: { ticketId: string }) {
   }
 
   const fileChanges = fileChangesQ.data ?? [];
-  const rootPath = repository?.rootPath ?? null;
+  const rootPath = repositoryQ.data?.rootPath ?? null;
   const editorScheme = profileQ.data?.editorScheme ?? null;
   if (fileChanges.length === 0) {
     return <p className="text-sm italic text-[var(--color-ink-dim)]">No file changes yet.</p>;

@@ -173,7 +173,7 @@ export function TicketPanel({
               <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
                 File Changes
               </h2>
-              <LiveFileChanges ticketId={ticket.id} />
+              <LiveFileChanges ticketId={ticket.id} projectId={ticket.projectId} />
             </div>{' '}
           </div>
         </section>

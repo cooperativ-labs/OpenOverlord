@@ -1,5 +1,6 @@
 import { Outlet, useNavigate, useParams } from '@tanstack/react-router';
 
+import { ProjectWorkspaceErrorBoundary } from '../components/ProjectWorkspaceErrorBoundary.tsx';
 import { TicketDrawer } from '../components/TicketDrawer.tsx';
 import { TicketPanel } from '../components/TicketPanel.tsx';
 
@@ -10,9 +11,13 @@ export function MyTicketsShell() {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <MyTicketsPage />
+        <ProjectWorkspaceErrorBoundary region="board">
+          <MyTicketsPage />
+        </ProjectWorkspaceErrorBoundary>
       </main>
-      <Outlet />
+      <ProjectWorkspaceErrorBoundary region="ticket panel">
+        <Outlet />
+      </ProjectWorkspaceErrorBoundary>
     </div>
   );
 }
