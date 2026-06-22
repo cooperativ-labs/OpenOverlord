@@ -497,7 +497,31 @@ function runGit(cwd: string, args: string[]): string {
   }
 }
 
-function branchIsMerged({
+// Resolves the absolute SHA a ref points at, or null when the ref does not exist.
+function resolveRef(repoPath: string, ref: string): string | null {
+  const sha = runGit(repoPath, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+  return sha || null;
+}
+
+// True only when the branch has actually been merged into the base: it must have
+// diverged from the base (different tip) AND be fully contained in it (no commits
+// of its own that are absent from the base). A branch freshly cut from the base
+// shares the base's tip, so it is NOT merged — fixing the bug where a just-created
+// branch reported as "merged" because `git branch --merged <base>` lists every
+// branch whose tip is reachable from the base, including brand-new ones.
+function branchMergedIntoBase(repoPath: string, branchSha: string, base: string): boolean {
+  const baseSha = resolveRef(repoPath, base);
+  if (!baseSha) return false;
+  if (baseSha === branchSha) return false;
+  const ahead = runGit(repoPath, ['rev-list', '--count', `${baseSha}..${branchSha}`]).trim();
+  return ahead === '0';
+}
+
+// Derives the ticket-panel branch status from the real git state in the project's
+// primary worktree. `active_branch` being set means a branch was prepared, so the
+// floor is `created`; we upgrade to `published` once a remote ref exists and to
+// `merged` once the branch's commits have landed in the base.
+function deriveBranchStatus({
   projectId,
   branchName,
   baseBranch
@@ -505,8 +529,7 @@ function branchIsMerged({
   projectId: string;
   branchName: string;
   baseBranch: string | null;
-}): boolean {
-  if (!baseBranch) return false;
+}): 'created' | 'published' | 'merged' {
   const resource = db
     .prepare(
       `SELECT path FROM project_resources
@@ -516,32 +539,25 @@ function branchIsMerged({
         LIMIT 1`
     )
     .get(projectId, WORKSPACE.id) as { path: string } | undefined;
-  if (!resource || !existsSync(resource.path)) return false;
-  const localExists = runGit(resource.path, ['show-ref', '--verify', `refs/heads/${branchName}`]);
-  const remoteExists = runGit(resource.path, [
-    'show-ref',
-    '--verify',
-    `refs/remotes/origin/${branchName}`
-  ]);
-  if (!localExists && !remoteExists) return true;
-  const localMerged = runGit(resource.path, [
-    'branch',
-    '--merged',
-    baseBranch,
-    '--format=%(refname:short)'
-  ])
-    .split('\n')
-    .map(line => line.trim());
-  const remoteMerged = runGit(resource.path, [
-    'branch',
-    '-r',
-    '--merged',
-    `origin/${baseBranch}`,
-    '--format=%(refname:short)'
-  ])
-    .split('\n')
-    .map(line => line.trim().replace(/^origin\//, ''));
-  return localMerged.includes(branchName) || remoteMerged.includes(branchName);
+  // Without an inspectable checkout we can only trust that the branch was created.
+  if (!resource || !existsSync(resource.path)) return 'created';
+  const repoPath = resource.path;
+
+  const branchSha =
+    resolveRef(repoPath, `refs/heads/${branchName}`) ??
+    resolveRef(repoPath, `refs/remotes/origin/${branchName}`);
+  const remoteExists = resolveRef(repoPath, `refs/remotes/origin/${branchName}`) !== null;
+  // No local or remote ref found: the branch is recorded but not present here.
+  if (!branchSha) return 'created';
+
+  if (baseBranch) {
+    const merged =
+      branchMergedIntoBase(repoPath, branchSha, baseBranch) ||
+      branchMergedIntoBase(repoPath, branchSha, `origin/${baseBranch}`);
+    if (merged) return 'merged';
+  }
+
+  return remoteExists ? 'published' : 'created';
 }
 
 function getProjectSlug(projectId: string): string {
@@ -564,9 +580,7 @@ function ticketBranchDto(row: TicketRow): TicketBranchDto {
       name,
       baseBranch,
       worktreePath: ticketWorktreePath({ worktreeRoot, projectSlug, branch: name }),
-      status: branchIsMerged({ projectId: row.project_id, branchName: name, baseBranch })
-        ? 'merged'
-        : 'active'
+      status: deriveBranchStatus({ projectId: row.project_id, branchName: name, baseBranch })
     };
   }
 
