@@ -91,6 +91,50 @@ test('files dirty before the session began are excluded from the run delta', () 
   assert.deepEqual(paths(repo), ['mine.ts']);
 });
 
+test('.overlordignore excludes matching files from the run delta', () => {
+  const repo = makeRepo();
+  // Commit the paths first so `git status --porcelain` lists each modified file
+  // individually (it collapses a fully-untracked directory to a single entry).
+  execFileSync('mkdir', ['-p', path.join(repo, 'build')]);
+  for (const rel of ['install-state.gz', 'debug.log', 'build/out.js', 'src.ts']) {
+    const abs = path.join(repo, rel);
+    execFileSync('mkdir', ['-p', path.dirname(abs)]);
+    writeFileSync(abs, 'base\n');
+  }
+  git(repo, ['add', '.']);
+  git(repo, ['commit', '-m', 'tracked']);
+
+  writeFileSync(
+    path.join(repo, '.overlordignore'),
+    '# generated artifacts\ninstall-state.gz\n*.log\nbuild/\n'
+  );
+  writeBaseline({ workingDirectory: repo, ticketId: TICKET_ID, files: readChangedFiles(repo) });
+  resetTouchedFiles({ workingDirectory: repo, ticketId: TICKET_ID });
+
+  for (const rel of ['install-state.gz', 'debug.log', 'build/out.js', 'src.ts']) {
+    const abs = path.join(repo, rel);
+    writeFileSync(abs, 'changed\n');
+    recordTouchedFiles({ workingDirectory: repo, ticketId: TICKET_ID, files: [abs] });
+  }
+
+  assert.deepEqual(paths(repo), ['src.ts']);
+});
+
+test('.overlordignore negation (!) re-includes a previously ignored file', () => {
+  const repo = makeRepo();
+  writeFileSync(path.join(repo, '.overlordignore'), '*.gz\n!keep.gz\n');
+  writeBaseline({ workingDirectory: repo, ticketId: TICKET_ID, files: readChangedFiles(repo) });
+  resetTouchedFiles({ workingDirectory: repo, ticketId: TICKET_ID });
+
+  for (const rel of ['drop.gz', 'keep.gz']) {
+    const abs = path.join(repo, rel);
+    writeFileSync(abs, 'x\n');
+    recordTouchedFiles({ workingDirectory: repo, ticketId: TICKET_ID, files: [abs] });
+  }
+
+  assert.deepEqual(paths(repo), ['keep.gz']);
+});
+
 test('resetTouchedFiles clears a prior session log so its edits are not re-attributed to the next session', () => {
   const repo = makeRepo();
   writeBaseline({ workingDirectory: repo, ticketId: TICKET_ID, files: readChangedFiles(repo) });

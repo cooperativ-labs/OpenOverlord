@@ -23,6 +23,11 @@ import { resolveGlobalDataDir } from './config.js';
  * the worktree delta INTERSECT the agent-edited paths — so files this agent never
  * touched are never reported, even if they are dirty for unrelated reasons.
  *
+ * Finally, a repo may carry an optional `.overlordignore` file at its root listing
+ * gitignore-style patterns (e.g. generated artifacts like `install-state.gz`). Any
+ * run-attributable path matching those patterns is dropped before reporting, so
+ * Overlord never records churn the user has explicitly opted out of tracking.
+ *
  * VCS is read on the client only — we never send diffs or file contents, just
  * normalized paths and short status codes. Everything here is best-effort: outside
  * a git repository (or when git is unavailable) we infer nothing.
@@ -371,6 +376,111 @@ function isRunAttributableChange({
   return currentHash !== base.contentHash;
 }
 
+type IgnoreRule = {
+  /** A `!`-prefixed pattern re-includes a path an earlier rule ignored. */
+  negated: boolean;
+  regex: RegExp;
+};
+
+/** Name of the per-repo ignore file, resolved at the git repo root. */
+export const OVERLORD_IGNORE_FILENAME = '.overlordignore';
+
+/** Translate one gitignore-style glob body into a regex fragment (no anchors). */
+function ignoreGlobToRegExp(glob: string): string {
+  let out = '';
+  for (let index = 0; index < glob.length; index += 1) {
+    const char = glob[index] ?? '';
+    if (char === '*') {
+      if (glob[index + 1] === '*') {
+        index += 1;
+        if (glob[index + 1] === '/') {
+          // `**/` matches any number of leading path segments, including none.
+          index += 1;
+          out += '(.*/)?';
+        } else {
+          out += '.*';
+        }
+      } else {
+        out += '[^/]*';
+      }
+    } else if (char === '?') {
+      out += '[^/]';
+    } else {
+      out += char.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    }
+  }
+  return out;
+}
+
+/** Compile a single `.overlordignore` line into a rule, or `null` to skip it. */
+function compileIgnorePattern(rawPattern: string): IgnoreRule | null {
+  let pattern = rawPattern;
+  let negated = false;
+  if (pattern.startsWith('!')) {
+    negated = true;
+    pattern = pattern.slice(1);
+  }
+  // Allow escaping a literal leading '#' or '!' the same way gitignore does.
+  if (pattern.startsWith('\\#') || pattern.startsWith('\\!')) {
+    pattern = pattern.slice(1);
+  }
+  let directoryOnly = false;
+  if (pattern.endsWith('/')) {
+    directoryOnly = true;
+    pattern = pattern.slice(0, -1);
+  }
+  if (!pattern) return null;
+
+  // A slash anywhere but a trailing one anchors the pattern to the repo root;
+  // an unanchored pattern matches its basename at any depth.
+  const anchored = pattern.includes('/');
+  if (pattern.startsWith('/')) pattern = pattern.slice(1);
+  if (!pattern) return null;
+
+  const prefix = anchored ? '^' : '(^|/)';
+  const body = ignoreGlobToRegExp(pattern);
+  // A directory pattern only matches files *under* it (changed paths are files);
+  // a file pattern matches the path itself or, if it names a directory, its
+  // contents.
+  const suffix = directoryOnly ? '/.*$' : '(/.*)?$';
+  try {
+    return { negated, regex: new RegExp(`${prefix}${body}${suffix}`) };
+  } catch {
+    return null;
+  }
+}
+
+/** Parse the repo's `.overlordignore` into ordered rules; `[]` when absent. */
+function loadIgnoreRules(repoRoot: string): IgnoreRule[] {
+  try {
+    const target = path.join(repoRoot, OVERLORD_IGNORE_FILENAME);
+    if (!existsSync(target)) return [];
+    const rules: IgnoreRule[] = [];
+    for (const rawLine of readFileSync(target, 'utf8').split('\n')) {
+      const line = rawLine.replace(/\r$/, '').trim();
+      if (!line || line.startsWith('#')) continue;
+      const rule = compileIgnorePattern(line);
+      if (rule) rules.push(rule);
+    }
+    return rules;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Whether a repo-root-relative path is ignored. Rules apply in order and the
+ * last matching rule wins, so a later `!pattern` can re-include a path an earlier
+ * pattern excluded (gitignore semantics).
+ */
+function isIgnoredPath(rules: IgnoreRule[], relativePath: string): boolean {
+  let ignored = false;
+  for (const rule of rules) {
+    if (rule.regex.test(relativePath)) ignored = !rule.negated;
+  }
+  return ignored;
+}
+
 /**
  * Keep only paths this run is responsible for.
  *
@@ -384,6 +494,9 @@ function isRunAttributableChange({
  *
  * `git status --porcelain` paths are repo-root-relative, so we resolve them
  * against the repo root before comparing with the absolute touched paths.
+ *
+ * Finally, any path matching the repo's optional `.overlordignore` is dropped,
+ * letting users opt specific files (e.g. generated artifacts) out of tracking.
  */
 export function filterRunAttributableChanges({
   workingDirectory,
@@ -397,11 +510,15 @@ export function filterRunAttributableChanges({
   const baseline = readBaselineSnapshot({ workingDirectory, ticketId });
   const touched = readTouchedPaths({ workingDirectory, ticketId });
   const repoRoot = gitRepoRoot(workingDirectory) ?? workingDirectory;
+  const ignoreRules = loadIgnoreRules(repoRoot);
   return files.filter(entry => {
     if (!isRunAttributableChange({ workingDirectory, entry, baseline })) return false;
     if (touched) {
       const absolute = normalizeAbsolute(path.resolve(repoRoot, entry.filePath));
       if (!touched.has(absolute)) return false;
+    }
+    if (ignoreRules.length > 0 && isIgnoredPath(ignoreRules, normalizePath(entry.filePath))) {
+      return false;
     }
     return true;
   });
