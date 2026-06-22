@@ -7526,7 +7526,6 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "open-overlord@workspace:cli"
   dependencies:
-    "@overlord/automations": "workspace:*"
     dotenv: "npm:^17.4.2"
     smol-toml: "npm:^1.6.1"
   bin:

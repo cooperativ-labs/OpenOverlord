@@ -1,0 +1,162 @@
+{
+  "_comment": "Golden conformance vectors for Overlord's deterministic per-ticket branch/worktree planning algorithm. Both the Runner Layer (cli/src/branch-planning.ts) and the service layer (webapp/server/branch-planning.ts) keep their own copy of the algorithm; cli/test/branch-planning.test.ts and webapp/server/branch-planning.test.ts both assert against these vectors so the two copies cannot drift. worktreePath values use POSIX separators (path.join on the supported macOS/Linux platforms). Any change to the algorithm MUST regenerate this fixture and bump the contract version (see CONTRACT.md 'Shared Deterministic Algorithms').",
+  "worktreeRoot": "/tmp/ovld-worktrees",
+  "slugifyBranchTitle": [
+    {
+      "name": "strips unicode and trailing punctuation",
+      "title": "Crème brûlée: ship it 🚀",
+      "fallback": "ticket-9",
+      "expected": "creme-brulee-ship-it"
+    },
+    {
+      "name": "falls back when nothing slugifiable remains",
+      "title": "!!!",
+      "fallback": "ticket-9",
+      "expected": "ticket-9"
+    }
+  ],
+  "canonicalTicketBranch": [
+    {
+      "name": "truncates long titles at a useful boundary",
+      "ticket": {
+        "title": "This is a very long ticket title that should truncate at a useful boundary",
+        "sequence": 42
+      },
+      "expected": "overlord/this-is-a-very-long-ticket-title-that-should-42"
+    },
+    {
+      "name": "renders canonical branch from title + sequence",
+      "ticket": { "title": "Automate worktree branching", "sequence": 16 },
+      "expected": "overlord/automate-worktree-branching-16"
+    }
+  ],
+  "previewTicketBranch": [
+    {
+      "name": "predicts canonical branch and worktree path",
+      "input": {
+        "ticket": { "title": "Automate worktree branching", "sequence": 16 },
+        "project": { "slug": "coo" },
+        "base": "main",
+        "worktreeRoot": "/tmp/ovld-worktrees"
+      },
+      "expected": {
+        "action": "create",
+        "branch": "overlord/automate-worktree-branching-16",
+        "worktreePath": "/tmp/ovld-worktrees/coo/overlord-automate-worktree-branching-16",
+        "baseBranch": "main",
+        "cycle": 1,
+        "from": "main"
+      }
+    }
+  ],
+  "planTicketBranch": [
+    {
+      "name": "creates canonical branch when none exists yet",
+      "input": {
+        "ticket": { "title": "Automate worktree branching", "sequence": 16 },
+        "project": { "slug": "coo" },
+        "base": "main",
+        "worktreeRoot": "/tmp/ovld-worktrees",
+        "recordedBranch": null,
+        "refs": { "local": ["main"], "remote": [], "merged": [] }
+      },
+      "expected": {
+        "action": "create",
+        "branch": "overlord/automate-worktree-branching-16",
+        "worktreePath": "/tmp/ovld-worktrees/coo/overlord-automate-worktree-branching-16",
+        "baseBranch": "main",
+        "cycle": 1,
+        "from": "main"
+      }
+    },
+    {
+      "name": "reuses recorded unmerged branch",
+      "input": {
+        "ticket": { "title": "Automate worktree branching", "sequence": 16 },
+        "project": { "slug": "coo" },
+        "base": "main",
+        "worktreeRoot": "/tmp/ovld-worktrees",
+        "recordedBranch": "overlord/automate-worktree-branching-16",
+        "refs": {
+          "local": ["main", "overlord/automate-worktree-branching-16"],
+          "remote": [],
+          "merged": []
+        }
+      },
+      "expected": {
+        "action": "reuse",
+        "branch": "overlord/automate-worktree-branching-16",
+        "worktreePath": "/tmp/ovld-worktrees/coo/overlord-automate-worktree-branching-16",
+        "baseBranch": "main",
+        "cycle": 1
+      }
+    },
+    {
+      "name": "creates next numeric cycle when recorded branch is merged",
+      "input": {
+        "ticket": { "title": "Automate worktree branching", "sequence": 16 },
+        "project": { "slug": "coo" },
+        "base": "main",
+        "worktreeRoot": "/tmp/ovld-worktrees",
+        "recordedBranch": "overlord/automate-worktree-branching-16",
+        "refs": {
+          "local": [
+            "main",
+            "overlord/automate-worktree-branching-16",
+            "overlord/automate-worktree-branching-16-2"
+          ],
+          "remote": ["origin/overlord/automate-worktree-branching-16-3"],
+          "merged": ["overlord/automate-worktree-branching-16"],
+          "checkedOut": ["overlord/automate-worktree-branching-16-4"]
+        }
+      },
+      "expected": {
+        "action": "new_cycle",
+        "branch": "overlord/automate-worktree-branching-16-5",
+        "worktreePath": "/tmp/ovld-worktrees/coo/overlord-automate-worktree-branching-16-5",
+        "baseBranch": "main",
+        "cycle": 5,
+        "from": "main"
+      }
+    },
+    {
+      "name": "reuses an override branch that already exists",
+      "input": {
+        "ticket": { "title": "Automate worktree branching", "sequence": 16 },
+        "project": { "slug": "coo" },
+        "base": "main",
+        "worktreeRoot": "/tmp/ovld-worktrees",
+        "recordedBranch": null,
+        "overrideBranch": "feature/manual",
+        "refs": { "local": ["feature/manual"], "remote": [], "merged": [] }
+      },
+      "expected": {
+        "action": "reuse",
+        "branch": "feature/manual",
+        "worktreePath": "/tmp/ovld-worktrees/coo/feature-manual",
+        "baseBranch": "main",
+        "cycle": 1
+      }
+    },
+    {
+      "name": "creates an override branch that does not exist",
+      "input": {
+        "ticket": { "title": "Automate worktree branching", "sequence": 16 },
+        "project": { "slug": "coo" },
+        "base": "main",
+        "worktreeRoot": "/tmp/ovld-worktrees",
+        "recordedBranch": null,
+        "overrideBranch": "feature/other",
+        "refs": { "local": ["feature/manual"], "remote": [], "merged": [] }
+      },
+      "expected": {
+        "action": "create",
+        "branch": "feature/other",
+        "worktreePath": "/tmp/ovld-worktrees/coo/feature-other",
+        "baseBranch": "main",
+        "cycle": 1,
+        "from": "main"
+      }
+    }
+  ]
+}

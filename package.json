@@ -1,6 +1,6 @@
 {
   "name": "overlord",
-  "version": "0.2606220714.0",
+  "version": "0.2606221050.0",
   "description": "Open-source management and coordination layer for AI coding agents",
   "type": "module",
   "private": true,
@@ -46,8 +46,8 @@
     "build:db:prod": "yarn workspace @overlord/database build",
     "build:cli:prod": "yarn workspace open-overlord build",
     "build:webapp:prod": "yarn workspace @overlord/webapp build",
-    "pack:cli:prod": "yarn build:cli:prod && sh -c 'cd cli && npm pack'",
-    "cli:publish": "yarn build:cli:prod && sh -c 'cd cli && npm publish'",
+    "pack:cli:prod": "yarn build:cli:prod && yarn workspace open-overlord pack",
+    "cli:publish": "yarn build:cli:prod && node scripts/with-prod-env.mjs yarn workspace open-overlord npm publish",
     "ovld:dev": "node scripts/with-dev-env.mjs yarn build:cli:prod && node scripts/with-dev-env.mjs node cli/bin/ovld.mjs",
     "build:server:prod": "yarn workspace @overlord/webapp build:server",
     "desktop:build:prod": "yarn build:webapp:prod && yarn build:server:prod && yarn workspace Overlord build",

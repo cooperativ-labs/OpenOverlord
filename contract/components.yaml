@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '0.33-draft'
+contractVersion: '0.35-draft'
 
 components:
   protocol:
@@ -89,6 +89,7 @@ components:
       - 'execution_requests queue claiming and launch'
       - 'working directory resolution'
       - 'per-ticket branch/worktree preparation before local agent spawn when enabled'
+      - 'deterministic branch/worktree planning algorithm (cli/src/branch-planning.ts), co-owned with the service layer and pinned to contract/branch-planning-vectors.json'
       - 'ovld runner commands'
       - 'execution target selection logic'
     dependsOn:
@@ -106,7 +107,7 @@ components:
     owns:
       - 'URL paths and HTTP method contracts'
       - 'request/response DTO shapes (camelCase, derived from logical schema)'
-      - 'read-only derived ticket branch metadata from branch_prepared events'
+      - 'read-only derived ticket branch metadata (TicketBranchDto) from tickets.active_branch, predicted via the service layer copy of the branch-planning algorithm (webapp/server/branch-planning.ts) pinned to contract/branch-planning-vectors.json'
       - 'REST auth integration points'
       - 'SSE/WebSocket realtime endpoint'
       - 'SQL Studio launch metadata exposed through /api/meta'

@@ -1,9 +1,9 @@
-import { type BranchDecision, planTicketBranch, sanitizeBranchName } from '@overlord/automations';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { type BranchDecision, planTicketBranch, sanitizeBranchName } from './branch-planning.js';
 import type { CliRuntime } from './runtime.js';
 
 export type BranchPreparationOptions = {

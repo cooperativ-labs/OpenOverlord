@@ -1,3 +1,11 @@
+// Deterministic per-ticket branch/worktree planning for the Runner Layer.
+//
+// This is one of Overlord's "Shared Deterministic Algorithms" (see CONTRACT.md):
+// the service layer keeps a byte-for-byte-equivalent copy at
+// webapp/server/branch-planning.ts. Both are pinned to the shared conformance
+// fixture contract/branch-planning-vectors.json. Do not import the webapp copy
+// across the component boundary, and bump the contract version (regenerating the
+// fixture) on any behavioral change here.
 import path from 'node:path';
 
 export type BranchAutomationAction = 'create' | 'reuse' | 'new_cycle';

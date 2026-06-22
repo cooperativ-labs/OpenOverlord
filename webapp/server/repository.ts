@@ -1,5 +1,4 @@
 import { scopeGrantsForPreset } from '@overlord/auth';
-import { previewTicketBranch, ticketWorktreePath } from '@overlord/automations';
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
@@ -50,6 +49,7 @@ import type {
   WorkspaceStatusDto
 } from '../shared/contract.ts';
 
+import { previewTicketBranch, ticketWorktreePath } from './branch-planning.ts';
 import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';
 import {
