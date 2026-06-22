@@ -120,15 +120,18 @@ The worktree lives under:
 ~/.ovld/worktrees/<project-slug>/<branch-name-with-slashes-flattened>
 ```
 
-Subsequent launches for the same ticket reuse the latest recorded branch from
-the ticket's `branch_prepared` event. If that branch has been merged or deleted
-after merge, the next launch starts a new cycle with a numeric suffix (`-2`,
-`-3`, ...). Preparation is never destructive: the main checkout is not stashed,
-reset, or force-checked out; dirty target worktrees fail the launch with an
-actionable error.
+Subsequent launches for the same ticket reuse the latest recorded branch read
+from the `tickets.active_branch` column (surfaced on the ticket detail DTO's
+`branch` field). If that branch has been merged or deleted after merge, the next
+launch starts a new cycle with a numeric suffix (`-2`, `-3`, ...). Preparation is
+never destructive: the main checkout is not stashed, reset, or force-checked out;
+dirty target worktrees fail the launch with an actionable error.
 
 After preparation, the runner records `POST /api/tickets/:id/branch-prepared`,
-which appends a `branch_prepared` ticket event and stamps
+which writes the resolved branch to the `tickets.active_branch` column (the
+source of truth), records a human-readable audit entry under an allowed
+`ticket_events` type (no dedicated `branch_prepared` event type exists — the
+event vocabulary is a closed enum), and stamps
 `execution_requests.launch_flags_json.branchAutomation` for queued runner
 requests.
 
