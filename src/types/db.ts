@@ -510,6 +510,7 @@ export interface TicketEvents {
 
 export interface Tickets {
   acceptance_criteria_text: string | null;
+  active_branch: string | null;
   assigned_workspace_user_id: string | null;
   available_tools_json: Generated<string>;
   board_position: Generated<number>;

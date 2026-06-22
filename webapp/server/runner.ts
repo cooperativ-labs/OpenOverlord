@@ -23,6 +23,14 @@ type ExecutionRequestRow = {
   revision: number;
 };
 
+type BranchPreparedPayload = {
+  branchName: string;
+  baseBranch: string;
+  worktreePath: string;
+  action: 'create' | 'reuse' | 'new_cycle';
+  cycle: number;
+};
+
 const EXECUTION_REQUEST_COLUMNS = `
   id, workspace_id, project_id, ticket_id, objective_id, execution_target_id,
   requested_agent, requested_model, requested_reasoning_effort, launch_flags_json,
@@ -47,6 +55,17 @@ function parseLaunchConfig(json: string): { preCommand: string; flags: string[] 
     };
   } catch {
     return { preCommand: '', flags: [] };
+  }
+}
+
+function parseLaunchFlagsObject(json: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
   }
 }
 
@@ -288,6 +307,124 @@ export const updateRunnerRequestStatus = db.transaction(
       .prepare(`SELECT ${EXECUTION_REQUEST_COLUMNS} FROM execution_requests WHERE id = ?`)
       .get(requestId) as ExecutionRequestRow;
     return toDto(updated);
+  }
+);
+
+function requireBranchPayload(value: unknown): BranchPreparedPayload {
+  const body = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  const branchName = typeof body.branchName === 'string' ? body.branchName.trim() : '';
+  const baseBranch = typeof body.baseBranch === 'string' ? body.baseBranch.trim() : '';
+  const worktreePath = typeof body.worktreePath === 'string' ? body.worktreePath.trim() : '';
+  const action = body.action;
+  const cycle = typeof body.cycle === 'number' && Number.isFinite(body.cycle) ? body.cycle : 1;
+  if (!branchName || !baseBranch || !worktreePath) {
+    throw new ApiError(400, 'branchName, baseBranch, and worktreePath are required');
+  }
+  if (action !== 'create' && action !== 'reuse' && action !== 'new_cycle') {
+    throw new ApiError(400, 'Invalid branch preparation action');
+  }
+  return { branchName, baseBranch, worktreePath, action, cycle };
+}
+
+export const recordBranchPrepared = db.transaction(
+  ({
+    ticketId,
+    requestId,
+    payload
+  }: {
+    ticketId: string;
+    requestId?: string | null;
+    payload: unknown;
+  }): { ok: true } => {
+    const branch = requireBranchPayload(payload);
+    const ticket = db
+      .prepare(
+        `SELECT id, project_id, revision FROM tickets
+          WHERE workspace_id = @workspace_id
+            AND deleted_at IS NULL
+            AND (id = @ticket_id OR display_id = @ticket_id)`
+      )
+      .get({ workspace_id: WORKSPACE.id, ticket_id: ticketId }) as
+      | { id: string; project_id: string; revision: number }
+      | undefined;
+    if (!ticket) throw new ApiError(404, 'Ticket not found');
+
+    let objectiveId: string | null = null;
+    if (requestId) {
+      const row = db
+        .prepare(`SELECT ${EXECUTION_REQUEST_COLUMNS} FROM execution_requests WHERE id = ?`)
+        .get(requestId) as ExecutionRequestRow | undefined;
+      if (!row) throw new ApiError(404, 'Execution request not found');
+      objectiveId = row.objective_id;
+      const flags = parseLaunchFlagsObject(row.launch_flags_json);
+      flags.branchAutomation = branch;
+      const revision = row.revision + 1;
+      db.prepare(
+        `UPDATE execution_requests
+            SET launch_flags_json = @launch_flags_json,
+                resolved_working_directory = @worktree_path,
+                updated_at = @now,
+                revision = @revision
+          WHERE id = @id`
+      ).run({
+        id: row.id,
+        launch_flags_json: JSON.stringify(flags),
+        worktree_path: branch.worktreePath,
+        now: nowIso(),
+        revision
+      });
+      recordChange({
+        entityType: 'execution_request',
+        entityId: row.id,
+        operation: 'update',
+        entityRevision: revision,
+        projectId: row.project_id,
+        ticketId: row.ticket_id,
+        objectiveId: row.objective_id,
+        changedFields: ['launch_flags_json', 'resolved_working_directory']
+      });
+    }
+
+    const now = nowIso();
+
+    // `tickets.active_branch` is the source of truth for which branch a ticket is
+    // operating on (read by merge detection and the REST/ticket-panel surfaces).
+    const ticketRevision = ticket.revision + 1;
+    db.prepare(
+      `UPDATE tickets
+          SET active_branch = @active_branch, updated_at = @now, revision = @revision
+        WHERE id = @id`
+    ).run({ active_branch: branch.branchName, now, revision: ticketRevision, id: ticket.id });
+    recordChange({
+      entityType: 'ticket',
+      entityId: ticket.id,
+      operation: 'update',
+      entityRevision: ticketRevision,
+      projectId: ticket.project_id,
+      ticketId: ticket.id,
+      objectiveId,
+      changedFields: ['active_branch']
+    });
+
+    // Human-readable audit entry for the activity feed. `branch_prepared` is not
+    // part of the closed `ticket_events.type` vocabulary, so this records under
+    // the allowed `update` type with the structured detail in the payload.
+    db.prepare(
+      `INSERT INTO ticket_events
+         (id, workspace_id, project_id, ticket_id, objective_id, type, phase, summary,
+          payload_json, source, actor_workspace_user_id, created_at)
+       VALUES (?, ?, ?, ?, ?, 'update', 'execute', ?, ?, 'runner', NULL, ?)`
+    ).run(
+      newId(),
+      WORKSPACE.id,
+      ticket.project_id,
+      ticket.id,
+      objectiveId,
+      `Prepared branch ${branch.branchName} in worktree ${branch.worktreePath}.`,
+      JSON.stringify(branch),
+      now
+    );
+    return { ok: true };
   }
 );
 

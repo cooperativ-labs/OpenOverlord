@@ -1,7 +1,11 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { Plus } from 'lucide-react';
+import { useState } from 'react';
 
+import { NewTicketModal } from '@/components/NewTicketModal.tsx';
 import { Badge, STATUS_CONFIG, statusClasses } from '@/components/ui.tsx';
+import { readLastUsedProjectId } from '@/lib/last-used-project.ts';
 
 import type { MyTicketDto, StatusType, WorkspaceMemberDto } from '../../shared/contract.ts';
 
@@ -11,10 +15,12 @@ import { TicketCard } from './TicketCard.tsx';
 
 /**
  * One column of the My Tickets aggregate board. Unlike the project `BoardColumn`
- * it has no per-project create affordance (the board spans projects) and its
- * cards open the workspace-scoped ticket route. `type === null` renders the
- * synthetic "Uncategorized" bucket for tickets whose status is no longer an
- * active workspace column.
+ * it spans projects, so its "Add ticket" affordance opens the full `NewTicketModal`
+ * (project picker included) defaulting to the last-used project, rather than the
+ * board's inline `BlankTicketCard`. Its cards open the workspace-scoped ticket
+ * route. `type === null` renders the synthetic "Uncategorized" bucket for tickets
+ * whose status is no longer an active workspace column — it has no real status id
+ * to create into, so it gets no "Add ticket" affordance.
  */
 export function MyTicketsColumn({
   droppableId,
@@ -39,6 +45,7 @@ export function MyTicketsColumn({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: droppableId });
   const StatusIcon = type ? STATUS_CONFIG[type].icon : null;
+  const [isAddingTicket, setIsAddingTicket] = useState(false);
 
   const content = (
     <div
@@ -67,6 +74,16 @@ export function MyTicketsColumn({
           <TicketCard key={ticket.id} {...cardProps} />
         );
       })}
+      {type ? (
+        <button
+          type="button"
+          onClick={() => setIsAddingTicket(true)}
+          className="flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-muted-foreground/20 py-2 text-xs text-muted-foreground/40 transition-colors hover:border-muted-foreground/40 hover:text-muted-foreground/70"
+        >
+          <Plus className="h-3 w-3" />
+          Add ticket
+        </button>
+      ) : null}
     </div>
   );
 
@@ -86,6 +103,14 @@ export function MyTicketsColumn({
       ) : (
         content
       )}
+      {type ? (
+        <NewTicketModal
+          open={isAddingTicket}
+          onClose={() => setIsAddingTicket(false)}
+          defaultProjectId={readLastUsedProjectId()}
+          defaultStatusId={droppableId}
+        />
+      ) : null}
     </div>
   );
 }

@@ -1,4 +1,18 @@
 export type {
+  BranchAutomationAction,
+  BranchDecision,
+  BranchDecisionInput,
+  TicketBranchPreviewInput
+} from './branch-planner/index.js';
+export {
+  canonicalTicketBranch,
+  planTicketBranch,
+  previewTicketBranch,
+  sanitizeBranchName,
+  slugifyBranchTitle,
+  ticketWorktreePath
+} from './branch-planner/index.js';
+export type {
   AutoAdvanceDecision,
   EnsureDraftSlotPlan,
   ManageObjectiveLifecycleInput,

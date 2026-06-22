@@ -66,7 +66,10 @@ if (!app.requestSingleInstanceLock()) {
 
 async function boot(): Promise<void> {
   ensurePackagedConfig();
-  updater = new DesktopUpdater(() => mainWindow);
+  updater = new DesktopUpdater(
+    () => mainWindow,
+    () => installApplicationMenu(updater!)
+  );
   cliUpdater = new CliUpdater(() => mainWindow);
   installApplicationMenu(updater);
   registerIpc({
@@ -264,12 +267,16 @@ function installApplicationMenu(updater: DesktopUpdater): void {
       void updater.checkForUpdatesWithDialog();
     }
   };
-  const installUpdateItem: MenuItemConstructorOptions = {
-    label: 'Install Update and Relaunch',
-    click: () => {
-      void updater.showInstallDialog();
-    }
-  };
+  const installUpdateItem: MenuItemConstructorOptions[] = updater.isUpdateReadyToInstall()
+    ? [
+        {
+          label: 'Install Update and Relaunch',
+          click: () => {
+            void updater.showInstallDialog();
+          }
+        }
+      ]
+    : [];
   const template: MenuItemConstructorOptions[] = [
     ...(isMac
       ? ([
@@ -279,7 +286,7 @@ function installApplicationMenu(updater: DesktopUpdater): void {
               { role: 'about' },
               { type: 'separator' },
               checkForUpdatesItem,
-              installUpdateItem,
+              ...installUpdateItem,
               { type: 'separator' },
               { role: 'services' },
               { type: 'separator' },
@@ -300,7 +307,7 @@ function installApplicationMenu(updater: DesktopUpdater): void {
       ? ([
           {
             role: 'help',
-            submenu: [checkForUpdatesItem, installUpdateItem]
+            submenu: [checkForUpdatesItem, ...installUpdateItem]
           }
         ] as MenuItemConstructorOptions[])
       : ([] as MenuItemConstructorOptions[]))

@@ -32,6 +32,7 @@ import type {
   UpdateUserTokenBody,
   UpdateWorkspaceBody,
   UpdateWorkspaceStatusBody,
+  UpdateWorktreeBranchAutomationBody,
   WorkspaceStatusDto
 } from '../../shared/contract.ts';
 
@@ -241,6 +242,17 @@ export function useRevokeUserToken() {
   return useMutation({
     mutationFn: (id: string) => api.revokeUserToken(id),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.userTokens })
+  });
+}
+
+export function useUpdateWorktreeBranchAutomation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateWorktreeBranchAutomationBody) =>
+      api.updateWorktreeBranchAutomation(body),
+    onSuccess: data => {
+      qc.setQueryData(keys.launchSettings, data);
+    }
   });
 }
 

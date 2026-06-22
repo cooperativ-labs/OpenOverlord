@@ -11,13 +11,7 @@ import { Spinner } from './ui.tsx';
  * the agent or CLI in another process stream in without a manual refresh.
  * Adapted from the reference `LiveFileChanges` for this app's stack.
  */
-export function LiveFileChanges({
-  ticketId,
-  projectId
-}: {
-  ticketId: string;
-  projectId: string;
-}) {
+export function LiveFileChanges({ ticketId, projectId }: { ticketId: string; projectId: string }) {
   const fileChangesQ = useTicketFileChanges(ticketId);
   const profileQ = useProfile();
   const repositoryQ = useProjectRepository(projectId, null);

@@ -192,6 +192,47 @@ function toObjectiveSummary(row: {
   };
 }
 
+/**
+ * The project's last-used launch selection, stored by the webapp on
+ * `project_user_preferences.preferences_json.launchPreference`. New draft slots
+ * inherit it so the agent recorded on the objective (and the launch button that
+ * reads it) matches what the user last chose, rather than leaving the agent unset
+ * and letting execution fall back to a hardcoded default.
+ */
+function readProjectLaunchSelection(
+  ctx: ServiceContext,
+  projectId: string
+): { agent: string | null; model: string | null; reasoningEffort: string | null } {
+  const empty = { agent: null, model: null, reasoningEffort: null };
+  if (!ctx.actorWorkspaceUserId) return empty;
+  const row = ctx.db
+    .prepare(
+      `SELECT preferences_json FROM project_user_preferences
+        WHERE workspace_id = ? AND project_id = ? AND workspace_user_id = ? AND deleted_at IS NULL`
+    )
+    .get(ctx.workspace.id, projectId, ctx.actorWorkspaceUserId) as
+    | { preferences_json: string }
+    | undefined;
+  if (!row) return empty;
+  try {
+    const prefs = JSON.parse(row.preferences_json) as {
+      launchPreference?: {
+        selectedAgent?: string | null;
+        selectedModel?: string | null;
+        selectedReasoningEffort?: string | null;
+      };
+    };
+    const launch = prefs.launchPreference ?? {};
+    return {
+      agent: launch.selectedAgent ?? null,
+      model: launch.selectedModel ?? null,
+      reasoningEffort: launch.selectedReasoningEffort ?? null
+    };
+  } catch {
+    return empty;
+  }
+}
+
 export function insertObjective({
   ctx,
   ticketId,
@@ -240,15 +281,25 @@ export function insertObjective({
   const id = newId();
   const resolvedTitle =
     title?.trim() || (instruction ? initialTitleFromInstruction(instruction) : 'New objective');
-  const resolvedAssignedAgent = assignedAgent?.trim() || null;
+  // Editable slots (draft/future) default to the project's last-used selection so
+  // the agent is always recorded in the db; an explicit agent passed by the caller
+  // still wins. Executed/complete states are created with whatever the caller set.
+  const explicitAgent = assignedAgent?.trim() || null;
+  const launchSelection =
+    !explicitAgent && (resolvedState === 'draft' || resolvedState === 'future')
+      ? readProjectLaunchSelection(ctx, ticket.projectId)
+      : { agent: null, model: null, reasoningEffort: null };
+  const resolvedAssignedAgent = explicitAgent ?? launchSelection.agent;
+  const resolvedModel = explicitAgent ? null : launchSelection.model;
+  const resolvedReasoningEffort = explicitAgent ? null : launchSelection.reasoningEffort;
 
   ctx.db
     .prepare(
       `INSERT INTO objectives
          (id, workspace_id, project_id, ticket_id, position, title, instruction_text, state,
-          assigned_agent, agent_flags_json, auto_advance, execution_metadata_json,
-          created_by_workspace_user_id, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, '{}', ?, ?, ?, 1)`
+          assigned_agent, model, reasoning_effort, agent_flags_json, auto_advance,
+          execution_metadata_json, created_by_workspace_user_id, created_at, updated_at, revision)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, '{}', ?, ?, ?, 1)`
     )
     .run(
       id,
@@ -260,6 +311,8 @@ export function insertObjective({
       instruction,
       resolvedState,
       resolvedAssignedAgent,
+      resolvedModel,
+      resolvedReasoningEffort,
       autoAdvance ? 1 : 0,
       ctx.actorWorkspaceUserId,
       now,

@@ -78,7 +78,11 @@ export function NavUser({ onOpenSettings }: NavUserProps) {
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                   <Avatar className="size-8 rounded-lg">
                     {profile?.avatarUrl ? (
-                      <AvatarImage src={profile.avatarUrl} alt={displayName} className="rounded-lg" />
+                      <AvatarImage
+                        src={profile.avatarUrl}
+                        alt={displayName}
+                        className="rounded-lg"
+                      />
                     ) : null}
                     <AvatarFallback className="rounded-lg">{initials || 'OL'}</AvatarFallback>
                   </Avatar>

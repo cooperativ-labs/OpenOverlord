@@ -309,6 +309,17 @@ export interface TicketDetailDto extends TicketDto {
   statuses: WorkspaceStatusDto[];
   /** Active (queued/claimed/launching) execution requests for this ticket's objectives. */
   executionRequests: ExecutionRequestDto[];
+  /** Read-only branch/worktree metadata derived from `tickets.active_branch`. */
+  branch: TicketBranchDto | null;
+}
+
+export type TicketBranchStatus = 'active' | 'merged' | 'pending';
+
+export interface TicketBranchDto {
+  name: string;
+  baseBranch: string | null;
+  worktreePath: string | null;
+  status: TicketBranchStatus;
 }
 
 // ---- Ticket activity feed ----
@@ -445,9 +456,15 @@ export interface LaunchSettingsDto {
   agentConfigs: Record<string, AgentLaunchConfigDto>;
   /** Per-user terminal profile for this machine's execution target. */
   terminalProfile: TerminalProfileDto;
+  /** When true, runner/direct launches prepare a per-ticket branch and worktree before spawn. */
+  worktreeBranchAutomationEnabled: boolean;
 }
 
 export type UpdateTerminalProfileBody = TerminalProfileDto;
+
+export interface UpdateWorktreeBranchAutomationBody {
+  enabled: boolean;
+}
 
 /** Last agent/model/reasoning the user selected within a project. */
 export interface LaunchPreferenceDto {

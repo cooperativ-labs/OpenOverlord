@@ -42,6 +42,7 @@ type LaunchPlan = {
 
 type TicketContext = {
   displayId: string;
+  title: string;
   promptContext: string;
 };
 
@@ -66,12 +67,13 @@ async function loadTicketContext({
     .get<unknown[]>(`/api/tickets/${encodeURIComponent(ticketId)}/artifacts`)
     .catch(() => []);
   const displayId = String(ticket.displayId ?? ticket.id ?? ticketId);
+  const title = String(ticket.title ?? '(untitled)');
   const objectives = Array.isArray(ticket.objectives) ? ticket.objectives.map(asRecord) : [];
   const promptContext = [
     '# Overlord Ticket Context',
     '',
     `Ticket: ${displayId}`,
-    `Title: ${ticket.title ?? '(untitled)'}`,
+    `Title: ${title}`,
     '',
     '## Objectives',
     ...objectives.map((objective, index) => {
@@ -90,7 +92,7 @@ async function loadTicketContext({
     'Use `ovld protocol attach --ticket-id <id>` before making changes, update during work, and deliver last.'
   ].join('\n');
 
-  return { displayId, promptContext };
+  return { displayId, title, promptContext };
 }
 
 function buildAgentCommand({
@@ -99,7 +101,8 @@ function buildAgentCommand({
   thinking,
   flags = [],
   prompt,
-  contextFile
+  contextFile,
+  launchMessage
 }: {
   agent: string;
   model?: string | null;
@@ -107,6 +110,7 @@ function buildAgentCommand({
   flags?: string[];
   prompt: string;
   contextFile: string;
+  launchMessage: string;
 }): { command: string; args: string[] } {
   if (agent === 'codex') {
     const args = [];
@@ -120,7 +124,7 @@ function buildAgentCommand({
     const args = ['--append-system-prompt-file', contextFile];
     if (model) args.push('--model', model);
     if (thinking) args.push('--effort', thinking);
-    args.push(...flags, 'Start work on the attached Overlord ticket.');
+    args.push(...flags, launchMessage);
     return { command: 'claude', args };
   }
 
@@ -157,7 +161,8 @@ export async function buildLaunchPlan({
     thinking: options.thinking,
     flags: options.flags,
     prompt,
-    contextFile
+    contextFile,
+    launchMessage: `Start work on ${context.title} (ovld ticket ${context.displayId})`
   });
 
   const execution = resolveLaunchExecution({

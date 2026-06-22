@@ -111,24 +111,25 @@ Each launch needs to answer: *does this ticket already have a live branch I
 should reuse, or do I need a fresh one?* The decision uses the ticket's own
 recorded branch plus git state — no guessing from the working directory alone.
 
-1. **Look up the ticket's current branch.** The runner reads the most recent
-   `branch_prepared` ticket event for the ticket (see *Audit trail*). That is
-   the branch the ticket has been operating on.
-2. **No recorded branch** → first launch → create the canonical name → record
-   it. (Worktree created.)
-3. **Recorded branch exists and is *not* merged** → reuse it (its worktree is
+1. **Look up the ticket's current branch.** The runner reads the
+   `tickets.active_branch` column (see *Branch persistence*). That is the branch
+   the ticket has been operating on.
+2. **`active_branch` is null** → first launch → create the canonical name →
+   write it to `active_branch`. (Worktree created.)
+3. **`active_branch` exists and is *not* merged** → reuse it (its worktree is
    reused / re-added if pruned). This is the "subsequent objectives continue on
    that branch" path.
-4. **Recorded branch is merged** → the previous cycle shipped; pick the next
-   free numeric suffix, create that branch + worktree, record it.
+4. **`active_branch` is merged** → the previous cycle shipped; pick the next
+   free numeric suffix, create that branch + worktree, overwrite `active_branch`
+   with the new name.
 
 A branch counts as **merged** when either:
 
 - it still exists and `git branch --merged <base>` (and/or
   `git branch -r --merged origin/<base>`) lists it, **or**
-- it no longer exists locally or on the remote *and* the ticket has a prior
-  `branch_prepared` record for it — i.e. it was merged and the PR-merge deleted
-  it. (A branch that simply never existed is the first-launch case, not a merge.)
+- it no longer exists locally or on the remote *and* `tickets.active_branch`
+  still names it — i.e. it was merged and the PR-merge deleted it. (A null
+  `active_branch` is the first-launch case, not a merge.)
 
 `<base>` is the repository's default branch (`main`), discovered from
 `origin/HEAD` with a `main`/`master` fallback. Merge detection is best-effort
@@ -178,18 +179,37 @@ Call sites:
   is a no-op.
 - Offline-friendly: `fetch` and remote checks are best-effort.
 
-### Audit trail (no schema migration)
+### Branch persistence (source of truth) + audit trail
 
-- Append a `ticket_events` row, `type: 'branch_prepared'`, `phase: 'execute'`,
-  payload `{ branchName, baseBranch, worktreePath, action: 'create' | 'reuse' |
-  'new_cycle', cycle, executionRequestId }`. `ticket_events.type` is an open
-  vocabulary, so no contract change. This row is both the audit log **and** the
-  source of truth for "which branch is this ticket on" (used by detection above
-  and by the ticket panel below).
-- Also stamp the resolved branch into the execution request's
-  `launch_flags_json` under `branchAutomation: { branchName, worktreePath,
-  action }` when marking it launched, so review surfaces can show which branch a
-  run used.
+**Source of truth — `tickets.active_branch` column.** A new nullable
+`tickets.active_branch TEXT` column holds the branch the ticket is currently
+operating on. The runner writes it whenever it creates or starts a new cycle of
+a branch; reuse leaves it unchanged. This is the single queryable answer to
+"which branch is this ticket on", read by both the merge-detection above and the
+REST/ticket-panel surfaces below — no event scanning, no JSON probing.
+
+> **Why a column, not a `branch_prepared` event.** `ticket_events.type` is *not*
+> an open vocabulary: both engines enforce a **closed** `CHECK (type IN (...))`
+> constraint (`database/{sqlite,postgres}/migrations/002_initial_core.sql`), and
+> `contract/extension-points.yaml` lists the same fixed 11 values. Inserting a
+> `branch_prepared` row would violate that constraint unless the enum (and the
+> contract vocabulary) were also changed. A dedicated column is the smaller,
+> simpler, directly-queryable choice and avoids touching the event vocabulary.
+
+This is an **additive migration** (nullable column, default null → existing rows
+unaffected) and must be applied to **both** `database/sqlite/migrations/` and
+`database/postgres/migrations/`, regenerate kysely types (`database/src/types/db.ts`),
+and be threaded through **both** data layers that read tickets — the REST
+`webapp/server/repository.ts` and the protocol/CLI `src/service/*` — plus the
+contract DTOs.
+
+**Audit trail.** For the human-readable activity feed, record branch preparation
+as an ordinary allowed-type event (`type: 'update'` or `'status_change'`) with a
+summary like "Prepared branch `<name>` in worktree `<path>`" and the structured
+detail in `payload_json` — no new event type required. Also stamp the resolved
+branch into the execution request's `launch_flags_json` under
+`branchAutomation: { branchName, worktreePath, action }` when marking it
+launched, so review surfaces can show which branch a run used.
 
 ## The Planner (pure, testable)
 
@@ -203,7 +223,7 @@ preview the runtime will use.
 type BranchDecisionInput = {
   ticket: { title: string; sequence: number };
   project: { slug: string };
-  recordedBranch: string | null;        // from latest branch_prepared event
+  recordedBranch: string | null;        // from tickets.active_branch
   base: string;                          // e.g. "main"
   refs: { local: string[]; remote: string[]; merged: string[] };
   worktreeRoot: string;                  // resolved absolute path, injected
@@ -251,33 +271,36 @@ unobtrusive:
   the info, don't let the panel mutate git.
 
 Data source: the section reads the ticket's current branch from the REST DTO,
-which derives it from the latest `branch_prepared` event (no new table). When no
-event exists yet, render the *predicted* name from the pure helper with a
-"not created yet" pill, so the user sees what the branch will be before the
-first launch.
+which surfaces the `tickets.active_branch` column. When `active_branch` is null,
+render the *predicted* name from the pure helper with a "not created yet" pill,
+so the user sees what the branch will be before the first launch.
 
 ## REST / Contract
 
 - `TicketDetailDto` gains an optional `branch` object:
   `{ name, baseBranch, worktreePath, status: 'active' | 'merged' | 'pending' }`,
-  derived in `webapp/server/repository.ts` from the latest `branch_prepared`
-  ticket event (mirrors how derived ticket fields are assembled today). No
-  migration.
+  assembled in `webapp/server/repository.ts` from the `tickets.active_branch`
+  column (`name`; `status: 'pending'` when null), with `baseBranch` and
+  `worktreePath` derived from the name + project slug + worktree root. A precise
+  `merged` badge can be computed lazily when the repo is reachable; otherwise the
+  default is `active`.
 - This is a **REST contract version bump** (the REST layer owns DTO shapes):
   propose the next draft version with the note "Adds derived branch/worktree
   info to the ticket detail DTO." Runner, automations, auth, connectors, MCP are
   unaffected (agents stay branch-unaware; the change is additive and read-only).
-- A dedicated `tickets.active_branch` column is a possible later optimization
-  but is **not** needed for v1 — the event already carries the truth.
+- **`contract/components.yaml`** currently lists, under the REST layer's `owns`,
+  "read-only derived ticket branch metadata from branch_prepared events". With
+  Option B that wording must change to "…derived from the `tickets.active_branch`
+  column", to keep the contract consistent with the column-based source of truth.
 
 ## Contract Impact Summary
 
 | Component | Change | Contract effect |
 | --- | --- | --- |
-| `runner` (`cli`) | Branch + worktree preparation between working-dir resolution and spawn; `--branch` / `--no-worktree` flags; `branch_prepared` event | Reference-spec update to `cli/docs/04-runner-and-launch-execution.md`; runner already owns launch side effects — no version bump. |
+| `runner` (`cli`) | Branch + worktree preparation between working-dir resolution and spawn; `--branch` / `--no-worktree` flags; writes `tickets.active_branch`; audit via allowed-type event + `launch_flags_json` | Reference-spec update to `cli/docs/04-runner-and-launch-execution.md`; runner already owns launch side effects — no version bump. |
 | `automations` | Optional pure branch-decision helper (registry entry) | None — mirrors `manage-objective-lifecycle`; no domain-table or filesystem access. |
-| `database` | None — uses `projects.slug`, open `ticket_events.type`, namespaced `launch_flags_json` | None. |
-| `rest` (`webapp`) | `TicketDetailDto.branch` (derived, read-only) | **Version bump** (additive DTO field). |
+| `database` | **Additive `tickets.active_branch TEXT` column** (nullable, default null) on both SQLite + Postgres; regenerate kysely types | **Schema-contract update** (the schema contract owns table columns); additive/nullable, no data backfill. Thread through both data layers (`webapp/server/repository.ts` + `src/service/*`). |
+| `rest` (`webapp`) | `TicketDetailDto.branch` (derived from the column, read-only) | **Version bump** (additive DTO field). |
 | `webapp` UI | Branch section in `TicketPanel` | Consumer of the new field. |
 | `connector` / `protocol` / `auth` / `mcp` | — | None. |
 
@@ -287,14 +310,17 @@ Each phase ships and verifies independently.
 
 1. **Planner core** — slug + branch-name rendering, suffix selection, the
    create/reuse/new-cycle/fail decision, colocated unit tests. No callers yet.
-2. **Runner execution** — `cli/src/branch-preparation.ts` (repo-state read +
-   worktree step executor), wire into the runner claim path and `ovld launch`,
-   `--branch` / `--no-worktree` flags, `branch_prepared` event, dirty/missing-base
-   failure handling, tests against a temp git-repo fixture. Update
+2. **Persistence + runner execution** — `tickets.active_branch` migration
+   (SQLite + Postgres) and kysely regen; `cli/src/branch-preparation.ts`
+   (repo-state read + worktree step executor) that reads/writes `active_branch`;
+   wire into the runner claim path and `ovld launch`, `--branch` /
+   `--no-worktree` flags, audit event, dirty/missing-base failure handling,
+   tests against a temp git-repo fixture. Update
    `cli/docs/04-runner-and-launch-execution.md`.
-3. **REST + ticket panel** — contract bump, `TicketDetailDto.branch` derivation,
-   the `TicketPanel` Branch section with copy controls and the predicted-name
-   fallback, query-hook wiring.
+3. **REST + ticket panel** — contract bump, `TicketDetailDto.branch` derived from
+   `active_branch`, `contract/components.yaml` wording fix, the `TicketPanel`
+   Branch section with copy controls and the predicted-name fallback, query-hook
+   wiring.
 4. **Docs & polish** — automations built-ins table, CLI help text, drift review
    across API/CLI/docs surfaces, worktree-cleanup follow-up note.
 
@@ -306,7 +332,8 @@ Each phase ships and verifies independently.
   `~/.ovld/worktrees/<project>/overlord-automate-worktree-branching-16`, and the
   agent session starts in that worktree on that branch.
 - Launching the ticket's **second/third** objectives reuses that branch and
-  worktree (the `branch_prepared` event records `action: reuse`).
+  worktree (`tickets.active_branch` is unchanged; audit event records
+  `action: reuse`).
 - After that branch is **merged** and the ticket is re-launched, a new branch
   `overlord/automate-worktree-branching-16-2` is created in its own worktree.
 - A **dirty or locked** target worktree fails the launch with an actionable
@@ -322,8 +349,8 @@ Each phase ships and verifies independently.
   `git worktree prune` for orphans — worktrees consume real disk, so reclamation
   is the natural next feature, but it is not required for this goal.
 - **Destructive panel controls** (remove worktree / delete branch from the UI).
-- **Per-project overrides** of prefix or base branch, and a `tickets`
-  active-branch column — all deferred; the single default behavior above is the
-  v1 goal.
+- **Per-project overrides** of prefix or base branch — deferred; the single
+  default behavior above is the v1 goal. (The `tickets.active_branch` column is
+  **in** v1 — see *Branch persistence*.)
 - **Shared dependency store** across worktrees (each worktree has its own
   `node_modules`; an agent may need to install in a fresh worktree).

@@ -1,6 +1,10 @@
 import { scopeGrantsForPreset } from '@overlord/auth';
+import { previewTicketBranch, ticketWorktreePath } from '@overlord/automations';
+import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 import { readRepositoryTree, RepositoryReadError } from '../../src/repository/git-tree.ts';
 import { ensureLocalExecutionTarget } from '../../src/service/execution-targets.ts';
@@ -29,6 +33,7 @@ import type {
   ReorderFutureObjectivesBody,
   ReorderWorkspaceStatusesBody,
   StatusType,
+  TicketBranchDto,
   TicketDetailDto,
   TicketDto,
   TicketEventDto,
@@ -47,7 +52,12 @@ import type {
 
 import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';
-import { dequeueObjective, LAUNCHABLE_STATES, listTicketExecutionRequests } from './launch.ts';
+import {
+  dequeueObjective,
+  getLaunchPreference,
+  LAUNCHABLE_STATES,
+  listTicketExecutionRequests
+} from './launch.ts';
 import { loadActorRoles } from './rbac.ts';
 import {
   initialTitleFromInstruction,
@@ -246,6 +256,7 @@ interface TicketRow {
   created_at: string;
   updated_at: string;
   revision: number;
+  active_branch: string | null;
   objective_count: number;
   completed_objective_count: number;
   has_executing_objective: number;
@@ -462,6 +473,113 @@ function toTicketDto(r: TicketRow, tags: ProjectTagDto[] = []): TicketDto {
     hasCompletedObjective: r.has_completed_objective === 1,
     hasPendingObjectiveWithInstructions: r.has_pending_objective_with_instructions === 1,
     tags
+  };
+}
+
+function resolveWorktreeRoot(): string {
+  const override = process.env.OVERLORD_WORKTREE_ROOT?.trim();
+  if (override) return path.resolve(override);
+  const home = process.env.OVLD_HOME?.trim() || process.env.OVERLORD_HOME?.trim();
+  return path.join(home ? path.resolve(home) : path.join(os.homedir(), '.ovld'), 'worktrees');
+}
+
+function runGit(cwd: string, args: string[]): string {
+  try {
+    return execFileSync('git', args, {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      maxBuffer: 2 * 1024 * 1024
+    }).trim();
+  } catch {
+    return '';
+  }
+}
+
+function branchIsMerged({
+  projectId,
+  branchName,
+  baseBranch
+}: {
+  projectId: string;
+  branchName: string;
+  baseBranch: string | null;
+}): boolean {
+  if (!baseBranch) return false;
+  const resource = db
+    .prepare(
+      `SELECT path FROM project_resources
+        WHERE project_id = ? AND workspace_id = ? AND is_primary = 1
+          AND status = 'active' AND deleted_at IS NULL
+        ORDER BY created_at ASC
+        LIMIT 1`
+    )
+    .get(projectId, WORKSPACE.id) as { path: string } | undefined;
+  if (!resource || !existsSync(resource.path)) return false;
+  const localExists = runGit(resource.path, ['show-ref', '--verify', `refs/heads/${branchName}`]);
+  const remoteExists = runGit(resource.path, [
+    'show-ref',
+    '--verify',
+    `refs/remotes/origin/${branchName}`
+  ]);
+  if (!localExists && !remoteExists) return true;
+  const localMerged = runGit(resource.path, [
+    'branch',
+    '--merged',
+    baseBranch,
+    '--format=%(refname:short)'
+  ])
+    .split('\n')
+    .map(line => line.trim());
+  const remoteMerged = runGit(resource.path, [
+    'branch',
+    '-r',
+    '--merged',
+    `origin/${baseBranch}`,
+    '--format=%(refname:short)'
+  ])
+    .split('\n')
+    .map(line => line.trim().replace(/^origin\//, ''));
+  return localMerged.includes(branchName) || remoteMerged.includes(branchName);
+}
+
+function getProjectSlug(projectId: string): string {
+  const row = db
+    .prepare(`SELECT slug FROM projects WHERE id = ? AND workspace_id = ?`)
+    .get(projectId, WORKSPACE.id) as { slug: string } | undefined;
+  return row?.slug ?? 'project';
+}
+
+// Derives the ticket-panel branch metadata from `tickets.active_branch` (the
+// source of truth the runner writes). When it is null no branch has been
+// prepared yet, so we surface the planner's predicted name with a pending status.
+function ticketBranchDto(row: TicketRow): TicketBranchDto {
+  const projectSlug = getProjectSlug(row.project_id);
+  const worktreeRoot = resolveWorktreeRoot();
+  const name = row.active_branch?.trim();
+  if (name) {
+    const baseBranch = 'main';
+    return {
+      name,
+      baseBranch,
+      worktreePath: ticketWorktreePath({ worktreeRoot, projectSlug, branch: name }),
+      status: branchIsMerged({ projectId: row.project_id, branchName: name, baseBranch })
+        ? 'merged'
+        : 'active'
+    };
+  }
+
+  const preview = previewTicketBranch({
+    ticket: { title: row.title, sequence: row.sequence_number },
+    project: { slug: projectSlug },
+    base: 'main',
+    worktreeRoot
+  });
+  return {
+    name: preview.branch,
+    baseBranch: preview.baseBranch,
+    worktreePath: preview.worktreePath,
+    status: 'pending'
   };
 }
 
@@ -1336,7 +1454,7 @@ const selectTicketsSql = `
          t.status_id, t.status_type, t.board_position, t.priority,
          t.assigned_workspace_user_id,
          t.acceptance_criteria_text, t.available_tools_json,
-         t.created_at, t.updated_at, t.revision,
+         t.created_at, t.updated_at, t.revision, t.active_branch,
          (SELECT COUNT(*) FROM objectives o
             WHERE o.ticket_id = t.id AND o.deleted_at IS NULL) AS objective_count,
          (SELECT COUNT(*) FROM objectives o
@@ -1563,7 +1681,7 @@ export function getTicketDetail(ticketRef: string): TicketDetailDto {
   const objectives = listObjectives(row.id);
   const statuses = listWorkspaceStatuses();
   const executionRequests = listTicketExecutionRequests(row.id);
-  return { ...ticket, objectives, statuses, executionRequests };
+  return { ...ticket, objectives, statuses, executionRequests, branch: ticketBranchDto(row) };
 }
 
 interface TicketEventRow {
@@ -2610,15 +2728,26 @@ function insertObjective(body: CreateObjectiveBody): ObjectiveDto {
     .get(body.ticketId) as { max_pos: number | null };
   const position = (maxRow.max_pos ?? -1) + 1;
 
+  // Editable slots (draft/future) default to the project's last-used launch
+  // selection so the agent is always recorded on the objective. The launch button
+  // reads the stored agent, and auto-advance/execution use it, so what the user
+  // sees and what runs stay in agreement instead of falling back to a hardcoded
+  // runner default.
+  const launchSelection =
+    state === 'draft' || state === 'future'
+      ? getLaunchPreference(ticket.project_id)
+      : { selectedAgent: null, selectedModel: null, selectedReasoningEffort: null };
+
   const now = nowIso();
   const id = newId();
   db.prepare(
     `INSERT INTO objectives
        (id, workspace_id, project_id, ticket_id, position, title, instruction_text, state,
-        agent_flags_json, auto_advance, execution_metadata_json,
-        created_by_workspace_user_id, created_at, updated_at, revision)
+        assigned_agent, model, reasoning_effort, agent_flags_json, auto_advance,
+        execution_metadata_json, created_by_workspace_user_id, created_at, updated_at, revision)
      VALUES (@id, @ws, @project_id, @ticket_id, @position, @title, @instruction, @state,
-        '{}', @auto_advance, '{}', @actor, @now, @now, 1)`
+        @assigned_agent, @model, @reasoning_effort, '{}', @auto_advance, '{}', @actor,
+        @now, @now, 1)`
   ).run({
     id,
     ws: WORKSPACE.id,
@@ -2630,6 +2759,9 @@ function insertObjective(body: CreateObjectiveBody): ObjectiveDto {
       (instruction ? initialTitleFromInstruction(instruction) : 'New objective'),
     instruction,
     state,
+    assigned_agent: launchSelection.selectedAgent,
+    model: launchSelection.selectedModel,
+    reasoning_effort: launchSelection.selectedReasoningEffort,
     auto_advance: body.autoAdvance ? 1 : 0,
     actor: ACTOR_WORKSPACE_USER_ID,
     now

@@ -44,8 +44,7 @@ behavior.
 ### Documentation
 
 - [01 — Automations Overview](docs/01-automations-overview.md): automation model, Gemini setup, and extension guide
-- [02 — Branch Strategy Automation](docs/02-branch-strategy-automation.md): proposed plan for base-branch selection and branch-per-ticket/objective launch automation
-- [03 — Worktree Storage Layout](docs/03-worktree-storage-layout.md): where git worktrees should live (central `~/.ovld/worktrees`, outside the synced repo) and how worktrees fold into the branch-strategy plan
+- [Worktree & Branch Automation](../planning/feature-plans/branching/worktree-branch-automation.md): proposed plan for per-ticket branch + worktree automation (one branch/worktree per ticket under `~/.ovld/worktrees`, reuse across objectives, merged-branch suffix, and a ticket-panel branch section)
 - [Test Plan](docs/testing.md): unit coverage for title derivation, fallbacks, and registry behavior
 
 ### Code & Tests

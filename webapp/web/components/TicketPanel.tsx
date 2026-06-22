@@ -1,12 +1,15 @@
 import { deriveObjectiveLifecycleView, objectiveHasInstructionText } from '@overlord/automations';
 import { useNavigate } from '@tanstack/react-router';
-import { ArrowRightToLine } from 'lucide-react';
+import { ArrowRightToLine, Check, Copy } from 'lucide-react';
+import { useState } from 'react';
 
 import type { TicketDetailDto } from '../../shared/contract.ts';
 import { useCreateObjective, useTicket, useUpdateTicket } from '../lib/queries.ts';
 
 import { TicketObjectivesSection } from './objectives/TicketObjectivesSection.tsx';
+import { Button as IconButton } from './ui/button.tsx';
 import { Separator } from './ui/separator.tsx';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip.tsx';
 import { InlineEditField } from './InlineEditField.tsx';
 import { LiveActivityFeed } from './LiveActivityFeed.tsx';
 import { LiveFileChanges } from './LiveFileChanges.tsx';
@@ -61,6 +64,83 @@ function TicketTitle({ ticket }: { ticket: TicketDetailDto }) {
         />
       </h1>
     </section>
+  );
+}
+
+function CopyIconButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    await navigator.clipboard.writeText(value);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  };
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <IconButton
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={label}
+            onClick={() => void copy()}
+          >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+          </IconButton>
+        }
+      />
+      <TooltipContent>{copied ? 'Copied' : label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function BranchSection({ ticket }: { ticket: TicketDetailDto }) {
+  const branch = ticket.branch;
+  if (!branch) return null;
+  const statusLabel =
+    branch.status === 'pending'
+      ? 'not created yet'
+      : branch.status === 'merged'
+        ? 'merged'
+        : 'active';
+  const statusClass =
+    branch.status === 'pending'
+      ? 'bg-muted text-muted-foreground'
+      : branch.status === 'merged'
+        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+        : 'bg-sky-500/10 text-sky-700 dark:text-sky-300';
+  const cdCommand = branch.worktreePath ? `cd ${JSON.stringify(branch.worktreePath)}` : null;
+
+  return (
+    <TooltipProvider>
+      <div className="space-y-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
+          Branch
+        </h2>
+        <div className="space-y-2 rounded-md border border-border bg-background/60 p-3 text-sm">
+          <div className="flex min-w-0 items-center gap-2">
+            <code className="min-w-0 flex-1 truncate text-xs">{branch.name}</code>
+            <CopyIconButton value={branch.name} label="Copy branch" />
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span className={`rounded-full px-2 py-0.5 font-medium ${statusClass}`}>
+              {statusLabel}
+            </span>
+            {branch.baseBranch && <span>cut from {branch.baseBranch}</span>}
+          </div>
+          {branch.worktreePath && (
+            <div className="flex min-w-0 items-center gap-2">
+              <code className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                {branch.worktreePath}
+              </code>
+              <CopyIconButton value={branch.worktreePath} label="Copy path" />
+              {cdCommand && <CopyIconButton value={cdCommand} label="Copy cd command" />}
+            </div>
+          )}
+        </div>
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -157,6 +237,7 @@ export function TicketPanel({
           />
           <Separator />
           <div className="flex flex-col gap-6 mt-8">
+            <BranchSection ticket={ticket} />
             <div className="space-y-3">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
                 Activity

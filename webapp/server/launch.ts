@@ -37,7 +37,8 @@ import type {
   TerminalProfileDto,
   UpdateAgentLaunchConfigBody,
   UpdateLaunchPreferenceBody,
-  UpdateTerminalProfileBody
+  UpdateTerminalProfileBody,
+  UpdateWorktreeBranchAutomationBody
 } from '../shared/contract.ts';
 
 import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
@@ -67,6 +68,7 @@ type StoredCatalog = {
 };
 
 const AGENT_CATALOG_SETTINGS_KEY = 'agentCatalog';
+const WORKTREE_BRANCH_AUTOMATION_SETTINGS_KEY = 'worktreeBranchAutomationEnabled';
 
 function instanceAgentCatalog(): Record<string, StoredCatalogAgent> {
   const config = loadConfig();
@@ -104,6 +106,29 @@ function persistCatalog(catalog: StoredCatalog): void {
   const settings = readWorkspaceSettings();
   settings[AGENT_CATALOG_SETTINGS_KEY] = { ...catalog, updatedAt: nowIso() };
   writeWorkspaceSettings(settings);
+}
+
+function readWorktreeBranchAutomationEnabled(): boolean {
+  const settings = readWorkspaceSettings();
+  return settings[WORKTREE_BRANCH_AUTOMATION_SETTINGS_KEY] !== false;
+}
+
+function launchSettingsDto({
+  target,
+  agentConfigs = target.agentConfigs,
+  terminalProfile = target.terminalProfile
+}: {
+  target: ReturnType<typeof ensureLocalLaunchTarget>;
+  agentConfigs?: Record<string, AgentLaunchConfigDto>;
+  terminalProfile?: TerminalProfileDto;
+}): LaunchSettingsDto {
+  return {
+    executionTargetId: target.executionTargetId,
+    deviceLabel: target.deviceLabel,
+    agentConfigs,
+    terminalProfile,
+    worktreeBranchAutomationEnabled: readWorktreeBranchAutomationEnabled()
+  };
 }
 
 function toCatalogDto(stored: StoredCatalog): AgentCatalogDto {
@@ -229,12 +254,7 @@ function ensureLocalLaunchTarget(): {
 
 export function getLaunchSettings(): LaunchSettingsDto {
   const target = ensureLocalLaunchTarget();
-  return {
-    executionTargetId: target.executionTargetId,
-    deviceLabel: target.deviceLabel,
-    agentConfigs: target.agentConfigs,
-    terminalProfile: target.terminalProfile
-  };
+  return launchSettingsDto({ target });
 }
 
 /** Persist the acting user's launch mechanics (pre-command/flags) for one agent. */
@@ -265,12 +285,7 @@ export const updateAgentLaunchConfig = db.transaction(
         WHERE id = ?`
     ).run(JSON.stringify(configs), nowIso(), target.preferenceId);
 
-    return {
-      executionTargetId: target.executionTargetId,
-      deviceLabel: target.deviceLabel,
-      agentConfigs: configs,
-      terminalProfile: target.terminalProfile
-    };
+    return launchSettingsDto({ target, agentConfigs: configs });
   }
 );
 
@@ -286,12 +301,23 @@ export const updateTerminalProfile = db.transaction(
       }
     });
     const target = ensureLocalLaunchTarget();
-    return {
-      executionTargetId: saved.executionTargetId,
-      deviceLabel: saved.deviceLabel,
-      agentConfigs: target.agentConfigs,
+    return launchSettingsDto({
+      target: {
+        ...target,
+        executionTargetId: saved.executionTargetId,
+        deviceLabel: saved.deviceLabel
+      },
       terminalProfile: toTerminalProfileDto(saved.terminalProfile)
-    };
+    });
+  }
+);
+
+export const updateWorktreeBranchAutomation = db.transaction(
+  (body: UpdateWorktreeBranchAutomationBody): LaunchSettingsDto => {
+    const settings = readWorkspaceSettings();
+    settings[WORKTREE_BRANCH_AUTOMATION_SETTINGS_KEY] = body.enabled === true;
+    writeWorkspaceSettings(settings);
+    return getLaunchSettings();
   }
 );
 

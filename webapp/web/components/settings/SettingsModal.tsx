@@ -1,7 +1,6 @@
 import {
   Bell,
   Code2,
-  GitBranch,
   Info,
   Keyboard,
   KeyRound,
@@ -27,7 +26,6 @@ import {
   type SettingsNavGroup,
   type SettingsNavItem
 } from '@/components/settings/SettingsDialogShell';
-import { StatusesPage } from '@/components/settings/StatusesPage';
 import { UserProfilePage } from '@/components/settings/UserProfilePage';
 import { UserTokensPage } from '@/components/settings/UserTokensPage';
 import { useMeta } from '@/lib/queries';
@@ -42,7 +40,6 @@ const appNavItems: SettingsNavItem[] = [
   { name: 'Application', icon: Palette },
   { name: 'Notifications', icon: Bell },
   { name: 'Execution Targets', icon: Terminal },
-  { name: 'Card statuses', icon: GitBranch },
   { name: 'About', icon: Info }
 ];
 
@@ -111,7 +108,6 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
       {activeNav === 'Application' && <ApplicationPage />}
       {activeNav === 'Notifications' && <NotificationsPage />}
       {activeNav === 'Execution Targets' && <ExecutionTargetsPage />}
-      {activeNav === 'Card statuses' && <StatusesPage />}
       {activeNav === 'Desktop' && <DesktopUpdatesPage />}
       {activeNav === 'Profile' && <UserProfilePage open={open} />}
       {activeNav === 'Account' && <AccountPage open={open} />}

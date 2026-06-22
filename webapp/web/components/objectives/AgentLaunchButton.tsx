@@ -79,8 +79,11 @@ export function AgentLaunchButton({
   // Blank draft slots can exist for inline authoring — they must not be launched
   // until an instruction has been written.
   const hasInstruction = objective.instructionText.trim().length > 0;
+  // Queuing can fail silently, leaving an objective marked queued without a
+  // runner ever picking it up. Keep the button enabled while queued so the user
+  // can re-launch; only an in-flight request (isLaunching) blocks a re-click.
   const isDisabled =
-    !selectionLoaded || isLaunching || isQueued || !primaryConnection.connected || !hasInstruction;
+    !selectionLoaded || isLaunching || !primaryConnection.connected || !hasInstruction;
   const styles = sizeStyles[size];
 
   function queueLaunch() {

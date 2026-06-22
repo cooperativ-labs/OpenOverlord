@@ -10,6 +10,7 @@ import { Button, EmptyState, Spinner } from '../components/ui.tsx';
 import {
   useCreateTicket,
   useProject,
+  useProjectTags,
   useReorderBoardColumn,
   useTickets,
   useWorkspaceMembers,
@@ -44,6 +45,7 @@ export function BoardPage() {
   const project = useProject(projectId);
   const statusesQ = useWorkspaceStatuses();
   const ticketsQ = useTickets(projectId);
+  const projectTagsQ = useProjectTags(projectId);
   const createTicket = useCreateTicket();
   const reorder = useReorderBoardColumn();
   const [modalOpen, setModalOpen] = useState(false);
@@ -82,15 +84,18 @@ export function BoardPage() {
     return map;
   }, [tickets]);
 
-  const tagOptions = useMemo(() => {
-    const byId = new Map<string, { id: string; label: string; color: string | null }>();
-    for (const ticket of tickets) {
-      for (const tag of getTicketTags(ticket)) {
-        if (!byId.has(tag.id)) byId.set(tag.id, tag);
-      }
-    }
-    return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
-  }, [tickets]);
+  const tagOptions = useMemo(
+    () =>
+      (projectTagsQ.data ?? [])
+        .filter(tag => tag.active)
+        .map(tag => ({
+          id: tag.id,
+          label: tag.label,
+          color: tag.color
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [projectTagsQ.data]
+  );
 
   useEffect(() => {
     if (selectedTagIds.length === 0) return;
@@ -275,7 +280,8 @@ export function BoardPage() {
           initialName={projectName}
           initialColor={projectColor}
         />
-        <div className="flex flex-wrap items-center justify-end gap-2 border-b border-[var(--color-border)] px-5 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] px-5 py-3">
+          <TicketsViewToggle value={view} onChange={handleViewChange} />
           <TicketTagFilterDropdown
             tagOptions={tagOptions}
             selectedTagIds={selectedTagIds}
@@ -286,7 +292,6 @@ export function BoardPage() {
               )
             }
           />
-          <TicketsViewToggle value={view} onChange={handleViewChange} />
         </div>
       </header>
 

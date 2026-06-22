@@ -1,6 +1,6 @@
 {
   "name": "open-overlord",
-  "version": "0.2606211014.0",
+  "version": "0.2606220714.0",
   "description": "Overlord CLI — management, agent protocol, and runner for OpenOverlord",
   "type": "module",
   "engines": {
@@ -24,6 +24,7 @@
     "postinstall": "node scripts/postinstall.mjs"
   },
   "dependencies": {
+    "@overlord/automations": "workspace:*",
     "dotenv": "^17.4.2",
     "smol-toml": "^1.6.1"
   },

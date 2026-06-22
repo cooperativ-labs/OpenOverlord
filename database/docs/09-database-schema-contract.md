@@ -616,6 +616,7 @@ Durable work unit and review record.
 | `output_format_text` | text | no |  |
 | `execution_target_intent_json` | Json | yes | Target preference/intent, not necessarily resolved target. |
 | `metadata_json` | Json | yes | Extension data. |
+| `active_branch` | text | no | Git branch the ticket is currently operating on under worktree automation; null until the first launch prepares one. |
 | `created_by_workspace_user_id` | Id | no | FK to `workspace_users`. |
 | `assigned_workspace_user_id` | Id | no | FK to `workspace_users`. |
 | `created_at` | TimestampUTC | yes |  |

@@ -7,6 +7,7 @@ import {
   rejectOversizedInlineJson,
   requireFlag
 } from './args.js';
+import { type BranchAutomationPayload, prepareTicketBranch } from './branch-preparation.js';
 import { loadConfig } from './config.js';
 import { CliError } from './errors.js';
 import { launchAgent } from './launch.js';
@@ -145,6 +146,10 @@ function applySessionChangedFiles({
 
 type JsonRecord = Record<string, unknown>;
 
+type LaunchSettingsShape = {
+  worktreeBranchAutomationEnabled?: unknown;
+};
+
 function repeatedFlagValues(args: string[], name: string): string[] {
   const values: string[] = [];
   for (let index = 0; index < args.length; index += 1) {
@@ -195,12 +200,48 @@ function asRecord(value: unknown): JsonRecord {
   return value && typeof value === 'object' ? (value as JsonRecord) : {};
 }
 
+async function readWorktreeBranchAutomationEnabled(runtime: CliRuntime): Promise<boolean> {
+  try {
+    const settings = await runtime.backend.get<LaunchSettingsShape>('/api/launch-settings');
+    return settings.worktreeBranchAutomationEnabled !== false;
+  } catch {
+    return true;
+  }
+}
+
+async function recordBranchPrepared({
+  runtime,
+  ticketId,
+  requestId,
+  branchAutomation
+}: {
+  runtime: CliRuntime;
+  ticketId: string;
+  requestId?: string | null;
+  branchAutomation: BranchAutomationPayload | null;
+}): Promise<void> {
+  if (!branchAutomation) return;
+  await runtime.backend.post({
+    path: `/api/tickets/${encodeURIComponent(ticketId)}/branch-prepared`,
+    body: { requestId: requestId ?? null, branchAutomation }
+  });
+}
+
 function firstObjectiveId(ticket: unknown): string | undefined {
   const objectives = asRecord(ticket).objectives;
   if (!Array.isArray(objectives)) return undefined;
   const first = objectives[0];
   const id = asRecord(first).id;
   return typeof id === 'string' ? id : undefined;
+}
+
+/** The agent already assigned to an objective on a fetched ticket payload, if any. */
+function objectiveAssignedAgent(ticket: unknown, objectiveId: string): string | undefined {
+  const objectives = asRecord(ticket).objectives;
+  if (!Array.isArray(objectives)) return undefined;
+  const match = objectives.find(objective => asRecord(objective).id === objectiveId);
+  const agent = asRecord(match).assignedAgent;
+  return typeof agent === 'string' && agent.trim() ? agent.trim() : undefined;
 }
 
 function ticketDisplayId(ticket: unknown): string {
@@ -547,7 +588,7 @@ export async function runManagementCommand({
         command === 'attach'
           ? (parsed.positional[0] ?? flagValue(parsed.flags, '--ticket-id'))
           : requireFlag(parsed.flags, '--ticket-id');
-      const agent = parsed.positional[1] ?? flagValue(parsed.flags, '--agent') ?? 'codex';
+      const explicitAgent = parsed.positional[1] ?? flagValue(parsed.flags, '--agent');
       if (!ticketId) throw new CliError({ message: 'Usage: ovld attach <ticketId> [agent]' });
       const ticket = await runtime.backend.get<unknown>(
         `/api/tickets/${encodeURIComponent(ticketId)}`
@@ -555,6 +596,11 @@ export async function runManagementCommand({
       const objectiveId = flagValue(parsed.flags, '--objective-id') ?? firstObjectiveId(ticket);
       if (!objectiveId)
         throw new CliError({ message: `No launchable objective found for ${ticketId}` });
+      // Honor an explicit agent; otherwise reuse the agent already stored on the
+      // objective (the db is the source of truth) so launching never overrides the
+      // chosen agent, and fall back to the configured default rather than codex.
+      const agent =
+        explicitAgent ?? objectiveAssignedAgent(ticket, objectiveId) ?? loadConfig().defaultAgent;
       const request = await runtime.backend.post({
         path: `/api/objectives/${encodeURIComponent(objectiveId)}/launch`,
         body: {
@@ -574,7 +620,9 @@ export async function runManagementCommand({
     case 'resume': {
       const agent =
         command === 'run' || command === 'connect' || command === 'resume'
-          ? (flagValue(parsed.flags, '--agent') ?? parsed.positional[0] ?? 'codex')
+          ? (flagValue(parsed.flags, '--agent') ??
+            parsed.positional[0] ??
+            loadConfig().defaultAgent)
           : parsed.positional[0];
       const ticketId =
         flagValue(parsed.flags, '--ticket-id') ??
@@ -586,21 +634,37 @@ export async function runManagementCommand({
       }
       const workingDirectory = flagValue(parsed.flags, '--working-directory') ?? process.cwd();
       const terminal = await resolveTerminalLaunchSettings({ runtime, flags: parsed.flags });
+      const dryRun = flagBoolean(parsed.flags, '--dry-run');
+      const prepared = await prepareTicketBranch({
+        runtime,
+        options: {
+          ticketId,
+          workingDirectory,
+          enabled: !dryRun && (await readWorktreeBranchAutomationEnabled(runtime)),
+          overrideBranch: flagValue(parsed.flags, '--branch'),
+          noWorktree: dryRun || flagBoolean(parsed.flags, '--no-worktree')
+        }
+      });
+      await recordBranchPrepared({
+        runtime,
+        ticketId,
+        branchAutomation: prepared.branchAutomation
+      });
       const result = await launchAgent({
         runtime,
         options: {
           agent,
           ticketId,
-          workingDirectory,
+          workingDirectory: prepared.workingDirectory,
           model: flagValue(parsed.flags, '--model'),
           thinking: flagValue(parsed.flags, '--thinking'),
           flags: repeatedFlagValues(rest, '--flag'),
           preCommand: flagValue(parsed.flags, '--pre-command'),
           ...terminal,
-          dryRun: flagBoolean(parsed.flags, '--dry-run')
+          dryRun
         }
       });
-      if (json || flagBoolean(parsed.flags, '--dry-run')) {
+      if (json || dryRun) {
         printJson({ plan: result.plan, status: result.status, signal: result.signal });
       }
       if (result.status && result.status !== 0) {
@@ -733,14 +797,44 @@ async function runRunnerCommand({
     const requestId = String(requestRecord.id);
     await runtime.backend.post({ path: `/api/runner/requests/${requestId}/launching` });
     try {
+      // The execution request's agent is decided upstream from the objective row,
+      // so a missing value is an invariant violation — never silently substitute a
+      // default agent, which would launch work as the wrong tool. Fail the request
+      // up front (the catch below reports it) so the cause surfaces instead of being
+      // masked, and so no branch/terminal work is done for a request that can't run.
+      const requestedAgent =
+        typeof requestRecord.requestedAgent === 'string' ? requestRecord.requestedAgent.trim() : '';
+      if (!requestedAgent) {
+        throw new CliError({
+          message: `Execution request ${requestId} has no agent; the objective must specify one before it can be launched.`
+        });
+      }
       const launchConfig = asRecord(requestRecord.launchConfig);
       const terminal = await resolveTerminalLaunchSettings({ runtime, flags: parsed.flags });
+      const ticketId = String(requestRecord.ticketId);
+      const dryRun = flagBoolean(parsed.flags, '--dry-run');
+      const prepared = await prepareTicketBranch({
+        runtime,
+        options: {
+          ticketId,
+          workingDirectory: String(requestRecord.workingDirectory ?? process.cwd()),
+          enabled: !dryRun && (await readWorktreeBranchAutomationEnabled(runtime)),
+          overrideBranch: flagValue(parsed.flags, '--branch'),
+          noWorktree: dryRun || flagBoolean(parsed.flags, '--no-worktree')
+        }
+      });
+      await recordBranchPrepared({
+        runtime,
+        ticketId,
+        requestId,
+        branchAutomation: prepared.branchAutomation
+      });
       const result = await launchAgent({
         runtime,
         options: {
-          agent: String(requestRecord.requestedAgent ?? 'codex'),
-          ticketId: String(requestRecord.ticketId),
-          workingDirectory: String(requestRecord.workingDirectory ?? process.cwd()),
+          agent: requestedAgent,
+          ticketId,
+          workingDirectory: prepared.workingDirectory,
           model:
             typeof requestRecord.requestedModel === 'string'
               ? requestRecord.requestedModel
@@ -755,7 +849,7 @@ async function runRunnerCommand({
           preCommand:
             typeof launchConfig.preCommand === 'string' ? launchConfig.preCommand : undefined,
           ...terminal,
-          dryRun: flagBoolean(parsed.flags, '--dry-run')
+          dryRun
         }
       });
       if (result.status && result.status !== 0) {
@@ -766,12 +860,10 @@ async function runRunnerCommand({
         throw new CliError({ message: `Launch command exited with status ${result.status}` });
       }
       await runtime.backend.post({ path: `/api/runner/requests/${requestId}/launched` });
-      if (json || flagBoolean(parsed.flags, '--dry-run')) {
+      if (json || dryRun) {
         printJson({ request, plan: result.plan, status: result.status });
       } else {
-        console.log(
-          `Launched ${requestRecord.requestedAgent ?? 'codex'} for ${requestRecord.ticketId}`
-        );
+        console.log(`Launched ${requestedAgent} for ${requestRecord.ticketId}`);
       }
       return true;
     } catch (error) {

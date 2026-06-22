@@ -14,6 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu.tsx';
+import { readLastUsedProjectId, writeLastUsedProjectId } from '@/lib/last-used-project.ts';
 import { primaryResourceConnection } from '@/lib/project-resources.ts';
 import {
   useAgentCatalog,
@@ -35,6 +36,7 @@ type NewTicketModalProps = {
   open: boolean;
   onClose: () => void;
   defaultProjectId?: string | null;
+  defaultStatusId?: string | null;
 };
 
 /**
@@ -44,7 +46,12 @@ type NewTicketModalProps = {
  * actions on the right. There is no priority selector — new tickets always
  * land in the workspace default status.
  */
-export function NewTicketModal({ open, onClose, defaultProjectId = null }: NewTicketModalProps) {
+export function NewTicketModal({
+  open,
+  onClose,
+  defaultProjectId = null,
+  defaultStatusId = null
+}: NewTicketModalProps) {
   const projectsQ = useProjects();
   const projects = useMemo(() => projectsQ.data ?? [], [projectsQ.data]);
   const createTicket = useCreateTicket();
@@ -60,11 +67,16 @@ export function NewTicketModal({ open, onClose, defaultProjectId = null }: NewTi
   const [pendingAction, setPendingAction] = useState<'save' | 'run' | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  const fallbackProjectId = useMemo(() => {
+    const lastUsed = readLastUsedProjectId();
+    return lastUsed && projects.some(project => project.id === lastUsed) ? lastUsed : null;
+  }, [projects]);
+
   const selectedProjectId =
     projectId ||
     (defaultProjectId && projects.some(project => project.id === defaultProjectId)
       ? defaultProjectId
-      : (projects[0]?.id ?? ''));
+      : (fallbackProjectId ?? projects[0]?.id ?? ''));
 
   const selectedProject = projects.find(project => project.id === selectedProjectId) ?? null;
 
@@ -114,9 +126,9 @@ export function NewTicketModal({ open, onClose, defaultProjectId = null }: NewTi
       if (current && projects.some(project => project.id === current)) {
         return current;
       }
-      return projects[0]?.id ?? '';
+      return fallbackProjectId ?? projects[0]?.id ?? '';
     });
-  }, [defaultProjectId, open, projects]);
+  }, [defaultProjectId, fallbackProjectId, open, projects]);
 
   // Tags are project-scoped — drop any that no longer belong to the project.
   useEffect(() => {
@@ -149,12 +161,16 @@ export function NewTicketModal({ open, onClose, defaultProjectId = null }: NewTi
         throw new Error(primaryConnection.message ?? 'Primary resource is not connected.');
       }
 
-      // Omit statusId so the ticket lands in the workspace default status.
+      // Omit statusId so the ticket lands in the workspace default status,
+      // unless the caller asked for a specific column (e.g. a workspace board
+      // column's "Add ticket" button).
       const detail = await createTicket.mutateAsync({
         projectId: selectedProjectId,
         firstObjective: text,
+        statusId: defaultStatusId ?? undefined,
         tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined
       });
+      writeLastUsedProjectId(selectedProjectId);
       const createdObjective = detail.objectives[0];
       if (!createdObjective) {
         throw new Error('Ticket was created without an objective.');
@@ -197,8 +213,26 @@ export function NewTicketModal({ open, onClose, defaultProjectId = null }: NewTi
 
   const selectedTags = tags.filter(tag => selectedTagIds.includes(tag.id));
 
+  // Dismissing the modal (Escape, outside click, or the close button) all
+  // route through onOpenChange(false). Treat that the same as clicking Save
+  // so an in-progress draft is persisted instead of discarded.
+  async function handleDialogClose() {
+    if (isBusy) return;
+    const text = instruction.trim();
+    if (!text || !selectedProjectId || !selectionLoaded) {
+      onClose();
+      return;
+    }
+    await submit(false);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={next => !next && onClose()}>
+    <Dialog
+      open={open}
+      onOpenChange={next => {
+        if (!next) void handleDialogClose();
+      }}
+    >
       <DialogContent
         className="gap-0 p-0 sm:max-w-xl shadow-none ring-0 bg-transparent"
         showCloseButton

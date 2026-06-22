@@ -91,8 +91,8 @@ Subcommands:
   attachment-list        List objective attachments visible on the ticket
 
 Runner queue (management commands, not protocol):
-  ${primaryCommand} runner once|start|status|clear|clear-all
-  ${primaryCommand} launch <agent> --ticket-id <ticketId>
+  ${primaryCommand} runner once|start|status|clear|clear-all [--branch <name>] [--no-worktree]
+  ${primaryCommand} launch <agent> --ticket-id <ticketId> [--branch <name>] [--no-worktree]
 
 Environment fallback:
   --session-key  <- SESSION_KEY printed on stderr after attach/connect/prompt/resume-follow-up

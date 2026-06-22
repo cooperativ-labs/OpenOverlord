@@ -1,10 +1,11 @@
-import { Archive, Settings, Trash2, Users } from 'lucide-react';
+import { Archive, GitBranch, Settings, Trash2, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import {
   SettingsDialogShell,
   type SettingsNavItem
 } from '@/components/settings/SettingsDialogShell.tsx';
+import { StatusesPage } from '@/components/settings/StatusesPage';
 import { ArchivedProjectsPage } from '@/components/workspaces/workspace-settings/ArchivedProjectsPage.tsx';
 import { DangerZonePage } from '@/components/workspaces/workspace-settings/DangerZonePage.tsx';
 import { GeneralPage } from '@/components/workspaces/workspace-settings/GeneralPage.tsx';
@@ -14,6 +15,7 @@ import { useWorkspaces } from '@/lib/queries';
 const navItems: SettingsNavItem[] = [
   { name: 'General', icon: Settings },
   { name: 'Members', icon: Users },
+  { name: 'Card statuses', icon: GitBranch },
   { name: 'Archived projects', icon: Archive },
   { name: 'Danger zone', icon: Trash2 }
 ];
@@ -80,6 +82,7 @@ export function WorkspaceSettingsModal({
         <>
           {activeNav === 'General' && <GeneralPage open={open} workspace={workspace} />}
           {activeNav === 'Members' && <MembersPage workspaceId={workspace.id} />}
+          {activeNav === 'Card statuses' && <StatusesPage />}
           {activeNav === 'Archived projects' &&
             // `/api/projects` is scoped to the active workspace, so archived
             // projects can only be managed for the workspace you are in.

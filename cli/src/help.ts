@@ -47,8 +47,8 @@ Tickets:
   ${primaryCommand} ticket context|events|deliveries|artifacts|rationales <ticketId> [--json]
 
 Launch and runner:
-  ${primaryCommand} launch <agent> --ticket-id <ticketId> [--dry-run] [--json]
-  ${primaryCommand} runner once|start|status|clear|clear-all [--json]
+  ${primaryCommand} launch <agent> --ticket-id <ticketId> [--branch <name>] [--no-worktree] [--dry-run] [--json]
+  ${primaryCommand} runner once|start|status|clear|clear-all [--branch <name>] [--no-worktree] [--json]
 
 Changes:
   ${primaryCommand} changes status --ticket-id <id> [--objective-id <id>] [--json]

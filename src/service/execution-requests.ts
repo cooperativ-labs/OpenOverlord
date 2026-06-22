@@ -168,17 +168,27 @@ export function createExecutionRequest({
   workingDirectory?: string | null;
 }): ExecutionRequestSummary {
   const ticket = resolveTicketId(ctx, ticketId);
+  type LaunchableObjectiveRow = {
+    id: string;
+    state: string;
+    assigned_agent: string | null;
+    model: string | null;
+    reasoning_effort: string | null;
+  };
   const objective = objectiveId
     ? (ctx.db
-        .prepare(`SELECT id, state FROM objectives WHERE id = ? AND ticket_id = ?`)
-        .get(objectiveId, ticket.id) as { id: string; state: string } | undefined)
+        .prepare(
+          `SELECT id, state, assigned_agent, model, reasoning_effort
+             FROM objectives WHERE id = ? AND ticket_id = ?`
+        )
+        .get(objectiveId, ticket.id) as LaunchableObjectiveRow | undefined)
     : (ctx.db
         .prepare(
-          `SELECT id, state FROM objectives
+          `SELECT id, state, assigned_agent, model, reasoning_effort FROM objectives
            WHERE ticket_id = ? AND state IN ('draft', 'submitted', 'launching')
            ORDER BY position ASC LIMIT 1`
         )
-        .get(ticket.id) as { id: string; state: string } | undefined);
+        .get(ticket.id) as LaunchableObjectiveRow | undefined);
 
   if (!objective) {
     throw new ServiceError(
@@ -209,6 +219,20 @@ export function createExecutionRequest({
     if (existing) return getExecutionRequest({ ctx, id: existing.id });
   }
 
+  // The objective row is the source of truth for the agent/model selection. When
+  // the caller does not name an agent (e.g. auto-advance), fall back to what is
+  // stored on the objective so execution never silently reverts to the hardcoded
+  // runner default. An explicit agent still wins, but only carries an explicit
+  // model/reasoning — it must not borrow the objective's model for a different agent.
+  const useObjectiveDefaults = requestedAgent === undefined || requestedAgent === null;
+  const resolvedAgent = requestedAgent ?? objective.assigned_agent ?? null;
+  const resolvedModel = useObjectiveDefaults
+    ? (requestedModel ?? objective.model ?? null)
+    : (requestedModel ?? null);
+  const resolvedReasoningEffort = useObjectiveDefaults
+    ? (requestedReasoningEffort ?? objective.reasoning_effort ?? null)
+    : (requestedReasoningEffort ?? null);
+
   const now = nowIso();
   const id = newId();
   const resolvedProjectId = resolveProjectId(ctx, ticket.projectId);
@@ -234,9 +258,9 @@ export function createExecutionRequest({
         resolvedProjectId,
         ticket.id,
         objective.id,
-        requestedAgent ?? null,
-        requestedModel ?? null,
-        requestedReasoningEffort ?? null,
+        resolvedAgent,
+        resolvedModel,
+        resolvedReasoningEffort,
         JSON.stringify(launchFlags),
         requestedSource,
         idempotencyKey ?? null,
@@ -260,7 +284,7 @@ export function createExecutionRequest({
         resolvedProjectId,
         ticket.id,
         objective.id,
-        `Queued execution request for ${requestedAgent ?? 'default agent'}.`,
+        `Queued execution request for ${resolvedAgent ?? 'default agent'}.`,
         JSON.stringify({ executionRequestId: id, requestedSource }),
         ctx.source,
         ctx.actorWorkspaceUserId,

@@ -24,7 +24,8 @@ import {
   refreshAgentCatalog,
   updateAgentLaunchConfig,
   updateLaunchPreference,
-  updateTerminalProfile
+  updateTerminalProfile,
+  updateWorktreeBranchAutomation
 } from './launch.ts';
 import { runProtocolSubcommand } from './protocol.ts';
 import { requirePermission } from './rbac.ts';
@@ -77,6 +78,7 @@ import {
 import {
   claimRunnerRequest,
   clearRunnerRequests,
+  recordBranchPrepared,
   runnerStatus,
   updateRunnerRequestStatus
 } from './runner.ts';
@@ -752,6 +754,13 @@ app.patch(
     requires: PERMISSIONS.LAUNCH_CONFIGURE
   })
 );
+app.patch(
+  '/api/launch-settings/worktree-branch-automation',
+  handle(req => updateWorktreeBranchAutomation(req.body), {
+    mutates: true,
+    requires: PERMISSIONS.LAUNCH_CONFIGURE
+  })
+);
 app.get(
   '/api/projects/:id/launch-preference',
   handle(req => getLaunchPreference(req.params.id), { requires: PERMISSIONS.LAUNCH_READ })
@@ -827,6 +836,18 @@ app.post(
         requestId: req.params.id,
         status: 'failed',
         error: typeof req.body?.error === 'string' ? req.body.error : null
+      }),
+    { mutates: true, requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM }
+  )
+);
+app.post(
+  '/api/tickets/:id/branch-prepared',
+  handle(
+    req =>
+      recordBranchPrepared({
+        ticketId: req.params.id,
+        requestId: typeof req.body?.requestId === 'string' ? req.body.requestId : null,
+        payload: req.body?.branchAutomation
       }),
     { mutates: true, requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM }
   )

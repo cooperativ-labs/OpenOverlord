@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '0.32-draft'
+contractVersion: '0.33-draft'
 
 components:
   protocol:
@@ -88,6 +88,7 @@ components:
     owns:
       - 'execution_requests queue claiming and launch'
       - 'working directory resolution'
+      - 'per-ticket branch/worktree preparation before local agent spawn when enabled'
       - 'ovld runner commands'
       - 'execution target selection logic'
     dependsOn:
@@ -105,6 +106,7 @@ components:
     owns:
       - 'URL paths and HTTP method contracts'
       - 'request/response DTO shapes (camelCase, derived from logical schema)'
+      - 'read-only derived ticket branch metadata from branch_prepared events'
       - 'REST auth integration points'
       - 'SSE/WebSocket realtime endpoint'
       - 'SQL Studio launch metadata exposed through /api/meta'

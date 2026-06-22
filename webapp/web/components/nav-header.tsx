@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx';
 import { DRAG_REGION, getDesktopChrome, NO_DRAG_REGION } from '@/lib/desktop-chrome';
+import { readLastUsedProjectId } from '@/lib/last-used-project.ts';
 import { useProjects } from '@/lib/queries.ts';
 
 import { TicketSearch } from './nav-header/TicketSearch.tsx';
@@ -121,7 +122,7 @@ export function NavHeader() {
       <NewTicketModal
         open={isNewTicketOpen}
         onClose={() => setIsNewTicketOpen(false)}
-        defaultProjectId={projectId ?? null}
+        defaultProjectId={projectId ?? readLastUsedProjectId()}
       />
     </header>
   );

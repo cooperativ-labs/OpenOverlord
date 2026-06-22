@@ -107,7 +107,8 @@ export function TicketListCard({
           {ticket.displayId}
         </span>
         <span className="hidden text-[10px] text-muted-foreground sm:inline">
-          {ticket.objectiveCount} obj{ticket.objectiveCount === 1 ? '' : 's'}
+          {ticket.completedObjectiveCount} obj
+          {ticket.completedObjectiveCount === 1 ? '' : 's'}
         </span>
         {ticket.priority ? (
           <Badge className={priorityClasses(ticket.priority)}>{ticket.priority}</Badge>

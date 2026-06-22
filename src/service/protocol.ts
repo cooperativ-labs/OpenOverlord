@@ -1472,33 +1472,89 @@ export function deliverSession({
 
   tx();
 
+  // The objective that just delivered is the agent the user last ran. Auto-advance
+  // inherits it when the next objective has not been given its own agent, so the
+  // chain never silently falls back to the runner's hardcoded default.
+  const deliveredObjective = ctx.db
+    .prepare(`SELECT assigned_agent, model, reasoning_effort FROM objectives WHERE id = ?`)
+    .get(session.objective_id) as
+    | { assigned_agent: string | null; model: string | null; reasoning_effort: string | null }
+    | undefined;
+
   const nextObjective = ctx.db
     .prepare(
-      `SELECT id, title, auto_advance FROM objectives
+      `SELECT id, title, auto_advance, assigned_agent, model, reasoning_effort FROM objectives
        WHERE ticket_id = ? AND position > (
          SELECT position FROM objectives WHERE id = ?
        ) AND state = 'draft'
        ORDER BY position ASC LIMIT 1`
     )
     .get(ticket.id, session.objective_id) as
-    | { id: string; title: string; auto_advance: number }
+    | {
+        id: string;
+        title: string;
+        auto_advance: number;
+        assigned_agent: string | null;
+        model: string | null;
+        reasoning_effort: string | null;
+      }
     | undefined;
 
   if (nextObjective) {
     const eventId = newId();
     const eventNow = nowIso();
     if (nextObjective.auto_advance === 1) {
+      // Resolve the agent from the database: the next objective's own assignment
+      // wins, otherwise inherit the just-delivered objective's selection. Persist
+      // any inherited choice onto the objective so the stored agent, the launch
+      // button that reads it, and the queued execution request all agree.
+      const inheritAgent =
+        !nextObjective.assigned_agent && Boolean(deliveredObjective?.assigned_agent);
+      const objectiveFields = ["state = 'launching'"];
+      const objectiveParams: unknown[] = [];
+      const changedFields = ['state'];
+      if (inheritAgent && deliveredObjective) {
+        objectiveFields.push('assigned_agent = ?', 'model = ?', 'reasoning_effort = ?');
+        objectiveParams.push(
+          deliveredObjective.assigned_agent,
+          deliveredObjective.model,
+          deliveredObjective.reasoning_effort
+        );
+        changedFields.push('assigned_agent', 'model', 'reasoning_effort');
+      }
       ctx.db
         .prepare(
-          `UPDATE objectives SET state = 'launching', updated_at = ?, revision = revision + 1
+          `UPDATE objectives SET ${objectiveFields.join(', ')}, updated_at = ?, revision = revision + 1
            WHERE id = ?`
         )
-        .run(eventNow, nextObjective.id);
+        .run(...objectiveParams, eventNow, nextObjective.id);
+      const updatedRevision = ctx.db
+        .prepare(`SELECT revision FROM objectives WHERE id = ?`)
+        .get(nextObjective.id) as { revision: number };
+      recordChange({
+        ctx,
+        entityType: 'objective',
+        entityId: nextObjective.id,
+        operation: 'update',
+        entityRevision: updatedRevision.revision,
+        projectId: ticket.projectId,
+        ticketId: ticket.id,
+        objectiveId: nextObjective.id,
+        changedFields
+      });
       try {
         createExecutionRequest({
           ctx,
           ticketId: ticket.id,
           objectiveId: nextObjective.id,
+          requestedAgent:
+            nextObjective.assigned_agent ?? deliveredObjective?.assigned_agent ?? null,
+          requestedModel: nextObjective.assigned_agent
+            ? nextObjective.model
+            : (deliveredObjective?.model ?? null),
+          requestedReasoningEffort: nextObjective.assigned_agent
+            ? nextObjective.reasoning_effort
+            : (deliveredObjective?.reasoning_effort ?? null),
           requestedSource: 'auto_advance',
           idempotencyKey: `auto_advance:${nextObjective.id}`
         });

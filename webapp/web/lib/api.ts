@@ -45,6 +45,7 @@ import type {
   UpdateUserTokenBody,
   UpdateWorkspaceBody,
   UpdateWorkspaceStatusBody,
+  UpdateWorktreeBranchAutomationBody,
   UserTokenDto,
   WorkspaceDto,
   WorkspaceMemberDto,
@@ -257,6 +258,8 @@ export const api = {
     ),
   updateTerminalProfile: (body: UpdateTerminalProfileBody) =>
     request<LaunchSettingsDto>('PATCH', '/api/launch-settings/terminal-profile', body),
+  updateWorktreeBranchAutomation: (body: UpdateWorktreeBranchAutomationBody) =>
+    request<LaunchSettingsDto>('PATCH', '/api/launch-settings/worktree-branch-automation', body),
   getLaunchPreference: (projectId: string) =>
     request<LaunchPreferenceDto>('GET', `/api/projects/${projectId}/launch-preference`),
   updateLaunchPreference: (projectId: string, body: UpdateLaunchPreferenceBody) =>

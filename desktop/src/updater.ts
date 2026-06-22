@@ -22,6 +22,7 @@ export type DesktopUpdateStatus = {
 };
 
 type GetWindow = () => BrowserWindow | null;
+type OnStatusChange = (status: DesktopUpdateStatus) => void;
 
 const AUTO_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
@@ -36,7 +37,10 @@ export class DesktopUpdater {
 
   private autoCheckTimer: NodeJS.Timeout | null = null;
 
-  constructor(private readonly getWindow: GetWindow) {
+  constructor(
+    private readonly getWindow: GetWindow,
+    private readonly onStatusChange?: OnStatusChange
+  ) {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = false;
     autoUpdater.logger = console;
@@ -100,6 +104,10 @@ export class DesktopUpdater {
 
   getStatus(): DesktopUpdateStatus {
     return { ...this.status };
+  }
+
+  isUpdateReadyToInstall(): boolean {
+    return this.status.state === 'downloaded';
   }
 
   startAutomaticChecks(): void {
@@ -221,6 +229,7 @@ export class DesktopUpdater {
   private setStatus(next: Partial<DesktopUpdateStatus>): void {
     this.status = { ...this.status, ...next };
     this.broadcastStatus();
+    this.onStatusChange?.(this.getStatus());
   }
 
   private broadcastStatus(): void {

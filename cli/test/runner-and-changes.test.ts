@@ -230,7 +230,17 @@ test('delivery auto-advance queues next objective when enabled', () => {
       { objective: 'Second objective', autoAdvance: true }
     ]
   });
-  ctx.db.prepare(`UPDATE objectives SET state = 'submitted' WHERE id = ?`).run(objectives[0]?.id);
+  // The first objective ran with an explicit agent/model (as a launch would
+  // persist). The auto-advanced draft has no agent of its own and must inherit
+  // it rather than fall back to the runner's hardcoded default.
+  ctx.db
+    .prepare(
+      `UPDATE objectives
+          SET state = 'submitted', assigned_agent = 'claude', model = 'claude-opus-4-8',
+              reasoning_effort = 'high'
+        WHERE id = ?`
+    )
+    .run(objectives[0]?.id);
 
   const attached = attachSession({ ctx, ticketId: ticket.displayId });
   deliverSession({
@@ -244,6 +254,60 @@ test('delivery auto-advance queues next objective when enabled', () => {
   assert.equal(requests.length, 1);
   assert.equal(requests[0]?.objectiveId, objectives[1]?.id);
   assert.equal(requests[0]?.requestedSource, 'auto_advance');
+  // Execution uses the agent from the db, inherited from the delivered objective.
+  assert.equal(requests[0]?.requestedAgent, 'claude');
+  assert.equal(requests[0]?.requestedModel, 'claude-opus-4-8');
+  assert.equal(requests[0]?.requestedReasoningEffort, 'high');
+
+  // The inherited selection is persisted onto the next objective so the launch
+  // button (which reads the db) reflects what actually executed.
+  const nextObjective = ctx.db
+    .prepare(`SELECT assigned_agent, model, reasoning_effort FROM objectives WHERE id = ?`)
+    .get(objectives[1]?.id) as {
+    assigned_agent: string | null;
+    model: string | null;
+    reasoning_effort: string | null;
+  };
+  assert.equal(nextObjective.assigned_agent, 'claude');
+  assert.equal(nextObjective.model, 'claude-opus-4-8');
+  assert.equal(nextObjective.reasoning_effort, 'high');
+
+  db.close();
+});
+
+test('delivery auto-advance keeps the next objective explicit agent', () => {
+  const { db, ctx } = createContext();
+  const project = createProject({ ctx, name: 'Auto Advance Explicit Agent' });
+  addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
+  const { ticket, objectives } = createTicketWithObjectives({
+    ctx,
+    projectId: project.id,
+    objectives: [
+      { objective: 'First objective' },
+      { objective: 'Second objective', autoAdvance: true }
+    ]
+  });
+  ctx.db
+    .prepare(`UPDATE objectives SET state = 'submitted', assigned_agent = 'codex' WHERE id = ?`)
+    .run(objectives[0]?.id);
+  // The next objective was deliberately assigned a different agent; auto-advance
+  // must honor its own assignment instead of inheriting the delivered one.
+  ctx.db
+    .prepare(`UPDATE objectives SET assigned_agent = 'claude' WHERE id = ?`)
+    .run(objectives[1]?.id);
+
+  const attached = attachSession({ ctx, ticketId: ticket.displayId });
+  deliverSession({
+    ctx,
+    ticketId: ticket.displayId,
+    sessionKey: attached.sessionKey,
+    summary: 'First objective complete'
+  });
+
+  const requests = listExecutionRequests({ ctx });
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]?.objectiveId, objectives[1]?.id);
+  assert.equal(requests[0]?.requestedAgent, 'claude');
 
   db.close();
 });

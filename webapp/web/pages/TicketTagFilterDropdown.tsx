@@ -40,7 +40,7 @@ export function TicketTagFilterDropdown({
         <Tag className="h-3.5 w-3.5" />
         {getTagFilterLabel(selectedTagIds, tagOptions)}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-48">
+      <DropdownMenuContent align="end" className="w-48">
         <DropdownMenuLabel>Filter by tag</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuCheckboxItem
