@@ -562,6 +562,23 @@
   background: transparent;
 }
 
+/* Hide scrollbar at rest; reveal on hover or while scrolling. */
+.scrollbar-auto-hide {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.scrollbar-auto-hide:hover,
+.scrollbar-auto-hide.is-scrolling {
+  scrollbar-color: var(--muted) transparent;
+}
+.scrollbar-auto-hide::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+.scrollbar-auto-hide:hover::-webkit-scrollbar-thumb,
+.scrollbar-auto-hide.is-scrolling::-webkit-scrollbar-thumb {
+  background: var(--muted);
+}
+
 /* Electron-only styles — active when ElectronDetector sets data-electron on <html> */
 .electron-titlebar {
   display: none;

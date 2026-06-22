@@ -1,5 +1,5 @@
 import { Link, useParams, useRouterState } from '@tanstack/react-router';
-import { Archive, FolderKanban, Inbox, LayoutGrid, Plus, Settings } from 'lucide-react';
+import { Archive, FolderKanban, Inbox, Plus, Settings } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 import { NavUser } from '@/components/nav-user';
@@ -78,11 +78,7 @@ export function AppSidebar() {
     };
   }, [projects.data]);
 
-  // Key active-state on the actual pathname, not just param absence: `/workspace`
-  // also has no `projectId`, so `!params.projectId` would wrongly light up
-  // "All projects" while on My Tickets.
   const pathname = useRouterState({ select: state => state.location.pathname });
-  const isProjectsActive = pathname === '/projects';
   const isMyTicketsActive = pathname === '/workspace' || pathname.startsWith('/workspace/');
 
   // On macOS the shell insets the traffic lights at (14, 14), which sit over the
@@ -106,16 +102,6 @@ export function AppSidebar() {
             <SidebarGroupLabel>Workspace</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    render={<Link to="/projects" />}
-                    isActive={isProjectsActive}
-                    tooltip="All projects"
-                  >
-                    <LayoutGrid />
-                    <span>All projects</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     render={<Link to="/workspace" />}

@@ -70,10 +70,10 @@ async function loadTicketContext({
   const title = String(ticket.title ?? '(untitled)');
   const objectives = Array.isArray(ticket.objectives) ? ticket.objectives.map(asRecord) : [];
   const promptContext = [
-    '# Overlord Ticket Context',
+    `# Overlord Ticket: ${displayId}: ${title}`,
     '',
-    `Ticket: ${displayId}`,
-    `Title: ${title}`,
+    '## Instructions',
+    'Use the Overlord skill. Follow the required protocol workflow.',
     '',
     '## Objectives',
     ...objectives.map((objective, index) => {
@@ -89,7 +89,7 @@ async function loadTicketContext({
       artifact => `- ${asRecord(artifact).label ?? asRecord(artifact).type ?? 'artifact'}`
     ),
     '',
-    'Use `ovld protocol attach --ticket-id <id>` before making changes, update during work, and deliver last.'
+    'Use `ovld protocol attach --ticket-id <id>` before making changes, update during work, and ALWAYS deliver last.'
   ].join('\n');
 
   return { displayId, title, promptContext };

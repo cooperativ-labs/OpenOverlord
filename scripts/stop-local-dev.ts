@@ -207,11 +207,18 @@ function isDevWrapperProcess(row: ProcessRow): boolean {
   return (
     command.endsWith('/bin/yarn dev') ||
     command.includes('corepack/dist/yarn.js dev:webapp') ||
+    command.includes('corepack/dist/yarn.js webapp:dev') ||
     command.includes('corepack/dist/yarn.js workspace @overlord/webapp dev') ||
     command.includes('corepack/dist/yarn.js dev:server') ||
+    command.includes('corepack/dist/yarn.js server:dev') ||
+    command.includes('corepack/dist/yarn.js workspace @overlord/webapp dev:server') ||
     command.includes('corepack/dist/yarn.js dev:web') ||
     command.includes('scripts/with-dev-env.mjs yarn dev:webapp') ||
-    command.includes('scripts/with-dev-env.mjs yarn workspace @overlord/webapp dev')
+    command.includes('scripts/with-dev-env.mjs yarn webapp:dev') ||
+    command.includes('scripts/with-dev-env.mjs yarn dev:server') ||
+    command.includes('scripts/with-dev-env.mjs yarn server:dev') ||
+    command.includes('scripts/with-dev-env.mjs yarn workspace @overlord/webapp dev') ||
+    command.includes('scripts/with-dev-env.mjs yarn workspace @overlord/webapp dev:server')
   );
 }
 

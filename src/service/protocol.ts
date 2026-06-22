@@ -65,13 +65,13 @@ type SessionRow = {
 };
 
 const PROTOCOL_WORKFLOW = `
-1. Load the overlord plugin/skill if available.
-2. Attach first with \`ovld protocol attach --ticket-id <id>\`.
-3. Post progress with \`ovld protocol update\` or liveness with \`ovld protocol heartbeat\`.
-4. Ask blocking questions with \`ovld protocol ask\` and stop work.
-5. Deliver with \`ovld protocol deliver\` with \`change-rationales\` when work is complete.
-6. Do not stage or commit changes unless explicitly instructed to do so.
-7. Do not continue implementation after delivery without \`--begin-follow-up-work\`.`;
+
+1. Attach first with \`ovld protocol attach --ticket-id <id>\`.
+2. Post progress with \`ovld protocol update\` or liveness with \`ovld protocol heartbeat\`.
+3. Ask blocking questions with \`ovld protocol ask\` and stop work.
+4. Deliver with \`ovld protocol deliver\` with \`change-rationales\` when work is complete.
+5. Do not stage or commit changes unless explicitly instructed to do so.
+6. Do not continue implementation after delivery without \`--begin-follow-up-work\`.`;
 
 function resolveActiveObjective(objectives: ObjectiveSummary[]): ObjectiveSummary {
   const active =
@@ -254,7 +254,7 @@ function assemblePromptContext({
   return [
     `# Overlord Agent Instructions`,
     `You are an AI coding agent working on ticket **${ticket.displayId}** via Overlord.`,
-    `Complete the Objective described below. Follow the required protocol workflow.`,
+    `Complete the Objective described below. Use the Overlord skill. Follow the required protocol workflow.`,
     ``,
     `Required protocol workflow:`,
     PROTOCOL_WORKFLOW,

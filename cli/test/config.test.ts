@@ -339,3 +339,43 @@ test('parseAgentCatalogFromToml ignores invalid agents', () => {
     }
   );
 });
+
+test('writeConfig refuses to persist overlord.toml from inside a container', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
+  const targetPath = path.join(dir, 'overlord.toml');
+
+  const previousInPod = process.env.OVERLORD_IN_POD;
+  const previousAllow = process.env.OVERLORD_ALLOW_CONFIG_WRITE;
+  process.env.OVERLORD_IN_POD = '1';
+  delete process.env.OVERLORD_ALLOW_CONFIG_WRITE;
+  try {
+    assert.throws(
+      () => writeConfig({ targetPath, config: { backendUrl: 'http://host.docker.internal:4310' } }),
+      /Refusing to write overlord\.toml from inside a container/
+    );
+  } finally {
+    if (previousInPod === undefined) delete process.env.OVERLORD_IN_POD;
+    else process.env.OVERLORD_IN_POD = previousInPod;
+    if (previousAllow === undefined) delete process.env.OVERLORD_ALLOW_CONFIG_WRITE;
+    else process.env.OVERLORD_ALLOW_CONFIG_WRITE = previousAllow;
+  }
+});
+
+test('OVERLORD_ALLOW_CONFIG_WRITE overrides the container write guard', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
+  const targetPath = path.join(dir, 'overlord.toml');
+
+  const previousInPod = process.env.OVERLORD_IN_POD;
+  const previousAllow = process.env.OVERLORD_ALLOW_CONFIG_WRITE;
+  process.env.OVERLORD_IN_POD = '1';
+  process.env.OVERLORD_ALLOW_CONFIG_WRITE = '1';
+  try {
+    writeConfig({ targetPath, config: { backendUrl: DEFAULT_LOCAL_BACKEND_URL } });
+    assert.match(readFileSync(targetPath, 'utf8'), /backend_url = "http:\/\/127\.0\.0\.1:4310"/);
+  } finally {
+    if (previousInPod === undefined) delete process.env.OVERLORD_IN_POD;
+    else process.env.OVERLORD_IN_POD = previousInPod;
+    if (previousAllow === undefined) delete process.env.OVERLORD_ALLOW_CONFIG_WRITE;
+    else process.env.OVERLORD_ALLOW_CONFIG_WRITE = previousAllow;
+  }
+});

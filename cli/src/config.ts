@@ -9,9 +9,11 @@ import {
   detectCliEnvProfile,
   type EnvProfile,
   isExplicitRuntimeEnv,
+  isRunningInContainer,
   loadEnvDefaults,
   resolveLayeredEnv
 } from './env.ts';
+import { CliError } from './errors.ts';
 
 /**
  * Default profile for bare CLI calls: `production` for an installed binary,
@@ -196,6 +198,19 @@ export function writeConfig({
   targetPath: string;
   config: Partial<OverlordConfig>;
 }): void {
+  // A containerized CLI must not persist config into the (host-mounted, shared)
+  // `overlord.toml`: a context-specific value such as `host.docker.internal`
+  // would leak onto every host process resolving the same file. Containers
+  // consume an injected runtime `OVERLORD_BACKEND_URL` instead — see
+  // `isRunningInContainer` and `resolveBackendUrl`. Use `OVERLORD_ALLOW_CONFIG_WRITE`
+  // to bypass intentionally (e.g. baking config into an image at build time).
+  if (isRunningInContainer()) {
+    throw new CliError({
+      message:
+        'Refusing to write overlord.toml from inside a container. Configure the backend with the OVERLORD_BACKEND_URL environment variable instead (set OVERLORD_ALLOW_CONFIG_WRITE=1 to override).'
+    });
+  }
+
   mkdirSync(path.dirname(targetPath), { recursive: true });
   const merged = { ...DEFAULT_CONFIG, ...config };
   const contents = `# Overlord local instance configuration

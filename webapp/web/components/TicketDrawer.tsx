@@ -52,17 +52,17 @@ export function TicketDrawer({ children }: { children: ReactNode }) {
 
   return (
     <aside
-      className="relative flex h-full min-h-0 shrink-0 flex-col border-l border-[var(--color-border)] bg-[var(--color-surface-0)]"
+      className="relative flex h-full min-h-0 shrink-0 flex-col border-l border-(--color-border)"
       style={{ width }}
     >
       <div
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize ticket panel"
-        className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize touch-none hover:bg-[var(--color-accent)]/20"
+        className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize touch-none hover:bg-accent/20"
         onPointerDown={onResizePointerDown}
       />
-      <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+      <div className="min-h-0 flex-1 overflow-hidden bg-(--color-surface-0)">{children}</div>
     </aside>
   );
 }

@@ -55,6 +55,30 @@ export function isExplicitRuntimeEnv(key: string): boolean {
 }
 
 /**
+ * True when the CLI is running inside an agent pod / container. A containerized
+ * `ovld` must never persist its network context into the shared, host-mounted
+ * `overlord.toml` (a context-specific value such as `host.docker.internal` would
+ * then leak onto every host process that resolves the same file). Containers are
+ * pure consumers of an injected runtime `OVERLORD_BACKEND_URL` instead.
+ *
+ * Detection prefers an explicit launcher-set marker (`OVERLORD_IN_POD`, runtime-
+ * agnostic across Docker/podman/k8s), and falls back to the Docker-created
+ * `/.dockerenv` sentinel so the guard still holds if a launcher predates the
+ * marker. `OVERLORD_ALLOW_CONFIG_WRITE` is a deliberate escape hatch (e.g. baking
+ * config into an image at build time).
+ */
+export function isRunningInContainer(): boolean {
+  if (isTruthyEnv(process.env.OVERLORD_ALLOW_CONFIG_WRITE)) return false;
+  if (isTruthyEnv(process.env.OVERLORD_IN_POD)) return true;
+  return existsSync('/.dockerenv');
+}
+
+function isTruthyEnv(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
+/**
  * Profile-aware env resolution for keys mirrored in `overlord.toml`.
  * Development: explicit runtime > env file > toml > fallback.
  * Production: explicit runtime > toml > env file > fallback.

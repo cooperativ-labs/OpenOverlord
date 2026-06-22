@@ -1,10 +1,11 @@
 import { deriveObjectiveLifecycleView, objectiveHasInstructionText } from '@overlord/automations';
 import { useNavigate } from '@tanstack/react-router';
 import { ArrowRightToLine, Check, Copy } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import type { TicketDetailDto } from '../../shared/contract.ts';
 import { useCreateObjective, useTicket, useUpdateTicket } from '../lib/queries.ts';
+import { cn } from '../lib/utils.ts';
 
 import { TicketObjectivesSection } from './objectives/TicketObjectivesSection.tsx';
 import { Button as IconButton } from './ui/button.tsx';
@@ -159,6 +160,14 @@ export function TicketPanel({
 }) {
   const navigate = useNavigate();
   const ticketQ = useTicket(ticketId);
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollIdleTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const handleScroll = () => {
+    setIsScrolling(true);
+    clearTimeout(scrollIdleTimeoutRef.current);
+    scrollIdleTimeoutRef.current = setTimeout(() => setIsScrolling(false), 800);
+  };
 
   const handleProjectChanged = (nextProjectId: string) => {
     if (onProjectChanged) {
@@ -209,7 +218,7 @@ export function TicketPanel({
   const ticket = ticketQ.data;
 
   return (
-    <div className="flex h-full min-h-0 min-w-[375px] flex-col bg-[var(--color-surface-1)]">
+    <div className="flex h-full min-h-0 min-w-[375px] flex-col bg-(--color-surface-1)">
       <TicketPanelHeader
         ticket={ticket}
         projectId={ticket.projectId}
@@ -218,9 +227,15 @@ export function TicketPanel({
       />
       <TicketTitle ticket={ticket} />
 
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[var(--color-surface-0)] ">
+      <div
+        className={cn(
+          'scrollbar-auto-hide min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-muted',
+          isScrolling && 'is-scrolling'
+        )}
+        onScroll={handleScroll}
+      >
         {/* Card section — primary work surface: objectives */}
-        <section className="border-b border-[var(--color-border)] bg-[var(--color-surface-1)] py-5">
+        <section className="border-b border-(--color-border) bg-(--color-surface-1) py-5">
           <div className="mb-3 px-5"></div>
           <div className="flex flex-col gap-3 px-5 pb-1">
             <TicketObjectivesSection ticket={ticket} />
@@ -239,19 +254,19 @@ export function TicketPanel({
           <div className="flex flex-col gap-6 mt-8">
             <BranchSection ticket={ticket} />
             <div className="space-y-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-(--color-ink-dim)">
                 Activity
               </h2>
               <LiveActivityFeed ticketId={ticket.id} />
             </div>
             <div className="space-y-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-(--color-ink-dim)">
                 Artifacts
               </h2>
               <TicketArtifactsSection ticketId={ticket.id} />
             </div>
             <div className="space-y-3 pb-5">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-(--color-ink-dim)">
                 File Changes
               </h2>
               <LiveFileChanges ticketId={ticket.id} projectId={ticket.projectId} />

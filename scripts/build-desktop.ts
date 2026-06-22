@@ -122,7 +122,7 @@ function resolveBin(name: string): string {
     const candidate = path.join(dir, name);
     if (existsSync(candidate)) return candidate;
   }
-  fail(`Could not find ${name}. Run \`yarn desktop:install\` first.`);
+  fail(`Could not find ${name}. Run \`yarn install\` first.`);
 }
 
 function canImportDistutils(python: string): boolean {
@@ -254,7 +254,7 @@ function main(): void {
   run('yarn', ['workspace', '@overlord/database', 'build']);
   run('yarn', ['workspace', '@overlord/auth', 'build']);
   run('yarn', ['workspace', '@overlord/automations', 'build']);
-  // The CLI is built directly (the root build:cli:prod alias is name-sensitive).
+  // The CLI is built directly (the root cli:build:prod alias is name-sensitive).
   run(tsc, ['--project', path.join(repoRoot, 'cli', 'tsconfig.build.json')]);
   // SPA + server bundle.
   run('yarn', ['workspace', '@overlord/webapp', 'build']);
