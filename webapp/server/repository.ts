@@ -60,6 +60,7 @@ import {
 } from './launch.ts';
 import { loadActorRoles } from './rbac.ts';
 import {
+  generateTicketTitleNow,
   initialTitleFromInstruction,
   scheduleObjectiveTitleGeneration,
   scheduleTicketTitleGeneration
@@ -2020,6 +2021,33 @@ export function createTicket(body: CreateTicketBody): TicketDetailDto {
   }
 
   return detail;
+}
+
+/**
+ * Manually (re)generates a ticket's title via the Automations Layer
+ * summarizer, using the same instruction-text source as creation-time
+ * generation (the earliest-position objective with non-empty instructions).
+ * Persists the result and returns the refreshed ticket detail.
+ */
+export async function generateTicketTitle(ticketRef: string): Promise<TicketDetailDto> {
+  const detail = getTicketDetail(ticketRef);
+  const instructionText = detail.objectives
+    .find(objective => objective.instructionText.trim().length > 0)
+    ?.instructionText.trim();
+  if (!instructionText) {
+    throw new ApiError(400, 'Add an objective before generating a title.');
+  }
+
+  const title = await generateTicketTitleNow({
+    ticketId: detail.id,
+    projectId: detail.projectId,
+    instructionText
+  });
+  if (!title) {
+    throw new ApiError(502, 'Failed to generate a title.');
+  }
+
+  return getTicketDetail(ticketRef);
 }
 
 /**

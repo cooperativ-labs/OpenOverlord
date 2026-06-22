@@ -229,27 +229,28 @@ function CreateTokenForm() {
             </p>
             <label className="flex items-start gap-2 text-sm">
               <input
-                type="checkbox"
+                type="radio"
+                name="token-scope"
                 className="mt-0.5 size-4"
                 checked={scope === 'full'}
                 disabled={createState === 'loading'}
-                onChange={e => setScope(e.target.checked ? 'full' : 'ticket_lifecycle')}
+                onChange={() => setScope('full')}
               />
               <span>
                 <span className="font-medium">{SCOPE_LABELS.full}</span>
                 <span className="block text-xs text-muted-foreground">
                   Everything you can do, including creating/deleting projects and changing settings.
-                  Disables the options below.
                 </span>
               </span>
             </label>
             <label className="flex items-start gap-2 text-sm">
               <input
-                type="checkbox"
+                type="radio"
+                name="token-scope"
                 className="mt-0.5 size-4"
                 checked={scope === 'ticket_lifecycle'}
-                disabled={scope === 'full' || createState === 'loading'}
-                onChange={e => setScope(e.target.checked ? 'ticket_lifecycle' : 'full')}
+                disabled={createState === 'loading'}
+                onChange={() => setScope('ticket_lifecycle')}
               />
               <span>
                 <span className="font-medium">{SCOPE_LABELS.ticket_lifecycle}</span>

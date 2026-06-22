@@ -1,10 +1,15 @@
 import { deriveObjectiveLifecycleView, objectiveHasInstructionText } from '@overlord/automations';
 import { useNavigate } from '@tanstack/react-router';
-import { ArrowRightToLine, Check, Copy } from 'lucide-react';
+import { ArrowRightToLine, Check, Copy, Loader2, Sparkles } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 import type { TicketDetailDto } from '../../shared/contract.ts';
-import { useCreateObjective, useTicket, useUpdateTicket } from '../lib/queries.ts';
+import {
+  useCreateObjective,
+  useGenerateTicketTitle,
+  useTicket,
+  useUpdateTicket
+} from '../lib/queries.ts';
 import { cn } from '../lib/utils.ts';
 
 import { TicketObjectivesSection } from './objectives/TicketObjectivesSection.tsx';
@@ -52,17 +57,75 @@ function AddObjective({ ticket }: { ticket: TicketDetailDto }) {
   );
 }
 
+/** Generates the ticket title from its primary objective via the Automations Layer summarizer. */
+function GenerateTicketTitleButton({ ticket }: { ticket: TicketDetailDto }) {
+  const generate = useGenerateTicketTitle(ticket.id);
+  const [justSucceeded, setJustSucceeded] = useState(false);
+  const hasObjectiveText = ticket.objectives.some(
+    objective => objective.instructionText.trim().length > 0
+  );
+  const disabled = generate.isPending || !hasObjectiveText;
+
+  const handleClick = () => {
+    if (disabled) return;
+    generate.mutate(undefined, {
+      onSuccess: () => {
+        setJustSucceeded(true);
+        window.setTimeout(() => setJustSucceeded(false), 1200);
+      }
+    });
+  };
+
+  const label = !hasObjectiveText
+    ? 'Add an objective before generating a title'
+    : generate.isError
+      ? (generate.error as Error).message
+      : 'Generate title with AI';
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <IconButton
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Generate title with AI"
+            disabled={disabled}
+            onClick={handleClick}
+          />
+        }
+      >
+        {generate.isPending ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Sparkles
+            className={cn(
+              'h-3.5 w-3.5',
+              justSucceeded && 'text-emerald-600',
+              generate.isError && 'text-destructive'
+            )}
+          />
+        )}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function TicketTitle({ ticket }: { ticket: TicketDetailDto }) {
   const update = useUpdateTicket(ticket.id);
 
   return (
     <section className="border-b border-[var(--color-border)] bg-[var(--color-surface-1)] px-5 py-3">
-      <h1 className="text-base font-semibold leading-snug">
+      <h1 className="flex items-center gap-1 text-base font-semibold leading-snug">
         <InlineEditField
+          className="min-w-0 flex-1"
           value={ticket.title}
           ariaLabel="Ticket title"
           onSave={title => update.mutate({ title })}
         />
+        <GenerateTicketTitleButton ticket={ticket} />
       </h1>
     </section>
   );

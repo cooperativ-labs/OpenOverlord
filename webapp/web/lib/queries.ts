@@ -456,6 +456,14 @@ export function useDeleteTicket() {
   });
 }
 
+export function useGenerateTicketTitle(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.generateTicketTitle(id),
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
 export interface ReorderBoardColumnVars {
   projectId: string;
   /** Destination column / status. */

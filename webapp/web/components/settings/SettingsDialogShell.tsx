@@ -70,11 +70,11 @@ export function SettingsDialogShell({
 
         <div className="flex items-start">
           <aside className="hidden h-full w-52 shrink-0 flex-col border-r border-border bg-muted/30 md:flex">
-            <nav className="flex flex-1 flex-col gap-4 overflow-y-auto p-3">
+            <nav className="flex flex-1 flex-col gap-6 overflow-y-auto p-3">
               {navGroups.map((group, index) => (
                 <div key={group.label ?? `group-${index}`} className="space-y-1">
                   {group.label ? (
-                    <p className="px-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    <p className="px-2 text-xs font-semibold uppercase tracking-wide text-foreground/60">
                       {group.label}
                     </p>
                   ) : null}
@@ -90,8 +90,8 @@ export function SettingsDialogShell({
                             className={cn(
                               'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
                               isActive
-                                ? 'bg-secondary text-foreground'
-                                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                                ? 'bg-primary text-primary-foreground font-medium shadow-sm'
+                                : 'text-foreground/70 hover:bg-muted hover:text-foreground'
                             )}
                           >
                             <Icon className="size-4 shrink-0" />

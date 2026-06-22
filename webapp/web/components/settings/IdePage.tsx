@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { LoadingButton } from '@/components/ui/loading-button';
@@ -19,9 +20,10 @@ import { useProfile, useUpdateProfile } from '@/lib/queries';
 
 type IdePageProps = {
   open: boolean;
+  onNavigateToExecutionTargets: () => void;
 };
 
-export function IdePage({ open }: IdePageProps) {
+export function IdePage({ open, onNavigateToExecutionTargets }: IdePageProps) {
   const profile = useProfile();
   const updateProfile = useUpdateProfile();
 
@@ -67,10 +69,20 @@ export function IdePage({ open }: IdePageProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-medium">IDE</h2>
+        <h2 className="text-base font-medium">Terminal &amp; IDE</h2>
         <p className="text-sm text-muted-foreground">
           Choose the editor Overlord should use to open files and artifacts for you.
         </p>
+      </div>
+
+      <div className="max-w-xl space-y-3 rounded-lg border border-border bg-card p-4">
+        <p className="text-sm text-muted-foreground">
+          Terminal launch settings are now configured per device on the Execution Targets page, so
+          you can choose how Overlord opens a terminal for each machine you run agents on.
+        </p>
+        <Button type="button" variant="outline" size="sm" onClick={onNavigateToExecutionTargets}>
+          Go to Execution Targets
+        </Button>
       </div>
 
       <div className="max-w-xl space-y-2">

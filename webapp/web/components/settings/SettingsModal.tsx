@@ -1,6 +1,7 @@
 import {
   Bell,
   Code2,
+  GitBranch,
   Info,
   Keyboard,
   KeyRound,
@@ -28,6 +29,7 @@ import {
 } from '@/components/settings/SettingsDialogShell';
 import { UserProfilePage } from '@/components/settings/UserProfilePage';
 import { UserTokensPage } from '@/components/settings/UserTokensPage';
+import { WorktreesPage } from '@/components/settings/WorktreesPage';
 import { useMeta } from '@/lib/queries';
 
 type SettingsModalProps = {
@@ -36,10 +38,15 @@ type SettingsModalProps = {
   initialNav?: SettingsNavSection;
 };
 
+const workflowNavItems: SettingsNavItem[] = [
+  { name: 'Terminal & IDE', icon: Code2 },
+  { name: 'Execution Targets', icon: Terminal },
+  { name: 'Worktrees', icon: GitBranch }
+];
+
 const appNavItems: SettingsNavItem[] = [
   { name: 'Application', icon: Palette },
   { name: 'Notifications', icon: Bell },
-  { name: 'Execution Targets', icon: Terminal },
   { name: 'About', icon: Info }
 ];
 
@@ -49,11 +56,15 @@ const userNavItems: SettingsNavItem[] = [
   { name: 'Profile', icon: User },
   { name: 'Account', icon: ShieldCheck },
   { name: 'Tokens', icon: KeyRound },
-  { name: 'Hotkeys', icon: Keyboard },
-  { name: 'IDE', icon: Code2 }
+  { name: 'Hotkeys', icon: Keyboard }
 ];
 
-const navItems: SettingsNavItem[] = [...userNavItems, ...appNavItems, desktopNavItem];
+const navItems: SettingsNavItem[] = [
+  ...workflowNavItems,
+  ...userNavItems,
+  ...appNavItems,
+  desktopNavItem
+];
 
 export type SettingsNavSection = (typeof navItems)[number]['name'];
 
@@ -63,6 +74,7 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
   const isDesktop = typeof window !== 'undefined' && window.overlord?.isDesktop === true;
   const navGroups = useMemo<SettingsNavGroup[]>(
     () => [
+      { label: 'Workflow', items: workflowNavItems },
       { label: 'User', items: userNavItems },
       { label: 'Application', items: isDesktop ? [...appNavItems, desktopNavItem] : appNavItems }
     ],
@@ -108,12 +120,18 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
       {activeNav === 'Application' && <ApplicationPage />}
       {activeNav === 'Notifications' && <NotificationsPage />}
       {activeNav === 'Execution Targets' && <ExecutionTargetsPage />}
+      {activeNav === 'Worktrees' && <WorktreesPage />}
       {activeNav === 'Desktop' && <DesktopUpdatesPage />}
       {activeNav === 'Profile' && <UserProfilePage open={open} />}
       {activeNav === 'Account' && <AccountPage open={open} />}
       {activeNav === 'Tokens' && <UserTokensPage open={open} />}
       {activeNav === 'Hotkeys' && <HotkeysPage />}
-      {activeNav === 'IDE' && <IdePage open={open} />}
+      {activeNav === 'Terminal & IDE' && (
+        <IdePage
+          open={open}
+          onNavigateToExecutionTargets={() => setActiveNav('Execution Targets')}
+        />
+      )}
       {activeNav === 'About' && <AboutPage open={open} />}
     </SettingsDialogShell>
   );
