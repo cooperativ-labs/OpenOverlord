@@ -362,11 +362,11 @@ export function StatusesPage() {
               }}
             />
           </div>
-          <div className="grid min-w-[10rem] gap-1.5">
+          <div className="grid min-w-40 gap-1.5">
             <Label htmlFor="new-status-type">Type</Label>
             <Select value={newType} onValueChange={value => setNewType(value as StatusType)}>
               <SelectTrigger id="new-status-type" className="h-8">
-                <SelectValue />
+                <SelectValue>{STATUS_LABEL[newType]}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {addableTypes.map(type => (

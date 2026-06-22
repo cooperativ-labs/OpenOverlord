@@ -40,6 +40,11 @@ const TERMINAL_OPTIONS = [
   { label: 'Custom launcher command', launcher: CUSTOM_LAUNCHER }
 ] as const;
 
+function getTerminalLauncherLabel(launcher: string) {
+  const preset = TERMINAL_OPTIONS.find(option => option.launcher === launcher);
+  return preset ? preset.label : launcher;
+}
+
 function profileToDraft(profile: TerminalProfileDto) {
   const preset = TERMINAL_OPTIONS.find(option => option.launcher === profile.launcher);
   return {
@@ -216,7 +221,7 @@ export function ExecutionTargetsPage() {
               onValueChange={value => setLauncherChoice(value ?? INLINE_LAUNCHER)}
             >
               <SelectTrigger id="execution-target-launcher">
-                <SelectValue />
+                <SelectValue>{getTerminalLauncherLabel(launcherChoice)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {TERMINAL_OPTIONS.map(option => (

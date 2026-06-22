@@ -80,7 +80,9 @@ export function IdePage({ open }: IdePageProps) {
           onValueChange={value => setEditorScheme(value ?? DEFAULT_EDITOR_SCHEME)}
         >
           <SelectTrigger id="editor-scheme-select">
-            <SelectValue placeholder="Select an IDE" />
+            <SelectValue placeholder="Select an IDE">
+              {getEditorSchemeLabel(editorScheme)}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {EDITOR_SCHEME_OPTIONS.map(option => (

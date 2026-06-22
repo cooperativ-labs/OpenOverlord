@@ -58,7 +58,7 @@ export function SettingsDialogShell({
   children
 }: SettingsDialogShellProps) {
   const flatNavItems = navGroups.flatMap(group => group.items);
-
+  const activeNavItem = flatNavItems.find(item => item.name === activeNav);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -117,7 +117,7 @@ export function SettingsDialogShell({
                   }}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue />
+                    <SelectValue>{activeNavItem?.name}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {flatNavItems.map(item => {

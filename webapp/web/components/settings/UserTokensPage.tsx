@@ -46,6 +46,10 @@ const TOKEN_EXPIRY_PRESETS: { value: TokenExpiryPreset; label: string }[] = [
   { value: 'no_expiration', label: 'No Expiration' }
 ];
 
+function getTokenExpiryPresetLabel(preset: TokenExpiryPreset): string {
+  return TOKEN_EXPIRY_PRESETS.find(p => p.value === preset)?.label ?? preset;
+}
+
 const DEFAULT_TOKEN_EXPIRY_PRESET: TokenExpiryPreset = 'three_months';
 
 /** Map a UI preset to the API `expiresAt` field (omit for the 90-day backend default). */
@@ -206,7 +210,7 @@ function CreateTokenForm() {
               disabled={createState === 'loading'}
             >
               <SelectTrigger id="token-expiry" className="h-8">
-                <SelectValue />
+                <SelectValue>{getTokenExpiryPresetLabel(expiryPreset)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {TOKEN_EXPIRY_PRESETS.map(preset => (
