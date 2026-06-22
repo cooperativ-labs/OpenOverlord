@@ -27,7 +27,6 @@ export function DesktopUpdatesPage() {
   const bridge = typeof window === 'undefined' ? undefined : window.overlord;
   const [status, setStatus] = useState<DesktopUpdateStatus>(initialStatus);
   const [busyAction, setBusyAction] = useState<'check' | 'install' | null>(null);
-  const [quickTaskHotkey, setQuickTaskHotkey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!bridge?.updates) return;
@@ -43,17 +42,6 @@ export function DesktopUpdatesPage() {
     return () => {
       mounted = false;
       unsubscribe();
-    };
-  }, [bridge]);
-
-  useEffect(() => {
-    if (!bridge?.quickTask) return;
-    let mounted = true;
-    bridge.quickTask.getHotkey().then(result => {
-      if (mounted) setQuickTaskHotkey(result.accelerator);
-    });
-    return () => {
-      mounted = false;
     };
   }, [bridge]);
 
@@ -136,20 +124,6 @@ export function DesktopUpdatesPage() {
           </div>
         </div>
       </div>
-
-      {bridge?.quickTask ? (
-        <div className="max-w-xl rounded-lg border border-border bg-card p-4">
-          <h3 className="text-sm font-medium">Quick task</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Press the global shortcut anywhere to capture a new objective. Enter submits;{' '}
-            {bridge.platform === 'darwin' ? 'Cmd' : 'Ctrl'}+Enter also queues execution for the
-            selected agent.
-          </p>
-          <p className="mt-3 text-sm">
-            Shortcut: <span className="font-mono text-foreground">{quickTaskHotkey ?? '…'}</span>
-          </p>
-        </div>
-      ) : null}
     </div>
   );
 }

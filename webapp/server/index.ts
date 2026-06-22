@@ -45,6 +45,7 @@ import {
   deleteProjectTag,
   deleteTicket,
   deleteWorkspaceStatus,
+  generateTicketTitle,
   getProfile,
   getProject,
   getProjectRepository,
@@ -183,9 +184,15 @@ function handle(
   return (req: Request, res: Response, next: NextFunction) => {
     try {
       if (options.requires) requirePermission(options.requires);
-      const result = fn(req, res);
-      if (options.mutates) realtime.pollNow();
-      if (!res.headersSent) res.json(result ?? { ok: true });
+      // `Promise.resolve` lets a handler return either a plain value or a
+      // promise (e.g. one that awaits an Automations Layer call) through the
+      // same path without forking sync/async response handling.
+      Promise.resolve(fn(req, res))
+        .then(result => {
+          if (options.mutates) realtime.pollNow();
+          if (!res.headersSent) res.json(result ?? { ok: true });
+        })
+        .catch(next);
     } catch (err) {
       next(err);
     }
@@ -629,6 +636,13 @@ app.patch(
 app.delete(
   '/api/tickets/:id',
   handle(req => deleteTicket(req.params.id), { mutates: true, requires: PERMISSIONS.TICKET_DELETE })
+);
+app.post(
+  '/api/tickets/:id/generate-title',
+  handle(req => generateTicketTitle(req.params.id), {
+    mutates: true,
+    requires: PERMISSIONS.TICKET_UPDATE
+  })
 );
 app.get(
   '/api/tickets/:id/objectives',

@@ -147,3 +147,23 @@ export function scheduleTicketTitleGeneration(
     })
   );
 }
+
+/**
+ * Synchronous counterpart to {@link scheduleTicketTitleGeneration} for the
+ * manual "Generate title" button: awaits the summarizer and persists the
+ * result before responding, so the caller can show the title (or a failure)
+ * immediately instead of waiting on a realtime echo.
+ */
+export async function generateTicketTitleNow(
+  params: TicketContext & { instructionText: string }
+): Promise<string> {
+  const title = await generateObjectiveTitle({
+    instructionText: params.instructionText,
+    env: process.env
+  });
+  if (!title) {
+    return '';
+  }
+  await updateTicketTitle({ ticketId: params.ticketId, title });
+  return title;
+}
