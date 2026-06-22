@@ -41,8 +41,9 @@ describe('branch preparation recording', () => {
     const branch = getTicketDetail(ticket.id).branch;
     assert.equal(branch?.name, 'overlord/prepare-a-branch-1');
     assert.equal(branch?.baseBranch, 'main');
-    // No real git checkout backs the test project, so the branch reads as active.
-    assert.equal(branch?.status, 'active');
+    // No real git checkout backs the test project, so the branch reads as created
+    // (recorded but not inspectable, and not yet pushed or merged).
+    assert.equal(branch?.status, 'created');
 
     // The audit entry is recorded under an allowed event type, not `branch_prepared`.
     const events = listTicketEvents(ticket.displayId);

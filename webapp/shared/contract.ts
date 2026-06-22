@@ -313,7 +313,11 @@ export interface TicketDetailDto extends TicketDto {
   branch: TicketBranchDto | null;
 }
 
-export type TicketBranchStatus = 'active' | 'merged' | 'pending';
+// `pending`   — no branch prepared yet (planner-predicted name shown).
+// `created`   — branch cut from base for use, but not yet pushed to a remote.
+// `published` — branch pushed to `origin` (a matching remote ref exists), not merged.
+// `merged`    — branch diverged from base and its commits are now contained in base.
+export type TicketBranchStatus = 'pending' | 'created' | 'published' | 'merged';
 
 export interface TicketBranchDto {
   name: string;

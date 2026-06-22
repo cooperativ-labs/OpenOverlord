@@ -165,15 +165,19 @@ function BranchSection({ ticket }: { ticket: TicketDetailDto }) {
   const statusLabel =
     branch.status === 'pending'
       ? 'not created yet'
-      : branch.status === 'merged'
-        ? 'merged'
-        : 'active';
+      : branch.status === 'created'
+        ? 'created'
+        : branch.status === 'published'
+          ? 'published'
+          : 'merged';
   const statusClass =
     branch.status === 'pending'
       ? 'bg-muted text-muted-foreground'
-      : branch.status === 'merged'
-        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-        : 'bg-sky-500/10 text-sky-700 dark:text-sky-300';
+      : branch.status === 'created'
+        ? 'bg-sky-500/10 text-sky-700 dark:text-sky-300'
+        : branch.status === 'published'
+          ? 'bg-violet-500/10 text-violet-700 dark:text-violet-300'
+          : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
   const cdCommand = branch.worktreePath ? `cd ${JSON.stringify(branch.worktreePath)}` : null;
 
   return (
