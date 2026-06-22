@@ -21,8 +21,12 @@ dist/
 **/dist/
 *.tgz
 .yarn
-webapp/.yarn/install-state.gz
+
 .yarn/install-state.gz
+webapp/.yarn/install-state.gz
+**/.yarn/install-state.gz
+**/node_modules/.yarn/install-state.gz
 
 
 **/.DS_Store
+
