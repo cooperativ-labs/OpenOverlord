@@ -22,12 +22,12 @@
         "title": "This is a very long ticket title that should truncate at a useful boundary",
         "sequence": 42
       },
-      "expected": "overlord/this-is-a-very-long-ticket-title-that-should-42"
+      "expected": "this-is-a-very-long-ticket-title-that-should-42"
     },
     {
       "name": "renders canonical branch from title + sequence",
       "ticket": { "title": "Automate worktree branching", "sequence": 16 },
-      "expected": "overlord/automate-worktree-branching-16"
+      "expected": "automate-worktree-branching-16"
     }
   ],
   "previewTicketBranch": [
@@ -41,8 +41,8 @@
       },
       "expected": {
         "action": "create",
-        "branch": "overlord/automate-worktree-branching-16",
-        "worktreePath": "/tmp/ovld-worktrees/coo/overlord-automate-worktree-branching-16",
+        "branch": "automate-worktree-branching-16",
+        "worktreePath": "/tmp/ovld-worktrees/coo/automate-worktree-branching-16",
         "baseBranch": "main",
         "cycle": 1,
         "from": "main"
@@ -62,8 +62,8 @@
       },
       "expected": {
         "action": "create",
-        "branch": "overlord/automate-worktree-branching-16",
-        "worktreePath": "/tmp/ovld-worktrees/coo/overlord-automate-worktree-branching-16",
+        "branch": "automate-worktree-branching-16",
+        "worktreePath": "/tmp/ovld-worktrees/coo/automate-worktree-branching-16",
         "baseBranch": "main",
         "cycle": 1,
         "from": "main"
@@ -76,17 +76,17 @@
         "project": { "slug": "coo" },
         "base": "main",
         "worktreeRoot": "/tmp/ovld-worktrees",
-        "recordedBranch": "overlord/automate-worktree-branching-16",
+        "recordedBranch": "automate-worktree-branching-16",
         "refs": {
-          "local": ["main", "overlord/automate-worktree-branching-16"],
+          "local": ["main", "automate-worktree-branching-16"],
           "remote": [],
           "merged": []
         }
       },
       "expected": {
         "action": "reuse",
-        "branch": "overlord/automate-worktree-branching-16",
-        "worktreePath": "/tmp/ovld-worktrees/coo/overlord-automate-worktree-branching-16",
+        "branch": "automate-worktree-branching-16",
+        "worktreePath": "/tmp/ovld-worktrees/coo/automate-worktree-branching-16",
         "baseBranch": "main",
         "cycle": 1
       }
@@ -98,22 +98,22 @@
         "project": { "slug": "coo" },
         "base": "main",
         "worktreeRoot": "/tmp/ovld-worktrees",
-        "recordedBranch": "overlord/automate-worktree-branching-16",
+        "recordedBranch": "automate-worktree-branching-16",
         "refs": {
           "local": [
             "main",
-            "overlord/automate-worktree-branching-16",
-            "overlord/automate-worktree-branching-16-2"
+            "automate-worktree-branching-16",
+            "automate-worktree-branching-16-2"
           ],
-          "remote": ["origin/overlord/automate-worktree-branching-16-3"],
-          "merged": ["overlord/automate-worktree-branching-16"],
-          "checkedOut": ["overlord/automate-worktree-branching-16-4"]
+          "remote": ["origin/automate-worktree-branching-16-3"],
+          "merged": ["automate-worktree-branching-16"],
+          "checkedOut": ["automate-worktree-branching-16-4"]
         }
       },
       "expected": {
         "action": "new_cycle",
-        "branch": "overlord/automate-worktree-branching-16-5",
-        "worktreePath": "/tmp/ovld-worktrees/coo/overlord-automate-worktree-branching-16-5",
+        "branch": "automate-worktree-branching-16-5",
+        "worktreePath": "/tmp/ovld-worktrees/coo/automate-worktree-branching-16-5",
         "baseBranch": "main",
         "cycle": 5,
         "from": "main"
