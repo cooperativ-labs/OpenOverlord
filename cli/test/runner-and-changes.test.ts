@@ -15,9 +15,9 @@ import {
   markExecutionLaunched,
   markExecutionLaunching
 } from '../../src/service/execution-requests.ts';
+import { createMissionWithObjectives } from '../../src/service/missions.ts';
 import { addProjectResource, createProject } from '../../src/service/projects.ts';
 import { attachSession, deliverSession, updateSession } from '../../src/service/protocol.ts';
-import { createMissionWithObjectives } from '../../src/service/missions.ts';
 import { newId } from '../../src/service/util.ts';
 
 function createContext() {

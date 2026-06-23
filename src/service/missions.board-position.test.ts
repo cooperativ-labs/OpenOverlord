@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { createServiceContext } from './context.js';
-import { createProject } from './projects.js';
 import { createMissionWithObjectives, moveMissionToReview } from './missions.js';
+import { createProject } from './projects.js';
 
 function setup() {
   const db = openInMemoryDatabase();

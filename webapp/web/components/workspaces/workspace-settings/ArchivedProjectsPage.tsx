@@ -70,7 +70,9 @@ export function ArchivedProjectsPage() {
                       <span className="text-sm">{project.name}</span>
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">{project.missionCount}</td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                    {project.missionCount}
+                  </td>
                   <td className="px-3 py-2 text-right">
                     <Button
                       variant="outline"

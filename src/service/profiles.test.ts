@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { createServiceContext } from './context.js';
+import { createMissionWithObjectives } from './missions.js';
 import {
   agentInstructionsFromProfileMetadata,
   loadAgentInstructionsForWorkspaceUser,
@@ -11,7 +12,6 @@ import {
 import { createProject } from './projects.js';
 import { attachSession } from './protocol.js';
 import { seedServiceOperator } from './test-helpers.js';
-import { createMissionWithObjectives } from './missions.js';
 
 describe('profile metadata helpers', () => {
   it('round-trips agent instructions through metadata_json', () => {

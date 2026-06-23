@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createServiceContext } from '../../src/service/context.ts';
-import { createProject } from '../../src/service/projects.ts';
 import { addObjectivesToMission, createMissionWithObjectives } from '../../src/service/missions.ts';
+import { createProject } from '../../src/service/projects.ts';
 
 function createContext() {
   const db = new Database(':memory:');

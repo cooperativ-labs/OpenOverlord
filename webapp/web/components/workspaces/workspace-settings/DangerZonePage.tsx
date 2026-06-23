@@ -90,8 +90,8 @@ export function DangerZonePage({ workspace, isOnlyWorkspace, onOpenChange }: Dan
           <DialogHeader>
             <DialogTitle>Delete {workspace.name}?</DialogTitle>
             <DialogDescription>
-              The workspace and all of its projects and missions will no longer be reachable from the
-              web interface. This cannot be undone from the UI.
+              The workspace and all of its projects and missions will no longer be reachable from
+              the web interface. This cannot be undone from the UI.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

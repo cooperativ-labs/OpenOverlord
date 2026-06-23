@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createServiceContext } from '../../src/service/context.ts';
+import { createMissionWithObjectives } from '../../src/service/missions.ts';
 import { addProjectResource, createProject } from '../../src/service/projects.ts';
 import {
   attachSession,
@@ -11,7 +12,6 @@ import {
   recordHookEvent,
   updateSession
 } from '../../src/service/protocol.ts';
-import { createMissionWithObjectives } from '../../src/service/missions.ts';
 
 test('protocol lifecycle: attach → update → deliver', () => {
   const db = new Database(':memory:');

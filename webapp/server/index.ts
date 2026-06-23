@@ -32,33 +32,33 @@ import { requirePermission } from './rbac.ts';
 import { realtime } from './realtime.ts';
 import {
   ApiError,
+  createMission,
   createObjective,
   createProject,
   createProjectResource,
   createProjectTag,
-  createMission,
   createUserToken,
   createWorkspaceStatus,
+  deleteMission,
   deleteObjective,
   deleteProject,
   deleteProjectResource,
   deleteProjectTag,
-  deleteMission,
   deleteWorkspaceStatus,
   generateMissionTitle,
+  getMissionDetail,
   getProfile,
   getProject,
   getProjectRepository,
-  getMissionDetail,
   listArtifacts,
-  listObjectives,
-  listProjectResources,
-  listProjects,
-  listProjectTags,
   listMissionBranches,
   listMissionEvents,
   listMissionFileChanges,
   listMissions,
+  listObjectives,
+  listProjectResources,
+  listProjects,
+  listProjectTags,
   listUserTokens,
   listWorkspaceMyMissions,
   listWorkspaceStatuses,
@@ -73,12 +73,12 @@ import {
   reorderWorkspaceStatuses,
   revokeUserToken,
   searchMissions,
+  updateMission,
   updateObjective,
   updateProfile,
   updateProject,
   updateProjectResource,
   updateProjectTag,
-  updateMission,
   updateWorkspaceStatus
 } from './repository.ts';
 import {
@@ -640,7 +640,10 @@ app.patch(
 );
 app.delete(
   '/api/missions/:id',
-  handle(req => deleteMission(req.params.id), { mutates: true, requires: PERMISSIONS.MISSION_DELETE })
+  handle(req => deleteMission(req.params.id), {
+    mutates: true,
+    requires: PERMISSIONS.MISSION_DELETE
+  })
 );
 app.post(
   '/api/missions/:id/generate-title',

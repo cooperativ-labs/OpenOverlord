@@ -70,9 +70,8 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
   const remove = useDeleteObjective();
   const { catalog, agentConfigs, selection, setSelection, commitLaunchConfig, loaded } =
     useObjectiveAgentSelection(objective);
-  const { mentionPaths, projectMentionOptions, missionMentionOptions } = useRepositoryMentionOptions(
-    objective.projectId
-  );
+  const { mentionPaths, projectMentionOptions, missionMentionOptions } =
+    useRepositoryMentionOptions(objective.projectId);
   const [isFutureExpanded, setIsFutureExpanded] = useState(false);
 
   const isFuture = objective.state === 'future';

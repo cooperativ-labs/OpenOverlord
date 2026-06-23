@@ -10,15 +10,21 @@ import { ensureLocalExecutionTarget } from '../../src/service/execution-targets.
 import { writeProjectJson } from '../../src/service/projects.ts';
 import type {
   ArtifactDto,
+  CreateMissionBody,
   CreateObjectiveBody,
   CreateProjectBody,
   CreateProjectResourceBody,
   CreateProjectTagBody,
-  CreateMissionBody,
   CreateUserTokenBody,
   CreateUserTokenResultDto,
   CreateWorkspaceStatusBody,
   FileChangeDto,
+  MissionBranchDto,
+  MissionBranchListDto,
+  MissionBranchStatus,
+  MissionDetailDto,
+  MissionDto,
+  MissionEventDto,
   MyMissionDto,
   MyMissionReorderRequest,
   MyMissionsResponse,
@@ -34,19 +40,13 @@ import type {
   ReorderFutureObjectivesBody,
   ReorderWorkspaceStatusesBody,
   StatusType,
-  MissionBranchDto,
-  MissionBranchListDto,
-  MissionBranchStatus,
-  MissionDetailDto,
-  MissionDto,
-  MissionEventDto,
   TokenScope,
+  UpdateMissionBody,
   UpdateObjectiveBody,
   UpdateProfileBody,
   UpdateProjectBody,
   UpdateProjectResourceBody,
   UpdateProjectTagBody,
-  UpdateMissionBody,
   UpdateUserTokenBody,
   UpdateWorkspaceStatusBody,
   UserTokenDto,
@@ -54,7 +54,7 @@ import type {
   WorktreeDto
 } from '../shared/contract.ts';
 
-import { previewMissionBranch, missionWorktreePath } from './branch-planning.ts';
+import { missionWorktreePath, previewMissionBranch } from './branch-planning.ts';
 import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';
 import {
@@ -67,8 +67,8 @@ import { loadActorRoles } from './rbac.ts';
 import {
   generateMissionTitleNow,
   initialTitleFromInstruction,
-  scheduleObjectiveTitleGeneration,
-  scheduleMissionTitleGeneration
+  scheduleMissionTitleGeneration,
+  scheduleObjectiveTitleGeneration
 } from './title-automation.ts';
 
 export { ApiError };

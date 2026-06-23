@@ -379,7 +379,9 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
     ]);
 
     React.useEffect(() => {
-      onMentionMenuOpenChange?.(mentionMenuOpen || projectMentionMenuOpen || missionMentionMenuOpen);
+      onMentionMenuOpenChange?.(
+        mentionMenuOpen || projectMentionMenuOpen || missionMentionMenuOpen
+      );
     }, [mentionMenuOpen, projectMentionMenuOpen, missionMentionMenuOpen, onMentionMenuOpenChange]);
 
     React.useEffect(() => {

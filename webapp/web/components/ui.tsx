@@ -25,7 +25,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
-import type { ObjectiveState, StatusType, MissionPriority } from '../../shared/contract.ts';
+import type { MissionPriority, ObjectiveState, StatusType } from '../../shared/contract.ts';
 
 // ---- Status / priority vocab → presentation ------------------------------
 

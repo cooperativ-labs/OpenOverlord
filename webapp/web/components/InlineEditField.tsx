@@ -2,8 +2,8 @@ import * as React from 'react';
 
 import {
   MentionableTextarea,
-  type ProjectMentionOption,
-  type MissionMentionOption
+  type MissionMentionOption,
+  type ProjectMentionOption
 } from '@/components/MentionableTextarea';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';

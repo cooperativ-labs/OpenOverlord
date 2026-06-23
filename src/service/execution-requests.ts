@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
-import { resolveProjectId, resolveMissionId } from './context.js';
+import { resolveMissionId, resolveProjectId } from './context.js';
 import { getDevice } from './devices.js';
 import { ServiceError } from './errors.js';
 import { assertPrimaryResourceConnected } from './projects.js';

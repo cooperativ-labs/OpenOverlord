@@ -197,8 +197,8 @@ export function DangerZonePage({
           <DialogHeader>
             <DialogTitle>Delete {projectName}?</DialogTitle>
             <DialogDescription>
-              All missions and objectives in this project will be permanently deleted. This cannot be
-              undone.
+              All missions and objectives in this project will be permanently deleted. This cannot
+              be undone.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-2 py-2">

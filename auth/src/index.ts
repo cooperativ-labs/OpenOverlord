@@ -32,9 +32,9 @@ export {
   defaultAuthorizer,
   grantCoversAction,
   makeActor,
+  MISSION_LIFECYCLE_GRANTS,
   PERMISSIONS,
   Role,
   scopeGrantsForPreset,
-  MISSION_LIFECYCLE_GRANTS,
   tokenScopeAllows
 } from './rbac/index.js';

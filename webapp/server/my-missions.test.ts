@@ -121,7 +121,8 @@ test('reorder into a status the workspace lacks is rejected with a typed code', 
   const project = createProject({ name: 'MT Reject' });
   const mission = createMission({ projectId: project.id, firstObjective: 'rej' });
   assert.throws(
-    () => reorderWorkspaceMyMissions({ statusId: 'does-not-exist', orderedMissionIds: [mission.id] }),
+    () =>
+      reorderWorkspaceMyMissions({ statusId: 'does-not-exist', orderedMissionIds: [mission.id] }),
     (err: unknown) =>
       err instanceof ApiError &&
       err.status === 409 &&

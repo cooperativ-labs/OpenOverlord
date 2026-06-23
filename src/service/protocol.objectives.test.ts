@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { createServiceContext } from './context.js';
+import { createMissionWithObjectives, insertObjective } from './missions.js';
 import { createProject } from './projects.js';
 import { attachSession, protocolCreate, protocolPrompt } from './protocol.js';
-import { createMissionWithObjectives, insertObjective } from './missions.js';
 
 describe('protocol objective creation', () => {
   it('creates ordered objectives from an array payload', () => {

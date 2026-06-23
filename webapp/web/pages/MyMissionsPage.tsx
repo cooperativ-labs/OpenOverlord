@@ -3,7 +3,11 @@ import { useMatch, useNavigate } from '@tanstack/react-router';
 import { X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import type { MyMissionDto, WorkspaceMemberDto, WorkspaceStatusDto } from '../../shared/contract.ts';
+import type {
+  MyMissionDto,
+  WorkspaceMemberDto,
+  WorkspaceStatusDto
+} from '../../shared/contract.ts';
 import { EmptyState, Spinner } from '../components/ui.tsx';
 import { ApiRequestError } from '../lib/api.ts';
 import {
@@ -14,9 +18,9 @@ import {
 } from '../lib/queries.ts';
 
 import { type BoardView, type ColumnMap, resolveColumnMissions } from './board-shared.ts';
+import { MissionsViewToggle } from './MissionsViewToggle.tsx';
 import { MyMissionsColumn } from './MyMissionsColumn.tsx';
 import { SortableMissionCard } from './SortableMissionCard.tsx';
-import { MissionsViewToggle } from './MissionsViewToggle.tsx';
 import { useMyMissionsDnd } from './useMyMissionsDnd.ts';
 
 const UNCATEGORIZED_ID = '__my_missions_uncategorized__';

@@ -9,8 +9,8 @@ import type { MissionDto, WorkspaceMemberDto, WorkspaceStatusDto } from '../../s
 
 import { BlankMissionCard, type BlankMissionCreateOptions } from './BlankMissionCard.tsx';
 import { resolveAssignee } from './board-shared.ts';
-import { SortableMissionCard } from './SortableMissionCard.tsx';
 import { MissionCard } from './MissionCard.tsx';
+import { SortableMissionCard } from './SortableMissionCard.tsx';
 
 export function BoardColumn({
   status,

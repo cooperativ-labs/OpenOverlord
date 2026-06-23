@@ -12,11 +12,11 @@ import { NavHeader } from './components/nav-header.tsx';
 import { InitialSetupScreen } from './components/setup/InitialSetupScreen.tsx';
 import { SidebarInset, SidebarProvider } from './components/ui/sidebar.tsx';
 import { useMeta } from './lib/queries.ts';
+import { MissionPanelRoute } from './pages/MissionPage.tsx';
 import { MyMissionsShell, WorkspaceMissionPanelRoute } from './pages/MyMissionsShell.tsx';
 import { ProjectBoardShell } from './pages/ProjectBoardShell.tsx';
 import { ProjectsPage } from './pages/ProjectsPage.tsx';
 import { QuickTaskPage } from './pages/QuickTaskPage.tsx';
-import { MissionPanelRoute } from './pages/MissionPage.tsx';
 
 function RootLayout() {
   const isQuickTask = useRouterState({

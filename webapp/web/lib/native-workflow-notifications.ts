@@ -1,4 +1,4 @@
-import type { EntityChangeDto, ObjectiveDto, MissionEventDto } from '../../shared/contract.ts';
+import type { EntityChangeDto, MissionEventDto, ObjectiveDto } from '../../shared/contract.ts';
 
 import { api } from './api.ts';
 import { isNativeNotificationsEnabled } from './native-notification-preferences.ts';

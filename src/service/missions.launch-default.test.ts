@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { createServiceContext } from './context.js';
+import { createMissionWithObjectives } from './missions.js';
 import { createProject } from './projects.js';
 import { seedServiceOperator } from './test-helpers.js';
-import { createMissionWithObjectives } from './missions.js';
 import { newId, nowIso } from './util.js';
 
 function setup() {

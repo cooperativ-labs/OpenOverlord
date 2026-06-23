@@ -9,10 +9,10 @@ import { ProjectSettingsSection } from '../components/projects/ProjectSettingsSe
 import { Button, EmptyState, Spinner } from '../components/ui.tsx';
 import {
   useCreateMission,
+  useMissions,
   useProject,
   useProjectTags,
   useReorderBoardColumn,
-  useMissions,
   useWorkspaceMembers,
   useWorkspaceStatuses
 } from '../lib/queries.ts';
@@ -28,10 +28,10 @@ import {
   storeBoardView
 } from './board-shared.ts';
 import { BoardColumn } from './BoardColumn.tsx';
-import { SortableMissionCard } from './SortableMissionCard.tsx';
 import { MissionListView } from './MissionListView.tsx';
 import { MissionsViewToggle } from './MissionsViewToggle.tsx';
 import { MissionTagFilterDropdown } from './MissionTagFilterDropdown.tsx';
+import { SortableMissionCard } from './SortableMissionCard.tsx';
 import { useBoardColumnDnd } from './useBoardColumnDnd.ts';
 
 export function BoardPage() {

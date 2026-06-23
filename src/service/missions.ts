@@ -2,7 +2,7 @@ import { OBJECTIVE_STATES } from '@overlord/database';
 
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
-import { resolveProjectId, resolveMissionId } from './context.js';
+import { resolveMissionId, resolveProjectId } from './context.js';
 import { ServiceError } from './errors.js';
 import { initialTitleFromInstruction, newId, nowIso } from './util.js';
 

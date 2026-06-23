@@ -1,4 +1,4 @@
-import { useProfile, useProjectRepository, useMissionFileChanges } from '@/lib/queries';
+import { useMissionFileChanges, useProfile, useProjectRepository } from '@/lib/queries';
 
 import { LiveFileChangeCard } from './LiveFileChangeCard.tsx';
 import { Spinner } from './ui.tsx';
@@ -11,7 +11,13 @@ import { Spinner } from './ui.tsx';
  * the agent or CLI in another process stream in without a manual refresh.
  * Adapted from the reference `LiveFileChanges` for this app's stack.
  */
-export function LiveFileChanges({ missionId, projectId }: { missionId: string; projectId: string }) {
+export function LiveFileChanges({
+  missionId,
+  projectId
+}: {
+  missionId: string;
+  projectId: string;
+}) {
   const fileChangesQ = useMissionFileChanges(missionId);
   const profileQ = useProfile();
   const repositoryQ = useProjectRepository(projectId, null);

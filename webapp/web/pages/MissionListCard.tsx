@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import type { MissionDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 
 import { getMissionTags } from './board-shared.ts';
-import { ProjectColorDot, MissionAssigneeAvatar } from './MissionCardPrimitives.tsx';
+import { MissionAssigneeAvatar, ProjectColorDot } from './MissionCardPrimitives.tsx';
 
 export function MissionListCard({
   mission,

@@ -154,10 +154,7 @@ export function computeMergedBranches(gitRoot: string, base: string): string[] {
     }
   };
   collect(['branch', '--merged', base, '--format=%(refname:short)'], localTrunk);
-  collect(
-    ['branch', '-r', '--merged', `origin/${base}`, '--format=%(refname:short)'],
-    remoteTrunk
-  );
+  collect(['branch', '-r', '--merged', `origin/${base}`, '--format=%(refname:short)'], remoteTrunk);
   return result;
 }
 

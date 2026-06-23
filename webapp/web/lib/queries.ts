@@ -3,16 +3,18 @@ import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tansta
 import type {
   BranchActionBody,
   CompleteInitialSetupBody,
+  CreateMissionBody,
   CreateObjectiveBody,
   CreateProjectBody,
   CreateProjectResourceBody,
   CreateProjectTagBody,
-  CreateMissionBody,
   CreateUserTokenBody,
   CreateWorkspaceBody,
   CreateWorkspaceStatusBody,
   LaunchObjectiveBody,
   LaunchPreferenceDto,
+  MissionDetailDto,
+  MissionDto,
   MyMissionsResponse,
   ObjectiveAttachmentDto,
   ProjectTagDto,
@@ -20,17 +22,15 @@ import type {
   ReorderFutureObjectivesBody,
   ReorderWorkspaceStatusesBody,
   StatusType,
-  MissionDetailDto,
-  MissionDto,
   UpdateAgentLaunchConfigBody,
   UpdateLaunchPreferenceBody,
+  UpdateMissionBody,
   UpdateObjectiveBody,
   UpdateProfileBody,
   UpdateProjectBody,
   UpdateProjectResourceBody,
   UpdateProjectTagBody,
   UpdateTerminalProfileBody,
-  UpdateMissionBody,
   UpdateUserTokenBody,
   UpdateWorkspaceBody,
   UpdateWorkspaceStatusBody,
@@ -160,7 +160,10 @@ export const useMissionArtifacts = (id: string) =>
 // CLI/agent in another process — so the File Changes section stays current
 // without bespoke wiring here.
 export const useMissionFileChanges = (id: string) =>
-  useQuery({ queryKey: keys.missionFileChanges(id), queryFn: () => api.listMissionFileChanges(id) });
+  useQuery({
+    queryKey: keys.missionFileChanges(id),
+    queryFn: () => api.listMissionFileChanges(id)
+  });
 
 // ---- Mutations -----------------------------------------------------------
 

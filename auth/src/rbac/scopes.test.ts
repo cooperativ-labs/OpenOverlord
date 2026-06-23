@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { defaultAuthorizer, makeActor } from './authorizer.js';
 import { grantCoversAction, tokenScopeAllows } from './authorizer.js';
-import { PERMISSIONS, scopeGrantsForPreset, MISSION_LIFECYCLE_GRANTS } from './permissions.js';
+import { MISSION_LIFECYCLE_GRANTS, PERMISSIONS, scopeGrantsForPreset } from './permissions.js';
 import { Role } from './types.js';
 
 /** Effective decision: role grants ∩ token scope, mirroring webapp `actorCan`. */

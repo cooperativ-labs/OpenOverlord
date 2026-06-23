@@ -8,7 +8,7 @@ export {
   tokenScopeAllows
 } from './authorizer.js';
 export type { KnownPermission, TokenScope } from './permissions.js';
-export { PERMISSIONS, scopeGrantsForPreset, MISSION_LIFECYCLE_GRANTS } from './permissions.js';
+export { MISSION_LIFECYCLE_GRANTS, PERMISSIONS, scopeGrantsForPreset } from './permissions.js';
 export { DEFAULT_ROLE_DEFINITIONS } from './roles.js';
 export type { Actor, AuthorizationResult, Permission, RoleDefinition } from './types.js';
 export { Role } from './types.js';

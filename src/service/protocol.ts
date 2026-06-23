@@ -4,11 +4,9 @@ import { createHash } from 'node:crypto';
 import { recordChange } from './change-feed.js';
 import { listRationalesForReview, type RationaleReview } from './changes.js';
 import type { ServiceContext } from './context.js';
-import { resolveProjectId, resolveMissionId } from './context.js';
+import { resolveMissionId, resolveProjectId } from './context.js';
 import { ServiceError } from './errors.js';
 import { createExecutionRequest } from './execution-requests.js';
-import { loadAgentInstructionsForWorkspaceUser } from './profiles.js';
-import { discoverProject } from './projects.js';
 import {
   addObjectivesToMission,
   type ArtifactSummary,
@@ -19,17 +17,19 @@ import {
   insertObjective,
   listArtifacts,
   listAttachments,
+  listMissionEvents,
   listObjectives,
   listSharedContext,
-  listMissionEvents,
+  type MissionEventSummary,
+  type MissionSummary,
   moveMissionToExecute,
   moveMissionToReview,
   type ObjectiveSummary,
   searchMissions,
-  type SharedContextEntry,
-  type MissionEventSummary,
-  type MissionSummary
+  type SharedContextEntry
 } from './missions.js';
+import { loadAgentInstructionsForWorkspaceUser } from './profiles.js';
+import { discoverProject } from './projects.js';
 import { generateSessionKey, hashSessionKey, newId, nowIso } from './util.js';
 
 export type SessionSummary = {

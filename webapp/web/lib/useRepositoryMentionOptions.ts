@@ -1,11 +1,11 @@
 import { useMemo } from 'react';
 
 import type {
-  ProjectMentionOption,
-  MissionMentionOption
+  MissionMentionOption,
+  ProjectMentionOption
 } from '../components/MentionableTextarea.tsx';
 
-import { useProjectRepository, useProjects, useMissions } from './queries.ts';
+import { useMissions, useProjectRepository, useProjects } from './queries.ts';
 
 /**
  * File, project, and mission mention options for a project's repository context.

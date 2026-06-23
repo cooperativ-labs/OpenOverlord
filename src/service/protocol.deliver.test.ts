@@ -4,9 +4,9 @@ import { describe, it } from 'node:test';
 
 import { listChangedFilesForReview } from './changes.js';
 import { createServiceContext } from './context.js';
+import { createMissionWithObjectives } from './missions.js';
 import { createProject } from './projects.js';
 import { attachSession, deliverSession, updateSession } from './protocol.js';
-import { createMissionWithObjectives } from './missions.js';
 import { nowIso } from './util.js';
 
 function setup() {

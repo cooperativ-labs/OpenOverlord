@@ -370,7 +370,6 @@ function BranchSection({ mission }: { mission: MissionDetailDto }) {
     publish: 'Publish'
   };
 
-
   async function runAction(
     action: BranchActionName,
     confirmBusy: boolean,
@@ -438,7 +437,10 @@ function BranchSection({ mission }: { mission: MissionDetailDto }) {
           <div className="space-y-1">
             <div className="flex min-w-0 items-center gap-2">
               <GitBranch className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <code className="min-w-0 flex-1 truncate text-[0.8rem] font-medium" title={branch.name}>
+              <code
+                className="min-w-0 flex-1 truncate text-[0.8rem] font-medium"
+                title={branch.name}
+              >
                 {branch.name}
               </code>
             </div>

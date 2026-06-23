@@ -1,8 +1,8 @@
 import { Outlet, useNavigate, useParams } from '@tanstack/react-router';
 
-import { ProjectWorkspaceErrorBoundary } from '../components/ProjectWorkspaceErrorBoundary.tsx';
 import { MissionDrawer } from '../components/MissionDrawer.tsx';
 import { MissionPanel } from '../components/MissionPanel.tsx';
+import { ProjectWorkspaceErrorBoundary } from '../components/ProjectWorkspaceErrorBoundary.tsx';
 
 import { MyMissionsPage } from './MyMissionsPage.tsx';
 

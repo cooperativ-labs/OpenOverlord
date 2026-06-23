@@ -333,7 +333,12 @@ export interface MissionDetailDto extends MissionDto {
 //                     been pushed to `origin` yet (the gap between merge Action A
 //                     and the push Action B).
 // `merged`          — branch's commits are contained in the *remote* base (`origin/<base>`).
-export type MissionBranchStatus = 'pending' | 'created' | 'published' | 'merged_unpushed' | 'merged';
+export type MissionBranchStatus =
+  | 'pending'
+  | 'created'
+  | 'published'
+  | 'merged_unpushed'
+  | 'merged';
 
 export interface MissionBranchDto {
   name: string;

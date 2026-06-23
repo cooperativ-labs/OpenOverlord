@@ -21,8 +21,8 @@ import { useEffect, useMemo, useState } from 'react';
 
 import type {
   ExecutionRequestDto,
-  ObjectiveDto,
-  MissionDetailDto
+  MissionDetailDto,
+  ObjectiveDto
 } from '../../../shared/contract.ts';
 import { useReorderFutureObjectives } from '../../lib/queries.ts';
 import { cn } from '../../lib/utils.ts';

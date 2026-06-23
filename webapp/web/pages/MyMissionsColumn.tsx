@@ -10,8 +10,8 @@ import { readLastUsedProjectId } from '@/lib/last-used-project.ts';
 import type { MyMissionDto, StatusType, WorkspaceMemberDto } from '../../shared/contract.ts';
 
 import { resolveAssignee } from './board-shared.ts';
-import { SortableMissionCard } from './SortableMissionCard.tsx';
 import { MissionCard } from './MissionCard.tsx';
+import { SortableMissionCard } from './SortableMissionCard.tsx';
 
 /**
  * One column of the My Missions aggregate board. Unlike the project `BoardColumn`

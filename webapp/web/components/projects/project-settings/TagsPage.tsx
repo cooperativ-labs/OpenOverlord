@@ -103,9 +103,9 @@ export function TagsPage({ projectId }: TagsPageProps) {
       <div>
         <h2 className="text-base font-medium">Tags</h2>
         <p className="text-sm text-muted-foreground">
-          Labels you can attach to missions in this project. Tags appear in the mission-create picker
-          and the board tag filter. Inactive tags are hidden from new missions but kept on existing
-          ones.
+          Labels you can attach to missions in this project. Tags appear in the mission-create
+          picker and the board tag filter. Inactive tags are hidden from new missions but kept on
+          existing ones.
         </p>
       </div>
 

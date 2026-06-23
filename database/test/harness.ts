@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createServiceContext } from '../../dist/src/service/context.js';
-import { createProject } from '../../dist/src/service/projects.js';
 import { createMissionWithObjectives, listMissions } from '../../dist/src/service/missions.js';
+import { createProject } from '../../dist/src/service/projects.js';
 
 test('withAdapter-style harness creates seeded workspace', () => {
   const db = openInMemoryDatabase();
