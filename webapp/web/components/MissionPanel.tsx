@@ -116,7 +116,7 @@ function GenerateMissionTitleButton({ mission }: { mission: MissionDetailDto }) 
           <IconButton
             type="button"
             variant="ghost"
-            size="icon-xs"
+            size="icon"
             aria-label="Generate title with AI"
             disabled={disabled}
             onClick={handleClick}
@@ -124,11 +124,11 @@ function GenerateMissionTitleButton({ mission }: { mission: MissionDetailDto }) 
         }
       >
         {generate.isPending ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <Loader2 className="h-5 w-5 animate-spin" />
         ) : (
           <Sparkles
             className={cn(
-              'h-3.5 w-3.5',
+              'h-5 w-5',
               justSucceeded && 'text-emerald-600',
               generate.isError && 'text-destructive'
             )}
