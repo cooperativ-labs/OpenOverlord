@@ -653,6 +653,22 @@ export interface BranchActionBody {
   confirmBusy?: boolean;
 }
 
+/**
+ * Result of `POST /api/missions/:id/generate-commit-message`: an AI-drafted
+ * commit message for the uncommitted changes in the mission branch's worktree.
+ * Drafted via the Automations Layer (Gemini) from the worktree diff; the client
+ * drops it into the commit-message field for the user to edit before committing.
+ *
+ * On failure the response carries a typed `code` (e.g. `BRANCH_NOTHING_TO_COMMIT`
+ * when the worktree is clean, `COMMIT_MESSAGE_GENERATION_FAILED` when the
+ * summarizer is unavailable or returns nothing, plus the shared
+ * `BRANCH_NOT_PREPARED` / `BRANCH_NO_PRIMARY` / `BRANCH_NO_WORKTREE` codes).
+ */
+export interface GenerateCommitMessageResultDto {
+  /** The drafted commit message (subject line, optionally followed by a body). */
+  message: string;
+}
+
 // ---- Worktrees ----
 
 /**

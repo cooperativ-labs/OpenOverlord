@@ -492,6 +492,14 @@ export function useGenerateMissionTitle(id: string) {
   });
 }
 
+export function useGenerateCommitMessage(id: string) {
+  // Drafts a commit message from the worktree diff. Persists nothing, so there
+  // is no cache to invalidate — the caller drops the result into the field.
+  return useMutation({
+    mutationFn: () => api.generateCommitMessage(id)
+  });
+}
+
 export function useBranchAction(id: string) {
   const qc = useQueryClient();
   return useMutation({

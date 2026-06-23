@@ -19,6 +19,7 @@ import type {
   CreateUserTokenResultDto,
   CreateWorkspaceStatusBody,
   FileChangeDto,
+  GenerateCommitMessageResultDto,
   MissionBranchDto,
   MissionBranchListDto,
   MissionBranchStatus,
@@ -55,6 +56,7 @@ import type {
 } from '../shared/contract.ts';
 
 import { missionWorktreePath, previewMissionBranch } from './branch-planning.ts';
+import { generateCommitMessageFromDiff } from './commit-message-automation.ts';
 import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';
 import {
@@ -1098,6 +1100,65 @@ export function performBranchAction(
 
   recordBranchActionActivity(ctx, summary);
   return getMissionDetail(ctx.missionId);
+}
+
+// Captures the uncommitted work in a worktree as text for the commit-message
+// summarizer: the porcelain status (so the model sees every changed path,
+// including untracked ones) followed by the tracked diff against HEAD. Read-only
+// — never stages or mutates the index.
+function collectWorktreeChanges(worktreePath: string): string {
+  const status = runGitResult(worktreePath, ['status', '--porcelain']);
+  const diff = runGitResult(worktreePath, ['diff', 'HEAD']);
+  const sections: string[] = [];
+  if (status.ok && status.stdout) {
+    sections.push(`Changed files (git status --porcelain):\n${status.stdout}`);
+  }
+  if (diff.ok && diff.stdout) {
+    sections.push(`Diff against HEAD:\n${diff.stdout}`);
+  }
+  return sections.join('\n\n');
+}
+
+/**
+ * Drafts a commit message for the uncommitted changes in a mission branch's
+ * worktree via the Automations Layer (Gemini). Gathers the diff host-side (the
+ * same host-side git ownership as the branch actions), then summarizes it. Does
+ * not persist anything — the client drops the draft into the editable commit
+ * field. Throws typed errors when no work exists or the summarizer is
+ * unavailable so the UI can explain why no draft appeared.
+ */
+export async function generateCommitMessage(
+  missionRef: string
+): Promise<GenerateCommitMessageResultDto> {
+  const ctx = loadBranchActionContext(missionRef);
+  if (!existsSync(ctx.worktreePath)) {
+    throw new ApiError(
+      409,
+      `The branch's worktree is not present at ${ctx.worktreePath}.`,
+      undefined,
+      'BRANCH_NO_WORKTREE'
+    );
+  }
+  if (!worktreeIsDirty(ctx.worktreePath)) {
+    throw new ApiError(
+      409,
+      'There are no uncommitted changes to draft a commit message from.',
+      ctx.worktreePath,
+      'BRANCH_NOTHING_TO_COMMIT'
+    );
+  }
+
+  const diff = collectWorktreeChanges(ctx.worktreePath);
+  const message = await generateCommitMessageFromDiff({ diff, env: process.env });
+  if (!message) {
+    throw new ApiError(
+      502,
+      'Failed to draft a commit message. Check that the AI summarizer is configured.',
+      undefined,
+      'COMMIT_MESSAGE_GENERATION_FAILED'
+    );
+  }
+  return { message };
 }
 
 // ---- Branch selection (available branches for a mission) ------------------

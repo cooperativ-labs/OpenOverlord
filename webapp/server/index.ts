@@ -45,6 +45,7 @@ import {
   deleteProjectResource,
   deleteProjectTag,
   deleteWorkspaceStatus,
+  generateCommitMessage,
   generateMissionTitle,
   getMissionDetail,
   getProfile,
@@ -649,6 +650,12 @@ app.post(
   '/api/missions/:id/generate-title',
   handle(req => generateMissionTitle(req.params.id), {
     mutates: true,
+    requires: PERMISSIONS.MISSION_UPDATE
+  })
+);
+app.post(
+  '/api/missions/:id/generate-commit-message',
+  handle(req => generateCommitMessage(req.params.id), {
     requires: PERMISSIONS.MISSION_UPDATE
   })
 );
