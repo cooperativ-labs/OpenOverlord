@@ -129,8 +129,15 @@ export const useMissions = (projectId: string) =>
 export const useWorkspaceMyMissions = () =>
   useQuery({ queryKey: keys.myMissions, queryFn: () => api.listWorkspaceMyMissions() });
 
-export const useMission = (id: string) =>
-  useQuery({ queryKey: keys.mission(id), queryFn: () => api.getMission(id) });
+export const useMission = (id: string, options: { refetchBranchState?: boolean } = {}) =>
+  useQuery({
+    queryKey: keys.mission(id),
+    queryFn: () => api.getMission(id),
+    // Mission branch metadata is derived from live git state at request time, not
+    // persisted database rows, so the SSE feed cannot observe external git
+    // changes. Poll only for open detail panels that opt into branch freshness.
+    refetchInterval: options.refetchBranchState ? 5_000 : false
+  });
 
 // Available branches for the mission's branch selector. Only fetched when the
 // selector is opened (callers pass `enabled`) so we don't shell git on every

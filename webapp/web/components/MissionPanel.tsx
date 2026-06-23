@@ -40,7 +40,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from './ui/dropdown-menu.tsx';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select.tsx';
 import { Separator } from './ui/separator.tsx';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip.tsx';
 import { InlineEditField } from './InlineEditField.tsx';
@@ -188,8 +187,8 @@ function CopyIconButton({ value, label }: { value: string; label: string }) {
 
 type BranchActionName = 'integrate' | 'commit' | 'push_parent' | 'publish';
 
-// Sentinel for the "Automatic" choice — Radix Select items cannot use an empty
-// string value, so we map this to clearing the override (branchOverride: null).
+// Sentinel for the "Automatic" choice — mapped to clearing the override
+// (branchOverride: null) rather than pinning a named branch.
 const AUTO_BRANCH = '__auto__';
 
 // Visual treatment per branch lifecycle state. A colored dot is the primary
@@ -282,19 +281,21 @@ function BranchCopyMenu({ branch }: { branch: MissionBranchDto }) {
 }
 
 /**
- * Lets the user pin a different branch when the system-chosen default is wrong.
- * The choice is stored as the mission's `branchOverride` and consumed by the
- * runner at the next launch (no git side-effects here). Branches are fetched
- * lazily — only once the selector is opened.
+ * Renders the mission's branch name as the trigger for a menu that lets the user
+ * pin a different branch when the system-chosen default is wrong. The choice is
+ * stored as the mission's `branchOverride` and consumed by the runner at the next
+ * launch (no git side-effects here). Branches are fetched lazily — only once the
+ * menu is opened.
  */
 function BranchSelector({ mission }: { mission: MissionDetailDto }) {
   const [open, setOpen] = useState(false);
   const branches = useMissionBranches(mission.id, open);
   const update = useUpdateMission(mission.id);
   const override = mission.branch?.overrideBranch ?? null;
+  const branchName = mission.branch?.name ?? '';
+  const selected = override ?? AUTO_BRANCH;
 
-  function handleChange(value: string | null): void {
-    if (!value) return;
+  function handleChange(value: string): void {
     update.mutate({ branchOverride: value === AUTO_BRANCH ? null : value });
   }
 
@@ -302,42 +303,37 @@ function BranchSelector({ mission }: { mission: MissionDetailDto }) {
 
   return (
     <div className="space-y-1">
-      {!open ? (
-        <button
-          type="button"
-          className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-          onClick={() => setOpen(true)}
-        >
-          {override ? `Pinned to ${override} — change` : 'Use a different branch'}
-        </button>
-      ) : (
-        <Select
-          value={override ?? AUTO_BRANCH}
-          disabled={update.isPending || branches.isLoading}
-          onValueChange={handleChange}
-        >
-          <SelectTrigger
-            id={`branch-select-${mission.id}`}
-            aria-label="Select branch"
-            size="sm"
-            className="h-7 w-full rounded-md border bg-transparent px-2 text-xs"
+      <div className="flex min-w-0 items-center gap-2">
+        <GitBranch className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <DropdownMenu open={open} onOpenChange={setOpen}>
+          <DropdownMenuTrigger
+            type="button"
+            aria-label="Change branch"
+            disabled={update.isPending}
+            className="flex min-w-0 flex-1 items-center gap-1 rounded text-left underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <SelectValue>
-              {branches.isLoading
-                ? 'Loading branches…'
-                : (override ?? 'Automatic (system default)')}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={AUTO_BRANCH}>Automatic (system default)</SelectItem>
+            <code className="min-w-0 flex-1 truncate text-[0.8rem] font-medium" title={branchName}>
+              {branchName}
+            </code>
+            <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-56">
+            <DropdownMenuItem onClick={() => handleChange(AUTO_BRANCH)}>
+              <Check
+                className={cn('h-3 w-3', selected === AUTO_BRANCH ? 'opacity-100' : 'opacity-0')}
+              />
+              Automatic (system default)
+            </DropdownMenuItem>
+            {branches.isLoading && <DropdownMenuItem disabled>Loading branches…</DropdownMenuItem>}
             {options.map(name => (
-              <SelectItem key={name} value={name}>
+              <DropdownMenuItem key={name} onClick={() => handleChange(name)}>
+                <Check className={cn('h-3 w-3', selected === name ? 'opacity-100' : 'opacity-0')} />
                 {name}
-              </SelectItem>
+              </DropdownMenuItem>
             ))}
-          </SelectContent>
-        </Select>
-      )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
       {update.isError && (
         <p className="text-xs text-destructive">{(update.error as Error).message}</p>
       )}
@@ -364,7 +360,7 @@ function BranchSection({ mission }: { mission: MissionDetailDto }) {
   // The DTO carries only the active (queued/claimed/launching) execution requests.
   const isExecuting = mission.executionRequests.length > 0;
   const actionLabels: Record<BranchActionName, string> = {
-    integrate: `Update from ${parent} & merge`,
+    integrate: `Merge in ${parent}`,
     commit: 'Commit changes',
     push_parent: `Push ${parent}`,
     publish: 'Publish'
@@ -433,17 +429,10 @@ function BranchSection({ mission }: { mission: MissionDetailDto }) {
             <BranchCopyMenu branch={branch} />
           </div>
 
-          {/* Identity: the branch name, with its parent beneath it. */}
+          {/* Identity: the branch name (click to pin a different branch), with its
+              parent beneath it. */}
           <div className="space-y-1">
-            <div className="flex min-w-0 items-center gap-2">
-              <GitBranch className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <code
-                className="min-w-0 flex-1 truncate text-[0.8rem] font-medium"
-                title={branch.name}
-              >
-                {branch.name}
-              </code>
-            </div>
+            <BranchSelector mission={mission} />
             <div className="flex min-w-0 items-center gap-1.5 pl-6 text-xs text-muted-foreground">
               <span aria-hidden>↳</span>
               <span className="shrink-0">from</span>
@@ -452,8 +441,6 @@ function BranchSection({ mission }: { mission: MissionDetailDto }) {
               </code>
             </div>
           </div>
-
-          <BranchSelector mission={mission} />
 
           {showCommit && (
             <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2">
@@ -487,14 +474,25 @@ function BranchSection({ mission }: { mission: MissionDetailDto }) {
           {hasActions && (
             <div className="flex flex-wrap gap-2 border-t border-border/60 pt-2">
               {showIntegrate && (
-                <Button
-                  variant="primary"
-                  disabled={branchAction.isPending}
-                  onClick={() => handleAction('integrate')}
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Update from {parent} &amp; merge
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <span className="inline-flex">
+                        <Button
+                          variant="primary"
+                          disabled={branchAction.isPending}
+                          onClick={() => handleAction('integrate')}
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                          Merge in {parent}
+                        </Button>
+                      </span>
+                    }
+                  />
+                  <TooltipContent>
+                    This will merge the {parent} branch into the working branch
+                  </TooltipContent>
+                </Tooltip>
               )}
               {showPushParent && (
                 <Button
@@ -586,7 +584,7 @@ export function MissionPanel({
   onProjectChanged?: (nextProjectId: string) => void;
 }) {
   const navigate = useNavigate();
-  const missionQ = useMission(missionId);
+  const missionQ = useMission(missionId, { refetchBranchState: true });
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollIdleTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
