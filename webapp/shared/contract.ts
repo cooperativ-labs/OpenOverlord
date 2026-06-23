@@ -341,6 +341,13 @@ export interface TicketBranchDto {
   worktreePath: string | null;
   status: TicketBranchStatus;
   /**
+   * Whether the branch's worktree has uncommitted changes (`git status
+   * --porcelain` is non-empty in the worktree). `false` when no worktree exists
+   * or the branch is still `pending`. The ticket panel uses this to require a
+   * commit before the "Update from parent & merge" action is offered.
+   */
+  dirty: boolean;
+  /**
    * A user-pinned branch chosen in the ticket panel to override the planner's
    * default selection. When set, the next launch prepares/uses this branch
    * instead of `name`. `null` means the system chooses automatically. The
@@ -622,14 +629,21 @@ export interface UpdateProjectBody {
  * - `integrate`   — Action A: merge the parent into the branch inside its worktree
  *                   (conflicts left there for IDE resolution), then advance the
  *                   parent to the branch via a `--no-ff` merge commit.
+ * - `commit`      — stage and commit all changes in the branch's worktree
+ *                   (`git add -A` then `git commit -m <message>`). Requires a
+ *                   non-empty `message`.
  * - `push_parent` — Action B: push the merged parent to `origin`.
  * - `publish`     — push the branch itself to `origin` (created → published).
  *
  * On failure the response carries a typed `code` (e.g. `BRANCH_MERGE_CONFLICT`,
- * `BRANCH_BUSY_EXECUTING`, `BRANCH_DIRTY`, `BRANCH_PUSH_FAILED`).
+ * `BRANCH_BUSY_EXECUTING`, `BRANCH_DIRTY`, `BRANCH_PUSH_FAILED`,
+ * `BRANCH_COMMIT_MESSAGE_REQUIRED`, `BRANCH_NOTHING_TO_COMMIT`,
+ * `BRANCH_COMMIT_FAILED`).
  */
 export interface BranchActionBody {
-  action: 'integrate' | 'push_parent' | 'publish';
+  action: 'integrate' | 'commit' | 'push_parent' | 'publish';
+  /** Commit message for `action: 'commit'` (required and non-empty). */
+  message?: string;
   /** Proceed even if an objective is executing on the branch (re-checked server-side). */
   confirmBusy?: boolean;
 }

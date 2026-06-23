@@ -641,11 +641,13 @@ function ticketBranchDto(row: TicketRow): TicketBranchDto {
   const overrideBranch = row.branch_override?.trim() || null;
   const name = row.active_branch?.trim();
   if (name) {
+    const worktreePath = ticketWorktreePath({ worktreeRoot, projectSlug, branch: name });
     return {
       name,
       baseBranch,
-      worktreePath: ticketWorktreePath({ worktreeRoot, projectSlug, branch: name }),
+      worktreePath,
       status: deriveBranchStatus({ projectId: row.project_id, branchName: name, baseBranch }),
+      dirty: existsSync(worktreePath) && worktreeIsDirty(worktreePath),
       overrideBranch
     };
   }
@@ -668,6 +670,8 @@ function ticketBranchDto(row: TicketRow): TicketBranchDto {
         ? preview.worktreePath
         : ticketWorktreePath({ worktreeRoot, projectSlug, branch: previewName }),
     status: 'pending',
+    // No branch/worktree exists yet, so there is nothing to be dirty.
+    dirty: false,
     overrideBranch
   };
 }
@@ -704,7 +708,7 @@ function runGitResult(cwd: string, args: string[]): GitRun {
   }
 }
 
-export type BranchActionName = 'integrate' | 'push_parent' | 'publish';
+export type BranchActionName = 'integrate' | 'commit' | 'push_parent' | 'publish';
 
 interface BranchActionContext {
   ticketId: string;
@@ -901,6 +905,68 @@ function integrateBranch(ctx: BranchActionContext): string {
   return `Merged ${baseBranch} into ${branchName} and advanced ${baseBranch} locally.`;
 }
 
+// Commit — stage and commit all changes in the branch's own worktree. This is the
+// "commit changes first" step the merge flow requires: the integrate action refuses
+// a dirty worktree, so the panel offers this commit affordance while the branch has
+// uncommitted work. Runs entirely in the branch's worktree (never the parent).
+function commitBranch(ctx: BranchActionContext, message: string): string {
+  const { branchName, worktreePath } = ctx;
+  const trimmed = message.trim();
+  if (!trimmed) {
+    throw new ApiError(
+      400,
+      'A commit message is required.',
+      undefined,
+      'BRANCH_COMMIT_MESSAGE_REQUIRED'
+    );
+  }
+  if (!existsSync(worktreePath)) {
+    throw new ApiError(
+      409,
+      `The branch's worktree is not present at ${worktreePath}.`,
+      undefined,
+      'BRANCH_NO_WORKTREE'
+    );
+  }
+  const wtBranch = runGitResult(worktreePath, ['branch', '--show-current']);
+  if (!wtBranch.ok || wtBranch.stdout !== branchName) {
+    throw new ApiError(
+      409,
+      `The worktree at ${worktreePath} is not checked out on ${branchName}.`,
+      undefined,
+      'BRANCH_WORKTREE_MISMATCH'
+    );
+  }
+  if (!worktreeIsDirty(worktreePath)) {
+    throw new ApiError(
+      409,
+      'There are no uncommitted changes in the branch worktree to commit.',
+      worktreePath,
+      'BRANCH_NOTHING_TO_COMMIT'
+    );
+  }
+
+  const staged = runGitResult(worktreePath, ['add', '-A']);
+  if (!staged.ok) {
+    throw new ApiError(
+      500,
+      `Failed to stage changes in ${worktreePath}.`,
+      staged.stderr || staged.stdout,
+      'BRANCH_COMMIT_FAILED'
+    );
+  }
+  const commit = runGitResult(worktreePath, ['commit', '-m', trimmed]);
+  if (!commit.ok) {
+    throw new ApiError(
+      500,
+      `Failed to commit changes on ${branchName}.`,
+      commit.stderr || commit.stdout,
+      'BRANCH_COMMIT_FAILED'
+    );
+  }
+  return `Committed changes on ${branchName}.`;
+}
+
 // Action B — publish the merged parent to origin. Once pushed, the branch has
 // truly landed (status → merged), so its worktree is no longer needed; we remove
 // it automatically (best-effort, only when clean) to keep the worktree list tidy
@@ -985,10 +1051,15 @@ const recordBranchActionActivity = db.transaction((ctx: BranchActionContext, sum
 // success do we record the activity + realtime change in a single transaction.
 export function performBranchAction(
   ticketRef: string,
-  body: { action?: unknown; confirmBusy?: unknown }
+  body: { action?: unknown; message?: unknown; confirmBusy?: unknown }
 ): TicketDetailDto {
   const action = String(body.action ?? '');
-  if (action !== 'integrate' && action !== 'push_parent' && action !== 'publish') {
+  if (
+    action !== 'integrate' &&
+    action !== 'commit' &&
+    action !== 'push_parent' &&
+    action !== 'publish'
+  ) {
     throw new ApiError(400, 'Invalid branch action.');
   }
   const ctx = loadBranchActionContext(ticketRef);
@@ -1004,9 +1075,11 @@ export function performBranchAction(
   const summary =
     action === 'integrate'
       ? integrateBranch(ctx)
-      : action === 'push_parent'
-        ? pushParent(ctx)
-        : publishBranch(ctx);
+      : action === 'commit'
+        ? commitBranch(ctx, typeof body.message === 'string' ? body.message : '')
+        : action === 'push_parent'
+          ? pushParent(ctx)
+          : publishBranch(ctx);
 
   recordBranchActionActivity(ctx, summary);
   return getTicketDetail(ctx.ticketId);

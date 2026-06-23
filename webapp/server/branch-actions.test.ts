@@ -126,6 +126,62 @@ describe('branch actions', () => {
     assert.equal(status.includes('a.txt'), true);
   });
 
+  it('commit stages and commits a dirty worktree, clearing the dirty flag', async () => {
+    const { worktreeRoot, api, runner, primary } = await setup();
+    const project = api.createProject({ name: 'Commit Test' });
+    api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
+    const ticket = api.createTicket({ projectId: project.id, firstObjective: 'Work' });
+
+    const branchName = 'feat-commit-1';
+    const worktreePath = path.join(worktreeRoot, project.slug, branchLeaf(branchName));
+    git(primary, ['worktree', 'add', '-q', '-b', branchName, worktreePath, 'main']);
+    // Uncommitted work in the branch worktree.
+    writeFileSync(path.join(worktreePath, 'b.txt'), 'b\n');
+
+    runner.recordBranchPrepared({
+      ticketId: ticket.displayId,
+      payload: { branchName, baseBranch: 'main', worktreePath, action: 'create', cycle: 1 }
+    });
+    assert.equal(api.getTicketDetail(ticket.id).branch?.dirty, true);
+
+    const after = api.performBranchAction(ticket.id, {
+      action: 'commit',
+      message: 'Add b.txt'
+    });
+    assert.equal(after.branch?.dirty, false);
+    // The change landed as a commit on the branch.
+    assert.equal(git(worktreePath, ['log', '-1', '--pretty=%s']), 'Add b.txt');
+    assert.equal(git(worktreePath, ['status', '--porcelain']), '');
+  });
+
+  it('commit rejects an empty message and a clean worktree', async () => {
+    const { worktreeRoot, api, runner, primary } = await setup();
+    const project = api.createProject({ name: 'Commit Guard Test' });
+    api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
+    const ticket = api.createTicket({ projectId: project.id, firstObjective: 'Work' });
+
+    const branchName = 'feat-commit-2';
+    const worktreePath = path.join(worktreeRoot, project.slug, branchLeaf(branchName));
+    git(primary, ['worktree', 'add', '-q', '-b', branchName, worktreePath, 'main']);
+    writeFileSync(path.join(worktreePath, 'b.txt'), 'b\n');
+    runner.recordBranchPrepared({
+      ticketId: ticket.displayId,
+      payload: { branchName, baseBranch: 'main', worktreePath, action: 'create', cycle: 1 }
+    });
+
+    assert.throws(
+      () => api.performBranchAction(ticket.id, { action: 'commit', message: '   ' }),
+      (err: unknown) => (err as { code?: string }).code === 'BRANCH_COMMIT_MESSAGE_REQUIRED'
+    );
+
+    // Commit it, then a second commit attempt finds nothing to commit.
+    api.performBranchAction(ticket.id, { action: 'commit', message: 'Add b.txt' });
+    assert.throws(
+      () => api.performBranchAction(ticket.id, { action: 'commit', message: 'again' }),
+      (err: unknown) => (err as { code?: string }).code === 'BRANCH_NOTHING_TO_COMMIT'
+    );
+  });
+
   it('publish pushes the branch itself (created → published)', async () => {
     const { worktreeRoot, api, runner, primary } = await setup();
     const project = api.createProject({ name: 'Publish Test' });
