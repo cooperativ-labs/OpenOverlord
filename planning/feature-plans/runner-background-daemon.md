@@ -1,7 +1,7 @@
 # Runner Background Daemon — run the poller without occupying a terminal
 
-**Status:** Proposal (planning only — no code in this ticket)
-**Ticket:** coo:4 — *Automate job launch on run button click*
+**Status:** Proposal (planning only — no code in this mission)
+**Mission:** coo:4 — *Automate job launch on run button click*
 **Contract baseline:** `0.5-draft`
 **Layer:** Runner Layer (`runner`) + CLI Layer (`cli`)
 **Reference spec:** [`cli/docs/04-runner-and-launch-execution.md`](../../cli/docs/04-runner-and-launch-execution.md)
@@ -120,7 +120,7 @@ windows.
 ### 4.4 Logging
 
 Redirect the child's stdout/stderr to the log file so the "Launched <agent> for
-<ticket>" / failure lines (`cli/src/commands.ts:811-824`) are captured. Add
+<mission>" / failure lines (`cli/src/commands.ts:811-824`) are captured. Add
 `ovld runner logs [--follow]` (thin `tail -f` over the log) so the user can check
 in without a foreground window. Optional simple size-cap rotation (truncate at N
 MB) to avoid unbounded growth.

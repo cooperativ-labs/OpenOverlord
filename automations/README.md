@@ -23,7 +23,7 @@ copy [`.env.prod.example`](../.env.prod.example) to `.env.prod` for packaged bui
 Gemini-backed automations. When the key is missing or a call fails, automations return `null` and
 callers should use deterministic local fallbacks (see `deriveTitleFromInstructionText`).
 
-When enabled, ticket and objective titles are refined asynchronously with Gemini
+When enabled, mission and objective titles are refined asynchronously with Gemini
 after an immediate local title is set. Title updates stream through the
 `entity_changes` feed so the web board refreshes live.
 
@@ -38,13 +38,13 @@ Maps to the **Automations Layer** (`automations`) in [`CONTRACT.md`](../CONTRACT
 - Reference summarization automations
 - Fire-and-forget helpers that persist results through caller-supplied store interfaces
 
-It does **not** own database schema, ticket/objective lifecycle, or agent protocol
+It does **not** own database schema, mission/objective lifecycle, or agent protocol
 behavior.
 
 ### Documentation
 
 - [01 — Automations Overview](docs/01-automations-overview.md): automation model, Gemini setup, and extension guide
-- [Worktree & Branch Automation](../planning/feature-plans/branching/worktree-branch-automation.md): proposed plan for per-ticket branch + worktree automation (one branch/worktree per ticket under `~/.ovld/worktrees`, reuse across objectives, merged-branch suffix, and a ticket-panel branch section)
+- [Worktree & Branch Automation](../planning/feature-plans/branching/worktree-branch-automation.md): proposed plan for per-mission branch + worktree automation (one branch/worktree per mission under `~/.ovld/worktrees`, reuse across objectives, merged-branch suffix, and a mission-panel branch section)
 - [Test Plan](docs/testing.md): unit coverage for title derivation, fallbacks, and registry behavior
 
 ### Code & Tests
@@ -59,7 +59,7 @@ Inside `title-summarizer/`:
 
 - `config.ts` / `gemini-client.ts` — Gemini provider configuration and client lifecycle
 - `tools/summarize-text.ts` — generic Gemini summarization
-- `tools/summarize-objective-title.ts` — ticket-style objective title summarization
+- `tools/summarize-objective-title.ts` — mission-style objective title summarization
 - `objectives/generate-objective-title.ts` — `generateObjectiveTitle` and `generateAndSetObjectiveTitle`
 - `helpers/title.ts` — deterministic local title derivation
 

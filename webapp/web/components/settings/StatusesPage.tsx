@@ -346,7 +346,7 @@ export function StatusesPage() {
       <div className="rounded-lg border p-4">
         <h3 className="text-sm font-medium">Add status</h3>
         <p className="mt-1 text-xs text-muted-foreground">
-          New tickets use the default draft status unless another is chosen at creation time.
+          New missions use the default draft status unless another is chosen at creation time.
         </p>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <div className="grid min-w-[12rem] gap-1.5">
@@ -404,7 +404,7 @@ export function StatusesPage() {
           <DialogHeader>
             <DialogTitle>Delete status</DialogTitle>
             <DialogDescription>
-              Remove &ldquo;{deleteTarget?.name}&rdquo; from this workspace? Tickets must be moved
+              Remove &ldquo;{deleteTarget?.name}&rdquo; from this workspace? Missions must be moved
               off this column first.
             </DialogDescription>
           </DialogHeader>

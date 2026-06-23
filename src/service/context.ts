@@ -53,16 +53,16 @@ export function createServiceContext({
   };
 }
 
-export function resolveTicketId(
+export function resolveMissionId(
   ctx: ServiceContext,
-  ticketRef: string
+  missionRef: string
 ): { id: string; displayId: string; projectId: string } {
   const byId = ctx.db
     .prepare(
-      `SELECT id, display_id, project_id FROM tickets
+      `SELECT id, display_id, project_id FROM missions
        WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
     )
-    .get(ticketRef, ctx.workspace.id) as
+    .get(missionRef, ctx.workspace.id) as
     | { id: string; display_id: string; project_id: string }
     | undefined;
 
@@ -72,10 +72,10 @@ export function resolveTicketId(
 
   const byDisplay = ctx.db
     .prepare(
-      `SELECT id, display_id, project_id FROM tickets
+      `SELECT id, display_id, project_id FROM missions
        WHERE display_id = ? AND workspace_id = ? AND deleted_at IS NULL`
     )
-    .get(ticketRef, ctx.workspace.id) as
+    .get(missionRef, ctx.workspace.id) as
     | { id: string; display_id: string; project_id: string }
     | undefined;
 
@@ -87,7 +87,7 @@ export function resolveTicketId(
     };
   }
 
-  throw new ServiceError(`Ticket not found: ${ticketRef}`, 'ticket_not_found', 404);
+  throw new ServiceError(`Mission not found: ${missionRef}`, 'mission_not_found', 404);
 }
 
 export function resolveProjectId(ctx: ServiceContext, projectRef: string): string {

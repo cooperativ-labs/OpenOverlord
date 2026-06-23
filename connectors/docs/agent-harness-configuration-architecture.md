@@ -74,8 +74,8 @@ erDiagram
   workspace_users ||--o{ project_user_preferences : stores
   workspace_users ||--o{ workspace_user_execution_targets : configures
   execution_targets ||--o{ workspace_user_execution_targets : is_used_by
-  projects ||--o{ tickets : owns
-  tickets ||--o{ objectives : contains
+  projects ||--o{ missions : owns
+  missions ||--o{ objectives : contains
   objectives ||--o{ execution_requests : queues
 
   workspaces {

@@ -78,7 +78,7 @@ export function ProjectCreatorModal({ open, onOpenChange }: ProjectCreatorModalP
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>New project</DialogTitle>
-          <DialogDescription>Create a project to organize tickets and tasks.</DialogDescription>
+          <DialogDescription>Create a project to organize missions and tasks.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">

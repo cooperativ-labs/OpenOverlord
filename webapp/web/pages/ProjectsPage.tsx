@@ -34,7 +34,7 @@ export function ProjectsPage() {
       {projects.data && projects.data.length === 0 && (
         <EmptyState
           title="No projects yet"
-          hint="Create your first project to start adding tickets and objectives. The CLI can create them too — they'll appear here instantly."
+          hint="Create your first project to start adding missions and objectives. The CLI can create them too — they'll appear here instantly."
           action={
             <Button variant="primary" onClick={() => setModalOpen(true)}>
               + New project
@@ -69,7 +69,7 @@ export function ProjectsPage() {
                   {p.description || 'No description'}
                 </p>
                 <div className="mt-3 text-xs text-[var(--color-ink-dim)]">
-                  {p.ticketCount} ticket{p.ticketCount === 1 ? '' : 's'}
+                  {p.missionCount} mission{p.missionCount === 1 ? '' : 's'}
                 </div>
               </Card>
             </Link>

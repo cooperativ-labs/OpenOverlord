@@ -56,7 +56,7 @@ test('runProtocolCommand rejects oversized inline JSON before calling the backen
         args: [
           '--session-key',
           'sess_test',
-          '--ticket-id',
+          '--mission-id',
           'coo:1',
           '--summary',
           'Done.',

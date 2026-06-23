@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
-import { resolveProjectId, resolveTicketId } from './context.js';
+import { resolveProjectId, resolveMissionId } from './context.js';
 import { getDevice } from './devices.js';
 import { ServiceError } from './errors.js';
 import { assertPrimaryResourceConnected } from './projects.js';
@@ -15,8 +15,8 @@ const LAUNCHABLE_OBJECTIVE_STATES = ['draft', 'submitted', 'launching'] as const
 export type ExecutionRequestSummary = {
   id: string;
   projectId: string;
-  ticketId: string;
-  ticketDisplayId: string;
+  missionId: string;
+  missionDisplayId: string;
   objectiveId: string;
   objectiveTitle: string;
   objectiveState: string;
@@ -49,7 +49,7 @@ function parseJsonObject(raw: string): Record<string, unknown> {
 function rowToSummary(row: {
   id: string;
   project_id: string;
-  ticket_id: string;
+  mission_id: string;
   display_id: string;
   objective_id: string;
   title: string;
@@ -71,8 +71,8 @@ function rowToSummary(row: {
   return {
     id: row.id,
     projectId: row.project_id,
-    ticketId: row.ticket_id,
-    ticketDisplayId: row.display_id,
+    missionId: row.mission_id,
+    missionDisplayId: row.display_id,
     objectiveId: row.objective_id,
     objectiveTitle: row.title,
     objectiveState: row.state,
@@ -103,7 +103,7 @@ function getExecutionRequest({
     .prepare(
       `SELECT er.*, t.display_id, o.title, o.state
        FROM execution_requests er
-       JOIN tickets t ON t.id = er.ticket_id
+       JOIN missions t ON t.id = er.mission_id
        JOIN objectives o ON o.id = er.objective_id
        WHERE er.id = ? AND er.workspace_id = ? AND er.deleted_at IS NULL`
     )
@@ -146,7 +146,7 @@ function resolveWorkingDirectory({
 
 export function createExecutionRequest({
   ctx,
-  ticketId,
+  missionId,
   objectiveId,
   requestedAgent,
   requestedModel,
@@ -157,7 +157,7 @@ export function createExecutionRequest({
   workingDirectory
 }: {
   ctx: ServiceContext;
-  ticketId: string;
+  missionId: string;
   objectiveId?: string | null;
   requestedAgent?: string | null;
   requestedModel?: string | null;
@@ -167,7 +167,7 @@ export function createExecutionRequest({
   idempotencyKey?: string | null;
   workingDirectory?: string | null;
 }): ExecutionRequestSummary {
-  const ticket = resolveTicketId(ctx, ticketId);
+  const mission = resolveMissionId(ctx, missionId);
   type LaunchableObjectiveRow = {
     id: string;
     state: string;
@@ -179,20 +179,20 @@ export function createExecutionRequest({
     ? (ctx.db
         .prepare(
           `SELECT id, state, assigned_agent, model, reasoning_effort
-             FROM objectives WHERE id = ? AND ticket_id = ?`
+             FROM objectives WHERE id = ? AND mission_id = ?`
         )
-        .get(objectiveId, ticket.id) as LaunchableObjectiveRow | undefined)
+        .get(objectiveId, mission.id) as LaunchableObjectiveRow | undefined)
     : (ctx.db
         .prepare(
           `SELECT id, state, assigned_agent, model, reasoning_effort FROM objectives
-           WHERE ticket_id = ? AND state IN ('draft', 'submitted', 'launching')
+           WHERE mission_id = ? AND state IN ('draft', 'submitted', 'launching')
            ORDER BY position ASC LIMIT 1`
         )
-        .get(ticket.id) as LaunchableObjectiveRow | undefined);
+        .get(mission.id) as LaunchableObjectiveRow | undefined);
 
   if (!objective) {
     throw new ServiceError(
-      'No launchable objective found for ticket',
+      'No launchable objective found for mission',
       'no_launchable_objective',
       409
     );
@@ -235,7 +235,7 @@ export function createExecutionRequest({
 
   const now = nowIso();
   const id = newId();
-  const resolvedProjectId = resolveProjectId(ctx, ticket.projectId);
+  const resolvedProjectId = resolveProjectId(ctx, mission.projectId);
   const { workingDirectory: resolvedDirectory, resourceId } = resolveWorkingDirectory({
     ctx,
     projectId: resolvedProjectId,
@@ -246,7 +246,7 @@ export function createExecutionRequest({
     ctx.db
       .prepare(
         `INSERT INTO execution_requests
-           (id, workspace_id, project_id, ticket_id, objective_id, requested_agent,
+           (id, workspace_id, project_id, mission_id, objective_id, requested_agent,
             requested_model, requested_reasoning_effort, launch_mode, launch_flags_json,
             target_kind, requested_source, idempotency_key, status, requested_by_workspace_user_id,
             resolved_resource_id, resolved_working_directory, created_at, updated_at, revision)
@@ -256,7 +256,7 @@ export function createExecutionRequest({
         id,
         ctx.workspace.id,
         resolvedProjectId,
-        ticket.id,
+        mission.id,
         objective.id,
         resolvedAgent,
         resolvedModel,
@@ -273,8 +273,8 @@ export function createExecutionRequest({
 
     ctx.db
       .prepare(
-        `INSERT INTO ticket_events
-           (id, workspace_id, project_id, ticket_id, objective_id,
+        `INSERT INTO mission_events
+           (id, workspace_id, project_id, mission_id, objective_id,
             type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
          VALUES (?, ?, ?, ?, ?, 'execution_requested', 'execute', ?, ?, ?, ?, ?)`
       )
@@ -282,7 +282,7 @@ export function createExecutionRequest({
         newId(),
         ctx.workspace.id,
         resolvedProjectId,
-        ticket.id,
+        mission.id,
         objective.id,
         `Queued execution request for ${resolvedAgent ?? 'default agent'}.`,
         JSON.stringify({ executionRequestId: id, requestedSource }),
@@ -298,7 +298,7 @@ export function createExecutionRequest({
       operation: 'insert',
       entityRevision: 1,
       projectId: resolvedProjectId,
-      ticketId: ticket.id,
+      missionId: mission.id,
       objectiveId: objective.id
     });
   });
@@ -334,7 +334,7 @@ export function listExecutionRequests({
     .prepare(
       `SELECT er.*, t.display_id, o.title, o.state
        FROM execution_requests er
-       JOIN tickets t ON t.id = er.ticket_id
+       JOIN missions t ON t.id = er.mission_id
        JOIN objectives o ON o.id = er.objective_id
        WHERE ${conditions.join(' AND ')}
        ORDER BY er.created_at ASC

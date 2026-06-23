@@ -1,6 +1,6 @@
-Connect this session to another Overlord ticket.
+Connect this session to another Overlord mission.
 
-Use the text after `/connect` as the ticket ID.
+Use the text after `/connect` as the mission ID.
 
 Run:
-`ovld protocol connect --ticket-id <ticketId>`
+`ovld protocol connect --mission-id <missionId>`

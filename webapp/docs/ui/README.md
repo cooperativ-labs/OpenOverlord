@@ -6,8 +6,8 @@ realtime boundary owned by the [webapp module](../../README.md) (contract
 component `rest`).
 
 These documents describe the **ideal** UI in detail. They are design specs, not
-implementation — with one exception: [03 — Ticket Detail](03-ticket-detail.md) now
-also carries an **As-built** section that documents how individual tickets are
+implementation — with one exception: [03 — Mission Detail](03-mission-detail.md) now
+also carries an **As-built** section that documents how individual missions are
 actually presented in the first shipped slice and the deviations from this spec
 that need ratifying. They assume the stack already recommended for this module —
 **Vite + React + TypeScript + TanStack Router + TanStack Query + Serwist** (see
@@ -66,8 +66,8 @@ gating, acceptance criteria).
 | --- | --- | --- |
 | 00 | [Structure & Information Architecture](00-structure-and-information-architecture.md) | App shell, navigation, route map, realtime model, design system, capability gating, cross-cutting patterns |
 | 01 | [Projects & Project Settings](01-projects-and-project-settings.md) | Project switcher, project list, project settings, resource directories |
-| 02 | [Ticket Board](02-ticket-board.md) | Kanban + list board, filters, search, create-ticket, quick run |
-| 03 | [Ticket Detail](03-ticket-detail.md) | The core screen: target header, objectives, editor, activity timeline, context, artifacts — **plus an As-built section documenting the shipped single-column ticket presentation and the deviations to ratify** |
+| 02 | [Mission Board](02-mission-board.md) | Kanban + list board, filters, search, create-mission, quick run |
+| 03 | [Mission Detail](03-mission-detail.md) | The core screen: target header, objectives, editor, activity timeline, context, artifacts — **plus an As-built section documenting the shipped single-column mission presentation and the deviations to ratify** |
 | 04 | [Execution & Runner](04-execution-and-runner.md) | Run controls, execution-request queue, runner status, approval gates |
 | 05 | [Review & Delivery](05-review-and-delivery.md) | Delivery summary, artifacts, change-rationale coverage, review actions |
 | 06 | [Current Changes](06-current-changes.md) | Read-only VCS status, diffs, rationale linking |

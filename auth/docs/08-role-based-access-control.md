@@ -34,7 +34,7 @@ Requirements:
 - Can create, invite, disable, remove, and update users.
 - Can assign and revoke roles for other users.
 - Can configure instance-level settings, connectors, auth settings, and execution defaults.
-- Can manage projects, tickets, objectives, sessions, events, artifacts, review records, execution requests, and tokens.
+- Can manage projects, missions, objectives, sessions, events, artifacts, review records, execution requests, and tokens.
 - At least one active administrator should exist when auth is enabled.
 
 ### MEMBER
@@ -44,7 +44,7 @@ Requirements:
 Requirements:
 
 - Can create, read, update, and participate in project work by default.
-- Can create and manage tickets, objectives, sessions, events, review artifacts, and execution requests needed for normal agent workflows.
+- Can create and manage missions, objectives, sessions, events, review artifacts, and execution requests needed for normal agent workflows.
 - Can create, list, rotate, rename, and revoke that user's own `USER_TOKEN` credentials.
 - Cannot create, disable, delete, or remove other users.
 - Cannot assign or revoke roles.
@@ -75,10 +75,10 @@ project:create
 project:read
 project:update
 project:delete
-ticket:create
-ticket:read
-ticket:update
-ticket:delete
+mission:create
+mission:read
+mission:update
+mission:delete
 objective:submit
 session:attach
 event:create
@@ -104,7 +104,7 @@ connector:configure
 
 Requirements:
 
-- Support wildcard expansion such as `ticket:*` and `*`.
+- Support wildcard expansion such as `mission:*` and `*`.
 - Support self-scoped permissions such as `user_token:self:*`.
 - Support resource/context-aware checks, such as project membership or ownership, even if the first implementation only uses instance-level roles.
 - Keep permission names stable enough for config files, API checks, audit messages, and future docs.
@@ -113,12 +113,12 @@ Requirements:
 CRUD groups can be generated or declared for common resources:
 
 ```toml
-[permission_groups.ticket_crud]
+[permission_groups.mission_crud]
 grants = [
-  "ticket:create",
-  "ticket:read",
-  "ticket:update",
-  "ticket:delete"
+  "mission:create",
+  "mission:read",
+  "mission:update",
+  "mission:delete"
 ]
 ```
 
@@ -139,7 +139,7 @@ grants = ["*"]
 description = "Standard user or persistent agent account"
 grants = [
   "project:read",
-  "ticket:*",
+  "mission:*",
   "objective:*",
   "session:*",
   "event:create",

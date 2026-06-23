@@ -18,7 +18,7 @@ Connector Core defines the durable protocol behavior every agent connector must
 follow:
 
 - attach before execution work
-- treat ticket context as authoritative
+- treat mission context as authoritative
 - update or heartbeat while working
 - ask exactly one blocking question and stop
 - deliver last with artifacts and change rationales
@@ -45,5 +45,5 @@ When building a Connector Plugin, materialize this core into the installable plu
 
 ### Files
 
-- `overlord-ticket/SKILL.md` — shared ticket lifecycle workflow.
-- `overlord-ticket/reference/` — shared protocol, context, device, MCP/API, and shell-escaping references.
+- `overlord-mission/SKILL.md` — shared mission lifecycle workflow.
+- `overlord-mission/reference/` — shared protocol, context, device, MCP/API, and shell-escaping references.

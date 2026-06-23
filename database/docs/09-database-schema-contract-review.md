@@ -3,7 +3,7 @@
 A review of [`09-database-schema-contract.md`](09-database-schema-contract.md) read against the rest of the
 feature plans (`01`–`08`, `web-app.md`) and the root `README.md`.
 
-The goal of this review is the one stated on the ticket: surface **issues/problems**, **improvements**,
+The goal of this review is the one stated on the mission: surface **issues/problems**, **improvements**,
 and **feature suggestions** that make the schema both more *developer friendly* and more *extensible* for
 an open-source audience.
 
@@ -14,7 +14,7 @@ The contract is strong and unusually thorough for a first pass. The instincts ar
 - Logical-type abstraction over SQLite/Postgres instead of one concrete dialect.
 - A single canonical change feed (`entity_changes`) as the portable basis for realtime, REST polling, and sync.
 - Soft deletes + `revision` + stable string IDs as the foundation for sync and export/import.
-- Append-only history (`ticket_events`, `deliveries`, `audit_log`) separated from mutable domain state.
+- Append-only history (`mission_events`, `deliveries`, `audit_log`) separated from mutable domain state.
 - Services-own-transitions / DB-owns-shape as the layering rule.
 - A sensible first-migration slice and a "no native enums in the contract" portability stance.
 
@@ -63,7 +63,7 @@ indexes built on those columns stop being portable or even internally consistent
 Recommendation: pick **one** canonical SQLite representation for the whole contract (recommended:
 ISO-8601 UTC, `YYYY-MM-DDTHH:MM:SS.SSSZ`, fixed precision) and make it a hard rule, not an option.
 Mixed encodings are a silent portability/ordering bug generator across `updated_at`-ordered indexes
-(`tickets`, `objectives`, `projects`, `entity_changes`, etc.).
+(`missions`, `objectives`, `projects`, `entity_changes`, etc.).
 
 ### C3. `role_assignments` "unique active assignment" is not actually enforced for instance-level roles
 The unique index is `(workspace_id, workspace_user_id, role_key, resource_type, resource_id)` and
@@ -85,7 +85,7 @@ appears.
 
 ### C4. `deliveries.session_id` (NOT NULL) contradicts the `record-work` protocol command
 `deliveries.session_id` is required, and `changed_files.session_id` is also `NOT NULL`. But the agent
-protocol (`03`) and the skill both define `record-work` as creating a **review ticket with a completed
+protocol (`03`) and the skill both define `record-work` as creating a **review mission with a completed
 objective and a delivery record for work done in chat with _no attached session_**. As specified, a
 `record-work` delivery cannot be inserted.
 
@@ -144,14 +144,14 @@ tombstone. Keep `status` for non-terminal operational states only (`active`, `ar
 Document the rule "soft delete = `deleted_at`, never a status value."
 
 ### M2. Tenant/denormalization invariants are unstated
-Almost every table carries a denormalized `workspace_id` (and often `project_id`, `ticket_id`,
+Almost every table carries a denormalized `workspace_id` (and often `project_id`, `mission_id`,
 `status_type`) next to an FK whose parent carries the same column. Nothing requires the denormalized value
-to equal the parent's, so a bug or a malicious write can create a cross-tenant row (`tickets.workspace_id`
+to equal the parent's, so a bug or a malicious write can create a cross-tenant row (`missions.workspace_id`
 ≠ `projects.workspace_id`). For a future multi-tenant/hosted deployment this is a security boundary.
 
 Recommendation: either mandate composite foreign keys (`(workspace_id, project_id)` → `projects
 (workspace_id, id)`), which make cross-tenant references impossible at the DB level, or state an explicit
-service invariant + conformance test. Same applies to the cached `tickets.status_type`: state that it must
+service invariant + conformance test. Same applies to the cached `missions.status_type`: state that it must
 be re-derived (in the same transaction, with an `entity_changes` row) whenever the referenced
 `project_statuses.type` changes, or it will drift.
 
@@ -159,16 +159,16 @@ be re-derived (in the same transaction, with an `entity_changes` row) whenever t
 The same conceptual enums are re-listed in several docs and already disagree:
 - `execution_requests.status` in `09` is `queued/claimed/launching/launched/failed/cleared/cancelled/expired`;
   `04` lists only `queued/claimed/launching/launched/failed/cleared`.
-- Default ticket status **names** (`01`) include `next-up`, but the ticket status **types**
+- Default mission status **names** (`01`) include `next-up`, but the mission status **types**
   (`draft/execute/review/complete/blocked/cancelled`) have no "ready/backlog" type, so `next-up` has no
-  defined `status_type` mapping. (This very ticket is in `next-up`.)
-- Objective `state`, ticket `status_type`, protocol `phase`, `agent_sessions.phase`/`delivery_state`,
+  defined `status_type` mapping. (This very mission is in `next-up`.)
+- Objective `state`, mission `status_type`, protocol `phase`, `agent_sessions.phase`/`delivery_state`,
   `execution_requests.status`, and `worker_jobs.status` are all free-text controlled vocabularies scattered
   across tables.
 
 Recommendation: add a **Controlled Vocabularies appendix** to the contract that is the single source for
 every status/type/kind/phase column, its allowed values, and — where relevant — the legal transitions
-(a small state-transition table for `objectives.state` and ticket `status_type` especially). Resolve the
+(a small state-transition table for `objectives.state` and mission `status_type` especially). Resolve the
 `next-up` → type mapping (either add a `ready` type or document that `next-up` is `status_type='draft'`).
 
 ### M4. Soft-delete + FK + change-feed semantics are under-specified
@@ -196,7 +196,7 @@ Recommendation: state that adapters express these as `CHECK` constraints (both e
 include the canonical CHECK expressions in the contract so SQLite and Postgres enforce them identically.
 
 ### M6. Three overlapping idempotency mechanisms, no layering rule
-There's a generic `idempotency_keys` table, plus `ticket_events.idempotency_key`, plus
+There's a generic `idempotency_keys` table, plus `mission_events.idempotency_key`, plus
 `execution_requests.idempotency_key`. It's unclear when a protocol write uses which, so implementers will
 either double-guard or leave gaps. Also, `idempotency_keys.request_hash` exists but the "same key, different
 body" outcome isn't specified.
@@ -214,8 +214,8 @@ Recommendation: state that delivery coverage aggregates `changed_files` across a
 sessions, and define how `current_diff_state` (`present`/`resolved`/`unavailable`) is reconciled when
 multiple sessions disagree.
 
-### M8. `objectives` reordering vs `UNIQUE active (ticket_id, position)`
-A unique constraint on `(ticket_id, position)` makes naive reordering (swap two positions in two UPDATEs)
+### M8. `objectives` reordering vs `UNIQUE active (mission_id, position)`
+A unique constraint on `(mission_id, position)` makes naive reordering (swap two positions in two UPDATEs)
 violate uniqueness mid-operation; SQLite has no easy deferred unique constraints.
 
 Recommendation: document a safe reorder strategy — gap-based positions (100, 200, 300…), fractional/rational
@@ -223,16 +223,16 @@ positions, or a temporary-offset rewrite — so every adapter reorders the same 
 other `position`/ordering column.
 
 ### M9. No retention / compaction policy for append-only tables
-`ticket_events`, `entity_changes`, `hook_events`, and `audit_log` grow unbounded with no `expires_at` or
+`mission_events`, `entity_changes`, `hook_events`, and `audit_log` grow unbounded with no `expires_at` or
 documented pruning (unlike `idempotency_keys`/`outbox_messages`, which have cleanup boundaries). For a
 long-lived local SQLite file this is real bloat, and pruning `entity_changes` invalidates older cursors.
 
 Recommendation: document a retention/compaction policy and a **minimum-retained-`seq`** contract so sync
 clients know when they must full-resync rather than resume from a now-pruned cursor.
 
-### M10. `ticket_sequences` scope vs the `tickets` unique index disagree
-`ticket_sequences` defaults to `scope_type='workspace'` and the `display_id` format is `<org>:<sequence>`
-(workspace-scoped). But `tickets` enforces `UNIQUE (project_id, sequence_number)` — a *project*-scoped
+### M10. `mission_sequences` scope vs the `missions` unique index disagree
+`mission_sequences` defaults to `scope_type='workspace'` and the `display_id` format is `<org>:<sequence>`
+(workspace-scoped). But `missions` enforces `UNIQUE (project_id, sequence_number)` — a *project*-scoped
 uniqueness on a *workspace*-scoped counter. These don't line up: a workspace counter guarantees
 workspace-wide uniqueness, so the meaningful index is `(workspace_id, sequence_number)`.
 
@@ -249,7 +249,7 @@ Recommendation: align the unique index with the chosen sequence scope (this is a
 - **N2.** `agent_sessions.session_key_prefix` and `user_tokens.token_prefix` are unique per workspace and
   used for lookup-then-verify. Document the prefix length/entropy requirement: long enough to avoid
   collisions (a collision blocks a legitimate insert) but short enough not to leak the secret.
-- **N3.** `tickets.priority` is free text (`low/normal/high/urgent`) but board sort needs an order text
+- **N3.** `missions.priority` is free text (`low/normal/high/urgent`) but board sort needs an order text
   can't provide. Add a documented ordinal (or a `priority_rank` column).
 - **N4.** `audit_log` indexes cover workspace/actor/resource but not `action` or `result`; security queries
   ("all denied `role:assign` this week") will table-scan. Add `(workspace_id, action, created_at)` and
@@ -260,7 +260,7 @@ Recommendation: align the unique index with the chosen sequence scope (this is a
 - **N6.** Attachment byte GC is unspecified: when `objective_attachments` is tombstoned, who deletes the
   bytes in `storage_backend`? Wire this through `outbox_messages` (a `delete_blob` effect) and say so.
 - **N7.** The "all mutable domain tables include `created_at/updated_at/deleted_at/revision`" rule has many
-  intentional exceptions (`ticket_sequences`, `entity_changes`, `idempotency_keys`, `hook_events`,
+  intentional exceptions (`mission_sequences`, `entity_changes`, `idempotency_keys`, `hook_events`,
   `audit_log`, `sync_cursors`, `schema_migrations`, `search_documents`, `shared_context_tags`,
   `outbox_messages`). List the exempt "append-only / operational" tables explicitly so implementers don't
   "fix" them by adding the columns.
@@ -297,7 +297,7 @@ Recommendation: define a namespacing rule (reverse-DNS or `x-<plugin>` key prefi
 
 ### E3. Document the actual extension points
 Several columns are clearly meant to be extended (`entity_changes.entity_type` "domain type, not
-necessarily physical table"; `artifacts.type`; `ticket_events.type`; `outbox_messages.topic`;
+necessarily physical table"; `artifacts.type`; `mission_events.type`; `outbox_messages.topic`;
 RBAC permission names; `workspaces.kind`; `execution_targets.type`). They should be collected into one
 "Extension Points" section that states which vocabularies are open vs closed, how to register custom values,
 and which ones flow through the change feed/outbox so extensions can react.
@@ -361,12 +361,12 @@ soft-delete rule, timestamp encoding, ID format — read once, applies to all 28
    (it matches `<org>:<sequence>` and the runner/CLI ergonomics), but fix M10 so the unique index matches
    the counter scope. If per-project IDs are ever wanted, model it as a *new* counter scope
    (`scope_type='project'`) plus a display format change — a migration, behind the existing
-   `ticket_sequences.scope_type` you already reserved.
+   `mission_sequences.scope_type` you already reserved.
 2. **Treat session keys exactly like tokens (one-time display, hash-only) from day one.** Yes. The schema
    already stores `session_key_hash`/`session_key_prefix`; making them one-time-display from the first
    implementation avoids a later security migration and keeps `agent_sessions` and `user_tokens` symmetric.
 3. **How much of `project_statuses` lives in rows vs config.** Store them in rows even for the local MVP
-   (with a documented default seed, D5). Config-only statuses can't be referenced by `tickets.status_id`
+   (with a documented default seed, D5). Config-only statuses can't be referenced by `missions.status_id`
    FK, can't carry per-project customization, and would make the board/web app a special case. Generate the
    default rows from config at `init`, then treat the rows as the source of truth.
 4. **Adapter migrations directly vs a central compiler.** Central compiler / single schema definition — see

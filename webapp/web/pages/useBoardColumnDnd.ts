@@ -28,11 +28,11 @@ type DndContextProps = {
 
 /**
  * Shared drag-and-drop state machine for the project board's columns. Both the
- * board (`BoardPage`) and the list (`TicketListView`) move tickets between
+ * board (`BoardPage`) and the list (`MissionListView`) move missions between
  * status columns with identical optimistic-override + reorder-mutation logic;
  * this hook is the single source of that behaviour.
  *
- * `columns` is the source-of-truth mapping of status id → ordered ticket ids.
+ * `columns` is the source-of-truth mapping of status id → ordered mission ids.
  * While a drag is in flight the hook keeps an optimistic `override` and exposes
  * it as `displayColumns`; on drop it persists the new order via
  * `useReorderBoardColumn` and reconciles the override once the real data
@@ -99,9 +99,9 @@ export function useBoardColumnDnd({
     (event: DragOverEvent) => {
       const { active, over } = event;
       if (!over) return;
-      const activeTicketId = String(active.id);
+      const activeMissionId = String(active.id);
       const overId = String(over.id);
-      const fromCol = findColumn(activeTicketId);
+      const fromCol = findColumn(activeMissionId);
       const toCol = findColumn(overId);
       if (!fromCol || !toCol || fromCol === toCol) return;
 
@@ -113,8 +113,8 @@ export function useBoardColumnDnd({
         const insertAt = overIndex >= 0 ? overIndex : toItems.length;
         return {
           ...source,
-          [fromCol]: fromItems.filter(id => id !== activeTicketId),
-          [toCol]: [...toItems.slice(0, insertAt), activeTicketId, ...toItems.slice(insertAt)]
+          [fromCol]: fromItems.filter(id => id !== activeMissionId),
+          [toCol]: [...toItems.slice(0, insertAt), activeMissionId, ...toItems.slice(insertAt)]
         };
       });
     },
@@ -162,7 +162,7 @@ export function useBoardColumnDnd({
         projectId,
         statusId: dropColumn,
         statusType: status.type,
-        orderedTicketIds: finalItems
+        orderedMissionIds: finalItems
       });
     },
     [columns, findColumn, override, projectId, reorder, statuses]

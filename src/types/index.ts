@@ -10,10 +10,10 @@
  * Example:
  *
  *   import type { Selectable } from 'kysely';
- *   import type { Tickets } from './db.js';
+ *   import type { Missions } from './db.js';
  *
- *   export type TicketRow = Selectable<Tickets>;
- *   export type ActiveTicket = TicketRow & { deleted_at: null };
+ *   export type MissionRow = Selectable<Missions>;
+ *   export type ActiveMission = MissionRow & { deleted_at: null };
  */
 
 export type { Generated } from './db.js';
@@ -40,9 +40,9 @@ export type {
   SchemaMigrations,
   Session,
   SharedContextEntries,
-  TicketEvents,
-  Tickets,
-  TicketSequences,
+  MissionEvents,
+  Missions,
+  MissionSequences,
   User,
   UserTokens,
   UserTokenScopes,

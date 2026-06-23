@@ -10,13 +10,13 @@ interface ChangeRow {
   entity_id: string;
   operation: EntityChangeDto['operation'];
   project_id: string | null;
-  ticket_id: string | null;
+  mission_id: string | null;
   objective_id: string | null;
   occurred_at: string;
 }
 
 const selectChangesStmt = db.prepare(`
-  SELECT seq, entity_type, entity_id, operation, project_id, ticket_id, objective_id, occurred_at
+  SELECT seq, entity_type, entity_id, operation, project_id, mission_id, objective_id, occurred_at
     FROM entity_changes
    WHERE seq > ?
    ORDER BY seq ASC
@@ -93,7 +93,7 @@ class RealtimeHub {
         entityId: r.entity_id,
         operation: r.operation,
         projectId: r.project_id,
-        ticketId: r.ticket_id,
+        missionId: r.mission_id,
         objectiveId: r.objective_id,
         occurredAt: r.occurred_at
       }));

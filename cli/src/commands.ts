@@ -7,7 +7,7 @@ import {
   rejectOversizedInlineJson,
   requireFlag
 } from './args.js';
-import { type BranchAutomationPayload, prepareTicketBranch } from './branch-preparation.js';
+import { type BranchAutomationPayload, prepareMissionBranch } from './branch-preparation.js';
 import { loadConfig } from './config.js';
 import { CliError } from './errors.js';
 import { launchAgent } from './launch.js';
@@ -96,20 +96,20 @@ function writeFilteredChangedFilesToFlags({
 function applySessionChangedFiles({
   flags,
   workingDirectory,
-  ticketId,
+  missionId,
   subcommand,
   stdin
 }: {
   flags: Record<string, string | true>;
   workingDirectory: string;
-  ticketId: string;
+  missionId: string;
   subcommand: string;
   stdin?: string;
 }): void {
   const noFileChanges =
     subcommand === 'deliver' &&
     (flags['--no-file-changes'] === true || flags['--no-file-changes'] === 'true');
-  const delta = computeRunDelta({ workingDirectory, ticketId });
+  const delta = computeRunDelta({ workingDirectory, missionId });
 
   if (noFileChanges) {
     if (delta.length > 0) {
@@ -131,7 +131,7 @@ function applySessionChangedFiles({
   const merged = subcommand === 'deliver' ? (hasExplicitPayload ? explicit : delta) : explicit;
   const attributable = filterRunAttributableChanges({
     workingDirectory,
-    ticketId,
+    missionId,
     files: merged.map(entry => ({
       filePath: entry.filePath,
       vcsStatus: entry.vcsStatus ?? 'changed'
@@ -211,41 +211,41 @@ async function readWorktreeBranchAutomationEnabled(runtime: CliRuntime): Promise
 
 async function recordBranchPrepared({
   runtime,
-  ticketId,
+  missionId,
   requestId,
   branchAutomation
 }: {
   runtime: CliRuntime;
-  ticketId: string;
+  missionId: string;
   requestId?: string | null;
   branchAutomation: BranchAutomationPayload | null;
 }): Promise<void> {
   if (!branchAutomation) return;
   await runtime.backend.post({
-    path: `/api/tickets/${encodeURIComponent(ticketId)}/branch-prepared`,
+    path: `/api/missions/${encodeURIComponent(missionId)}/branch-prepared`,
     body: { requestId: requestId ?? null, branchAutomation }
   });
 }
 
-function firstObjectiveId(ticket: unknown): string | undefined {
-  const objectives = asRecord(ticket).objectives;
+function firstObjectiveId(mission: unknown): string | undefined {
+  const objectives = asRecord(mission).objectives;
   if (!Array.isArray(objectives)) return undefined;
   const first = objectives[0];
   const id = asRecord(first).id;
   return typeof id === 'string' ? id : undefined;
 }
 
-/** The agent already assigned to an objective on a fetched ticket payload, if any. */
-function objectiveAssignedAgent(ticket: unknown, objectiveId: string): string | undefined {
-  const objectives = asRecord(ticket).objectives;
+/** The agent already assigned to an objective on a fetched mission payload, if any. */
+function objectiveAssignedAgent(mission: unknown, objectiveId: string): string | undefined {
+  const objectives = asRecord(mission).objectives;
   if (!Array.isArray(objectives)) return undefined;
   const match = objectives.find(objective => asRecord(objective).id === objectiveId);
   const agent = asRecord(match).assignedAgent;
   return typeof agent === 'string' && agent.trim() ? agent.trim() : undefined;
 }
 
-function ticketDisplayId(ticket: unknown): string {
-  const record = asRecord(ticket);
+function missionDisplayId(mission: unknown): string {
+  const record = asRecord(mission);
   return typeof record.displayId === 'string'
     ? record.displayId
     : typeof record.id === 'string'
@@ -368,7 +368,7 @@ export async function runProtocolCommand({
   rejectOversizedInlineJson({ flags: parsed.flags });
 
   const workingDirectory = process.cwd();
-  const ticketId = flagValue(parsed.flags, '--ticket-id') ?? parsed.positional[0];
+  const missionId = flagValue(parsed.flags, '--mission-id') ?? parsed.positional[0];
   const flags = Object.fromEntries(parsed.flags);
   const { fileInputs, stdin: protocolStdin } = await resolveProtocolFileInputs({
     flags: parsed.flags,
@@ -376,14 +376,14 @@ export async function runProtocolCommand({
   });
 
   // Session-key cache: when a command that needs a session key is missing the
-  // flag, fall back to the key cached at attach for this (workingDir, ticket).
+  // flag, fall back to the key cached at attach for this (workingDir, mission).
   // An explicit --session-key always wins.
   if (
     SESSION_KEY_SUBCOMMANDS.has(subcommand) &&
-    ticketId &&
+    missionId &&
     (typeof flags['--session-key'] !== 'string' || flags['--session-key'].trim() === '')
   ) {
-    const cached = readCachedSessionKey({ ticketId, workingDirectory });
+    const cached = readCachedSessionKey({ missionId, workingDirectory });
     if (cached) flags['--session-key'] = cached;
   }
 
@@ -391,11 +391,11 @@ export async function runProtocolCommand({
 
   // Client-side VCS capture: read git status here (the agent's machine), never on
   // the backend. Filter explicit payloads and, at deliver, merge the run delta.
-  if ((subcommand === 'deliver' || subcommand === 'update') && ticketId) {
+  if ((subcommand === 'deliver' || subcommand === 'update') && missionId) {
     applySessionChangedFiles({
       flags,
       workingDirectory,
-      ticketId,
+      missionId,
       subcommand,
       stdin: fileInputs['--changed-files-file'] ?? protocolStdin
     });
@@ -414,7 +414,7 @@ export async function runProtocolCommand({
         resolveNativeSessionId({
           explicit: undefined,
           agent: flagValue(parsed.flags, '--agent') ?? 'unknown',
-          ticketId: flagValue(parsed.flags, '--ticket-id') ?? 'unknown',
+          missionId: flagValue(parsed.flags, '--mission-id') ?? 'unknown',
           workingDirectory
         })
     }
@@ -422,31 +422,31 @@ export async function runProtocolCommand({
 
   // Record the dirty-file baseline once a work session begins, so deliver can
   // subtract pre-existing/concurrent changes from this run's reported delta.
-  if ((subcommand === 'attach' || subcommand === 'resume-follow-up') && ticketId) {
+  if ((subcommand === 'attach' || subcommand === 'resume-follow-up') && missionId) {
     writeBaseline({
       workingDirectory,
-      ticketId,
+      missionId,
       files: readChangedFiles(workingDirectory)
     });
-    resetTouchedFiles({ workingDirectory, ticketId });
+    resetTouchedFiles({ workingDirectory, missionId });
   }
 
   const resultRecord = asRecord(result);
   if (typeof resultRecord.sessionKey === 'string') {
     printKeyValue({ SESSION_KEY: resultRecord.sessionKey });
     // Persist the freshly minted key so subsequent commands in other shells for
-    // this (workingDir, ticket) can auto-resolve it without --session-key.
-    if (ticketId) {
-      writeCachedSessionKey({ ticketId, workingDirectory, sessionKey: resultRecord.sessionKey });
+    // this (workingDir, mission) can auto-resolve it without --session-key.
+    if (missionId) {
+      writeCachedSessionKey({ missionId, workingDirectory, sessionKey: resultRecord.sessionKey });
     }
   }
   // The session ends at deliver: drop the cached key so it can't bind to a later
-  // session for the same working dir + ticket.
-  if (subcommand === 'deliver' && ticketId) {
-    clearCachedSessionKey({ ticketId, workingDirectory });
+  // session for the same working dir + mission.
+  if (subcommand === 'deliver' && missionId) {
+    clearCachedSessionKey({ missionId, workingDirectory });
   }
-  if (typeof resultRecord.ticketId === 'string') {
-    printKeyValue({ TICKET_ID: resultRecord.ticketId });
+  if (typeof resultRecord.missionId === 'string') {
+    printKeyValue({ MISSION_ID: resultRecord.missionId });
   }
   printJson(result);
 }
@@ -553,8 +553,8 @@ export async function runManagementCommand({
       }
 
       const title = flagValue(parsed.flags, '--title') ?? first.title ?? first.objective;
-      const ticket = await runtime.backend.post<unknown>({
-        path: '/api/tickets',
+      const mission = await runtime.backend.post<unknown>({
+        path: '/api/missions',
         body: {
           projectId,
           title,
@@ -562,15 +562,15 @@ export async function runManagementCommand({
         }
       });
       if (objectivesJson) {
-        const ticketObjectives = asRecord(ticket).objectives;
-        if (Array.isArray(ticketObjectives) && ticketObjectives.length !== objectives.length) {
+        const missionObjectives = asRecord(mission).objectives;
+        if (Array.isArray(missionObjectives) && missionObjectives.length !== objectives.length) {
           throw new CliError({
-            message: `Backend created ${ticketObjectives.length} objective(s), expected ${objectives.length}`
+            message: `Backend created ${missionObjectives.length} objective(s), expected ${objectives.length}`
           });
         }
       }
       if (command === 'prompt') {
-        const objectiveId = firstObjectiveId(ticket);
+        const objectiveId = firstObjectiveId(mission);
         if (objectiveId) {
           await runtime.backend.post({
             path: `/api/objectives/${encodeURIComponent(objectiveId)}/launch`,
@@ -578,29 +578,29 @@ export async function runManagementCommand({
           });
         }
       }
-      if (json) printJson(ticket);
-      else console.log(`Created ticket ${ticketDisplayId(ticket)}`);
+      if (json) printJson(mission);
+      else console.log(`Created mission ${missionDisplayId(mission)}`);
       return;
     }
     case 'attach':
     case 'execution': {
-      const ticketId =
+      const missionId =
         command === 'attach'
-          ? (parsed.positional[0] ?? flagValue(parsed.flags, '--ticket-id'))
-          : requireFlag(parsed.flags, '--ticket-id');
+          ? (parsed.positional[0] ?? flagValue(parsed.flags, '--mission-id'))
+          : requireFlag(parsed.flags, '--mission-id');
       const explicitAgent = parsed.positional[1] ?? flagValue(parsed.flags, '--agent');
-      if (!ticketId) throw new CliError({ message: 'Usage: ovld attach <ticketId> [agent]' });
-      const ticket = await runtime.backend.get<unknown>(
-        `/api/tickets/${encodeURIComponent(ticketId)}`
+      if (!missionId) throw new CliError({ message: 'Usage: ovld attach <missionId> [agent]' });
+      const mission = await runtime.backend.get<unknown>(
+        `/api/missions/${encodeURIComponent(missionId)}`
       );
-      const objectiveId = flagValue(parsed.flags, '--objective-id') ?? firstObjectiveId(ticket);
+      const objectiveId = flagValue(parsed.flags, '--objective-id') ?? firstObjectiveId(mission);
       if (!objectiveId)
-        throw new CliError({ message: `No launchable objective found for ${ticketId}` });
+        throw new CliError({ message: `No launchable objective found for ${missionId}` });
       // Honor an explicit agent; otherwise reuse the agent already stored on the
       // objective (the db is the source of truth) so launching never overrides the
       // chosen agent, and fall back to the configured default rather than codex.
       const agent =
-        explicitAgent ?? objectiveAssignedAgent(ticket, objectiveId) ?? loadConfig().defaultAgent;
+        explicitAgent ?? objectiveAssignedAgent(mission, objectiveId) ?? loadConfig().defaultAgent;
       const request = await runtime.backend.post({
         path: `/api/objectives/${encodeURIComponent(objectiveId)}/launch`,
         body: {
@@ -610,7 +610,7 @@ export async function runManagementCommand({
         }
       });
       if (json) printJson({ request });
-      else console.log(`Queued ${agent} for ${ticketDisplayId(ticket)}`);
+      else console.log(`Queued ${agent} for ${missionDisplayId(mission)}`);
       return;
     }
     case 'launch':
@@ -624,21 +624,21 @@ export async function runManagementCommand({
             parsed.positional[0] ??
             loadConfig().defaultAgent)
           : parsed.positional[0];
-      const ticketId =
-        flagValue(parsed.flags, '--ticket-id') ??
+      const missionId =
+        flagValue(parsed.flags, '--mission-id') ??
         (command === 'run' || command === 'connect' || command === 'resume'
           ? parsed.positional[1]
           : parsed.positional[1]);
-      if (!agent || !ticketId) {
-        throw new CliError({ message: `Usage: ovld ${command} <agent> --ticket-id <ticketId>` });
+      if (!agent || !missionId) {
+        throw new CliError({ message: `Usage: ovld ${command} <agent> --mission-id <missionId>` });
       }
       const workingDirectory = flagValue(parsed.flags, '--working-directory') ?? process.cwd();
       const terminal = await resolveTerminalLaunchSettings({ runtime, flags: parsed.flags });
       const dryRun = flagBoolean(parsed.flags, '--dry-run');
-      const prepared = await prepareTicketBranch({
+      const prepared = await prepareMissionBranch({
         runtime,
         options: {
-          ticketId,
+          missionId,
           workingDirectory,
           enabled: !dryRun && (await readWorktreeBranchAutomationEnabled(runtime)),
           overrideBranch: flagValue(parsed.flags, '--branch'),
@@ -647,14 +647,14 @@ export async function runManagementCommand({
       });
       await recordBranchPrepared({
         runtime,
-        ticketId,
+        missionId,
         branchAutomation: prepared.branchAutomation
       });
       const result = await launchAgent({
         runtime,
         options: {
           agent,
-          ticketId,
+          missionId,
           workingDirectory: prepared.workingDirectory,
           model: flagValue(parsed.flags, '--model'),
           thinking: flagValue(parsed.flags, '--thinking'),
@@ -676,11 +676,11 @@ export async function runManagementCommand({
       await runRunnerCommand({ runtime, parsed, json });
       return;
     }
-    case 'tickets': {
+    case 'missions': {
       const sub = parsed.positional[0];
       if (sub !== 'list') {
         throw new CliError({
-          message: 'Usage: ovld tickets list [--status <csv>] [--project-id <id>] [--json]'
+          message: 'Usage: ovld missions list [--status <csv>] [--project-id <id>] [--json]'
         });
       }
       const params = new URLSearchParams();
@@ -690,14 +690,14 @@ export async function runManagementCommand({
       if (query) params.set('q', query);
       if (projectId) params.set('projectId', projectId);
       if (limit) params.set('limit', limit);
-      const result = await runtime.backend.get<{ tickets: unknown[] }>(
-        `/api/tickets/search?${params}`
+      const result = await runtime.backend.get<{ missions: unknown[] }>(
+        `/api/missions/search?${params}`
       );
-      const tickets = result.tickets;
-      if (json) printJson({ tickets });
+      const missions = result.missions;
+      if (json) printJson({ missions });
       else {
-        for (const ticket of tickets) {
-          const record = asRecord(ticket);
+        for (const mission of missions) {
+          const record = asRecord(mission);
           console.log(
             `${record.displayId ?? record.id}\t${record.statusType ?? ''}\t${record.title ?? ''}`
           );
@@ -705,27 +705,27 @@ export async function runManagementCommand({
       }
       return;
     }
-    case 'ticket': {
+    case 'mission': {
       const sub = parsed.positional[0];
-      const ticketId = parsed.positional[1];
-      if (!ticketId) {
+      const missionId = parsed.positional[1];
+      if (!missionId) {
         throw new CliError({
           message:
-            'Usage: ovld ticket context|events|deliveries|artifacts|rationales <ticketId> [--json]'
+            'Usage: ovld mission context|events|deliveries|artifacts|rationales <missionId> [--json]'
         });
       }
       const pathBySub: Record<string, string> = {
-        context: `/api/tickets/${encodeURIComponent(ticketId)}`,
-        events: `/api/tickets/${encodeURIComponent(ticketId)}/events`,
-        artifacts: `/api/tickets/${encodeURIComponent(ticketId)}/artifacts`,
-        rationales: `/api/tickets/${encodeURIComponent(ticketId)}/file-changes`,
-        deliveries: `/api/tickets/${encodeURIComponent(ticketId)}/events`
+        context: `/api/missions/${encodeURIComponent(missionId)}`,
+        events: `/api/missions/${encodeURIComponent(missionId)}/events`,
+        artifacts: `/api/missions/${encodeURIComponent(missionId)}/artifacts`,
+        rationales: `/api/missions/${encodeURIComponent(missionId)}/file-changes`,
+        deliveries: `/api/missions/${encodeURIComponent(missionId)}/events`
       };
       const path = sub ? pathBySub[sub] : undefined;
       if (!path) {
         throw new CliError({
           message:
-            'Usage: ovld ticket context|events|deliveries|artifacts|rationales <ticketId> [--json]'
+            'Usage: ovld mission context|events|deliveries|artifacts|rationales <missionId> [--json]'
         });
       }
       const result = await runtime.backend.get<unknown>(path);
@@ -736,12 +736,12 @@ export async function runManagementCommand({
     }
     case 'changes': {
       const sub = parsed.positional[0];
-      const ticketId = requireFlag(parsed.flags, '--ticket-id');
+      const missionId = requireFlag(parsed.flags, '--mission-id');
       if (sub !== 'status' && sub !== 'rationales') {
-        throw new CliError({ message: 'Usage: ovld changes status|rationales --ticket-id <id>' });
+        throw new CliError({ message: 'Usage: ovld changes status|rationales --mission-id <id>' });
       }
       const result = await runtime.backend.get<unknown[]>(
-        `/api/tickets/${encodeURIComponent(ticketId)}/file-changes`
+        `/api/missions/${encodeURIComponent(missionId)}/file-changes`
       );
       if (json) printJson({ files: result, rationales: result });
       else for (const row of result) console.log(JSON.stringify(row));
@@ -811,12 +811,12 @@ async function runRunnerCommand({
       }
       const launchConfig = asRecord(requestRecord.launchConfig);
       const terminal = await resolveTerminalLaunchSettings({ runtime, flags: parsed.flags });
-      const ticketId = String(requestRecord.ticketId);
+      const missionId = String(requestRecord.missionId);
       const dryRun = flagBoolean(parsed.flags, '--dry-run');
-      const prepared = await prepareTicketBranch({
+      const prepared = await prepareMissionBranch({
         runtime,
         options: {
-          ticketId,
+          missionId,
           workingDirectory: String(requestRecord.workingDirectory ?? process.cwd()),
           enabled: !dryRun && (await readWorktreeBranchAutomationEnabled(runtime)),
           overrideBranch: flagValue(parsed.flags, '--branch'),
@@ -825,7 +825,7 @@ async function runRunnerCommand({
       });
       await recordBranchPrepared({
         runtime,
-        ticketId,
+        missionId,
         requestId,
         branchAutomation: prepared.branchAutomation
       });
@@ -833,7 +833,7 @@ async function runRunnerCommand({
         runtime,
         options: {
           agent: requestedAgent,
-          ticketId,
+          missionId,
           workingDirectory: prepared.workingDirectory,
           model:
             typeof requestRecord.requestedModel === 'string'
@@ -863,7 +863,7 @@ async function runRunnerCommand({
       if (json || dryRun) {
         printJson({ request, plan: result.plan, status: result.status });
       } else {
-        console.log(`Launched ${requestedAgent} for ${requestRecord.ticketId}`);
+        console.log(`Launched ${requestedAgent} for ${requestRecord.missionId}`);
       }
       return true;
     } catch (error) {

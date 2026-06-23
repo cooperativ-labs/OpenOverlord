@@ -1,4 +1,4 @@
-import type { TicketDto, WorkspaceMemberDto } from '../../shared/contract.ts';
+import type { MissionDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
 export const BOARD_VIEW_STORAGE_PREFIX = 'overlord:project-board-view:';
@@ -6,12 +6,12 @@ export const BOARD_VIEW_STORAGE_PREFIX = 'overlord:project-board-view:';
 export type BoardView = 'board' | 'list';
 export type ColumnMap = Record<string, string[]>;
 
-export type TicketTagFilterOption = { id: string; label: string; color: string | null };
+export type MissionTagFilterOption = { id: string; label: string; color: string | null };
 
-export function getTicketTags(ticket: TicketDto): TicketTagFilterOption[] {
-  if (!Array.isArray(ticket.tags)) return [];
+export function getMissionTags(mission: MissionDto): MissionTagFilterOption[] {
+  if (!Array.isArray(mission.tags)) return [];
 
-  return ticket.tags
+  return mission.tags
     .map(tag => {
       const id = tag.id?.trim();
       if (!id) return null;
@@ -21,12 +21,12 @@ export function getTicketTags(ticket: TicketDto): TicketTagFilterOption[] {
         color: tag.color ?? null
       };
     })
-    .filter((tag): tag is TicketTagFilterOption => tag !== null);
+    .filter((tag): tag is MissionTagFilterOption => tag !== null);
 }
 
 export function getTagFilterLabel(
   selectedTagIds: string[],
-  tagOptions: TicketTagFilterOption[]
+  tagOptions: MissionTagFilterOption[]
 ): string {
   if (selectedTagIds.length === 0) return 'All';
   if (selectedTagIds.length === 1) {
@@ -53,24 +53,24 @@ export function storeBoardView(projectId: string, view: BoardView) {
   }
 }
 
-/** Look up a ticket's assignee from the workspace member map, if it has one. */
+/** Look up a mission's assignee from the workspace member map, if it has one. */
 export function resolveAssignee(
-  ticket: TicketDto,
+  mission: MissionDto,
   membersByWorkspaceUserId: Map<string, WorkspaceMemberDto>
 ): WorkspaceMemberDto | undefined {
-  return ticket.assignedWorkspaceUserId
-    ? membersByWorkspaceUserId.get(ticket.assignedWorkspaceUserId)
+  return mission.assignedWorkspaceUserId
+    ? membersByWorkspaceUserId.get(mission.assignedWorkspaceUserId)
     : undefined;
 }
 
-/** Resolve an ordered column of ticket ids into the tickets, dropping any unknown ids. */
-export function resolveColumnTickets<T extends { id: string }>(
-  ticketIds: string[],
-  ticketById: Map<string, T>
+/** Resolve an ordered column of mission ids into the missions, dropping any unknown ids. */
+export function resolveColumnMissions<T extends { id: string }>(
+  missionIds: string[],
+  missionById: Map<string, T>
 ): T[] {
-  return ticketIds
-    .map(id => ticketById.get(id))
-    .filter((ticket): ticket is T => ticket !== undefined);
+  return missionIds
+    .map(id => missionById.get(id))
+    .filter((mission): mission is T => mission !== undefined);
 }
 
 export function columnMapsEqual(a: ColumnMap, b: ColumnMap): boolean {

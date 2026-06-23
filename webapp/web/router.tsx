@@ -12,11 +12,11 @@ import { NavHeader } from './components/nav-header.tsx';
 import { InitialSetupScreen } from './components/setup/InitialSetupScreen.tsx';
 import { SidebarInset, SidebarProvider } from './components/ui/sidebar.tsx';
 import { useMeta } from './lib/queries.ts';
-import { MyTicketsShell, WorkspaceTicketPanelRoute } from './pages/MyTicketsShell.tsx';
+import { MyMissionsShell, WorkspaceMissionPanelRoute } from './pages/MyMissionsShell.tsx';
 import { ProjectBoardShell } from './pages/ProjectBoardShell.tsx';
 import { ProjectsPage } from './pages/ProjectsPage.tsx';
 import { QuickTaskPage } from './pages/QuickTaskPage.tsx';
-import { TicketPanelRoute } from './pages/TicketPage.tsx';
+import { MissionPanelRoute } from './pages/MissionPage.tsx';
 
 function RootLayout() {
   const isQuickTask = useRouterState({
@@ -28,7 +28,7 @@ function RootLayout() {
     return <Outlet />;
   }
 
-  // A fresh instance must name its first workspace (and pick the ticket-id
+  // A fresh instance must name its first workspace (and pick the mission-id
   // slug) before anything else; hold rendering until we know which to show so
   // the board never flashes behind the setup step.
   if (meta.isPending) return null;
@@ -75,16 +75,16 @@ const projectsRoute = createRoute({
   component: ProjectsPage
 });
 
-const myTicketsRoute = createRoute({
+const myMissionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/workspace',
-  component: MyTicketsShell
+  component: MyMissionsShell
 });
 
-const myTicketsPanelRoute = createRoute({
-  getParentRoute: () => myTicketsRoute,
-  path: 'tickets/$ticketId',
-  component: WorkspaceTicketPanelRoute
+const myMissionsPanelRoute = createRoute({
+  getParentRoute: () => myMissionsRoute,
+  path: 'missions/$missionId',
+  component: WorkspaceMissionPanelRoute
 });
 
 const boardRoute = createRoute({
@@ -93,19 +93,19 @@ const boardRoute = createRoute({
   component: ProjectBoardShell
 });
 
-const ticketRoute = createRoute({
+const missionRoute = createRoute({
   getParentRoute: () => boardRoute,
-  path: 'tickets/$ticketId',
-  component: TicketPanelRoute
+  path: 'missions/$missionId',
+  component: MissionPanelRoute
 });
 
 export const routeTree = rootRoute.addChildren([
   quickTaskShellRoute.addChildren([quickTaskRoute]),
   indexRoute,
   projectsRoute,
-  myTicketsRoute.addChildren([myTicketsPanelRoute]),
+  myMissionsRoute.addChildren([myMissionsPanelRoute]),
   boardRoute,
-  ticketRoute
+  missionRoute
 ]);
 
 export const router = createRouter({ routeTree, defaultPreload: 'intent' });

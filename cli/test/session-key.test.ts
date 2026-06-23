@@ -21,9 +21,9 @@ function withTempHome(run: () => void): void {
   }
 }
 
-test('session key cache round-trips for a (workingDir, ticket) pair', () => {
+test('session key cache round-trips for a (workingDir, mission) pair', () => {
   withTempHome(() => {
-    const args = { ticketId: 'coo:42', workingDirectory: '/repo/one' };
+    const args = { missionId: 'coo:42', workingDirectory: '/repo/one' };
     assert.equal(readCachedSessionKey(args), undefined);
 
     writeCachedSessionKey({ ...args, sessionKey: 'sess_abc123' });
@@ -34,27 +34,27 @@ test('session key cache round-trips for a (workingDir, ticket) pair', () => {
   });
 });
 
-test('session key cache is scoped per ticket and per working directory', () => {
+test('session key cache is scoped per mission and per working directory', () => {
   withTempHome(() => {
     writeCachedSessionKey({
-      ticketId: 'coo:1',
+      missionId: 'coo:1',
       workingDirectory: '/repo/one',
       sessionKey: 'sess_one'
     });
 
-    // Same directory, different ticket → no leak.
+    // Same directory, different mission → no leak.
     assert.equal(
-      readCachedSessionKey({ ticketId: 'coo:2', workingDirectory: '/repo/one' }),
+      readCachedSessionKey({ missionId: 'coo:2', workingDirectory: '/repo/one' }),
       undefined
     );
-    // Same ticket, different directory → no leak.
+    // Same mission, different directory → no leak.
     assert.equal(
-      readCachedSessionKey({ ticketId: 'coo:1', workingDirectory: '/repo/two' }),
+      readCachedSessionKey({ missionId: 'coo:1', workingDirectory: '/repo/two' }),
       undefined
     );
     // Exact pair still resolves.
     assert.equal(
-      readCachedSessionKey({ ticketId: 'coo:1', workingDirectory: '/repo/one' }),
+      readCachedSessionKey({ missionId: 'coo:1', workingDirectory: '/repo/one' }),
       'sess_one'
     );
   });
@@ -63,14 +63,14 @@ test('session key cache is scoped per ticket and per working directory', () => {
 test('cache keys on the resolved working directory', () => {
   withTempHome(() => {
     writeCachedSessionKey({
-      ticketId: 'coo:7',
+      missionId: 'coo:7',
       workingDirectory: '/repo/app',
       sessionKey: 'sess_resolved'
     });
     // A non-normalized path that resolves to the same absolute directory hits the
     // same cache entry, matching the auto-inject behavior in runProtocolCommand.
     assert.equal(
-      readCachedSessionKey({ ticketId: 'coo:7', workingDirectory: '/repo/sub/../app' }),
+      readCachedSessionKey({ missionId: 'coo:7', workingDirectory: '/repo/sub/../app' }),
       'sess_resolved'
     );
   });
@@ -78,7 +78,7 @@ test('cache keys on the resolved working directory', () => {
 
 test('blank session keys are never persisted', () => {
   withTempHome(() => {
-    const args = { ticketId: 'coo:9', workingDirectory: '/repo/blank' };
+    const args = { missionId: 'coo:9', workingDirectory: '/repo/blank' };
     writeCachedSessionKey({ ...args, sessionKey: '   ' });
     assert.equal(readCachedSessionKey(args), undefined);
   });

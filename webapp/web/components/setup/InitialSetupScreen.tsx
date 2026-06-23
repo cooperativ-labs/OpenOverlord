@@ -17,7 +17,7 @@ import { useCompleteSetup } from '@/lib/queries';
 
 /**
  * One-time initial instance setup: names the seeded first workspace and picks
- * the slug that prefixes every ticket identifier (`<slug>:<sequence>`).
+ * the slug that prefixes every mission identifier (`<slug>:<sequence>`).
  * Rendered full-screen instead of the app shell while `/api/meta` reports
  * `needsSetup`.
  */
@@ -62,7 +62,7 @@ export function InitialSetupScreen() {
         <CardHeader>
           <CardTitle>Welcome to Overlord</CardTitle>
           <CardDescription>
-            Name your first workspace. Workspaces keep their own projects, tickets, and members —
+            Name your first workspace. Workspaces keep their own projects, missions, and members —
             you can rename it or add more later.
           </CardDescription>
         </CardHeader>

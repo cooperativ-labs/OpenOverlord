@@ -25,7 +25,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
-import type { ObjectiveState, StatusType, TicketPriority } from '../../shared/contract.ts';
+import type { ObjectiveState, StatusType, MissionPriority } from '../../shared/contract.ts';
 
 // ---- Status / priority vocab → presentation ------------------------------
 
@@ -134,7 +134,7 @@ export function objectiveStateClasses(state: ObjectiveState): string {
   }
 }
 
-export function priorityClasses(priority: TicketPriority | null): string {
+export function priorityClasses(priority: MissionPriority | null): string {
   switch (priority) {
     case 'urgent':
       return 'bg-red-500/15 text-red-700 ring-red-400/30 dark:text-red-300';

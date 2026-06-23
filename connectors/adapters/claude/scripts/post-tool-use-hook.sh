@@ -2,10 +2,10 @@
 # Overlord PostToolUse hook — fires after Claude runs a file-editing tool.
 # It records the exact files THIS agent edits into a per-session touched-files
 # log so `ovld protocol deliver` can intersect the VCS working-tree delta with
-# the agent's own edits. That keeps concurrent tickets sharing one working tree
+# the agent's own edits. That keeps concurrent missions sharing one working tree
 # from being attributed to this session. The log path + key must stay in sync
 # with cli/src/vcs.ts (touchedFilesPath / sessionKeyHash):
-#   <OVLD_HOME|~/.ovld>/vcs-touched/<sha256(abspath(cwd) + "\0" + TICKET_ID)>.json
+#   <OVLD_HOME|~/.ovld>/vcs-touched/<sha256(abspath(cwd) + "\0" + MISSION_ID)>.json
 # with shape {"updatedAt": "...", "paths": ["<abs>", ...]}.
 
 BODY=$(cat -)
@@ -18,12 +18,12 @@ log_hook() {
   printf '%s [%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$HOOK_NAME" "$1" >>"$LOG_FILE" 2>/dev/null || true
 }
 
-if [ -z "${TICKET_ID:-}" ]; then
-  log_hook "no TICKET_ID in env; skipping"
+if [ -z "${MISSION_ID:-}" ]; then
+  log_hook "no MISSION_ID in env; skipping"
   exit 0
 fi
 
-printf '%s' "$BODY" | TICKET_ID="${TICKET_ID}" python3 -c '
+printf '%s' "$BODY" | MISSION_ID="${MISSION_ID}" python3 -c '
 import hashlib
 import json
 import os
@@ -54,9 +54,9 @@ if isinstance(edits, list):
 if not candidates:
     sys.exit(0)
 
-# Match cli/src/vcs.ts: key = sha256(abspath(cwd) + chr(0) + TICKET_ID).
+# Match cli/src/vcs.ts: key = sha256(abspath(cwd) + chr(0) + MISSION_ID).
 cwd = body.get("cwd") or os.getcwd()
-tid = os.environ.get("TICKET_ID", "")
+tid = os.environ.get("MISSION_ID", "")
 key = hashlib.sha256((os.path.abspath(cwd) + chr(0) + tid).encode()).hexdigest()
 
 data_dir = os.environ.get("OVLD_HOME") or os.path.join(os.path.expanduser("~"), ".ovld")

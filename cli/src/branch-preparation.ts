@@ -3,11 +3,11 @@ import { existsSync, mkdirSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { type BranchDecision, planTicketBranch, sanitizeBranchName } from './branch-planning.js';
+import { type BranchDecision, planMissionBranch, sanitizeBranchName } from './branch-planning.js';
 import type { CliRuntime } from './runtime.js';
 
 export type BranchPreparationOptions = {
-  ticketId: string;
+  missionId: string;
   workingDirectory: string;
   enabled: boolean;
   overrideBranch?: string | null;
@@ -27,7 +27,7 @@ export type BranchAutomationPayload = {
   cycle: number;
 };
 
-export type TicketShape = {
+export type MissionShape = {
   title?: unknown;
   sequenceNumber?: unknown;
   sequence?: unknown;
@@ -99,11 +99,11 @@ function refExists(gitRoot: string, ref: string): boolean {
 }
 
 // Resolves the base/parent branch to cut from. The project-configured default
-// branch (surfaced on the ticket as `branch.baseBranch`) wins when it actually
+// branch (surfaced on the mission as `branch.baseBranch`) wins when it actually
 // exists in this checkout; otherwise we fall back to the repo's git default so a
 // stale/misconfigured setting never blocks branch preparation.
-function resolveBaseBranch(gitRoot: string, ticket: TicketShape): string {
-  const configured = ticket.branch?.baseBranch;
+function resolveBaseBranch(gitRoot: string, mission: MissionShape): string {
+  const configured = mission.branch?.baseBranch;
   if (typeof configured === 'string' && configured.trim()) {
     const base = configured.trim();
     if (refExists(gitRoot, base)) return base;
@@ -157,26 +157,26 @@ function worktreeBranch(worktreePath: string): string | null {
   return branch || null;
 }
 
-function readTicketProjectSlug(ticket: TicketShape): string | null {
-  const slug = ticket.project?.slug;
+function readMissionProjectSlug(mission: MissionShape): string | null {
+  const slug = mission.project?.slug;
   if (typeof slug === 'string' && slug.trim()) return slug.trim();
-  if (typeof ticket.projectSlug === 'string' && ticket.projectSlug.trim()) {
-    return ticket.projectSlug.trim();
+  if (typeof mission.projectSlug === 'string' && mission.projectSlug.trim()) {
+    return mission.projectSlug.trim();
   }
   return null;
 }
 
-export async function resolveTicketProjectSlug({
+export async function resolveMissionProjectSlug({
   runtime,
-  ticket
+  mission
 }: {
   runtime: CliRuntime;
-  ticket: TicketShape;
+  mission: MissionShape;
 }): Promise<string> {
-  const embedded = readTicketProjectSlug(ticket);
+  const embedded = readMissionProjectSlug(mission);
   if (embedded) return embedded;
 
-  const projectId = typeof ticket.projectId === 'string' ? ticket.projectId.trim() : '';
+  const projectId = typeof mission.projectId === 'string' ? mission.projectId.trim() : '';
   if (projectId) {
     try {
       const projects = (await runtime.backend.get('/api/projects')) as ProjectShape[];
@@ -192,27 +192,27 @@ export async function resolveTicketProjectSlug({
   return 'project';
 }
 
-function recordedTicketBranch(ticket: TicketShape): string | null {
-  const branch = ticket.branch;
+function recordedMissionBranch(mission: MissionShape): string | null {
+  const branch = mission.branch;
   if (!branch || branch.status === 'pending') return null;
   return typeof branch.name === 'string' && branch.name.trim() ? branch.name.trim() : null;
 }
 
-// A branch the user pinned in the ticket panel to override the planner's default
-// (TicketBranchDto.overrideBranch). The explicit `--branch` flag still wins.
-function ticketOverrideBranch(ticket: TicketShape): string | null {
-  const override = ticket.branch?.overrideBranch;
+// A branch the user pinned in the mission panel to override the planner's default
+// (MissionBranchDto.overrideBranch). The explicit `--branch` flag still wins.
+function missionOverrideBranch(mission: MissionShape): string | null {
+  const override = mission.branch?.overrideBranch;
   return typeof override === 'string' && override.trim() ? override.trim() : null;
 }
 
-function ticketSequence(ticket: TicketShape, ticketId: string): number {
-  const direct = ticket.sequenceNumber ?? ticket.sequence;
+function missionSequence(mission: MissionShape, missionId: string): number {
+  const direct = mission.sequenceNumber ?? mission.sequence;
   if (typeof direct === 'number' && Number.isFinite(direct)) return direct;
   if (typeof direct === 'string') {
     const parsed = Number.parseInt(direct, 10);
     if (Number.isFinite(parsed)) return parsed;
   }
-  const match = ticketId.match(/:(\d+)$/);
+  const match = missionId.match(/:(\d+)$/);
   return match ? Number.parseInt(match[1] ?? '0', 10) : 0;
 }
 
@@ -267,7 +267,7 @@ function ensureWorktree(gitRoot: string, decision: BranchDecision): void {
   runGit(gitRoot, ['worktree', 'add', '-b', decision.branch, decision.worktreePath, decision.from]);
 }
 
-export async function prepareTicketBranch({
+export async function prepareMissionBranch({
   runtime,
   options
 }: {
@@ -289,22 +289,22 @@ export async function prepareTicketBranch({
   }
 
   const gitRoot = resolveGitRoot(options.workingDirectory);
-  const ticket = (await runtime.backend.get(
-    `/api/tickets/${encodeURIComponent(options.ticketId)}`
-  )) as TicketShape;
-  const base = resolveBaseBranch(gitRoot, ticket);
+  const mission = (await runtime.backend.get(
+    `/api/missions/${encodeURIComponent(options.missionId)}`
+  )) as MissionShape;
+  const base = resolveBaseBranch(gitRoot, mission);
   const refs = repoRefs(gitRoot, base);
-  // The explicit `--branch` flag wins; otherwise honor the ticket's pinned
-  // override (set in the ticket panel's branch selector).
-  const overrideBranch = options.overrideBranch?.trim() || ticketOverrideBranch(ticket);
-  const projectSlug = await resolveTicketProjectSlug({ runtime, ticket });
-  const decision = planTicketBranch({
-    ticket: {
-      title: typeof ticket.title === 'string' ? ticket.title : 'ticket',
-      sequence: ticketSequence(ticket, options.ticketId)
+  // The explicit `--branch` flag wins; otherwise honor the mission's pinned
+  // override (set in the mission panel's branch selector).
+  const overrideBranch = options.overrideBranch?.trim() || missionOverrideBranch(mission);
+  const projectSlug = await resolveMissionProjectSlug({ runtime, mission });
+  const decision = planMissionBranch({
+    mission: {
+      title: typeof mission.title === 'string' ? mission.title : 'mission',
+      sequence: missionSequence(mission, options.missionId)
     },
     project: { slug: projectSlug },
-    recordedBranch: recordedTicketBranch(ticket),
+    recordedBranch: recordedMissionBranch(mission),
     base,
     refs,
     worktreeRoot: resolveWorktreeRoot(),

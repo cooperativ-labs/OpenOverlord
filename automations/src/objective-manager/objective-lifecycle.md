@@ -1,6 +1,6 @@
-# Objective Manager: Objective Lifecycle Within a Ticket
+# Objective Manager: Objective Lifecycle Within a Mission
 
-This document specifies how objectives behave within a ticket: which states exist,
+This document specifies how objectives behave within a mission: which states exist,
 what triggers every state transition, and the invariants the system enforces at all
 times. It is written as a portable, implementation-agnostic specification so the
 behavior can be replicated on any storage layer or runtime.
@@ -27,7 +27,7 @@ together; it does not change any stable interface.
 
 ## Concepts
 
-A **ticket** represents a whole feature or goal. Each ticket owns an ordered queue of
+A **mission** represents a whole feature or goal. Each mission owns an ordered queue of
 **objectives** — one objective equals one agent prompt/work session. Objectives advance
 through a state machine driven by three kinds of triggers:
 
@@ -55,8 +55,8 @@ Two of these automations are connected but distinct, and must never be conflated
 | State              | Meaning                                                                                                                                                                                                               | Instruction text may be empty? |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
 | `future`           | Queued behind the current draft; not yet next in line.                                                                                                                                                                | Yes                            |
-| `draft`            | The single editable "next up" objective for the ticket.                                                                                                                                                               | Yes                            |
-| `launching`        | A launch has been requested (an execution request exists) but no agent has attached yet. Covers the whole pre-attach window. Still a kind of draft: editable and re-queueable, and still the ticket's "next up" slot. | No                             |
+| `draft`            | The single editable "next up" objective for the mission.                                                                                                                                                               | Yes                            |
+| `launching`        | A launch has been requested (an execution request exists) but no agent has attached yet. Covers the whole pre-attach window. Still a kind of draft: editable and re-queueable, and still the mission's "next up" slot. | No                             |
 | `executing`        | An agent session is attached and actively working the objective.                                                                                                                                                      | No                             |
 | `pending_delivery` | Follow-up execution after a prior delivery produced new work that needs a re-delivery.                                                                                                                                | No                             |
 | `complete`         | Done. `completed_at` is set.                                                                                                                                                                                          | No                             |
@@ -92,7 +92,7 @@ Two derived state sets are used throughout the rules below:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> draft : created as next-up (no active objective on ticket)
+    [*] --> draft : created as next-up (no active objective on mission)
     [*] --> future : created while another objective is active
 
     future --> draft : queue refill (lowest position)<br/>or user "promote" action
@@ -114,7 +114,7 @@ stateDiagram-v2
 ```
 
 Discussion is intentionally absent from this diagram: an agent opening or discussing
-a ticket without an execution order does **not** change objective state. The draft
+a mission without an execution order does **not** change objective state. The draft
 stays `draft`. Only an explicit execution order (launch request or attach) moves an
 objective forward.
 
@@ -127,14 +127,14 @@ These rules must hold at all times, regardless of which code path writes. Enforc
 partial indexes, check constraints, triggers); where it cannot, the service layer must
 enforce them and the adapter conformance suite must test that enforcement.
 
-1. **At most one `draft` per ticket.**
-2. **At most one `executing` _or_ `pending_delivery` objective per ticket.** This
+1. **At most one `draft` per mission.**
+2. **At most one `executing` _or_ `pending_delivery` objective per mission.** This
    prevents auto-advance races from leaving two objectives active, and prevents
    follow-up work awaiting redelivery from racing with another active objective.
-3. **Unique per-ticket positions.** `position` is an integer, unique per ticket,
+3. **Unique per-mission positions.** `position` is an integer, unique per mission,
    0-based.
 4. **Auto-assigned position on insert.** When a caller omits `position`, the system
-   assigns `max(position) + 1` for the ticket. Callers doing manual reorders set
+   assigns `max(position) + 1` for the mission. Callers doing manual reorders set
    positions explicitly.
 5. **Non-empty instruction text in `launching` and beyond.** An objective can never
    enter `launching`, `executing`, `pending_delivery`, or `complete` with blank
@@ -160,9 +160,9 @@ enforce them and the adapter conformance suite must test that enforcement.
   "pick the next objective" query in the system uses this order.
 - **Appending** (protocol `create`, `add-objectives`, UI "add objective"): new rows
   take `max(position) + 1` per insert order. An inserted objective becomes `draft`
-  only when the ticket currently has **no existing `draft` objective**. Once a draft
+  only when the mission currently has **no existing `draft` objective**. Once a draft
   exists, every additional inserted objective is created as `future`. In a creation
-  batch, this means the first objective for a new ticket is `draft` and all remaining
+  batch, this means the first objective for a new mission is `draft` and all remaining
   objectives are `future`.
 - **User reorder** (drag-and-drop or equivalent):
   - Only the **`draft` + `future`** set can be reordered. IDs outside that set are
@@ -195,14 +195,14 @@ Every transition, its trigger, guard conditions, and side effects.
 
 | Trigger                                                | Resulting state                                                                    | Notes                                                                                                                                             |
 | ------------------------------------------------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Ticket created with objectives (protocol `create`, UI) | First objective `draft`, rest `future`                                             | A create-and-run variant (e.g. `prompt`) additionally requests execution immediately.                                                             |
+| Mission created with objectives (protocol `create`, UI) | First objective `draft`, rest `future`                                             | A create-and-run variant (e.g. `prompt`) additionally requests execution immediately.                                                             |
 | `add-objectives` protocol call                         | Each appended objective is `draft` only if no draft exists yet; otherwise `future` | This preserves the one-draft invariant across repeated additions.                                                                                 |
-| UI "add objective"                                     | `draft` if the ticket has no draft yet, else `future`                              | No-op if the last editable objective is already an empty draft. New row inherits `assigned_agent` from the most recently set agent on the ticket. |
+| UI "add objective"                                     | `draft` if the mission has no draft yet, else `future`                              | No-op if the last editable objective is already an empty draft. New row inherits `assigned_agent` from the most recently set agent on the mission. |
 | Automatic queue refill (5.3 step 5 / 5.4)              | `draft`                                                                            | Promote next `future`, or insert an **empty draft** when no `future` exists.                                                                      |
 
 ### 5.2 Discussion — no state change
 
-An agent opening or discussing a ticket without an execution order leaves the
+An agent opening or discussing a mission without an execution order leaves the
 objective in `draft`. There is no discussion state and no session is created.
 **Discussion ≠ execution**: only an explicit execution order (a launch request, 5.3,
 or an attach, 5.4) moves an objective out of `draft`.
@@ -221,8 +221,8 @@ auto-advance after a delivery (see 5.6).
 Sequence (all steps guarded so races cannot double-queue):
 
 1. Resolve the target objective: the explicit objective ID, or the
-   **lowest-position launchable** (`draft`/`launching`) objective on the ticket.
-   Reject if instruction text is empty, the state is not launchable, or the ticket is
+   **lowest-position launchable** (`draft`/`launching`) objective on the mission.
+   Reject if instruction text is empty, the state is not launchable, or the mission is
    marked human-only.
 2. **Dedup:** if an active (`queued`/`claimed`/`launching`) execution request already
    exists for the objective, reuse it — a stale `claimed`/`launching` request is
@@ -234,9 +234,9 @@ Sequence (all steps guarded so races cannot double-queue):
 4. Insert the execution request with `status = 'queued'` and an idempotency key
    (`auto_advance:<objective_id>` for auto-advance; unique otherwise). A uniqueness
    violation on insert is resolved by reusing the request that won the race.
-5. Emit an `execution_requested` ticket event (this is what wakes runners).
+5. Emit an `execution_requested` mission event (this is what wakes runners).
 
-**No queue refill here.** The launching objective is still the ticket's editable
+**No queue refill here.** The launching objective is still the mission's editable
 "next up" slot (it can be edited and re-queued until attach), so `draft → launching`
 does not trigger `ensureDraftSlot`. The refill happens at attach (5.4).
 
@@ -253,7 +253,7 @@ backward transition out of `launching`.
 1. **Selection order:** prefer the lowest-position objective in `launching`, then
    `draft` (each in canonical order). The first non-empty match is the launch
    objective.
-2. **Re-attach idempotency:** when no launchable objective exists but the ticket
+2. **Re-attach idempotency:** when no launchable objective exists but the mission
    already has an `executing` or `pending_delivery` objective, attach returns that
    objective **without changing state**. This lets an agent that lost its session key
    recover by re-attaching.
@@ -272,7 +272,7 @@ backward transition out of `launching`.
    request ID threaded through attach metadata; fall back to the objective's active
    request). **Attach is the source of truth for a successful launch.** Settlement
    failures never fail attach; manual launches with no request are a no-op.
-8. **Ticket status:** move the ticket to the project's `execute`-type status. If the
+8. **Mission status:** move the mission to the project's `execute`-type status. If the
    previous status was `review`/`complete`-type, also emit a reopened event.
 9. Fire-and-forget secondary automation: generate an objective title (see the
    `summarize-objective-title` automation in
@@ -290,15 +290,15 @@ artifacts, and change rationales:
 2. Mark the agent session completed/detached **before** auto-advance runs, so
    launchers see no active session when the next `execution_requested` event arrives.
 3. Run the **auto-advance decision** (5.6).
-4. If auto-advance did **not** queue anything: move the ticket to the project's
+4. If auto-advance did **not** queue anything: move the mission to the project's
    `review`-type status, placed at the **top** of that board column, and emit a
    `status_change` event.
 
 Other paths to `complete`:
 
-- **Agent marks the ticket complete:** a protocol `update` with a phase that maps to a
+- **Agent marks the mission complete:** a protocol `update` with a phase that maps to a
   `complete`-type status marks all `executing`/`pending_delivery` objectives on the
-  ticket `complete`.
+  mission `complete`.
 - **Manual check-off (user):** sets any non-complete objective to `complete`. If it
   was still in the queue (`draft`/`launching`), run the queue refill
   (`ensureDraftSlot`, Section 6). Any active execution requests for the objective are
@@ -307,18 +307,18 @@ Other paths to `complete`:
 ### 5.6 Auto-advance decision (runs inside deliver)
 
 After completing the delivered objective, inspect the **lowest-position `draft`** on
-the ticket:
+the mission:
 
 ```text
 next_draft = lowest-position draft with non-empty instruction text
-if none                     → no advance → ticket goes to review
-elif ticket is human-only   → no advance
+if none                     → no advance → mission goes to review
+elif mission is human-only   → no advance
 elif draft.auto_advance     → (requires assigned agent)
                               draft → launching, insert queued execution request,
                               emit execution_requested  → runner launches next agent
 else (auto_advance = false) → emit blocking awaiting_approval event
                               (summary = objective.approval_reason or a default),
-                              flag the ticket as awaiting a response,
+                              flag the mission as awaiting a response,
                               notify the user; objective STAYS draft
 ```
 
@@ -328,12 +328,12 @@ Notes:
   _launches_ automatically. The queue-refill guarantee (Section 6) is unconditional
   and applies whether or not auto-advance is enabled.
 - An **empty** draft (the auto-created refill slot) never auto-advances — the queue
-  simply ends and the ticket moves to review.
-- The awaiting-approval branch counts as "advanced" for ticket-status purposes: the
-  ticket does **not** move to review while an approval is pending.
+  simply ends and the mission moves to review.
+- The awaiting-approval branch counts as "advanced" for mission-status purposes: the
+  mission does **not** move to review while an approval is pending.
 - **Approval gating:** an agent can pre-gate a queued objective (set
   `auto_advance = false` plus an `approval_reason`). A user approves by setting
-  `auto_advance = true`, which clears `approval_reason` and the ticket's waiting flag;
+  `auto_advance = true`, which clears `approval_reason` and the mission's waiting flag;
   the objective then launches on the next trigger (manual run, or auto-advance after
   the next delivery). Toggling `auto_advance` is only allowed while the objective is
   in `draft`/`future`/`launching`; enabling it clears `approval_reason`.
@@ -355,7 +355,7 @@ A bare "begin follow-up work" announcement is **not** itself a work signal — i
 declares intent. The transition is CAS-guarded on
 `state IN ('executing','launching','draft','complete')` — note this is the one
 transition that can pull a `complete` objective back into the active set. Because of
-invariant #2, a ticket can hold only one `executing`-or-`pending_delivery` objective,
+invariant #2, a mission can hold only one `executing`-or-`pending_delivery` objective,
 so pending redelivery blocks a second active objective.
 
 `pending_delivery` resolves only via a new `deliver` (→ `complete`, per 5.5). A
@@ -366,8 +366,8 @@ state, prompting agents to re-deliver.
 
 | Action          | Transition                                                                   | Preserved invariants                                                                                    |
 | --------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Mark draft      | any state → `draft`; `completed_at` cleared                                  | All _other_ drafts on the ticket are demoted to `future` first, so the one-draft invariant never trips. |
-| Promote future  | `future` → `draft` (existing draft demoted to `future`); positions respliced | One draft per ticket; ordering. Idempotent if already draft; rejects non-`future` states.               |
+| Mark draft      | any state → `draft`; `completed_at` cleared                                  | All _other_ drafts on the mission are demoted to `future` first, so the one-draft invariant never trips. |
+| Promote future  | `future` → `draft` (existing draft demoted to `future`); positions respliced | One draft per mission; ordering. Idempotent if already draft; rejects non-`future` states.               |
 | Reorder         | no state change; positions recycled within the draft+future set              | Position uniqueness via constraint-safe write.                                                          |
 | Delete future   | `future` row removed                                                         | Only `future` may be deleted.                                                                           |
 | Manual complete | see 5.5                                                                      | Queue refill + execution-request cancellation.                                                          |
@@ -392,13 +392,13 @@ from automation.
 - or when an agent files follow-up work via protocol `create` with a session.
 
 `draft → launching` does **not** trigger a refill: a launching objective is still a
-kind of draft — editable and re-queueable — and remains the ticket's next-up slot
+kind of draft — editable and re-queueable — and remains the mission's next-up slot
 until an agent attaches.
 
 Refill order: promote the lowest-position `future`; otherwise insert an empty `draft`
 inheriting the previous objective's `assigned_agent` (agent selection persists down
 the queue; it only changes by explicit user/agent action). Combined with invariant #1,
-the steady-state shape of a ticket's queue is:
+the steady-state shape of a mission's queue is:
 
 ```text
 [complete*] [one executing|pending_delivery?] [one next-up: draft|launching] [future*]
@@ -438,20 +438,20 @@ without state gymnastics.
 
 ---
 
-## 8. Ticket status coupling
+## 8. Mission status coupling
 
-Objective transitions drive the ticket's board status. Status names are configurable
+Objective transitions drive the mission's board status. Status names are configurable
 per project, but status _types_ are stable (`draft`, `execute`, `review`, `complete`,
 `blocked`, `cancelled` — see
 [`cli/docs/01-core-domain-and-lifecycle.md`](../../../cli/docs/01-core-domain-and-lifecycle.md));
 transitions resolve the project's preferred status name per type.
 
-| Objective event                                                 | Ticket effect                                                                                  |
+| Objective event                                                 | Mission effect                                                                                  |
 | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Agent attaches (→ `executing`)                                  | Ticket → `execute`-type status. If it was in `review`/`complete`, a reopened event is emitted. |
-| Deliver with nothing auto-advanced                              | Ticket → `review`-type status, top of the review column, marked unread.                        |
-| Deliver with auto-advance queued                                | Ticket **stays** in execute; the next objective launches.                                      |
-| Deliver gated on approval                                       | Ticket stays put; flagged as awaiting a response, blocking `awaiting_approval` event.          |
+| Agent attaches (→ `executing`)                                  | Mission → `execute`-type status. If it was in `review`/`complete`, a reopened event is emitted. |
+| Deliver with nothing auto-advanced                              | Mission → `review`-type status, top of the review column, marked unread.                        |
+| Deliver with auto-advance queued                                | Mission **stays** in execute; the next objective launches.                                      |
+| Deliver gated on approval                                       | Mission stays put; flagged as awaiting a response, blocking `awaiting_approval` event.          |
 | Agent `update` with a phase mapping to a `complete`-type status | All `executing`/`pending_delivery` objectives → `complete`.                                    |
 
 ---
@@ -469,7 +469,7 @@ transitions resolve the project's preferred status name per type.
   queue; it only changes via explicit user/agent action.
 - **`auto_advanced_at`** — stamped when auto-advance moves a draft to `launching`;
   cleared on revert.
-- **Events** — every meaningful transition writes a ticket event
+- **Events** — every meaningful transition writes a mission event
   (`execution_requested`, `awaiting_approval`, `status_change`, alerts, system notes),
   which power the activity feed, notifications, and runner wake-ups. Objective state
   changes must be auditable from event history.
@@ -484,7 +484,7 @@ a contract review, not as license to diverge silently.
 
 1. **One canonical refill routine, separate from auto-advance.** Upstream scatters
    refill/promote logic across attach, manual complete, and follow-up creation.
-   Implement a single `ensureDraftSlot(ticket)` service routine (promote lowest
+   Implement a single `ensureDraftSlot(mission)` service routine (promote lowest
    `future`, else insert empty draft with inherited agent) and call it as a
    postcondition of exactly the transitions in Section 6: attach, queued manual
    complete, and demotion (a structural no-op). The name matters — this is the
@@ -520,7 +520,7 @@ a contract review, not as license to diverge silently.
 
 To replicate this system, enforce — transactionally, not just in application code:
 
-1. Per ticket: ≤1 `draft`; ≤1 objective in (`executing` | `pending_delivery`); unique
+1. Per mission: ≤1 `draft`; ≤1 objective in (`executing` | `pending_delivery`); unique
    integer positions.
 2. States beyond `draft`/`future` require non-empty instruction text.
 3. Per objective: ≤1 active agent session; ≤1 in-flight execution request.
@@ -528,7 +528,7 @@ To replicate this system, enforce — transactionally, not just in application c
    confined to the `draft`+`future` set, recycling that set's position pool.
 5. State changes are CAS-guarded on the expected current state so concurrent triggers
    degrade to no-ops, never to duplicate transitions.
-6. Discussion ≠ execution: discussing a ticket leaves the draft in `draft`; only an
+6. Discussion ≠ execution: discussing a mission leaves the draft in `draft`; only an
    explicit execution order changes state (`→ launching` or `→ executing`).
 7. Refill the `draft` slot (promote next `future`, else create an empty draft
    inheriting the agent assignment) exactly when the next-up objective attaches, is
@@ -536,9 +536,9 @@ To replicate this system, enforce — transactionally, not just in application c
    launching objective is still the editable next-up slot. This refill is
    unconditional, independent of `auto_advance`.
 8. Auto-advance only on explicit opt-in (`auto_advance = true`), only with non-empty
-   text and an assigned agent, never on human-only tickets; otherwise emit an
+   text and an assigned agent, never on human-only missions; otherwise emit an
    approval gate instead of launching.
 9. Delivery completes the objective _before_ deciding what runs next; if nothing
-   advances, surface the ticket for review.
+   advances, surface the mission for review.
 10. Post-delivery work on a delivered objective re-opens it as `pending_delivery`,
     which blocks other active objectives until re-delivered.

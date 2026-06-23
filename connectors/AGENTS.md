@@ -6,7 +6,7 @@ This file tells agents how to extend the Connectors module to add new agent harn
 
 ## What "extending connectors" means
 
-A connector lets an AI coding harness (Claude Code, Codex, Cursor, etc.) speak the `ovld protocol` and inherit ticket context. Extensions in this module fall into four categories:
+A connector lets an AI coding harness (Claude Code, Codex, Cursor, etc.) speak the `ovld protocol` and inherit mission context. Extensions in this module fall into four categories:
 
 | Extension type | Example user request |
 | --- | --- |
@@ -38,7 +38,7 @@ A new connector is the primary sanctioned extension point for this module. It re
 
 2. **Write the connector plugin** — a Markdown (or native plugin format) file that extends the connector core. Required canonical instructions (from the core):
    - Attach first (`ovld protocol attach`)
-   - Treat the ticket prompt as authoritative
+   - Treat the mission prompt as authoritative
    - Post meaningful progress updates
    - Use heartbeat during long work with no meaningful update
    - Ask exactly one blocking question and stop when blocked
@@ -55,7 +55,7 @@ A new connector is the primary sanctioned extension point for this module. It re
 
 4. **List managed files** in the adapter's manifest so `ovld doctor` can verify them.
 
-5. **Write a prompt wrapper** if the agent needs ticket context prepended at launch time. The wrapper receives a context file path and emits the final prompt text.
+5. **Write a prompt wrapper** if the agent needs mission context prepended at launch time. The wrapper receives a context file path and emits the final prompt text.
 
 6. **Create `connectors/adapters/<agent-name>/conformance-manifest.yaml`** declaring:
    ```yaml

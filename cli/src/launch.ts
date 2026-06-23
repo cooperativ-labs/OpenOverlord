@@ -14,7 +14,7 @@ import {
 
 export type LaunchOptions = {
   agent: string;
-  ticketId: string;
+  missionId: string;
   workingDirectory: string;
   model?: string | null;
   thinking?: string | null;
@@ -40,7 +40,7 @@ type LaunchPlan = {
   execution: LaunchExecution;
 };
 
-type TicketContext = {
+type MissionContext = {
   displayId: string;
   title: string;
   promptContext: string;
@@ -50,27 +50,27 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
 }
 
-async function loadTicketContext({
+async function loadMissionContext({
   runtime,
-  ticketId
+  missionId
 }: {
   runtime: CliRuntime;
-  ticketId: string;
-}): Promise<TicketContext> {
-  const ticket = asRecord(
-    await runtime.backend.get(`/api/tickets/${encodeURIComponent(ticketId)}`)
+  missionId: string;
+}): Promise<MissionContext> {
+  const mission = asRecord(
+    await runtime.backend.get(`/api/missions/${encodeURIComponent(missionId)}`)
   );
   const events = await runtime.backend
-    .get<unknown[]>(`/api/tickets/${encodeURIComponent(ticketId)}/events`)
+    .get<unknown[]>(`/api/missions/${encodeURIComponent(missionId)}/events`)
     .catch(() => []);
   const artifacts = await runtime.backend
-    .get<unknown[]>(`/api/tickets/${encodeURIComponent(ticketId)}/artifacts`)
+    .get<unknown[]>(`/api/missions/${encodeURIComponent(missionId)}/artifacts`)
     .catch(() => []);
-  const displayId = String(ticket.displayId ?? ticket.id ?? ticketId);
-  const title = String(ticket.title ?? '(untitled)');
-  const objectives = Array.isArray(ticket.objectives) ? ticket.objectives.map(asRecord) : [];
+  const displayId = String(mission.displayId ?? mission.id ?? missionId);
+  const title = String(mission.title ?? '(untitled)');
+  const objectives = Array.isArray(mission.objectives) ? mission.objectives.map(asRecord) : [];
   const promptContext = [
-    `# Overlord Ticket: ${displayId}: ${title}`,
+    `# Overlord Mission: ${displayId}: ${title}`,
     '',
     '## Instructions',
     'Use the Overlord skill. Follow the required protocol workflow.',
@@ -89,7 +89,7 @@ async function loadTicketContext({
       artifact => `- ${asRecord(artifact).label ?? asRecord(artifact).type ?? 'artifact'}`
     ),
     '',
-    'Use `ovld protocol attach --ticket-id <id>` before making changes, update during work, and ALWAYS deliver last.'
+    'Use `ovld protocol attach --mission-id <id>` before making changes, update during work, and ALWAYS deliver last.'
   ].join('\n');
 
   return { displayId, title, promptContext };
@@ -141,18 +141,18 @@ export async function buildLaunchPlan({
   runtime: CliRuntime;
   options: LaunchOptions;
 }): Promise<LaunchPlan> {
-  const context = await loadTicketContext({ runtime, ticketId: options.ticketId });
+  const context = await loadMissionContext({ runtime, missionId: options.missionId });
   pruneStaleProjectTmp({ workingDirectory: options.workingDirectory, create: true });
   const tmpDir = ensureProjectTmpDir(options.workingDirectory);
   const contextFile = path.join(
     tmpDir,
-    `ticket-${context.displayId.replace(/[^a-zA-Z0-9_-]/g, '-')}.md`
+    `mission-${context.displayId.replace(/[^a-zA-Z0-9_-]/g, '-')}.md`
   );
   writeFileSync(contextFile, `${context.promptContext}\n`);
 
   const prompt =
     context.promptContext.length > 4000
-      ? `Use the Overlord context file at ${contextFile} and attach to ticket ${context.displayId}.`
+      ? `Use the Overlord context file at ${contextFile} and attach to mission ${context.displayId}.`
       : context.promptContext;
 
   const command = buildAgentCommand({
@@ -162,7 +162,7 @@ export async function buildLaunchPlan({
     flags: options.flags,
     prompt,
     contextFile,
-    launchMessage: `Start work on ${context.title} (ovld ticket ${context.displayId})`
+    launchMessage: `Start work on ${context.title} (ovld mission ${context.displayId})`
   });
 
   const execution = resolveLaunchExecution({

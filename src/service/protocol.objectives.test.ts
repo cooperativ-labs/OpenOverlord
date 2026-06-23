@@ -5,7 +5,7 @@ import { describe, it } from 'node:test';
 import { createServiceContext } from './context.js';
 import { createProject } from './projects.js';
 import { attachSession, protocolCreate, protocolPrompt } from './protocol.js';
-import { createTicketWithObjectives, insertObjective } from './tickets.js';
+import { createMissionWithObjectives, insertObjective } from './missions.js';
 
 describe('protocol objective creation', () => {
   it('creates ordered objectives from an array payload', () => {
@@ -35,16 +35,16 @@ describe('protocol objective creation', () => {
     const db = openInMemoryDatabase();
     const ctx = createServiceContext({ db, source: 'protocol' });
     const project = createProject({ ctx, name: 'Blank Objective Slots' });
-    const { ticket } = createTicketWithObjectives({
+    const { mission } = createMissionWithObjectives({
       ctx,
       projectId: project.id,
       objectives: [{ objective: 'Existing draft objective' }]
     });
 
-    ctx.db.prepare(`UPDATE objectives SET state = 'complete' WHERE ticket_id = ?`).run(ticket.id);
+    ctx.db.prepare(`UPDATE objectives SET state = 'complete' WHERE mission_id = ?`).run(mission.id);
     const draft = insertObjective({
       ctx,
-      ticketId: ticket.id,
+      missionId: mission.id,
       instructionText: '',
       state: 'draft'
     });
@@ -55,7 +55,7 @@ describe('protocol objective creation', () => {
 
     const future = insertObjective({
       ctx,
-      ticketId: ticket.id,
+      missionId: mission.id,
       instructionText: '',
       state: 'draft'
     });
@@ -71,7 +71,7 @@ describe('protocol objective creation', () => {
     const db = openInMemoryDatabase();
     const ctx = createServiceContext({ db, source: 'protocol' });
     const project = createProject({ ctx, name: 'Submitted Objective Validation' });
-    const { ticket } = createTicketWithObjectives({
+    const { mission } = createMissionWithObjectives({
       ctx,
       projectId: project.id,
       objectives: [{ objective: 'Existing draft objective' }]
@@ -80,7 +80,7 @@ describe('protocol objective creation', () => {
     assert.throws(() =>
       insertObjective({
         ctx,
-        ticketId: ticket.id,
+        missionId: mission.id,
         instructionText: '',
         state: 'submitted'
       })
@@ -116,7 +116,7 @@ describe('protocol objective creation', () => {
     const db = openInMemoryDatabase();
     const ctx = createServiceContext({ db, source: 'protocol' });
     const project = createProject({ ctx, name: 'Attach Refill' });
-    const { ticket, objectives } = createTicketWithObjectives({
+    const { mission, objectives } = createMissionWithObjectives({
       ctx,
       projectId: project.id,
       objectives: [{ objective: 'Only objective' }]
@@ -128,7 +128,7 @@ describe('protocol objective creation', () => {
 
     const attached = attachSession({
       ctx,
-      ticketId: ticket.displayId,
+      missionId: mission.displayId,
       agentIdentifier: 'codex'
     });
 

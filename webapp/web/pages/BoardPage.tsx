@@ -2,58 +2,58 @@ import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { useMatch, useNavigate, useParams } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { NewTicketModal } from '@/components/NewTicketModal.tsx';
+import { NewMissionModal } from '@/components/NewMissionModal.tsx';
 
-import type { TicketDto, WorkspaceMemberDto } from '../../shared/contract.ts';
+import type { MissionDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 import { ProjectSettingsSection } from '../components/projects/ProjectSettingsSection.tsx';
 import { Button, EmptyState, Spinner } from '../components/ui.tsx';
 import {
-  useCreateTicket,
+  useCreateMission,
   useProject,
   useProjectTags,
   useReorderBoardColumn,
-  useTickets,
+  useMissions,
   useWorkspaceMembers,
   useWorkspaceStatuses
 } from '../lib/queries.ts';
 
-import type { BlankTicketCreateOptions } from './BlankTicketCard.tsx';
+import type { BlankMissionCreateOptions } from './BlankMissionCard.tsx';
 import {
   type BoardView,
   type ColumnMap,
-  getTicketTags,
+  getMissionTags,
   readStoredBoardView,
   resolveAssignee,
-  resolveColumnTickets,
+  resolveColumnMissions,
   storeBoardView
 } from './board-shared.ts';
 import { BoardColumn } from './BoardColumn.tsx';
-import { SortableTicketCard } from './SortableTicketCard.tsx';
-import { TicketListView } from './TicketListView.tsx';
-import { TicketsViewToggle } from './TicketsViewToggle.tsx';
-import { TicketTagFilterDropdown } from './TicketTagFilterDropdown.tsx';
+import { SortableMissionCard } from './SortableMissionCard.tsx';
+import { MissionListView } from './MissionListView.tsx';
+import { MissionsViewToggle } from './MissionsViewToggle.tsx';
+import { MissionTagFilterDropdown } from './MissionTagFilterDropdown.tsx';
 import { useBoardColumnDnd } from './useBoardColumnDnd.ts';
 
 export function BoardPage() {
   const navigate = useNavigate();
   const { projectId } = useParams({ from: '/projects/$projectId' });
-  const ticketMatch = useMatch({
-    from: '/projects/$projectId/tickets/$ticketId',
+  const missionMatch = useMatch({
+    from: '/projects/$projectId/missions/$missionId',
     shouldThrow: false
   });
-  const selectedTicketId = ticketMatch?.params.ticketId;
+  const selectedMissionId = missionMatch?.params.missionId;
   const project = useProject(projectId);
   const statusesQ = useWorkspaceStatuses();
-  const ticketsQ = useTickets(projectId);
+  const missionsQ = useMissions(projectId);
   const projectTagsQ = useProjectTags(projectId);
-  const createTicket = useCreateTicket();
+  const createMission = useCreateMission();
   const reorder = useReorderBoardColumn();
   const [modalOpen, setModalOpen] = useState(false);
   const [view, setView] = useState<BoardView>(() => readStoredBoardView(projectId));
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 
   const statuses = useMemo(() => statusesQ.data ?? [], [statusesQ.data]);
-  const tickets = useMemo(() => ticketsQ.data ?? [], [ticketsQ.data]);
+  const missions = useMemo(() => missionsQ.data ?? [], [missionsQ.data]);
   const workspaceId = project.data?.workspaceId ?? null;
   const membersQ = useWorkspaceMembers(workspaceId);
 
@@ -78,11 +78,11 @@ export function BoardPage() {
     storeBoardView(projectId, nextView);
   };
 
-  const ticketById = useMemo(() => {
-    const map = new Map<string, TicketDto>();
-    for (const t of tickets) map.set(t.id, t);
+  const missionById = useMemo(() => {
+    const map = new Map<string, MissionDto>();
+    for (const t of missions) map.set(t.id, t);
     return map;
-  }, [tickets]);
+  }, [missions]);
 
   const tagOptions = useMemo(
     () =>
@@ -105,28 +105,28 @@ export function BoardPage() {
   }, [selectedTagIds, tagOptions]);
 
   const selectedTagIdSet = useMemo(() => new Set(selectedTagIds), [selectedTagIds]);
-  const filteredTickets = useMemo(() => {
-    if (selectedTagIds.length === 0) return tickets;
-    return tickets.filter(ticket =>
-      getTicketTags(ticket).some(tag => selectedTagIdSet.has(tag.id))
+  const filteredMissions = useMemo(() => {
+    if (selectedTagIds.length === 0) return missions;
+    return missions.filter(mission =>
+      getMissionTags(mission).some(tag => selectedTagIdSet.has(tag.id))
     );
-  }, [selectedTagIdSet, selectedTagIds.length, tickets]);
+  }, [selectedTagIdSet, selectedTagIds.length, missions]);
 
   const baseColumns = useMemo<ColumnMap>(() => {
     const map: ColumnMap = {};
     for (const s of statuses) map[s.id] = [];
-    for (const t of tickets) (map[t.statusId] ??= []).push(t.id);
+    for (const t of missions) (map[t.statusId] ??= []).push(t.id);
     return map;
-  }, [statuses, tickets]);
+  }, [statuses, missions]);
 
   const filteredColumns = useMemo<ColumnMap>(() => {
-    const visibleTicketIds = new Set(filteredTickets.map(ticket => ticket.id));
+    const visibleMissionIds = new Set(filteredMissions.map(mission => mission.id));
     const map: ColumnMap = {};
     for (const s of statuses) {
-      map[s.id] = (baseColumns[s.id] ?? []).filter(id => visibleTicketIds.has(id));
+      map[s.id] = (baseColumns[s.id] ?? []).filter(id => visibleMissionIds.has(id));
     }
     return map;
-  }, [baseColumns, filteredTickets, statuses]);
+  }, [baseColumns, filteredMissions, statuses]);
 
   const { activeId, displayColumns, dndContextProps } = useBoardColumnDnd({
     columns: baseColumns,
@@ -134,97 +134,97 @@ export function BoardPage() {
     projectId
   });
 
-  const placeCreatedTicket = useCallback(
+  const placeCreatedMission = useCallback(
     async ({
       statusId,
       position,
-      ticketId
+      missionId
     }: {
       statusId: string;
       position: 'top' | 'bottom';
-      ticketId: string;
+      missionId: string;
     }) => {
       const status = statuses.find(s => s.id === statusId);
       if (!status) return;
 
-      const existingIds = tickets
-        .filter(ticket => ticket.statusId === statusId)
+      const existingIds = missions
+        .filter(mission => mission.statusId === statusId)
         .sort((a, b) => a.boardPosition - b.boardPosition)
-        .map(ticket => ticket.id);
+        .map(mission => mission.id);
 
-      const orderedTicketIds =
-        position === 'top' ? [ticketId, ...existingIds] : [...existingIds, ticketId];
+      const orderedMissionIds =
+        position === 'top' ? [missionId, ...existingIds] : [...existingIds, missionId];
 
       await reorder.mutateAsync({
         projectId,
         statusId,
         statusType: status.type,
-        orderedTicketIds
+        orderedMissionIds
       });
     },
-    [projectId, reorder, statuses, tickets]
+    [projectId, reorder, statuses, missions]
   );
 
-  // Shared creation path for the two column callbacks below: create the ticket,
+  // Shared creation path for the two column callbacks below: create the mission,
   // then reposition it within this board column when it actually landed here
   // (a different project/status means it lives on another board).
-  const createTicketInColumn = useCallback(
+  const createMissionInColumn = useCallback(
     async (
       statusId: string,
       objective: string,
       position: 'top' | 'bottom',
-      options?: BlankTicketCreateOptions
-    ): Promise<{ ticketId: string; targetProjectId: string }> => {
+      options?: BlankMissionCreateOptions
+    ): Promise<{ missionId: string; targetProjectId: string }> => {
       const targetProjectId = options?.projectId ?? projectId;
       const tagIds = options?.tagIds ?? [];
-      const detail = await createTicket.mutateAsync({
+      const detail = await createMission.mutateAsync({
         projectId: targetProjectId,
         firstObjective: objective,
         ...(statusId ? { statusId } : {}),
         ...(tagIds.length > 0 ? { tagIds } : {})
       });
       if (statusId && targetProjectId === projectId) {
-        await placeCreatedTicket({ statusId, position, ticketId: detail.id });
+        await placeCreatedMission({ statusId, position, missionId: detail.id });
       }
-      return { ticketId: detail.id, targetProjectId };
+      return { missionId: detail.id, targetProjectId };
     },
-    [createTicket, placeCreatedTicket, projectId]
+    [createMission, placeCreatedMission, projectId]
   );
 
-  const handleCreateTicketFromColumn = useCallback(
+  const handleCreateMissionFromColumn = useCallback(
     async (
       statusId: string,
       objective: string,
       position: 'top' | 'bottom',
-      options?: BlankTicketCreateOptions
+      options?: BlankMissionCreateOptions
     ) => {
-      await createTicketInColumn(statusId, objective, position, options);
+      await createMissionInColumn(statusId, objective, position, options);
     },
-    [createTicketInColumn]
+    [createMissionInColumn]
   );
 
-  const handleCreateAndOpenTicketFromColumn = useCallback(
+  const handleCreateAndOpenMissionFromColumn = useCallback(
     async (
       statusId: string,
       objective: string,
       position: 'top' | 'bottom',
-      options?: BlankTicketCreateOptions
+      options?: BlankMissionCreateOptions
     ) => {
-      const { ticketId, targetProjectId } = await createTicketInColumn(
+      const { missionId, targetProjectId } = await createMissionInColumn(
         statusId,
         objective,
         position,
         options
       );
       navigate({
-        to: '/projects/$projectId/tickets/$ticketId',
-        params: { projectId: targetProjectId, ticketId }
+        to: '/projects/$projectId/missions/$missionId',
+        params: { projectId: targetProjectId, missionId }
       });
     },
-    [createTicketInColumn, navigate]
+    [createMissionInColumn, navigate]
   );
 
-  if (project.isLoading || statusesQ.isLoading || ticketsQ.isLoading) {
+  if (project.isLoading || statusesQ.isLoading || missionsQ.isLoading) {
     return (
       <div className="p-8">
         <Spinner />
@@ -242,9 +242,9 @@ export function BoardPage() {
   const isTagFilterActive = selectedTagIds.length > 0;
   const visibleColumns = isTagFilterActive ? filteredColumns : displayColumns;
 
-  const activeTicket = activeId ? ticketById.get(activeId) : undefined;
-  const activeAssignee = activeTicket
-    ? resolveAssignee(activeTicket, membersByWorkspaceUserId)
+  const activeMission = activeId ? missionById.get(activeId) : undefined;
+  const activeAssignee = activeMission
+    ? resolveAssignee(activeMission, membersByWorkspaceUserId)
     : undefined;
 
   const columnProps = {
@@ -252,20 +252,20 @@ export function BoardPage() {
     projectName,
     projectColor,
     membersByWorkspaceUserId,
-    selectedTicketId,
-    onCreateTicket: handleCreateTicketFromColumn,
-    onCreateAndOpenTicket: handleCreateAndOpenTicketFromColumn
+    selectedMissionId,
+    onCreateMission: handleCreateMissionFromColumn,
+    onCreateAndOpenMission: handleCreateAndOpenMissionFromColumn
   };
 
   const renderBoardColumns = (columnsDraggable: boolean) =>
     statuses.map(status => {
-      const colTickets = resolveColumnTickets(visibleColumns[status.id] ?? [], ticketById);
+      const colMissions = resolveColumnMissions(visibleColumns[status.id] ?? [], missionById);
       return (
         <BoardColumn
           key={status.id}
           status={status}
-          tickets={colTickets}
-          count={colTickets.length}
+          missions={colMissions}
+          count={colMissions.length}
           draggable={columnsDraggable}
           {...columnProps}
         />
@@ -281,8 +281,8 @@ export function BoardPage() {
           initialColor={projectColor}
         />
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] px-5 py-3">
-          <TicketsViewToggle value={view} onChange={handleViewChange} />
-          <TicketTagFilterDropdown
+          <MissionsViewToggle value={view} onChange={handleViewChange} />
+          <MissionTagFilterDropdown
             tagOptions={tagOptions}
             selectedTagIds={selectedTagIds}
             onClear={() => setSelectedTagIds([])}
@@ -296,20 +296,20 @@ export function BoardPage() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-auto p-6">
-        {tickets.length === 0 ? (
+        {missions.length === 0 ? (
           <EmptyState
-            title="No tickets in this project"
-            hint="Create a ticket to track a unit of work. Each ticket holds an ordered list of objectives."
+            title="No missions in this project"
+            hint="Create a mission to track a unit of work. Each mission holds an ordered list of objectives."
             action={
               <Button variant="primary" onClick={() => setModalOpen(true)}>
-                + New ticket
+                + New mission
               </Button>
             }
           />
-        ) : filteredTickets.length === 0 ? (
+        ) : filteredMissions.length === 0 ? (
           <EmptyState
-            title="No tickets match these filters"
-            hint="Clear the active tag filter to show every ticket in this project."
+            title="No missions match these filters"
+            hint="Clear the active tag filter to show every mission in this project."
             action={
               <Button variant="secondary" onClick={() => setSelectedTagIds([])}>
                 Clear filters
@@ -324,35 +324,35 @@ export function BoardPage() {
               {renderBoardColumns(true)}
             </div>
             <DragOverlay>
-              {activeTicket ? (
-                <SortableTicketCard
-                  ticket={activeTicket}
+              {activeMission ? (
+                <SortableMissionCard
+                  mission={activeMission}
                   projectId={projectId}
                   projectName={projectName}
                   projectColor={projectColor}
                   assignee={activeAssignee}
-                  selected={activeTicket.id === selectedTicketId}
+                  selected={activeMission.id === selectedMissionId}
                   isDragOverlay
                 />
               ) : null}
             </DragOverlay>
           </DndContext>
         ) : (
-          <TicketListView
+          <MissionListView
             statuses={statuses}
             columns={visibleColumns}
-            ticketById={ticketById}
+            missionById={missionById}
             projectId={projectId}
             projectName={projectName}
             projectColor={projectColor}
             membersByWorkspaceUserId={membersByWorkspaceUserId}
-            selectedTicketId={selectedTicketId}
+            selectedMissionId={selectedMissionId}
             draggable={!isTagFilterActive}
           />
         )}
       </div>
 
-      <NewTicketModal
+      <NewMissionModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         defaultProjectId={projectId}

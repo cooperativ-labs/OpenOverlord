@@ -8,7 +8,7 @@ Read [`CONTRACT.md`](../CONTRACT.md) and the [component-contract skill](../.clau
 
 | Extension type | Example user request |
 | --- | --- |
-| New built-in automation | "Add an automation that classifies ticket priority" |
+| New built-in automation | "Add an automation that classifies mission priority" |
 | New provider | "Support OpenAI for summarization" |
 | New automation helper | "Generate acceptance criteria from an objective" |
 

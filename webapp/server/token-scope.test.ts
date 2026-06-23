@@ -30,22 +30,22 @@ test('createUserToken honours an explicit null expiry (never expires)', () => {
   assert.equal(token.expiresAt, null);
 });
 
-test('createUserToken with ticket_lifecycle scope persists grants and surfaces them', () => {
-  const { token } = createUserToken({ label: 'runner', scope: 'ticket_lifecycle' });
-  assert.equal(token.scope, 'ticket_lifecycle');
-  assert.ok(token.scopeGrants.includes('ticket:*'));
+test('createUserToken with mission_lifecycle scope persists grants and surfaces them', () => {
+  const { token } = createUserToken({ label: 'runner', scope: 'mission_lifecycle' });
+  assert.equal(token.scope, 'mission_lifecycle');
+  assert.ok(token.scopeGrants.includes('mission:*'));
   assert.ok(token.scopeGrants.includes('execution_request:claim'));
   assert.ok(!token.scopeGrants.includes('project:delete'));
 
   // The list endpoint reflects the same scope.
   const listed = listUserTokens().find(t => t.id === token.id);
-  assert.equal(listed?.scope, 'ticket_lifecycle');
+  assert.equal(listed?.scope, 'mission_lifecycle');
 });
 
-test('a ticket_lifecycle token is denied admin/destructive actions but allowed ticket/runner work', () => {
+test('a mission_lifecycle token is denied admin/destructive actions but allowed mission/runner work', () => {
   const scopeGrants = [
     'project:read',
-    'ticket:*',
+    'mission:*',
     'objective:*',
     'session:*',
     'event:create',
@@ -62,7 +62,7 @@ test('a ticket_lifecycle token is denied admin/destructive actions but allowed t
     scopeGrants
   });
 
-  assert.equal(actorCan('ticket:create'), true);
+  assert.equal(actorCan('mission:create'), true);
   assert.equal(actorCan('objective:update'), true);
   assert.equal(actorCan('execution_request:claim'), true);
   assert.equal(actorCan('project:delete'), false);
@@ -71,7 +71,7 @@ test('a ticket_lifecycle token is denied admin/destructive actions but allowed t
 
   assert.throws(() => requirePermission('project:delete'), ApiError);
   // Does not throw for an allowed action.
-  requirePermission('ticket:create');
+  requirePermission('mission:create');
 });
 
 test('a full token (session/loopback) keeps the operator ADMIN permissions', () => {

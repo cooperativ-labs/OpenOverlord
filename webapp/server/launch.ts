@@ -421,7 +421,7 @@ interface ExecutionRequestRow {
   id: string;
   workspace_id: string;
   project_id: string;
-  ticket_id: string;
+  mission_id: string;
   objective_id: string;
   execution_target_id: string | null;
   requested_agent: string | null;
@@ -452,7 +452,7 @@ function toExecutionRequestDto(r: ExecutionRequestRow): ExecutionRequestDto {
     id: r.id,
     workspaceId: r.workspace_id,
     projectId: r.project_id,
-    ticketId: r.ticket_id,
+    missionId: r.mission_id,
     objectiveId: r.objective_id,
     executionTargetId: r.execution_target_id,
     requestedAgent: r.requested_agent,
@@ -468,21 +468,21 @@ function toExecutionRequestDto(r: ExecutionRequestRow): ExecutionRequestDto {
 }
 
 const EXECUTION_REQUEST_COLUMNS = `
-  id, workspace_id, project_id, ticket_id, objective_id, execution_target_id,
+  id, workspace_id, project_id, mission_id, objective_id, execution_target_id,
   requested_agent, requested_model, requested_reasoning_effort, launch_flags_json,
   status, requested_source, last_error, created_at, updated_at
 `;
 
-/** Active (queued/claimed/launching) requests for a ticket, newest first per objective. */
-export function listTicketExecutionRequests(ticketId: string): ExecutionRequestDto[] {
+/** Active (queued/claimed/launching) requests for a mission, newest first per objective. */
+export function listMissionExecutionRequests(missionId: string): ExecutionRequestDto[] {
   const rows = db
     .prepare(
       `SELECT ${EXECUTION_REQUEST_COLUMNS} FROM execution_requests
-        WHERE ticket_id = ? AND status IN ('queued', 'claimed', 'launching')
+        WHERE mission_id = ? AND status IN ('queued', 'claimed', 'launching')
           AND deleted_at IS NULL
         ORDER BY created_at DESC`
     )
-    .all(ticketId) as ExecutionRequestRow[];
+    .all(missionId) as ExecutionRequestRow[];
   return rows.map(toExecutionRequestDto);
 }
 
@@ -490,7 +490,7 @@ interface LaunchObjectiveRow {
   id: string;
   workspace_id: string;
   project_id: string;
-  ticket_id: string;
+  mission_id: string;
   title: string | null;
   instruction_text: string;
   state: string;
@@ -524,14 +524,14 @@ const ACTIVE_EXECUTION_STATUSES = ['queued', 'claimed', 'launching'];
 export function dequeueObjective({
   objectiveId,
   projectId,
-  ticketId,
+  missionId,
   reason,
   newState,
   now
 }: {
   objectiveId: string;
   projectId: string;
-  ticketId: string;
+  missionId: string;
   /** Why the objective left the queue, for the audit event payload. */
   reason: 'completed' | 'disconnected' | 'deleted';
   /** New objective state, or null when the objective is being deleted. */
@@ -562,7 +562,7 @@ export function dequeueObjective({
       operation: 'update',
       entityRevision: revision,
       projectId,
-      ticketId,
+      missionId,
       objectiveId,
       changedFields: ['status']
     });
@@ -592,7 +592,7 @@ export function dequeueObjective({
       operation: 'update',
       entityRevision: revision,
       projectId,
-      ticketId,
+      missionId,
       objectiveId,
       changedFields: ['phase', 'ended_at']
     });
@@ -600,15 +600,15 @@ export function dequeueObjective({
 
   if (activeRequests.length > 0 || openSessions.length > 0) {
     db.prepare(
-      `INSERT INTO ticket_events
-         (id, workspace_id, project_id, ticket_id, objective_id, type, phase, summary,
+      `INSERT INTO mission_events
+         (id, workspace_id, project_id, mission_id, objective_id, type, phase, summary,
           payload_json, source, actor_workspace_user_id, created_at)
        VALUES (?, ?, ?, ?, ?, 'status_change', NULL, ?, ?, 'webapp', ?, ?)`
     ).run(
       newId(),
       WORKSPACE.id,
       projectId,
-      ticketId,
+      missionId,
       objectiveId,
       `Objective ${reason}: cleared ${activeRequests.length} queued execution request(s) ` +
         `and ended ${openSessions.length} active session(s).`,
@@ -687,7 +687,7 @@ function resolveLaunchConfig(
  * selection onto the objective, stores an explicit launch override when one is
  * supplied, resolves the effective launch config, moves a draft objective to
  * `launching`, and writes the `execution_requests` row plus the
- * `ticket_events` / `entity_changes` records in one transaction.
+ * `mission_events` / `entity_changes` records in one transaction.
  */
 export const launchObjective = db.transaction(
   (objectiveId: string, body: LaunchObjectiveBody): ExecutionRequestDto => {
@@ -696,7 +696,7 @@ export const launchObjective = db.transaction(
 
     const objective = db
       .prepare(
-        `SELECT id, workspace_id, project_id, ticket_id, title, instruction_text, state,
+        `SELECT id, workspace_id, project_id, mission_id, title, instruction_text, state,
                 assigned_agent, model, reasoning_effort, launch_config_json, revision
            FROM objectives
           WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
@@ -784,7 +784,7 @@ export const launchObjective = db.transaction(
         operation: 'update',
         entityRevision: revision,
         projectId: objective.project_id,
-        ticketId: objective.ticket_id,
+        missionId: objective.mission_id,
         objectiveId: objective.id,
         changedFields: changed
       });
@@ -816,11 +816,11 @@ export const launchObjective = db.transaction(
     const requestId = newId();
     db.prepare(
       `INSERT INTO execution_requests
-         (id, workspace_id, project_id, ticket_id, objective_id, execution_target_id,
+         (id, workspace_id, project_id, mission_id, objective_id, execution_target_id,
           requested_agent, requested_model, requested_reasoning_effort,
           launch_mode, launch_flags_json, target_kind, requested_source, status,
           requested_by_workspace_user_id, metadata_json, created_at, updated_at, revision)
-       VALUES (@id, @ws, @project_id, @ticket_id, @objective_id, @execution_target_id,
+       VALUES (@id, @ws, @project_id, @mission_id, @objective_id, @execution_target_id,
           @requested_agent, @requested_model, @requested_reasoning_effort,
           'run', @launch_flags_json, 'local', 'webapp', 'queued',
           @actor, @metadata_json, @now, @now, 1)`
@@ -828,7 +828,7 @@ export const launchObjective = db.transaction(
       id: requestId,
       ws: WORKSPACE.id,
       project_id: objective.project_id,
-      ticket_id: objective.ticket_id,
+      mission_id: objective.mission_id,
       objective_id: objective.id,
       execution_target_id: target.executionTargetId,
       requested_agent: agentKey,
@@ -841,15 +841,15 @@ export const launchObjective = db.transaction(
     });
 
     db.prepare(
-      `INSERT INTO ticket_events
-         (id, workspace_id, project_id, ticket_id, objective_id, type, phase, summary,
+      `INSERT INTO mission_events
+         (id, workspace_id, project_id, mission_id, objective_id, type, phase, summary,
           payload_json, source, actor_workspace_user_id, created_at)
        VALUES (?, ?, ?, ?, ?, 'execution_requested', 'execute', ?, ?, 'webapp', ?, ?)`
     ).run(
       newId(),
       WORKSPACE.id,
       objective.project_id,
-      objective.ticket_id,
+      objective.mission_id,
       objective.id,
       `Queued ${agentKey}${model ? ` (${model})` : ''} execution for a runner.`,
       JSON.stringify({ executionRequestId: requestId, agent: agentKey, model, reasoningEffort }),
@@ -863,7 +863,7 @@ export const launchObjective = db.transaction(
       operation: 'insert',
       entityRevision: 1,
       projectId: objective.project_id,
-      ticketId: objective.ticket_id,
+      missionId: objective.mission_id,
       objectiveId: objective.id
     });
 
@@ -879,25 +879,25 @@ export const launchObjective = db.transaction(
 /**
  * Assemble a prompt the user can paste into an agent they start themselves.
  * Mirrors the shape of the context `ovld launch` hands to agents: the
- * objective, ticket identity, and the protocol attach instruction.
+ * objective, mission identity, and the protocol attach instruction.
  */
 export function getObjectivePrompt(objectiveId: string): ObjectivePromptDto {
   const row = db
     .prepare(
-      `SELECT o.id, o.ticket_id, o.title, o.instruction_text,
-              t.display_id, t.title AS ticket_title
+      `SELECT o.id, o.mission_id, o.title, o.instruction_text,
+              t.display_id, t.title AS mission_title
          FROM objectives o
-         JOIN tickets t ON t.id = o.ticket_id
+         JOIN missions t ON t.id = o.mission_id
         WHERE o.id = ? AND o.workspace_id = ? AND o.deleted_at IS NULL`
     )
     .get(objectiveId, WORKSPACE.id) as
     | {
         id: string;
-        ticket_id: string;
+        mission_id: string;
         title: string | null;
         instruction_text: string;
         display_id: string;
-        ticket_title: string;
+        mission_title: string;
       }
     | undefined;
   if (!row) throw new ApiError(404, 'Objective not found');
@@ -905,13 +905,13 @@ export function getObjectivePrompt(objectiveId: string): ObjectivePromptDto {
   const prompt = [
     `# Overlord Agent Instructions`,
     ``,
-    `You are an AI coding agent working on ticket **${row.display_id}** via Overlord.`,
+    `You are an AI coding agent working on mission **${row.display_id}** via Overlord.`,
     `Complete the work described below, then deliver a summary back to the platform.`,
     ``,
     `## Task`,
     ``,
-    `- **Title:** ${row.ticket_title}`,
-    `- **Ticket ID:** ${row.display_id}`,
+    `- **Title:** ${row.mission_title}`,
+    `- **Mission ID:** ${row.display_id}`,
     `- **Objective ID:** ${row.id}`,
     ``,
     `### Objective`,
@@ -920,13 +920,13 @@ export function getObjectivePrompt(objectiveId: string): ObjectivePromptDto {
     ``,
     `## Overlord Protocol`,
     ``,
-    `Attach to this ticket before doing anything else, then post updates while you`,
+    `Attach to this mission before doing anything else, then post updates while you`,
     `work and deliver a summary when you finish:`,
     ``,
     '```bash',
-    `ovld protocol attach --ticket-id ${row.display_id}`,
+    `ovld protocol attach --mission-id ${row.display_id}`,
     '```'
   ].join('\n');
 
-  return { objectiveId: row.id, ticketId: row.ticket_id, prompt };
+  return { objectiveId: row.id, missionId: row.mission_id, prompt };
 }

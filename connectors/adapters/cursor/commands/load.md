@@ -1,9 +1,9 @@
-Load Overlord ticket context without attaching.
+Load Overlord mission context without attaching.
 
-Use the text after `/load` as the ticket ID.
+Use the text after `/load` as the mission ID.
 
 Run:
-`ovld protocol load-context --ticket-id <ticketId>`
+`ovld protocol load-context --mission-id <missionId>`
 
-When you open or discuss an existing ticket that has a draft objective, submit it with:
-`ovld protocol discuss-objective --ticket-id <ticketId>`
+When you open or discuss an existing mission that has a draft objective, submit it with:
+`ovld protocol discuss-objective --mission-id <missionId>`

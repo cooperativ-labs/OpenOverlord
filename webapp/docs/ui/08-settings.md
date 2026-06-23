@@ -110,12 +110,12 @@ Settings
 ```
 ┌─ Danger zone ───────────────────────────────────────────────────────────┐
 │ Archive project…   (per project; soft-delete)                            │
-│ Delete ticket…     (soft-delete; type the ticket ID to confirm)          │
+│ Delete mission…     (soft-delete; type the mission ID to confirm)          │
 │ Reset local UI prefs                                                     │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-- Archive/delete projects and tickets with **typed confirmation**; all are
+- Archive/delete projects and missions with **typed confirmation**; all are
   soft-deletes (`deleted_at`) via the service layer — never hard table deletes from
   the UI. Destructive actions are RBAC-gated and disabled (with the denial reason)
   for non-admins when Group 1 is installed.

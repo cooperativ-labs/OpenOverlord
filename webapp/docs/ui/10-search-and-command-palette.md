@@ -2,7 +2,7 @@
 
 Two related surfaces for fast navigation and action in a keyboard-first ops tool:
 the **command palette** (`⌘K` / `Ctrl+K`) for jump-to and verbs, and the **search
-results** page for ranked, filtered ticket search. Both honor the search capability
+results** page for ranked, filtered mission search. Both honor the search capability
 gate.
 
 **Routes:** the palette is a global overlay (no route; opens over any screen);
@@ -18,14 +18,14 @@ path to anything.
 ```
 ┌─ ⌘K ──────────────────────────────────────────────────────────────────────┐
 │ ⌕ build react…                                                             │
-│ ─ Tickets ────────────────────────────────────────────────────────────────│
+│ ─ Missions ────────────────────────────────────────────────────────────────│
 │   1:1429  Build Realtime React Web Interface        execute ●              │
 │   1:1402  Seed schema                                complete               │
 │ ─ Go to ──────────────────────────────────────────────────────────────────│
 │   Board · Open0           Runner queue           Connectors                │
 │   Project: Billing-svc    Settings → Tokens                                │
 │ ─ Actions ────────────────────────────────────────────────────────────────│
-│   + Create ticket…        ▷ Run focused objective   ↻ Run doctor           │
+│   + Create mission…        ▷ Run focused objective   ↻ Run doctor           │
 │   ⌫ Clear all execution requests                                           │
 └────────────────────────────────────────────────────────────────────────────┘
    ↑↓ navigate · ↵ open · ⌘↵ run action · esc close
@@ -33,12 +33,12 @@ path to anything.
 
 Result groups (ranked, deduped):
 
-1. **Tickets** — by `display_id` (exact, always available) and, when Group 8 is
+1. **Missions** — by `display_id` (exact, always available) and, when Group 8 is
    installed, ranked text over title + first objective. Each shows live status.
 2. **Go to** — navigation targets: board, runner, changes, connectors, settings,
    and **project switching** (type a project name to jump).
 3. **Actions** — context-aware verbs that map to protocol/REST:
-   - Create ticket (opens the create modal, doc 02)
+   - Create mission (opens the create modal, doc 02)
    - Run the focused/selected objective (doc 04)
    - Answer the top blocking ask / approve a permission request (docs 03/07)
    - Clear all execution requests (doc 04)
@@ -76,10 +76,10 @@ Filters: [ Status ▾ ] [ Project ▾ ] [ Creator ▾ ▸G1 ] [ Updated ▾ ]
   `display_id` lookup; ranked text over title, display ID, and the first objective
   text; with snippets highlighting the match.
 - **Filters**: workspace, project, status list, creator (gated G1), updated date
-  range — mirroring the protocol `search-tickets` contract. All filter state in the
+  range — mirroring the protocol `search-missions` contract. All filter state in the
   URL so a search is shareable/reloadable.
 - Results are bounded (sensible limit) and paginated; selecting a result opens
-  ticket detail.
+  mission detail.
 
 ---
 
@@ -87,11 +87,11 @@ Filters: [ Status ▾ ] [ Project ▾ ] [ Creator ▾ ▸G1 ] [ Updated ▾ ]
 
 | Region | Read | Notes |
 | --- | --- | --- |
-| Ranked results | `GET /sync`?… no — `GET /tickets?q=` / a search endpoint over `search_documents` (Group 8) | with FTS5/`tsvector` under the hood; the UI uses the portable service interface |
-| Exact lookup | `GET /tickets?displayId=` | always available, no Group 8 |
-| Palette nav/actions | local route table + `['tickets']`/`['executionRequests']` caches | no extra fetch for nav/actions |
+| Ranked results | `GET /sync`?… no — `GET /missions?q=` / a search endpoint over `search_documents` (Group 8) | with FTS5/`tsvector` under the hood; the UI uses the portable service interface |
+| Exact lookup | `GET /missions?displayId=` | always available, no Group 8 |
+| Palette nav/actions | local route table + `['missions']`/`['executionRequests']` caches | no extra fetch for nav/actions |
 
-Search results reflect live status from the ticket cache/change feed (a result's
+Search results reflect live status from the mission cache/change feed (a result's
 status badge updates if it changes while open), though re-ranking happens on the
 next query, not continuously.
 
@@ -101,11 +101,11 @@ next query, not continuously.
 
 - **Group 8 absent:** search degrades gracefully — `⌘K` and `/search` still do
   **exact `display_id` lookup** plus client-side filtering of already-loaded
-  tickets; a subtle note explains that ranked full-text search needs the search
+  missions; a subtle note explains that ranked full-text search needs the search
   capability. No broken UI.
-- **No query:** palette shows recent tickets + top actions; results page shows
-  recent/active tickets.
-- **No matches:** "No tickets match" + offer to create a ticket with the query as
+- **No query:** palette shows recent missions + top actions; results page shows
+  recent/active missions.
+- **No matches:** "No missions match" + offer to create a mission with the query as
   the title.
 - **Loading:** inline result skeletons; the palette stays responsive (debounced).
 
@@ -131,12 +131,12 @@ next query, not continuously.
 
 ## Acceptance criteria
 
-- `⌘K` opens from any screen and can jump to a ticket by `display_id`, navigate to
+- `⌘K` opens from any screen and can jump to a mission by `display_id`, navigate to
   any primary surface, switch projects, and invoke context-appropriate actions.
 - With Group 8 installed, search ranks over title, display ID, and first objective
   text with snippets and the documented filters, all reflected in the URL.
 - With Group 8 absent, search still resolves exact `display_id` and filters loaded
-  tickets, with no broken controls and a clear note about enabling full-text search.
+  missions, with no broken controls and a clear note about enabling full-text search.
 - Palette actions respect RBAC and capability gates — forbidden/unavailable verbs do
   not appear or explain why.
 </content>

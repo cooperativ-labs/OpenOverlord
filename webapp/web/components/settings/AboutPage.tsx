@@ -24,7 +24,7 @@ export function AboutPage({ open }: AboutPageProps) {
       <div>
         <h2 className="text-base font-medium">About</h2>
         <p className="text-sm text-muted-foreground">
-          Overlord helps you coordinate agent and human execution from one shared ticket workflow.
+          Overlord helps you coordinate agent and human execution from one shared mission workflow.
         </p>
       </div>
 

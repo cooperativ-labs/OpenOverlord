@@ -5,7 +5,7 @@ import test from 'node:test';
 
 import { createServiceContext } from '../../src/service/context.ts';
 import { createProject } from '../../src/service/projects.ts';
-import { addObjectivesToTicket, createTicketWithObjectives } from '../../src/service/tickets.ts';
+import { addObjectivesToMission, createMissionWithObjectives } from '../../src/service/missions.ts';
 
 function createContext() {
   const db = new Database(':memory:');
@@ -14,11 +14,11 @@ function createContext() {
   return { db, ctx: createServiceContext({ db, source: 'cli' }) };
 }
 
-test('ticket creation creates one draft objective and future objectives for the rest', () => {
+test('mission creation creates one draft objective and future objectives for the rest', () => {
   const { db, ctx } = createContext();
   const project = createProject({ ctx, name: 'Objective Creation Test' });
 
-  const { objectives } = createTicketWithObjectives({
+  const { objectives } = createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [
@@ -36,18 +36,18 @@ test('ticket creation creates one draft objective and future objectives for the 
   db.close();
 });
 
-test('adding objectives to a ticket with a draft creates future objectives', () => {
+test('adding objectives to a mission with a draft creates future objectives', () => {
   const { db, ctx } = createContext();
   const project = createProject({ ctx, name: 'Add Objectives Test' });
-  const { ticket } = createTicketWithObjectives({
+  const { mission } = createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [{ objective: 'Existing draft' }]
   });
 
-  const added = addObjectivesToTicket({
+  const added = addObjectivesToMission({
     ctx,
-    ticketId: ticket.id,
+    missionId: mission.id,
     objectives: [{ objective: 'Additional objective' }, { objective: 'Another objective' }]
   });
 
@@ -59,19 +59,19 @@ test('adding objectives to a ticket with a draft creates future objectives', () 
   db.close();
 });
 
-test('adding objectives to a ticket without a draft creates exactly one draft', () => {
+test('adding objectives to a mission without a draft creates exactly one draft', () => {
   const { db, ctx } = createContext();
   const project = createProject({ ctx, name: 'Refill Draft Test' });
-  const { ticket, objectives } = createTicketWithObjectives({
+  const { mission, objectives } = createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [{ objective: 'Existing objective' }]
   });
   ctx.db.prepare(`UPDATE objectives SET state = 'submitted' WHERE id = ?`).run(objectives[0]?.id);
 
-  const added = addObjectivesToTicket({
+  const added = addObjectivesToMission({
     ctx,
-    ticketId: ticket.id,
+    missionId: mission.id,
     objectives: [{ objective: 'New next-up' }, { objective: 'Future follow-up' }]
   });
 

@@ -1,4 +1,4 @@
-Create a draft Overlord ticket.
+Create a draft Overlord mission.
 
 Use the text after `/create` as the objective unless raw flags are present.
 
@@ -10,4 +10,4 @@ Otherwise, treat the input as the objective text and run:
 
 If no objective was provided, ask the user for one and stop.
 
-After the command succeeds, report the new `TICKET_ID`.
+After the command succeeds, report the new `MISSION_ID`.

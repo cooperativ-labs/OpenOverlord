@@ -5,7 +5,7 @@ contractVersion: "0.1-draft"
 componentType: extension
 componentKey: my-analytics
 label: "My Analytics Extension"
-description: "Adds aggregate analytics tables for ticket throughput tracking"
+description: "Adds aggregate analytics tables for mission throughput tracking"
 
 extension:
   tablePrefix: "ext_myanalytics_"

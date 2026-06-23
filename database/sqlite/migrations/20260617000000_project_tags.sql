@@ -1,8 +1,8 @@
--- Project-scoped ticket tags.
+-- Project-scoped mission tags.
 -- Implements the logical `project_tags` (per-project tag definitions) and
--- `ticket_tags` (ticket↔tag assignment join) tables from the schema contract.
+-- `mission_tags` (mission↔tag assignment join) tables from the schema contract.
 --
--- Contract: database/docs/09-database-schema-contract.md → project_tags / ticket_tags
+-- Contract: database/docs/09-database-schema-contract.md → project_tags / mission_tags
 
 CREATE TABLE project_tags (
   id TEXT PRIMARY KEY,
@@ -23,11 +23,11 @@ CREATE UNIQUE INDEX idx_project_tags_project_label ON project_tags (project_id, 
 CREATE UNIQUE INDEX idx_project_tags_project_id ON project_tags (project_id, id);
 CREATE INDEX idx_project_tags_project_active ON project_tags (project_id, active);
 
-CREATE TABLE ticket_tags (
-  ticket_id TEXT NOT NULL REFERENCES tickets (id) ON DELETE CASCADE,
+CREATE TABLE mission_tags (
+  mission_id TEXT NOT NULL REFERENCES missions (id) ON DELETE CASCADE,
   tag_id TEXT NOT NULL REFERENCES project_tags (id) ON DELETE CASCADE,
   created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
-  PRIMARY KEY (ticket_id, tag_id)
+  PRIMARY KEY (mission_id, tag_id)
 );
 
-CREATE INDEX idx_ticket_tags_tag ON ticket_tags (tag_id);
+CREATE INDEX idx_mission_tags_tag ON mission_tags (tag_id);

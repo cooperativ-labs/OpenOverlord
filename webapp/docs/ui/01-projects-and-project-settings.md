@@ -15,7 +15,7 @@ since every operational route is project-scoped (`/p/:projectId/...`).
 [ Open0 ▾ ]
  ┌─────────────────────────────┐
  │ ⌕ filter projects…          │
- │ ● Open0          12 active  │  ← current; count = tickets in execute/review
+ │ ● Open0          12 active  │  ← current; count = missions in execute/review
  │ ○ Billing-svc     3 active  │
  │ ○ Infra            —        │
  │ ─────────────────────────── │
@@ -26,13 +26,13 @@ since every operational route is project-scoped (`/p/:projectId/...`).
 
 - Switching rewrites the current route to the equivalent route in the target
   project when one exists (board↔board), otherwise lands on that project's board.
-- Each row shows the project name and a live count of `execute`+`review` tickets
+- Each row shows the project name and a live count of `execute`+`review` missions
   (from the board query), plus a ⚠ marker if the project has a missing primary
   working directory.
 - `+ New project` opens the **Create Project** dialog (below).
 
 **Data:** `GET /projects` → `['projects']`. Realtime: `entity_changes` with
-`entityType=project` invalidates `['projects']`; ticket count badges update from
+`entityType=project` invalidates `['projects']`; mission count badges update from
 each project's board query / change deltas.
 
 ---
@@ -44,7 +44,7 @@ Reached from "Manage projects…". A denser management view of all projects.
 ```
 Projects                                              [ + New project ]
 ┌────────────────────────────────────────────────────────────────────┐
-│ Name        Repo / primary dir            Tickets   Default agent    │
+│ Name        Repo / primary dir            Missions   Default agent    │
 │ Open0       ~/dev/Overlord  ●primary   12 / 40   claude · opus    │
 │ Billing-svc ~/dev/billing       ●primary    3 / 9    codex · gpt-…    │
 │ Infra       ⚠ no linked directory           0 / 2    claude           │  ← warning row
@@ -54,7 +54,7 @@ Each row → open project → project board; ⋯ menu → Settings, Archive.
 
 - Rows surface the **primary resource directory** and a **missing-directory
   warning** (the runner cannot launch without one — links to the repair).
-- `Tickets` shows open / total. `Default agent/model` previews the project launch
+- `Missions` shows open / total. `Default agent/model` previews the project launch
   defaults used by the board's quick-run.
 
 ---
@@ -150,7 +150,7 @@ Project: Open0                                           [ Archive project ]
 | UI region | Read | Realtime trigger |
 | --- | --- | --- |
 | Switcher / list | `GET /projects` | `entityType=project` → invalidate `['projects']` |
-| Per-project ticket counts | board query | `ticket` / `objective` deltas for that `projectId` |
+| Per-project mission counts | board query | `mission` / `objective` deltas for that `projectId` |
 | Resource directories | `GET /projects/:id` resources | `project_resource` deltas |
 | Workflow statuses | project statuses | `project_status` deltas |
 
@@ -173,7 +173,7 @@ Project: Open0                                           [ Archive project ]
 - A project missing a primary working directory shows a warning in the switcher,
   the projects list, and project settings, each linking to the same repair.
 - Renaming a status updates the board column header live without losing objective
-  ordering or ticket history.
+  ordering or mission history.
 - The contract status invariants (one default / one execute / one review) cannot
   be violated from the UI.
 - Archiving a project requires explicit confirmation and performs a soft-delete via

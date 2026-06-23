@@ -22,7 +22,7 @@ export function HotkeysPage() {
     const isMac =
       typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
     setItems([
-      { action: 'Focus ticket search', shortcut: isMac ? '⌘F' : 'Ctrl+F' },
+      { action: 'Focus mission search', shortcut: isMac ? '⌘F' : 'Ctrl+F' },
       { action: 'Toggle sidebar', shortcut: isMac ? '⌘B' : 'Ctrl+B' },
       { action: 'Go back', shortcut: isMac ? '⌥←' : 'Alt+←' }
     ]);

@@ -24,7 +24,7 @@ type AgentLaunchButtonProps = {
   selection: AgentModelSelection;
   /** False until catalog + preference queries resolve; Run stays disabled. */
   selectionLoaded: boolean;
-  /** True when another objective on the ticket is already executing/launching. */
+  /** True when another objective on the mission is already executing/launching. */
   hasActiveSibling?: boolean;
   /** Active execution request already queued for this objective, if any. */
   activeRequest?: ExecutionRequestDto | null;
@@ -55,7 +55,7 @@ const sizeStyles: Record<
  * Split run button for an objective: the primary action queues an execution
  * request for the selected agent/model; the caret offers Run and a copyable
  * prompt for driving an agent manually. Mirrors the legacy AgentSplitButton:
- * confirm-before-queue when an agent is already working the ticket, and a
+ * confirm-before-queue when an agent is already working the mission, and a
  * disabled-state tooltip explaining what is missing.
  */
 export function AgentLaunchButton({
@@ -163,7 +163,7 @@ export function AgentLaunchButton({
       <PopoverTrigger render={<span className="inline-flex">{runButton}</span>} />
       <PopoverContent side="top" className="w-80 p-3 text-sm">
         <p className="mb-3 text-foreground">
-          An agent appears to be working this ticket already. Queue this objective so a runner
+          An agent appears to be working this mission already. Queue this objective so a runner
           launches it after the current one completes?
         </p>
         <div className="flex justify-end gap-2">

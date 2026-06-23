@@ -92,7 +92,7 @@ function WorktreeRow({ worktree }: { worktree: WorktreeDto }) {
           <p className="truncate text-xs text-muted-foreground">{worktree.path}</p>
           <p className="text-xs text-muted-foreground">
             {worktree.projectName}
-            {worktree.ticketDisplayId ? ` · ${worktree.ticketDisplayId}` : ''} ·{' '}
+            {worktree.missionDisplayId ? ` · ${worktree.missionDisplayId}` : ''} ·{' '}
             {formatBytes(worktree.sizeBytes)} · {formatWhen(worktree.lastModifiedAt)}
           </p>
         </div>
@@ -145,16 +145,16 @@ export function WorktreesPage() {
       <div>
         <h2 className="text-base font-medium">Worktrees</h2>
         <p className="text-sm text-muted-foreground">
-          Control how Overlord isolates ticket work in branches and worktrees.
+          Control how Overlord isolates mission work in branches and worktrees.
         </p>
       </div>
 
       <div className="max-w-md space-y-3 rounded-lg border border-border bg-card p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
-            <Label htmlFor="worktree-branch-automation">Ticket worktrees</Label>
+            <Label htmlFor="worktree-branch-automation">Mission worktrees</Label>
             <p className="text-xs text-muted-foreground">
-              Launch each ticket in its own branch and worktree under the Overlord home folder.
+              Launch each mission in its own branch and worktree under the Overlord home folder.
             </p>
           </div>
           <Switch

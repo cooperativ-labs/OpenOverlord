@@ -25,7 +25,7 @@ type StorageRow = {
   upload_status?: string | null;
   profile_id?: string;
   project_id?: string | null;
-  ticket_id?: string | null;
+  mission_id?: string | null;
   objective_id?: string | null;
   revision: number;
 };
@@ -555,7 +555,7 @@ export function createAttachment({
     checksumSha256?: string | null;
     uploadStatus?: 'prepared' | 'uploaded' | 'available' | 'failed' | 'deleted';
     projectId?: string | null;
-    ticketId?: string | null;
+    missionId?: string | null;
     objectiveId?: string | null;
     metadata?: unknown;
   };
@@ -568,7 +568,7 @@ export function createAttachment({
   ctx.db
     .prepare(
       `INSERT INTO attachments (
-         id, workspace_id, project_id, ticket_id, objective_id, storage_bucket_id,
+         id, workspace_id, project_id, mission_id, objective_id, storage_bucket_id,
          storage_key, filename, content_type, size_bytes, checksum_sha256,
          upload_status, metadata_json, created_by_workspace_user_id, created_at,
          updated_at, revision
@@ -578,7 +578,7 @@ export function createAttachment({
       id,
       ctx.workspace.id,
       input.projectId ?? null,
-      input.ticketId ?? null,
+      input.missionId ?? null,
       input.objectiveId ?? null,
       bucketId,
       input.storageKey,
@@ -599,7 +599,7 @@ export function createAttachment({
     operation: 'insert',
     entityRevision: 1,
     projectId: input.projectId ?? null,
-    ticketId: input.ticketId ?? null,
+    missionId: input.missionId ?? null,
     objectiveId: input.objectiveId ?? null
   });
   return assertFound(
@@ -611,13 +611,13 @@ export function createAttachment({
 export function listAttachments({
   ctx,
   projectId,
-  ticketId,
+  missionId,
   objectiveId,
   authorization
 }: {
   ctx: ServiceContext;
   projectId?: string | null;
-  ticketId?: string | null;
+  missionId?: string | null;
   objectiveId?: string | null;
 } & AuthorizationOptions): AttachmentSummary[] {
   requirePermission(ctx, PERMISSIONS.ATTACHMENT_READ, { authorization });
@@ -630,9 +630,9 @@ export function listAttachments({
     sql += ' AND project_id = ?';
     params.push(projectId);
   }
-  if (ticketId) {
-    sql += ' AND ticket_id = ?';
-    params.push(ticketId);
+  if (missionId) {
+    sql += ' AND mission_id = ?';
+    params.push(missionId);
   }
   if (objectiveId) {
     sql += ' AND objective_id = ?';
@@ -662,7 +662,7 @@ export function updateAttachment({
   const existing = assertFound(
     ctx.db
       .prepare(
-        `SELECT project_id, ticket_id, objective_id
+        `SELECT project_id, mission_id, objective_id
          FROM attachments WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
       )
       .get(attachmentId, ctx.workspace.id) as StorageRow | undefined,
@@ -692,7 +692,7 @@ export function updateAttachment({
     operation: 'update',
     entityRevision: revision + 1,
     projectId: existing.project_id ?? null,
-    ticketId: existing.ticket_id ?? null,
+    missionId: existing.mission_id ?? null,
     objectiveId: existing.objective_id ?? null,
     changedFields: ['filename', 'upload_status', 'metadata_json']
   });
@@ -716,7 +716,7 @@ export function deleteAttachment({
   const existing = assertFound(
     ctx.db
       .prepare(
-        `SELECT project_id, ticket_id, objective_id
+        `SELECT project_id, mission_id, objective_id
          FROM attachments WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
       )
       .get(attachmentId, ctx.workspace.id) as StorageRow | undefined,
@@ -738,7 +738,7 @@ export function deleteAttachment({
     operation: 'delete',
     entityRevision: revision + 1,
     projectId: existing.project_id ?? null,
-    ticketId: existing.ticket_id ?? null,
+    missionId: existing.mission_id ?? null,
     objectiveId: existing.objective_id ?? null
   });
 }

@@ -1,4 +1,4 @@
-Create a new Overlord ticket and attach immediately for execution.
+Create a new Overlord mission and attach immediately for execution.
 
 Use the text after `/prompt` as the objective unless raw flags are present.
 
@@ -10,4 +10,4 @@ Otherwise, treat the input as the objective text and run:
 
 If no objective was provided, ask the user for one and stop.
 
-After the command succeeds, report the new `TICKET_ID` and `SESSION_KEY`.
+After the command succeeds, report the new `MISSION_ID` and `SESSION_KEY`.

@@ -81,7 +81,7 @@ as the source of truth for authored extension definitions.
 ## Permission-request inbox
 
 Agents publish `permission_request` events when they need tool permission. This
-inbox is the human approve/deny surface (also surfaced inline on ticket detail and
+inbox is the human approve/deny surface (also surfaced inline on mission detail and
 in the topbar attention counter).
 
 ```
@@ -94,7 +94,7 @@ Permission requests (2)
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-- Each request shows the ticket/objective, agent, the requested tool/payload
+- Each request shows the mission/objective, agent, the requested tool/payload
   (secret-redacted — hooks never leak secrets), and age.
 - Approve/Deny resolves the `permission_requests` row and posts the result; the
   agent's hook reads the resolution. Resolved requests move to a collapsed history.

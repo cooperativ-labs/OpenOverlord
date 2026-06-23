@@ -127,7 +127,7 @@ Roles come from `openoverlord.rbac.toml` (copy and edit to customize):
 
 - `ADMIN` — full instance administrator (`grants = ["*"]`).
 - `MEMBER` — standard user or persistent agent account (scoped grants:
-  `ticket:*`, `objective:*`, `session:*`, etc.).
+  `mission:*`, `objective:*`, `session:*`, etc.).
 - `PUBLIC` — unauthenticated read access (images only by default).
 
 > For a multi-user instance, assume every human/agent user needs at least
@@ -137,7 +137,7 @@ Roles come from `openoverlord.rbac.toml` (copy and edit to customize):
 
 ### Q6 — Which schema groups do you install now?
 
-Every install gets the **core tables** (workspaces, projects, tickets,
+Every install gets the **core tables** (workspaces, projects, missions,
 objectives, sessions, events, shared context, queue, change feed). Beyond that,
 schema is à la carte — and **any group can be added later with additive-only
 migrations**, so when in doubt, defer. The
@@ -150,10 +150,10 @@ authoritative; the short version:
 | Compliance / forensic logging (Q5) | **Group 2** — Security Audit Trail (pairs with Group 1) |
 | Async background work (cleanup, notifications, draining the outbox) | **Group 3** — Background Jobs |
 | Custom harness extensions, connector health (`doctor`) dashboards, permission-approval UI | **Group 4** — Connector Extensions & Monitoring (pairs with Group 3) |
-| Custom ticket labels/tags | **Group 5** — Ticket Tagging |
+| Custom mission labels/tags | **Group 5** — Mission Tagging |
 | Web/desktop client with cursor-resuming live updates | **Group 6** — Realtime Client Registry |
 | Guaranteed side-effect delivery (webhooks, search reindex, blob deletion) | **Group 7** — Reliable Side-Effect Delivery (pairs with Group 3) |
-| Ranked full-text ticket search | **Group 8** — Full-Text Search |
+| Ranked full-text mission search | **Group 8** — Full-Text Search |
 
 Confirm the final group selection **before** running migrations. Never remove
 core tables.

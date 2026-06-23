@@ -2,7 +2,7 @@
 
 This file tells agents how to extend the Web App module to add new capabilities for users. The Web App module covers the **REST API Layer** (`rest`) in the contract. Read [`CONTRACT.md`](../CONTRACT.md) and the [component-contract skill](../.claude/skills/component-contract/SKILL.md) before making any cross-module change.
 
-> **Status note:** A first realtime slice has landed — projects/tickets/objectives CRUD with live updates. It lives in `server/` (Express REST + SSE realtime over `better-sqlite3`), `web/` (the React SPA), and `shared/` (the typed DTO contract). The remaining surfaces are still deferred; this guide describes the intended patterns so they land consistently.
+> **Status note:** A first realtime slice has landed — projects/missions/objectives CRUD with live updates. It lives in `server/` (Express REST + SSE realtime over `better-sqlite3`), `web/` (the React SPA), and `shared/` (the typed DTO contract). The remaining surfaces are still deferred; this guide describes the intended patterns so they land consistently.
 >
 > **Temporary deviation:** the landed `server/` reads/writes the SQLite tables directly because the shared **service layer** does not exist in `src/` yet. The rule below (REST handlers call the service layer, never tables directly) still holds — when that layer lands, move `server/repository.ts` onto it. Do not add new direct-table writers in the meantime without recording the same caveat.
 
@@ -14,8 +14,8 @@ Extensions in this module fall into three categories:
 
 | Extension type | Example user request |
 | --- | --- |
-| New REST endpoint | "Add `GET /api/tickets/:id/artifacts`" |
-| New realtime event | "Push ticket-status changes over SSE" |
+| New REST endpoint | "Add `GET /api/missions/:id/artifacts`" |
+| New realtime event | "Push mission-status changes over SSE" |
 | REST extension module | "Add a namespaced `/ext/myapp/` endpoint set" |
 
 Each type has a different procedure below.
@@ -40,7 +40,7 @@ REST endpoints are stable interfaces. URL paths and HTTP method contracts, once 
 1. **Confirm the DTO shape** against `database/docs/09-database-schema-contract.md`. Response field names are camelCase versions of the logical schema column names.
 2. **Update `CONTRACT.md`** REST API Layer section with the new path, method, and response shape.
 3. **Increment the contract version** in `contract/components.yaml` if the new endpoint changes a previously-stable response schema or removes/renames an existing path.
-4. **Implement in `webapp/<area>/`**: one file per resource area (e.g. `webapp/tickets/routes.ts`). Follow the colocated pattern: `webapp/<area>/routes.ts` + `webapp/<area>/routes.test.ts`.
+4. **Implement in `webapp/<area>/`**: one file per resource area (e.g. `webapp/missions/routes.ts`). Follow the colocated pattern: `webapp/<area>/routes.ts` + `webapp/<area>/routes.test.ts`.
 5. **Auth before service call**: validate the request token via the Auth Layer, resolve the `Actor`, then call `can(actor, action, resource)` before any mutation.
 6. **Reach persistence only through the service layer** — the same service functions used by `cli/` and `cli/protocol/`.
 7. **Idempotency**: write-operations that can be retried (e.g. from a client retry on timeout) must use REST-scope idempotency keys in `idempotency_keys`.
@@ -54,7 +54,7 @@ The SSE/WebSocket realtime endpoint is owned by the REST API Layer. New event ty
 
 **Steps:**
 
-1. **Define the event type name** using a namespaced string if it is extension-specific (e.g. `myapp:ticket.updated`), or a plain name if it is core (e.g. `ticket.status_changed`).
+1. **Define the event type name** using a namespaced string if it is extension-specific (e.g. `myapp:mission.updated`), or a plain name if it is core (e.g. `mission.status_changed`).
 2. **Update `database/docs/09-database-schema-contract.md`** if the event type derives from `entity_changes` — note it in the "Realtime/Sync" section.
 3. **Implement the event emitter** in `webapp/realtime/`. Events must be derived from `entity_changes` rows written in the same transaction as the domain mutation — never computed separately.
 4. **Document the event shape** (type, payload fields) in `CONTRACT.md` REST API Layer section.

@@ -20,7 +20,7 @@ withAdapter(async (db, adapter) => {
 ```
 
 - Migrations are applied fresh per test; default seed rows
-  (workspace/user/statuses/ticket sequence) are inserted by the harness.
+  (workspace/user/statuses/mission sequence) are inserted by the harness.
 - A behavior must pass identically on both adapters. A SQLite-only pass is a
   failing test, not an accepted divergence.
 - Postgres absence yields an explicit `SKIP` line in output, never a silent green.
@@ -37,7 +37,7 @@ withAdapter(async (db, adapter) => {
 - **Foreign keys** — every documented FK exists and points at the right column.
 - **Indexes** — required indexes and **partial unique** indexes exist (e.g. one
   active default status per project, one active role assignment, unique active
-  ticket position, unique active tags, unique idempotency key).
+  mission position, unique active tags, unique idempotency key).
 - **CHECK constraints** — closed-vocabulary columns carry CHECKs whose allowed
   set equals the contract list (shared with the [vocab conformance test](../../TEST_PLAN.md#32-controlled-vocabulary-enforcement)).
 - **FK dependency order** — migrations create tables in an order that satisfies the
@@ -79,12 +79,12 @@ withAdapter(async (db, adapter) => {
 ## 5. Active-Uniqueness Rules (Adapter Suite §5)
 
 > "Active uniqueness rules reject duplicate active statuses, role assignments,
-> ticket positions, tags, and idempotency keys."
+> mission positions, tags, and idempotency keys."
 
 - Duplicate active `project_statuses` of the same type rejected; exactly one
   active `execute`, one active `review`, one active default per project.
 - Duplicate active `role_assignments` (same workspace_user + role) rejected.
-- Duplicate active ticket/objective position rejected.
+- Duplicate active mission/objective position rejected.
 - Duplicate active tag assignment rejected.
 - Duplicate in-progress `idempotency_keys` (same scope+key) rejected; a completed
   key returns the stored result instead of re-applying.
@@ -97,7 +97,7 @@ withAdapter(async (db, adapter) => {
 - Two concurrent `claimExecution` attempts on one `queued` request: exactly one
   wins (`claimed`), the other gets nothing — never both. Compare-and-set, single
   transaction.
-- The winning claim appends `ticket_events` (execution-claimed) and
+- The winning claim appends `mission_events` (execution-claimed) and
   `entity_changes` in the **same** transaction (rollback test confirms atomicity).
 - A claim on a non-launchable objective is rejected before any state change.
 - Postgres path may use `FOR UPDATE SKIP LOCKED`; SQLite uses a guarded
@@ -120,7 +120,7 @@ withAdapter(async (db, adapter) => {
 
 - A delivery + change_rationales can be created with no `agent_sessions` row;
   delivery attribution fields tolerate the null-session case.
-- The ticket lands in `review` status and a completed objective is created
+- The mission lands in `review` status and a completed objective is created
   (matches `recordWork` side effects in `protocol-commands.yaml`).
 
 ## 9. Extension Migrations (Adapter Suite §9) — `extension` component
@@ -152,9 +152,9 @@ withAdapter(async (db, adapter) => {
 
 - A from-zero migration of the "First Migration Slice" tables succeeds and seeds
   exactly one local workspace, implicit user + membership, default project
-  statuses, and a workspace-scoped ticket sequence.
-- Ticket `display_id` is workspace-scoped (`1:NNNN`) and monotonically increments
-  via `ticket_sequences` under concurrency (no duplicate display IDs).
+  statuses, and a workspace-scoped mission sequence.
+- Mission `display_id` is workspace-scoped (`1:NNNN`) and monotonically increments
+  via `mission_sequences` under concurrency (no duplicate display IDs).
 
 ## Test Layout
 

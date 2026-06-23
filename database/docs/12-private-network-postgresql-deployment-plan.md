@@ -8,7 +8,7 @@ single-user local CLI database:
 - One authoritative database is hosted on a machine inside a private network.
 - About three users access the same organization/workspace.
 - Multiple clients run on different machines.
-- Agent sessions and user clients may update tickets, objectives, shared context,
+- Agent sessions and user clients may update missions, objectives, shared context,
   deliveries, and review metadata concurrently.
 - Jobs in `execution_requests` are often claimed and executed by runner clients
   on different machines.
@@ -38,7 +38,7 @@ PostgreSQL on private network
 ```
 
 This keeps all domain rules in one place: authorization, idempotency,
-`revision` compare-and-set, queue claiming, `ticket_events`, `entity_changes`,
+`revision` compare-and-set, queue claiming, `mission_events`, `entity_changes`,
 and audit attribution.
 
 ## Why Not Shared SQLite
@@ -62,10 +62,10 @@ row-level coordination and stronger multi-writer behavior.
 
 PostgreSQL owns authoritative organization state:
 
-- Workspaces, users, projects, tickets, objectives, sessions, deliveries, and
+- Workspaces, users, projects, missions, objectives, sessions, deliveries, and
   review artifacts.
 - `execution_requests` queue state.
-- `ticket_events` history.
+- `mission_events` history.
 - `entity_changes` change feed.
 - Idempotency records.
 - RBAC role assignments and token metadata.
@@ -82,7 +82,7 @@ All writes should run through Overlord services. The service layer should:
 - Start an ACID transaction.
 - Validate idempotency scope and request hash.
 - Apply the domain mutation using `revision` compare-and-set where applicable.
-- Append `ticket_events` when the mutation affects ticket history.
+- Append `mission_events` when the mutation affects mission history.
 - Append `entity_changes` in the same transaction.
 - Commit and then wake realtime subscribers.
 
@@ -93,7 +93,7 @@ bypass domain invariants.
 
 Clients should call service endpoints:
 
-- `ovld protocol` for agent ticket lifecycle work.
+- `ovld protocol` for agent mission lifecycle work.
 - REST endpoints for web or desktop clients.
 - Runner endpoints for queue polling, claiming, launch status, and completion.
 - Sync/realtime endpoints for change catch-up and UI refresh.
@@ -114,7 +114,7 @@ Recommended flow:
 4. Service validates that the objective is still launchable.
 5. Service marks the request claimed/running and records the runner/session
    attribution.
-6. Service appends `ticket_events` and `entity_changes`.
+6. Service appends `mission_events` and `entity_changes`.
 7. Service commits.
 8. Runner receives the claimed job.
 

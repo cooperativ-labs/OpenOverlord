@@ -103,8 +103,8 @@ export function TagsPage({ projectId }: TagsPageProps) {
       <div>
         <h2 className="text-base font-medium">Tags</h2>
         <p className="text-sm text-muted-foreground">
-          Labels you can attach to tickets in this project. Tags appear in the ticket-create picker
-          and the board tag filter. Inactive tags are hidden from new tickets but kept on existing
+          Labels you can attach to missions in this project. Tags appear in the mission-create picker
+          and the board tag filter. Inactive tags are hidden from new missions but kept on existing
           ones.
         </p>
       </div>
@@ -236,7 +236,7 @@ export function TagsPage({ projectId }: TagsPageProps) {
             <DialogTitle>Delete tag</DialogTitle>
             <DialogDescription>
               Remove &ldquo;{deleteTarget?.label}&rdquo; from this project? It will also be removed
-              from any tickets that carry it.
+              from any missions that carry it.
             </DialogDescription>
           </DialogHeader>
           {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}

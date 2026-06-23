@@ -1,14 +1,14 @@
 export function printHelp({ primaryCommand }: { primaryCommand: string }): void {
   console.log(`Overlord CLI
     
-INSTRUCTIONS FOR AI AGENTS: run \`${primaryCommand} protocol help\` for the full ticket lifecycle reference.
+INSTRUCTIONS FOR AI AGENTS: run \`${primaryCommand} protocol help\` for the full mission lifecycle reference.
 
 Primary command: ${primaryCommand}
 
 General:
   ${primaryCommand} auth login [--token <out_...>]   Configure backend and log in
   ${primaryCommand} auth status [--json]           Show backend URL and login status
-  ${primaryCommand} user-token create --label <l> [--expires-in 90d] [--no-expiry] [--scope full|ticket-lifecycle]
+  ${primaryCommand} user-token create --label <l> [--expires-in 90d] [--no-expiry] [--scope full|mission-lifecycle]
                                                  Mint a USER_TOKEN (prints the secret once)
   ${primaryCommand} user-token list [--json]       List your tokens (never shows secrets)
   ${primaryCommand} user-token revoke <id>         Revoke a token immediately
@@ -39,37 +39,37 @@ Projects:
   ${primaryCommand} add-cwd [--directory <path>] [--project-id <id>] [--primary true|false]
                                                  (prompts to pick a project when --project-id is omitted)
 
-Tickets:
+Missions:
   ${primaryCommand} create "<objective>" [--objectives-json '[...]'] [--json]
   ${primaryCommand} prompt "<objective>" [--json]
-  ${primaryCommand} attach <ticketId> [agent] [--json]
-  ${primaryCommand} tickets list [--status <csv>] [--project-id <id>] [--json]
-  ${primaryCommand} ticket context|events|deliveries|artifacts|rationales <ticketId> [--json]
+  ${primaryCommand} attach <missionId> [agent] [--json]
+  ${primaryCommand} missions list [--status <csv>] [--project-id <id>] [--json]
+  ${primaryCommand} mission context|events|deliveries|artifacts|rationales <missionId> [--json]
 
 Launch and runner:
-  ${primaryCommand} launch <agent> --ticket-id <ticketId> [--branch <name>] [--no-worktree] [--dry-run] [--json]
+  ${primaryCommand} launch <agent> --mission-id <missionId> [--branch <name>] [--no-worktree] [--dry-run] [--json]
   ${primaryCommand} runner once|start|status|clear|clear-all [--branch <name>] [--no-worktree] [--json]
 
 Changes:
-  ${primaryCommand} changes status --ticket-id <id> [--objective-id <id>] [--json]
-  ${primaryCommand} changes rationales --ticket-id <id> [--objective-id <id>] [--json]
+  ${primaryCommand} changes status --mission-id <id> [--objective-id <id>] [--json]
+  ${primaryCommand} changes rationales --mission-id <id> [--objective-id <id>] [--json]
 
 Agents:
   Built-in agents (claude, codex, cursor) need an installed connector
   (${primaryCommand} agent-setup <agent>). Launch with:
-  ${primaryCommand} launch <agent> --ticket-id <ticketId>
-  Use ${primaryCommand} protocol help for the full ticket lifecycle reference.
+  ${primaryCommand} launch <agent> --mission-id <missionId>
+  Use ${primaryCommand} protocol help for the full mission lifecycle reference.
   Key protocol commands: auth-status, discover-project, create, prompt, attach,
   connect, load-context, update, heartbeat, ask, deliver.
 
 Protocol (JSON output by default):
-  ${primaryCommand} protocol attach --ticket-id <id>
-  ${primaryCommand} protocol update --ticket-id <id> --session-key <key> --summary "..."
-  ${primaryCommand} protocol heartbeat --ticket-id <id> --session-key <key>
-  ${primaryCommand} protocol ask --ticket-id <id> --session-key <key> --question "..."
-  ${primaryCommand} protocol deliver --ticket-id <id> --session-key <key> --summary "..."
-  ${primaryCommand} protocol search-tickets --query "<text>" --status next-up,execute
-  ${primaryCommand} protocol load-context --ticket-id <id>
+  ${primaryCommand} protocol attach --mission-id <id>
+  ${primaryCommand} protocol update --mission-id <id> --session-key <key> --summary "..."
+  ${primaryCommand} protocol heartbeat --mission-id <id> --session-key <key>
+  ${primaryCommand} protocol ask --mission-id <id> --session-key <key> --question "..."
+  ${primaryCommand} protocol deliver --mission-id <id> --session-key <key> --summary "..."
+  ${primaryCommand} protocol search-missions --query "<text>" --status next-up,execute
+  ${primaryCommand} protocol load-context --mission-id <id>
   ${primaryCommand} protocol help
 
 After installation, run \`${primaryCommand} auth login\` to choose your backend.

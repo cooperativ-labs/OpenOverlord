@@ -35,6 +35,6 @@ export {
   PERMISSIONS,
   Role,
   scopeGrantsForPreset,
-  TICKET_LIFECYCLE_GRANTS,
+  MISSION_LIFECYCLE_GRANTS,
   tokenScopeAllows
 } from './rbac/index.js';

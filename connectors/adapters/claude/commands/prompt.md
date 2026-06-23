@@ -1,10 +1,10 @@
 ---
-description: Create a new Overlord ticket from the current conversation
+description: Create a new Overlord mission from the current conversation
 argument-hint: <objective or raw flags>
 disable-model-invocation: true
 ---
 
-Create a new Overlord ticket from the user's request.
+Create a new Overlord mission from the user's request.
 
 
 Use `$ARGUMENTS` as the input.
@@ -14,5 +14,5 @@ Otherwise, treat `$ARGUMENTS` as the objective text and run:
 
 If no objective was provided, ask the user for one and stop.
 
-After the command succeeds, report the new `TICKET_ID` and `SESSION_KEY`.
+After the command succeeds, report the new `MISSION_ID` and `SESSION_KEY`.
 

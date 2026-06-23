@@ -63,13 +63,13 @@ The constraints that decide this come straight from the existing architecture:
 Be explicit about which tier each row belongs to — they have different owners:
 
 1. **Reference / bootstrap seed (already handled).** The default workspace,
-   implicit user, workspace membership, ticket sequence, and `ADMIN` role are
+   implicit user, workspace membership, mission sequence, and `ADMIN` role are
    seeded *inside the migrations* (`001_initial_core.sql`, `002_rbac.sql`). This
    is deterministic install state and stays in migrations. **Do not** move it into
    the dev seeder.
 
-2. **Development sample data (the gap this ticket addresses).** Realistic
-   projects, tickets, objectives, statuses, and events so the webapp and CLI have
+2. **Development sample data (the gap this mission addresses).** Realistic
+   projects, missions, objectives, statuses, and events so the webapp and CLI have
    something to render. This is what the new seed runner generates, routed through
    the service layer, and is safe to wipe/regenerate.
 
@@ -81,13 +81,13 @@ Be explicit about which tier each row belongs to — they have different owners:
 
 ```
 database/src/seed-local.ts      # runner; mirrors launch-local.ts
-database/src/seeds/*.ts          # composable seed modules (projects, tickets, …)
+database/src/seeds/*.ts          # composable seed modules (projects, missions, …)
 ```
 
 - The runner resolves the DB path, asserts migrations are applied, then runs the
   seed modules in order — idempotently, with an optional `--reset` to truncate
   dev data first (never the bootstrap seed).
-- Core-domain rows are created via the exported `createProject` / `createTicket` /
+- Core-domain rows are created via the exported `createProject` / `createMission` /
   `createObjective` service functions so the change feed and revisions stay valid.
 - `@faker-js/faker` (devDependency) generates names/descriptions/volume; the RNG
   is seeded with a constant for reproducibility.

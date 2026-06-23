@@ -4,32 +4,32 @@ import { createHash } from 'node:crypto';
 import { recordChange } from './change-feed.js';
 import { listRationalesForReview, type RationaleReview } from './changes.js';
 import type { ServiceContext } from './context.js';
-import { resolveProjectId, resolveTicketId } from './context.js';
+import { resolveProjectId, resolveMissionId } from './context.js';
 import { ServiceError } from './errors.js';
 import { createExecutionRequest } from './execution-requests.js';
 import { loadAgentInstructionsForWorkspaceUser } from './profiles.js';
 import { discoverProject } from './projects.js';
 import {
-  addObjectivesToTicket,
+  addObjectivesToMission,
   type ArtifactSummary,
   type AttachmentSummary,
-  createTicketWithObjectives,
+  createMissionWithObjectives,
   discussObjective,
-  getTicketSummary,
+  getMissionSummary,
   insertObjective,
   listArtifacts,
   listAttachments,
   listObjectives,
   listSharedContext,
-  listTicketEvents,
-  moveTicketToExecute,
-  moveTicketToReview,
+  listMissionEvents,
+  moveMissionToExecute,
+  moveMissionToReview,
   type ObjectiveSummary,
-  searchTickets,
+  searchMissions,
   type SharedContextEntry,
-  type TicketEventSummary,
-  type TicketSummary
-} from './tickets.js';
+  type MissionEventSummary,
+  type MissionSummary
+} from './missions.js';
 import { generateSessionKey, hashSessionKey, newId, nowIso } from './util.js';
 
 export type SessionSummary = {
@@ -37,17 +37,17 @@ export type SessionSummary = {
   sessionKey: string;
   state: string;
   objectiveId: string;
-  ticketId: string;
+  missionId: string;
   phase: string;
   deliveryState: string;
 };
 
 export type AttachResponse = {
-  ticket: TicketSummary;
+  mission: MissionSummary;
   objective: ObjectiveSummary;
   objectives: ObjectiveSummary[];
   session: SessionSummary;
-  history: TicketEventSummary[];
+  history: MissionEventSummary[];
   artifacts: ArtifactSummary[];
   attachments: AttachmentSummary[];
   sharedState: SharedContextEntry[];
@@ -56,7 +56,7 @@ export type AttachResponse = {
 
 type SessionRow = {
   id: string;
-  ticket_id: string;
+  mission_id: string;
   objective_id: string;
   phase: string;
   delivery_state: string;
@@ -66,7 +66,7 @@ type SessionRow = {
 
 const PROTOCOL_WORKFLOW = `
 
-1. Attach first with \`ovld protocol attach --ticket-id <id>\`.
+1. Attach first with \`ovld protocol attach --mission-id <id>\`.
 2. Post progress with \`ovld protocol update\` or liveness with \`ovld protocol heartbeat\`.
 3. Ask blocking questions with \`ovld protocol ask\` and stop work.
 4. Deliver with \`ovld protocol deliver\` with \`change-rationales\` when work is complete.
@@ -82,7 +82,7 @@ function resolveActiveObjective(objectives: ObjectiveSummary[]): ObjectiveSummar
     objectives.find(o => o.state !== 'complete');
 
   if (!active) {
-    throw new ServiceError('No active objective found on ticket', 'no_active_objective', 409);
+    throw new ServiceError('No active objective found on mission', 'no_active_objective', 409);
   }
   return active;
 }
@@ -96,7 +96,7 @@ function getSessionByKeyMaybeEnded(
   const endedFilter = options.includeEnded ? '' : 'AND ended_at IS NULL';
   return ctx.db
     .prepare(
-      `SELECT id, ticket_id, objective_id, phase, delivery_state, ended_at, external_session_id
+      `SELECT id, mission_id, objective_id, phase, delivery_state, ended_at, external_session_id
        FROM agent_sessions
        WHERE workspace_id = ? AND session_key_hash = ? AND deleted_at IS NULL ${endedFilter}
        ORDER BY started_at DESC LIMIT 1`
@@ -115,21 +115,21 @@ function getSessionByKey(ctx: ServiceContext, sessionKey: string): SessionRow {
 
 function getLatestSessionByExternalId({
   ctx,
-  ticketId,
+  missionId,
   externalSessionId
 }: {
   ctx: ServiceContext;
-  ticketId: string;
+  missionId: string;
   externalSessionId: string;
 }): SessionRow | undefined {
   return ctx.db
     .prepare(
-      `SELECT id, ticket_id, objective_id, phase, delivery_state, ended_at, external_session_id
+      `SELECT id, mission_id, objective_id, phase, delivery_state, ended_at, external_session_id
        FROM agent_sessions
-       WHERE workspace_id = ? AND ticket_id = ? AND external_session_id = ? AND deleted_at IS NULL
+       WHERE workspace_id = ? AND mission_id = ? AND external_session_id = ? AND deleted_at IS NULL
        ORDER BY started_at DESC LIMIT 1`
     )
-    .get(ctx.workspace.id, ticketId, externalSessionId) as SessionRow | undefined;
+    .get(ctx.workspace.id, missionId, externalSessionId) as SessionRow | undefined;
 }
 
 function getLatestSessionForObjective({
@@ -144,7 +144,7 @@ function getLatestSessionForObjective({
   const endedFilter = openOnly ? 'AND ended_at IS NULL' : '';
   return ctx.db
     .prepare(
-      `SELECT id, ticket_id, objective_id, phase, delivery_state, ended_at, external_session_id
+      `SELECT id, mission_id, objective_id, phase, delivery_state, ended_at, external_session_id
        FROM agent_sessions
        WHERE workspace_id = ? AND objective_id = ? AND deleted_at IS NULL ${endedFilter}
        ORDER BY started_at DESC LIMIT 1`
@@ -156,12 +156,12 @@ function persistExternalSessionId({
   ctx,
   session,
   externalSessionId,
-  ticket
+  mission
 }: {
   ctx: ServiceContext;
   session: SessionRow;
   externalSessionId: string;
-  ticket: TicketSummary;
+  mission: MissionSummary;
 }): void {
   if (session.external_session_id === externalSessionId) return;
 
@@ -185,8 +185,8 @@ function persistExternalSessionId({
     entityId: session.id,
     operation: 'update',
     entityRevision: revision ?? null,
-    projectId: ticket.projectId,
-    ticketId: ticket.id,
+    projectId: mission.projectId,
+    missionId: mission.id,
     objectiveId: session.objective_id,
     changedFields: ['external_session_id']
   });
@@ -216,7 +216,7 @@ function formatPreviousObjectiveLine(objective: ObjectiveSummary): string {
 }
 
 function assemblePromptContext({
-  ticket,
+  mission,
   objective,
   projectName,
   history,
@@ -227,10 +227,10 @@ function assemblePromptContext({
   previousObjectives,
   agentInstructions
 }: {
-  ticket: TicketSummary;
+  mission: MissionSummary;
   objective: ObjectiveSummary;
   projectName: string;
-  history: TicketEventSummary[];
+  history: MissionEventSummary[];
   artifacts: ArtifactSummary[];
   attachments: AttachmentSummary[];
   sharedState: SharedContextEntry[];
@@ -253,13 +253,13 @@ function assemblePromptContext({
 
   return [
     `# Overlord Agent Instructions`,
-    `You are an AI coding agent working on ticket **${ticket.displayId}** via Overlord.`,
+    `You are an AI coding agent working on mission **${mission.displayId}** via Overlord.`,
     `Complete the Objective described below. Use the Overlord skill. Follow the required protocol workflow.`,
     ``,
     `Required protocol workflow:`,
     PROTOCOL_WORKFLOW,
     '',
-    `Ticket ID: ${ticket.displayId}`,
+    `Mission ID: ${mission.displayId}`,
     `Objective ID: ${objective.id}`,
     `Project: ${projectName}`,
     '',
@@ -293,30 +293,30 @@ function assemblePromptContext({
 
 function contextForObjective({
   ctx,
-  ticket,
+  mission,
   objective
 }: {
   ctx: ServiceContext;
-  ticket: TicketSummary;
+  mission: MissionSummary;
   objective: ObjectiveSummary;
 }): Omit<AttachResponse, 'session'> {
-  const objectives = listObjectives({ ctx, ticketId: ticket.id });
-  const history = listTicketEvents({ ctx, ticketId: ticket.id });
-  const artifacts = listArtifacts({ ctx, ticketId: ticket.id });
-  const attachments = listAttachments({ ctx, ticketId: ticket.id, objectiveId: objective.id });
-  const sharedState = listSharedContext({ ctx, ticketId: ticket.id });
+  const objectives = listObjectives({ ctx, missionId: mission.id });
+  const history = listMissionEvents({ ctx, missionId: mission.id });
+  const artifacts = listArtifacts({ ctx, missionId: mission.id });
+  const attachments = listAttachments({ ctx, missionId: mission.id, objectiveId: objective.id });
+  const sharedState = listSharedContext({ ctx, missionId: mission.id });
   const completedObjectives = previousCompletedObjectives({
     objectives,
     currentObjective: objective
   });
   const previousObjectiveIds = new Set(completedObjectives.map(entry => entry.id));
-  const fileChanges = listRationalesForReview({ ctx, ticketId: ticket.id }).filter(change =>
+  const fileChanges = listRationalesForReview({ ctx, missionId: mission.id }).filter(change =>
     previousObjectiveIds.has(change.objectiveId)
   );
 
   const project = ctx.db
     .prepare(`SELECT name FROM projects WHERE id = ?`)
-    .get(ticket.projectId) as { name: string };
+    .get(mission.projectId) as { name: string };
 
   const agentInstructions = loadAgentInstructionsForWorkspaceUser({
     db: ctx.db,
@@ -324,7 +324,7 @@ function contextForObjective({
   });
 
   return {
-    ticket,
+    mission,
     objective,
     objectives,
     history,
@@ -332,7 +332,7 @@ function contextForObjective({
     attachments,
     sharedState,
     promptContext: assemblePromptContext({
-      ticket,
+      mission,
       objective,
       projectName: project.name,
       history,
@@ -346,22 +346,22 @@ function contextForObjective({
   };
 }
 
-export function loadTicketContext({
+export function loadMissionContext({
   ctx,
-  ticketId
+  missionId
 }: {
   ctx: ServiceContext;
-  ticketId: string;
+  missionId: string;
 }): Omit<AttachResponse, 'session'> {
-  const ticket = getTicketSummary({ ctx, ticketId });
-  const objectives = listObjectives({ ctx, ticketId: ticket.id });
+  const mission = getMissionSummary({ ctx, missionId });
+  const objectives = listObjectives({ ctx, missionId: mission.id });
   const objective = resolveActiveObjective(objectives);
-  return contextForObjective({ ctx, ticket, objective });
+  return contextForObjective({ ctx, mission, objective });
 }
 
 export function attachSession({
   ctx,
-  ticketId,
+  missionId,
   agentIdentifier = 'unknown',
   modelIdentifier,
   connectionMethod = 'cli',
@@ -369,20 +369,20 @@ export function attachSession({
   externalSessionId
 }: {
   ctx: ServiceContext;
-  ticketId: string;
+  missionId: string;
   agentIdentifier?: string;
   modelIdentifier?: string | null;
   connectionMethod?: string;
   existingSessionKey?: string | null;
   externalSessionId?: string | null;
 }): AttachResponse & { sessionKey: string } {
-  const context = loadTicketContext({ ctx, ticketId });
+  const context = loadMissionContext({ ctx, missionId });
   const objective = context.objective;
 
   if (existingSessionKey) {
     const existing = getSessionByKey(ctx, existingSessionKey);
-    if (existing.ticket_id !== context.ticket.id) {
-      throw new ServiceError('Session key belongs to a different ticket', 'invalid_session', 401);
+    if (existing.mission_id !== context.mission.id) {
+      throw new ServiceError('Session key belongs to a different mission', 'invalid_session', 401);
     }
     if (externalSessionId !== undefined) {
       ctx.db
@@ -399,7 +399,7 @@ export function attachSession({
         sessionKey: existingSessionKey,
         state: 'executing',
         objectiveId: existing.objective_id,
-        ticketId: existing.ticket_id,
+        missionId: existing.mission_id,
         phase: existing.phase,
         deliveryState: existing.delivery_state
       },
@@ -414,9 +414,9 @@ export function attachSession({
     .prepare(
       `SELECT assigned_agent
        FROM objectives
-       WHERE id = ? AND ticket_id = ? AND deleted_at IS NULL`
+       WHERE id = ? AND mission_id = ? AND deleted_at IS NULL`
     )
-    .get(objective.id, context.ticket.id) as { assigned_agent: string | null } | undefined;
+    .get(objective.id, context.mission.id) as { assigned_agent: string | null } | undefined;
   const inheritedDraftAgent = currentObjectiveAssignment?.assigned_agent?.trim() || agentIdentifier;
 
   const tx = ctx.db.transaction(() => {
@@ -427,35 +427,35 @@ export function attachSession({
              assigned_agent = COALESCE(assigned_agent, ?),
              updated_at = ?,
              revision = revision + 1
-         WHERE id = ? AND ticket_id = ?`
+         WHERE id = ? AND mission_id = ?`
       )
-      .run(inheritedDraftAgent || null, now, objective.id, context.ticket.id);
+      .run(inheritedDraftAgent || null, now, objective.id, context.mission.id);
 
     const existingDraft = ctx.db
       .prepare(
         `SELECT id FROM objectives
-         WHERE ticket_id = ? AND state = 'draft' AND deleted_at IS NULL
+         WHERE mission_id = ? AND state = 'draft' AND deleted_at IS NULL
          LIMIT 1`
       )
-      .get(context.ticket.id) as { id: string } | undefined;
+      .get(context.mission.id) as { id: string } | undefined;
 
     if (!existingDraft) {
       const nextFuture = ctx.db
         .prepare(
           `SELECT id, revision FROM objectives
-           WHERE ticket_id = ? AND state = 'future' AND deleted_at IS NULL
+           WHERE mission_id = ? AND state = 'future' AND deleted_at IS NULL
            ORDER BY position ASC, created_at ASC LIMIT 1`
         )
-        .get(context.ticket.id) as { id: string; revision: number } | undefined;
+        .get(context.mission.id) as { id: string; revision: number } | undefined;
 
       if (nextFuture) {
         const nextRevision = nextFuture.revision + 1;
         ctx.db
           .prepare(
             `UPDATE objectives SET state = 'draft', updated_at = ?, revision = ?
-             WHERE id = ? AND ticket_id = ?`
+             WHERE id = ? AND mission_id = ?`
           )
-          .run(now, nextRevision, nextFuture.id, context.ticket.id);
+          .run(now, nextRevision, nextFuture.id, context.mission.id);
 
         recordChange({
           ctx,
@@ -463,15 +463,15 @@ export function attachSession({
           entityId: nextFuture.id,
           operation: 'update',
           entityRevision: nextRevision,
-          projectId: context.ticket.projectId,
-          ticketId: context.ticket.id,
+          projectId: context.mission.projectId,
+          missionId: context.mission.id,
           objectiveId: nextFuture.id,
           changedFields: ['state']
         });
       } else {
         insertObjective({
           ctx,
-          ticketId: context.ticket.id,
+          missionId: context.mission.id,
           instructionText: '',
           state: 'draft',
           assignedAgent: inheritedDraftAgent || null
@@ -479,12 +479,12 @@ export function attachSession({
       }
     }
 
-    moveTicketToExecute({ ctx, ticketId: context.ticket.id });
+    moveMissionToExecute({ ctx, missionId: context.mission.id });
 
     ctx.db
       .prepare(
         `INSERT INTO agent_sessions
-           (id, workspace_id, project_id, ticket_id, objective_id,
+           (id, workspace_id, project_id, mission_id, objective_id,
             session_key_prefix, session_key_hash, agent_identifier, model_identifier,
             connection_method, external_session_id, phase, delivery_state, started_at, last_heartbeat_at,
             metadata_json, created_by_workspace_user_id, created_at, updated_at, revision)
@@ -493,8 +493,8 @@ export function attachSession({
       .run(
         sessionId,
         ctx.workspace.id,
-        context.ticket.projectId,
-        context.ticket.id,
+        context.mission.projectId,
+        context.mission.id,
         objective.id,
         prefix,
         hash,
@@ -515,16 +515,16 @@ export function attachSession({
       entityId: sessionId,
       operation: 'insert',
       entityRevision: 1,
-      projectId: context.ticket.projectId,
-      ticketId: context.ticket.id,
+      projectId: context.mission.projectId,
+      missionId: context.mission.id,
       objectiveId: objective.id
     });
   });
 
   tx();
 
-  const refreshedTicket = getTicketSummary({ ctx, ticketId: context.ticket.id });
-  const refreshedObjectives = listObjectives({ ctx, ticketId: context.ticket.id });
+  const refreshedMission = getMissionSummary({ ctx, missionId: context.mission.id });
+  const refreshedObjectives = listObjectives({ ctx, missionId: context.mission.id });
   const refreshedObjective = refreshedObjectives.find(o => o.id === objective.id) ?? {
     ...objective,
     state: 'executing'
@@ -532,7 +532,7 @@ export function attachSession({
 
   return {
     ...context,
-    ticket: refreshedTicket,
+    mission: refreshedMission,
     objective: refreshedObjective,
     objectives: refreshedObjectives,
     session: {
@@ -540,7 +540,7 @@ export function attachSession({
       sessionKey: rawKey,
       state: 'executing',
       objectiveId: objective.id,
-      ticketId: context.ticket.id,
+      missionId: context.mission.id,
       phase: 'execute',
       deliveryState: 'not_delivered'
     },
@@ -550,25 +550,25 @@ export function attachSession({
 
 export function connectSession({
   ctx,
-  ticketId,
+  missionId,
   agentIdentifier = 'unknown',
   externalSessionId
 }: {
   ctx: ServiceContext;
-  ticketId: string;
+  missionId: string;
   agentIdentifier?: string;
   externalSessionId?: string | null;
-}): { sessionKey: string; ticketId: string; objectiveId: string } {
+}): { sessionKey: string; missionId: string; objectiveId: string } {
   const result = attachSession({
     ctx,
-    ticketId,
+    missionId,
     agentIdentifier,
     connectionMethod: 'connect',
     externalSessionId: externalSessionId ?? null
   });
   return {
     sessionKey: result.sessionKey,
-    ticketId: result.ticket.id,
+    missionId: result.mission.id,
     objectiveId: result.objective.id
   };
 }
@@ -591,13 +591,13 @@ function latestCompletedObjective(objectives: ObjectiveSummary[]): ObjectiveSumm
 
 function resolveFollowUpObjective({
   ctx,
-  ticket,
+  mission,
   objectives,
   sessionKey,
   externalSessionId
 }: {
   ctx: ServiceContext;
-  ticket: TicketSummary;
+  mission: MissionSummary;
   objectives: ObjectiveSummary[];
   sessionKey?: string | null;
   externalSessionId?: string | null;
@@ -615,7 +615,7 @@ function resolveFollowUpObjective({
   if (objectiveFromKey) return { objective: objectiveFromKey, session: sessionFromKey };
 
   const sessionFromExternal = externalSessionId
-    ? getLatestSessionByExternalId({ ctx, ticketId: ticket.id, externalSessionId })
+    ? getLatestSessionByExternalId({ ctx, missionId: mission.id, externalSessionId })
     : undefined;
   const objectiveFromExternal = objectiveFromSession(objectives, sessionFromExternal);
   if (objectiveFromExternal) {
@@ -627,7 +627,7 @@ function resolveFollowUpObjective({
 
 export function recordHookEvent({
   ctx,
-  ticketId,
+  missionId,
   hookType,
   prompt,
   sessionKey,
@@ -635,7 +635,7 @@ export function recordHookEvent({
   turnIndex
 }: {
   ctx: ServiceContext;
-  ticketId: string;
+  missionId: string;
   hookType: string;
   prompt: string;
   sessionKey?: string | null;
@@ -651,11 +651,11 @@ export function recordHookEvent({
     throw new ServiceError('Hook prompt is required', 'validation_error');
   }
 
-  const ticket = getTicketSummary({ ctx, ticketId });
-  const objectives = listObjectives({ ctx, ticketId: ticket.id });
+  const mission = getMissionSummary({ ctx, missionId });
+  const objectives = listObjectives({ ctx, missionId: mission.id });
   let { objective, session } = resolveFollowUpObjective({
     ctx,
-    ticket,
+    mission,
     objectives,
     sessionKey: sessionKey ?? null,
     externalSessionId: externalSessionId ?? null
@@ -672,7 +672,7 @@ export function recordHookEvent({
   const hash = promptHash(trimmedPrompt);
   const dedupeParts = [
     hookType,
-    ticket.id,
+    mission.id,
     externalSessionId || session?.id || 'unknown-session',
     turnIndex || 'unknown-turn',
     hash
@@ -681,7 +681,7 @@ export function recordHookEvent({
 
   const existing = ctx.db
     .prepare(
-      `SELECT id, objective_id, session_id FROM ticket_events
+      `SELECT id, objective_id, session_id FROM mission_events
        WHERE workspace_id = ? AND source = ? AND idempotency_key = ?
        LIMIT 1`
     )
@@ -703,8 +703,8 @@ export function recordHookEvent({
 
   ctx.db
     .prepare(
-      `INSERT INTO ticket_events
-         (id, workspace_id, project_id, ticket_id, objective_id, session_id,
+      `INSERT INTO mission_events
+         (id, workspace_id, project_id, mission_id, objective_id, session_id,
           type, phase, summary, payload_json, source, actor_workspace_user_id,
           idempotency_key, created_at)
        VALUES (?, ?, ?, ?, ?, ?, 'user_follow_up', ?, ?, ?, ?, ?, ?, ?)`
@@ -712,8 +712,8 @@ export function recordHookEvent({
     .run(
       eventId,
       ctx.workspace.id,
-      ticket.projectId,
-      ticket.id,
+      mission.projectId,
+      mission.id,
       objective?.id ?? null,
       session?.id ?? null,
       phase,
@@ -731,7 +731,7 @@ export function recordHookEvent({
     );
 
   if (externalSessionId && session) {
-    persistExternalSessionId({ ctx, session, externalSessionId, ticket });
+    persistExternalSessionId({ ctx, session, externalSessionId, mission });
   }
 
   return { eventId, objectiveId: objective?.id ?? null, sessionId: session?.id ?? null };
@@ -739,7 +739,7 @@ export function recordHookEvent({
 
 export function resumeFollowUp({
   ctx,
-  ticketId,
+  missionId,
   objectiveId,
   agentIdentifier = 'unknown',
   modelIdentifier,
@@ -748,7 +748,7 @@ export function resumeFollowUp({
   summary = 'Beginning follow-up work.'
 }: {
   ctx: ServiceContext;
-  ticketId: string;
+  missionId: string;
   objectiveId?: string | null;
   agentIdentifier?: string;
   modelIdentifier?: string | null;
@@ -757,8 +757,8 @@ export function resumeFollowUp({
   summary?: string | null;
 }): AttachResponse & { sessionKey: string } {
   const trimmedSummary = summary?.trim() || 'Beginning follow-up work.';
-  const ticket = getTicketSummary({ ctx, ticketId });
-  const objectives = listObjectives({ ctx, ticketId: ticket.id });
+  const mission = getMissionSummary({ ctx, missionId });
+  const objectives = listObjectives({ ctx, missionId: mission.id });
   const selectedObjective = objectiveId
     ? objectives.find(objective => objective.id === objectiveId)
     : latestCompletedObjective(objectives);
@@ -776,7 +776,7 @@ export function resumeFollowUp({
   );
   if (activeObjective) {
     throw new ServiceError(
-      'Ticket already has active follow-up or execution work',
+      'Mission already has active follow-up or execution work',
       'active_objective_exists',
       409
     );
@@ -800,14 +800,14 @@ export function resumeFollowUp({
       .prepare(
         `UPDATE objectives
          SET state = 'pending_delivery', completed_at = NULL, updated_at = ?, revision = revision + 1
-         WHERE id = ? AND ticket_id = ? AND state = 'complete'`
+         WHERE id = ? AND mission_id = ? AND state = 'complete'`
       )
-      .run(now, selectedObjective.id, ticket.id);
+      .run(now, selectedObjective.id, mission.id);
 
     ctx.db
       .prepare(
         `INSERT INTO agent_sessions
-           (id, workspace_id, project_id, ticket_id, objective_id,
+           (id, workspace_id, project_id, mission_id, objective_id,
             session_key_prefix, session_key_hash, agent_identifier, model_identifier,
             connection_method, external_session_id, phase, delivery_state, started_at, last_heartbeat_at,
             metadata_json, created_by_workspace_user_id, created_at, updated_at, revision)
@@ -816,8 +816,8 @@ export function resumeFollowUp({
       .run(
         sessionId,
         ctx.workspace.id,
-        ticket.projectId,
-        ticket.id,
+        mission.projectId,
+        mission.id,
         selectedObjective.id,
         prefix,
         hash,
@@ -834,16 +834,16 @@ export function resumeFollowUp({
 
     ctx.db
       .prepare(
-        `INSERT INTO ticket_events
-           (id, workspace_id, project_id, ticket_id, objective_id, session_id,
+        `INSERT INTO mission_events
+           (id, workspace_id, project_id, mission_id, objective_id, session_id,
             type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
          VALUES (?, ?, ?, ?, ?, ?, 'update', 'execute', ?, ?, ?, ?, ?)`
       )
       .run(
         eventId,
         ctx.workspace.id,
-        ticket.projectId,
-        ticket.id,
+        mission.projectId,
+        mission.id,
         selectedObjective.id,
         sessionId,
         trimmedSummary,
@@ -853,15 +853,15 @@ export function resumeFollowUp({
         now
       );
 
-    moveTicketToExecute({ ctx, ticketId: ticket.id });
+    moveMissionToExecute({ ctx, missionId: mission.id });
 
     recordChange({
       ctx,
       entityType: 'objective',
       entityId: selectedObjective.id,
       operation: 'update',
-      projectId: ticket.projectId,
-      ticketId: ticket.id,
+      projectId: mission.projectId,
+      missionId: mission.id,
       objectiveId: selectedObjective.id,
       changedFields: ['state', 'completed_at']
     });
@@ -872,16 +872,16 @@ export function resumeFollowUp({
       entityId: sessionId,
       operation: 'insert',
       entityRevision: 1,
-      projectId: ticket.projectId,
-      ticketId: ticket.id,
+      projectId: mission.projectId,
+      missionId: mission.id,
       objectiveId: selectedObjective.id
     });
   });
 
   tx();
 
-  const refreshedTicket = getTicketSummary({ ctx, ticketId: ticket.id });
-  const refreshedObjective = listObjectives({ ctx, ticketId: ticket.id }).find(
+  const refreshedMission = getMissionSummary({ ctx, missionId: mission.id });
+  const refreshedObjective = listObjectives({ ctx, missionId: mission.id }).find(
     objective => objective.id === selectedObjective.id
   ) ?? {
     ...selectedObjective,
@@ -889,7 +889,7 @@ export function resumeFollowUp({
   };
   const context = contextForObjective({
     ctx,
-    ticket: refreshedTicket,
+    mission: refreshedMission,
     objective: refreshedObjective
   });
 
@@ -900,7 +900,7 @@ export function resumeFollowUp({
       sessionKey: rawKey,
       state: 'executing',
       objectiveId: selectedObjective.id,
-      ticketId: ticket.id,
+      missionId: mission.id,
       phase: 'execute',
       deliveryState: 'pending_redelivery'
     },
@@ -910,21 +910,21 @@ export function resumeFollowUp({
 
 export function heartbeatSession({
   ctx,
-  ticketId,
+  missionId,
   sessionKey,
   phase,
   note
 }: {
   ctx: ServiceContext;
-  ticketId: string;
+  missionId: string;
   sessionKey: string;
   phase?: string | null;
   note?: string | null;
 }): { ok: true } {
-  const ticket = resolveTicketId(ctx, ticketId);
+  const mission = resolveMissionId(ctx, missionId);
   const session = getSessionByKey(ctx, sessionKey);
-  if (session.ticket_id !== ticket.id) {
-    throw new ServiceError('Session key does not match ticket', 'invalid_session', 401);
+  if (session.mission_id !== mission.id) {
+    throw new ServiceError('Session key does not match mission', 'invalid_session', 401);
   }
 
   const now = nowIso();
@@ -959,14 +959,14 @@ export function heartbeatSession({
  */
 function upsertChangedFiles({
   ctx,
-  ticket,
+  mission,
   session,
   files,
   eventId,
   now
 }: {
   ctx: ServiceContext;
-  ticket: { id: string; projectId: string };
+  mission: { id: string; projectId: string };
   session: { id: string; objective_id: string };
   files: Array<{ filePath: string; vcsStatus?: string | null }>;
   /** Observing event id, or null when no event row exists yet (e.g. deliver). */
@@ -996,7 +996,7 @@ function upsertChangedFiles({
       ctx.db
         .prepare(
           `INSERT INTO changed_files
-             (id, workspace_id, project_id, ticket_id, objective_id, session_id,
+             (id, workspace_id, project_id, mission_id, objective_id, session_id,
               file_path, vcs_status, current_diff_state, first_observed_at, last_observed_at,
               last_observed_event_id, observed_metadata_json, created_at, updated_at, revision)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'present', ?, ?, ?, '{}', ?, ?, 1)`
@@ -1004,8 +1004,8 @@ function upsertChangedFiles({
         .run(
           newId(),
           ctx.workspace.id,
-          ticket.projectId,
-          ticket.id,
+          mission.projectId,
+          mission.id,
           session.objective_id,
           session.id,
           normalizedPath,
@@ -1022,7 +1022,7 @@ function upsertChangedFiles({
 
 export function updateSession({
   ctx,
-  ticketId,
+  missionId,
   sessionKey,
   summary,
   phase,
@@ -1036,7 +1036,7 @@ export function updateSession({
   changeRationales
 }: {
   ctx: ServiceContext;
-  ticketId: string;
+  missionId: string;
   sessionKey: string;
   summary: string;
   phase?: string | null;
@@ -1054,15 +1054,15 @@ export function updateSession({
     throw new ServiceError('Update summary is required', 'validation_error');
   }
 
-  const ticket = resolveTicketId(ctx, ticketId);
+  const mission = resolveMissionId(ctx, missionId);
   const session = getSessionByKey(ctx, sessionKey);
-  if (session.ticket_id !== ticket.id) {
-    throw new ServiceError('Session key does not match ticket', 'invalid_session', 401);
+  if (session.mission_id !== mission.id) {
+    throw new ServiceError('Session key does not match mission', 'invalid_session', 401);
   }
 
   if (session.delivery_state === 'delivered' && !beginFollowUpWork) {
     throw new ServiceError(
-      'Ticket was delivered. Use --begin-follow-up-work before posting execution updates.',
+      'Mission was delivered. Use --begin-follow-up-work before posting execution updates.',
       'delivery_boundary',
       409
     );
@@ -1097,8 +1097,8 @@ export function updateSession({
 
     ctx.db
       .prepare(
-        `INSERT INTO ticket_events
-           (id, workspace_id, project_id, ticket_id, objective_id, session_id,
+        `INSERT INTO mission_events
+           (id, workspace_id, project_id, mission_id, objective_id, session_id,
             type, phase, summary, payload_json, external_url, source,
             actor_workspace_user_id, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -1106,8 +1106,8 @@ export function updateSession({
       .run(
         eventId,
         ctx.workspace.id,
-        ticket.projectId,
-        ticket.id,
+        mission.projectId,
+        mission.id,
         session.objective_id,
         session.id,
         eventType ?? 'update',
@@ -1148,7 +1148,7 @@ export function updateSession({
     }
 
     if (changedFiles && changedFiles.length > 0) {
-      upsertChangedFiles({ ctx, ticket, session, files: changedFiles, eventId, now });
+      upsertChangedFiles({ ctx, mission, session, files: changedFiles, eventId, now });
     }
   });
 
@@ -1158,12 +1158,12 @@ export function updateSession({
 
 export function askQuestion({
   ctx,
-  ticketId,
+  missionId,
   sessionKey,
   question
 }: {
   ctx: ServiceContext;
-  ticketId: string;
+  missionId: string;
   sessionKey: string;
   question: string;
 }): { eventId: string } {
@@ -1172,10 +1172,10 @@ export function askQuestion({
     throw new ServiceError('Question is required', 'validation_error');
   }
 
-  const ticket = resolveTicketId(ctx, ticketId);
+  const mission = resolveMissionId(ctx, missionId);
   const session = getSessionByKey(ctx, sessionKey);
-  if (session.ticket_id !== ticket.id) {
-    throw new ServiceError('Session key does not match ticket', 'invalid_session', 401);
+  if (session.mission_id !== mission.id) {
+    throw new ServiceError('Session key does not match mission', 'invalid_session', 401);
   }
 
   const now = nowIso();
@@ -1183,16 +1183,16 @@ export function askQuestion({
 
   ctx.db
     .prepare(
-      `INSERT INTO ticket_events
-         (id, workspace_id, project_id, ticket_id, objective_id, session_id,
+      `INSERT INTO mission_events
+         (id, workspace_id, project_id, mission_id, objective_id, session_id,
           type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
        VALUES (?, ?, ?, ?, ?, ?, 'ask', 'blocked', ?, '{}', ?, ?, ?)`
     )
     .run(
       eventId,
       ctx.workspace.id,
-      ticket.projectId,
-      ticket.id,
+      mission.projectId,
+      mission.id,
       session.objective_id,
       session.id,
       trimmed,
@@ -1201,7 +1201,7 @@ export function askQuestion({
       now
     );
 
-  moveTicketToReview({ ctx, ticketId: ticket.id });
+  moveMissionToReview({ ctx, missionId: mission.id });
 
   return { eventId };
 }
@@ -1253,7 +1253,7 @@ function normalizeChangeRationales(
 
 export function deliverSession({
   ctx,
-  ticketId,
+  missionId,
   sessionKey,
   summary,
   artifacts = [],
@@ -1265,7 +1265,7 @@ export function deliverSession({
   followUpNotes
 }: {
   ctx: ServiceContext;
-  ticketId: string;
+  missionId: string;
   sessionKey: string;
   summary: string;
   artifacts?: Array<{ type: string; label: string; content?: string | null; url?: string | null }>;
@@ -1283,10 +1283,10 @@ export function deliverSession({
     throw new ServiceError('Delivery summary is required', 'validation_error');
   }
 
-  const ticket = resolveTicketId(ctx, ticketId);
+  const mission = resolveMissionId(ctx, missionId);
   const session = getSessionByKey(ctx, sessionKey);
-  if (session.ticket_id !== ticket.id) {
-    throw new ServiceError('Session key does not match ticket', 'invalid_session', 401);
+  if (session.mission_id !== mission.id) {
+    throw new ServiceError('Session key does not match mission', 'invalid_session', 401);
   }
 
   const normalizedRationales = normalizeChangeRationales(changeRationales);
@@ -1306,7 +1306,7 @@ export function deliverSession({
     if (!noFileChanges && changedFiles && changedFiles.length > 0) {
       // The delivery event row is inserted later in this transaction, so there is
       // no observing event to link yet; pass null (COALESCE keeps prior links).
-      upsertChangedFiles({ ctx, ticket, session, files: changedFiles, eventId: null, now });
+      upsertChangedFiles({ ctx, mission, session, files: changedFiles, eventId: null, now });
     }
 
     // Coverage is objective-scoped: aggregate observed changes across every
@@ -1351,7 +1351,7 @@ export function deliverSession({
     ctx.db
       .prepare(
         `INSERT INTO deliveries
-           (id, workspace_id, project_id, ticket_id, objective_id, session_id,
+           (id, workspace_id, project_id, mission_id, objective_id, session_id,
             summary, payload_json, verification_summary, follow_up_notes,
             delivered_at, delivered_by_workspace_user_id, created_at, updated_at, revision)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
@@ -1359,8 +1359,8 @@ export function deliverSession({
       .run(
         deliveryId,
         ctx.workspace.id,
-        ticket.projectId,
-        ticket.id,
+        mission.projectId,
+        mission.id,
         session.objective_id,
         session.id,
         trimmedSummary,
@@ -1380,15 +1380,15 @@ export function deliverSession({
       ctx.db
         .prepare(
           `INSERT INTO artifacts
-             (id, workspace_id, project_id, ticket_id, objective_id, session_id, delivery_id,
+             (id, workspace_id, project_id, mission_id, objective_id, session_id, delivery_id,
               type, label, content_text, external_url, created_at, updated_at, revision)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
         )
         .run(
           newId(),
           ctx.workspace.id,
-          ticket.projectId,
-          ticket.id,
+          mission.projectId,
+          mission.id,
           session.objective_id,
           session.id,
           deliveryId,
@@ -1406,7 +1406,7 @@ export function deliverSession({
       ctx.db
         .prepare(
           `INSERT INTO change_rationales
-             (id, workspace_id, project_id, ticket_id, objective_id, session_id, delivery_id,
+             (id, workspace_id, project_id, mission_id, objective_id, session_id, delivery_id,
               changed_file_id, file_path, label, summary, why, impact, hunks_json,
               is_final, created_at, updated_at, revision)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 1)`
@@ -1414,8 +1414,8 @@ export function deliverSession({
         .run(
           newId(),
           ctx.workspace.id,
-          ticket.projectId,
-          ticket.id,
+          mission.projectId,
+          mission.id,
           session.objective_id,
           session.id,
           deliveryId,
@@ -1433,16 +1433,16 @@ export function deliverSession({
 
     ctx.db
       .prepare(
-        `INSERT INTO ticket_events
-           (id, workspace_id, project_id, ticket_id, objective_id, session_id,
+        `INSERT INTO mission_events
+           (id, workspace_id, project_id, mission_id, objective_id, session_id,
             type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
          VALUES (?, ?, ?, ?, ?, ?, 'delivery', 'deliver', ?, ?, ?, ?, ?)`
       )
       .run(
         eventId,
         ctx.workspace.id,
-        ticket.projectId,
-        ticket.id,
+        mission.projectId,
+        mission.id,
         session.objective_id,
         session.id,
         trimmedSummary,
@@ -1467,7 +1467,7 @@ export function deliverSession({
       )
       .run(now, now, session.id);
 
-    moveTicketToReview({ ctx, ticketId: ticket.id });
+    moveMissionToReview({ ctx, missionId: mission.id });
   });
 
   tx();
@@ -1484,12 +1484,12 @@ export function deliverSession({
   const nextObjective = ctx.db
     .prepare(
       `SELECT id, title, auto_advance, assigned_agent, model, reasoning_effort FROM objectives
-       WHERE ticket_id = ? AND position > (
+       WHERE mission_id = ? AND position > (
          SELECT position FROM objectives WHERE id = ?
        ) AND state = 'draft'
        ORDER BY position ASC LIMIT 1`
     )
-    .get(ticket.id, session.objective_id) as
+    .get(mission.id, session.objective_id) as
     | {
         id: string;
         title: string;
@@ -1537,15 +1537,15 @@ export function deliverSession({
         entityId: nextObjective.id,
         operation: 'update',
         entityRevision: updatedRevision.revision,
-        projectId: ticket.projectId,
-        ticketId: ticket.id,
+        projectId: mission.projectId,
+        missionId: mission.id,
         objectiveId: nextObjective.id,
         changedFields
       });
       try {
         createExecutionRequest({
           ctx,
-          ticketId: ticket.id,
+          missionId: mission.id,
           objectiveId: nextObjective.id,
           requestedAgent:
             nextObjective.assigned_agent ?? deliveredObjective?.assigned_agent ?? null,
@@ -1561,16 +1561,16 @@ export function deliverSession({
       } catch (error) {
         ctx.db
           .prepare(
-            `INSERT INTO ticket_events
-               (id, workspace_id, project_id, ticket_id, objective_id,
+            `INSERT INTO mission_events
+               (id, workspace_id, project_id, mission_id, objective_id,
                 type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
              VALUES (?, ?, ?, ?, ?, 'alert', 'review', ?, ?, ?, ?, ?)`
           )
           .run(
             eventId,
             ctx.workspace.id,
-            ticket.projectId,
-            ticket.id,
+            mission.projectId,
+            mission.id,
             nextObjective.id,
             `Auto-advance could not queue the next objective: ${
               error instanceof Error ? error.message : String(error)
@@ -1584,16 +1584,16 @@ export function deliverSession({
     } else {
       ctx.db
         .prepare(
-          `INSERT INTO ticket_events
-             (id, workspace_id, project_id, ticket_id, objective_id,
+          `INSERT INTO mission_events
+             (id, workspace_id, project_id, mission_id, objective_id,
               type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
            VALUES (?, ?, ?, ?, ?, 'awaiting_approval', 'review', ?, '{}', ?, ?, ?)`
         )
         .run(
           eventId,
           ctx.workspace.id,
-          ticket.projectId,
-          ticket.id,
+          mission.projectId,
+          mission.id,
           nextObjective.id,
           `Next objective is waiting for approval: ${nextObjective.title}`,
           ctx.source,
@@ -1616,11 +1616,11 @@ export function protocolCreate({
   projectId?: string | null;
   objectives: Array<{ objective: string; title?: string | null; autoAdvance?: boolean }>;
   title?: string | null;
-}): { ticket: TicketSummary; objectives: ObjectiveSummary[] } {
+}): { mission: MissionSummary; objectives: ObjectiveSummary[] } {
   const resolvedProjectId = projectId
     ? resolveProjectId(ctx, projectId)
     : discoverProject({ ctx }).projectId;
-  return createTicketWithObjectives({
+  return createMissionWithObjectives({
     ctx,
     projectId: resolvedProjectId,
     objectives,
@@ -1646,7 +1646,7 @@ export function protocolPrompt({
   const discovery = projectId
     ? { projectId: resolveProjectId(ctx, projectId) }
     : discoverProject({ ctx });
-  const created = createTicketWithObjectives({
+  const created = createMissionWithObjectives({
     ctx,
     projectId: discovery.projectId,
     objectives,
@@ -1664,7 +1664,7 @@ export function protocolPrompt({
 
   return attachSession({
     ctx,
-    ticketId: created.ticket.id,
+    missionId: created.mission.id,
     agentIdentifier,
     connectionMethod: 'prompt',
     externalSessionId: externalSessionId ?? null
@@ -1687,7 +1687,7 @@ export function recordWork({
   title?: string | null;
   artifacts?: Array<{ type: string; label: string; content?: string | null; url?: string | null }>;
   changeRationales?: ChangeRationaleInput[];
-}): { ticket: TicketSummary; deliveryId: string } {
+}): { mission: MissionSummary; deliveryId: string } {
   const trimmedSummary = summary.trim();
   if (!trimmedSummary) {
     throw new ServiceError('Summary is required for record-work', 'validation_error');
@@ -1697,7 +1697,7 @@ export function recordWork({
     ? resolveProjectId(ctx, projectId)
     : discoverProject({ ctx }).projectId;
 
-  const created = createTicketWithObjectives({
+  const created = createMissionWithObjectives({
     ctx,
     projectId: resolvedProjectId,
     objectives: [{ objective }],
@@ -1716,7 +1716,7 @@ export function recordWork({
     ctx.db
       .prepare(
         `INSERT INTO deliveries
-           (id, workspace_id, project_id, ticket_id, objective_id, session_id,
+           (id, workspace_id, project_id, mission_id, objective_id, session_id,
             summary, payload_json, delivered_at, delivered_by_workspace_user_id,
             created_at, updated_at, revision)
          VALUES (?, ?, ?, ?, ?, NULL, ?, '{}', ?, ?, ?, ?, 1)`
@@ -1725,7 +1725,7 @@ export function recordWork({
         deliveryId,
         ctx.workspace.id,
         resolvedProjectId,
-        created.ticket.id,
+        created.mission.id,
         objectiveId,
         trimmedSummary,
         now,
@@ -1738,7 +1738,7 @@ export function recordWork({
       ctx.db
         .prepare(
           `INSERT INTO artifacts
-             (id, workspace_id, project_id, ticket_id, objective_id, delivery_id,
+             (id, workspace_id, project_id, mission_id, objective_id, delivery_id,
               type, label, content_text, external_url, created_at, updated_at, revision)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
         )
@@ -1746,7 +1746,7 @@ export function recordWork({
           newId(),
           ctx.workspace.id,
           resolvedProjectId,
-          created.ticket.id,
+          created.mission.id,
           objectiveId,
           deliveryId,
           artifact.type,
@@ -1762,7 +1762,7 @@ export function recordWork({
       ctx.db
         .prepare(
           `INSERT INTO change_rationales
-             (id, workspace_id, project_id, ticket_id, objective_id, delivery_id,
+             (id, workspace_id, project_id, mission_id, objective_id, delivery_id,
               file_path, label, summary, why, impact, hunks_json, is_final, created_at, updated_at, revision)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 1)`
         )
@@ -1770,7 +1770,7 @@ export function recordWork({
           newId(),
           ctx.workspace.id,
           resolvedProjectId,
-          created.ticket.id,
+          created.mission.id,
           objectiveId,
           deliveryId,
           rationale.filePath,
@@ -1786,8 +1786,8 @@ export function recordWork({
 
     ctx.db
       .prepare(
-        `INSERT INTO ticket_events
-           (id, workspace_id, project_id, ticket_id, objective_id,
+        `INSERT INTO mission_events
+           (id, workspace_id, project_id, mission_id, objective_id,
             type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
          VALUES (?, ?, ?, ?, ?, 'delivery', 'deliver', ?, ?, ?, ?, ?)`
       )
@@ -1795,7 +1795,7 @@ export function recordWork({
         newId(),
         ctx.workspace.id,
         resolvedProjectId,
-        created.ticket.id,
+        created.mission.id,
         objectiveId,
         trimmedSummary,
         JSON.stringify({ deliveryId, recordWork: true }),
@@ -1806,7 +1806,7 @@ export function recordWork({
   });
 
   tx();
-  return { ticket: created.ticket, deliveryId };
+  return { mission: created.mission, deliveryId };
 }
 
 export function authStatus({ ctx }: { ctx: ServiceContext }): {
@@ -1826,10 +1826,10 @@ export function authStatus({ ctx }: { ctx: ServiceContext }): {
 }
 
 export {
-  addObjectivesToTicket,
-  createTicketWithObjectives,
+  addObjectivesToMission,
+  createMissionWithObjectives,
   discussObjective,
   listSharedContext,
-  searchTickets,
+  searchMissions,
   writeSharedContext
-} from './tickets.js';
+} from './missions.js';

@@ -45,7 +45,7 @@ Login verifies that a backend is configured. If none is set yet, it walks throug
 `ovld config` first — local setup offers `http://127.0.0.1:4310` as the default
 backend URL; cloud setup accepts a hosted backend URL.
 
-Then confirm the connection and continue with projects, tickets, and agents:
+Then confirm the connection and continue with projects, missions, and agents:
 
 ```bash
 ovld doctor
@@ -53,7 +53,7 @@ ovld config list
 ```
 
 See [Getting Started](../docs/getting-started.md) for the full walkthrough from
-install through first delivered ticket.
+install through first delivered mission.
 
 ### How the published CLI works
 
@@ -169,7 +169,7 @@ These commands work without a backend: `ovld help`, `ovld version`,
 `ovld update`, `ovld config ...`, `ovld prune`, and connector setup/inspection commands that only touch local
 files. `ovld update --check` compares the installed package version with the latest
 published npm version, and `ovld update` upgrades the global `open-overlord`
-install through npm. Commands that read or mutate Overlord state — projects, tickets,
+install through npm. Commands that read or mutate Overlord state — projects, missions,
 protocol calls, runner queue operations, and launch context assembly — call the
 configured backend URL.
 
@@ -200,7 +200,7 @@ Requirements and behavior specs are colocated in this module's
 [`docs/`](docs/) folder (see the root [README](../README.md#modules) for the
 colocation convention):
 
-- [01 — Core Domain and Lifecycle](docs/01-core-domain-and-lifecycle.md): projects, tickets, objectives, sessions, events, statuses, state transitions.
+- [01 — Core Domain and Lifecycle](docs/01-core-domain-and-lifecycle.md): projects, missions, objectives, sessions, events, statuses, state transitions.
 - [02 — CLI-First Product Surface](docs/02-cli-first-product-surface.md): management commands, configuration, project linking, output contracts.
 - [03 — Agent Protocol](docs/03-agent-protocol.md): `ovld protocol` lifecycle, context assembly, updates, delivery, attachments.
 - [04 — Runner and Launch Execution](docs/04-runner-and-launch-execution.md): execution requests, local runner, launch command generation, auto-advance.
@@ -235,9 +235,9 @@ the compiled CLI (`node cli/bin/ovld.mjs …`).
 
 ### In-repo build vs installed CLI
 
-Project-management work (`ovld protocol attach/update/deliver`, ticket creation,
+Project-management work (`ovld protocol attach/update/deliver`, mission creation,
 launching) uses the **installed** `ovld` so those calls hit the installed
-Desktop instance and real ticket data. Bare `ovld` on `PATH` always resolves to
+Desktop instance and real mission data. Bare `ovld` on `PATH` always resolves to
 the global install — keep it that way.
 
 The two builds also choose their env profile by origin (`detectCliEnvProfile`):
@@ -269,7 +269,7 @@ node cli/bin/ovld.mjs doctor
 
 **Never `yarn link` / `npm link` the workspace CLI** (there is deliberately no
 `load:cli` script): linking shadows the global `ovld`, so `ovld protocol` calls
-would run untested working-tree code against your real ticket data.
+would run untested working-tree code against your real mission data.
 
 ### Interaction Boundaries
 

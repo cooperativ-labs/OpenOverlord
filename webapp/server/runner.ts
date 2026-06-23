@@ -7,7 +7,7 @@ type ExecutionRequestRow = {
   id: string;
   workspace_id: string;
   project_id: string;
-  ticket_id: string;
+  mission_id: string;
   objective_id: string;
   execution_target_id: string | null;
   requested_agent: string | null;
@@ -32,13 +32,13 @@ type BranchPreparedPayload = {
 };
 
 const EXECUTION_REQUEST_COLUMNS = `
-  id, workspace_id, project_id, ticket_id, objective_id, execution_target_id,
+  id, workspace_id, project_id, mission_id, objective_id, execution_target_id,
   requested_agent, requested_model, requested_reasoning_effort, launch_flags_json,
   status, requested_source, resolved_working_directory, last_error, created_at, updated_at, revision
 `;
 
 const EXECUTION_REQUEST_COLUMNS_WITH_ALIAS = `
-  er.id, er.workspace_id, er.project_id, er.ticket_id, er.objective_id, er.execution_target_id,
+  er.id, er.workspace_id, er.project_id, er.mission_id, er.objective_id, er.execution_target_id,
   er.requested_agent, er.requested_model, er.requested_reasoning_effort, er.launch_flags_json,
   er.status, er.requested_source, er.resolved_working_directory, er.last_error,
   er.created_at, er.updated_at, er.revision
@@ -74,7 +74,7 @@ function toDto(row: ExecutionRequestRow): Record<string, unknown> {
     id: row.id,
     workspaceId: row.workspace_id,
     projectId: row.project_id,
-    ticketId: row.ticket_id,
+    missionId: row.mission_id,
     objectiveId: row.objective_id,
     executionTargetId: row.execution_target_id,
     requestedAgent: row.requested_agent,
@@ -131,20 +131,20 @@ function failQueuedRequest({ row, error }: { row: ExecutionRequestRow; error: st
     operation: 'update',
     entityRevision: revision,
     projectId: row.project_id,
-    ticketId: row.ticket_id,
+    missionId: row.mission_id,
     objectiveId: row.objective_id,
     changedFields: ['status', 'last_error']
   });
   db.prepare(
-    `INSERT INTO ticket_events
-       (id, workspace_id, project_id, ticket_id, objective_id, type, phase, summary,
+    `INSERT INTO mission_events
+       (id, workspace_id, project_id, mission_id, objective_id, type, phase, summary,
         payload_json, source, actor_workspace_user_id, created_at)
      VALUES (?, ?, ?, ?, ?, 'status_change', 'execute', ?, ?, 'runner', NULL, ?)`
   ).run(
     newId(),
     WORKSPACE.id,
     row.project_id,
-    row.ticket_id,
+    row.mission_id,
     row.objective_id,
     'Agent run failed: primary resource is not connected.',
     JSON.stringify({ executionRequestId: row.id, error }),
@@ -227,20 +227,20 @@ export const claimRunnerRequest = db.transaction(
       operation: 'update',
       entityRevision: revision,
       projectId: row.project_id,
-      ticketId: row.ticket_id,
+      missionId: row.mission_id,
       objectiveId: row.objective_id,
       changedFields: ['status', 'claimed_at', 'resolved_working_directory']
     });
     db.prepare(
-      `INSERT INTO ticket_events
-         (id, workspace_id, project_id, ticket_id, objective_id, type, phase, summary,
+      `INSERT INTO mission_events
+         (id, workspace_id, project_id, mission_id, objective_id, type, phase, summary,
           payload_json, source, actor_workspace_user_id, created_at)
        VALUES (?, ?, ?, ?, ?, 'status_change', 'execute', ?, ?, 'runner', NULL, ?)`
     ).run(
       newId(),
       WORKSPACE.id,
       row.project_id,
-      row.ticket_id,
+      row.mission_id,
       row.objective_id,
       'Runner claimed execution request.',
       JSON.stringify({ executionRequestId: row.id }),
@@ -298,7 +298,7 @@ export const updateRunnerRequestStatus = db.transaction(
       operation: 'update',
       entityRevision: revision,
       projectId: row.project_id,
-      ticketId: row.ticket_id,
+      missionId: row.mission_id,
       objectiveId: row.objective_id,
       changedFields: ['status']
     });
@@ -328,26 +328,26 @@ function requireBranchPayload(value: unknown): BranchPreparedPayload {
 
 export const recordBranchPrepared = db.transaction(
   ({
-    ticketId,
+    missionId,
     requestId,
     payload
   }: {
-    ticketId: string;
+    missionId: string;
     requestId?: string | null;
     payload: unknown;
   }): { ok: true } => {
     const branch = requireBranchPayload(payload);
-    const ticket = db
+    const mission = db
       .prepare(
-        `SELECT id, project_id, revision FROM tickets
+        `SELECT id, project_id, revision FROM missions
           WHERE workspace_id = @workspace_id
             AND deleted_at IS NULL
-            AND (id = @ticket_id OR display_id = @ticket_id)`
+            AND (id = @mission_id OR display_id = @mission_id)`
       )
-      .get({ workspace_id: WORKSPACE.id, ticket_id: ticketId }) as
+      .get({ workspace_id: WORKSPACE.id, mission_id: missionId }) as
       | { id: string; project_id: string; revision: number }
       | undefined;
-    if (!ticket) throw new ApiError(404, 'Ticket not found');
+    if (!mission) throw new ApiError(404, 'Mission not found');
 
     let objectiveId: string | null = null;
     if (requestId) {
@@ -379,7 +379,7 @@ export const recordBranchPrepared = db.transaction(
         operation: 'update',
         entityRevision: revision,
         projectId: row.project_id,
-        ticketId: row.ticket_id,
+        missionId: row.mission_id,
         objectiveId: row.objective_id,
         changedFields: ['launch_flags_json', 'resolved_working_directory']
       });
@@ -389,7 +389,7 @@ export const recordBranchPrepared = db.transaction(
 
     // Record the branch this objective actually ran on (the runner is the only
     // place that knows the objective ↔ branch mapping at prepare time). Surfaced
-    // per-objective in the ticket panel and used for follow-on worktree reuse.
+    // per-objective in the mission panel and used for follow-on worktree reuse.
     if (objectiveId) {
       const objective = db
         .prepare(`SELECT revision FROM objectives WHERE id = ?`)
@@ -406,50 +406,50 @@ export const recordBranchPrepared = db.transaction(
           entityId: objectiveId,
           operation: 'update',
           entityRevision: objectiveRevision,
-          projectId: ticket.project_id,
-          ticketId: ticket.id,
+          projectId: mission.project_id,
+          missionId: mission.id,
           objectiveId,
           changedFields: ['branch']
         });
       }
     }
 
-    // `tickets.active_branch` is the source of truth for which branch a ticket is
-    // operating on (read by merge detection and the REST/ticket-panel surfaces).
+    // `missions.active_branch` is the source of truth for which branch a mission is
+    // operating on (read by merge detection and the REST/mission-panel surfaces).
     // We also clear any `branch_override` here: the user's pinned choice has now
     // been consumed (it lives in `active_branch`, which the planner reuses), so
-    // the ticket returns to automatic selection for subsequent launches.
-    const ticketRevision = ticket.revision + 1;
+    // the mission returns to automatic selection for subsequent launches.
+    const missionRevision = mission.revision + 1;
     db.prepare(
-      `UPDATE tickets
+      `UPDATE missions
           SET active_branch = @active_branch, branch_override = NULL,
               updated_at = @now, revision = @revision
         WHERE id = @id`
-    ).run({ active_branch: branch.branchName, now, revision: ticketRevision, id: ticket.id });
+    ).run({ active_branch: branch.branchName, now, revision: missionRevision, id: mission.id });
     recordChange({
-      entityType: 'ticket',
-      entityId: ticket.id,
+      entityType: 'mission',
+      entityId: mission.id,
       operation: 'update',
-      entityRevision: ticketRevision,
-      projectId: ticket.project_id,
-      ticketId: ticket.id,
+      entityRevision: missionRevision,
+      projectId: mission.project_id,
+      missionId: mission.id,
       objectiveId,
       changedFields: ['active_branch', 'branch_override']
     });
 
     // Human-readable audit entry for the activity feed. `branch_prepared` is not
-    // part of the closed `ticket_events.type` vocabulary, so this records under
+    // part of the closed `mission_events.type` vocabulary, so this records under
     // the allowed `update` type with the structured detail in the payload.
     db.prepare(
-      `INSERT INTO ticket_events
-         (id, workspace_id, project_id, ticket_id, objective_id, type, phase, summary,
+      `INSERT INTO mission_events
+         (id, workspace_id, project_id, mission_id, objective_id, type, phase, summary,
           payload_json, source, actor_workspace_user_id, created_at)
        VALUES (?, ?, ?, ?, ?, 'update', 'execute', ?, ?, 'runner', NULL, ?)`
     ).run(
       newId(),
       WORKSPACE.id,
-      ticket.project_id,
-      ticket.id,
+      mission.project_id,
+      mission.id,
       objectiveId,
       `Prepared branch ${branch.branchName} in worktree ${branch.worktreePath}.`,
       JSON.stringify(branch),
@@ -491,7 +491,7 @@ export const clearRunnerRequests = db.transaction(
         operation: 'update',
         entityRevision: revision,
         projectId: row.project_id,
-        ticketId: row.ticket_id,
+        missionId: row.mission_id,
         objectiveId: row.objective_id,
         changedFields: ['status']
       });

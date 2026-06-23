@@ -21,7 +21,7 @@ SELECT
   AND NOT EXISTS (SELECT 1 FROM workspace_user_execution_targets WHERE workspace_user_id = 'local-workspace-user')
   AND NOT EXISTS (SELECT 1 FROM project_user_preferences WHERE workspace_user_id = 'local-workspace-user')
   AND NOT EXISTS (SELECT 1 FROM projects WHERE created_by_workspace_user_id = 'local-workspace-user')
-  AND NOT EXISTS (SELECT 1 FROM tickets WHERE created_by_workspace_user_id = 'local-workspace-user')
+  AND NOT EXISTS (SELECT 1 FROM missions WHERE created_by_workspace_user_id = 'local-workspace-user')
   AS should_remove;
 
 DELETE FROM role_assignments

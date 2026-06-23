@@ -80,7 +80,7 @@ CREATE TABLE attachments (
   id text PRIMARY KEY,
   workspace_id text NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
   project_id text REFERENCES projects (id) ON DELETE RESTRICT,
-  ticket_id text REFERENCES tickets (id) ON DELETE RESTRICT,
+  mission_id text REFERENCES missions (id) ON DELETE RESTRICT,
   objective_id text REFERENCES objectives (id) ON DELETE RESTRICT,
   storage_bucket_id text NOT NULL REFERENCES storage_buckets (id) ON DELETE RESTRICT,
   storage_key text NOT NULL CHECK (char_length(btrim(storage_key)) > 0),
@@ -103,8 +103,8 @@ CREATE UNIQUE INDEX idx_attachments_active_bucket_key ON attachments
 CREATE INDEX idx_attachments_workspace_created ON attachments (workspace_id, created_at);
 CREATE INDEX idx_attachments_project_created ON attachments (project_id, created_at)
   WHERE project_id IS NOT NULL;
-CREATE INDEX idx_attachments_ticket_created ON attachments (ticket_id, created_at)
-  WHERE ticket_id IS NOT NULL;
+CREATE INDEX idx_attachments_mission_created ON attachments (mission_id, created_at)
+  WHERE mission_id IS NOT NULL;
 CREATE INDEX idx_attachments_objective_created ON attachments (objective_id, created_at)
   WHERE objective_id IS NOT NULL;
 

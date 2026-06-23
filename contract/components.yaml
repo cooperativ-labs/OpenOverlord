@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '0.42-draft'
+contractVersion: '0.43-draft'
 
 components:
   protocol:
@@ -58,7 +58,7 @@ components:
       - 'configuration file locations: overlord.toml, .overlord/project.json'
       - 'backend URL settings: backend_url and backend_mode (local/cloud)'
       - 'per-user terminal profiles on user_execution_target_preferences for opening launched agents in a terminal window'
-      - 'protocol session-key cache: persists the attach session key by (working directory, ticket) and auto-injects --session-key when the flag is absent; cleared at deliver'
+      - 'protocol session-key cache: persists the attach session key by (working directory, mission) and auto-injects --session-key when the flag is absent; cleared at deliver'
       - 'human-readable CLI output format conventions'
     dependsOn:
       - auth
@@ -88,7 +88,7 @@ components:
     owns:
       - 'execution_requests queue claiming and launch'
       - 'working directory resolution'
-      - 'per-ticket branch/worktree preparation before local agent spawn when enabled'
+      - 'per-mission branch/worktree preparation before local agent spawn when enabled'
       - 'deterministic branch/worktree planning algorithm (cli/src/branch-planning.ts), co-owned with the service layer and pinned to contract/branch-planning-vectors.json'
       - 'ovld runner commands'
       - 'execution target selection logic'
@@ -107,8 +107,8 @@ components:
     owns:
       - 'URL paths and HTTP method contracts'
       - 'request/response DTO shapes (camelCase, derived from logical schema)'
-      - 'read-only derived ticket branch metadata (TicketBranchDto) from tickets.active_branch, predicted via the service layer copy of the branch-planning algorithm (webapp/server/branch-planning.ts) pinned to contract/branch-planning-vectors.json'
-      - 'on-demand branch-action git mutations (POST /api/tickets/:id/branch/action: merge-with-parent / push-parent / publish) run host-side against worktrees under ~/.ovld/worktrees and the primary repo; the Runner Layer owns launching the agent into a worktree, not these mutations'
+      - 'read-only derived mission branch metadata (MissionBranchDto) from missions.active_branch, predicted via the service layer copy of the branch-planning algorithm (webapp/server/branch-planning.ts) pinned to contract/branch-planning-vectors.json'
+      - 'on-demand branch-action git mutations (POST /api/missions/:id/branch/action: merge-with-parent / push-parent / publish) run host-side against worktrees under ~/.ovld/worktrees and the primary repo; the Runner Layer owns launching the agent into a worktree, not these mutations'
       - 'REST auth integration points'
       - 'SSE/WebSocket realtime endpoint'
       - 'SQL Studio launch metadata exposed through /api/meta'
@@ -263,7 +263,7 @@ interactionSurfaces:
       - 'Auth tables (user, session, account, verification, apikey) are auth-internal; no other component reads them directly'
       - 'Identity bridge reads workspace_users and profiles where profiles.id matches the Better Auth user id'
       - 'Role resolution reads role_assignments by workspace_user_id and workspace_id'
-      - 'Auth Layer must not write to core domain tables (tickets, projects, etc.)'
+      - 'Auth Layer must not write to core domain tables (missions, projects, etc.)'
 
   serviceToAutomations:
     description: 'Service-layer callers invoke automations through exported functions; persistence via injected callbacks only'

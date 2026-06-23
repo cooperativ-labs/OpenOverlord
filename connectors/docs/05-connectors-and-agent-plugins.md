@@ -2,7 +2,7 @@
 
 ## Goal
 
-Port Overlord's connector model so Overlord can launch different AI coding agents while giving each one the same ticket protocol, lifecycle rules, hooks, and context.
+Port Overlord's connector model so Overlord can launch different AI coding agents while giving each one the same mission protocol, lifecycle rules, hooks, and context.
 
 ## Connector Model
 
@@ -25,15 +25,15 @@ Requirements:
 
 Source location:
 
-- `connectors/core/overlord-ticket/SKILL.md`
-- `connectors/core/overlord-ticket/reference/`
+- `connectors/core/overlord-mission/SKILL.md`
+- `connectors/core/overlord-mission/reference/`
 
 This is the single source of truth for durable Overlord workflow behavior. Connector adapters may include a thin harness-specific skill or command wrapper, but should not duplicate the core lifecycle rules. Packaging/setup can copy or render the core into an installable plugin bundle when the target harness needs a self-contained directory.
 
 Required content:
 
 - Attach first.
-- Treat ticket prompt/context as authoritative.
+- Treat mission prompt/context as authoritative.
 - Post meaningful progress updates.
 - Include changed-file tracking with normal progress updates when the CLI/runtime can do so without extra agent calls.
 - Use heartbeat during long mechanical work with no meaningful update.
@@ -53,7 +53,7 @@ Requirements:
 - Include Overlord skill/workflow instructions.
 - Include `UserPromptSubmit` hook to record follow-up messages.
 - The `UserPromptSubmit` hook should call `ovld protocol hook-event` with
-  `--hook-type UserPromptSubmit`, `--ticket-id`, the prompt text, optional
+  `--hook-type UserPromptSubmit`, `--mission-id`, the prompt text, optional
   native `--external-session-id`, and optional `--session-key`. The session key
   must be optional because delivered sessions may be ended before a user sends a
   follow-up.
@@ -149,7 +149,7 @@ For agents with command/plugin support, provide commands for:
 - `discuss-objective`
 - `add-objectives`
 - `record-work`
-- `spawn` or equivalent follow-up ticket creation if useful
+- `spawn` or equivalent follow-up mission creation if useful
 
 Each command should call the same `ovld protocol` surface rather than duplicating behavior.
 
@@ -159,7 +159,7 @@ Each command should call the same `ovld protocol` surface rather than duplicatin
 
 Requirements:
 
-- Captures human follow-up messages after initial ticket prompt.
+- Captures human follow-up messages after initial mission prompt.
 - Publishes `user_follow_up` events through `hook-event` or `update`.
 - Preserves verbatim user text.
 - Records native session/resume ID when the harness exposes one.
@@ -203,7 +203,7 @@ Future requirement:
 
 ## Acceptance Criteria
 
-- Codex and Claude can both be launched on the same ticket objective and receive equivalent protocol instructions.
+- Codex and Claude can both be launched on the same mission objective and receive equivalent protocol instructions.
 - Follow-up user messages are recorded without the agent manually retyping them when hooks are installed.
 - Setup can be rerun safely.
 - Doctor reports missing/stale connector state in a way a user can fix from the CLI.

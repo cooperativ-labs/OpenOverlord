@@ -17,7 +17,7 @@ import {
 } from '../../src/service/execution-requests.ts';
 import { addProjectResource, createProject } from '../../src/service/projects.ts';
 import { attachSession, deliverSession, updateSession } from '../../src/service/protocol.ts';
-import { createTicketWithObjectives } from '../../src/service/tickets.ts';
+import { createMissionWithObjectives } from '../../src/service/missions.ts';
 import { newId } from '../../src/service/util.ts';
 
 function createContext() {
@@ -30,7 +30,7 @@ function createContext() {
 test('execution request queue rejects when no primary resource is linked', () => {
   const { db, ctx } = createContext();
   const project = createProject({ ctx, name: 'No Primary Resource Test' });
-  const { ticket, objectives } = createTicketWithObjectives({
+  const { mission, objectives } = createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [{ objective: 'Should not queue without a primary resource' }]
@@ -40,7 +40,7 @@ test('execution request queue rejects when no primary resource is linked', () =>
     () =>
       createExecutionRequest({
         ctx,
-        ticketId: ticket.displayId,
+        missionId: mission.displayId,
         objectiveId: objectives[0]?.id,
         requestedAgent: 'codex',
         requestedSource: 'cli'
@@ -68,7 +68,7 @@ test('execution request queue rejects when the primary resource path is missing'
   // Linking scaffolds the directory on disk; simulate it disappearing afterward
   // so the primary-resource guard sees a `missing` status.
   rmSync(resourcePath, { recursive: true, force: true });
-  const { ticket, objectives } = createTicketWithObjectives({
+  const { mission, objectives } = createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [{ objective: 'Should not queue with a missing primary path' }]
@@ -78,7 +78,7 @@ test('execution request queue rejects when the primary resource path is missing'
     () =>
       createExecutionRequest({
         ctx,
-        ticketId: ticket.displayId,
+        missionId: mission.displayId,
         objectiveId: objectives[0]?.id,
         requestedAgent: 'codex',
         requestedSource: 'cli'
@@ -105,7 +105,7 @@ test('claiming a queued request fails when the primary resource is missing', () 
   });
   // Linking scaffolds the directory; remove it so the claim sees it missing.
   rmSync(resourcePath, { recursive: true, force: true });
-  const { ticket, objectives } = createTicketWithObjectives({
+  const { mission, objectives } = createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [{ objective: 'Queued before the primary path disappeared' }]
@@ -115,11 +115,11 @@ test('claiming a queued request fails when the primary resource is missing', () 
   const now = new Date().toISOString();
   db.prepare(
     `INSERT INTO execution_requests
-       (id, workspace_id, project_id, ticket_id, objective_id, requested_agent,
+       (id, workspace_id, project_id, mission_id, objective_id, requested_agent,
         launch_mode, launch_flags_json, target_kind, requested_source, status,
         created_at, updated_at, revision)
      VALUES (?, ?, ?, ?, ?, 'codex', 'run', '{}', 'local', 'webapp', 'queued', ?, ?, 1)`
-  ).run(requestId, ctx.workspace.id, project.id, ticket.id, objectives[0]?.id, now, now);
+  ).run(requestId, ctx.workspace.id, project.id, mission.id, objectives[0]?.id, now, now);
 
   assert.equal(claimNextExecutionRequest({ ctx }), null);
 
@@ -136,7 +136,7 @@ test('execution request queue can create, claim, launch, and clear active reques
   const { db, ctx } = createContext();
   const project = createProject({ ctx, name: 'Runner Test' });
   addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
-  const { ticket, objectives } = createTicketWithObjectives({
+  const { mission, objectives } = createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [{ objective: 'Run the next objective' }]
@@ -144,7 +144,7 @@ test('execution request queue can create, claim, launch, and clear active reques
 
   const request = createExecutionRequest({
     ctx,
-    ticketId: ticket.displayId,
+    missionId: mission.displayId,
     objectiveId: objectives[0]?.id,
     requestedAgent: 'codex',
     requestedSource: 'cli',
@@ -154,7 +154,7 @@ test('execution request queue can create, claim, launch, and clear active reques
 
   const duplicate = createExecutionRequest({
     ctx,
-    ticketId: ticket.displayId,
+    missionId: mission.displayId,
     objectiveId: objectives[0]?.id,
     requestedAgent: 'codex',
     requestedSource: 'cli',
@@ -177,7 +177,7 @@ test('execution request queue can create, claim, launch, and clear active reques
 
   const second = createExecutionRequest({
     ctx,
-    ticketId: ticket.displayId,
+    missionId: mission.displayId,
     objectiveId: objectives[0]?.id,
     requestedAgent: 'codex',
     requestedSource: 'cli'
@@ -192,7 +192,7 @@ test('runner does not claim a queued request for a soft-deleted objective', () =
   const { db, ctx } = createContext();
   const project = createProject({ ctx, name: 'Deleted Objective Test' });
   addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
-  const { ticket, objectives } = createTicketWithObjectives({
+  const { mission, objectives } = createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [{ objective: 'Objective to be removed' }]
@@ -200,7 +200,7 @@ test('runner does not claim a queued request for a soft-deleted objective', () =
 
   const request = createExecutionRequest({
     ctx,
-    ticketId: ticket.displayId,
+    missionId: mission.displayId,
     objectiveId: objectives[0]?.id,
     requestedAgent: 'codex',
     requestedSource: 'cli'
@@ -222,7 +222,7 @@ test('delivery auto-advance queues next objective when enabled', () => {
   const { db, ctx } = createContext();
   const project = createProject({ ctx, name: 'Auto Advance Test' });
   addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
-  const { ticket, objectives } = createTicketWithObjectives({
+  const { mission, objectives } = createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [
@@ -242,10 +242,10 @@ test('delivery auto-advance queues next objective when enabled', () => {
     )
     .run(objectives[0]?.id);
 
-  const attached = attachSession({ ctx, ticketId: ticket.displayId });
+  const attached = attachSession({ ctx, missionId: mission.displayId });
   deliverSession({
     ctx,
-    ticketId: ticket.displayId,
+    missionId: mission.displayId,
     sessionKey: attached.sessionKey,
     summary: 'First objective complete'
   });
@@ -279,7 +279,7 @@ test('delivery auto-advance keeps the next objective explicit agent', () => {
   const { db, ctx } = createContext();
   const project = createProject({ ctx, name: 'Auto Advance Explicit Agent' });
   addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
-  const { ticket, objectives } = createTicketWithObjectives({
+  const { mission, objectives } = createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [
@@ -296,10 +296,10 @@ test('delivery auto-advance keeps the next objective explicit agent', () => {
     .prepare(`UPDATE objectives SET assigned_agent = 'claude' WHERE id = ?`)
     .run(objectives[1]?.id);
 
-  const attached = attachSession({ ctx, ticketId: ticket.displayId });
+  const attached = attachSession({ ctx, missionId: mission.displayId });
   deliverSession({
     ctx,
-    ticketId: ticket.displayId,
+    missionId: mission.displayId,
     sessionKey: attached.sessionKey,
     summary: 'First objective complete'
   });
@@ -315,30 +315,30 @@ test('delivery auto-advance keeps the next objective explicit agent', () => {
 test('change review reports missing and covered rationales', () => {
   const { db, ctx } = createContext();
   const project = createProject({ ctx, name: 'Change Review Test' });
-  const { ticket, objectives } = createTicketWithObjectives({
+  const { mission, objectives } = createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [{ objective: 'Track changes' }]
   });
   ctx.db.prepare(`UPDATE objectives SET state = 'submitted' WHERE id = ?`).run(objectives[0]?.id);
-  const attached = attachSession({ ctx, ticketId: ticket.displayId });
+  const attached = attachSession({ ctx, missionId: mission.displayId });
 
   updateSession({
     ctx,
-    ticketId: ticket.displayId,
+    missionId: mission.displayId,
     sessionKey: attached.sessionKey,
     summary: 'Changed files',
     changedFiles: [{ filePath: 'src/example.ts', vcsStatus: 'M' }]
   });
   assert.equal(
-    listChangedFilesForReview({ ctx, ticketId: ticket.displayId, includeCurrent: false })[0]
+    listChangedFilesForReview({ ctx, missionId: mission.displayId, includeCurrent: false })[0]
       ?.coverage,
     'missing_rationale'
   );
 
   deliverSession({
     ctx,
-    ticketId: ticket.displayId,
+    missionId: mission.displayId,
     sessionKey: attached.sessionKey,
     summary: 'Delivered tracked change',
     changeRationales: [
@@ -354,11 +354,11 @@ test('change review reports missing and covered rationales', () => {
 
   const files = listChangedFilesForReview({
     ctx,
-    ticketId: ticket.displayId,
+    missionId: mission.displayId,
     includeCurrent: false
   });
   assert.equal(files[0]?.coverage, 'covered');
-  assert.equal(listRationalesForReview({ ctx, ticketId: ticket.displayId }).length, 1);
+  assert.equal(listRationalesForReview({ ctx, missionId: mission.displayId }).length, 1);
 
   db.close();
 });

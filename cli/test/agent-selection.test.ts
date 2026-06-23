@@ -30,7 +30,7 @@ test('runner fails an execution request that has no agent instead of defaulting'
           return {
             request: {
               id: 'req-1',
-              ticketId: 'local:1',
+              missionId: 'local:1',
               requestedAgent: null,
               workingDirectory: process.cwd()
             }
@@ -63,7 +63,7 @@ test('attach reuses the agent already stored on the objective', async () => {
       baseUrl: 'http://example.test',
       health: async () => ({ ok: true }),
       get: async () => ({
-        id: 'ticket-1',
+        id: 'mission-1',
         displayId: 'local:1',
         objectives: [{ id: 'obj-1', assignedAgent: 'claude' }]
       }),
@@ -92,7 +92,7 @@ test('attach honors an explicit agent over the stored one', async () => {
       baseUrl: 'http://example.test',
       health: async () => ({ ok: true }),
       get: async () => ({
-        id: 'ticket-1',
+        id: 'mission-1',
         displayId: 'local:1',
         objectives: [{ id: 'obj-1', assignedAgent: 'claude' }]
       }),

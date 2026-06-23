@@ -2,19 +2,19 @@ import { useMemo } from 'react';
 
 import type {
   ProjectMentionOption,
-  TicketMentionOption
+  MissionMentionOption
 } from '../components/MentionableTextarea.tsx';
 
-import { useProjectRepository, useProjects, useTickets } from './queries.ts';
+import { useProjectRepository, useProjects, useMissions } from './queries.ts';
 
 /**
- * File, project, and ticket mention options for a project's repository context.
+ * File, project, and mission mention options for a project's repository context.
  * Shared by {@link RepositoryMentionTextarea} and inline objective editors.
  */
 export function useRepositoryMentionOptions(projectId: string) {
   const repository = useProjectRepository(projectId, null);
   const projects = useProjects();
-  const tickets = useTickets(projectId);
+  const missions = useMissions(projectId);
 
   const mentionPaths = useMemo(
     () =>
@@ -29,15 +29,15 @@ export function useRepositoryMentionOptions(projectId: string) {
     [projects.data]
   );
 
-  const ticketMentionOptions = useMemo<TicketMentionOption[]>(
+  const missionMentionOptions = useMemo<MissionMentionOption[]>(
     () =>
-      (tickets.data ?? []).map(ticket => ({
-        id: ticket.id,
-        displayId: ticket.displayId,
-        title: ticket.title
+      (missions.data ?? []).map(mission => ({
+        id: mission.id,
+        displayId: mission.displayId,
+        title: mission.title
       })),
-    [tickets.data]
+    [missions.data]
   );
 
-  return { mentionPaths, projectMentionOptions, ticketMentionOptions };
+  return { mentionPaths, projectMentionOptions, missionMentionOptions };
 }

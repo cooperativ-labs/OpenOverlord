@@ -7,7 +7,7 @@ import type {
   CreateProjectBody,
   CreateProjectResourceBody,
   CreateProjectTagBody,
-  CreateTicketBody,
+  CreateMissionBody,
   CreateUserTokenBody,
   CreateUserTokenResultDto,
   CreateWorkspaceBody,
@@ -17,8 +17,8 @@ import type {
   LaunchObjectiveBody,
   LaunchPreferenceDto,
   LaunchSettingsDto,
-  MyTicketReorderRequest,
-  MyTicketsResponse,
+  MyMissionReorderRequest,
+  MyMissionsResponse,
   ObjectiveAttachmentDto,
   ObjectiveDto,
   ObjectivePromptDto,
@@ -33,10 +33,10 @@ import type {
   ReorderFutureObjectivesBody,
   ReorderWorkspaceStatusesBody,
   StoredImageDto,
-  TicketBranchListDto,
-  TicketDetailDto,
-  TicketDto,
-  TicketEventDto,
+  MissionBranchListDto,
+  MissionDetailDto,
+  MissionDto,
+  MissionEventDto,
   UpdateAgentLaunchConfigBody,
   UpdateLaunchPreferenceBody,
   UpdateObjectiveBody,
@@ -45,7 +45,7 @@ import type {
   UpdateProjectResourceBody,
   UpdateProjectTagBody,
   UpdateTerminalProfileBody,
-  UpdateTicketBody,
+  UpdateMissionBody,
   UpdateUserTokenBody,
   UpdateWorkspaceBody,
   UpdateWorkspaceStatusBody,
@@ -197,44 +197,44 @@ export const api = {
       `/api/projects/${id}/repository${query ? `?${query}` : ''}`
     );
   },
-  listTickets: (projectId: string) =>
-    request<TicketDto[]>('GET', `/api/projects/${projectId}/tickets`),
+  listMissions: (projectId: string) =>
+    request<MissionDto[]>('GET', `/api/projects/${projectId}/missions`),
   reorderBoardColumn: (projectId: string, body: ReorderBoardColumnBody) =>
-    request<TicketDto[]>('PATCH', `/api/projects/${projectId}/board/reorder`, body),
-  listWorkspaceMyTickets: () => request<MyTicketsResponse>('GET', `/api/workspace/my-tickets`),
-  reorderWorkspaceMyTickets: (body: MyTicketReorderRequest) =>
-    request<MyTicketsResponse>('PATCH', `/api/workspace/my-tickets/order`, body),
+    request<MissionDto[]>('PATCH', `/api/projects/${projectId}/board/reorder`, body),
+  listWorkspaceMyMissions: () => request<MyMissionsResponse>('GET', `/api/workspace/my-missions`),
+  reorderWorkspaceMyMissions: (body: MyMissionReorderRequest) =>
+    request<MyMissionsResponse>('PATCH', `/api/workspace/my-missions/order`, body),
 
-  searchTickets: (query: string, options: { projectId?: string; limit?: number } = {}) => {
+  searchMissions: (query: string, options: { projectId?: string; limit?: number } = {}) => {
     const params = new URLSearchParams({ q: query });
     if (options.projectId) params.set('projectId', options.projectId);
     if (options.limit !== undefined) params.set('limit', String(options.limit));
-    return request<{ tickets: TicketDto[] }>('GET', `/api/tickets/search?${params.toString()}`);
+    return request<{ missions: MissionDto[] }>('GET', `/api/missions/search?${params.toString()}`);
   },
-  getTicket: (id: string) => request<TicketDetailDto>('GET', `/api/tickets/${id}`),
-  createTicket: (body: CreateTicketBody) => request<TicketDetailDto>('POST', '/api/tickets', body),
-  updateTicket: (id: string, body: UpdateTicketBody) =>
-    request<TicketDetailDto>('PATCH', `/api/tickets/${id}`, body),
-  deleteTicket: (id: string) => request<{ ok: true }>('DELETE', `/api/tickets/${id}`),
-  generateTicketTitle: (id: string) =>
-    request<TicketDetailDto>('POST', `/api/tickets/${id}/generate-title`),
+  getMission: (id: string) => request<MissionDetailDto>('GET', `/api/missions/${id}`),
+  createMission: (body: CreateMissionBody) => request<MissionDetailDto>('POST', '/api/missions', body),
+  updateMission: (id: string, body: UpdateMissionBody) =>
+    request<MissionDetailDto>('PATCH', `/api/missions/${id}`, body),
+  deleteMission: (id: string) => request<{ ok: true }>('DELETE', `/api/missions/${id}`),
+  generateMissionTitle: (id: string) =>
+    request<MissionDetailDto>('POST', `/api/missions/${id}/generate-title`),
   branchAction: (id: string, body: BranchActionBody) =>
-    request<TicketDetailDto>('POST', `/api/tickets/${id}/branch/action`, body),
-  listTicketBranches: (id: string) =>
-    request<TicketBranchListDto>('GET', `/api/tickets/${id}/branches`),
+    request<MissionDetailDto>('POST', `/api/missions/${id}/branch/action`, body),
+  listMissionBranches: (id: string) =>
+    request<MissionBranchListDto>('GET', `/api/missions/${id}/branches`),
   listWorktrees: () => request<WorktreeDto[]>('GET', '/api/worktrees'),
   removeWorktree: (body: RemoveWorktreeBody) =>
     request<PurgeWorktreesResultDto>('POST', '/api/worktrees/remove', body),
   purgeMergedWorktrees: () =>
     request<PurgeWorktreesResultDto>('POST', '/api/worktrees/purge-merged'),
-  listTicketEvents: (id: string) => request<TicketEventDto[]>('GET', `/api/tickets/${id}/events`),
-  listTicketArtifacts: (id: string) =>
-    request<ArtifactDto[]>('GET', `/api/tickets/${id}/artifacts`),
-  listTicketFileChanges: (id: string) =>
-    request<FileChangeDto[]>('GET', `/api/tickets/${id}/file-changes`),
+  listMissionEvents: (id: string) => request<MissionEventDto[]>('GET', `/api/missions/${id}/events`),
+  listMissionArtifacts: (id: string) =>
+    request<ArtifactDto[]>('GET', `/api/missions/${id}/artifacts`),
+  listMissionFileChanges: (id: string) =>
+    request<FileChangeDto[]>('GET', `/api/missions/${id}/file-changes`),
 
-  reorderFutureObjectives: (ticketId: string, body: ReorderFutureObjectivesBody) =>
-    request<ObjectiveDto[]>('PATCH', `/api/tickets/${ticketId}/objectives/reorder`, body),
+  reorderFutureObjectives: (missionId: string, body: ReorderFutureObjectivesBody) =>
+    request<ObjectiveDto[]>('PATCH', `/api/missions/${missionId}/objectives/reorder`, body),
   createObjective: (body: CreateObjectiveBody) =>
     request<ObjectiveDto>('POST', '/api/objectives', body),
   updateObjective: (id: string, body: UpdateObjectiveBody) =>

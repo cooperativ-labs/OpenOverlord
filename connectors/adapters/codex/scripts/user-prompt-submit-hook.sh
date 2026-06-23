@@ -1,7 +1,7 @@
 #!/bin/bash
 # Overlord UserPromptSubmit hook — fires before Codex processes each user turn.
 # Codex exposes turn_number in the hook body; turn 0 is the initial injected
-# ticket/objective prompt, which `ovld protocol hook-event` skips.
+# mission/objective prompt, which `ovld protocol hook-event` skips.
 
 BODY=$(cat -)
 HOOK_NAME="codex"
@@ -15,7 +15,7 @@ log_hook() {
 
 TURN=$(printf '%s' "$BODY" | python3 -c "import json,sys; print(json.load(sys.stdin).get('turn_number', 0))" 2>/dev/null || echo "0")
 PROMPT_LEN=$(printf '%s' "$BODY" | python3 -c "import json,sys; print(len((json.load(sys.stdin).get('prompt') or '').strip()))" 2>/dev/null || echo "0")
-log_hook "received submit turn=$TURN prompt_len=$PROMPT_LEN ticket_present=$([ -n "${TICKET_ID:-}" ] && echo yes || echo no)"
+log_hook "received submit turn=$TURN prompt_len=$PROMPT_LEN mission_present=$([ -n "${MISSION_ID:-}" ] && echo yes || echo no)"
 
 printf '%s' "$BODY" | python3 -c "
 import hashlib
@@ -80,7 +80,7 @@ try:
 except Exception:
     sys.exit(0)
 
-tid = os.environ.get('TICKET_ID', '')
+tid = os.environ.get('MISSION_ID', '')
 external_session_id = (
     os.environ.get('CODEX_THREAD_ID')
     or os.environ.get('CODEX_SESSION_ID')
@@ -93,7 +93,7 @@ if tid and external_session_id:
         native_dir = Path.home() / '.ovld' / 'native-sessions'
         native_dir.mkdir(parents=True, exist_ok=True)
         (native_dir / key).write_text(
-            json.dumps({'agent': 'codex', 'ticketId': tid, 'externalSessionId': external_session_id}),
+            json.dumps({'agent': 'codex', 'missionId': tid, 'externalSessionId': external_session_id}),
             encoding='utf-8',
         )
     except Exception:
@@ -105,8 +105,8 @@ if [ "$TURN" = "0" ]; then
   exit 0
 fi
 
-if [ -z "${TICKET_ID:-}" ] || ! command -v ovld >/dev/null 2>&1; then
-  log_hook "missing required env/tool ticket=$([ -n "${TICKET_ID:-}" ] && echo yes || echo no) ovld=$([ "$(command -v ovld 2>/dev/null)" ] && echo yes || echo no)"
+if [ -z "${MISSION_ID:-}" ] || ! command -v ovld >/dev/null 2>&1; then
+  log_hook "missing required env/tool mission=$([ -n "${MISSION_ID:-}" ] && echo yes || echo no) ovld=$([ "$(command -v ovld 2>/dev/null)" ] && echo yes || echo no)"
   exit 0
 fi
 
@@ -190,14 +190,14 @@ external_session_id = (
     or None
 )
 
-tid = os.environ.get('TICKET_ID', '')
+tid = os.environ.get('MISSION_ID', '')
 session_key = os.environ.get('SESSION_KEY') or ''
 if not session_key:
     encoded = base64.urlsafe_b64encode(os.getcwd().encode()).decode().rstrip('=')
     session_file = Path(tempfile.gettempdir()) / f'.overlord-session-{encoded}'
     try:
         persisted = json.loads(session_file.read_text(encoding='utf-8'))
-        if persisted.get('ticketId') == tid:
+        if persisted.get('missionId') == tid:
             session_key = persisted.get('sessionKey') or ''
     except Exception:
         session_key = ''
@@ -210,7 +210,7 @@ if user_token:
 args = [
     'ovld', 'protocol', 'hook-event',
     '--hook-type', 'UserPromptSubmit',
-    '--ticket-id', tid,
+    '--mission-id', tid,
     '--prompt', text,
     '--turn-index', str(turn_index),
 ]

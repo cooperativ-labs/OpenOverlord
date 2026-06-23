@@ -7,7 +7,7 @@ contract component `automations`.
 
 - Give developers a small, explicit interface for optional AI automations.
 - Ship a reference Gemini summarization tool patterned on upstream Overlord's
-  `generate-ticket-title.ts`.
+  `generate-mission-title.ts`.
 - Show how service-layer callers wire automations through injected persistence
   callbacks, matching upstream `generateAndSetObjectiveTitle` in `objectives.ts`.
 

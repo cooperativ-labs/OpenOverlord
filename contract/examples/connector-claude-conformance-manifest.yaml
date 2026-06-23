@@ -27,5 +27,5 @@ connector:
     - Stop
   installPath: "~/.claude"
   managedFiles:
-    - "~/.claude/plugins/overlord/overlord-ticket.md"
+    - "~/.claude/plugins/overlord/overlord-mission.md"
     - "~/.claude/settings.json"  # merged, not replaced

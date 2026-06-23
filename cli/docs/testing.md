@@ -23,7 +23,7 @@ integration via `withAdapter`); L4 adds thin real-subprocess smoke tests via
 
 ### A1. Command surface and argument shapes
 - Each documented management command (`create-project`, `add-cwd`, `create`,
-  `tickets list`, `ticket context`, …) exists with the documented arguments.
+  `missions list`, `mission context`, …) exists with the documented arguments.
 - Unknown command / missing required arg produces a non-zero exit and a
   human-readable error (not a stack trace).
 - `--help` and `version` work without a database or auth.
@@ -67,7 +67,7 @@ shared with [Layer 3 §3.5](../../TEST_PLAN.md#35-protocol-command-surface-confo
   (declared side effects).
 - After `deliver`, further implementation/`update --phase execute` is rejected
   unless explicit follow-up was begun (`--begin-follow-up-work`).
-- `ask` posts exactly one `ticket_events` row of type `ask` and the test asserts
+- `ask` posts exactly one `mission_events` row of type `ask` and the test asserts
   the documented "agent must stop" contract is representable (single question per
   call rejected if multiple).
 
@@ -77,7 +77,7 @@ shared with [Layer 3 §3.5](../../TEST_PLAN.md#35-protocol-command-surface-confo
 - `session` has `sessionKey` + `state`; `objectives[]` each have
   `id`/`objective`/`state`/`position`.
 - `promptContext` contains every `promptContextRequiredContent` item: task title,
-  ticket ID, objective ID, objective instruction text, recent activity/history,
+  mission ID, objective ID, objective instruction text, recent activity/history,
   and required protocol workflow instructions.
 - Optional content (constraints, acceptance criteria, available tools, output
   format, attachments, artifacts, shared context) appears only when present.
@@ -89,11 +89,11 @@ shared with [Layer 3 §3.5](../../TEST_PLAN.md#35-protocol-command-surface-confo
 - Out-of-set phase/event-type values are rejected with a domain error.
 
 ### B4. Side-effect fidelity
-- `update` appends a `ticket_events` row and upserts changed files keyed by
+- `update` appends a `mission_events` row and upserts changed files keyed by
   session+objective+path.
-- **`heartbeat` creates NO `ticket_events` row** — only updates session liveness
+- **`heartbeat` creates NO `mission_events` row** — only updates session liveness
   (explicit negative assertion; contract calls this out).
-- `deliver` stores a delivery record, sets objective `complete`, moves ticket to
+- `deliver` stores a delivery record, sets objective `complete`, moves mission to
   `review`, and may trigger auto-advance of the next objective.
 
 ### B5. Delivery validation — change rationales
@@ -117,19 +117,19 @@ shared with [Layer 3 §3.5](../../TEST_PLAN.md#35-protocol-command-surface-confo
   [database idempotency tests](../../database/docs/testing.md#5-active-uniqueness-rules-adapter-suite-5)).
 
 ### B8. Discovery / non-session commands
-- `create` → draft ticket + draft objective, no session.
-- `prompt` → ticket created and attached/queued for execution.
-- `loadContext`, `searchTickets`, `listOrganizations` are read-only (no writes).
+- `create` → draft mission + draft objective, no session.
+- `prompt` → mission created and attached/queued for execution.
+- `loadContext`, `searchMissions`, `listOrganizations` are read-only (no writes).
 - `discussObjective` moves a draft objective to `submitted`.
 - `addObjectives` appends ordered draft objectives.
-- `recordWork` creates a review-status ticket + completed objective + delivery
+- `recordWork` creates a review-status mission + completed objective + delivery
   **without** a session (shared with [DB §8](../../database/docs/testing.md#8-record-work-without-session-adapter-suite-8)).
 
 ### B9. Objective state machine
 - Drives `objectives.state` transitions per
   [Layer 3 §3.6](../../TEST_PLAN.md#36-state-machine-conformance): legal path,
   illegal-jump rejection, `pending_delivery` only post-follow-up, reopen records a
-  `ticket_events` row.
+  `mission_events` row.
 
 ---
 
@@ -142,7 +142,7 @@ and the `runnerProtocol` section of `protocol-commands.yaml`.
 - `claimExecution` is atomic under concurrent runners — exactly one winner
   (shared with [DB §6](../../database/docs/testing.md#6-queue-claiming-atomicity-adapter-suite-6)).
 - Claim verifies the objective is launchable before claiming; appends
-  `ticket_events` + `entity_changes` in the same transaction.
+  `mission_events` + `entity_changes` in the same transaction.
 
 ### C2. Execution-request state machine
 - `execution_requests.status`: `queued → claimed → launching → launched`;

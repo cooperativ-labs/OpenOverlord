@@ -1,14 +1,14 @@
 # Getting Started with Overlord
 
 This guide walks you from a fresh `ovld` install to your first completed agent
-ticket in about ten minutes.
+mission in about ten minutes.
 
 **What you'll have by the end:**
 
 - A running local Overlord instance
 - A project linked to a git repository
 - An agent connector installed in your harness (Claude Code, Codex, or Cursor)
-- A delivered ticket with change rationales you can inspect
+- A delivered mission with change rationales you can inspect
 
 ---
 
@@ -85,7 +85,7 @@ ovld config list
 
 ## Step 2 — Create a project and link it to your repo
 
-A **project** is Overlord's container for tickets. It knows which git repository
+A **project** is Overlord's container for missions. It knows which git repository
 holds the work and which local directory to use when launching an agent.
 
 ```bash
@@ -118,7 +118,7 @@ it prints the latest Desktop download URL before writing the local backend URL.
 ## Step 4 — Install or repair an agent connector directly
 
 Connectors let your AI harness (Claude Code, Codex, Cursor, …) speak the
-Overlord protocol and receive ticket context automatically.
+Overlord protocol and receive mission context automatically.
 
 ```bash
 # See what connectors are available
@@ -135,23 +135,23 @@ ovld doctor
 ```
 
 The connector installs a plugin into the harness and wires up the
-`UserPromptSubmit` hook so ticket context is injected at prompt time. You only
+`UserPromptSubmit` hook so mission context is injected at prompt time. You only
 need to do this once per harness; re-running `ovld agent-setup <agent>` repairs
 or updates it.
 
 ---
 
-## Step 5 — Create your first ticket
+## Step 5 — Create your first mission
 
-A **ticket** is a unit of work. It holds one or more sequential **objectives**,
-each of which maps to one agent session. Create a ticket with a single
+A **mission** is a unit of work. It holds one or more sequential **objectives**,
+each of which maps to one agent session. Create a mission with a single
 objective:
 
 ```bash
-# Simple one-objective ticket
+# Simple one-objective mission
 ovld create "Add a user-facing error message when the upload fails"
 
-# Multi-objective ticket (plan then implement)
+# Multi-objective mission (plan then implement)
 ovld create "Refactor the auth middleware" \
   --objectives-json '[
     {"objective": "Draft a plan for the auth middleware refactor"},
@@ -159,26 +159,26 @@ ovld create "Refactor the auth middleware" \
   ]'
 ```
 
-The command prints the ticket ID (e.g. `1:1042`). You can also list tickets:
+The command prints the mission ID (e.g. `1:1042`). You can also list missions:
 
 ```bash
-ovld tickets list --status next-up,execute
+ovld missions list --status next-up,execute
 ```
 
 ---
 
-## Step 6 — Launch an agent on the ticket
+## Step 6 — Launch an agent on the mission
 
 ```bash
-ovld launch claude --ticket-id 1:1042
+ovld launch claude --mission-id 1:1042
 ```
 
 This opens a terminal window with Claude Code pointed at your repository, with
-the ticket context pre-loaded. The agent will attach (`ovld protocol attach`),
+the mission context pre-loaded. The agent will attach (`ovld protocol attach`),
 do the work, post progress updates, and deliver when done.
 
-> **Tip:** `ovld runner start` keeps a background process that claims tickets
-> from the queue automatically — useful when you have many tickets to run
+> **Tip:** `ovld runner start` keeps a background process that claims missions
+> from the queue automatically — useful when you have many missions to run
 > through.
 
 ---
@@ -189,16 +189,16 @@ Once the agent delivers, inspect what it produced:
 
 ```bash
 # Read the delivery summary
-ovld ticket deliveries 1:1042
+ovld mission deliveries 1:1042
 
 # See all file changes with rationale
-ovld changes rationales --ticket-id 1:1042
+ovld changes rationales --mission-id 1:1042
 
 # Diff the exact changes
-ovld changes diff --ticket-id 1:1042
+ovld changes diff --mission-id 1:1042
 
-# Full ticket context (history, shared state, artifacts)
-ovld ticket context 1:1042
+# Full mission context (history, shared state, artifacts)
+ovld mission context 1:1042
 ```
 
 The change rationales explain what each file change does and why — an audit
@@ -214,7 +214,7 @@ yarn dev
 
 From a source checkout, this starts the local web/API backend at
 `http://127.0.0.1:4310` — a Kanban board where you can create, edit, and launch
-tickets without using the CLI. In a packaged install, Desktop owns starting and
+missions without using the CLI. In a packaged install, Desktop owns starting and
 supervising the local backend.
 
 ---
@@ -283,6 +283,6 @@ server logs a warning and keeps running without it — fix the install or
 | --- | --- |
 | Fork Overlord and stand up a custom instance | [Setting Up a Custom Overlord Instance](custom-instance-setup.md) |
 | Keep up with upstream changes in a customized fork | [Adopting Upstream Changes](upstream-adoption.md) |
-| Understand the core data model (projects, tickets, objectives, sessions) | [Core Concepts](../README.md#core-concepts) |
+| Understand the core data model (projects, missions, objectives, sessions) | [Core Concepts](../README.md#core-concepts) |
 | Write a custom connector for a different harness | [Connectors Module](../connectors/README.md) |
 | Understand the full `ovld protocol` command surface | `ovld protocol help` |

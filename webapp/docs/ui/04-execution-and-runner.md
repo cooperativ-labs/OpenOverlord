@@ -6,7 +6,7 @@ execution), the **execution-request queue**, the **local runner status**, and th
 `execution_requests` queue the CLI uses; a local `ovld runner` actually launches
 the agent. The UI must make the "queue here, launched there" split obvious.
 
-**Routes:** the Run control is embedded on the board card and ticket detail; the
+**Routes:** the Run control is embedded on the board card and mission detail; the
 full queue/runner view is `/p/:projectId/runner`.
 
 ---
@@ -32,7 +32,7 @@ polling, requests sit `queued` and the UI must say so and offer the CLI fallback
 
 ## Run control
 
-A compact picker, opened from a card's `▷ run`, the ticket header, or an objective
+A compact picker, opened from a card's `▷ run`, the mission header, or an objective
 row. Prefilled from project launch defaults (doc 01) and the objective's
 agent/model/effort.
 
@@ -75,7 +75,7 @@ The durable queue plus the local runner identity. The web equivalent of
 ```
 Runner · Open0                                   Local device: this-mac · ◍ polling (3s)
 ┌─ Active queue ─────────────────────────────────────────────────────────────────────┐
-│ Obj / Ticket           Agent·Model  Status     Age   Source      Dir            ⋯    │
+│ Obj / Mission           Agent·Model  Status     Age   Source      Dir            ⋯    │
 │ 1:1429 · Implement     claude·opus  launching  2s    manual_run  ~/dev/Open…    [⌫] │
 │ 1:1431 · Add OAuth     codex·gpt    queued     40s    auto_advance ~/dev/bill…  [⌫] │
 │ 1:1418 · Fix race      claude       failed     5m    manual_run  —  ⚠ no dir    [↻][⌫]│
@@ -92,7 +92,7 @@ Runner · Open0                                   Local device: this-mac · ◍ 
 
 | Field | Source | Notes |
 | --- | --- | --- |
-| Objective + ticket | `execution_requests.objective_id`/`ticket_id` | link to ticket detail |
+| Objective + mission | `execution_requests.objective_id`/`mission_id` | link to mission detail |
 | Agent · model · effort | request fields | |
 | Status | `execution_requests.status` | `queued`, `claimed`, `launching`, `launched`, `failed`, `cleared`, `cancelled`, `expired` — colored; active = queued/claimed/launching |
 | Age | timestamps | ticks live |
@@ -123,7 +123,7 @@ it (`auto_advance=true`) or stops for human approval (`auto_advance=false` →
 
 - **Auto-advanced**: the next objective shows `launching` with an
   `execution_requested` event ("auto-advanced"); no user action needed.
-- **Awaiting approval**: an `awaiting_approval` banner on the ticket and a queue
+- **Awaiting approval**: an `awaiting_approval` banner on the mission and a queue
   entry placeholder. The user sees `approval_reason` and an **Approve & run** button
   that queues the execution request; or **Hold** to leave it. This maps to the
   `request-approval-gate` / approval resolution surface.
@@ -142,8 +142,8 @@ the single existing request.
 | --- | --- | --- |
 | Active queue | `GET /execution-requests?projectId=` → `['executionRequests', projectId]` | `execution_request` insert/update → row status/age; drives topbar ⚠ for failures |
 | Runner status | `GET /runner/status` (local backend) → `['runner','status']` | local poll + `execution_request` claim deltas |
-| Objective state mirror | `['ticket', id]` | `objective` deltas (queued→launching→executing) |
-| Approval gates | `ticket_events` `awaiting_approval` | event delta → banner |
+| Objective state mirror | `['mission', id]` | `objective` deltas (queued→launching→executing) |
+| Approval gates | `mission_events` `awaiting_approval` | event delta → banner |
 
 Status transitions stream from `entity_changes`, so the queue reflects a remote
 runner claiming and launching a request in real time.
@@ -175,7 +175,7 @@ runner claiming and launching a request in real time.
 
 ## Acceptance criteria
 
-- A user can queue a run for an objective from the board or ticket detail, choosing
+- A user can queue a run for an objective from the board or mission detail, choosing
   agent/model/effort, and see it appear in the queue as `queued`.
 - When a local `ovld runner` claims and launches the request, the queue row and the
   objective state update live to `launching`/`executing` with no refresh.

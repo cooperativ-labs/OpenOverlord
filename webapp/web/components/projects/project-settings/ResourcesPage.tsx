@@ -176,7 +176,7 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
       <div className="rounded-lg border p-4">
         <h3 className="text-sm font-medium">Default branch</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          The base branch new ticket branches are cut from and the parent that{' '}
+          The base branch new mission branches are cut from and the parent that{' '}
           <span className="font-medium">Merge with parent</span> advances. Leave blank to use the
           repository default (<code className="text-xs">main</code>).
         </p>

@@ -54,9 +54,9 @@ const OBJECTIVE_STATES: ObjectiveState[] = [
 
 type DraftObjectiveProps = {
   objective: ObjectiveDto;
-  /** All objectives on the ticket — used to detect an already-active sibling. */
+  /** All objectives on the mission — used to detect an already-active sibling. */
   siblings: ObjectiveDto[];
-  /** Active execution requests for the ticket (from TicketDetailDto). */
+  /** Active execution requests for the mission (from MissionDetailDto). */
   executionRequests: ExecutionRequestDto[];
 };
 
@@ -70,7 +70,7 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
   const remove = useDeleteObjective();
   const { catalog, agentConfigs, selection, setSelection, commitLaunchConfig, loaded } =
     useObjectiveAgentSelection(objective);
-  const { mentionPaths, projectMentionOptions, ticketMentionOptions } = useRepositoryMentionOptions(
+  const { mentionPaths, projectMentionOptions, missionMentionOptions } = useRepositoryMentionOptions(
     objective.projectId
   );
   const [isFutureExpanded, setIsFutureExpanded] = useState(false);
@@ -243,12 +243,12 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
             className="text-sm whitespace-pre-wrap"
             inputClassName="text-sm whitespace-pre-wrap"
             minRows={objective.state === 'draft' ? 4 : undefined}
-            placeholder="Describe what the agent should do… (@ file, # project, $ ticket)"
+            placeholder="Describe what the agent should do… (@ file, # project, $ mission)"
             ariaLabel="Objective instruction"
             commitEmpty={objective.state === 'future' || objective.state === 'draft'}
             mentionPaths={mentionPaths}
             projectMentionOptions={projectMentionOptions}
-            ticketMentionOptions={ticketMentionOptions}
+            missionMentionOptions={missionMentionOptions}
             onSave={instructionText => {
               if (!instructionText.trim() && objective.state === 'future') {
                 remove.mutate(objective.id);

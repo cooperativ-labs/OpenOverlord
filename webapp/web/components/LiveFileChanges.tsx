@@ -1,18 +1,18 @@
-import { useProfile, useProjectRepository, useTicketFileChanges } from '@/lib/queries';
+import { useProfile, useProjectRepository, useMissionFileChanges } from '@/lib/queries';
 
 import { LiveFileChangeCard } from './LiveFileChangeCard.tsx';
 import { Spinner } from './ui.tsx';
 
 /**
- * Realtime File Changes section for the ticket panel. Lists the structured
- * per-file change rationales (`change_rationales`) recorded for the ticket,
+ * Realtime File Changes section for the mission panel. Lists the structured
+ * per-file change rationales (`change_rationales`) recorded for the mission,
  * newest-first, each rendered as a collapsible {@link LiveFileChangeCard}. The
  * query is invalidated by the global SSE change feed, so rationales written by
  * the agent or CLI in another process stream in without a manual refresh.
  * Adapted from the reference `LiveFileChanges` for this app's stack.
  */
-export function LiveFileChanges({ ticketId, projectId }: { ticketId: string; projectId: string }) {
-  const fileChangesQ = useTicketFileChanges(ticketId);
+export function LiveFileChanges({ missionId, projectId }: { missionId: string; projectId: string }) {
+  const fileChangesQ = useMissionFileChanges(missionId);
   const profileQ = useProfile();
   const repositoryQ = useProjectRepository(projectId, null);
 

@@ -60,7 +60,7 @@ You do **not** update the contract for:
 1. Add/update the command in `protocol-commands.yaml`:
    ```yaml
    - name: <subcommand>
-     requiredFlags: [--session-key, --ticket-id, ...]
+     requiredFlags: [--session-key, --mission-id, ...]
      optionalFlags: [--summary, ...]
      responseShapeVersion: "1"
    ```

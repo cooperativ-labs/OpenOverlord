@@ -27,7 +27,7 @@ That profile favors a SPA with a clean browser/runtime split from the backend.
 
 ### 1. It matches the product shape
 
-Overlord's web UI is a control plane for projects, tickets, objectives,
+Overlord's web UI is a control plane for projects, missions, objectives,
 runner state, and review. This is more like Linear, GitHub Projects, or a local
 ops console than a content site. Client-side routing, cached server state, and
 realtime subscriptions are a better default fit than server rendering.
@@ -50,7 +50,7 @@ TanStack Query is a good fit for:
 - optimistic local mutations where appropriate
 - background refetch after reconnect
 - invalidation from SSE/WebSocket events
-- smooth cross-view consistency for ticket/objective data
+- smooth cross-view consistency for mission/objective data
 
 TanStack Router complements that with typed route params, search state, nested
 layouts, and route-level data loading without forcing a server-rendered model.
@@ -82,7 +82,7 @@ Next.js is a strong framework, but it is optimized for a different default:
 - server/client component boundaries
 
 Those are useful when the product needs them, but they are not the primary
-constraints in this ticket. For Overlord right now, Next.js would likely add
+constraints in this mission. For Overlord right now, Next.js would likely add
 complexity faster than it adds value.
 
 ## Practical Initial Shape
@@ -90,9 +90,9 @@ complexity faster than it adds value.
 If implementation starts now, the first slice should likely look like this:
 
 1. Vite React app under `webapp/`.
-2. REST client for ticket/project/objective reads and writes.
+2. REST client for mission/project/objective reads and writes.
 3. Realtime client using SSE first, with WebSocket optional later.
-4. TanStack Query cache keyed around projects, ticket lists, ticket detail, and
+4. TanStack Query cache keyed around projects, mission lists, mission detail, and
    execution state.
 5. Serwist registration for app shell caching and update flow.
 

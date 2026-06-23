@@ -12,16 +12,16 @@ The same pipeline should power manual run and auto-advance:
 2. Overlord writes a durable execution request.
 3. `ovld runner start` or `ovld runner once` claims the request.
 4. The runner resolves a working directory.
-5. The runner prepares the ticket branch/worktree when worktree branch automation is enabled.
+5. The runner prepares the mission branch/worktree when worktree branch automation is enabled.
 6. The runner launches the requested agent locally from the prepared directory.
-7. The launched agent attaches to the ticket.
+7. The launched agent attaches to the mission.
 8. The runner marks the launch successful or failed.
 
 ## Execution Requests
 
 Requirements:
 
-- Store objective ID, ticket ID, project ID, requested agent, model, thinking/effort, launch flags, requested source, idempotency key, status, timestamps, last error, and resolved working directory/resource details.
+- Store objective ID, mission ID, project ID, requested agent, model, thinking/effort, launch flags, requested source, idempotency key, status, timestamps, last error, and resolved working directory/resource details.
 - Statuses: `queued`, `claimed`, `launching`, `launched`, `failed`, `cleared`, `cancelled`, and `expired`.
 - Active statuses: `queued`, `claimed`, `launching`.
 - A request must be claimable only when its objective is launchable: `draft`, `submitted`, or `launching`.
@@ -46,7 +46,7 @@ Options:
 - `--poll-interval-ms <ms>` defaulting to 3000.
 - `--project-id <id>` to restrict claims.
 - `--branch <name>` to force a specific branch for this launch.
-- `--no-worktree` to bypass ticket worktree preparation and run in the resolved directory.
+- `--no-worktree` to bypass mission worktree preparation and run in the resolved directory.
 - `--organization-id <id>` deferred until multi-org support.
 
 MVP behavior:
@@ -55,7 +55,7 @@ MVP behavior:
 - Poll the configured backend.
 - Claim the oldest compatible request.
 - Resolve working directory.
-- Prepare a per-ticket git branch in a per-ticket worktree under `~/.ovld/worktrees`
+- Prepare a per-mission git branch in a per-mission worktree under `~/.ovld/worktrees`
   (or `OVERLORD_WORKTREE_ROOT`) unless disabled in launch settings.
 - Spawn the launch command.
 - Record launch success/failure through the backend API.
@@ -102,16 +102,16 @@ Requirements:
 - Runner must refuse to launch when no usable working directory exists.
 - Error should tell the user to run `ovld add-cwd` or pass `--working-directory`.
 
-## Ticket Branch And Worktree Preparation
+## Mission Branch And Worktree Preparation
 
 When launch settings have `worktreeBranchAutomationEnabled` enabled (the default),
-the runner prepares a ticket-specific branch and git worktree after resolving the
+the runner prepares a mission-specific branch and git worktree after resolving the
 project resource and before spawning the agent.
 
 Branch names use:
 
 ```text
-overlord/<ticket-title-slug>-<ticket-sequence>
+overlord/<mission-title-slug>-<mission-sequence>
 ```
 
 The worktree lives under:
@@ -120,17 +120,17 @@ The worktree lives under:
 ~/.ovld/worktrees/<project-slug>/<branch-name-with-slashes-flattened>
 ```
 
-Subsequent launches for the same ticket reuse the latest recorded branch read
-from the `tickets.active_branch` column (surfaced on the ticket detail DTO's
+Subsequent launches for the same mission reuse the latest recorded branch read
+from the `missions.active_branch` column (surfaced on the mission detail DTO's
 `branch` field). If that branch has been merged or deleted after merge, the next
 launch starts a new cycle with a numeric suffix (`-2`, `-3`, ...). Preparation is
 never destructive: the main checkout is not stashed, reset, or force-checked out;
 dirty target worktrees fail the launch with an actionable error.
 
-After preparation, the runner records `POST /api/tickets/:id/branch-prepared`,
-which writes the resolved branch to the `tickets.active_branch` column (the
+After preparation, the runner records `POST /api/missions/:id/branch-prepared`,
+which writes the resolved branch to the `missions.active_branch` column (the
 source of truth), records a human-readable audit entry under an allowed
-`ticket_events` type (no dedicated `branch_prepared` event type exists — the
+`mission_events` type (no dedicated `branch_prepared` event type exists — the
 event vocabulary is a closed enum), and stamps
 `execution_requests.launch_flags_json.branchAutomation` for queued runner
 requests.
@@ -139,7 +139,7 @@ requests.
 
 `ovld launch <agent>` must:
 
-- Fetch or assemble ticket context before launching.
+- Fetch or assemble mission context before launching.
 - Write large context payloads to `.overlord/tmp/` when a project directory is known.
 - Opportunistically prune stale `.overlord/tmp/` entries before writing new launch scratch files.
 - Export `TMPDIR`, `TMP`, `TEMP`, and `OVERLORD_TMPDIR` to the project `.overlord/tmp/`.

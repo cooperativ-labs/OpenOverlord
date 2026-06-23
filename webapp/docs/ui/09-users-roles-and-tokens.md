@@ -55,7 +55,7 @@ Roles                                                       [ View RBAC config ]
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ Role     Description                Grants (summary)         Members        │
 │ ADMIN    Full instance admin        *                         1             │
-│ MEMBER   Standard user / agent      ticket:* objective:* …    3             │
+│ MEMBER   Standard user / agent      mission:* objective:* …    3             │
 │ (custom roles from Overlord.rbac.toml appear here)                      │
 └──────────────────────────────────────────────────────────────────────────┘
    role → grants detail (read-only mirror of the config-backed provider)
@@ -63,10 +63,10 @@ Roles                                                       [ View RBAC config ]
 
 - Renders the roles from the config-backed RBAC provider
   (`Overlord.rbac.toml` / `[rbac]`). Default `ADMIN` (grants `*`) and `MEMBER`
-  (project/ticket/objective/session/event/artifact + `user_token:self:*` +
+  (project/mission/objective/session/event/artifact + `user_token:self:*` +
   execution-request create/read/claim) plus any custom roles.
-- **Grants are domain capabilities** (`ticket:create`, `role:assign`,
-  `execution_request:claim`, …), not table names; wildcards (`ticket:*`, `*`) and
+- **Grants are domain capabilities** (`mission:create`, `role:assign`,
+  `execution_request:claim`, …), not table names; wildcards (`mission:*`, `*`) and
   self-scoped (`user_token:self:*`) render readably.
 - Role **definitions** are owned by the config/provider (the UI shows them; editing
   role grants is a config operation surfaced read-only unless an editing provider is

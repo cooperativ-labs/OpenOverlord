@@ -45,7 +45,7 @@ export interface AgentSessions {
   session_key_hash: string;
   session_key_prefix: string;
   started_at: string;
-  ticket_id: string;
+  mission_id: string;
   updated_at: string;
   workspace_id: string;
 }
@@ -64,7 +64,7 @@ export interface Artifacts {
   project_id: string;
   revision: Generated<number>;
   session_id: string | null;
-  ticket_id: string;
+  mission_id: string;
   type: string;
   updated_at: string;
   workspace_id: string;
@@ -85,7 +85,7 @@ export interface Attachments {
   size_bytes: number | null;
   storage_bucket_id: string;
   storage_key: string;
-  ticket_id: string | null;
+  mission_id: string | null;
   updated_at: string;
   upload_status: string;
   workspace_id: string;
@@ -106,7 +106,7 @@ export interface ChangedFiles {
   resource_id: string | null;
   revision: Generated<number>;
   session_id: string | null;
-  ticket_id: string;
+  mission_id: string;
   updated_at: string;
   vcs_status: string | null;
   workspace_id: string;
@@ -129,7 +129,7 @@ export interface ChangeRationales {
   session_id: string | null;
   source_event_id: string | null;
   summary: string;
-  ticket_id: string;
+  mission_id: string;
   updated_at: string;
   why: string;
   workspace_id: string;
@@ -148,7 +148,7 @@ export interface Deliveries {
   revision: Generated<number>;
   session_id: string | null;
   summary: string;
-  ticket_id: string;
+  mission_id: string;
   updated_at: string;
   verification_summary: string | null;
   workspace_id: string;
@@ -183,7 +183,7 @@ export interface EntityChanges {
   project_id: string | null;
   seq: Generated<number | null>;
   source: string;
-  ticket_id: string | null;
+  mission_id: string | null;
   workspace_id: string;
 }
 
@@ -217,7 +217,7 @@ export interface ExecutionRequests {
   revision: Generated<number>;
   status: string;
   target_kind: string;
-  ticket_id: string;
+  mission_id: string;
   updated_at: string;
   workspace_id: string;
 }
@@ -251,13 +251,13 @@ export interface IdempotencyKeys {
   workspace_id: string;
 }
 
-export interface MyTicketPositions {
+export interface MyMissionPositions {
   created_at: string;
   id: string | null;
   position: number;
   revision: Generated<number>;
   status_id: string;
-  ticket_id: string;
+  mission_id: string;
   updated_at: string;
   workspace_id: string;
   workspace_user_id: string;
@@ -277,7 +277,7 @@ export interface ObjectiveAttachments {
   size_bytes: number | null;
   storage_backend: string;
   storage_key: string;
-  ticket_id: string;
+  mission_id: string;
   updated_at: string;
   upload_status: string;
   workspace_id: string;
@@ -304,7 +304,7 @@ export interface Objectives {
   reasoning_effort: string | null;
   revision: Generated<number>;
   state: string;
-  ticket_id: string;
+  mission_id: string;
   title: string | null;
   updated_at: string;
   workspace_id: string;
@@ -414,7 +414,7 @@ export interface SearchDocuments {
   metadata_json: Generated<string>;
   project_id: string | null;
   source_revision: number | null;
-  ticket_id: string;
+  mission_id: string;
   title: string | null;
   workspace_id: string;
 }
@@ -422,7 +422,7 @@ export interface SearchDocuments {
 export interface SearchDocumentsFts {
   body_text: string | null;
   entity_type: string | null;
-  ticket_id: string | null;
+  mission_id: string | null;
   title: string | null;
 }
 
@@ -467,7 +467,7 @@ export interface SharedContextEntries {
   key: string;
   objective_id: string | null;
   revision: Generated<number>;
-  ticket_id: string;
+  mission_id: string;
   updated_at: string;
   value_json: string | null;
   value_kind: string;
@@ -490,7 +490,7 @@ export interface StorageBuckets {
   workspace_id: string;
 }
 
-export interface TicketEvents {
+export interface MissionEvents {
   actor_token_id: string | null;
   actor_workspace_user_id: string | null;
   created_at: string;
@@ -504,12 +504,12 @@ export interface TicketEvents {
   session_id: string | null;
   source: string;
   summary: string;
-  ticket_id: string;
+  mission_id: string;
   type: string;
   workspace_id: string;
 }
 
-export interface Tickets {
+export interface Missions {
   acceptance_criteria_text: string | null;
   active_branch: string | null;
   assigned_workspace_user_id: string | null;
@@ -536,7 +536,7 @@ export interface Tickets {
   workspace_id: string;
 }
 
-export interface TicketSequences {
+export interface MissionSequences {
   counter_name: string;
   id: string | null;
   next_value: number;
@@ -546,10 +546,10 @@ export interface TicketSequences {
   workspace_id: string;
 }
 
-export interface TicketTags {
+export interface MissionTags {
   created_at: string;
   tag_id: string;
-  ticket_id: string;
+  mission_id: string;
 }
 
 export interface User {
@@ -731,7 +731,7 @@ export interface DB {
   execution_requests: ExecutionRequests;
   execution_targets: ExecutionTargets;
   idempotency_keys: IdempotencyKeys;
-  my_ticket_positions: MyTicketPositions;
+  my_mission_positions: MyMissionPositions;
   objective_attachments: ObjectiveAttachments;
   objectives: Objectives;
   profiles: Profiles;
@@ -750,10 +750,10 @@ export interface DB {
   session: Session;
   shared_context_entries: SharedContextEntries;
   storage_buckets: StorageBuckets;
-  ticket_events: TicketEvents;
-  ticket_sequences: TicketSequences;
-  ticket_tags: TicketTags;
-  tickets: Tickets;
+  mission_events: MissionEvents;
+  mission_sequences: MissionSequences;
+  mission_tags: MissionTags;
+  missions: Missions;
   user: User;
   user_execution_target_preferences: UserExecutionTargetPreferences;
   user_images: UserImages;

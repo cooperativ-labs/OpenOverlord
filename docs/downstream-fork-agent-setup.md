@@ -395,7 +395,7 @@ Recommended Lite behavior:
 Acceptance:
 
 ```bash
-ovld launch codex --ticket-id <ticket-id> --terminal iTerm2 --dry-run --json
+ovld launch codex --mission-id <mission-id> --terminal iTerm2 --dry-run --json
 ovld runner once --terminal iTerm2 --dry-run --json
 ```
 
@@ -546,7 +546,7 @@ CLI and config:
 ovld init
 ovld config list
 ovld doctor
-ovld launch codex --ticket-id <ticket-id> --terminal iTerm2 --dry-run --json
+ovld launch codex --mission-id <mission-id> --terminal iTerm2 --dry-run --json
 ```
 
 Webapp:
@@ -566,9 +566,9 @@ ovld runner once --dry-run --json
 Protocol:
 
 ```bash
-ovld protocol attach --ticket-id <ticket-id>
-ovld protocol update --ticket-id <ticket-id> --summary "Smoke test" --phase execute
-ovld protocol deliver --ticket-id <ticket-id> --summary "Smoke test complete"
+ovld protocol attach --mission-id <mission-id>
+ovld protocol update --mission-id <mission-id> --summary "Smoke test" --phase execute
+ovld protocol deliver --mission-id <mission-id> --summary "Smoke test complete"
 ```
 
 Conformance:

@@ -7,33 +7,33 @@ import { resolveGlobalDataDir } from './config.js';
 // Client-side cache of the protocol session key returned by `attach`. Every Bash
 // tool call is a fresh shell, so a key captured at attach is otherwise gone by the
 // next `ovld protocol` command unless the agent threads it through manually. The
-// cache is scoped strictly to (resolve(workingDirectory), ticketId) — the same
+// cache is scoped strictly to (resolve(workingDirectory), missionId) — the same
 // keying `native-session.ts` uses for `externalSessionId` — so a key can never
-// leak across working directories or tickets.
+// leak across working directories or missions.
 
 function sessionKeyCachePath({
-  ticketId,
+  missionId,
   workingDirectory
 }: {
-  ticketId: string;
+  missionId: string;
   workingDirectory: string;
 }): string {
   const key = createHash('sha256')
-    .update(`${path.resolve(workingDirectory)}\0${ticketId}`)
+    .update(`${path.resolve(workingDirectory)}\0${missionId}`)
     .digest('hex');
   return path.join(resolveGlobalDataDir(), 'protocol-session-keys', key);
 }
 
-/** Cached session key for this (workingDir, ticket), or undefined when absent. */
+/** Cached session key for this (workingDir, mission), or undefined when absent. */
 export function readCachedSessionKey({
-  ticketId,
+  missionId,
   workingDirectory
 }: {
-  ticketId: string;
+  missionId: string;
   workingDirectory: string;
 }): string | undefined {
   try {
-    const filePath = sessionKeyCachePath({ ticketId, workingDirectory });
+    const filePath = sessionKeyCachePath({ missionId, workingDirectory });
     if (!existsSync(filePath)) return undefined;
     const raw = JSON.parse(readFileSync(filePath, 'utf8')) as { sessionKey?: unknown };
     return typeof raw.sessionKey === 'string' && raw.sessionKey.trim()
@@ -46,18 +46,18 @@ export function readCachedSessionKey({
 
 /** Persist the session key returned by attach/resume-follow-up for later reuse. */
 export function writeCachedSessionKey({
-  ticketId,
+  missionId,
   workingDirectory,
   sessionKey
 }: {
-  ticketId: string;
+  missionId: string;
   workingDirectory: string;
   sessionKey: string;
 }): void {
   try {
     const trimmed = sessionKey.trim();
     if (!trimmed) return;
-    const filePath = sessionKeyCachePath({ ticketId, workingDirectory });
+    const filePath = sessionKeyCachePath({ missionId, workingDirectory });
     mkdirSync(path.dirname(filePath), { recursive: true });
     writeFileSync(
       filePath,
@@ -72,14 +72,14 @@ export function writeCachedSessionKey({
 
 /** Drop the cached key once the session ends so a stale key can't be reused. */
 export function clearCachedSessionKey({
-  ticketId,
+  missionId,
   workingDirectory
 }: {
-  ticketId: string;
+  missionId: string;
   workingDirectory: string;
 }): void {
   try {
-    const filePath = sessionKeyCachePath({ ticketId, workingDirectory });
+    const filePath = sessionKeyCachePath({ missionId, workingDirectory });
     if (existsSync(filePath)) rmSync(filePath);
   } catch {
     // Best-effort: a stale key at worst fails a downstream call with an invalid

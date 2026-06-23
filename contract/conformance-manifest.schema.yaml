@@ -251,7 +251,7 @@ properties:
           description: "The open vocabulary column being extended (e.g. artifacts.type)"
           examples:
             - artifacts.type
-            - ticket_events.source
+            - mission_events.source
             - entity_changes.entity_type
         value:
           type: string

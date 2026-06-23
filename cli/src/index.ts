@@ -37,8 +37,8 @@ const KNOWN_COMMANDS = new Set([
   'run',
   'resume',
   'runner',
-  'tickets',
-  'ticket',
+  'missions',
+  'mission',
   'changes',
   'execution',
   'config'

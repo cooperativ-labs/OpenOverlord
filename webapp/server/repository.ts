@@ -14,14 +14,14 @@ import type {
   CreateProjectBody,
   CreateProjectResourceBody,
   CreateProjectTagBody,
-  CreateTicketBody,
+  CreateMissionBody,
   CreateUserTokenBody,
   CreateUserTokenResultDto,
   CreateWorkspaceStatusBody,
   FileChangeDto,
-  MyTicketDto,
-  MyTicketReorderRequest,
-  MyTicketsResponse,
+  MyMissionDto,
+  MyMissionReorderRequest,
+  MyMissionsResponse,
   ObjectiveDto,
   ProfileDto,
   ProjectDto,
@@ -34,19 +34,19 @@ import type {
   ReorderFutureObjectivesBody,
   ReorderWorkspaceStatusesBody,
   StatusType,
-  TicketBranchDto,
-  TicketBranchListDto,
-  TicketBranchStatus,
-  TicketDetailDto,
-  TicketDto,
-  TicketEventDto,
+  MissionBranchDto,
+  MissionBranchListDto,
+  MissionBranchStatus,
+  MissionDetailDto,
+  MissionDto,
+  MissionEventDto,
   TokenScope,
   UpdateObjectiveBody,
   UpdateProfileBody,
   UpdateProjectBody,
   UpdateProjectResourceBody,
   UpdateProjectTagBody,
-  UpdateTicketBody,
+  UpdateMissionBody,
   UpdateUserTokenBody,
   UpdateWorkspaceStatusBody,
   UserTokenDto,
@@ -54,21 +54,21 @@ import type {
   WorktreeDto
 } from '../shared/contract.ts';
 
-import { previewTicketBranch, ticketWorktreePath } from './branch-planning.ts';
+import { previewMissionBranch, missionWorktreePath } from './branch-planning.ts';
 import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';
 import {
   dequeueObjective,
   getLaunchPreference,
   LAUNCHABLE_STATES,
-  listTicketExecutionRequests
+  listMissionExecutionRequests
 } from './launch.ts';
 import { loadActorRoles } from './rbac.ts';
 import {
-  generateTicketTitleNow,
+  generateMissionTitleNow,
   initialTitleFromInstruction,
   scheduleObjectiveTitleGeneration,
-  scheduleTicketTitleGeneration
+  scheduleMissionTitleGeneration
 } from './title-automation.ts';
 
 export { ApiError };
@@ -89,7 +89,7 @@ interface ProjectRow {
   created_at: string;
   updated_at: string;
   revision: number;
-  ticket_count: number;
+  mission_count: number;
 }
 
 const PROJECT_COLOR_SETTINGS_KEY = 'overlord.color';
@@ -109,7 +109,7 @@ function readProjectColor(settingsJson: string): string | null {
   return readProjectStringSetting(settingsJson, PROJECT_COLOR_SETTINGS_KEY);
 }
 
-// The project-configured base/parent branch for ticket branches. `null` means
+// The project-configured base/parent branch for mission branches. `null` means
 // "not configured"; callers fall back to the repo default (`main`).
 function readProjectDefaultBranch(settingsJson: string): string | null {
   return readProjectStringSetting(settingsJson, PROJECT_DEFAULT_BRANCH_SETTINGS_KEY);
@@ -247,9 +247,9 @@ function countActiveStatusesByType({ type }: { type: string }): number {
   return row.count;
 }
 
-function countTicketsOnStatus(statusId: string): number {
+function countMissionsOnStatus(statusId: string): number {
   const row = db
-    .prepare(`SELECT COUNT(*) AS count FROM tickets WHERE status_id = ? AND deleted_at IS NULL`)
+    .prepare(`SELECT COUNT(*) AS count FROM missions WHERE status_id = ? AND deleted_at IS NULL`)
     .get(statusId) as { count: number };
   return row.count;
 }
@@ -277,7 +277,7 @@ interface ProjectResourceRow {
   revision: number;
 }
 
-interface TicketRow {
+interface MissionRow {
   id: string;
   workspace_id: string;
   project_id: string;
@@ -307,7 +307,7 @@ interface ObjectiveRow {
   id: string;
   workspace_id: string;
   project_id: string;
-  ticket_id: string;
+  mission_id: string;
   position: number;
   title: string | null;
   instruction_text: string;
@@ -338,7 +338,7 @@ function toProjectDto(r: ProjectRow): ProjectDto {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     revision: r.revision,
-    ticketCount: r.ticket_count
+    missionCount: r.mission_count
   };
 }
 
@@ -490,7 +490,7 @@ function parseAvailableTools(json: string): string[] {
   }
 }
 
-function toTicketDto(r: TicketRow, tags: ProjectTagDto[] = []): TicketDto {
+function toMissionDto(r: MissionRow, tags: ProjectTagDto[] = []): MissionDto {
   return {
     id: r.id,
     workspaceId: r.workspace_id,
@@ -501,7 +501,7 @@ function toTicketDto(r: TicketRow, tags: ProjectTagDto[] = []): TicketDto {
     statusId: r.status_id,
     statusType: r.status_type as StatusType,
     boardPosition: r.board_position,
-    priority: r.priority as TicketDto['priority'],
+    priority: r.priority as MissionDto['priority'],
     assignedWorkspaceUserId: r.assigned_workspace_user_id,
     acceptanceCriteria: r.acceptance_criteria_text,
     availableTools: parseAvailableTools(r.available_tools_json),
@@ -557,7 +557,7 @@ function branchMergedIntoBase(repoPath: string, branchSha: string, base: string)
   return ahead === '0';
 }
 
-// Derives the ticket-panel branch status from the real git state in the project's
+// Derives the mission-panel branch status from the real git state in the project's
 // primary worktree. `active_branch` being set means a branch was prepared, so the
 // floor is `created`; we upgrade to `published` once a remote ref exists, to
 // `merged_unpushed` once the branch has landed in the *local* base but the base
@@ -620,9 +620,9 @@ function getProjectSlug(projectId: string): string {
 // The fallback base/parent branch when a project has not configured one.
 const FALLBACK_BASE_BRANCH = 'main';
 
-// Resolves the base/parent branch for a project's ticket branches: the
+// Resolves the base/parent branch for a project's mission branches: the
 // project-configured default branch (Resources settings) when set, otherwise the
-// repo default `main`. This is both the branch tickets are cut from and the
+// repo default `main`. This is both the branch missions are cut from and the
 // parent that "Merge with parent" advances.
 function resolveProjectBaseBranch(projectId: string): string {
   const row = db
@@ -631,10 +631,10 @@ function resolveProjectBaseBranch(projectId: string): string {
   return (row && readProjectDefaultBranch(row.settings_json)) || FALLBACK_BASE_BRANCH;
 }
 
-// Derives the ticket-panel branch metadata from `tickets.active_branch` (the
+// Derives the mission-panel branch metadata from `missions.active_branch` (the
 // source of truth the runner writes). When it is null no branch has been
 // prepared yet, so we surface the planner's predicted name with a pending status.
-function ticketBranchDto(row: TicketRow): TicketBranchDto {
+function missionBranchDto(row: MissionRow): MissionBranchDto {
   const projectSlug = getProjectSlug(row.project_id);
   const worktreeRoot = resolveWorktreeRoot();
   const baseBranch = resolveProjectBaseBranch(row.project_id);
@@ -644,7 +644,7 @@ function ticketBranchDto(row: TicketRow): TicketBranchDto {
     return {
       name,
       baseBranch,
-      worktreePath: ticketWorktreePath({ worktreeRoot, projectSlug, branch: name }),
+      worktreePath: missionWorktreePath({ worktreeRoot, projectSlug, branch: name }),
       status: deriveBranchStatus({ projectId: row.project_id, branchName: name, baseBranch }),
       overrideBranch
     };
@@ -653,8 +653,8 @@ function ticketBranchDto(row: TicketRow): TicketBranchDto {
   // No branch prepared yet: preview the name the next launch will use. A pinned
   // override wins over the planner's canonical prediction so the panel reflects
   // exactly what the next launch will prepare.
-  const preview = previewTicketBranch({
-    ticket: { title: row.title, sequence: row.sequence_number },
+  const preview = previewMissionBranch({
+    mission: { title: row.title, sequence: row.sequence_number },
     project: { slug: projectSlug },
     base: baseBranch,
     worktreeRoot
@@ -666,7 +666,7 @@ function ticketBranchDto(row: TicketRow): TicketBranchDto {
     worktreePath:
       previewName === preview.branch
         ? preview.worktreePath
-        : ticketWorktreePath({ worktreeRoot, projectSlug, branch: previewName }),
+        : missionWorktreePath({ worktreeRoot, projectSlug, branch: previewName }),
     status: 'pending',
     overrideBranch
   };
@@ -674,7 +674,7 @@ function ticketBranchDto(row: TicketRow): TicketBranchDto {
 
 // ---- Branch actions (merge with parent / push / publish) -----------------
 //
-// On-demand git mutations the ticket panel triggers. They run host-side against
+// On-demand git mutations the mission panel triggers. They run host-side against
 // the project's worktrees (under ~/.ovld/worktrees) and primary repo, which the
 // webapp server is co-located with — so it operates on them directly rather than
 // delegating to the Runner Layer (whose job is launching the *agent* into the
@@ -707,7 +707,7 @@ function runGitResult(cwd: string, args: string[]): GitRun {
 export type BranchActionName = 'integrate' | 'push_parent' | 'publish';
 
 interface BranchActionContext {
-  ticketId: string;
+  missionId: string;
   projectId: string;
   branchName: string;
   baseBranch: string;
@@ -728,13 +728,13 @@ function primaryResourcePath(projectId: string): string | null {
   return resource?.path ?? null;
 }
 
-function loadBranchActionContext(ticketRef: string): BranchActionContext {
-  const row = getTicketRow(ticketRef);
+function loadBranchActionContext(missionRef: string): BranchActionContext {
+  const row = getMissionRow(missionRef);
   const branchName = row.active_branch?.trim();
   if (!branchName) {
     throw new ApiError(
       409,
-      'No branch has been prepared for this ticket yet.',
+      'No branch has been prepared for this mission yet.',
       undefined,
       'BRANCH_NOT_PREPARED'
     );
@@ -749,11 +749,11 @@ function loadBranchActionContext(ticketRef: string): BranchActionContext {
     );
   }
   return {
-    ticketId: row.id,
+    missionId: row.id,
     projectId: row.project_id,
     branchName,
     baseBranch: resolveProjectBaseBranch(row.project_id),
-    worktreePath: ticketWorktreePath({
+    worktreePath: missionWorktreePath({
       worktreeRoot: resolveWorktreeRoot(),
       projectSlug: getProjectSlug(row.project_id),
       branch: branchName
@@ -762,16 +762,16 @@ function loadBranchActionContext(ticketRef: string): BranchActionContext {
   };
 }
 
-function ticketHasActiveExecution(ticketId: string): boolean {
+function missionHasActiveExecution(missionId: string): boolean {
   return Boolean(
     db
       .prepare(
         `SELECT 1 FROM execution_requests
-          WHERE ticket_id = ? AND workspace_id = ?
+          WHERE mission_id = ? AND workspace_id = ?
             AND status IN ('queued', 'claimed', 'launching')
           LIMIT 1`
       )
-      .get(ticketId, WORKSPACE.id)
+      .get(missionId, WORKSPACE.id)
   );
 }
 
@@ -943,36 +943,36 @@ function publishBranch(ctx: BranchActionContext): string {
 }
 
 const recordBranchActionActivity = db.transaction((ctx: BranchActionContext, summary: string) => {
-  const ticket = db
-    .prepare(`SELECT revision FROM tickets WHERE id = ? AND workspace_id = ?`)
-    .get(ctx.ticketId, WORKSPACE.id) as { revision: number } | undefined;
+  const mission = db
+    .prepare(`SELECT revision FROM missions WHERE id = ? AND workspace_id = ?`)
+    .get(ctx.missionId, WORKSPACE.id) as { revision: number } | undefined;
   const now = nowIso();
-  if (ticket) {
-    const revision = ticket.revision + 1;
+  if (mission) {
+    const revision = mission.revision + 1;
     db.prepare(
-      `UPDATE tickets SET updated_at = @now, revision = @revision
+      `UPDATE missions SET updated_at = @now, revision = @revision
          WHERE id = @id AND workspace_id = @workspace_id`
-    ).run({ now, revision, id: ctx.ticketId, workspace_id: WORKSPACE.id });
+    ).run({ now, revision, id: ctx.missionId, workspace_id: WORKSPACE.id });
     recordChange({
-      entityType: 'ticket',
-      entityId: ctx.ticketId,
+      entityType: 'mission',
+      entityId: ctx.missionId,
       operation: 'update',
       entityRevision: revision,
       projectId: ctx.projectId,
-      ticketId: ctx.ticketId,
+      missionId: ctx.missionId,
       changedFields: ['active_branch']
     });
   }
   db.prepare(
-    `INSERT INTO ticket_events
-       (id, workspace_id, project_id, ticket_id, objective_id, type, phase, summary,
+    `INSERT INTO mission_events
+       (id, workspace_id, project_id, mission_id, objective_id, type, phase, summary,
         payload_json, source, actor_workspace_user_id, created_at)
      VALUES (?, ?, ?, ?, NULL, 'update', 'execute', ?, ?, 'webapp', ?, ?)`
   ).run(
     newId(),
     WORKSPACE.id,
     ctx.projectId,
-    ctx.ticketId,
+    ctx.missionId,
     summary,
     JSON.stringify({ branch: ctx.branchName, baseBranch: ctx.baseBranch }),
     ACTOR_WORKSPACE_USER_ID,
@@ -980,19 +980,19 @@ const recordBranchActionActivity = db.transaction((ctx: BranchActionContext, sum
   );
 });
 
-// Runs an on-demand branch mutation and returns the refreshed ticket detail.
+// Runs an on-demand branch mutation and returns the refreshed mission detail.
 // Git side-effects happen first (and throw typed ApiErrors on failure); only on
 // success do we record the activity + realtime change in a single transaction.
 export function performBranchAction(
-  ticketRef: string,
+  missionRef: string,
   body: { action?: unknown; confirmBusy?: unknown }
-): TicketDetailDto {
+): MissionDetailDto {
   const action = String(body.action ?? '');
   if (action !== 'integrate' && action !== 'push_parent' && action !== 'publish') {
     throw new ApiError(400, 'Invalid branch action.');
   }
-  const ctx = loadBranchActionContext(ticketRef);
-  if (body.confirmBusy !== true && ticketHasActiveExecution(ctx.ticketId)) {
+  const ctx = loadBranchActionContext(missionRef);
+  if (body.confirmBusy !== true && missionHasActiveExecution(ctx.missionId)) {
     throw new ApiError(
       409,
       'An objective is currently executing on this branch. Continuing may conflict with in-progress work in its worktree.',
@@ -1009,14 +1009,14 @@ export function performBranchAction(
         : publishBranch(ctx);
 
   recordBranchActionActivity(ctx, summary);
-  return getTicketDetail(ctx.ticketId);
+  return getMissionDetail(ctx.missionId);
 }
 
-// ---- Branch selection (available branches for a ticket) ------------------
+// ---- Branch selection (available branches for a mission) ------------------
 //
-// Powers the ticket panel's branch selector: when the planner's default branch
+// Powers the mission panel's branch selector: when the planner's default branch
 // is wrong, the user picks any existing branch in the project's primary repo and
-// pins it as the ticket's `branch_override` (consumed by the Runner Layer at the
+// pins it as the mission's `branch_override` (consumed by the Runner Layer at the
 // next launch). We list real refs so the choice is always valid.
 
 function normalizeBranchRef(ref: string): string {
@@ -1028,10 +1028,10 @@ function normalizeBranchRef(ref: string): string {
 }
 
 // Returns the de-duplicated, sorted set of local + remote branch names in the
-// ticket project's primary repository, plus the branch the ticket is (or will
+// mission project's primary repository, plus the branch the mission is (or will
 // be) operating on. Returns an empty list when no inspectable checkout exists.
-export function listTicketBranches(ticketRef: string): TicketBranchListDto {
-  const row = getTicketRow(ticketRef);
+export function listMissionBranches(missionRef: string): MissionBranchListDto {
+  const row = getMissionRow(missionRef);
   const current = row.active_branch?.trim() || row.branch_override?.trim() || null;
   const repoPath = primaryResourcePath(row.project_id);
   if (!repoPath || !existsSync(repoPath)) {
@@ -1051,7 +1051,7 @@ export function listTicketBranches(ticketRef: string): TicketBranchListDto {
 
 // ---- Worktree management (Settings → Worktrees) --------------------------
 //
-// Overlord's per-ticket worktrees live under the worktree root (~/.ovld/worktrees).
+// Overlord's per-mission worktrees live under the worktree root (~/.ovld/worktrees).
 // They are registered against each project's primary repository, so we enumerate
 // them with `git worktree list` per project and filter to those under the root.
 // The webapp server is co-located with these worktrees and operates on them
@@ -1153,23 +1153,23 @@ function collectWorktreeEntries(): WorktreeListEntry[] {
 }
 
 function toWorktreeDto(entry: WorktreeListEntry): WorktreeDto {
-  // Map the worktree's branch back to the ticket operating on it, when any.
-  let ticketId: string | null = null;
-  let ticketDisplayId: string | null = null;
-  let status: TicketBranchStatus | null = null;
+  // Map the worktree's branch back to the mission operating on it, when any.
+  let missionId: string | null = null;
+  let missionDisplayId: string | null = null;
+  let status: MissionBranchStatus | null = null;
   if (entry.branch) {
-    const ticket = db
+    const mission = db
       .prepare(
-        `SELECT id, display_id FROM tickets
+        `SELECT id, display_id FROM missions
           WHERE workspace_id = ? AND project_id = ? AND active_branch = ? AND deleted_at IS NULL
           ORDER BY updated_at DESC LIMIT 1`
       )
       .get(WORKSPACE.id, entry.projectId, entry.branch) as
       | { id: string; display_id: string }
       | undefined;
-    if (ticket) {
-      ticketId = ticket.id;
-      ticketDisplayId = ticket.display_id;
+    if (mission) {
+      missionId = mission.id;
+      missionDisplayId = mission.display_id;
     }
     const baseBranch = resolveProjectBaseBranch(entry.projectId);
     status = deriveBranchStatus({
@@ -1192,8 +1192,8 @@ function toWorktreeDto(entry: WorktreeListEntry): WorktreeDto {
     branch: entry.branch,
     projectId: entry.projectId,
     projectName: entry.projectName,
-    ticketId,
-    ticketDisplayId,
+    missionId,
+    missionDisplayId,
     status,
     merged,
     dirty: worktreeIsDirty(entry.path),
@@ -1281,43 +1281,43 @@ function toProjectTagDto(r: ProjectTagRow): ProjectTagDto {
   };
 }
 
-/** Tags assigned to one ticket, ordered by label for stable rendering. */
-function getTicketTags(ticketId: string): ProjectTagDto[] {
+/** Tags assigned to one mission, ordered by label for stable rendering. */
+function getMissionTags(missionId: string): ProjectTagDto[] {
   const rows = db
     .prepare(
       `SELECT pt.id, pt.workspace_id, pt.project_id, pt.label, pt.color, pt.active, pt.revision
-         FROM ticket_tags tt
+         FROM mission_tags tt
          JOIN project_tags pt ON pt.id = tt.tag_id AND pt.deleted_at IS NULL
-        WHERE tt.ticket_id = ?
+        WHERE tt.mission_id = ?
         ORDER BY pt.label COLLATE NOCASE ASC`
     )
-    .all(ticketId) as ProjectTagRow[];
+    .all(missionId) as ProjectTagRow[];
   return rows.map(toProjectTagDto);
 }
 
 /**
- * Batch-resolve tags for many tickets in one query, returning a map keyed by
- * ticket id so board/list reads avoid an N+1 of per-ticket tag lookups.
+ * Batch-resolve tags for many missions in one query, returning a map keyed by
+ * mission id so board/list reads avoid an N+1 of per-mission tag lookups.
  */
-function getTagsByTicket(ticketIds: string[]): Map<string, ProjectTagDto[]> {
-  const byTicket = new Map<string, ProjectTagDto[]>();
-  if (ticketIds.length === 0) return byTicket;
-  const placeholders = ticketIds.map(() => '?').join(', ');
+function getTagsByMission(missionIds: string[]): Map<string, ProjectTagDto[]> {
+  const byMission = new Map<string, ProjectTagDto[]>();
+  if (missionIds.length === 0) return byMission;
+  const placeholders = missionIds.map(() => '?').join(', ');
   const rows = db
     .prepare(
-      `SELECT tt.ticket_id, pt.id, pt.workspace_id, pt.project_id, pt.label, pt.color, pt.active, pt.revision
-         FROM ticket_tags tt
+      `SELECT tt.mission_id, pt.id, pt.workspace_id, pt.project_id, pt.label, pt.color, pt.active, pt.revision
+         FROM mission_tags tt
          JOIN project_tags pt ON pt.id = tt.tag_id AND pt.deleted_at IS NULL
-        WHERE tt.ticket_id IN (${placeholders})
+        WHERE tt.mission_id IN (${placeholders})
         ORDER BY pt.label COLLATE NOCASE ASC`
     )
-    .all(...ticketIds) as Array<ProjectTagRow & { ticket_id: string }>;
+    .all(...missionIds) as Array<ProjectTagRow & { mission_id: string }>;
   for (const row of rows) {
-    const list = byTicket.get(row.ticket_id) ?? [];
+    const list = byMission.get(row.mission_id) ?? [];
     list.push(toProjectTagDto(row));
-    byTicket.set(row.ticket_id, list);
+    byMission.set(row.mission_id, list);
   }
-  return byTicket;
+  return byMission;
 }
 
 function toObjectiveDto(r: ObjectiveRow): ObjectiveDto {
@@ -1325,7 +1325,7 @@ function toObjectiveDto(r: ObjectiveRow): ObjectiveDto {
     id: r.id,
     workspaceId: r.workspace_id,
     projectId: r.project_id,
-    ticketId: r.ticket_id,
+    missionId: r.mission_id,
     position: r.position,
     title: r.title,
     instructionText: r.instruction_text,
@@ -1355,9 +1355,9 @@ function slugify(input: string): string {
 
 const selectProjectsSql = `
   SELECT p.*, (
-    SELECT COUNT(*) FROM tickets t
+    SELECT COUNT(*) FROM missions t
       WHERE t.project_id = p.id AND t.deleted_at IS NULL
-  ) AS ticket_count
+  ) AS mission_count
   FROM projects p
   WHERE p.workspace_id = @workspace_id AND p.deleted_at IS NULL
 `;
@@ -1515,11 +1515,11 @@ export const deleteWorkspaceStatus = db.transaction((statusId: string): void => 
     throw new ApiError(409, 'Set another status as the default before deleting this one');
   }
 
-  const ticketCount = countTicketsOnStatus(statusId);
-  if (ticketCount > 0) {
+  const missionCount = countMissionsOnStatus(statusId);
+  if (missionCount > 0) {
     throw new ApiError(
       409,
-      `Cannot delete a status used by ${ticketCount} ticket(s). Move them first.`
+      `Cannot delete a status used by ${missionCount} mission(s). Move them first.`
     );
   }
 
@@ -1708,9 +1708,9 @@ export const deleteProjectTag = db.transaction((projectId: string, tagId: string
   const existing = getProjectTagRow(projectId, tagId);
   const now = nowIso();
   const revision = existing.revision + 1;
-  // Soft-delete the definition; `ticket_tags` rows cascade away via the FK so the
-  // tag disappears from any ticket that carried it.
-  db.prepare(`DELETE FROM ticket_tags WHERE tag_id = ?`).run(tagId);
+  // Soft-delete the definition; `mission_tags` rows cascade away via the FK so the
+  // tag disappears from any mission that carried it.
+  db.prepare(`DELETE FROM mission_tags WHERE tag_id = ?`).run(tagId);
   db.prepare(
     `UPDATE project_tags SET deleted_at = @now, updated_at = @now, revision = @revision
        WHERE id = @id AND project_id = @project_id`
@@ -2102,25 +2102,25 @@ export const deleteProject = db.transaction((id: string): void => {
   const now = nowIso();
   const revision = existing.revision + 1;
 
-  // Cascade soft-delete to tickets and their objectives.
-  const ticketIds = (
+  // Cascade soft-delete to missions and their objectives.
+  const missionIds = (
     db
       .prepare(
-        `SELECT id FROM tickets WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL`
+        `SELECT id FROM missions WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL`
       )
       .all(id, WORKSPACE.id) as { id: string }[]
   ).map(r => r.id);
 
-  for (const ticketId of ticketIds) {
+  for (const missionId of missionIds) {
     db.prepare(
       `UPDATE objectives SET deleted_at = @now, revision = revision + 1
-         WHERE ticket_id = @ticketId AND deleted_at IS NULL`
-    ).run({ ticketId, now });
+         WHERE mission_id = @missionId AND deleted_at IS NULL`
+    ).run({ missionId, now });
   }
 
-  if (ticketIds.length > 0) {
+  if (missionIds.length > 0) {
     db.prepare(
-      `UPDATE tickets SET deleted_at = @now, revision = revision + 1
+      `UPDATE missions SET deleted_at = @now, revision = revision + 1
          WHERE project_id = @id AND workspace_id = @workspace_id AND deleted_at IS NULL`
     ).run({ id, workspace_id: WORKSPACE.id, now });
   }
@@ -2139,45 +2139,45 @@ export const deleteProject = db.transaction((id: string): void => {
   });
 });
 
-// ---- Tickets -------------------------------------------------------------
+// ---- Missions -------------------------------------------------------------
 
-const selectTicketsSql = `
+const selectMissionsSql = `
   SELECT t.id, t.workspace_id, t.project_id, t.display_id, t.sequence_number, t.title,
          t.status_id, t.status_type, t.board_position, t.priority,
          t.assigned_workspace_user_id,
          t.acceptance_criteria_text, t.available_tools_json,
          t.created_at, t.updated_at, t.revision, t.active_branch, t.branch_override,
          (SELECT COUNT(*) FROM objectives o
-            WHERE o.ticket_id = t.id AND o.deleted_at IS NULL) AS objective_count,
+            WHERE o.mission_id = t.id AND o.deleted_at IS NULL) AS objective_count,
          (SELECT COUNT(*) FROM objectives o
-            WHERE o.ticket_id = t.id AND o.deleted_at IS NULL AND o.state = 'complete')
+            WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'complete')
             AS completed_objective_count,
          (SELECT COUNT(*) > 0 FROM objectives o
-            WHERE o.ticket_id = t.id AND o.deleted_at IS NULL AND o.state = 'executing')
+            WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'executing')
             AS has_executing_objective,
          (SELECT COUNT(*) > 0 FROM objectives o
-            WHERE o.ticket_id = t.id AND o.deleted_at IS NULL AND o.state = 'complete')
+            WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'complete')
             AS has_completed_objective,
          (SELECT COUNT(*) > 0 FROM objectives o
-            WHERE o.ticket_id = t.id AND o.deleted_at IS NULL
+            WHERE o.mission_id = t.id AND o.deleted_at IS NULL
               AND o.state IN ('draft', 'future') AND TRIM(o.instruction_text) != '')
             AS has_pending_objective_with_instructions
-  FROM tickets t
+  FROM missions t
   WHERE t.workspace_id = @workspace_id AND t.deleted_at IS NULL
 `;
 
-export function listTickets(projectId: string): TicketDto[] {
+export function listMissions(projectId: string): MissionDto[] {
   // Board order: ascending board_position within each column, with
-  // sequence_number DESC as a stable tiebreaker (e.g. brand-new tickets that
+  // sequence_number DESC as a stable tiebreaker (e.g. brand-new missions that
   // share a position before the column is first reordered).
   const rows = db
     .prepare(
-      `${selectTicketsSql} AND t.project_id = @project_id
+      `${selectMissionsSql} AND t.project_id = @project_id
          ORDER BY t.board_position ASC, t.sequence_number DESC`
     )
-    .all({ workspace_id: WORKSPACE.id, project_id: projectId }) as TicketRow[];
-  const tagsByTicket = getTagsByTicket(rows.map(row => row.id));
-  return rows.map(row => toTicketDto(row, tagsByTicket.get(row.id) ?? []));
+    .all({ workspace_id: WORKSPACE.id, project_id: projectId }) as MissionRow[];
+  const tagsByMission = getTagsByMission(rows.map(row => row.id));
+  return rows.map(row => toMissionDto(row, tagsByMission.get(row.id) ?? []));
 }
 
 /**
@@ -2186,20 +2186,20 @@ export function listTickets(projectId: string): TicketDto[] {
  * uppercase boolean keywords, and stripping to alphanumeric runs keeps the
  * expression injection-safe. Returns null when there is nothing to match.
  */
-function buildTicketSearchMatch(query: string): string | null {
+function buildMissionSearchMatch(query: string): string | null {
   const terms = query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
   if (terms.length === 0) return null;
   return terms.map(term => `${term}*`).join(' OR ');
 }
 
 /**
- * Full-text ticket search ranked across ticket titles, objective text, and
- * ticket-event summaries via the `search_documents` FTS index. Every matched
- * document is scored (title column and ticket-kind weighted highest), then the
- * scores are summed per ticket. Mirrors the CLI/protocol `searchTickets` service
- * so both surfaces rank identically. An empty query lists recent tickets.
+ * Full-text mission search ranked across mission titles, objective text, and
+ * mission-event summaries via the `search_documents` FTS index. Every matched
+ * document is scored (title column and mission-kind weighted highest), then the
+ * scores are summed per mission. Mirrors the CLI/protocol `searchMissions` service
+ * so both surfaces rank identically. An empty query lists recent missions.
  */
-export function searchTickets({
+export function searchMissions({
   query,
   projectId,
   limit = 25
@@ -2207,18 +2207,18 @@ export function searchTickets({
   query?: string | null;
   projectId?: string | null;
   limit?: number;
-}): TicketDto[] {
-  const match = query?.trim() ? buildTicketSearchMatch(query.trim()) : null;
+}): MissionDto[] {
+  const match = query?.trim() ? buildMissionSearchMatch(query.trim()) : null;
 
   if (!match) {
     const sql = projectId
-      ? `${selectTicketsSql} AND t.project_id = @project_id ORDER BY t.updated_at DESC LIMIT @limit`
-      : `${selectTicketsSql} ORDER BY t.updated_at DESC LIMIT @limit`;
+      ? `${selectMissionsSql} AND t.project_id = @project_id ORDER BY t.updated_at DESC LIMIT @limit`
+      : `${selectMissionsSql} ORDER BY t.updated_at DESC LIMIT @limit`;
     const rows = db
       .prepare(sql)
-      .all({ workspace_id: WORKSPACE.id, project_id: projectId ?? null, limit }) as TicketRow[];
-    const tagsByTicket = getTagsByTicket(rows.map(row => row.id));
-    return rows.map(row => toTicketDto(row, tagsByTicket.get(row.id) ?? []));
+      .all({ workspace_id: WORKSPACE.id, project_id: projectId ?? null, limit }) as MissionRow[];
+    const tagsByMission = getTagsByMission(rows.map(row => row.id));
+    return rows.map(row => toMissionDto(row, tagsByMission.get(row.id) ?? []));
   }
 
   const projectFilter = projectId ? ' AND t.project_id = @project_id' : '';
@@ -2230,63 +2230,63 @@ export function searchTickets({
               t.acceptance_criteria_text, t.available_tools_json,
               t.created_at, t.updated_at, t.revision,
               (SELECT COUNT(*) FROM objectives o
-                 WHERE o.ticket_id = t.id AND o.deleted_at IS NULL) AS objective_count,
+                 WHERE o.mission_id = t.id AND o.deleted_at IS NULL) AS objective_count,
               (SELECT COUNT(*) FROM objectives o
-                 WHERE o.ticket_id = t.id AND o.deleted_at IS NULL AND o.state = 'complete')
+                 WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'complete')
                  AS completed_objective_count,
               (SELECT COUNT(*) > 0 FROM objectives o
-                 WHERE o.ticket_id = t.id AND o.deleted_at IS NULL AND o.state = 'executing')
+                 WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'executing')
                  AS has_executing_objective,
               (SELECT COUNT(*) > 0 FROM objectives o
-                 WHERE o.ticket_id = t.id AND o.deleted_at IS NULL AND o.state = 'complete')
+                 WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'complete')
                  AS has_completed_objective,
               (SELECT COUNT(*) > 0 FROM objectives o
-                 WHERE o.ticket_id = t.id AND o.deleted_at IS NULL
+                 WHERE o.mission_id = t.id AND o.deleted_at IS NULL
                    AND o.state IN ('draft', 'future') AND TRIM(o.instruction_text) != '')
                  AS has_pending_objective_with_instructions,
               (CASE search_documents_fts.entity_type
-                 WHEN 'ticket' THEN 3.0 WHEN 'objective' THEN 2.0 ELSE 1.0 END)
+                 WHEN 'mission' THEN 3.0 WHEN 'objective' THEN 2.0 ELSE 1.0 END)
                 * (-bm25(search_documents_fts, 10.0, 1.0)) AS doc_score
          FROM search_documents_fts
-         JOIN tickets t ON t.id = search_documents_fts.ticket_id
+         JOIN missions t ON t.id = search_documents_fts.mission_id
            AND t.workspace_id = @workspace_id AND t.deleted_at IS NULL${projectFilter}
         WHERE search_documents_fts MATCH @match`
     )
     .all({ workspace_id: WORKSPACE.id, project_id: projectId ?? null, match }) as Array<
-    TicketRow & { doc_score: number }
+    MissionRow & { doc_score: number }
   >;
 
-  // Aggregate per-document scores into one relevance per ticket, then rank.
-  const byTicket = new Map<string, { row: TicketRow; relevance: number }>();
+  // Aggregate per-document scores into one relevance per mission, then rank.
+  const byMission = new Map<string, { row: MissionRow; relevance: number }>();
   for (const row of rows) {
-    const existing = byTicket.get(row.id);
+    const existing = byMission.get(row.id);
     if (existing) {
       existing.relevance += row.doc_score;
       continue;
     }
-    byTicket.set(row.id, { row, relevance: row.doc_score });
+    byMission.set(row.id, { row, relevance: row.doc_score });
   }
 
-  const ranked = [...byTicket.values()]
+  const ranked = [...byMission.values()]
     .sort(
       (left, right) =>
         right.relevance - left.relevance || right.row.updated_at.localeCompare(left.row.updated_at)
     )
     .slice(0, limit);
-  const tagsByTicket = getTagsByTicket(ranked.map(entry => entry.row.id));
-  return ranked.map(entry => toTicketDto(entry.row, tagsByTicket.get(entry.row.id) ?? []));
+  const tagsByMission = getTagsByMission(ranked.map(entry => entry.row.id));
+  return ranked.map(entry => toMissionDto(entry.row, tagsByMission.get(entry.row.id) ?? []));
 }
 
 // New cards drop in at the top of their column. Gap-based: one step (100) above
 // the current minimum so no renumber is needed until the column is reordered.
-function topBoardPosition(projectId: string, statusId: string, excludeTicketId?: string): number {
+function topBoardPosition(projectId: string, statusId: string, excludeMissionId?: string): number {
   const row = db
     .prepare(
-      `SELECT MIN(board_position) AS min_pos FROM tickets
+      `SELECT MIN(board_position) AS min_pos FROM missions
          WHERE project_id = @project_id AND status_id = @status_id
            AND deleted_at IS NULL AND (@exclude IS NULL OR id != @exclude)`
     )
-    .get({ project_id: projectId, status_id: statusId, exclude: excludeTicketId ?? null }) as {
+    .get({ project_id: projectId, status_id: statusId, exclude: excludeMissionId ?? null }) as {
     min_pos: number | null;
   };
   return row.min_pos === null ? 100 : row.min_pos - 100;
@@ -2302,83 +2302,83 @@ function getWorkspaceStatus(statusId: string): WorkspaceStatusRow {
   return statusRow;
 }
 
-/** Repoint denormalized project_id columns on ticket-owned rows. */
-function cascadeTicketProjectId({
-  ticketId,
+/** Repoint denormalized project_id columns on mission-owned rows. */
+function cascadeMissionProjectId({
+  missionId,
   newProjectId,
   now
 }: {
-  ticketId: string;
+  missionId: string;
   newProjectId: string;
   now: string;
 }): void {
   db.prepare(
     `UPDATE objectives
        SET project_id = @project_id, updated_at = @now, revision = revision + 1
-     WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id`
-  ).run({ project_id: newProjectId, ticket_id: ticketId, workspace_id: WORKSPACE.id, now });
+     WHERE mission_id = @mission_id AND workspace_id = @workspace_id`
+  ).run({ project_id: newProjectId, mission_id: missionId, workspace_id: WORKSPACE.id, now });
   db.prepare(
     `UPDATE agent_sessions
        SET project_id = @project_id, updated_at = @now, revision = revision + 1
-     WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id`
-  ).run({ project_id: newProjectId, ticket_id: ticketId, workspace_id: WORKSPACE.id, now });
+     WHERE mission_id = @mission_id AND workspace_id = @workspace_id`
+  ).run({ project_id: newProjectId, mission_id: missionId, workspace_id: WORKSPACE.id, now });
   db.prepare(
-    `UPDATE ticket_events SET project_id = @project_id
-     WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id`
-  ).run({ project_id: newProjectId, ticket_id: ticketId, workspace_id: WORKSPACE.id });
+    `UPDATE mission_events SET project_id = @project_id
+     WHERE mission_id = @mission_id AND workspace_id = @workspace_id`
+  ).run({ project_id: newProjectId, mission_id: missionId, workspace_id: WORKSPACE.id });
   db.prepare(
     `UPDATE deliveries
        SET project_id = @project_id, updated_at = @now, revision = revision + 1
-     WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id`
-  ).run({ project_id: newProjectId, ticket_id: ticketId, workspace_id: WORKSPACE.id, now });
+     WHERE mission_id = @mission_id AND workspace_id = @workspace_id`
+  ).run({ project_id: newProjectId, mission_id: missionId, workspace_id: WORKSPACE.id, now });
   db.prepare(
     `UPDATE artifacts
        SET project_id = @project_id, updated_at = @now, revision = revision + 1
-     WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id`
-  ).run({ project_id: newProjectId, ticket_id: ticketId, workspace_id: WORKSPACE.id, now });
+     WHERE mission_id = @mission_id AND workspace_id = @workspace_id`
+  ).run({ project_id: newProjectId, mission_id: missionId, workspace_id: WORKSPACE.id, now });
   db.prepare(
     `UPDATE changed_files
        SET project_id = @project_id, updated_at = @now, revision = revision + 1
-     WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id`
-  ).run({ project_id: newProjectId, ticket_id: ticketId, workspace_id: WORKSPACE.id, now });
+     WHERE mission_id = @mission_id AND workspace_id = @workspace_id`
+  ).run({ project_id: newProjectId, mission_id: missionId, workspace_id: WORKSPACE.id, now });
   db.prepare(
     `UPDATE change_rationales
        SET project_id = @project_id, updated_at = @now, revision = revision + 1
-     WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id`
-  ).run({ project_id: newProjectId, ticket_id: ticketId, workspace_id: WORKSPACE.id, now });
+     WHERE mission_id = @mission_id AND workspace_id = @workspace_id`
+  ).run({ project_id: newProjectId, mission_id: missionId, workspace_id: WORKSPACE.id, now });
   db.prepare(
     `UPDATE execution_requests
        SET project_id = @project_id, updated_at = @now, revision = revision + 1
-     WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id`
-  ).run({ project_id: newProjectId, ticket_id: ticketId, workspace_id: WORKSPACE.id, now });
+     WHERE mission_id = @mission_id AND workspace_id = @workspace_id`
+  ).run({ project_id: newProjectId, mission_id: missionId, workspace_id: WORKSPACE.id, now });
 }
 
-function getTicketRow(ticketRef: string): TicketRow {
+function getMissionRow(missionRef: string): MissionRow {
   const byId = db
-    .prepare(`${selectTicketsSql} AND t.id = @id`)
-    .get({ workspace_id: WORKSPACE.id, id: ticketRef }) as TicketRow | undefined;
+    .prepare(`${selectMissionsSql} AND t.id = @id`)
+    .get({ workspace_id: WORKSPACE.id, id: missionRef }) as MissionRow | undefined;
   if (byId) return byId;
 
   const byDisplayId = db
-    .prepare(`${selectTicketsSql} AND t.display_id = @display_id`)
-    .get({ workspace_id: WORKSPACE.id, display_id: ticketRef }) as TicketRow | undefined;
+    .prepare(`${selectMissionsSql} AND t.display_id = @display_id`)
+    .get({ workspace_id: WORKSPACE.id, display_id: missionRef }) as MissionRow | undefined;
   if (byDisplayId) return byDisplayId;
 
-  throw new ApiError(404, 'Ticket not found');
+  throw new ApiError(404, 'Mission not found');
 }
 
-export function getTicketDetail(ticketRef: string): TicketDetailDto {
-  const row = getTicketRow(ticketRef);
-  const ticket = toTicketDto(row, getTicketTags(row.id));
+export function getMissionDetail(missionRef: string): MissionDetailDto {
+  const row = getMissionRow(missionRef);
+  const mission = toMissionDto(row, getMissionTags(row.id));
   const objectives = listObjectives(row.id);
   const statuses = listWorkspaceStatuses();
-  const executionRequests = listTicketExecutionRequests(row.id);
-  return { ...ticket, objectives, statuses, executionRequests, branch: ticketBranchDto(row) };
+  const executionRequests = listMissionExecutionRequests(row.id);
+  return { ...mission, objectives, statuses, executionRequests, branch: missionBranchDto(row) };
 }
 
-interface TicketEventRow {
+interface MissionEventRow {
   id: string;
-  ticket_id: string;
+  mission_id: string;
   objective_id: string | null;
   type: string;
   phase: string | null;
@@ -2389,24 +2389,24 @@ interface TicketEventRow {
 }
 
 /**
- * Returns a ticket's workflow history newest-first for the live activity feed.
- * `ticket_events` is append-only, so there is no soft-delete filter; the
+ * Returns a mission's workflow history newest-first for the live activity feed.
+ * `mission_events` is append-only, so there is no soft-delete filter; the
  * workspace scope guards against cross-workspace reads.
  */
-export function listTicketEvents(ticketRef: string, limit = 200): TicketEventDto[] {
-  const ticket = getTicketRow(ticketRef);
+export function listMissionEvents(missionRef: string, limit = 200): MissionEventDto[] {
+  const mission = getMissionRow(missionRef);
   const rows = db
     .prepare(
-      `SELECT id, ticket_id, objective_id, type, phase, summary, source, external_url, created_at
-         FROM ticket_events
-        WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id
+      `SELECT id, mission_id, objective_id, type, phase, summary, source, external_url, created_at
+         FROM mission_events
+        WHERE mission_id = @mission_id AND workspace_id = @workspace_id
         ORDER BY created_at DESC, id DESC
         LIMIT @limit`
     )
-    .all({ ticket_id: ticket.id, workspace_id: WORKSPACE.id, limit }) as TicketEventRow[];
+    .all({ mission_id: mission.id, workspace_id: WORKSPACE.id, limit }) as MissionEventRow[];
   return rows.map(row => ({
     id: row.id,
-    ticketId: row.ticket_id,
+    missionId: row.mission_id,
     objectiveId: row.objective_id,
     type: row.type,
     phase: row.phase,
@@ -2419,7 +2419,7 @@ export function listTicketEvents(ticketRef: string, limit = 200): TicketEventDto
 
 interface FileChangeRow {
   id: string;
-  ticket_id: string;
+  mission_id: string;
   objective_id: string | null;
   file_path: string;
   label: string;
@@ -2432,31 +2432,31 @@ interface FileChangeRow {
 }
 
 /**
- * Returns a ticket's structured per-file change rationales newest-first for the
+ * Returns a mission's structured per-file change rationales newest-first for the
  * File Changes section, joined to the `changed_files` row (when linked) for diff
  * state and VCS status. Like the activity feed, the global SSE change feed
  * invalidates the client query so changes recorded by the agent or CLI in
  * another process stream into the panel without a manual refresh.
  */
-export function listTicketFileChanges(ticketRef: string, limit = 200): FileChangeDto[] {
-  const ticket = getTicketRow(ticketRef);
+export function listMissionFileChanges(missionRef: string, limit = 200): FileChangeDto[] {
+  const mission = getMissionRow(missionRef);
   const rows = db
     .prepare(
-      `SELECT cr.id, cr.ticket_id, cr.objective_id, cr.file_path, cr.label, cr.summary,
+      `SELECT cr.id, cr.mission_id, cr.objective_id, cr.file_path, cr.label, cr.summary,
               cr.why, cr.impact, cr.created_at,
               cf.current_diff_state AS diff_state, cf.vcs_status AS vcs_status
          FROM change_rationales cr
          LEFT JOIN changed_files cf
            ON cf.id = cr.changed_file_id AND cf.deleted_at IS NULL
-        WHERE cr.ticket_id = @ticket_id AND cr.workspace_id = @workspace_id
+        WHERE cr.mission_id = @mission_id AND cr.workspace_id = @workspace_id
           AND cr.deleted_at IS NULL
         ORDER BY cr.created_at DESC, cr.id DESC
         LIMIT @limit`
     )
-    .all({ ticket_id: ticket.id, workspace_id: WORKSPACE.id, limit }) as FileChangeRow[];
+    .all({ mission_id: mission.id, workspace_id: WORKSPACE.id, limit }) as FileChangeRow[];
   return rows.map(row => ({
     id: row.id,
-    ticketId: row.ticket_id,
+    missionId: row.mission_id,
     objectiveId: row.objective_id,
     filePath: row.file_path,
     fileName: row.file_path.split('/').pop() || row.file_path,
@@ -2474,7 +2474,7 @@ interface ArtifactRow {
   id: string;
   workspace_id: string;
   project_id: string;
-  ticket_id: string;
+  mission_id: string;
   objective_id: string | null;
   session_id: string | null;
   delivery_id: string | null;
@@ -2487,23 +2487,23 @@ interface ArtifactRow {
   updated_at: string;
 }
 
-export function listArtifacts(ticketRef: string, limit = 200): ArtifactDto[] {
-  const ticket = getTicketRow(ticketRef);
+export function listArtifacts(missionRef: string, limit = 200): ArtifactDto[] {
+  const mission = getMissionRow(missionRef);
   const rows = db
     .prepare(
-      `SELECT id, workspace_id, project_id, ticket_id, objective_id, session_id, delivery_id,
+      `SELECT id, workspace_id, project_id, mission_id, objective_id, session_id, delivery_id,
               type, label, content_text, content_json, external_url, created_at, updated_at
          FROM artifacts
-        WHERE ticket_id = @ticket_id AND workspace_id = @workspace_id AND deleted_at IS NULL
+        WHERE mission_id = @mission_id AND workspace_id = @workspace_id AND deleted_at IS NULL
         ORDER BY created_at DESC, id DESC
         LIMIT @limit`
     )
-    .all({ ticket_id: ticket.id, workspace_id: WORKSPACE.id, limit }) as ArtifactRow[];
+    .all({ mission_id: mission.id, workspace_id: WORKSPACE.id, limit }) as ArtifactRow[];
   return rows.map(row => ({
     id: row.id,
     workspaceId: row.workspace_id,
     projectId: row.project_id,
-    ticketId: row.ticket_id,
+    missionId: row.mission_id,
     objectiveId: row.objective_id,
     sessionId: row.session_id,
     deliveryId: row.delivery_id,
@@ -2517,28 +2517,28 @@ export function listArtifacts(ticketRef: string, limit = 200): ArtifactDto[] {
   }));
 }
 
-function nextTicketSequence(): number {
-  // Allocate the next workspace-scoped ticket number, creating the counter row
+function nextMissionSequence(): number {
+  // Allocate the next workspace-scoped mission number, creating the counter row
   // if a fresh database somehow lacks it.
   const row = db
     .prepare(
-      `SELECT id, next_value FROM ticket_sequences
+      `SELECT id, next_value FROM mission_sequences
          WHERE workspace_id = ? AND scope_type = 'workspace'
-           AND scope_id = ? AND counter_name = 'ticket'`
+           AND scope_id = ? AND counter_name = 'mission'`
     )
     .get(WORKSPACE.id, WORKSPACE.id) as { id: string; next_value: number } | undefined;
 
   if (!row) {
     const seq = 1;
     db.prepare(
-      `INSERT INTO ticket_sequences (id, workspace_id, scope_type, scope_id, counter_name, next_value, updated_at)
-       VALUES (@id, @ws, 'workspace', @ws, 'ticket', @next, @now)`
+      `INSERT INTO mission_sequences (id, workspace_id, scope_type, scope_id, counter_name, next_value, updated_at)
+       VALUES (@id, @ws, 'workspace', @ws, 'mission', @next, @now)`
     ).run({ id: newId(), ws: WORKSPACE.id, next: seq + 1, now: nowIso() });
     return seq;
   }
 
   const seq = row.next_value;
-  db.prepare(`UPDATE ticket_sequences SET next_value = ?, updated_at = ? WHERE id = ?`).run(
+  db.prepare(`UPDATE mission_sequences SET next_value = ?, updated_at = ? WHERE id = ?`).run(
     seq + 1,
     nowIso(),
     row.id
@@ -2546,13 +2546,13 @@ function nextTicketSequence(): number {
   return seq;
 }
 
-type CreateTicketResult = {
-  detail: TicketDetailDto;
+type CreateMissionResult = {
+  detail: MissionDetailDto;
   objectiveIds: string[];
   instruction: string;
 };
 
-const createTicketTx = db.transaction((body: CreateTicketBody): CreateTicketResult => {
+const createMissionTx = db.transaction((body: CreateMissionBody): CreateMissionResult => {
   const objectiveInputs =
     body.objectives && body.objectives.length > 0
       ? body.objectives
@@ -2597,7 +2597,7 @@ const createTicketTx = db.transaction((body: CreateTicketBody): CreateTicketResu
 
   const now = nowIso();
   const id = newId();
-  const sequence = nextTicketSequence();
+  const sequence = nextMissionSequence();
   const displayId = `${WORKSPACE.slug}:${sequence}`;
   const boardPosition = topBoardPosition(body.projectId, statusRow.id);
   const assignedWorkspaceUserId =
@@ -2606,7 +2606,7 @@ const createTicketTx = db.transaction((body: CreateTicketBody): CreateTicketResu
       : resolveAssignedWorkspaceUserId(body.assignedWorkspaceUserId);
 
   db.prepare(
-    `INSERT INTO tickets
+    `INSERT INTO missions
        (id, workspace_id, project_id, display_id, sequence_number, title,
         status_id, status_type, board_position, priority, available_tools_json, execution_target_intent_json,
         metadata_json, created_by_workspace_user_id, assigned_workspace_user_id, created_at, updated_at, revision)
@@ -2630,12 +2630,12 @@ const createTicketTx = db.transaction((body: CreateTicketBody): CreateTicketResu
   });
 
   recordChange({
-    entityType: 'ticket',
+    entityType: 'mission',
     entityId: id,
     operation: 'insert',
     entityRevision: 1,
     projectId: body.projectId,
-    ticketId: id
+    missionId: id
   });
 
   const objectiveIds: string[] = [];
@@ -2644,7 +2644,7 @@ const createTicketTx = db.transaction((body: CreateTicketBody): CreateTicketResu
       throw new ApiError(400, 'Objective instruction is required');
     }
     const objective = insertObjective({
-      ticketId: id,
+      missionId: id,
       instructionText: item.objective,
       ...(item.title !== undefined ? { title: item.title ?? undefined } : {}),
       autoAdvance: item.autoAdvance ?? false
@@ -2652,24 +2652,24 @@ const createTicketTx = db.transaction((body: CreateTicketBody): CreateTicketResu
     objectiveIds.push(objective.id);
   }
 
-  assignTicketTags({ ticketId: id, projectId: body.projectId, tagIds: body.tagIds, now });
+  assignMissionTags({ missionId: id, projectId: body.projectId, tagIds: body.tagIds, now });
 
-  return { detail: getTicketDetail(id), objectiveIds, instruction };
+  return { detail: getMissionDetail(id), objectiveIds, instruction };
 });
 
 /**
- * Assign tag definitions to a ticket. De-duplicates the input and validates that
- * every tag belongs to the ticket's project (and is not soft-deleted) so a ticket
+ * Assign tag definitions to a mission. De-duplicates the input and validates that
+ * every tag belongs to the mission's project (and is not soft-deleted) so a mission
  * can never carry a foreign-project tag. Intended to run inside the create
  * transaction. Unknown or cross-project tag ids raise a 400.
  */
-function assignTicketTags({
-  ticketId,
+function assignMissionTags({
+  missionId,
   projectId,
   tagIds,
   now
 }: {
-  ticketId: string;
+  missionId: string;
   projectId: string;
   tagIds: string[] | undefined;
   now: string;
@@ -2679,7 +2679,7 @@ function assignTicketTags({
   if (unique.length === 0) return;
 
   const insert = db.prepare(
-    `INSERT OR IGNORE INTO ticket_tags (ticket_id, tag_id, created_at) VALUES (?, ?, ?)`
+    `INSERT OR IGNORE INTO mission_tags (mission_id, tag_id, created_at) VALUES (?, ?, ?)`
   );
   const lookup = db.prepare(
     `SELECT id FROM project_tags
@@ -2688,15 +2688,15 @@ function assignTicketTags({
   for (const tagId of unique) {
     const tag = lookup.get(tagId, projectId, WORKSPACE.id) as { id: string } | undefined;
     if (!tag) throw new ApiError(400, 'Tag does not belong to this project');
-    insert.run(ticketId, tagId, now);
+    insert.run(missionId, tagId, now);
   }
 }
 
-export function createTicket(body: CreateTicketBody): TicketDetailDto {
-  const { detail, objectiveIds, instruction } = createTicketTx(body);
+export function createMission(body: CreateMissionBody): MissionDetailDto {
+  const { detail, objectiveIds, instruction } = createMissionTx(body);
 
-  scheduleTicketTitleGeneration({
-    ticketId: detail.id,
+  scheduleMissionTitleGeneration({
+    missionId: detail.id,
     projectId: detail.projectId,
     instructionText: instruction
   });
@@ -2706,7 +2706,7 @@ export function createTicket(body: CreateTicketBody): TicketDetailDto {
     scheduleObjectiveTitleGeneration({
       objectiveId: firstObjectiveId,
       projectId: detail.projectId,
-      ticketId: detail.id,
+      missionId: detail.id,
       instructionText: instruction
     });
   }
@@ -2715,13 +2715,13 @@ export function createTicket(body: CreateTicketBody): TicketDetailDto {
 }
 
 /**
- * Manually (re)generates a ticket's title via the Automations Layer
+ * Manually (re)generates a mission's title via the Automations Layer
  * summarizer, using the same instruction-text source as creation-time
  * generation (the earliest-position objective with non-empty instructions).
- * Persists the result and returns the refreshed ticket detail.
+ * Persists the result and returns the refreshed mission detail.
  */
-export async function generateTicketTitle(ticketRef: string): Promise<TicketDetailDto> {
-  const detail = getTicketDetail(ticketRef);
+export async function generateMissionTitle(missionRef: string): Promise<MissionDetailDto> {
+  const detail = getMissionDetail(missionRef);
   const instructionText = detail.objectives
     .find(objective => objective.instructionText.trim().length > 0)
     ?.instructionText.trim();
@@ -2729,8 +2729,8 @@ export async function generateTicketTitle(ticketRef: string): Promise<TicketDeta
     throw new ApiError(400, 'Add an objective before generating a title.');
   }
 
-  const title = await generateTicketTitleNow({
-    ticketId: detail.id,
+  const title = await generateMissionTitleNow({
+    missionId: detail.id,
     projectId: detail.projectId,
     instructionText
   });
@@ -2738,13 +2738,13 @@ export async function generateTicketTitle(ticketRef: string): Promise<TicketDeta
     throw new ApiError(502, 'Failed to generate a title.');
   }
 
-  return getTicketDetail(ticketRef);
+  return getMissionDetail(missionRef);
 }
 
 /**
- * Validate a ticket assignee. Returns the `workspace_users.id` when it names an
+ * Validate a mission assignee. Returns the `workspace_users.id` when it names an
  * active member of the current workspace, or `null` to unassign. Throws 400 for
- * an unknown member so callers cannot point a ticket at a foreign workspace.
+ * an unknown member so callers cannot point a mission at a foreign workspace.
  */
 function resolveAssignedWorkspaceUserId(value: string | null | undefined): string | null {
   if (value === null || value === undefined) return null;
@@ -2760,9 +2760,9 @@ function resolveAssignedWorkspaceUserId(value: string | null | undefined): strin
   return member.id;
 }
 
-const patchTicketFieldsTx = db.transaction(
-  (id: string, body: UpdateTicketBody): TicketDetailDto => {
-    const existing = getTicketRow(id);
+const patchMissionFieldsTx = db.transaction(
+  (id: string, body: UpdateMissionBody): MissionDetailDto => {
+    const existing = getMissionRow(id);
 
     const fields: string[] = [];
     const params: Record<string, unknown> = { id, workspace_id: WORKSPACE.id };
@@ -2770,7 +2770,7 @@ const patchTicketFieldsTx = db.transaction(
 
     if (body.title !== undefined) {
       const title = body.title.trim();
-      if (!title) throw new ApiError(400, 'Ticket title cannot be empty');
+      if (!title) throw new ApiError(400, 'Mission title cannot be empty');
       fields.push('title = @title');
       params.title = title;
       changed.push('title');
@@ -2821,29 +2821,29 @@ const patchTicketFieldsTx = db.transaction(
       params.branch_override = override;
       changed.push('branch_override');
     }
-    if (fields.length === 0) return getTicketDetail(id);
+    if (fields.length === 0) return getMissionDetail(id);
 
     const now = nowIso();
     const revision = existing.revision + 1;
     db.prepare(
-      `UPDATE tickets SET ${fields.join(', ')}, updated_at = @now, revision = @revision
+      `UPDATE missions SET ${fields.join(', ')}, updated_at = @now, revision = @revision
          WHERE id = @id AND workspace_id = @workspace_id`
     ).run({ ...params, now, revision });
 
     recordChange({
-      entityType: 'ticket',
+      entityType: 'mission',
       entityId: id,
       operation: 'update',
       entityRevision: revision,
       projectId: existing.project_id,
-      ticketId: id,
+      missionId: id,
       changedFields: changed
     });
-    return getTicketDetail(id);
+    return getMissionDetail(id);
   }
 );
 
-const moveTicketProjectTx = db.transaction(
+const moveMissionProjectTx = db.transaction(
   ({
     id,
     body,
@@ -2852,11 +2852,11 @@ const moveTicketProjectTx = db.transaction(
     statusRow
   }: {
     id: string;
-    body: UpdateTicketBody;
-    existing: TicketRow;
+    body: UpdateMissionBody;
+    existing: MissionRow;
     targetProjectId: string;
     statusRow: WorkspaceStatusRow;
-  }): TicketDetailDto => {
+  }): MissionDetailDto => {
     const fields = [
       'project_id = @project_id',
       'status_id = @status_id',
@@ -2875,7 +2875,7 @@ const moveTicketProjectTx = db.transaction(
 
     if (body.title !== undefined) {
       const title = body.title.trim();
-      if (!title) throw new ApiError(400, 'Ticket title cannot be empty');
+      if (!title) throw new ApiError(400, 'Mission title cannot be empty');
       fields.push('title = @title');
       params.title = title;
       changed.push('title');
@@ -2910,43 +2910,43 @@ const moveTicketProjectTx = db.transaction(
 
     const now = nowIso();
     const revision = existing.revision + 1;
-    cascadeTicketProjectId({ ticketId: id, newProjectId: targetProjectId, now });
+    cascadeMissionProjectId({ missionId: id, newProjectId: targetProjectId, now });
     db.prepare(
-      `UPDATE tickets SET ${fields.join(', ')}, updated_at = @now, revision = @revision
+      `UPDATE missions SET ${fields.join(', ')}, updated_at = @now, revision = @revision
          WHERE id = @id AND workspace_id = @workspace_id`
     ).run({ ...params, now, revision });
 
     recordChange({
-      entityType: 'ticket',
+      entityType: 'mission',
       entityId: id,
       operation: 'update',
       entityRevision: revision,
       projectId: targetProjectId,
-      ticketId: id,
+      missionId: id,
       changedFields: changed
     });
-    return getTicketDetail(id);
+    return getMissionDetail(id);
   }
 );
 
-/** PATCH /api/tickets/:id — field updates and cross-project moves. */
-export function updateTicket(id: string, body: UpdateTicketBody): TicketDetailDto {
-  const existing = getTicketRow(id);
+/** PATCH /api/missions/:id — field updates and cross-project moves. */
+export function updateMission(id: string, body: UpdateMissionBody): MissionDetailDto {
+  const existing = getMissionRow(id);
   if (body.projectId !== undefined && body.projectId !== existing.project_id) {
     const targetProject = db
       .prepare(`SELECT id FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`)
       .get(body.projectId, WORKSPACE.id) as { id: string } | undefined;
     if (!targetProject) throw new ApiError(404, 'Project not found');
 
-    // Statuses are workspace-shared, so a cross-project move keeps the ticket's
+    // Statuses are workspace-shared, so a cross-project move keeps the mission's
     // current status unless the caller explicitly chooses a different one.
     const statusRow = getWorkspaceStatus(body.statusId ?? existing.status_id);
 
-    // Composite ticket/objective FKs require briefly disabling enforcement; SQLite
+    // Composite mission/objective FKs require briefly disabling enforcement; SQLite
     // will not allow toggling the pragma inside an open transaction.
     db.pragma('foreign_keys = OFF');
     try {
-      return moveTicketProjectTx({
+      return moveMissionProjectTx({
         id,
         body,
         existing,
@@ -2958,47 +2958,47 @@ export function updateTicket(id: string, body: UpdateTicketBody): TicketDetailDt
     }
   }
 
-  return patchTicketFieldsTx(id, body);
+  return patchMissionFieldsTx(id, body);
 }
 
-export const deleteTicket = db.transaction((id: string): void => {
-  const existing = getTicketRow(id);
+export const deleteMission = db.transaction((id: string): void => {
+  const existing = getMissionRow(id);
   const now = nowIso();
   const revision = existing.revision + 1;
-  // Soft-delete the ticket and its objectives so referential integrity holds.
+  // Soft-delete the mission and its objectives so referential integrity holds.
   db.prepare(
     `UPDATE objectives SET deleted_at = @now, revision = revision + 1
-       WHERE ticket_id = @id AND deleted_at IS NULL`
+       WHERE mission_id = @id AND deleted_at IS NULL`
   ).run({ id, now });
   db.prepare(
-    `UPDATE tickets SET deleted_at = @now, revision = @revision
+    `UPDATE missions SET deleted_at = @now, revision = @revision
        WHERE id = @id AND workspace_id = @workspace_id`
   ).run({ id, now, revision, workspace_id: WORKSPACE.id });
 
   recordChange({
-    entityType: 'ticket',
+    entityType: 'mission',
     entityId: id,
     operation: 'delete',
     entityRevision: revision,
     projectId: existing.project_id,
-    ticketId: id
+    missionId: id
   });
 });
 
 /**
- * Reorder one board column. `orderedTicketIds` is the full top-to-bottom order
- * the `statusId` column should have afterwards. Each ticket is renumbered to a
- * dense gap-based position (100, 200, 300, …); any ticket arriving from another
- * column also has its status changed to match. Tickets whose status and
+ * Reorder one board column. `orderedMissionIds` is the full top-to-bottom order
+ * the `statusId` column should have afterwards. Each mission is renumbered to a
+ * dense gap-based position (100, 200, 300, …); any mission arriving from another
+ * column also has its status changed to match. Missions whose status and
  * position are already correct are skipped so no redundant change feed rows are
  * written. Returns the destination column in its new order.
  */
 export const reorderBoardColumn = db.transaction(
-  (projectId: string, body: ReorderBoardColumnBody): TicketDto[] => {
+  (projectId: string, body: ReorderBoardColumnBody): MissionDto[] => {
     const statusId = body.statusId;
-    const orderedIds = body.orderedTicketIds;
+    const orderedIds = body.orderedMissionIds;
     if (!statusId) throw new ApiError(400, 'statusId is required');
-    if (!Array.isArray(orderedIds)) throw new ApiError(400, 'orderedTicketIds must be an array');
+    if (!Array.isArray(orderedIds)) throw new ApiError(400, 'orderedMissionIds must be an array');
 
     const statusRow = db
       .prepare(
@@ -3008,18 +3008,18 @@ export const reorderBoardColumn = db.transaction(
     if (!statusRow) throw new ApiError(400, 'Unknown status for workspace');
 
     if (new Set(orderedIds).size !== orderedIds.length) {
-      throw new ApiError(400, 'orderedTicketIds contains duplicates');
+      throw new ApiError(400, 'orderedMissionIds contains duplicates');
     }
 
     const now = nowIso();
-    orderedIds.forEach((ticketId, index) => {
+    orderedIds.forEach((missionId, index) => {
       const existing = db
         .prepare(
-          `SELECT * FROM tickets
+          `SELECT * FROM missions
              WHERE id = ? AND workspace_id = ? AND project_id = ? AND deleted_at IS NULL`
         )
-        .get(ticketId, WORKSPACE.id, projectId) as TicketRow | undefined;
-      if (!existing) throw new ApiError(404, `Ticket ${ticketId} not found in project`);
+        .get(missionId, WORKSPACE.id, projectId) as MissionRow | undefined;
+      if (!existing) throw new ApiError(404, `Mission ${missionId} not found in project`);
 
       const boardPosition = (index + 1) * 100;
       const statusChanged = existing.status_id !== statusId;
@@ -3028,7 +3028,7 @@ export const reorderBoardColumn = db.transaction(
 
       const setClauses = ['board_position = @board_position'];
       const sqlParams: Record<string, unknown> = {
-        id: ticketId,
+        id: missionId,
         workspace_id: WORKSPACE.id,
         board_position: boardPosition
       };
@@ -3042,26 +3042,26 @@ export const reorderBoardColumn = db.transaction(
 
       const revision = existing.revision + 1;
       db.prepare(
-        `UPDATE tickets SET ${setClauses.join(', ')}, updated_at = @now, revision = @revision
+        `UPDATE missions SET ${setClauses.join(', ')}, updated_at = @now, revision = @revision
            WHERE id = @id AND workspace_id = @workspace_id`
       ).run({ ...sqlParams, now, revision });
 
       recordChange({
-        entityType: 'ticket',
-        entityId: ticketId,
+        entityType: 'mission',
+        entityId: missionId,
         operation: 'update',
         entityRevision: revision,
         projectId,
-        ticketId,
+        missionId,
         changedFields: changed
       });
     });
 
-    return listTickets(projectId).filter(t => t.statusId === statusId);
+    return listMissions(projectId).filter(t => t.statusId === statusId);
   }
 );
 
-// ---- My Tickets (selected-workspace aggregate) ---------------------------
+// ---- My Missions (selected-workspace aggregate) ---------------------------
 
 /** Typed error code the client renders as a workspace-specific status alert. */
 const STATUS_UNAVAILABLE_FOR_WORKSPACE = 'STATUS_UNAVAILABLE_FOR_WORKSPACE';
@@ -3070,28 +3070,28 @@ const STATUS_UNAVAILABLE_FOR_WORKSPACE = 'STATUS_UNAVAILABLE_FOR_WORKSPACE';
 // (index + 1) * 100 scheme so dense personal renumbers read naturally.
 const MY_POSITION_STEP = 100;
 
-interface MyTicketRow extends TicketRow {
+interface MyMissionRow extends MissionRow {
   project_name: string;
   project_settings_json: string;
   my_position: number | null;
 }
 
-function toMyTicketDto(r: MyTicketRow, tags: ProjectTagDto[]): MyTicketDto {
+function toMyMissionDto(r: MyMissionRow, tags: ProjectTagDto[]): MyMissionDto {
   return {
-    ...toTicketDto(r, tags),
+    ...toMissionDto(r, tags),
     projectName: r.project_name,
     projectColor: readProjectColor(r.project_settings_json),
     myPosition: r.my_position
   };
 }
 
-// Tickets assigned to the active operator across the active workspace, joined to
+// Missions assigned to the active operator across the active workspace, joined to
 // their (non-deleted) project for name/color and to the operator's personal
 // column position. The position only applies when its stored status_id still
-// matches the ticket's current status, so a status change made on the project
-// board self-corrects (the ticket falls back to the default order in its new
+// matches the mission's current status, so a status change made on the project
+// board self-corrects (the mission falls back to the default order in its new
 // column).
-const selectMyTicketsSql = `
+const selectMyMissionsSql = `
   SELECT t.id, t.workspace_id, t.project_id, t.display_id, t.sequence_number, t.title,
          t.status_id, t.status_type, t.board_position, t.priority,
          t.assigned_workspace_user_id,
@@ -3100,60 +3100,60 @@ const selectMyTicketsSql = `
          p.name AS project_name, p.settings_json AS project_settings_json,
          mtp.position AS my_position,
          (SELECT COUNT(*) FROM objectives o
-            WHERE o.ticket_id = t.id AND o.deleted_at IS NULL) AS objective_count,
+            WHERE o.mission_id = t.id AND o.deleted_at IS NULL) AS objective_count,
          (SELECT COUNT(*) FROM objectives o
-            WHERE o.ticket_id = t.id AND o.deleted_at IS NULL AND o.state = 'complete')
+            WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'complete')
             AS completed_objective_count,
          (SELECT COUNT(*) > 0 FROM objectives o
-            WHERE o.ticket_id = t.id AND o.deleted_at IS NULL AND o.state = 'executing')
+            WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'executing')
             AS has_executing_objective,
          (SELECT COUNT(*) > 0 FROM objectives o
-            WHERE o.ticket_id = t.id AND o.deleted_at IS NULL AND o.state = 'complete')
+            WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'complete')
             AS has_completed_objective,
          (SELECT COUNT(*) > 0 FROM objectives o
-            WHERE o.ticket_id = t.id AND o.deleted_at IS NULL
+            WHERE o.mission_id = t.id AND o.deleted_at IS NULL
               AND o.state IN ('draft', 'future') AND TRIM(o.instruction_text) != '')
             AS has_pending_objective_with_instructions
-    FROM tickets t
+    FROM missions t
     JOIN projects p ON p.id = t.project_id AND p.workspace_id = t.workspace_id
       AND p.deleted_at IS NULL
-    LEFT JOIN my_ticket_positions mtp
-      ON mtp.workspace_id = t.workspace_id AND mtp.ticket_id = t.id
+    LEFT JOIN my_mission_positions mtp
+      ON mtp.workspace_id = t.workspace_id AND mtp.mission_id = t.id
         AND mtp.workspace_user_id = @actor AND mtp.status_id = t.status_id
    WHERE t.workspace_id = @workspace_id AND t.deleted_at IS NULL
      AND t.assigned_workspace_user_id = @actor
 `;
 
 /**
- * GET /api/workspace/my-tickets — tickets assigned to the active operator across
- * the active workspace. Read-time merge order: positioned tickets first by their
- * personal position, then unpositioned tickets by the approximate default
+ * GET /api/workspace/my-missions — missions assigned to the active operator across
+ * the active workspace. Read-time merge order: positioned missions first by their
+ * personal position, then unpositioned missions by the approximate default
  * aggregate order (board_position, then recency, then a stable tiebreaker). The
  * client regroups by statusId, preserving this within-column order. If no actor
  * workspace-user resolves, returns an empty list rather than broadening.
  */
-export function listWorkspaceMyTickets(): MyTicketsResponse {
-  if (!ACTOR_WORKSPACE_USER_ID) return { tickets: [] };
+export function listWorkspaceMyMissions(): MyMissionsResponse {
+  if (!ACTOR_WORKSPACE_USER_ID) return { missions: [] };
   const rows = db
     .prepare(
-      `${selectMyTicketsSql}
+      `${selectMyMissionsSql}
          ORDER BY (mtp.position IS NULL) ASC, mtp.position ASC,
                   t.board_position ASC, t.updated_at DESC, t.sequence_number DESC, t.id ASC`
     )
-    .all({ workspace_id: WORKSPACE.id, actor: ACTOR_WORKSPACE_USER_ID }) as MyTicketRow[];
-  const tagsByTicket = getTagsByTicket(rows.map(row => row.id));
-  return { tickets: rows.map(row => toMyTicketDto(row, tagsByTicket.get(row.id) ?? [])) };
+    .all({ workspace_id: WORKSPACE.id, actor: ACTOR_WORKSPACE_USER_ID }) as MyMissionRow[];
+  const tagsByMission = getTagsByMission(rows.map(row => row.id));
+  return { missions: rows.map(row => toMyMissionDto(row, tagsByMission.get(row.id) ?? [])) };
 }
 
-/** Insert or update one operator's personal position for a ticket in a column. */
-function upsertMyTicketPosition({
-  ticketId,
+/** Insert or update one operator's personal position for a mission in a column. */
+function upsertMyMissionPosition({
+  missionId,
   statusId,
   position,
   actor,
   now
 }: {
-  ticketId: string;
+  missionId: string;
   statusId: string;
   position: number;
   actor: string;
@@ -3161,13 +3161,13 @@ function upsertMyTicketPosition({
 }): void {
   const existing = db
     .prepare(
-      `SELECT id, revision FROM my_ticket_positions
-         WHERE workspace_id = ? AND workspace_user_id = ? AND ticket_id = ?`
+      `SELECT id, revision FROM my_mission_positions
+         WHERE workspace_id = ? AND workspace_user_id = ? AND mission_id = ?`
     )
-    .get(WORKSPACE.id, actor, ticketId) as { id: string; revision: number } | undefined;
+    .get(WORKSPACE.id, actor, missionId) as { id: string; revision: number } | undefined;
   if (existing) {
     db.prepare(
-      `UPDATE my_ticket_positions
+      `UPDATE my_mission_positions
           SET status_id = @status_id, position = @position, updated_at = @now, revision = @revision
         WHERE id = @id`
     ).run({
@@ -3180,35 +3180,35 @@ function upsertMyTicketPosition({
     return;
   }
   db.prepare(
-    `INSERT INTO my_ticket_positions
-       (id, workspace_id, workspace_user_id, ticket_id, status_id, position, created_at, updated_at, revision)
-     VALUES (@id, @workspace_id, @actor, @ticket_id, @status_id, @position, @now, @now, 1)`
+    `INSERT INTO my_mission_positions
+       (id, workspace_id, workspace_user_id, mission_id, status_id, position, created_at, updated_at, revision)
+     VALUES (@id, @workspace_id, @actor, @mission_id, @status_id, @position, @now, @now, 1)`
   ).run({
     id: newId(),
     workspace_id: WORKSPACE.id,
     actor,
-    ticket_id: ticketId,
+    mission_id: missionId,
     status_id: statusId,
     position,
     now
   });
 }
 
-const reorderWorkspaceMyTicketsTx = db.transaction(
-  (body: MyTicketReorderRequest): MyTicketsResponse => {
+const reorderWorkspaceMyMissionsTx = db.transaction(
+  (body: MyMissionReorderRequest): MyMissionsResponse => {
     const actor = ACTOR_WORKSPACE_USER_ID;
     if (!actor) throw new ApiError(403, 'No active workspace operator to reorder for');
 
     const statusId = body.statusId;
-    const orderedIds = body.orderedTicketIds;
+    const orderedIds = body.orderedMissionIds;
     if (!statusId) throw new ApiError(400, 'statusId is required');
-    if (!Array.isArray(orderedIds)) throw new ApiError(400, 'orderedTicketIds must be an array');
+    if (!Array.isArray(orderedIds)) throw new ApiError(400, 'orderedMissionIds must be an array');
     if (new Set(orderedIds).size !== orderedIds.length) {
-      throw new ApiError(400, 'orderedTicketIds contains duplicates');
+      throw new ApiError(400, 'orderedMissionIds contains duplicates');
     }
 
     // Resolve the target column against the active workspace. A status the
-    // workspace doesn't own can never satisfy a ticket's composite FK, so reject
+    // workspace doesn't own can never satisfy a mission's composite FK, so reject
     // early with a typed, workspace-specific code the client renders as an alert.
     const statusRow = db
       .prepare(
@@ -3218,7 +3218,7 @@ const reorderWorkspaceMyTicketsTx = db.transaction(
     if (!statusRow) {
       throw new ApiError(
         409,
-        `That status is not available for tickets in the ${WORKSPACE.name} workspace`,
+        `That status is not available for missions in the ${WORKSPACE.name} workspace`,
         undefined,
         STATUS_UNAVAILABLE_FOR_WORKSPACE
       );
@@ -3226,50 +3226,50 @@ const reorderWorkspaceMyTicketsTx = db.transaction(
 
     const now = nowIso();
 
-    orderedIds.forEach((ticketId, index) => {
+    orderedIds.forEach((missionId, index) => {
       const existing = db
-        .prepare(`SELECT * FROM tickets WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`)
-        .get(ticketId, WORKSPACE.id) as TicketRow | undefined;
-      if (!existing) throw new ApiError(404, `Ticket ${ticketId} not found in workspace`);
+        .prepare(`SELECT * FROM missions WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`)
+        .get(missionId, WORKSPACE.id) as MissionRow | undefined;
+      if (!existing) throw new ApiError(404, `Mission ${missionId} not found in workspace`);
       if (existing.assigned_workspace_user_id !== actor) {
-        throw new ApiError(403, `Ticket ${ticketId} is not assigned to you`);
+        throw new ApiError(403, `Mission ${missionId} is not assigned to you`);
       }
 
       // Cross-column drag: a real status change. Apply the canonical status-change
       // writes (status_id + denormalized status_type + reset board_position to
-      // top-of-new-column) so the project board and the My Tickets unpositioned
+      // top-of-new-column) so the project board and the My Missions unpositioned
       // fallback both stay correct. The composite FK backstops invalid statuses.
       if (existing.status_id !== statusRow.id) {
         const revision = existing.revision + 1;
         db.prepare(
-          `UPDATE tickets
+          `UPDATE missions
               SET status_id = @status_id, status_type = @status_type,
                   board_position = @board_position, updated_at = @now, revision = @revision
             WHERE id = @id AND workspace_id = @workspace_id`
         ).run({
-          id: ticketId,
+          id: missionId,
           workspace_id: WORKSPACE.id,
           status_id: statusRow.id,
           status_type: statusRow.type,
-          board_position: topBoardPosition(existing.project_id, statusRow.id, ticketId),
+          board_position: topBoardPosition(existing.project_id, statusRow.id, missionId),
           now,
           revision
         });
         recordChange({
-          entityType: 'ticket',
-          entityId: ticketId,
+          entityType: 'mission',
+          entityId: missionId,
           operation: 'update',
           entityRevision: revision,
           projectId: existing.project_id,
-          ticketId,
+          missionId,
           changedFields: ['status_id', 'status_type', 'board_position']
         });
       }
 
       // Personal slot within the (operator, status) column. Writes only
-      // my_ticket_positions — never tickets.board_position for a within-column move.
-      upsertMyTicketPosition({
-        ticketId,
+      // my_mission_positions — never missions.board_position for a within-column move.
+      upsertMyMissionPosition({
+        missionId,
         statusId: statusRow.id,
         position: (index + 1) * MY_POSITION_STEP,
         actor,
@@ -3277,19 +3277,19 @@ const reorderWorkspaceMyTicketsTx = db.transaction(
       });
     });
 
-    return listWorkspaceMyTickets();
+    return listWorkspaceMyMissions();
   }
 );
 
 /**
- * PATCH /api/workspace/my-tickets/order — persist a personal reorder of one My
- * Tickets status column for the active operator. Translates a foreign-key
- * rejection (a status the ticket's workspace lacks) into the typed
+ * PATCH /api/workspace/my-missions/order — persist a personal reorder of one My
+ * Missions status column for the active operator. Translates a foreign-key
+ * rejection (a status the mission's workspace lacks) into the typed
  * `STATUS_UNAVAILABLE_FOR_WORKSPACE` error so the client can alert and revert.
  */
-export function reorderWorkspaceMyTickets(body: MyTicketReorderRequest): MyTicketsResponse {
+export function reorderWorkspaceMyMissions(body: MyMissionReorderRequest): MyMissionsResponse {
   try {
-    return reorderWorkspaceMyTicketsTx(body);
+    return reorderWorkspaceMyMissionsTx(body);
   } catch (err) {
     if (
       err &&
@@ -3298,7 +3298,7 @@ export function reorderWorkspaceMyTickets(body: MyTicketReorderRequest): MyTicke
     ) {
       throw new ApiError(
         409,
-        `That status is not available for tickets in the ${WORKSPACE.name} workspace`,
+        `That status is not available for missions in the ${WORKSPACE.name} workspace`,
         undefined,
         STATUS_UNAVAILABLE_FOR_WORKSPACE
       );
@@ -3309,7 +3309,7 @@ export function reorderWorkspaceMyTickets(body: MyTicketReorderRequest): MyTicke
 
 // ---- Objectives ----------------------------------------------------------
 
-export function listObjectives(ticketId: string): ObjectiveDto[] {
+export function listObjectives(missionId: string): ObjectiveDto[] {
   const rows = db
     .prepare(
       `SELECT o.*,
@@ -3321,10 +3321,10 @@ export function listObjectives(ticketId: string): ObjectiveDto[] {
             LIMIT 1
          ) AS external_session_id
          FROM objectives o
-        WHERE o.ticket_id = ? AND o.deleted_at IS NULL
+        WHERE o.mission_id = ? AND o.deleted_at IS NULL
         ORDER BY o.position ASC`
     )
-    .all(ticketId) as ObjectiveRow[];
+    .all(missionId) as ObjectiveRow[];
   return rows.map(toObjectiveDto);
 }
 
@@ -3339,16 +3339,16 @@ const VALID_STATES = [
 ];
 
 /**
- * Reorder a ticket's `future` objectives. `orderedObjectiveIds` is the full
+ * Reorder a mission's `future` objectives. `orderedObjectiveIds` is the full
  * top-to-bottom order the future group should have afterwards. The future rows
  * are renumbered relative to one another starting at the lowest position they
  * currently occupy, so they keep sitting after any non-future objectives.
  * Objectives whose position is already correct are skipped so no redundant
- * change-feed rows are written. Returns the ticket's full objective list in its
+ * change-feed rows are written. Returns the mission's full objective list in its
  * new order.
  */
 export const reorderFutureObjectives = db.transaction(
-  (ticketId: string, body: ReorderFutureObjectivesBody): ObjectiveDto[] => {
+  (missionId: string, body: ReorderFutureObjectivesBody): ObjectiveDto[] => {
     const orderedIds = body.orderedObjectiveIds;
     if (!Array.isArray(orderedIds)) {
       throw new ApiError(400, 'orderedObjectiveIds must be an array');
@@ -3357,30 +3357,30 @@ export const reorderFutureObjectives = db.transaction(
       throw new ApiError(400, 'orderedObjectiveIds contains duplicates');
     }
 
-    const ticket = db
+    const mission = db
       .prepare(
-        `SELECT id, project_id FROM tickets WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
+        `SELECT id, project_id FROM missions WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
       )
-      .get(ticketId, WORKSPACE.id) as { id: string; project_id: string } | undefined;
-    if (!ticket) throw new ApiError(404, 'Ticket not found');
+      .get(missionId, WORKSPACE.id) as { id: string; project_id: string } | undefined;
+    if (!mission) throw new ApiError(404, 'Mission not found');
 
     const rows = db
       .prepare(
         `SELECT * FROM objectives
-           WHERE ticket_id = ? AND workspace_id = ? AND deleted_at IS NULL`
+           WHERE mission_id = ? AND workspace_id = ? AND deleted_at IS NULL`
       )
-      .all(ticketId, WORKSPACE.id) as ObjectiveRow[];
+      .all(missionId, WORKSPACE.id) as ObjectiveRow[];
     const byId = new Map(rows.map(row => [row.id, row]));
 
     const targets = orderedIds.map(id => {
       const row = byId.get(id);
-      if (!row) throw new ApiError(404, `Objective ${id} not found on ticket`);
+      if (!row) throw new ApiError(404, `Objective ${id} not found on mission`);
       if (row.state !== 'future') {
         throw new ApiError(400, `Objective ${id} is not a future objective`);
       }
       return row;
     });
-    if (targets.length === 0) return listObjectives(ticketId);
+    if (targets.length === 0) return listObjectives(missionId);
 
     // Renumber starting at the lowest position the future group currently holds,
     // keeping the whole group after any non-future objectives.
@@ -3402,28 +3402,28 @@ export const reorderFutureObjectives = db.transaction(
         entityId: existing.id,
         operation: 'update',
         entityRevision: revision,
-        projectId: ticket.project_id,
-        ticketId,
+        projectId: mission.project_id,
+        missionId,
         objectiveId: existing.id,
         changedFields: ['position']
       });
     });
 
-    return listObjectives(ticketId);
+    return listObjectives(missionId);
   }
 );
 
-// Internal insert used by both createObjective and createTicket's first objective.
+// Internal insert used by both createObjective and createMission's first objective.
 // Assumes it runs within a transaction.
 function insertObjective(body: CreateObjectiveBody): ObjectiveDto {
   const instruction = (body.instructionText ?? '').trim();
 
-  const ticket = db
+  const mission = db
     .prepare(
-      `SELECT id, project_id FROM tickets WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
+      `SELECT id, project_id FROM missions WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
     )
-    .get(body.ticketId, WORKSPACE.id) as { id: string; project_id: string } | undefined;
-  if (!ticket) throw new ApiError(404, 'Ticket not found');
+    .get(body.missionId, WORKSPACE.id) as { id: string; project_id: string } | undefined;
+  if (!mission) throw new ApiError(404, 'Mission not found');
 
   const requestedState = body.state ?? 'draft';
   if (!VALID_STATES.includes(requestedState)) throw new ApiError(400, 'Invalid objective state');
@@ -3431,10 +3431,10 @@ function insertObjective(body: CreateObjectiveBody): ObjectiveDto {
   const draftRow = db
     .prepare(
       `SELECT id FROM objectives
-       WHERE ticket_id = ? AND workspace_id = ? AND state = 'draft' AND deleted_at IS NULL
+       WHERE mission_id = ? AND workspace_id = ? AND state = 'draft' AND deleted_at IS NULL
        LIMIT 1`
     )
-    .get(body.ticketId, WORKSPACE.id) as { id: string } | undefined;
+    .get(body.missionId, WORKSPACE.id) as { id: string } | undefined;
   const state = requestedState === 'draft' && draftRow ? 'future' : requestedState;
 
   // Blank instructions are allowed only for editable slots that are authored
@@ -3448,9 +3448,9 @@ function insertObjective(body: CreateObjectiveBody): ObjectiveDto {
 
   const maxRow = db
     .prepare(
-      `SELECT MAX(position) AS max_pos FROM objectives WHERE ticket_id = ? AND deleted_at IS NULL`
+      `SELECT MAX(position) AS max_pos FROM objectives WHERE mission_id = ? AND deleted_at IS NULL`
     )
-    .get(body.ticketId) as { max_pos: number | null };
+    .get(body.missionId) as { max_pos: number | null };
   const position = (maxRow.max_pos ?? -1) + 1;
 
   // Editable slots (draft/future) default to the project's last-used launch
@@ -3460,24 +3460,24 @@ function insertObjective(body: CreateObjectiveBody): ObjectiveDto {
   // runner default.
   const launchSelection =
     state === 'draft' || state === 'future'
-      ? getLaunchPreference(ticket.project_id)
+      ? getLaunchPreference(mission.project_id)
       : { selectedAgent: null, selectedModel: null, selectedReasoningEffort: null };
 
   const now = nowIso();
   const id = newId();
   db.prepare(
     `INSERT INTO objectives
-       (id, workspace_id, project_id, ticket_id, position, title, instruction_text, state,
+       (id, workspace_id, project_id, mission_id, position, title, instruction_text, state,
         assigned_agent, model, reasoning_effort, agent_flags_json, auto_advance,
         execution_metadata_json, created_by_workspace_user_id, created_at, updated_at, revision)
-     VALUES (@id, @ws, @project_id, @ticket_id, @position, @title, @instruction, @state,
+     VALUES (@id, @ws, @project_id, @mission_id, @position, @title, @instruction, @state,
         @assigned_agent, @model, @reasoning_effort, '{}', @auto_advance, '{}', @actor,
         @now, @now, 1)`
   ).run({
     id,
     ws: WORKSPACE.id,
-    project_id: ticket.project_id,
-    ticket_id: body.ticketId,
+    project_id: mission.project_id,
+    mission_id: body.missionId,
     position,
     title:
       body.title?.trim() ||
@@ -3497,8 +3497,8 @@ function insertObjective(body: CreateObjectiveBody): ObjectiveDto {
     entityId: id,
     operation: 'insert',
     entityRevision: 1,
-    projectId: ticket.project_id,
-    ticketId: body.ticketId,
+    projectId: mission.project_id,
+    missionId: body.missionId,
     objectiveId: id
   });
 
@@ -3515,7 +3515,7 @@ export function createObjective(body: CreateObjectiveBody): ObjectiveDto {
     scheduleObjectiveTitleGeneration({
       objectiveId: objective.id,
       projectId: objective.projectId,
-      ticketId: objective.ticketId,
+      missionId: objective.missionId,
       instructionText: objective.instructionText
     });
   }
@@ -3603,10 +3603,10 @@ const updateObjectiveTx = db.transaction(
       const otherDrafts = db
         .prepare(
           `SELECT id, revision FROM objectives
-           WHERE ticket_id = ? AND workspace_id = ? AND state = 'draft'
+           WHERE mission_id = ? AND workspace_id = ? AND state = 'draft'
              AND id <> ? AND deleted_at IS NULL`
         )
-        .all(existing.ticket_id, WORKSPACE.id, id) as Array<{ id: string; revision: number }>;
+        .all(existing.mission_id, WORKSPACE.id, id) as Array<{ id: string; revision: number }>;
 
       for (const draft of otherDrafts) {
         const draftRevision = draft.revision + 1;
@@ -3626,7 +3626,7 @@ const updateObjectiveTx = db.transaction(
           operation: 'update',
           entityRevision: draftRevision,
           projectId: existing.project_id,
-          ticketId: existing.ticket_id,
+          missionId: existing.mission_id,
           objectiveId: draft.id,
           changedFields: ['state']
         });
@@ -3644,7 +3644,7 @@ const updateObjectiveTx = db.transaction(
       operation: 'update',
       entityRevision: revision,
       projectId: existing.project_id,
-      ticketId: existing.ticket_id,
+      missionId: existing.mission_id,
       objectiveId: id,
       changedFields: changed
     });
@@ -3660,7 +3660,7 @@ const updateObjectiveTx = db.transaction(
       dequeueObjective({
         objectiveId: id,
         projectId: existing.project_id,
-        ticketId: existing.ticket_id,
+        missionId: existing.mission_id,
         reason: body.state === 'complete' ? 'completed' : 'disconnected',
         newState: body.state,
         now
@@ -3684,7 +3684,7 @@ export function updateObjective(id: string, body: UpdateObjectiveBody): Objectiv
     scheduleObjectiveTitleGeneration({
       objectiveId: objective.id,
       projectId: objective.projectId,
-      ticketId: objective.ticketId,
+      missionId: objective.missionId,
       instructionText: objective.instructionText
     });
   }
@@ -3711,7 +3711,7 @@ export const deleteObjective = db.transaction((id: string): void => {
     operation: 'delete',
     entityRevision: revision,
     projectId: existing.project_id,
-    ticketId: existing.ticket_id,
+    missionId: existing.mission_id,
     objectiveId: id
   });
 
@@ -3721,7 +3721,7 @@ export const deleteObjective = db.transaction((id: string): void => {
   dequeueObjective({
     objectiveId: id,
     projectId: existing.project_id,
-    ticketId: existing.ticket_id,
+    missionId: existing.mission_id,
     reason: 'deleted',
     newState: null,
     now
@@ -3996,7 +3996,7 @@ function toUserTokenDto(row: UserTokenRow): UserTokenDto {
     label: row.label,
     tokenPrefix: row.token_prefix,
     status: row.status as UserTokenDto['status'],
-    scope: scopeGrants.length > 0 ? 'ticket_lifecycle' : 'full',
+    scope: scopeGrants.length > 0 ? 'mission_lifecycle' : 'full',
     scopeGrants,
     expiresAt: row.expires_at,
     lastUsedAt: row.last_used_at,
@@ -4083,7 +4083,7 @@ export const createUserToken = db.transaction(
     }
 
     const scope: TokenScope = body.scope ?? 'full';
-    if (scope !== 'full' && scope !== 'ticket_lifecycle') {
+    if (scope !== 'full' && scope !== 'mission_lifecycle') {
       throw new ApiError(400, `Unknown token scope: ${String(scope)}`);
     }
     const scopeGrants = scopeGrantsForPreset(scope);

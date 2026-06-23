@@ -2,7 +2,7 @@
 # Overlord UserPromptSubmit hook — fires before Claude processes each user turn.
 # Claude Code does not expose turn_number in the hook body; we persist the last
 # posted turnIndex per session_id and send (last + 1). The first submit is
-# turnIndex 0 (initial injected ticket/objective prompt), which
+# turnIndex 0 (initial injected mission/objective prompt), which
 # `ovld protocol hook-event` skips — same contract as the Cursor hook.
 
 BODY=$(cat -)
@@ -17,10 +17,10 @@ log_hook() {
 
 PROMPT_LEN=$(printf '%s' "$BODY" | python3 -c "import json,sys; print(len((json.load(sys.stdin).get('prompt') or '').strip()))" 2>/dev/null || echo "0")
 SESSION_ID=$(printf '%s' "$BODY" | python3 -c "import json,sys; print(json.load(sys.stdin).get('session_id') or 'unknown')" 2>/dev/null || echo "unknown")
-log_hook "received submit session_id=$SESSION_ID prompt_len=$PROMPT_LEN ticket_present=$([ -n "${TICKET_ID:-}" ] && echo yes || echo no)"
+log_hook "received submit session_id=$SESSION_ID prompt_len=$PROMPT_LEN mission_present=$([ -n "${MISSION_ID:-}" ] && echo yes || echo no)"
 
-if [ -z "${TICKET_ID:-}" ] || ! command -v ovld >/dev/null 2>&1; then
-  log_hook "missing required env/tool ticket=$([ -n "${TICKET_ID:-}" ] && echo yes || echo no) ovld=$([ "$(command -v ovld 2>/dev/null)" ] && echo yes || echo no)"
+if [ -z "${MISSION_ID:-}" ] || ! command -v ovld >/dev/null 2>&1; then
+  log_hook "missing required env/tool mission=$([ -n "${MISSION_ID:-}" ] && echo yes || echo no) ovld=$([ "$(command -v ovld 2>/dev/null)" ] && echo yes || echo no)"
   exit 0
 fi
 
@@ -42,14 +42,14 @@ if not text:
     sys.exit(0)
 
 sid = body.get('session_id') or 'unknown'
-tid = os.environ.get('TICKET_ID', '')
+tid = os.environ.get('MISSION_ID', '')
 if sid != 'unknown' and tid:
     try:
         key = hashlib.sha256((os.getcwd() + '\0' + tid + '\0claude').encode()).hexdigest()
         native_dir = Path.home() / '.ovld' / 'native-sessions'
         native_dir.mkdir(parents=True, exist_ok=True)
         (native_dir / key).write_text(
-            json.dumps({'agent': 'claude', 'ticketId': tid, 'externalSessionId': sid}),
+            json.dumps({'agent': 'claude', 'missionId': tid, 'externalSessionId': sid}),
             encoding='utf-8',
         )
     except Exception:
@@ -77,14 +77,14 @@ if not session_key:
     try:
         with open(session_file, encoding='utf-8') as handle:
             persisted = json.load(handle)
-        if persisted.get('ticketId') == tid:
+        if persisted.get('missionId') == tid:
             session_key = persisted.get('sessionKey') or ''
     except Exception:
         session_key = ''
 
 payload = {
     'hookType': 'UserPromptSubmit',
-    'ticketId': tid,
+    'missionId': tid,
     'prompt': text,
     'turnIndex': turn_index,
 }
@@ -105,7 +105,7 @@ if user_token:
 args = [
     'ovld', 'protocol', 'hook-event',
     '--hook-type', 'UserPromptSubmit',
-    '--ticket-id', tid,
+    '--mission-id', tid,
     '--prompt', text,
     '--turn-index', str(turn_index),
 ]

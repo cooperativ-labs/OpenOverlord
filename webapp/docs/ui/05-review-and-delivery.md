@@ -1,13 +1,13 @@
 # 05 — Review & Delivery
 
 The screen that makes Overlord useful *after* an agent finishes. When a
-delivery moves a ticket to `review`, this surface lets a human evaluate what was
+delivery moves a mission to `review`, this surface lets a human evaluate what was
 asked, what happened, what was delivered, what changed and why, and what still
 needs follow-up — **without opening the original agent chat**. It must be easier to
 scan than terminal logs.
 
-**Route:** `/p/:projectId/tickets/:ticketId/review` (also embedded as the top of
-ticket detail when status is `review`).
+**Route:** `/p/:projectId/missions/:missionId/review` (also embedded as the top of
+mission detail when status is `review`).
 
 ---
 
@@ -83,7 +83,7 @@ ticket detail when status is `review`).
 
 | Action | Effect | Endpoint |
 | --- | --- | --- |
-| **Complete** | Ticket `review → complete` | `PATCH /tickets/:id` status (service-layer) |
+| **Complete** | Mission `review → complete` | `PATCH /missions/:id` status (service-layer) |
 | **Add follow-up objective** | Append a new objective for more work | `POST /protocol/add-objectives` |
 | **Reopen / ask for changes** | Post a follow-up requesting changes; optionally begin follow-up work | `POST /protocol/update` (`discussion`) or `--begin-follow-up-work --follow-up-intent execution` |
 | **Answer an ask** | Record human answer | `POST /protocol/update --event-type user_follow_up`/`decision` |
@@ -91,7 +91,7 @@ ticket detail when status is `review`).
 
 **Follow-up semantics the UI must respect:**
 
-- A delivered ticket stays in `review` during discussion. Notes, decisions, and
+- A delivered mission stays in `review` during discussion. Notes, decisions, and
   clarifications do not move it back to `execute`.
 - "Ask for changes that requires code work" is a deliberate, explicit transition:
   the UI calls the `begin-follow-up-work` signal, the objective becomes
@@ -105,11 +105,11 @@ ticket detail when status is `review`).
 
 | Region | Read | Realtime |
 | --- | --- | --- |
-| Delivery summary + history | `GET /tickets/:id/deliveries` → `['ticket', id, 'deliveries']` | `delivery` insert/update → new delivery card; status badge |
+| Delivery summary + history | `GET /missions/:id/deliveries` → `['mission', id, 'deliveries']` | `delivery` insert/update → new delivery card; status badge |
 | Artifacts | within deliveries payload | `artifact` deltas |
-| Rationale coverage | `GET /tickets/:id/changes` (`changed_files`+`change_rationales`) | `changed_files`/`change_rationale` deltas update coverage live |
-| Follow-up thread | `GET /tickets/:id/events` | `ticket_event` deltas (`ask`, `decision`, `user_follow_up`) |
-| Objective history | `['ticket', id]` | `objective` deltas (incl. `pending_delivery`) |
+| Rationale coverage | `GET /missions/:id/changes` (`changed_files`+`change_rationales`) | `changed_files`/`change_rationale` deltas update coverage live |
+| Follow-up thread | `GET /missions/:id/events` | `mission_event` deltas (`ask`, `decision`, `user_follow_up`) |
+| Objective history | `['mission', id]` | `objective` deltas (incl. `pending_delivery`) |
 
 Because coverage reads the live `changed_files`, a reviewer watching a follow-up
 session sees coverage update as the agent records rationales — review is live, not a
@@ -119,7 +119,7 @@ post-hoc snapshot.
 
 ## States
 
-- **Not yet delivered:** if opened on a non-`review` ticket, show "No delivery yet"
+- **Not yet delivered:** if opened on a non-`review` mission, show "No delivery yet"
   with the current objective/session status and a link back to detail.
 - **Missing rationale coverage:** prominent but non-blocking warning listing
   uncovered meaningful files (this is the human's call to accept or push back).
@@ -134,7 +134,7 @@ post-hoc snapshot.
 
 ## Capability gating
 
-- Review actions gated by RBAC (`ticket:update`, `objective:submit`) when Group 1
+- Review actions gated by RBAC (`mission:update`, `objective:submit`) when Group 1
   is installed.
 - Actor attribution on follow-up events shows real users only when Group 1 is
   installed; otherwise the implicit user/agent.
@@ -143,15 +143,15 @@ post-hoc snapshot.
 
 ## Acceptance criteria
 
-- A delivered ticket can be fully reviewed here — summary, artifacts, changed files
+- A delivered mission can be fully reviewed here — summary, artifacts, changed files
   and rationale coverage, and follow-up actions — without opening the agent chat.
 - Rationale coverage clearly distinguishes covered vs uncovered meaningful changes
   and links each file to its annotated diff.
 - Artifacts are grouped by type and visually distinct from objective attachments.
-- Ordinary review discussion keeps the ticket in `review`; reopening for code work
+- Ordinary review discussion keeps the mission in `review`; reopening for code work
   is an explicit, separately-labeled action that moves the objective to
   `pending_delivery`.
 - Follow-up deliveries are added without destroying earlier delivery history, and a
   redelivery-needed state is visible.
-- Completing the ticket moves it to `complete` via the service layer.
+- Completing the mission moves it to `complete` via the service layer.
 </content>

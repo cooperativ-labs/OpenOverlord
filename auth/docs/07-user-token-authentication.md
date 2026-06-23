@@ -137,7 +137,7 @@ Example:
 
 ```bash
 export Overlord_USER_TOKEN=out_...
-ovld protocol attach --ticket-id 1:1204
+ovld protocol attach --mission-id 1:1204
 ovld runner start
 ```
 
@@ -184,8 +184,8 @@ Potential protocol commands:
 Token scopes are now implemented. A token is created with a `scope`:
 
 - `full` — no scope rows; the token inherits the full permissions of its creating user's roles.
-- `ticket_lifecycle` — persists grant patterns into `user_token_scopes`: `project:read`,
-  `ticket:*`, `objective:*`, `session:*`, `event:create`, `event:read`, `artifact:*`,
+- `mission_lifecycle` — persists grant patterns into `user_token_scopes`: `project:read`,
+  `mission:*`, `objective:*`, `session:*`, `event:create`, `event:read`, `artifact:*`,
   `attachment:*`, `execution_request:{create,read,claim}`. This is everything a runner/agent needs
   and excludes project/user/role/connector administration and `user_token:self:*` (a scoped token
   cannot mint further tokens).
@@ -197,7 +197,7 @@ restrict, never exceed, the user's current role — if the user's role is reduce
 less powerful automatically. Revocation and expiry are checked before scope evaluation. The
 `requirePermission` gate enforces this uniformly across REST, protocol, and runner routes.
 
-The `ovld user-token create --scope full|ticket-lifecycle` CLI flag and the webapp settings token
+The `ovld user-token create --scope full|mission-lifecycle` CLI flag and the webapp settings token
 form both surface these two presets.
 
 ## Earlier Design Notes (now implemented)
@@ -207,8 +207,8 @@ later added scope checks, as described above.
 
 Future scope examples:
 
-- Read-only ticket access.
-- Create/update tickets but not delete projects.
+- Read-only mission access.
+- Create/update missions but not delete projects.
 - Runner-only execution request claim/complete.
 - Connector setup only.
 - Project-limited access.

@@ -40,7 +40,7 @@ A clear-eyed starting point, because it determines the whole sequence.
 | Layer the UI needs | Status today |
 | --- | --- |
 | React frontend | None — `webapp/` contains docs only |
-| REST endpoints (`/projects`, `/tickets`, `/protocol/*`, …) | None implemented |
+| REST endpoints (`/projects`, `/missions`, `/protocol/*`, …) | None implemented |
 | `/realtime` SSE/WebSocket + `/sync/changes` feed | None implemented |
 | Shared service layer (CLI/protocol/REST call into it) | Not present in `src/` |
 | Auth + RBAC | Partially present (`auth/src/auth/`, `auth/src/rbac/`) |
@@ -95,7 +95,7 @@ consumes `rest`. Split the module so the contract component stays unambiguous:
 ```
 webapp/
   server/                ← the `rest` contract component (REST routes + realtime)
-    <area>/routes.ts     ← per AGENTS.md convention (tickets/, projects/, …)
+    <area>/routes.ts     ← per AGENTS.md convention (missions/, projects/, …)
     realtime/            ← SSE/WebSocket emitter from entity_changes
   web/                   ← the React SPA (this plan's primary subject; pure consumer)
     app/ routes/ features/ components/ lib/ …
@@ -129,7 +129,7 @@ resources (not raw tables), so they fit the existing boundary. Ratify them in th
 
 | Endpoint | Feeds | Page docs |
 | --- | --- | --- |
-| `GET /tickets/:id/changes` | `changed_files` + `change_rationales` (coverage) | `ui/05`, `ui/06` |
+| `GET /missions/:id/changes` | `changed_files` + `change_rationales` (coverage) | `ui/05`, `ui/06` |
 | `GET /runner/status` | local runner identity + queue summary | `ui/04` |
 | `GET /execution-requests?projectId=` | runner queue | `ui/04` |
 | `GET /capabilities` | which à-la-carte groups / REST features are installed | all (gating, `ui/00` §5) |
@@ -201,7 +201,7 @@ built once. **Do this before any page.** It also de-risks the single hardest par
    collapse <960px, the global status cluster (runner state, attention counter,
    realtime link state).
 3. **Router + route map** (`ui/00` §3): every route deep-linkable and
-   reload-safe; ticket-detail inner tabs via `?tab=`; project-scoped vs
+   reload-safe; mission-detail inner tabs via `?tab=`; project-scoped vs
    workspace-scoped layout split.
 4. **Query client + REST client**: typed fetch layer, the cache-key scheme from
    `ui/00` §4.2, the `409`-conflict (revision mismatch) refetch/re-apply pattern.
@@ -241,9 +241,9 @@ Effort is **relative** (S < M < L < XL), not calendar time.
 
 | # | Milestone | Doc(s) | Effort | Key backend deps |
 | --- | --- | --- | --- | --- |
-| **M1** | **Vertical slice / de-risking spike** | 02, 03, 04, 05 (read-only depth, core groups only) | L | `GET /tickets`, `GET /tickets/:id`, `…/events`, `…/deliveries`, `POST /protocol/request-execution`, `/realtime`, `/sync` |
+| **M1** | **Vertical slice / de-risking spike** | 02, 03, 04, 05 (read-only depth, core groups only) | L | `GET /missions`, `GET /missions/:id`, `…/events`, `…/deliveries`, `POST /protocol/request-execution`, `/realtime`, `/sync` |
 
-M1 is the spike from the prior delivery's next-steps artifact: **board → ticket
+M1 is the spike from the prior delivery's next-steps artifact: **board → mission
 detail → run an objective → watch it update live → review the delivery**, against
 core table groups only. It exercises the realtime spine, capability gating, the
 status vocabularies, and the protocol-mirroring mutation path on one thin path
@@ -255,12 +255,12 @@ breadth work begins.
 | # | Milestone | Doc | Effort | Notes |
 | --- | --- | --- | --- | --- |
 | **M2** | Projects & project settings | 01 | M | Project switcher, list, settings, resource directories, status-invariant enforcement (one default/execute/review) |
-| **M3** | Ticket board (full) | 02 | L | Kanban + list, filter bar in URL state, create-ticket modal, drag/keyboard status move (optimistic + reconcile), quick-run with working-dir repair |
-| **M4** | Ticket detail (full) | 03 | XL | Objective rail + editor, all timeline `EventItem` renderers, inline ask answering, shared-context tab, objective-scoped attachments, the never-transition-locally rule |
+| **M3** | Mission board (full) | 02 | L | Kanban + list, filter bar in URL state, create-mission modal, drag/keyboard status move (optimistic + reconcile), quick-run with working-dir repair |
+| **M4** | Mission detail (full) | 03 | XL | Objective rail + editor, all timeline `EventItem` renderers, inline ask answering, shared-context tab, objective-scoped attachments, the never-transition-locally rule |
 | **M5** | Execution & runner | 04 | L | Run control, execution-request queue, runner-status panel, auto-advance approval gate, idempotent re-click safety |
 | **M6** | Review & delivery | 05 | L | Delivery summary, rationale coverage bar, artifacts by type, follow-up vs reopen-for-changes distinction, delivery history pager |
 
-M4 (ticket detail) is the largest single screen and the heart of "realtime React
+M4 (mission detail) is the largest single screen and the heart of "realtime React
 interface" — budget accordingly. M5/M6 complete the run→deliver→review loop that
 M1 stubbed.
 
@@ -353,7 +353,7 @@ Run the `verify` skill on the running app before each milestone is called done.
                                                                  │
  Stage A  M1  Vertical slice (board→detail→run→live→review)  ◀── go/no-go
                                                                  │
- Stage B  M2 Projects → M3 Board → M4 Ticket detail → M5 Runner → M6 Review
+ Stage B  M2 Projects → M3 Board → M4 Mission detail → M5 Runner → M6 Review
                                                                  │
  Stage C  M7 Changes → M8 Connectors → M9 Settings
                                                                  │
@@ -383,8 +383,8 @@ The interface is complete when it satisfies the structure acceptance criteria
 product-level criteria in [web-app.md](web-app.md):
 
 - Launch lands on the active project's board — never a marketing or forced-login page.
-- A user can create a project + ticket in the web app and execute it via the CLI runner.
-- A user can watch an executing objective update live in ticket detail (no refresh).
+- A user can create a project + mission in the web app and execute it via the CLI runner.
+- A user can watch an executing objective update live in mission detail (no refresh).
 - A user can review delivery summary, artifacts, and rationale coverage without the agent chat.
 - A user can identify and clear stale execution requests.
 - A user can configure connector/default-launch settings without editing config files.

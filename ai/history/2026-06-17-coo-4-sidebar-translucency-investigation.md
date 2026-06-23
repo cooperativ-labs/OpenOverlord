@@ -1,6 +1,6 @@
 # coo:4 — macOS sidebar translucency investigation
 
-**Ticket:** coo:4  
+**Mission:** coo:4  
 **Date:** 2026-06-17  
 **Scope:** Investigation only (no implementation)
 

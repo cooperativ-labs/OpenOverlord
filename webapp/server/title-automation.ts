@@ -10,11 +10,11 @@ import { realtime } from './realtime.ts';
 type ObjectiveContext = {
   objectiveId: string;
   projectId: string;
-  ticketId: string;
+  missionId: string;
 };
 
-type TicketContext = {
-  ticketId: string;
+type MissionContext = {
+  missionId: string;
   projectId: string;
 };
 
@@ -28,7 +28,7 @@ const objectiveTitleStore = {
   }): Promise<void> => {
     const existing = db
       .prepare(
-        `SELECT id, project_id, ticket_id, title, revision
+        `SELECT id, project_id, mission_id, title, revision
            FROM objectives
           WHERE id = ? AND deleted_at IS NULL`
       )
@@ -36,7 +36,7 @@ const objectiveTitleStore = {
       | {
           id: string;
           project_id: string;
-          ticket_id: string;
+          mission_id: string;
           title: string | null;
           revision: number;
         }
@@ -58,27 +58,27 @@ const objectiveTitleStore = {
       operation: 'update',
       entityRevision: revision,
       projectId: existing.project_id,
-      ticketId: existing.ticket_id,
+      missionId: existing.mission_id,
       objectiveId,
       changedFields: ['title']
     });
   }
 };
 
-async function updateTicketTitle({
-  ticketId,
+async function updateMissionTitle({
+  missionId,
   title
 }: {
-  ticketId: string;
+  missionId: string;
   title: string;
 }): Promise<void> {
   const existing = db
     .prepare(
       `SELECT id, project_id, title, revision
-         FROM tickets
+         FROM missions
         WHERE id = ? AND deleted_at IS NULL`
     )
-    .get(ticketId) as
+    .get(missionId) as
     | { id: string; project_id: string; title: string; revision: number }
     | undefined;
 
@@ -89,16 +89,16 @@ async function updateTicketTitle({
   const now = nowIso();
   const revision = existing.revision + 1;
   db.prepare(
-    `UPDATE tickets SET title = @title, updated_at = @now, revision = @revision WHERE id = @id`
-  ).run({ id: ticketId, title, now, revision });
+    `UPDATE missions SET title = @title, updated_at = @now, revision = @revision WHERE id = @id`
+  ).run({ id: missionId, title, now, revision });
 
   recordChange({
-    entityType: 'ticket',
-    entityId: ticketId,
+    entityType: 'mission',
+    entityId: missionId,
     operation: 'update',
     entityRevision: revision,
     projectId: existing.project_id,
-    ticketId,
+    missionId,
     changedFields: ['title']
   });
 }
@@ -132,8 +132,8 @@ export function scheduleObjectiveTitleGeneration(
   );
 }
 
-export function scheduleTicketTitleGeneration(
-  params: TicketContext & { instructionText: string }
+export function scheduleMissionTitleGeneration(
+  params: MissionContext & { instructionText: string }
 ): void {
   notifyAfterTitleAutomation(
     generateObjectiveTitle({
@@ -143,19 +143,19 @@ export function scheduleTicketTitleGeneration(
       if (!title) {
         return;
       }
-      return updateTicketTitle({ ticketId: params.ticketId, title });
+      return updateMissionTitle({ missionId: params.missionId, title });
     })
   );
 }
 
 /**
- * Synchronous counterpart to {@link scheduleTicketTitleGeneration} for the
+ * Synchronous counterpart to {@link scheduleMissionTitleGeneration} for the
  * manual "Generate title" button: awaits the summarizer and persists the
  * result before responding, so the caller can show the title (or a failure)
  * immediately instead of waiting on a realtime echo.
  */
-export async function generateTicketTitleNow(
-  params: TicketContext & { instructionText: string }
+export async function generateMissionTitleNow(
+  params: MissionContext & { instructionText: string }
 ): Promise<string> {
   const title = await generateObjectiveTitle({
     instructionText: params.instructionText,
@@ -164,6 +164,6 @@ export async function generateTicketTitleNow(
   if (!title) {
     return '';
   }
-  await updateTicketTitle({ ticketId: params.ticketId, title });
+  await updateMissionTitle({ missionId: params.missionId, title });
   return title;
 }

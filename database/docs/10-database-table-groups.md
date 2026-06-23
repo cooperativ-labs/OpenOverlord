@@ -14,7 +14,7 @@ Core tables are self-contained: they work without any a la carte table. A la car
 
 ## Core Tables
 
-Every Overlord installation needs these. They cover the fundamental workflow: create a project, file a ticket, attach an agent, record progress, and deliver results.
+Every Overlord installation needs these. They cover the fundamental workflow: create a project, file a mission, attach an agent, record progress, and deliver results.
 
 ### Identity and Workspace
 
@@ -32,7 +32,7 @@ Every Overlord installation needs these. They cover the fundamental workflow: cr
 | Table                              | Purpose                                                  |
 | ---------------------------------- | -------------------------------------------------------- |
 | `projects`                         | Top-level containers mapped to git repositories.         |
-| `project_statuses`                 | Configurable ticket workflow states per project.         |
+| `project_statuses`                 | Configurable mission workflow states per project.         |
 | `devices`                          | Local and remote runner-capable machine identities.      |
 | `execution_targets`                | Where objectives can run (local device, SSH host, etc.). |
 | `workspace_user_execution_targets` | Per-workspace-user access to an execution target. |
@@ -41,14 +41,14 @@ Every Overlord installation needs these. They cover the fundamental workflow: cr
 | `project_user_preferences`         | Per-user project UI/config defaults.                     |
 
 
-### Tickets, Objectives, and Sessions
+### Missions, Objectives, and Sessions
 
 
 | Table              | Purpose                                                |
 | ------------------ | ------------------------------------------------------ |
-| `ticket_sequences` | Allocates the numeric part of human IDs like `1:1204`. |
-| `tickets`          | The durable work unit and review boundary.             |
-| `objectives`       | One ordered agent pass inside a ticket.                |
+| `mission_sequences` | Allocates the numeric part of human IDs like `1:1204`. |
+| `missions`          | The durable work unit and review boundary.             |
+| `objectives`       | One ordered agent pass inside a mission.                |
 | `agent_sessions`   | Live attachment between an agent and one objective.    |
 
 
@@ -57,8 +57,8 @@ Every Overlord installation needs these. They cover the fundamental workflow: cr
 
 | Table                    | Purpose                                                           |
 | ------------------------ | ----------------------------------------------------------------- |
-| `ticket_events`          | Append-only timeline of all ticket activity.                      |
-| `shared_context_entries` | Persistent ticket memory that survives across objectives.         |
+| `mission_events`          | Append-only timeline of all mission activity.                      |
+| `shared_context_entries` | Persistent mission memory that survives across objectives.         |
 | `objective_attachments`  | File metadata for uploads/imports scoped to an objective.         |
 | `deliveries`             | Final or follow-up delivery review boundaries.                    |
 | `artifacts`              | Structured review artifacts attached to deliveries.               |
@@ -162,24 +162,24 @@ Each group is independent from the others unless noted. Install them in any orde
 - `connector_installations` is only setup/doctor state for files installed into an agent runtime; it is not the source of truth for custom extension definitions.
 - These tables are loosely coupled but serve the same connector-extension and visibility story; installing one without the others is allowed but provides less value.
 - `hook_events` is append-only and grows with every connector event; plan for periodic pruning.
-- `permission_requests` links to `ticket_events` and `agent_sessions` from core; no additional group dependency.
+- `permission_requests` links to `mission_events` and `agent_sessions` from core; no additional group dependency.
 
 **Recommended pairing:** Group 3 (`worker_jobs`) for processing hook events asynchronously.
 
 ---
 
-### Group 5: Ticket Tagging
+### Group 5: Mission Tagging
 
-**Tables:** `project_tag_definitions`, `ticket_tag_assignments`
+**Tables:** `project_tag_definitions`, `mission_tag_assignments`
 
 **When to add:**
 
-- You want custom labels on tickets beyond status and priority.
+- You want custom labels on missions beyond status and priority.
 - You want to filter a board by tag (e.g., `backend`, `blocked-by-design`, `needs-review`).
 
 **Dependency notes:**
 
-- Both tables are required together; `ticket_tag_assignments` FKs into `project_tag_definitions`.
+- Both tables are required together; `mission_tag_assignments` FKs into `project_tag_definitions`.
 - Entirely independent of all other a la carte groups.
 
 ---
@@ -231,8 +231,8 @@ Each group is independent from the others unless noted. Install them in any orde
 
 **When to add:**
 
-- Exact-match filters on workspace/project/status are not enough; users need ranked text search over ticket titles and objective text.
-- The CLI `search-tickets` command or web app search bar needs sub-second full-text results.
+- Exact-match filters on workspace/project/status are not enough; users need ranked text search over mission titles and objective text.
+- The CLI `search-missions` command or web app search bar needs sub-second full-text results.
 
 **Dependency notes:**
 
@@ -282,12 +282,12 @@ Use the questions below to determine which groups to install. The questions are 
 - **Yes, with persistent cursor support** → Add Group 6 (client registry) and Group 7 (outbox).
 - **Yes, stateless REST only (no cursor resume)** → Add Group 7 alone if side-effect reliability matters; Group 6 is optional.
 
-### Q4: Do you need full-text search over tickets?
+### Q4: Do you need full-text search over missions?
 
 - **Status/project filters are enough** → Skip Group 8.
 - **Need ranked text search** → Add Group 8.
 
-### Q5: Do you need custom ticket labels?
+### Q5: Do you need custom mission labels?
 
 - **No** → Skip Group 5.
 - **Yes** → Add Group 5.
@@ -348,7 +348,7 @@ All groups. Order of adoption:
 4. Group 7 (outbox, drained by group 3 workers)
 5. Group 6 (client registry, once a persistent UI exists)
 6. Group 4 (connector extensions and monitoring)
-7. Group 5 (tagging) THE ABILITY TO ADD TAGS TO TICKETS SHOULD BE DEFAULT
+7. Group 5 (tagging) THE ABILITY TO ADD TAGS TO MISSIONS SHOULD BE DEFAULT
 8. Group 8 (search)
 
 ---
@@ -362,8 +362,8 @@ When an agent guides a new user through `ovld init` configuration, it should ask
 | --------------------------------------------------------------------------------- | -------- |
 | Will you share this instance with others or use the REST API from external tools? | 1, 2     |
 | Do you need a web UI or desktop app with live updates?                            | 3, 6, 7  |
-| Do you need full-text ticket search?                                              | 8        |
-| Do you want custom labels on tickets?                                             | 5        |
+| Do you need full-text mission search?                                              | 8        |
+| Do you want custom labels on missions?                                             | 5        |
 | Do you want custom harness extensions, connector health monitoring, or permission approval UI? | 3, 4     |
 
 
