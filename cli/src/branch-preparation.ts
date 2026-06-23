@@ -118,28 +118,56 @@ function currentWorktrees(gitRoot: string): string[] {
     .filter(Boolean);
 }
 
+function revParse(gitRoot: string, ref: string): string {
+  return runGit(gitRoot, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], {
+    optional: true
+  }).trim();
+}
+
+// The set of commit SHAs on `base`'s first-parent trunk — the linear backbone you
+// walk by always following the first parent. Overlord's merge-with-parent flow
+// advances the parent with a `--no-ff` merge commit whose SECOND parent is the
+// branch tip, so a genuinely merged branch tip is NOT on this trunk; a branch the
+// base merely advanced past linearly (e.g. an empty ticket branch) stays on it.
+function firstParentTrunk(gitRoot: string, base: string): Set<string> {
+  return new Set(lines(runGit(gitRoot, ['rev-list', '--first-parent', base], { optional: true })));
+}
+
+// Branches genuinely merged into `base`: contained in the base AND off its
+// first-parent trunk (they landed via the `--no-ff` merge commit). Plain
+// `git branch --merged <base>` lists every branch whose tip is reachable from the
+// base — including freshly-cut/empty ones the base advanced past — which would make
+// the planner treat the ticket's established (but un-merged) branch as merged and
+// spin up a new cycle branch for each objective. Filtering to off-trunk tips keeps
+// objectives on the same branch until it has actually been merged into its parent.
+// Mirrors the webapp's `branchMergedIntoBase` divergence/first-parent rule.
+export function computeMergedBranches(gitRoot: string, base: string): string[] {
+  const localTrunk = firstParentTrunk(gitRoot, base);
+  const remoteTrunk = firstParentTrunk(gitRoot, `origin/${base}`);
+  const result: string[] = [];
+  const collect = (refArgs: string[], trunk: Set<string>): void => {
+    for (const branch of lines(runGit(gitRoot, refArgs, { optional: true }))) {
+      const sha = revParse(gitRoot, branch);
+      // On the first-parent trunk ⇒ a plain ancestor, not a real merge ⇒ skip.
+      if (sha && trunk.has(sha)) continue;
+      result.push(branch);
+    }
+  };
+  collect(['branch', '--merged', base, '--format=%(refname:short)'], localTrunk);
+  collect(
+    ['branch', '-r', '--merged', `origin/${base}`, '--format=%(refname:short)'],
+    remoteTrunk
+  );
+  return result;
+}
+
 function repoRefs(gitRoot: string, base: string) {
   return {
     local: lines(runGit(gitRoot, ['branch', '--format=%(refname:short)'], { optional: true })),
     remote: lines(
       runGit(gitRoot, ['branch', '-r', '--format=%(refname:short)'], { optional: true })
     ),
-    merged: [
-      ...lines(
-        runGit(gitRoot, ['branch', '--merged', base, '--format=%(refname:short)'], {
-          optional: true
-        })
-      ),
-      ...lines(
-        runGit(
-          gitRoot,
-          ['branch', '-r', '--merged', `origin/${base}`, '--format=%(refname:short)'],
-          {
-            optional: true
-          }
-        )
-      )
-    ],
+    merged: computeMergedBranches(gitRoot, base),
     checkedOut: currentWorktrees(gitRoot)
   };
 }

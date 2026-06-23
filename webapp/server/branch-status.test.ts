@@ -95,6 +95,19 @@ describe('branch status derivation', () => {
     //    the same branch reads merged.
     git(repo, ['update-ref', 'refs/remotes/origin/main', git(repo, ['rev-parse', 'main'])]);
     assert.equal(getTicketDetail(mergedTicket.id).branch?.status, 'merged');
+
+    // 5. An EMPTY branch the base merely advanced PAST is NOT merged. `empty-1`
+    //    is cut from the ORIGINAL base commit with no commits of its own; main has
+    //    since moved forward (via the unrelated merge above + push), so origin/main
+    //    now *contains* empty-1's tip. Containment alone used to misreport this as
+    //    "merged" — but the branch never landed via a merge, so its tip stays on
+    //    main's first-parent trunk and it must read "created".
+    const emptyTicket = createTicket({ projectId: project.id, firstObjective: 'Empty branch' });
+    const emptyBranch = 'overlord/empty-1';
+    const rootCommit = git(repo, ['rev-list', '--max-parents=0', 'main']);
+    git(repo, ['branch', emptyBranch, rootCommit]);
+    prepare(emptyTicket.displayId, emptyBranch);
+    assert.equal(getTicketDetail(emptyTicket.id).branch?.status, 'created');
   });
 
   it('uses the project-configured default branch as the ticket base/parent', async () => {

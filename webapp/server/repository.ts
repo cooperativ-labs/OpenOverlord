@@ -543,18 +543,33 @@ function resolveRef(repoPath: string, ref: string): string | null {
   return sha || null;
 }
 
-// True only when the branch has actually been merged into the base: it must have
-// diverged from the base (different tip) AND be fully contained in it (no commits
-// of its own that are absent from the base). A branch freshly cut from the base
-// shares the base's tip, so it is NOT merged — fixing the bug where a just-created
-// branch reported as "merged" because `git branch --merged <base>` lists every
-// branch whose tip is reachable from the base, including brand-new ones.
+// True when `sha` sits on the base's first-parent trunk — the linear backbone you
+// walk by always taking the first parent. Overlord's merge-with-parent flow brings
+// a branch in with a `--no-ff` merge commit whose SECOND parent is the branch tip,
+// so a genuinely merged branch tip is NOT on this trunk. A branch the base merely
+// advanced past linearly (e.g. an empty ticket branch whose parent moved forward)
+// stays on it. This is what distinguishes "landed via merge" from "merely reachable".
+function isOnFirstParentTrunk(repoPath: string, base: string, sha: string): boolean {
+  const trunk = runGit(repoPath, ['rev-list', '--first-parent', base]);
+  if (!trunk) return false;
+  return trunk.split('\n').some(line => line.trim() === sha);
+}
+
+// True only when the branch has actually been merged into the base via the
+// merge-with-parent flow: its tip must be fully contained in the base (no commits
+// of its own absent from the base) AND off the base's first-parent trunk, meaning
+// it entered through a `--no-ff` merge commit rather than being a plain ancestor.
+// A branch freshly cut from the base shares the base's tip, and an empty branch the
+// base later advanced past is still a first-parent ancestor — neither is "merged",
+// fixing the bug where such branches reported as merged because they were merely
+// reachable from the base (`git branch --merged <base>` / containment alone).
 function branchMergedIntoBase(repoPath: string, branchSha: string, base: string): boolean {
   const baseSha = resolveRef(repoPath, base);
   if (!baseSha) return false;
   if (baseSha === branchSha) return false;
   const ahead = runGit(repoPath, ['rev-list', '--count', `${baseSha}..${branchSha}`]).trim();
-  return ahead === '0';
+  if (ahead !== '0') return false;
+  return !isOnFirstParentTrunk(repoPath, base, branchSha);
 }
 
 // Derives the ticket-panel branch status from the real git state in the project's
