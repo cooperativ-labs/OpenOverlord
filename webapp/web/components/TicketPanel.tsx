@@ -186,7 +186,7 @@ function CopyIconButton({ value, label }: { value: string; label: string }) {
   );
 }
 
-type BranchActionName = 'integrate' | 'push_parent' | 'publish';
+type BranchActionName = 'integrate' | 'commit' | 'push_parent' | 'publish';
 
 // Sentinel for the "Automatic" choice — Radix Select items cannot use an empty
 // string value, so we map this to clearing the override (branchOverride: null).
@@ -352,6 +352,8 @@ function BranchSection({ ticket }: { ticket: TicketDetailDto }) {
   // When an action needs confirmation (an objective is executing on the branch),
   // we stash the intended action and surface an inline confirm prompt.
   const [confirmAction, setConfirmAction] = useState<BranchActionName | null>(null);
+  // The commit message captured before merging, while the branch worktree is dirty.
+  const [commitMessage, setCommitMessage] = useState('');
 
   if (!branch) return null;
   const status = BRANCH_STATUS_META[branch.status];
@@ -362,11 +364,24 @@ function BranchSection({ ticket }: { ticket: TicketDetailDto }) {
   // The DTO carries only the active (queued/claimed/launching) execution requests.
   const isExecuting = ticket.executionRequests.length > 0;
 
-  async function runAction(action: BranchActionName, confirmBusy: boolean): Promise<void> {
+  const actionLabels: Record<BranchActionName, string> = {
+    integrate: `Update from ${parent} & merge`,
+    commit: 'Commit changes',
+    push_parent: `Push ${parent}`,
+    publish: 'Publish'
+  };
+
+
+  async function runAction(
+    action: BranchActionName,
+    confirmBusy: boolean,
+    message?: string
+  ): Promise<void> {
     setActionError(null);
     try {
-      await branchAction.mutateAsync({ action, confirmBusy });
+      await branchAction.mutateAsync({ action, confirmBusy, message });
       setConfirmAction(null);
+      if (action === 'commit') setCommitMessage('');
     } catch (err) {
       // The server re-checks execution state; a fresh busy result re-opens the prompt.
       if (err instanceof ApiRequestError && err.code === 'BRANCH_BUSY_EXECUTING' && !confirmBusy) {
@@ -378,20 +393,25 @@ function BranchSection({ ticket }: { ticket: TicketDetailDto }) {
     }
   }
 
-  function handleAction(action: BranchActionName): void {
+  function handleAction(action: BranchActionName, message?: string): void {
     if (isExecuting) {
       setActionError(null);
       setConfirmAction(action);
       return;
     }
-    void runAction(action, false);
+    void runAction(action, false, message);
   }
 
-  const showIntegrate = branch.status === 'created' || branch.status === 'published';
+  const onMergeableBranch = branch.status === 'created' || branch.status === 'published';
+  // The branch must be committed before it can be merged: while its worktree has
+  // uncommitted changes we ask the user to commit first; only a clean worktree
+  // gets the "Update from parent & merge" affordance.
+  const showCommit = onMergeableBranch && branch.dirty;
+  const showIntegrate = onMergeableBranch && !branch.dirty;
   const showPushParent = branch.status === 'merged_unpushed';
   const showPublish = branch.status === 'created';
   const showCreatePr = branch.status === 'published';
-  const hasActions = showIntegrate || showPushParent || showPublish || showCreatePr;
+  const commitMessageValid = commitMessage.trim().length > 0;
 
   return (
     <TooltipProvider>
@@ -432,6 +452,35 @@ function BranchSection({ ticket }: { ticket: TicketDetailDto }) {
           </div>
 
           <BranchSelector ticket={ticket} />
+
+          {showCommit && (
+            <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2">
+              <p className="text-xs text-amber-800 dark:text-amber-200">
+                This branch has uncommitted changes. Commit them before updating from {parent}.
+              </p>
+              <input
+                type="text"
+                value={commitMessage}
+                onChange={event => setCommitMessage(event.target.value)}
+                placeholder="Commit message"
+                aria-label="Commit message"
+                disabled={branchAction.isPending}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' && commitMessageValid && !branchAction.isPending) {
+                    handleAction('commit', commitMessage.trim());
+                  }
+                }}
+                className="h-7 w-full rounded-md border bg-transparent px-2 text-xs"
+              />
+              <Button
+                variant="primary"
+                disabled={branchAction.isPending || !commitMessageValid}
+                onClick={() => handleAction('commit', commitMessage.trim())}
+              >
+                {branchAction.isPending ? 'Committing…' : actionLabels.commit}
+              </Button>
+            </div>
+          )}
 
           {hasActions && (
             <div className="flex flex-wrap gap-2 border-t border-border/60 pt-2">
@@ -493,7 +542,13 @@ function BranchSection({ ticket }: { ticket: TicketDetailDto }) {
                 <Button
                   variant="danger"
                   disabled={branchAction.isPending}
-                  onClick={() => void runAction(confirmAction, true)}
+                  onClick={() =>
+                    void runAction(
+                      confirmAction,
+                      true,
+                      confirmAction === 'commit' ? commitMessage.trim() : undefined
+                    )
+                  }
                 >
                   Continue anyway
                 </Button>
