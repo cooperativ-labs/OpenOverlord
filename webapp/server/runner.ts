@@ -387,12 +387,43 @@ export const recordBranchPrepared = db.transaction(
 
     const now = nowIso();
 
+    // Record the branch this objective actually ran on (the runner is the only
+    // place that knows the objective ↔ branch mapping at prepare time). Surfaced
+    // per-objective in the ticket panel and used for follow-on worktree reuse.
+    if (objectiveId) {
+      const objective = db
+        .prepare(`SELECT revision FROM objectives WHERE id = ?`)
+        .get(objectiveId) as { revision: number } | undefined;
+      if (objective) {
+        const objectiveRevision = objective.revision + 1;
+        db.prepare(
+          `UPDATE objectives
+              SET branch = @branch, updated_at = @now, revision = @revision
+            WHERE id = @id`
+        ).run({ branch: branch.branchName, now, revision: objectiveRevision, id: objectiveId });
+        recordChange({
+          entityType: 'objective',
+          entityId: objectiveId,
+          operation: 'update',
+          entityRevision: objectiveRevision,
+          projectId: ticket.project_id,
+          ticketId: ticket.id,
+          objectiveId,
+          changedFields: ['branch']
+        });
+      }
+    }
+
     // `tickets.active_branch` is the source of truth for which branch a ticket is
     // operating on (read by merge detection and the REST/ticket-panel surfaces).
+    // We also clear any `branch_override` here: the user's pinned choice has now
+    // been consumed (it lives in `active_branch`, which the planner reuses), so
+    // the ticket returns to automatic selection for subsequent launches.
     const ticketRevision = ticket.revision + 1;
     db.prepare(
       `UPDATE tickets
-          SET active_branch = @active_branch, updated_at = @now, revision = @revision
+          SET active_branch = @active_branch, branch_override = NULL,
+              updated_at = @now, revision = @revision
         WHERE id = @id`
     ).run({ active_branch: branch.branchName, now, revision: ticketRevision, id: ticket.id });
     recordChange({
@@ -403,7 +434,7 @@ export const recordBranchPrepared = db.transaction(
       projectId: ticket.project_id,
       ticketId: ticket.id,
       objectiveId,
-      changedFields: ['active_branch']
+      changedFields: ['active_branch', 'branch_override']
     });
 
     // Human-readable audit entry for the activity feed. `branch_prepared` is not

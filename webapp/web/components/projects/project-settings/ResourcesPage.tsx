@@ -1,5 +1,5 @@
 import { AlertTriangle, FolderOpen, Plus, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,9 @@ import {
   useCreateProjectResource,
   useDeleteProjectResource,
   useLaunchSettings,
+  useProject,
   useProjectResources,
+  useUpdateProject,
   useUpdateProjectResource
 } from '@/lib/queries';
 
@@ -44,6 +46,8 @@ function resourceStatusLabel(status: string): string {
 export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
   const resourcesQ = useProjectResources(projectId);
   const launchSettingsQ = useLaunchSettings();
+  const projectQ = useProject(projectId);
+  const updateProject = useUpdateProject(projectId);
   const createResource = useCreateProjectResource(projectId);
   const updateResource = useUpdateProjectResource(projectId);
   const deleteResource = useDeleteProjectResource(projectId);
@@ -69,6 +73,31 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
   const [rowError, setRowError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProjectResourceDto | null>(null);
+
+  // Project default/parent branch (stored in project settings). The input mirrors
+  // the saved value; an empty value clears the setting (falls back to `main`).
+  const savedDefaultBranch = projectQ.data?.defaultBranch ?? '';
+  const [defaultBranchInput, setDefaultBranchInput] = useState(savedDefaultBranch);
+  const [defaultBranchError, setDefaultBranchError] = useState<string | null>(null);
+  const [defaultBranchSaved, setDefaultBranchSaved] = useState(false);
+  useEffect(() => {
+    setDefaultBranchInput(savedDefaultBranch);
+  }, [savedDefaultBranch]);
+  const defaultBranchDirty = defaultBranchInput.trim() !== savedDefaultBranch;
+
+  async function handleSaveDefaultBranch() {
+    if (!defaultBranchDirty) return;
+    setDefaultBranchError(null);
+    setDefaultBranchSaved(false);
+    try {
+      await updateProject.mutateAsync({ defaultBranch: defaultBranchInput.trim() || null });
+      setDefaultBranchSaved(true);
+    } catch (error) {
+      setDefaultBranchError(
+        error instanceof Error ? error.message : 'Failed to save default branch.'
+      );
+    }
+  }
 
   function targetLabel(resource: ProjectResourceDto): string {
     if (resource.executionTargetId === null) return 'Any target';
@@ -142,6 +171,49 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
           Add, remove, and set the primary working directory for this device. Existing project-wide
           fallback resources remain visible here too.
         </p>
+      </div>
+
+      <div className="rounded-lg border p-4">
+        <h3 className="text-sm font-medium">Default branch</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          The base branch new ticket branches are cut from and the parent that{' '}
+          <span className="font-medium">Merge with parent</span> advances. Leave blank to use the
+          repository default (<code className="text-xs">main</code>).
+        </p>
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="grid min-w-0 flex-1 gap-1.5">
+            <Label htmlFor="project-default-branch">Branch name</Label>
+            <Input
+              id="project-default-branch"
+              value={defaultBranchInput}
+              onChange={event => {
+                setDefaultBranchInput(event.target.value);
+                setDefaultBranchSaved(false);
+                setDefaultBranchError(null);
+              }}
+              placeholder="main"
+              className="h-8 min-w-0 flex-1 font-mono text-xs"
+              disabled={projectQ.isLoading}
+              onKeyDown={event => {
+                if (event.key === 'Enter') void handleSaveDefaultBranch();
+              }}
+            />
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            className="h-8"
+            disabled={!defaultBranchDirty || updateProject.isPending}
+            onClick={() => void handleSaveDefaultBranch()}
+          >
+            Save
+          </Button>
+        </div>
+        {defaultBranchError ? (
+          <p className="mt-2 text-xs text-destructive">{defaultBranchError}</p>
+        ) : defaultBranchSaved && !defaultBranchDirty ? (
+          <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">Saved.</p>
+        ) : null}
       </div>
 
       {hasMissingPrimary ? (

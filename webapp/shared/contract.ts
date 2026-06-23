@@ -111,6 +111,13 @@ export interface ProjectDto {
   description: string | null;
   /** Optional hex color stored in project settings for UI display. */
   color: string | null;
+  /**
+   * Project-configured base/parent branch for ticket branches (stored in project
+   * settings). `null` means not configured — callers fall back to `main`. This is
+   * both the branch tickets are cut from and the parent that "Merge with parent"
+   * advances.
+   */
+  defaultBranch: string | null;
   status: ProjectLifecycle;
   createdAt: string;
   updatedAt: string;
@@ -276,6 +283,12 @@ export interface ObjectiveDto {
   revision: number;
   /** Native harness session/resume ID from the objective's latest agent session, when captured. */
   externalSessionId: string | null;
+  /**
+   * The branch this objective actually ran on, recorded by the runner at
+   * branch-prepared time. `null` until the objective has been launched with a
+   * prepared branch (or when worktree/branch automation is disabled).
+   */
+  branch: string | null;
 }
 
 export type ArtifactType =
@@ -313,17 +326,37 @@ export interface TicketDetailDto extends TicketDto {
   branch: TicketBranchDto | null;
 }
 
-// `pending`   — no branch prepared yet (planner-predicted name shown).
-// `created`   — branch cut from base for use, but not yet pushed to a remote.
-// `published` — branch pushed to `origin` (a matching remote ref exists), not merged.
-// `merged`    — branch diverged from base and its commits are now contained in base.
-export type TicketBranchStatus = 'pending' | 'created' | 'published' | 'merged';
+// `pending`         — no branch prepared yet (planner-predicted name shown).
+// `created`         — branch cut from base for use, but not yet pushed to a remote.
+// `published`       — branch pushed to `origin` (a matching remote ref exists), not merged.
+// `merged_unpushed` — branch merged into the *local* base, but that base has not
+//                     been pushed to `origin` yet (the gap between merge Action A
+//                     and the push Action B).
+// `merged`          — branch's commits are contained in the *remote* base (`origin/<base>`).
+export type TicketBranchStatus = 'pending' | 'created' | 'published' | 'merged_unpushed' | 'merged';
 
 export interface TicketBranchDto {
   name: string;
   baseBranch: string | null;
   worktreePath: string | null;
   status: TicketBranchStatus;
+  /**
+   * A user-pinned branch chosen in the ticket panel to override the planner's
+   * default selection. When set, the next launch prepares/uses this branch
+   * instead of `name`. `null` means the system chooses automatically. The
+   * Runner Layer reads this to honor the override at branch-preparation time.
+   */
+  overrideBranch: string | null;
+}
+
+/**
+ * Available branches in a ticket project's primary repository, for the ticket
+ * panel's branch selector. `current` is the branch the ticket is (or will be)
+ * operating on. Returned by `GET /api/tickets/:id/branches`.
+ */
+export interface TicketBranchListDto {
+  branches: string[];
+  current: string | null;
 }
 
 // ---- Ticket activity feed ----
@@ -575,6 +608,76 @@ export interface UpdateProjectBody {
   status?: ProjectLifecycle;
   /** Optional 6-digit hex color (e.g. `#fecdd3`). */
   color?: string;
+  /**
+   * Project base/parent branch for ticket branches. A non-empty value sets it;
+   * `null` or an empty string clears it (falling back to `main`).
+   */
+  defaultBranch?: string | null;
+}
+
+/**
+ * Body for `POST /api/tickets/:id/branch/action` — on-demand branch mutations
+ * the ticket panel triggers (returns the refreshed `TicketDetailDto`).
+ *
+ * - `integrate`   — Action A: merge the parent into the branch inside its worktree
+ *                   (conflicts left there for IDE resolution), then advance the
+ *                   parent to the branch via a `--no-ff` merge commit.
+ * - `push_parent` — Action B: push the merged parent to `origin`.
+ * - `publish`     — push the branch itself to `origin` (created → published).
+ *
+ * On failure the response carries a typed `code` (e.g. `BRANCH_MERGE_CONFLICT`,
+ * `BRANCH_BUSY_EXECUTING`, `BRANCH_DIRTY`, `BRANCH_PUSH_FAILED`).
+ */
+export interface BranchActionBody {
+  action: 'integrate' | 'push_parent' | 'publish';
+  /** Proceed even if an objective is executing on the branch (re-checked server-side). */
+  confirmBusy?: boolean;
+}
+
+// ---- Worktrees ----
+
+/**
+ * A git worktree managed by Overlord under the worktree root (`~/.ovld/worktrees`).
+ * Enumerated from each project's primary repository (`git worktree list`) and
+ * filtered to those under the root. Returned by `GET /api/worktrees`.
+ */
+export interface WorktreeDto {
+  /** Absolute worktree path (the stable identifier for purge requests). */
+  path: string;
+  /** Branch checked out in the worktree, or `null` for a detached HEAD. */
+  branch: string | null;
+  projectId: string;
+  projectName: string;
+  /** The ticket whose `active_branch` matches this worktree's branch, when known. */
+  ticketId: string | null;
+  ticketDisplayId: string | null;
+  /** Derived branch status (same vocabulary as `TicketBranchDto.status`), when the branch maps to a ticket. */
+  status: TicketBranchStatus | null;
+  /** Whether the branch has landed in the project's base branch (locally or remotely). */
+  merged: boolean;
+  /** Whether the worktree has uncommitted changes (purging it would lose work). */
+  dirty: boolean;
+  /** Total size of the worktree directory in bytes (best-effort; `null` if not computed). */
+  sizeBytes: number | null;
+  /** Last filesystem modification time of the worktree directory (ISO), or `null`. */
+  lastModifiedAt: string | null;
+}
+
+/** Body for `POST /api/worktrees/remove` — purge a single worktree by path. */
+export interface RemoveWorktreeBody {
+  path: string;
+  /** Remove even if the worktree has uncommitted changes (re-checked server-side). */
+  force?: boolean;
+}
+
+/**
+ * Result of a worktree purge. `removed` lists the paths actually removed;
+ * `skipped` lists paths that were left in place with a reason (e.g. dirty).
+ */
+export interface PurgeWorktreesResultDto {
+  removed: string[];
+  skipped: Array<{ path: string; reason: string }>;
+  worktrees: WorktreeDto[];
 }
 
 export interface CreateTicketBody {
@@ -603,6 +706,11 @@ export interface UpdateTicketBody {
   assignedWorkspaceUserId?: string | null;
   acceptanceCriteria?: string | null;
   availableTools?: string[];
+  /**
+   * Pin the branch the ticket's next launch should use (overriding the planner's
+   * default), or `null` to clear the override and return to automatic selection.
+   */
+  branchOverride?: string | null;
 }
 
 /**

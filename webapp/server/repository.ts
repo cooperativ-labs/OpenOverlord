@@ -1,7 +1,7 @@
 import { scopeGrantsForPreset } from '@overlord/auth';
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -28,11 +28,15 @@ import type {
   ProjectRepositoryDto,
   ProjectResourceDto,
   ProjectTagDto,
+  PurgeWorktreesResultDto,
+  RemoveWorktreeBody,
   ReorderBoardColumnBody,
   ReorderFutureObjectivesBody,
   ReorderWorkspaceStatusesBody,
   StatusType,
   TicketBranchDto,
+  TicketBranchListDto,
+  TicketBranchStatus,
   TicketDetailDto,
   TicketDto,
   TicketEventDto,
@@ -46,7 +50,8 @@ import type {
   UpdateUserTokenBody,
   UpdateWorkspaceStatusBody,
   UserTokenDto,
-  WorkspaceStatusDto
+  WorkspaceStatusDto,
+  WorktreeDto
 } from '../shared/contract.ts';
 
 import { previewTicketBranch, ticketWorktreePath } from './branch-planning.ts';
@@ -88,15 +93,40 @@ interface ProjectRow {
 }
 
 const PROJECT_COLOR_SETTINGS_KEY = 'overlord.color';
+const PROJECT_DEFAULT_BRANCH_SETTINGS_KEY = 'overlord.defaultBranch';
 
-function readProjectColor(settingsJson: string): string | null {
+function readProjectStringSetting(settingsJson: string, key: string): string | null {
   try {
     const parsed = JSON.parse(settingsJson) as Record<string, unknown>;
-    const color = parsed[PROJECT_COLOR_SETTINGS_KEY];
-    return typeof color === 'string' ? color : null;
+    const value = parsed[key];
+    return typeof value === 'string' && value.trim() ? value : null;
   } catch {
     return null;
   }
+}
+
+function readProjectColor(settingsJson: string): string | null {
+  return readProjectStringSetting(settingsJson, PROJECT_COLOR_SETTINGS_KEY);
+}
+
+// The project-configured base/parent branch for ticket branches. `null` means
+// "not configured"; callers fall back to the repo default (`main`).
+function readProjectDefaultBranch(settingsJson: string): string | null {
+  return readProjectStringSetting(settingsJson, PROJECT_DEFAULT_BRANCH_SETTINGS_KEY);
+}
+
+// Conservative branch-name validation for the user-entered default branch. The
+// authoritative check (`git check-ref-format`) happens in the Runner Layer when
+// it actually cuts/operates on the branch; this just rejects obviously invalid
+// input at the REST boundary (whitespace, control chars, and the characters git
+// forbids in ref names).
+function isValidBranchName(branch: string): boolean {
+  if (!branch || branch.length > 255) return false;
+  if (/[\s~^:?*[\\]/.test(branch)) return false;
+  if (branch.includes('..') || branch.includes('@{')) return false;
+  if (branch.startsWith('/') || branch.endsWith('/') || branch.endsWith('.lock')) return false;
+  if (branch.startsWith('-') || branch.startsWith('.')) return false;
+  return true;
 }
 
 function buildProjectSettingsJson({ color }: { color?: string }): string {
@@ -106,7 +136,7 @@ function buildProjectSettingsJson({ color }: { color?: string }): string {
 
 function mergeProjectSettingsJson(
   existingJson: string,
-  updates: { color?: string | null }
+  updates: { color?: string | null; defaultBranch?: string | null }
 ): string {
   let parsed: Record<string, unknown>;
   try {
@@ -119,6 +149,13 @@ function mergeProjectSettingsJson(
       parsed[PROJECT_COLOR_SETTINGS_KEY] = updates.color;
     } else {
       delete parsed[PROJECT_COLOR_SETTINGS_KEY];
+    }
+  }
+  if (updates.defaultBranch !== undefined) {
+    if (updates.defaultBranch) {
+      parsed[PROJECT_DEFAULT_BRANCH_SETTINGS_KEY] = updates.defaultBranch;
+    } else {
+      delete parsed[PROJECT_DEFAULT_BRANCH_SETTINGS_KEY];
     }
   }
   return JSON.stringify(parsed);
@@ -258,6 +295,7 @@ interface TicketRow {
   updated_at: string;
   revision: number;
   active_branch: string | null;
+  branch_override: string | null;
   objective_count: number;
   completed_objective_count: number;
   has_executing_objective: number;
@@ -281,6 +319,7 @@ interface ObjectiveRow {
   created_at: string;
   updated_at: string;
   revision: number;
+  branch: string | null;
   external_session_id?: string | null;
 }
 
@@ -294,6 +333,7 @@ function toProjectDto(r: ProjectRow): ProjectDto {
     name: r.name,
     description: r.description,
     color: readProjectColor(r.settings_json),
+    defaultBranch: readProjectDefaultBranch(r.settings_json),
     status: r.status as ProjectDto['status'],
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -519,8 +559,17 @@ function branchMergedIntoBase(repoPath: string, branchSha: string, base: string)
 
 // Derives the ticket-panel branch status from the real git state in the project's
 // primary worktree. `active_branch` being set means a branch was prepared, so the
-// floor is `created`; we upgrade to `published` once a remote ref exists and to
-// `merged` once the branch's commits have landed in the base.
+// floor is `created`; we upgrade to `published` once a remote ref exists, to
+// `merged_unpushed` once the branch has landed in the *local* base but the base
+// has not been pushed, and to `merged` once it has landed in the *remote* base.
+//
+// The `merged` / `merged_unpushed` split is the intermediate the merge-with-parent
+// flow needs: Action A advances the local parent to contain the branch (→
+// `merged_unpushed`); Action B pushes that parent to origin (→ `merged`). The
+// flow uses a `--no-ff` merge commit on the parent precisely so the parent tip
+// diverges from the branch tip, keeping this derivation unambiguous (a plain
+// fast-forward would leave parent and branch tips identical and indistinguishable
+// from a freshly-cut branch — see the documented edge in CONTRACT.md 0.39-draft).
 function deriveBranchStatus({
   projectId,
   branchName,
@@ -529,7 +578,7 @@ function deriveBranchStatus({
   projectId: string;
   branchName: string;
   baseBranch: string | null;
-}): 'created' | 'published' | 'merged' {
+}): 'created' | 'published' | 'merged_unpushed' | 'merged' {
   const resource = db
     .prepare(
       `SELECT path FROM project_resources
@@ -551,10 +600,11 @@ function deriveBranchStatus({
   if (!branchSha) return 'created';
 
   if (baseBranch) {
-    const merged =
-      branchMergedIntoBase(repoPath, branchSha, baseBranch) ||
-      branchMergedIntoBase(repoPath, branchSha, `origin/${baseBranch}`);
-    if (merged) return 'merged';
+    // Remote base contains the branch ⇒ the work has truly landed and been
+    // published. Check this first: it supersedes the local-only intermediate.
+    if (branchMergedIntoBase(repoPath, branchSha, `origin/${baseBranch}`)) return 'merged';
+    // Only the local base contains the branch ⇒ merged but not yet pushed.
+    if (branchMergedIntoBase(repoPath, branchSha, baseBranch)) return 'merged_unpushed';
   }
 
   return remoteExists ? 'published' : 'created';
@@ -567,35 +617,648 @@ function getProjectSlug(projectId: string): string {
   return row?.slug ?? 'project';
 }
 
+// The fallback base/parent branch when a project has not configured one.
+const FALLBACK_BASE_BRANCH = 'main';
+
+// Resolves the base/parent branch for a project's ticket branches: the
+// project-configured default branch (Resources settings) when set, otherwise the
+// repo default `main`. This is both the branch tickets are cut from and the
+// parent that "Merge with parent" advances.
+function resolveProjectBaseBranch(projectId: string): string {
+  const row = db
+    .prepare(`SELECT settings_json FROM projects WHERE id = ? AND workspace_id = ?`)
+    .get(projectId, WORKSPACE.id) as { settings_json: string } | undefined;
+  return (row && readProjectDefaultBranch(row.settings_json)) || FALLBACK_BASE_BRANCH;
+}
+
 // Derives the ticket-panel branch metadata from `tickets.active_branch` (the
 // source of truth the runner writes). When it is null no branch has been
 // prepared yet, so we surface the planner's predicted name with a pending status.
 function ticketBranchDto(row: TicketRow): TicketBranchDto {
   const projectSlug = getProjectSlug(row.project_id);
   const worktreeRoot = resolveWorktreeRoot();
+  const baseBranch = resolveProjectBaseBranch(row.project_id);
+  const overrideBranch = row.branch_override?.trim() || null;
   const name = row.active_branch?.trim();
   if (name) {
-    const baseBranch = 'main';
     return {
       name,
       baseBranch,
       worktreePath: ticketWorktreePath({ worktreeRoot, projectSlug, branch: name }),
-      status: deriveBranchStatus({ projectId: row.project_id, branchName: name, baseBranch })
+      status: deriveBranchStatus({ projectId: row.project_id, branchName: name, baseBranch }),
+      overrideBranch
     };
   }
 
+  // No branch prepared yet: preview the name the next launch will use. A pinned
+  // override wins over the planner's canonical prediction so the panel reflects
+  // exactly what the next launch will prepare.
   const preview = previewTicketBranch({
     ticket: { title: row.title, sequence: row.sequence_number },
     project: { slug: projectSlug },
-    base: 'main',
+    base: baseBranch,
     worktreeRoot
   });
+  const previewName = overrideBranch ?? preview.branch;
   return {
-    name: preview.branch,
+    name: previewName,
     baseBranch: preview.baseBranch,
-    worktreePath: preview.worktreePath,
-    status: 'pending'
+    worktreePath:
+      previewName === preview.branch
+        ? preview.worktreePath
+        : ticketWorktreePath({ worktreeRoot, projectSlug, branch: previewName }),
+    status: 'pending',
+    overrideBranch
   };
+}
+
+// ---- Branch actions (merge with parent / push / publish) -----------------
+//
+// On-demand git mutations the ticket panel triggers. They run host-side against
+// the project's worktrees (under ~/.ovld/worktrees) and primary repo, which the
+// webapp server is co-located with — so it operates on them directly rather than
+// delegating to the Runner Layer (whose job is launching the *agent* into the
+// worktree, not these mutations). Conflicts are deliberately left in the branch's
+// own worktree for the user to resolve in their IDE. See CONTRACT.md 0.41-draft.
+
+type GitRun = { ok: boolean; stdout: string; stderr: string };
+
+// Like `runGit` above, but surfaces failure (exit code + stderr) instead of
+// swallowing it — required for merge/push, where the outcome drives typed errors.
+function runGitResult(cwd: string, args: string[]): GitRun {
+  try {
+    const stdout = execFileSync('git', args, {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      maxBuffer: 16 * 1024 * 1024
+    });
+    return { ok: true, stdout: stdout.trim(), stderr: '' };
+  } catch (error) {
+    const e = error as { stdout?: string | Buffer; stderr?: string | Buffer };
+    return {
+      ok: false,
+      stdout: (e.stdout ? String(e.stdout) : '').trim(),
+      stderr: (e.stderr ? String(e.stderr) : '').trim()
+    };
+  }
+}
+
+export type BranchActionName = 'integrate' | 'push_parent' | 'publish';
+
+interface BranchActionContext {
+  ticketId: string;
+  projectId: string;
+  branchName: string;
+  baseBranch: string;
+  worktreePath: string;
+  primaryRepoPath: string;
+}
+
+function primaryResourcePath(projectId: string): string | null {
+  const resource = db
+    .prepare(
+      `SELECT path FROM project_resources
+        WHERE project_id = ? AND workspace_id = ? AND is_primary = 1
+          AND status = 'active' AND deleted_at IS NULL
+        ORDER BY created_at ASC
+        LIMIT 1`
+    )
+    .get(projectId, WORKSPACE.id) as { path: string } | undefined;
+  return resource?.path ?? null;
+}
+
+function loadBranchActionContext(ticketRef: string): BranchActionContext {
+  const row = getTicketRow(ticketRef);
+  const branchName = row.active_branch?.trim();
+  if (!branchName) {
+    throw new ApiError(
+      409,
+      'No branch has been prepared for this ticket yet.',
+      undefined,
+      'BRANCH_NOT_PREPARED'
+    );
+  }
+  const primaryRepoPath = primaryResourcePath(row.project_id);
+  if (!primaryRepoPath || !existsSync(primaryRepoPath)) {
+    throw new ApiError(
+      409,
+      'This project has no connected primary working directory on this device.',
+      undefined,
+      'BRANCH_NO_PRIMARY'
+    );
+  }
+  return {
+    ticketId: row.id,
+    projectId: row.project_id,
+    branchName,
+    baseBranch: resolveProjectBaseBranch(row.project_id),
+    worktreePath: ticketWorktreePath({
+      worktreeRoot: resolveWorktreeRoot(),
+      projectSlug: getProjectSlug(row.project_id),
+      branch: branchName
+    }),
+    primaryRepoPath
+  };
+}
+
+function ticketHasActiveExecution(ticketId: string): boolean {
+  return Boolean(
+    db
+      .prepare(
+        `SELECT 1 FROM execution_requests
+          WHERE ticket_id = ? AND workspace_id = ?
+            AND status IN ('queued', 'claimed', 'launching')
+          LIMIT 1`
+      )
+      .get(ticketId, WORKSPACE.id)
+  );
+}
+
+// Locates the worktree that currently has `branch` checked out, so the parent can
+// be advanced where it lives (git refuses to update a checked-out branch's ref
+// from elsewhere). Returns null when the branch is not checked out anywhere.
+function worktreePathForBranch(repoPath: string, branch: string): string | null {
+  const out = runGitResult(repoPath, ['worktree', 'list', '--porcelain']);
+  if (!out.ok) return null;
+  let currentPath: string | null = null;
+  for (const line of out.stdout.split('\n')) {
+    if (line.startsWith('worktree ')) {
+      currentPath = line.slice('worktree '.length).trim();
+    } else if (line.startsWith('branch ')) {
+      const ref = line
+        .slice('branch '.length)
+        .trim()
+        .replace(/^refs\/heads\//, '');
+      if (ref === branch && currentPath) return currentPath;
+    }
+  }
+  return null;
+}
+
+function worktreeIsDirty(worktreePath: string): boolean {
+  const status = runGitResult(worktreePath, ['status', '--porcelain']);
+  return status.ok && status.stdout.length > 0;
+}
+
+// Removes a worktree's git registration and on-disk directory, then prunes stale
+// administrative entries. `git worktree remove` refuses a dirty worktree without
+// `--force`; callers guard on dirtiness first when they want that protection.
+// Best-effort: returns whether the directory is gone afterwards.
+function removeGitWorktree(repoPath: string, worktreePath: string, force: boolean): boolean {
+  const args = ['worktree', 'remove'];
+  if (force) args.push('--force');
+  args.push(worktreePath);
+  runGitResult(repoPath, args);
+  // Prune so a removed (or externally-deleted) directory leaves no stale entry
+  // that would later block `git worktree add` on the same path.
+  runGitResult(repoPath, ['worktree', 'prune']);
+  return !existsSync(worktreePath);
+}
+
+// Action A — bring the branch up to date with its parent inside the branch's own
+// worktree (the only step that can conflict; left in place for IDE resolution),
+// then advance the parent to the branch with a --no-ff merge commit so the parent
+// tip diverges from the branch tip (keeps `deriveBranchStatus` unambiguous).
+function integrateBranch(ctx: BranchActionContext): string {
+  const { branchName, baseBranch, worktreePath, primaryRepoPath } = ctx;
+  if (!existsSync(worktreePath)) {
+    throw new ApiError(
+      409,
+      `The branch's worktree is not present at ${worktreePath}.`,
+      undefined,
+      'BRANCH_NO_WORKTREE'
+    );
+  }
+  const wtBranch = runGitResult(worktreePath, ['branch', '--show-current']);
+  if (!wtBranch.ok || wtBranch.stdout !== branchName) {
+    throw new ApiError(
+      409,
+      `The worktree at ${worktreePath} is not checked out on ${branchName}.`,
+      undefined,
+      'BRANCH_WORKTREE_MISMATCH'
+    );
+  }
+  if (worktreeIsDirty(worktreePath)) {
+    throw new ApiError(
+      409,
+      `The branch worktree has uncommitted changes — resolve/commit them first: ${worktreePath}`,
+      worktreePath,
+      'BRANCH_DIRTY'
+    );
+  }
+
+  // 1. Merge the parent into the branch, in the branch's worktree.
+  const merge = runGitResult(worktreePath, ['merge', '--no-edit', baseBranch]);
+  if (!merge.ok) {
+    const conflicted = runGitResult(worktreePath, ['diff', '--name-only', '--diff-filter=U']);
+    const files = conflicted.ok && conflicted.stdout ? conflicted.stdout.split('\n') : [];
+    const detail =
+      `Resolve the conflicts in ${worktreePath}, commit, then run "Update from ${baseBranch} & merge" again.` +
+      (files.length ? ` Conflicted files: ${files.join(', ')}.` : '');
+    throw new ApiError(
+      409,
+      `Merging ${baseBranch} into ${branchName} hit conflicts.`,
+      detail,
+      'BRANCH_MERGE_CONFLICT'
+    );
+  }
+
+  // 2. Advance the parent to the branch (clean by construction).
+  const parentWorktree = worktreePathForBranch(primaryRepoPath, baseBranch);
+  if (!parentWorktree) {
+    throw new ApiError(
+      409,
+      `Cannot advance ${baseBranch}: it is not checked out in any worktree. Check out ${baseBranch} in the primary repository and re-run.`,
+      undefined,
+      'BRANCH_PARENT_NOT_CHECKED_OUT'
+    );
+  }
+  if (worktreeIsDirty(parentWorktree)) {
+    throw new ApiError(
+      409,
+      `The ${baseBranch} checkout has uncommitted changes — commit or stash them first: ${parentWorktree}`,
+      parentWorktree,
+      'BRANCH_DIRTY'
+    );
+  }
+  const advance = runGitResult(parentWorktree, [
+    'merge',
+    '--no-ff',
+    '--no-edit',
+    '-m',
+    `Merge ${branchName} into ${baseBranch}`,
+    branchName
+  ]);
+  if (!advance.ok) {
+    throw new ApiError(
+      500,
+      `Failed to advance ${baseBranch} to ${branchName}.`,
+      advance.stderr || advance.stdout,
+      'BRANCH_MERGE_FAILED'
+    );
+  }
+  return `Merged ${baseBranch} into ${branchName} and advanced ${baseBranch} locally.`;
+}
+
+// Action B — publish the merged parent to origin. Once pushed, the branch has
+// truly landed (status → merged), so its worktree is no longer needed; we remove
+// it automatically (best-effort, only when clean) to keep the worktree list tidy
+// per the "auto-on-merge" purge policy. A dirty branch worktree is left alone.
+function pushParent(ctx: BranchActionContext): string {
+  const { branchName, baseBranch, worktreePath, primaryRepoPath } = ctx;
+  const repo = worktreePathForBranch(primaryRepoPath, baseBranch) ?? primaryRepoPath;
+  const push = runGitResult(repo, ['push', 'origin', baseBranch]);
+  if (!push.ok) {
+    throw new ApiError(
+      502,
+      `Failed to push ${baseBranch} to origin.`,
+      push.stderr || push.stdout,
+      'BRANCH_PUSH_FAILED'
+    );
+  }
+  let summary = `Pushed ${baseBranch} to origin.`;
+  if (existsSync(worktreePath) && !worktreeIsDirty(worktreePath)) {
+    if (removeGitWorktree(primaryRepoPath, worktreePath, false)) {
+      summary += ` Removed the merged worktree for ${branchName}.`;
+    }
+  }
+  return summary;
+}
+
+// Publish — push the branch itself to origin (created → published), enabling PRs.
+function publishBranch(ctx: BranchActionContext): string {
+  const { branchName, worktreePath, primaryRepoPath } = ctx;
+  const repo = existsSync(worktreePath) ? worktreePath : primaryRepoPath;
+  const push = runGitResult(repo, ['push', '-u', 'origin', branchName]);
+  if (!push.ok) {
+    throw new ApiError(
+      502,
+      `Failed to publish ${branchName} to origin.`,
+      push.stderr || push.stdout,
+      'BRANCH_PUSH_FAILED'
+    );
+  }
+  return `Published ${branchName} to origin.`;
+}
+
+const recordBranchActionActivity = db.transaction((ctx: BranchActionContext, summary: string) => {
+  const ticket = db
+    .prepare(`SELECT revision FROM tickets WHERE id = ? AND workspace_id = ?`)
+    .get(ctx.ticketId, WORKSPACE.id) as { revision: number } | undefined;
+  const now = nowIso();
+  if (ticket) {
+    const revision = ticket.revision + 1;
+    db.prepare(
+      `UPDATE tickets SET updated_at = @now, revision = @revision
+         WHERE id = @id AND workspace_id = @workspace_id`
+    ).run({ now, revision, id: ctx.ticketId, workspace_id: WORKSPACE.id });
+    recordChange({
+      entityType: 'ticket',
+      entityId: ctx.ticketId,
+      operation: 'update',
+      entityRevision: revision,
+      projectId: ctx.projectId,
+      ticketId: ctx.ticketId,
+      changedFields: ['active_branch']
+    });
+  }
+  db.prepare(
+    `INSERT INTO ticket_events
+       (id, workspace_id, project_id, ticket_id, objective_id, type, phase, summary,
+        payload_json, source, actor_workspace_user_id, created_at)
+     VALUES (?, ?, ?, ?, NULL, 'update', 'execute', ?, ?, 'webapp', ?, ?)`
+  ).run(
+    newId(),
+    WORKSPACE.id,
+    ctx.projectId,
+    ctx.ticketId,
+    summary,
+    JSON.stringify({ branch: ctx.branchName, baseBranch: ctx.baseBranch }),
+    ACTOR_WORKSPACE_USER_ID,
+    now
+  );
+});
+
+// Runs an on-demand branch mutation and returns the refreshed ticket detail.
+// Git side-effects happen first (and throw typed ApiErrors on failure); only on
+// success do we record the activity + realtime change in a single transaction.
+export function performBranchAction(
+  ticketRef: string,
+  body: { action?: unknown; confirmBusy?: unknown }
+): TicketDetailDto {
+  const action = String(body.action ?? '');
+  if (action !== 'integrate' && action !== 'push_parent' && action !== 'publish') {
+    throw new ApiError(400, 'Invalid branch action.');
+  }
+  const ctx = loadBranchActionContext(ticketRef);
+  if (body.confirmBusy !== true && ticketHasActiveExecution(ctx.ticketId)) {
+    throw new ApiError(
+      409,
+      'An objective is currently executing on this branch. Continuing may conflict with in-progress work in its worktree.',
+      'Re-run with confirmation to proceed anyway.',
+      'BRANCH_BUSY_EXECUTING'
+    );
+  }
+
+  const summary =
+    action === 'integrate'
+      ? integrateBranch(ctx)
+      : action === 'push_parent'
+        ? pushParent(ctx)
+        : publishBranch(ctx);
+
+  recordBranchActionActivity(ctx, summary);
+  return getTicketDetail(ctx.ticketId);
+}
+
+// ---- Branch selection (available branches for a ticket) ------------------
+//
+// Powers the ticket panel's branch selector: when the planner's default branch
+// is wrong, the user picks any existing branch in the project's primary repo and
+// pins it as the ticket's `branch_override` (consumed by the Runner Layer at the
+// next launch). We list real refs so the choice is always valid.
+
+function normalizeBranchRef(ref: string): string {
+  return ref
+    .replace(/^origin\//, '')
+    .replace(/^refs\/heads\//, '')
+    .replace(/^refs\/remotes\/origin\//, '')
+    .trim();
+}
+
+// Returns the de-duplicated, sorted set of local + remote branch names in the
+// ticket project's primary repository, plus the branch the ticket is (or will
+// be) operating on. Returns an empty list when no inspectable checkout exists.
+export function listTicketBranches(ticketRef: string): TicketBranchListDto {
+  const row = getTicketRow(ticketRef);
+  const current = row.active_branch?.trim() || row.branch_override?.trim() || null;
+  const repoPath = primaryResourcePath(row.project_id);
+  if (!repoPath || !existsSync(repoPath)) {
+    return { branches: current ? [current] : [], current };
+  }
+  const local = runGit(repoPath, ['branch', '--format=%(refname:short)']);
+  const remote = runGit(repoPath, ['branch', '-r', '--format=%(refname:short)']);
+  const names = new Set<string>();
+  for (const line of `${local}\n${remote}`.split('\n')) {
+    const name = normalizeBranchRef(line);
+    // Skip the symbolic `origin/HEAD -> origin/main` pointer git emits.
+    if (name && !name.includes('->') && name !== 'HEAD') names.add(name);
+  }
+  if (current) names.add(current);
+  return { branches: [...names].sort((a, b) => a.localeCompare(b)), current };
+}
+
+// ---- Worktree management (Settings → Worktrees) --------------------------
+//
+// Overlord's per-ticket worktrees live under the worktree root (~/.ovld/worktrees).
+// They are registered against each project's primary repository, so we enumerate
+// them with `git worktree list` per project and filter to those under the root.
+// The webapp server is co-located with these worktrees and operates on them
+// directly (the same host-side ownership as the branch actions above).
+
+interface WorktreeListEntry {
+  path: string;
+  branch: string | null;
+  projectId: string;
+  projectName: string;
+  primaryRepoPath: string;
+}
+
+// Total size of a directory tree in bytes, skipping nested `.git` admin dirs to
+// stay cheap. Best-effort: unreadable entries are ignored.
+function directorySizeBytes(dir: string, budget = 20000): number {
+  let total = 0;
+  let visited = 0;
+  const walk = (current: string): void => {
+    if (visited >= budget) return;
+    let entries: import('node:fs').Dirent[];
+    try {
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (visited >= budget) return;
+      visited += 1;
+      const full = path.join(current, entry.name);
+      try {
+        if (entry.isDirectory()) {
+          walk(full);
+        } else if (entry.isFile()) {
+          total += statSync(full).size;
+        }
+      } catch {
+        /* skip unreadable entry */
+      }
+    }
+  };
+  walk(dir);
+  return total;
+}
+
+// Enumerates every Overlord-managed worktree across the workspace's projects.
+function collectWorktreeEntries(): WorktreeListEntry[] {
+  const worktreeRoot = path.resolve(resolveWorktreeRoot());
+  const projects = db
+    .prepare(
+      `SELECT id, name FROM projects
+        WHERE workspace_id = ? AND deleted_at IS NULL`
+    )
+    .all(WORKSPACE.id) as Array<{ id: string; name: string }>;
+
+  const entries: WorktreeListEntry[] = [];
+  const seen = new Set<string>();
+  for (const project of projects) {
+    const repoPath = primaryResourcePath(project.id);
+    if (!repoPath || !existsSync(repoPath)) continue;
+    const out = runGitResult(repoPath, ['worktree', 'list', '--porcelain']);
+    if (!out.ok) continue;
+    let currentPath: string | null = null;
+    let currentBranch: string | null = null;
+    const flush = (): void => {
+      if (!currentPath) return;
+      const resolved = path.resolve(currentPath);
+      // Only Overlord-managed worktrees (under the root); never the primary repo.
+      const underRoot = resolved === worktreeRoot || resolved.startsWith(worktreeRoot + path.sep);
+      if (underRoot && !seen.has(resolved)) {
+        seen.add(resolved);
+        entries.push({
+          path: resolved,
+          branch: currentBranch,
+          projectId: project.id,
+          projectName: project.name,
+          primaryRepoPath: repoPath
+        });
+      }
+      currentPath = null;
+      currentBranch = null;
+    };
+    for (const line of out.stdout.split('\n')) {
+      if (line.startsWith('worktree ')) {
+        flush();
+        currentPath = line.slice('worktree '.length).trim();
+      } else if (line.startsWith('branch ')) {
+        currentBranch = line
+          .slice('branch '.length)
+          .trim()
+          .replace(/^refs\/heads\//, '');
+      } else if (line.trim() === '') {
+        flush();
+      }
+    }
+    flush();
+  }
+  return entries;
+}
+
+function toWorktreeDto(entry: WorktreeListEntry): WorktreeDto {
+  // Map the worktree's branch back to the ticket operating on it, when any.
+  let ticketId: string | null = null;
+  let ticketDisplayId: string | null = null;
+  let status: TicketBranchStatus | null = null;
+  if (entry.branch) {
+    const ticket = db
+      .prepare(
+        `SELECT id, display_id FROM tickets
+          WHERE workspace_id = ? AND project_id = ? AND active_branch = ? AND deleted_at IS NULL
+          ORDER BY updated_at DESC LIMIT 1`
+      )
+      .get(WORKSPACE.id, entry.projectId, entry.branch) as
+      | { id: string; display_id: string }
+      | undefined;
+    if (ticket) {
+      ticketId = ticket.id;
+      ticketDisplayId = ticket.display_id;
+    }
+    const baseBranch = resolveProjectBaseBranch(entry.projectId);
+    status = deriveBranchStatus({
+      projectId: entry.projectId,
+      branchName: entry.branch,
+      baseBranch
+    });
+  }
+  const merged = status === 'merged' || status === 'merged_unpushed';
+  let sizeBytes: number | null = null;
+  let lastModifiedAt: string | null = null;
+  try {
+    lastModifiedAt = statSync(entry.path).mtime.toISOString();
+    sizeBytes = directorySizeBytes(entry.path);
+  } catch {
+    /* directory vanished between listing and stat */
+  }
+  return {
+    path: entry.path,
+    branch: entry.branch,
+    projectId: entry.projectId,
+    projectName: entry.projectName,
+    ticketId,
+    ticketDisplayId,
+    status,
+    merged,
+    dirty: worktreeIsDirty(entry.path),
+    sizeBytes,
+    lastModifiedAt
+  };
+}
+
+export function listWorktrees(): WorktreeDto[] {
+  return collectWorktreeEntries()
+    .map(toWorktreeDto)
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+// Removes a single worktree by path. Refuses a dirty worktree unless `force`,
+// returning a typed error so the UI can warn before destroying uncommitted work.
+export function removeWorktree(body: RemoveWorktreeBody): PurgeWorktreesResultDto {
+  const target = typeof body.path === 'string' ? path.resolve(body.path.trim()) : '';
+  if (!target) throw new ApiError(400, 'A worktree path is required.');
+  const entry = collectWorktreeEntries().find(e => e.path === target);
+  if (!entry) {
+    throw new ApiError(
+      404,
+      'No Overlord-managed worktree at that path.',
+      undefined,
+      'WORKTREE_NOT_FOUND'
+    );
+  }
+  const force = body.force === true;
+  if (!force && worktreeIsDirty(entry.path)) {
+    throw new ApiError(
+      409,
+      `The worktree has uncommitted changes — removing it would lose work: ${entry.path}`,
+      'Re-run with force to remove it anyway.',
+      'WORKTREE_DIRTY'
+    );
+  }
+  const removed = removeGitWorktree(entry.primaryRepoPath, entry.path, force);
+  return {
+    removed: removed ? [entry.path] : [],
+    skipped: removed ? [] : [{ path: entry.path, reason: 'git refused to remove the worktree' }],
+    worktrees: listWorktrees()
+  };
+}
+
+// Removes every clean, merged worktree in one pass ("Purge all merged"). Dirty
+// worktrees are skipped (never force-removed) so in-progress work is preserved.
+export function purgeMergedWorktrees(): PurgeWorktreesResultDto {
+  const removed: string[] = [];
+  const skipped: Array<{ path: string; reason: string }> = [];
+  for (const dto of listWorktrees()) {
+    if (!dto.merged) continue;
+    if (dto.dirty) {
+      skipped.push({ path: dto.path, reason: 'uncommitted changes' });
+      continue;
+    }
+    const entry = collectWorktreeEntries().find(e => e.path === dto.path);
+    if (!entry) continue;
+    if (removeGitWorktree(entry.primaryRepoPath, entry.path, false)) {
+      removed.push(dto.path);
+    } else {
+      skipped.push({ path: dto.path, reason: 'git refused to remove the worktree' });
+    }
+  }
+  return { removed, skipped, worktrees: listWorktrees() };
 }
 
 interface ProjectTagRow {
@@ -674,7 +1337,8 @@ function toObjectiveDto(r: ObjectiveRow): ObjectiveDto {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     revision: r.revision,
-    externalSessionId: r.external_session_id ?? null
+    externalSessionId: r.external_session_id ?? null,
+    branch: r.branch ?? null
   };
 }
 
@@ -1385,13 +2049,26 @@ export const updateProject = db.transaction((id: string, body: UpdateProjectBody
     params.status = body.status;
     changed.push('status');
   }
+  // Both `color` and `defaultBranch` live in `settings_json`; merge them into a
+  // single update so a request that sets both doesn't clobber one with the other.
+  const settingsUpdates: { color?: string | null; defaultBranch?: string | null } = {};
   if (body.color !== undefined) {
     const color = body.color ? normalizeHexColor(body.color) : null;
     if (body.color && !color) {
       throw new ApiError(400, 'Use a valid 6-digit hex color, like #d4d4d8.');
     }
+    settingsUpdates.color = color;
+  }
+  if (body.defaultBranch !== undefined) {
+    const branch = body.defaultBranch?.trim() || null;
+    if (branch && !isValidBranchName(branch)) {
+      throw new ApiError(400, 'Enter a valid git branch name (e.g. main, develop, release/v2).');
+    }
+    settingsUpdates.defaultBranch = branch;
+  }
+  if (settingsUpdates.color !== undefined || settingsUpdates.defaultBranch !== undefined) {
     fields.push('settings_json = @settings_json');
-    params.settings_json = mergeProjectSettingsJson(existing.settings_json, { color });
+    params.settings_json = mergeProjectSettingsJson(existing.settings_json, settingsUpdates);
     changed.push('settings_json');
   }
   if (fields.length === 0) return getProject(id);
@@ -1469,7 +2146,7 @@ const selectTicketsSql = `
          t.status_id, t.status_type, t.board_position, t.priority,
          t.assigned_workspace_user_id,
          t.acceptance_criteria_text, t.available_tools_json,
-         t.created_at, t.updated_at, t.revision, t.active_branch,
+         t.created_at, t.updated_at, t.revision, t.active_branch, t.branch_override,
          (SELECT COUNT(*) FROM objectives o
             WHERE o.ticket_id = t.id AND o.deleted_at IS NULL) AS objective_count,
          (SELECT COUNT(*) FROM objectives o
@@ -2137,6 +2814,12 @@ const patchTicketFieldsTx = db.transaction(
       fields.push('available_tools_json = @available_tools_json');
       params.available_tools_json = toolsJson;
       changed.push('available_tools_json');
+    }
+    if (body.branchOverride !== undefined) {
+      const override = body.branchOverride?.trim() || null;
+      fields.push('branch_override = @branch_override');
+      params.branch_override = override;
+      changed.push('branch_override');
     }
     if (fields.length === 0) return getTicketDetail(id);
 

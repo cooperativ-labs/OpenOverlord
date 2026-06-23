@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '0.39-draft'
+contractVersion: '0.42-draft'
 
 components:
   protocol:
@@ -108,6 +108,7 @@ components:
       - 'URL paths and HTTP method contracts'
       - 'request/response DTO shapes (camelCase, derived from logical schema)'
       - 'read-only derived ticket branch metadata (TicketBranchDto) from tickets.active_branch, predicted via the service layer copy of the branch-planning algorithm (webapp/server/branch-planning.ts) pinned to contract/branch-planning-vectors.json'
+      - 'on-demand branch-action git mutations (POST /api/tickets/:id/branch/action: merge-with-parent / push-parent / publish) run host-side against worktrees under ~/.ovld/worktrees and the primary repo; the Runner Layer owns launching the agent into a worktree, not these mutations'
       - 'REST auth integration points'
       - 'SSE/WebSocket realtime endpoint'
       - 'SQL Studio launch metadata exposed through /api/meta'

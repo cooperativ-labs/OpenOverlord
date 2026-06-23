@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Copy,
   FastForward,
+  GitBranch,
   Loader2
 } from 'lucide-react';
 import { useState } from 'react';
@@ -142,6 +143,12 @@ export function ObjectiveCollapsibleItem({
           <ObjectiveMenuButton objectiveId={objective.id} state={objective.state} />
         </div>
         <CollapsibleContent className="border-b px-3 pb-2 pt-1">
+          {objective.branch ? (
+            <p className="mb-2 flex items-center gap-1 truncate font-mono text-[11px] text-muted-foreground/80">
+              <GitBranch className="h-3 w-3 shrink-0" />
+              <span className="truncate">{objective.branch}</span>
+            </p>
+          ) : null}
           {objective.externalSessionId ? (
             <p className="mb-2 truncate font-mono text-[11px] text-muted-foreground/80">
               Agent session: {objective.externalSessionId}

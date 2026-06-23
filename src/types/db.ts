@@ -289,6 +289,7 @@ export interface Objectives {
   assigned_agent: string | null;
   auto_advance: Generated<number>;
   auto_advanced_at: string | null;
+  branch: string | null;
   completed_at: string | null;
   created_at: string;
   created_by_workspace_user_id: string | null;
@@ -514,6 +515,7 @@ export interface Tickets {
   assigned_workspace_user_id: string | null;
   available_tools_json: Generated<string>;
   board_position: Generated<number>;
+  branch_override: string | null;
   constraints_text: string | null;
   created_at: string;
   created_by_workspace_user_id: string | null;

@@ -617,6 +617,7 @@ Durable work unit and review record.
 | `execution_target_intent_json` | Json | yes | Target preference/intent, not necessarily resolved target. |
 | `metadata_json` | Json | yes | Extension data. |
 | `active_branch` | text | no | Git branch the ticket is currently operating on under worktree automation; null until the first launch prepares one. |
+| `branch_override` | text | no | User-pinned branch chosen in the ticket panel to override the planner's default; consumed (and cleared) by the runner at the next branch preparation. Null means automatic selection. |
 | `created_by_workspace_user_id` | Id | no | FK to `workspace_users`. |
 | `assigned_workspace_user_id` | Id | no | FK to `workspace_users`. |
 | `created_at` | TimestampUTC | yes |  |
@@ -658,6 +659,7 @@ One ordered agent pass inside a ticket.
 | `auto_advanced_at` | TimestampUTC | no | Time this objective was queued by auto-advance. |
 | `completed_at` | TimestampUTC | no | Set when state enters `complete`; cleared if reopened. |
 | `execution_metadata_json` | Json | yes | Runtime details, no secrets. |
+| `branch` | text | no | Git branch this objective actually ran on, recorded by the runner at branch-prepared time; null until the objective is launched with a prepared branch. |
 | `created_by_workspace_user_id` | Id | no | FK to `workspace_users`. |
 | `created_at` | TimestampUTC | yes |  |
 | `updated_at` | TimestampUTC | yes |  |

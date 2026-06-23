@@ -1,6 +1,7 @@
 import type {
   AgentCatalogDto,
   ArtifactDto,
+  BranchActionBody,
   CompleteInitialSetupBody,
   CreateObjectiveBody,
   CreateProjectBody,
@@ -26,10 +27,13 @@ import type {
   ProjectRepositoryDto,
   ProjectResourceDto,
   ProjectTagDto,
+  PurgeWorktreesResultDto,
+  RemoveWorktreeBody,
   ReorderBoardColumnBody,
   ReorderFutureObjectivesBody,
   ReorderWorkspaceStatusesBody,
   StoredImageDto,
+  TicketBranchListDto,
   TicketDetailDto,
   TicketDto,
   TicketEventDto,
@@ -49,7 +53,8 @@ import type {
   UserTokenDto,
   WorkspaceDto,
   WorkspaceMemberDto,
-  WorkspaceStatusDto
+  WorkspaceStatusDto,
+  WorktreeDto
 } from '../../shared/contract.ts';
 
 export interface Meta {
@@ -213,6 +218,15 @@ export const api = {
   deleteTicket: (id: string) => request<{ ok: true }>('DELETE', `/api/tickets/${id}`),
   generateTicketTitle: (id: string) =>
     request<TicketDetailDto>('POST', `/api/tickets/${id}/generate-title`),
+  branchAction: (id: string, body: BranchActionBody) =>
+    request<TicketDetailDto>('POST', `/api/tickets/${id}/branch/action`, body),
+  listTicketBranches: (id: string) =>
+    request<TicketBranchListDto>('GET', `/api/tickets/${id}/branches`),
+  listWorktrees: () => request<WorktreeDto[]>('GET', '/api/worktrees'),
+  removeWorktree: (body: RemoveWorktreeBody) =>
+    request<PurgeWorktreesResultDto>('POST', '/api/worktrees/remove', body),
+  purgeMergedWorktrees: () =>
+    request<PurgeWorktreesResultDto>('POST', '/api/worktrees/purge-merged'),
   listTicketEvents: (id: string) => request<TicketEventDto[]>('GET', `/api/tickets/${id}/events`),
   listTicketArtifacts: (id: string) =>
     request<ArtifactDto[]>('GET', `/api/tickets/${id}/artifacts`),

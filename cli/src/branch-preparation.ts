@@ -35,6 +35,8 @@ type TicketShape = {
   branch?: {
     name?: unknown;
     status?: unknown;
+    baseBranch?: unknown;
+    overrideBranch?: unknown;
   } | null;
 };
 
@@ -76,6 +78,30 @@ function defaultBranch(gitRoot: string): string {
   if (local.includes('main')) return 'main';
   if (local.includes('master')) return 'master';
   return local[0] ?? 'main';
+}
+
+function refExists(gitRoot: string, ref: string): boolean {
+  return (
+    runGit(gitRoot, ['rev-parse', '--verify', '--quiet', `refs/heads/${ref}`], {
+      optional: true
+    }) !== '' ||
+    runGit(gitRoot, ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${ref}`], {
+      optional: true
+    }) !== ''
+  );
+}
+
+// Resolves the base/parent branch to cut from. The project-configured default
+// branch (surfaced on the ticket as `branch.baseBranch`) wins when it actually
+// exists in this checkout; otherwise we fall back to the repo's git default so a
+// stale/misconfigured setting never blocks branch preparation.
+function resolveBaseBranch(gitRoot: string, ticket: TicketShape): string {
+  const configured = ticket.branch?.baseBranch;
+  if (typeof configured === 'string' && configured.trim()) {
+    const base = configured.trim();
+    if (refExists(gitRoot, base)) return base;
+  }
+  return defaultBranch(gitRoot);
 }
 
 function currentWorktrees(gitRoot: string): string[] {
@@ -136,6 +162,13 @@ function recordedTicketBranch(ticket: TicketShape): string | null {
   return typeof branch.name === 'string' && branch.name.trim() ? branch.name.trim() : null;
 }
 
+// A branch the user pinned in the ticket panel to override the planner's default
+// (TicketBranchDto.overrideBranch). The explicit `--branch` flag still wins.
+function ticketOverrideBranch(ticket: TicketShape): string | null {
+  const override = ticket.branch?.overrideBranch;
+  return typeof override === 'string' && override.trim() ? override.trim() : null;
+}
+
 function ticketSequence(ticket: TicketShape, ticketId: string): number {
   const direct = ticket.sequenceNumber ?? ticket.sequence;
   if (typeof direct === 'number' && Number.isFinite(direct)) return direct;
@@ -185,6 +218,12 @@ function ensureWorktree(gitRoot: string, decision: BranchDecision): void {
     return;
   }
 
+  // The worktree directory is gone but git may still hold a stale registration
+  // for this path (e.g. it was purged from Settings → Worktrees, or deleted
+  // out-of-band). Prune first so re-adding the same path for a follow-on
+  // objective succeeds instead of failing with "already registered".
+  runGit(gitRoot, ['worktree', 'prune'], { optional: true });
+
   if (decision.action === 'reuse') {
     runGit(gitRoot, ['worktree', 'add', decision.worktreePath, decision.branch]);
     return;
@@ -217,8 +256,11 @@ export async function prepareTicketBranch({
   const ticket = (await runtime.backend.get(
     `/api/tickets/${encodeURIComponent(options.ticketId)}`
   )) as TicketShape;
-  const base = defaultBranch(gitRoot);
+  const base = resolveBaseBranch(gitRoot, ticket);
   const refs = repoRefs(gitRoot, base);
+  // The explicit `--branch` flag wins; otherwise honor the ticket's pinned
+  // override (set in the ticket panel's branch selector).
+  const overrideBranch = options.overrideBranch?.trim() || ticketOverrideBranch(ticket);
   const decision = planTicketBranch({
     ticket: {
       title: typeof ticket.title === 'string' ? ticket.title : 'ticket',
@@ -229,7 +271,7 @@ export async function prepareTicketBranch({
     base,
     refs,
     worktreeRoot: resolveWorktreeRoot(),
-    overrideBranch: options.overrideBranch
+    overrideBranch
   });
 
   ensureWorktree(gitRoot, decision);

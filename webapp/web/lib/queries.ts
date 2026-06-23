@@ -1,6 +1,7 @@
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type {
+  BranchActionBody,
   CompleteInitialSetupBody,
   CreateObjectiveBody,
   CreateProjectBody,
@@ -15,6 +16,7 @@ import type {
   MyTicketsResponse,
   ObjectiveAttachmentDto,
   ProjectTagDto,
+  RemoveWorktreeBody,
   ReorderFutureObjectivesBody,
   ReorderWorkspaceStatusesBody,
   StatusType,
@@ -55,6 +57,8 @@ export const keys = {
   tickets: (projectId: string) => ['project', projectId, 'tickets'] as const,
   myTickets: ['workspace', 'my-tickets'] as const,
   ticket: (id: string) => ['ticket', id] as const,
+  ticketBranches: (id: string) => ['ticket', id, 'branches'] as const,
+  worktrees: ['worktrees'] as const,
   ticketEvents: (id: string) => ['ticket', id, 'events'] as const,
   ticketArtifacts: (id: string) => ['ticket', id, 'artifacts'] as const,
   ticketFileChanges: (id: string) => ['ticket', id, 'file-changes'] as const,
@@ -127,6 +131,20 @@ export const useWorkspaceMyTickets = () =>
 
 export const useTicket = (id: string) =>
   useQuery({ queryKey: keys.ticket(id), queryFn: () => api.getTicket(id) });
+
+// Available branches for the ticket's branch selector. Only fetched when the
+// selector is opened (callers pass `enabled`) so we don't shell git on every
+// ticket open.
+export const useTicketBranches = (id: string, enabled: boolean) =>
+  useQuery({
+    queryKey: keys.ticketBranches(id),
+    queryFn: () => api.listTicketBranches(id),
+    enabled,
+    staleTime: 30_000
+  });
+
+export const useWorktrees = () =>
+  useQuery({ queryKey: keys.worktrees, queryFn: () => api.listWorktrees() });
 
 // The global realtime SSE feed invalidates this query whenever the database
 // changes — including ticket_events written by the CLI/agent in another process
@@ -461,6 +479,36 @@ export function useGenerateTicketTitle(id: string) {
   return useMutation({
     mutationFn: () => api.generateTicketTitle(id),
     onSuccess: () => invalidateAll(qc)
+  });
+}
+
+export function useBranchAction(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BranchActionBody) => api.branchAction(id, body),
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
+export function useRemoveWorktree() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RemoveWorktreeBody) => api.removeWorktree(body),
+    onSuccess: result => {
+      qc.setQueryData(keys.worktrees, result.worktrees);
+      void qc.invalidateQueries({ queryKey: keys.worktrees });
+    }
+  });
+}
+
+export function usePurgeMergedWorktrees() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.purgeMergedWorktrees(),
+    onSuccess: result => {
+      qc.setQueryData(keys.worktrees, result.worktrees);
+      void qc.invalidateQueries({ queryKey: keys.worktrees });
+    }
   });
 }
 

@@ -50,12 +50,13 @@ capability, new closed-vocabulary event types if we record merge/PR events).
 
 The buttons should key off the corrected branch status, not a generic "active":
 
-| `branch.status` | Merge with parent | Create PR | Rationale |
-| --- | --- | --- | --- |
-| `pending` | hidden | hidden | No branch exists yet. |
-| `created` | shown | **hidden** (offer "Publish" first) | Local only — there's no remote ref to open a PR against. |
-| `published` | shown | shown | Pushed to `origin`; a PR can target it. |
-| `merged` | hidden | hidden | Already landed; offer the new-cycle hint from the automation plan instead. |
+| `branch.status` | Merge with parent | Push parent | Create PR | Rationale |
+| --- | --- | --- | --- | --- |
+| `pending` | hidden | hidden | hidden | No branch exists yet. |
+| `created` | shown | hidden | **hidden** (offer "Publish" first) | Local only — there's no remote ref to open a PR against. |
+| `published` | shown | hidden | shown | Pushed to `origin`; a PR can target it. |
+| `merged_unpushed` | hidden | **shown** | hidden | Action A done (local parent advanced); only the push remains. |
+| `merged` | hidden | hidden | hidden | Already landed and pushed; offer the new-cycle hint from the automation plan instead. |
 
 This is why the `created`/`published` split delivered under `coo:30` matters: it is
 exactly the signal that decides whether "Create PR" can work at all. "Create PR" on a
@@ -167,10 +168,10 @@ and keeps the (network, credentialed) push as a separate, explicit act.
   objective is executing on the branch unless the user confirms (typed
   `BRANCH_BUSY_EXECUTING`, see above); refuse step 2/Action B if the worktree still
   has an unresolved/conflicted or dirty state.
-- **Status interplay:** after a successful Action B the branch becomes `merged` by the
-  corrected `deriveBranchStatus` rule (it has diverged from the parent and is now fully
-  contained in it). Before that, "merged into parent locally but unpushed" is a real
-  intermediate the UI may want to reflect (see open question 4).
+- **Status interplay:** after a successful Action A the branch reads `merged_unpushed`
+  (local parent advanced via `--no-ff`, not yet pushed); after a successful Action B it
+  reads `merged` (`origin/<parent>` now contains it). Both follow from the corrected
+  `deriveBranchStatus` rule — see decision 4.
 - **Ownership:** all three steps are local/remote git ops → **Runner Layer**, behind
   REST endpoints (e.g. `POST /api/tickets/:id/branch/integrate` for A and
   `.../branch/push-parent` for B), gated `ticket:update`. Record each as an allowed
@@ -214,19 +215,67 @@ integration is scoped separately.
 ## Decisions (resolved with the PM)
 
 1. **Merge-with-parent strategy → worktree-first local merge.** Bring the parent into
-   the branch's own worktree (user resolves conflicts there in their IDE), then
-   fast-forward the parent to the branch, then push. Split into two buttons ("Update
-   from `<parent>` & merge" / "Push `<parent>`"). See *Merge-with-parent flow* above.
+   the branch's own worktree (user resolves conflicts there in their IDE), then advance
+   the parent to the branch, then push. Split into two buttons ("Update from `<parent>`
+   & merge" / "Push `<parent>`"). See *Merge-with-parent flow* above.
+   - **Refinement (during `coo:30` objective 2):** step 2 advances the parent with a
+     **`--no-ff` merge commit** (`git merge --no-ff <branch>`), not a fast-forward.
+     It is still conflict-free by construction (the branch already contains the
+     parent after step 1), but it leaves the parent tip *diverged* from the branch
+     tip. That divergence is what lets `deriveBranchStatus` distinguish a genuinely
+     merged branch from a freshly-cut one (a fast-forward leaves the tips identical,
+     the documented `0.39-draft` edge), enabling reliable `merged_unpushed`/`merged`.
 2. **PR creation → "Copy PR URL/command" is acceptable for v1.** Full GitHub PR
    integration is deferred to Phase 3 / its own ticket.
 3. **Executing-objective handling → confirm-and-proceed**, enforced server-side
    (typed `BRANCH_BUSY_EXECUTING`), not a hard block.
+4. **Intermediate "merged locally but unpushed" state → yes, add it.** A new derived
+   `TicketBranchStatus` value `merged_unpushed` (contract `0.40-draft`) marks the gap
+   between Action A (local parent advanced) and Action B (parent pushed). Implemented
+   in objective 2: `deriveBranchStatus` reports `merged` when `origin/<base>` contains
+   the branch and `merged_unpushed` when only the local base does; the ticket panel
+   renders it as "merged · unpushed".
+5. **Parent selection → project-configured default branch.** The user sets a per-project
+   **default branch** in the Resources settings page (stored in `projects.settings_json`
+   under `overlord.defaultBranch`, surfaced as `ProjectDto.defaultBranch`; `null` ⇒
+   `main`). It is both the branch tickets are cut from and the parent that "Merge with
+   parent" advances. Implemented in objective 2 (contract `0.40-draft`): the service
+   layer resolves the ticket `baseBranch` from it and the Runner Layer prefers it when
+   cutting branches. (Per-merge parent override is not added; the project default is the
+   single source of truth.)
 
-## Open questions for the PM
+## Implementation status (ticket `coo:30`)
 
-4. Should the UI represent the intermediate **"merged into parent locally but not yet
-   pushed"** state (between Action A and Action B), or is the existing
-   `created`/`published`/`merged` set enough? A dedicated indicator would need a new
-   derived status value (another `TicketBranchStatus` + contract bump).
-5. **Parent selection:** always the repo default branch (`main`), or should the user be
-   able to choose the parent per merge (the "[or whatever parent]" case)?
+- **Objective 1 (delivered):** `deriveBranchStatus` + `created`/`published` split
+  (contract `0.39-draft`).
+- **Objective 2 (this work):** decisions 4 and 5 above — `merged_unpushed` status and
+  the project default branch (contract `0.40-draft`) — **plus Phase 1 itself**: the
+  merge/push/publish action endpoints (contract `0.41-draft`). Done.
+- **Objective 3 (delivered):** branch selection + worktree lifecycle (contract
+  `0.42-draft`). Adds a ticket-panel **branch selector** that pins
+  `tickets.branch_override` (consumed by the Runner Layer at the next launch via the
+  existing `--branch`/override path; `--branch` flag still wins), **per-objective branch
+  recording** (`objectives.branch`, written by the runner at branch-prepared time and
+  shown per objective), **worktree reuse** for follow-on objectives (the planner already
+  reuses the recorded branch's deterministic worktree path; preparation now prunes stale
+  registrations first so a purged path can be re-added), and **Settings → Worktrees**: a
+  `GET /api/worktrees` list with per-row delete (`POST /api/worktrees/remove`, refuses a
+  dirty worktree without `force`) and **Purge all merged** (`POST /api/worktrees/purge-merged`).
+  Purge policy is **manual + auto-on-merge**: Action B (`push_parent`) auto-removes the
+  merged branch's clean worktree. Two nullable DB columns (`objectives.branch`,
+  `tickets.branch_override`) on both adapters.
+
+### Execution model (resolved with the PM)
+
+The earlier "the webapp must not shell git" framing above is **superseded for these
+actions**. Overlord's worktrees live under `~/.ovld/worktrees`, which the webapp server
+(running on the host) **can** access — so it operates on them **directly**. The Runner
+Layer's distinct responsibility is launching the *agent* into a worktree directory so an
+AgentPod adopts the folder it is started in (pods only see the folder they are launched
+in — which is why the *agent* sees the worktree but a server elsewhere might not; the
+host webapp is not "elsewhere"). On-demand merge/push are therefore implemented as
+**host-side git ops in the REST API/service layer** (`webapp/server/repository.ts`,
+`performBranchAction`) behind `POST /api/tickets/:id/branch/action`, with typed results
+(`BRANCH_MERGE_CONFLICT` / `BRANCH_BUSY_EXECUTING` / `BRANCH_DIRTY` / …). No queue table
+or Runner-Layer job was needed; the action is synchronous and conflicts are left in the
+branch's worktree for IDE resolution. See CONTRACT.md `0.41-draft`.

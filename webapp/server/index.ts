@@ -55,12 +55,17 @@ import {
   listProjectResources,
   listProjects,
   listProjectTags,
+  listTicketBranches,
   listTicketEvents,
   listTicketFileChanges,
   listTickets,
   listUserTokens,
   listWorkspaceMyTickets,
   listWorkspaceStatuses,
+  listWorktrees,
+  performBranchAction,
+  purgeMergedWorktrees,
+  removeWorktree,
   renameUserToken,
   reorderBoardColumn,
   reorderFutureObjectives,
@@ -865,6 +870,44 @@ app.post(
       }),
     { mutates: true, requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM }
   )
+);
+// On-demand branch mutations (merge with parent / push parent / publish). The
+// webapp operates directly on the host-accessible worktrees; the action is the
+// discriminator in the body. Returns the refreshed TicketDetailDto, or a typed
+// error (BRANCH_MERGE_CONFLICT / BRANCH_BUSY_EXECUTING / BRANCH_DIRTY / …).
+app.post(
+  '/api/tickets/:id/branch/action',
+  handle(req => performBranchAction(req.params.id, req.body ?? {}), {
+    mutates: true,
+    requires: PERMISSIONS.TICKET_UPDATE
+  })
+);
+// Available branches in the ticket project's primary repo, for the branch selector.
+app.get(
+  '/api/tickets/:id/branches',
+  handle(req => listTicketBranches(req.params.id), { requires: PERMISSIONS.TICKET_READ })
+);
+
+// ---- Worktrees (Settings → Worktrees) ---------------------------------------
+// Enumerate / purge Overlord-managed worktrees under ~/.ovld/worktrees. Like the
+// branch actions, these are host-side git ops the webapp performs directly.
+app.get(
+  '/api/worktrees',
+  handle(() => listWorktrees(), { requires: PERMISSIONS.PROJECT_READ })
+);
+app.post(
+  '/api/worktrees/remove',
+  handle(req => removeWorktree(req.body ?? {}), {
+    mutates: true,
+    requires: PERMISSIONS.PROJECT_UPDATE
+  })
+);
+app.post(
+  '/api/worktrees/purge-merged',
+  handle(() => purgeMergedWorktrees(), {
+    mutates: true,
+    requires: PERMISSIONS.PROJECT_UPDATE
+  })
 );
 
 // ---- Static SPA (production: `yarn build:prod` then `yarn start`) ------------

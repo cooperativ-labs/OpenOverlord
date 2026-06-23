@@ -32,13 +32,12 @@ describe('branch status derivation', () => {
     return repo;
   }
 
-  it('reports created / published / merged from real git state', async () => {
+  it('reports created / published / merged_unpushed / merged from real git state', async () => {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-branch-status-'));
     process.env.OVERLORD_SQLITE_PATH = path.join(dir, 'Overlord.sqlite');
 
-    const { createProject, createTicket, getTicketDetail, createProjectResource } = await import(
-      './repository.ts'
-    );
+    const { createProject, createTicket, getTicketDetail, createProjectResource } =
+      await import('./repository.ts');
     const { recordBranchPrepared } = await import('./runner.ts');
 
     const repo = initRepo();
@@ -80,7 +79,8 @@ describe('branch status derivation', () => {
     prepare(publishedTicket.displayId, publishedBranch);
     assert.equal(getTicketDetail(publishedTicket.id).branch?.status, 'published');
 
-    // 3. Branch whose commits have landed in main via a (non-ff) merge → merged.
+    // 3. Branch merged into LOCAL main via a (non-ff) merge, but origin/main not
+    //    updated → merged_unpushed (the gap between merge Action A and push B).
     const mergedTicket = createTicket({ projectId: project.id, firstObjective: 'Merged branch' });
     const mergedBranch = 'overlord/merged-1';
     git(repo, ['branch', mergedBranch, 'main']);
@@ -89,6 +89,39 @@ describe('branch status derivation', () => {
     git(repo, ['checkout', '-q', 'main']);
     git(repo, ['merge', '-q', '--no-ff', '-m', 'merge', mergedBranch]);
     prepare(mergedTicket.displayId, mergedBranch);
+    assert.equal(getTicketDetail(mergedTicket.id).branch?.status, 'merged_unpushed');
+
+    // 4. After the merged parent is pushed (origin/main now contains the branch),
+    //    the same branch reads merged.
+    git(repo, ['update-ref', 'refs/remotes/origin/main', git(repo, ['rev-parse', 'main'])]);
     assert.equal(getTicketDetail(mergedTicket.id).branch?.status, 'merged');
+  });
+
+  it('uses the project-configured default branch as the ticket base/parent', async () => {
+    const dir = mkdtempSync(path.join('/tmp', 'ovld-default-branch-'));
+    process.env.OVERLORD_SQLITE_PATH = path.join(dir, 'Overlord.sqlite');
+
+    const { createProject, createTicket, getTicketDetail, getProject, updateProject } =
+      await import('./repository.ts');
+
+    const project = createProject({ name: 'Default Branch Test' });
+    // Unconfigured: falls back to main.
+    assert.equal(getProject(project.id).defaultBranch, null);
+    const beforeTicket = createTicket({ projectId: project.id, firstObjective: 'Before config' });
+    assert.equal(getTicketDetail(beforeTicket.id).branch?.baseBranch, 'main');
+
+    // Configure a project default branch; it surfaces on the DTO and as the base.
+    const updated = updateProject(project.id, { defaultBranch: 'develop' });
+    assert.equal(updated.defaultBranch, 'develop');
+    const afterTicket = createTicket({ projectId: project.id, firstObjective: 'After config' });
+    assert.equal(getTicketDetail(afterTicket.id).branch?.baseBranch, 'develop');
+
+    // Invalid branch names are rejected at the REST boundary.
+    assert.throws(() => updateProject(project.id, { defaultBranch: 'bad branch name' }));
+
+    // Clearing falls back to main again.
+    assert.equal(updateProject(project.id, { defaultBranch: null }).defaultBranch, null);
+    const clearedTicket = createTicket({ projectId: project.id, firstObjective: 'Cleared' });
+    assert.equal(getTicketDetail(clearedTicket.id).branch?.baseBranch, 'main');
   });
 });
