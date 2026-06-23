@@ -14,6 +14,7 @@ import type {
   CreateWorkspaceStatusBody,
   ExecutionRequestDto,
   FileChangeDto,
+  GenerateCommitMessageResultDto,
   LaunchObjectiveBody,
   LaunchPreferenceDto,
   LaunchSettingsDto,
@@ -219,6 +220,11 @@ export const api = {
   deleteMission: (id: string) => request<{ ok: true }>('DELETE', `/api/missions/${id}`),
   generateMissionTitle: (id: string) =>
     request<MissionDetailDto>('POST', `/api/missions/${id}/generate-title`),
+  generateCommitMessage: (id: string) =>
+    request<GenerateCommitMessageResultDto>(
+      'POST',
+      `/api/missions/${id}/generate-commit-message`
+    ),
   branchAction: (id: string, body: BranchActionBody) =>
     request<MissionDetailDto>('POST', `/api/missions/${id}/branch/action`, body),
   listMissionBranches: (id: string) =>

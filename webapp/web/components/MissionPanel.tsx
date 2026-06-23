@@ -25,6 +25,7 @@ import { ApiRequestError } from '../lib/api.ts';
 import {
   useBranchAction,
   useCreateObjective,
+  useGenerateCommitMessage,
   useGenerateMissionTitle,
   useMission,
   useMissionBranches,
@@ -344,6 +345,7 @@ function BranchSelector({ mission }: { mission: MissionDetailDto }) {
 function BranchSection({ mission }: { mission: MissionDetailDto }) {
   const branch = mission.branch;
   const branchAction = useBranchAction(mission.id);
+  const generateCommitMessage = useGenerateCommitMessage(mission.id);
   const [actionError, setActionError] = useState<string | null>(null);
   // When an action needs confirmation (an objective is executing on the branch),
   // we stash the intended action and surface an inline confirm prompt.
@@ -396,6 +398,15 @@ function BranchSection({ mission }: { mission: MissionDetailDto }) {
     void runAction(action, false, message);
   }
 
+  // Drafts a commit message from the worktree diff and drops it into the field
+  // for the user to edit before committing.
+  function handleGenerateCommitMessage(): void {
+    if (generateCommitMessage.isPending || branchAction.isPending) return;
+    generateCommitMessage.mutate(undefined, {
+      onSuccess: result => setCommitMessage(result.message)
+    });
+  }
+
   const onMergeableBranch = branch.status === 'created' || branch.status === 'published';
   // The branch must be committed before it can be merged: while its worktree has
   // uncommitted changes we ask the user to commit first; only a clean worktree
@@ -443,31 +454,78 @@ function BranchSection({ mission }: { mission: MissionDetailDto }) {
           </div>
 
           {showCommit && (
-            <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2">
+            <div className="space-y-2.5 rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5">
               <p className="text-xs text-amber-800 dark:text-amber-200">
-                This branch has uncommitted changes. Commit them before updating from {parent}.
+                Uncommitted changes on this branch. Commit them before updating from {parent}.
               </p>
-              <input
-                type="text"
-                value={commitMessage}
-                onChange={event => setCommitMessage(event.target.value)}
-                placeholder="Commit message"
-                aria-label="Commit message"
-                disabled={branchAction.isPending}
-                onKeyDown={event => {
-                  if (event.key === 'Enter' && commitMessageValid && !branchAction.isPending) {
-                    handleAction('commit', commitMessage.trim());
-                  }
-                }}
-                className="h-7 w-full rounded-md border bg-transparent px-2 text-xs"
-              />
-              <Button
-                variant="primary"
-                disabled={branchAction.isPending || !commitMessageValid}
-                onClick={() => handleAction('commit', commitMessage.trim())}
-              >
-                {branchAction.isPending ? 'Committing…' : actionLabels.commit}
-              </Button>
+              {/* The Sparkles button overlays the textarea's top-right corner so
+                  the AI-draft affordance reads as part of the field. Cmd/Ctrl+Enter
+                  commits; bare Enter inserts a newline (it's a multi-line field). */}
+              <div className="relative">
+                <textarea
+                  rows={3}
+                  value={commitMessage}
+                  onChange={event => setCommitMessage(event.target.value)}
+                  placeholder="Describe your changes…"
+                  aria-label="Commit message"
+                  disabled={branchAction.isPending}
+                  onKeyDown={event => {
+                    if (
+                      (event.metaKey || event.ctrlKey) &&
+                      event.key === 'Enter' &&
+                      commitMessageValid &&
+                      !branchAction.isPending
+                    ) {
+                      event.preventDefault();
+                      handleAction('commit', commitMessage.trim());
+                    }
+                  }}
+                  className="w-full resize-y rounded-md border border-amber-500/30 bg-background/70 px-2.5 py-1.5 pr-9 text-xs leading-relaxed shadow-sm focus:border-amber-500/60 focus:outline-none focus:ring-1 focus:ring-amber-500/40"
+                />
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <IconButton
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label="Draft commit message with AI"
+                        className="absolute right-1.5 top-1.5"
+                        disabled={branchAction.isPending || generateCommitMessage.isPending}
+                        onClick={handleGenerateCommitMessage}
+                      />
+                    }
+                  >
+                    {generateCommitMessage.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles
+                        className={cn(
+                          'h-3.5 w-3.5',
+                          generateCommitMessage.isError && 'text-destructive'
+                        )}
+                      />
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {generateCommitMessage.isError
+                      ? (generateCommitMessage.error as Error).message
+                      : 'Draft commit message with AI'}
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[0.7rem] text-amber-700/80 dark:text-amber-300/70">
+                  ⌘↵ to commit
+                </span>
+                <Button
+                  variant="primary"
+                  disabled={branchAction.isPending || !commitMessageValid}
+                  onClick={() => handleAction('commit', commitMessage.trim())}
+                >
+                  {branchAction.isPending ? 'Committing…' : actionLabels.commit}
+                </Button>
+              </div>
             </div>
           )}
 
