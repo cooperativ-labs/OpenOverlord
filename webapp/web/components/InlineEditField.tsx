@@ -33,12 +33,16 @@ export type InlineEditFieldProps = {
   ariaLabel?: string;
   /** Minimum visible line count when `multiline` (display + edit modes). */
   minRows?: number;
+  /** Also save ~300ms after the user stops typing, instead of only on blur. Default `true`. */
+  debounceSaveOnChange?: boolean;
 };
 
 /** Matches `leading-relaxed` (1.625) used on objective instruction surfaces. */
 function minRowsMinHeightStyle(minRows: number): React.CSSProperties {
   return { minHeight: `${minRows * 1.625}em` };
 }
+
+const DEBOUNCE_SAVE_MS = 300;
 
 /**
  * Inline click-to-edit text. Displays a value that turns into an editor on
@@ -63,14 +67,32 @@ export function InlineEditField({
   disabled = false,
   commitEmpty = false,
   ariaLabel,
-  minRows
+  minRows,
+  debounceSaveOnChange = true
 }: InlineEditFieldProps) {
   const multilineMinRowsStyle = multiline && minRows ? minRowsMinHeightStyle(minRows) : undefined;
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(value);
+  const draftRef = React.useRef(value);
+  const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
-  React.useEffect(() => setDraft(value), [value]);
+  // Skip while editing so an autosave round-trip (debounced onChange below)
+  // doesn't clobber keystrokes typed after the save fired but before the
+  // updated `value` prop comes back from the server.
+  React.useEffect(() => {
+    if (editing) return;
+    setDraft(value);
+    draftRef.current = value;
+  }, [value, editing]);
+
+  const clearPendingSave = React.useCallback(() => {
+    if (saveTimeoutRef.current === null) return;
+    clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = null;
+  }, []);
+
+  React.useEffect(() => clearPendingSave, [clearPendingSave]);
 
   // Focus and place the caret at the end when entering multiline edit mode.
   React.useEffect(() => {
@@ -83,17 +105,37 @@ export function InlineEditField({
   }, [editing, multiline]);
 
   const commit = React.useCallback(() => {
+    clearPendingSave();
     setEditing(false);
     const trimmed = draft.trim();
     if (trimmed && trimmed !== value) onSave(trimmed);
     else if (!trimmed && commitEmpty) onSave('');
     else setDraft(value);
-  }, [commitEmpty, draft, value, onSave]);
+  }, [clearPendingSave, commitEmpty, draft, value, onSave]);
 
   const cancel = React.useCallback(() => {
+    clearPendingSave();
     setDraft(value);
     setEditing(false);
-  }, [value]);
+  }, [clearPendingSave, value]);
+
+  // Mirrors `setDraft`, additionally (re)scheduling a debounced autosave so
+  // edits persist ~300ms after the user pauses, on top of the on-blur commit.
+  const updateDraft = React.useCallback(
+    (next: string) => {
+      draftRef.current = next;
+      setDraft(next);
+      if (!debounceSaveOnChange) return;
+      clearPendingSave();
+      saveTimeoutRef.current = setTimeout(() => {
+        saveTimeoutRef.current = null;
+        const trimmed = draftRef.current.trim();
+        if (trimmed && trimmed !== value) onSave(trimmed);
+        else if (!trimmed && commitEmpty) onSave('');
+      }, DEBOUNCE_SAVE_MS);
+    },
+    [clearPendingSave, commitEmpty, debounceSaveOnChange, onSave, value]
+  );
 
   if (disabled || !editing) {
     return (
@@ -119,7 +161,7 @@ export function InlineEditField({
       <MentionableTextarea
         ref={textareaRef}
         value={draft}
-        onValueChange={setDraft}
+        onValueChange={updateDraft}
         mentionPaths={mentionPaths}
         projectMentionOptions={projectMentionOptions}
         ticketMentionOptions={ticketMentionOptions}
@@ -153,12 +195,11 @@ export function InlineEditField({
       value={draft}
       className={cn('h-full border-none bg-transparent hover:bg-transparent', inputClassName)}
       aria-label={ariaLabel}
-      onChange={event => setDraft(event.target.value)}
+      onChange={event => updateDraft(event.target.value)}
       onBlur={commit}
       onKeyDown={event => {
         if (event.key === 'Escape') {
-          setDraft(value);
-          setEditing(false);
+          cancel();
           return;
         }
         if (event.key === 'Enter') {
