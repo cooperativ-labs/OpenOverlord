@@ -1,9 +1,26 @@
 import { deriveObjectiveLifecycleView, objectiveHasInstructionText } from '@overlord/automations';
 import { useNavigate } from '@tanstack/react-router';
-import { ArrowRightToLine, Check, Copy, Loader2, Sparkles } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowRightToLine,
+  ArrowUp,
+  Check,
+  ChevronDown,
+  Copy,
+  FolderOpen,
+  GitBranch,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+  Terminal
+} from 'lucide-react';
 import { useRef, useState } from 'react';
 
-import type { TicketDetailDto } from '../../shared/contract.ts';
+import type {
+  TicketBranchDto,
+  TicketBranchStatus,
+  TicketDetailDto
+} from '../../shared/contract.ts';
 import { ApiRequestError } from '../lib/api.ts';
 import {
   useBranchAction,
@@ -17,6 +34,12 @@ import { cn } from '../lib/utils.ts';
 
 import { TicketObjectivesSection } from './objectives/TicketObjectivesSection.tsx';
 import { Button as IconButton } from './ui/button.tsx';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from './ui/dropdown-menu.tsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select.tsx';
 import { Separator } from './ui/separator.tsx';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip.tsx';
@@ -169,6 +192,95 @@ type BranchActionName = 'integrate' | 'push_parent' | 'publish';
 // string value, so we map this to clearing the override (branchOverride: null).
 const AUTO_BRANCH = '__auto__';
 
+// Visual treatment per branch lifecycle state. A colored dot is the primary
+// indicator (scannable at a glance); the tinted pill reinforces it. Kept as a
+// lookup table rather than nested ternaries so the states read as a set.
+const BRANCH_STATUS_META: Record<
+  TicketBranchStatus,
+  { label: string; dot: string; pill: string }
+> = {
+  pending: {
+    label: 'Not created',
+    dot: 'bg-muted-foreground/40',
+    pill: 'bg-muted text-muted-foreground'
+  },
+  created: {
+    label: 'Created',
+    dot: 'bg-sky-500',
+    pill: 'bg-sky-500/10 text-sky-700 dark:text-sky-300'
+  },
+  published: {
+    label: 'Published',
+    dot: 'bg-violet-500',
+    pill: 'bg-violet-500/10 text-violet-700 dark:text-violet-300'
+  },
+  merged_unpushed: {
+    label: 'Merged · unpushed',
+    dot: 'bg-amber-500',
+    pill: 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+  },
+  merged: {
+    label: 'Merged',
+    dot: 'bg-emerald-500',
+    pill: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+  }
+};
+
+/**
+ * A single copy affordance for the branch's identity. Opens a dropdown so the
+ * three things people actually paste — the branch name, a ready-to-run `cd`
+ * command, and the worktree path — live behind one button instead of a row of
+ * separate icon buttons. The worktree-derived items are disabled until a
+ * worktree exists (i.e. before the branch is prepared).
+ */
+function BranchCopyMenu({ branch }: { branch: TicketBranchDto }) {
+  const [copied, setCopied] = useState(false);
+  const path = branch.worktreePath;
+  const cdCommand = path ? `cd ${JSON.stringify(path)}` : null;
+
+  const copy = (value: string) => {
+    void navigator.clipboard.writeText(value);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={<IconButton type="button" variant="outline" size="xs" className="gap-1" />}
+      >
+        {copied ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+        {copied ? 'Copied' : 'Copy'}
+        <ChevronDown className="h-3 w-3 opacity-60" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-44">
+        <DropdownMenuItem onClick={() => copy(branch.name)}>
+          <GitBranch />
+          Branch name
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={!cdCommand}
+          onClick={() => {
+            if (cdCommand) copy(cdCommand);
+          }}
+        >
+          <Terminal />
+          cd into worktree
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={!path}
+          onClick={() => {
+            if (path) copy(path);
+          }}
+        >
+          <FolderOpen />
+          Worktree path
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 /**
  * Lets the user pin a different branch when the system-chosen default is wrong.
  * The choice is stored as the ticket's `branchOverride` and consumed by the
@@ -242,38 +354,13 @@ function BranchSection({ ticket }: { ticket: TicketDetailDto }) {
   const [confirmAction, setConfirmAction] = useState<BranchActionName | null>(null);
 
   if (!branch) return null;
-  const statusLabel =
-    branch.status === 'pending'
-      ? 'not created yet'
-      : branch.status === 'created'
-        ? 'created'
-        : branch.status === 'published'
-          ? 'published'
-          : branch.status === 'merged_unpushed'
-            ? 'merged · unpushed'
-            : 'merged';
-  const statusClass =
-    branch.status === 'pending'
-      ? 'bg-muted text-muted-foreground'
-      : branch.status === 'created'
-        ? 'bg-sky-500/10 text-sky-700 dark:text-sky-300'
-        : branch.status === 'published'
-          ? 'bg-violet-500/10 text-violet-700 dark:text-violet-300'
-          : branch.status === 'merged_unpushed'
-            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
-            : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
-  const cdCommand = branch.worktreePath ? `cd ${JSON.stringify(branch.worktreePath)}` : null;
+  const status = BRANCH_STATUS_META[branch.status];
 
   const parent = branch.baseBranch ?? 'main';
   // A GitHub PR can only target a pushed branch, so this is offered on `published`.
   const prCommand = `gh pr create --base ${parent} --head ${branch.name} --fill --web`;
   // The DTO carries only the active (queued/claimed/launching) execution requests.
   const isExecuting = ticket.executionRequests.length > 0;
-  const actionLabels: Record<BranchActionName, string> = {
-    integrate: `Update from ${parent} & merge`,
-    push_parent: `Push ${parent}`,
-    publish: 'Publish'
-  };
 
   async function runAction(action: BranchActionName, confirmBusy: boolean): Promise<void> {
     setActionError(null);
@@ -312,37 +399,50 @@ function BranchSection({ ticket }: { ticket: TicketDetailDto }) {
         <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-dim)]">
           Branch
         </h2>
-        <div className="space-y-2 rounded-md border border-border bg-background/60 p-3 text-sm">
-          <div className="flex min-w-0 items-center gap-2">
-            <code className="min-w-0 flex-1 truncate text-xs">{branch.name}</code>
-            <CopyIconButton value={branch.name} label="Copy branch" />
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span className={`rounded-full px-2 py-0.5 font-medium ${statusClass}`}>
-              {statusLabel}
+        <div className="space-y-3 rounded-md border border-border bg-background/60 p-3 text-sm">
+          {/* Status indicator + the single copy affordance. */}
+          <div className="flex items-center justify-between gap-2">
+            <span
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium',
+                status.pill
+              )}
+            >
+              <span className={cn('h-1.5 w-1.5 rounded-full', status.dot)} aria-hidden />
+              {status.label}
             </span>
-            {branch.baseBranch && <span>cut from {branch.baseBranch}</span>}
+            <BranchCopyMenu branch={branch} />
           </div>
-          <BranchSelector ticket={ticket} />
-          {branch.worktreePath && (
+
+          {/* Identity: the branch name, with its parent beneath it. */}
+          <div className="space-y-1">
             <div className="flex min-w-0 items-center gap-2">
-              <code className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                {branch.worktreePath}
+              <GitBranch className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <code className="min-w-0 flex-1 truncate text-[0.8rem] font-medium" title={branch.name}>
+                {branch.name}
               </code>
-              <CopyIconButton value={branch.worktreePath} label="Copy path" />
-              {cdCommand && <CopyIconButton value={cdCommand} label="Copy cd command" />}
             </div>
-          )}
+            <div className="flex min-w-0 items-center gap-1.5 pl-6 text-xs text-muted-foreground">
+              <span aria-hidden>↳</span>
+              <span className="shrink-0">from</span>
+              <code className="min-w-0 truncate text-[0.7rem]" title={parent}>
+                {parent}
+              </code>
+            </div>
+          </div>
+
+          <BranchSelector ticket={ticket} />
 
           {hasActions && (
-            <div className="flex flex-wrap gap-2 pt-1">
+            <div className="flex flex-wrap gap-2 border-t border-border/60 pt-2">
               {showIntegrate && (
                 <Button
                   variant="primary"
                   disabled={branchAction.isPending}
                   onClick={() => handleAction('integrate')}
                 >
-                  {actionLabels.integrate}
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Update from {parent} &amp; merge
                 </Button>
               )}
               {showPushParent && (
@@ -351,7 +451,8 @@ function BranchSection({ ticket }: { ticket: TicketDetailDto }) {
                   disabled={branchAction.isPending}
                   onClick={() => handleAction('push_parent')}
                 >
-                  {actionLabels.push_parent}
+                  <ArrowUp className="h-3.5 w-3.5" />
+                  Push {parent}
                 </Button>
               )}
               {showPublish && (
@@ -360,26 +461,33 @@ function BranchSection({ ticket }: { ticket: TicketDetailDto }) {
                   disabled={branchAction.isPending}
                   onClick={() => handleAction('publish')}
                 >
-                  {actionLabels.publish}
+                  <ArrowUp className="h-3.5 w-3.5" />
+                  Publish
                 </Button>
               )}
             </div>
           )}
 
           {showCreatePr && (
-            <div className="flex min-w-0 items-center gap-2">
-              <code className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                {prCommand}
-              </code>
-              <CopyIconButton value={prCommand} label="Copy PR command" />
+            <div className="space-y-1.5 border-t border-border/60 pt-2">
+              <p className="text-xs text-muted-foreground">Open a pull request:</p>
+              <div className="flex min-w-0 items-center gap-2">
+                <code className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 text-[0.7rem] text-muted-foreground">
+                  {prCommand}
+                </code>
+                <CopyIconButton value={prCommand} label="Copy PR command" />
+              </div>
             </div>
           )}
 
           {confirmAction && (
             <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-800 dark:text-amber-200">
-              <p>
-                An objective is currently executing on this branch. Continuing may conflict with
-                in-progress work in its worktree. Continue anyway?
+              <p className="flex items-start gap-1.5">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  An objective is currently executing on this branch. Continuing may conflict with
+                  in-progress work in its worktree. Continue anyway?
+                </span>
               </p>
               <div className="flex gap-2">
                 <Button
