@@ -27,10 +27,12 @@ export type BranchAutomationPayload = {
   cycle: number;
 };
 
-type TicketShape = {
+export type TicketShape = {
   title?: unknown;
   sequenceNumber?: unknown;
   sequence?: unknown;
+  projectId?: unknown;
+  projectSlug?: unknown;
   project?: { slug?: unknown };
   branch?: {
     name?: unknown;
@@ -38,6 +40,11 @@ type TicketShape = {
     baseBranch?: unknown;
     overrideBranch?: unknown;
   } | null;
+};
+
+type ProjectShape = {
+  id?: unknown;
+  slug?: unknown;
 };
 
 function runGit(cwd: string, args: string[], options: { optional?: boolean } = {}): string {
@@ -150,9 +157,38 @@ function worktreeBranch(worktreePath: string): string | null {
   return branch || null;
 }
 
-function ticketProjectSlug(ticket: TicketShape): string {
+function readTicketProjectSlug(ticket: TicketShape): string | null {
   const slug = ticket.project?.slug;
   if (typeof slug === 'string' && slug.trim()) return slug.trim();
+  if (typeof ticket.projectSlug === 'string' && ticket.projectSlug.trim()) {
+    return ticket.projectSlug.trim();
+  }
+  return null;
+}
+
+export async function resolveTicketProjectSlug({
+  runtime,
+  ticket
+}: {
+  runtime: CliRuntime;
+  ticket: TicketShape;
+}): Promise<string> {
+  const embedded = readTicketProjectSlug(ticket);
+  if (embedded) return embedded;
+
+  const projectId = typeof ticket.projectId === 'string' ? ticket.projectId.trim() : '';
+  if (projectId) {
+    try {
+      const projects = (await runtime.backend.get('/api/projects')) as ProjectShape[];
+      const project = Array.isArray(projects)
+        ? projects.find(candidate => candidate.id === projectId)
+        : null;
+      if (typeof project?.slug === 'string' && project.slug.trim()) return project.slug.trim();
+    } catch {
+      // Keep branch preparation best-effort for older or restricted backends.
+    }
+  }
+
   return 'project';
 }
 
@@ -261,12 +297,13 @@ export async function prepareTicketBranch({
   // The explicit `--branch` flag wins; otherwise honor the ticket's pinned
   // override (set in the ticket panel's branch selector).
   const overrideBranch = options.overrideBranch?.trim() || ticketOverrideBranch(ticket);
+  const projectSlug = await resolveTicketProjectSlug({ runtime, ticket });
   const decision = planTicketBranch({
     ticket: {
       title: typeof ticket.title === 'string' ? ticket.title : 'ticket',
       sequence: ticketSequence(ticket, options.ticketId)
     },
-    project: { slug: ticketProjectSlug(ticket) },
+    project: { slug: projectSlug },
     recordedBranch: recordedTicketBranch(ticket),
     base,
     refs,
