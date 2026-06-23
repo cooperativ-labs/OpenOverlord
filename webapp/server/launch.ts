@@ -110,7 +110,7 @@ function persistCatalog(catalog: StoredCatalog): void {
 
 function readWorktreeBranchAutomationEnabled(): boolean {
   const settings = readWorkspaceSettings();
-  return settings[WORKTREE_BRANCH_AUTOMATION_SETTINGS_KEY] !== false;
+  return settings[WORKTREE_BRANCH_AUTOMATION_SETTINGS_KEY] === true;
 }
 
 function launchSettingsDto({

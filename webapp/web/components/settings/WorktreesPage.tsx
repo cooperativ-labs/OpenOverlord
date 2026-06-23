@@ -133,7 +133,7 @@ function WorktreeRow({ worktree }: { worktree: WorktreeDto }) {
 export function WorktreesPage() {
   const launchSettings = useLaunchSettings();
   const updateWorktrees = useUpdateWorktreeBranchAutomation();
-  const worktreesEnabled = launchSettings.data?.worktreeBranchAutomationEnabled ?? true;
+  const worktreesEnabled = launchSettings.data?.worktreeBranchAutomationEnabled ?? false;
 
   const worktrees = useWorktrees();
   const purgeMerged = usePurgeMergedWorktrees();

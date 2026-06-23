@@ -203,9 +203,9 @@ function asRecord(value: unknown): JsonRecord {
 async function readWorktreeBranchAutomationEnabled(runtime: CliRuntime): Promise<boolean> {
   try {
     const settings = await runtime.backend.get<LaunchSettingsShape>('/api/launch-settings');
-    return settings.worktreeBranchAutomationEnabled !== false;
+    return settings.worktreeBranchAutomationEnabled === true;
   } catch {
-    return true;
+    return false;
   }
 }
 
