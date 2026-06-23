@@ -221,10 +221,7 @@ export const api = {
   generateMissionTitle: (id: string) =>
     request<MissionDetailDto>('POST', `/api/missions/${id}/generate-title`),
   generateCommitMessage: (id: string) =>
-    request<GenerateCommitMessageResultDto>(
-      'POST',
-      `/api/missions/${id}/generate-commit-message`
-    ),
+    request<GenerateCommitMessageResultDto>('POST', `/api/missions/${id}/generate-commit-message`),
   branchAction: (id: string, body: BranchActionBody) =>
     request<MissionDetailDto>('POST', `/api/missions/${id}/branch/action`, body),
   listMissionBranches: (id: string) =>
