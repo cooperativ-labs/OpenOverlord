@@ -23,9 +23,15 @@ export async function runOvld({
   stdin?: string;
 }): Promise<RunOvldResult> {
   return new Promise((resolve, reject) => {
+    const childEnv: NodeJS.ProcessEnv = { ...process.env };
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) delete childEnv[key];
+      else childEnv[key] = value;
+    }
+
     const child = spawn(process.execPath, [cliEntry, ...args], {
       cwd,
-      env: { ...process.env, ...env },
+      env: childEnv,
       stdio: ['pipe', 'pipe', 'pipe']
     });
 

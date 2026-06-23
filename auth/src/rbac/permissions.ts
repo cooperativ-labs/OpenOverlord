@@ -25,11 +25,11 @@ export const PERMISSIONS = {
   PROJECT_UPDATE: 'project:update',
   PROJECT_DELETE: 'project:delete',
 
-  // Tickets
-  TICKET_CREATE: 'ticket:create',
-  TICKET_READ: 'ticket:read',
-  TICKET_UPDATE: 'ticket:update',
-  TICKET_DELETE: 'ticket:delete',
+  // Missions
+  MISSION_CREATE: 'mission:create',
+  MISSION_READ: 'mission:read',
+  MISSION_UPDATE: 'mission:update',
+  MISSION_DELETE: 'mission:delete',
 
   // Objectives
   OBJECTIVE_SUBMIT: 'objective:submit',
@@ -99,8 +99,8 @@ export type KnownPermission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
  *
  *  - `full` carries no scope rows, so the token inherits the full permissions of
  *    its creating user's roles.
- *  - `ticket_lifecycle` restricts the token to everything a runner/agent needs to
- *    drive a ticket — workspace, project (read-only), ticket, objective, session,
+ *  - `mission_lifecycle` restricts the token to everything a runner/agent needs to
+ *    drive a mission — workspace, project (read-only), mission, objective, session,
  *    event, artifact, attachment, and execution-request work — and deliberately
  *    excludes project create/update/delete and user/role/connector
  *    administration and `user_token:self:*` (a scoped token must not be able to mint
@@ -110,12 +110,12 @@ export type KnownPermission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
  *  effective permissions are always its creating user's role grants intersected
  *  with these scope grants, so a scope can only ever restrict, never widen, access.
  */
-export type TokenScope = 'full' | 'ticket_lifecycle';
+export type TokenScope = 'full' | 'mission_lifecycle';
 
-export const TICKET_LIFECYCLE_GRANTS: readonly string[] = [
+export const MISSION_LIFECYCLE_GRANTS: readonly string[] = [
   'workspace:read',
   'project:read',
-  'ticket:*',
+  'mission:*',
   'objective:*',
   'session:*',
   'event:create',
@@ -132,5 +132,5 @@ export const TICKET_LIFECYCLE_GRANTS: readonly string[] = [
  * an empty list — no `user_token_scopes` rows, meaning no token-level restriction.
  */
 export function scopeGrantsForPreset(scope: TokenScope): string[] {
-  return scope === 'ticket_lifecycle' ? [...TICKET_LIFECYCLE_GRANTS] : [];
+  return scope === 'mission_lifecycle' ? [...MISSION_LIFECYCLE_GRANTS] : [];
 }

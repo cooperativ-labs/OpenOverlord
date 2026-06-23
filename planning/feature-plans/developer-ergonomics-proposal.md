@@ -1,7 +1,7 @@
 # Proposal: Developer Ergonomics for the Modular Repo
 
 Status: **proposal — no code changed**
-Related: ticket 1:1485 delivery (database source-of-truth analysis), [`CONTRACT.md`](../CONTRACT.md), [`README.md`](../README.md)
+Related: mission 1:1485 delivery (database source-of-truth analysis), [`CONTRACT.md`](../CONTRACT.md), [`README.md`](../README.md)
 
 ## The problem, precisely
 
@@ -15,7 +15,7 @@ and `.yarnrc.yml`, yet none of them is actually independent:
 | --- | --- |
 | webapp reaches across its package boundary | `webapp/server/title-automation.ts`, `repository.ts` import `../../src/...` from the root project with no declared dependency |
 | CLI compiles root code into its own dist | `cli/tsconfig.build.json` sets `rootDir: ".."` and includes `../src/database/**`, `../src/service/**`, `../src/repository/git-tree.ts` |
-| Migrations are hand-copied between packages | `cli/scripts/stage-migrations.mjs` copies `database/sqlite/migrations/` into `cli/database/`; the committed copy is already stale (see ticket 1:1485) |
+| Migrations are hand-copied between packages | `cli/scripts/stage-migrations.mjs` copies `database/sqlite/migrations/` into `cli/database/`; the committed copy is already stale (see mission 1:1485) |
 | Dependency versions drift silently | `typescript` `^5.7.0` (root) vs `^5.7.2` (webapp); `tsx` `^4.22.4` (root) vs `^4.19.2` (webapp); `@types/node` only pinned in webapp |
 | The native module compiles up to three times | `better-sqlite3` is a dependency of all three projects; each lockfile resolves and builds its own copy |
 | Bootstrap is incomplete | root `install:all` runs root + webapp installs but **never installs `cli/`** — the CLI only works because Node's upward `node_modules` walk happens to find root's copies of `better-sqlite3` and `smol-toml` |
@@ -76,7 +76,7 @@ natively. The conversion is small:
   module travels through normal package resolution (bundled at pack time) instead
   of `stage-migrations.mjs`.
 
-### The `@overlord/database` package (ties into ticket 1:1485)
+### The `@overlord/database` package (ties into mission 1:1485)
 
 The 1:1485 delivery recommended promoting `/database` into a real shared package
 owning the migrations, adapters, and the connection runtime currently in

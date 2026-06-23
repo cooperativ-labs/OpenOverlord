@@ -2,7 +2,7 @@
 #
 # This file defines the default ADMIN and MEMBER roles.
 # Copy and edit this file to customize permissions for your instance.
-# Supported wildcards: * (all), ticket:* (namespace), user_token:self:* (self-scoped).
+# Supported wildcards: * (all), mission:* (namespace), user_token:self:* (self-scoped).
 
 [roles.ADMIN]
 description = "Full instance administrator"
@@ -12,7 +12,7 @@ grants = ["*"]
 description = "Standard user or persistent agent account"
 grants = [
   "project:read",
-  "ticket:*",
+  "mission:*",
   "objective:*",
   "session:*",
   "event:create",
@@ -50,13 +50,13 @@ grants = [
   "role:revoke",
 ]
 
-[permission_groups.ticket_crud]
-description = "Standard ticket read/write"
+[permission_groups.mission_crud]
+description = "Standard mission read/write"
 grants = [
-  "ticket:create",
-  "ticket:read",
-  "ticket:update",
-  "ticket:delete",
+  "mission:create",
+  "mission:read",
+  "mission:update",
+  "mission:delete",
 ]
 
 [permission_groups.workspace_image_crud]

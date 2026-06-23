@@ -61,10 +61,10 @@ test('completeInitialSetup can re-key the seeded first workspace', () => {
   assert.equal(needsInitialSetup(), false);
   assert.equal(resolveActorForWorkspace('acme-operations'), operatorWorkspaceUserId);
 
-  const ticketSequence = db
-    .prepare(`SELECT workspace_id, scope_id FROM ticket_sequences WHERE id = ?`)
-    .get('local-workspace-ticket-sequence') as { workspace_id: string; scope_id: string };
-  assert.deepEqual(ticketSequence, {
+  const missionSequence = db
+    .prepare(`SELECT workspace_id, scope_id FROM mission_sequences WHERE id = ?`)
+    .get('local-workspace-mission-sequence') as { workspace_id: string; scope_id: string };
+  assert.deepEqual(missionSequence, {
     workspace_id: 'acme-operations',
     scope_id: 'acme-operations'
   });

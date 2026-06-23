@@ -17,7 +17,7 @@ export const DEFAULT_ROLE_DEFINITIONS: Readonly<Record<Role, RoleDefinition>> = 
       'profile:self:*',
       'launch:*',
       'project:read',
-      'ticket:*',
+      'mission:*',
       'objective:*',
       'session:*',
       'event:create',

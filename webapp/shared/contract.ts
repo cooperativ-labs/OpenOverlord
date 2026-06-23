@@ -5,7 +5,7 @@
  * types only so it can be `import type`-d from either runtime without a runtime
  * dependency.
  *
- * Scope note: this build covers projects, tickets, and objectives — the entities
+ * Scope note: this build covers projects, missions, and objectives — the entities
  * the web interface lets users add and modify — plus the objective launch
  * surface: the workspace agent catalog, per-user launch configs, project launch
  * preferences, and execution-request queueing. Runner claiming/launching and
@@ -18,7 +18,7 @@ export type ProjectLifecycle = 'active' | 'archived';
 
 export type StatusType = 'draft' | 'execute' | 'review' | 'complete' | 'blocked' | 'cancelled';
 
-export type TicketPriority = 'low' | 'normal' | 'high' | 'urgent';
+export type MissionPriority = 'low' | 'normal' | 'high' | 'urgent';
 
 export type ObjectiveState =
   | 'future'
@@ -29,7 +29,7 @@ export type ObjectiveState =
   | 'pending_delivery'
   | 'complete';
 
-export type EntityType = 'project' | 'ticket' | 'objective';
+export type EntityType = 'project' | 'mission' | 'objective';
 
 export type ChangeOperation = 'insert' | 'update' | 'delete' | 'restore';
 
@@ -69,7 +69,7 @@ export interface UpdateWorkspaceBody {
 
 /**
  * Initial instance setup: names the seeded first workspace and picks its slug.
- * The slug prefixes ticket identifiers (`<slug>:<sequence>`); when omitted it
+ * The slug prefixes mission identifiers (`<slug>:<sequence>`); when omitted it
  * is suggested from the first three letters of the name.
  */
 export interface CompleteInitialSetupBody {
@@ -112,9 +112,9 @@ export interface ProjectDto {
   /** Optional hex color stored in project settings for UI display. */
   color: string | null;
   /**
-   * Project-configured base/parent branch for ticket branches (stored in project
+   * Project-configured base/parent branch for mission branches (stored in project
    * settings). `null` means not configured — callers fall back to `main`. This is
-   * both the branch tickets are cut from and the parent that "Merge with parent"
+   * both the branch missions are cut from and the parent that "Merge with parent"
    * advances.
    */
   defaultBranch: string | null;
@@ -122,8 +122,8 @@ export interface ProjectDto {
   createdAt: string;
   updatedAt: string;
   revision: number;
-  /** Count of non-deleted tickets (read-side aggregate). */
-  ticketCount: number;
+  /** Count of non-deleted missions (read-side aggregate). */
+  missionCount: number;
 }
 
 export interface WorkspaceStatusDto {
@@ -219,7 +219,7 @@ export interface ProjectRepositoryDto {
   message: string | null;
 }
 
-export interface TicketDto {
+export interface MissionDto {
   id: string;
   workspaceId: string;
   projectId: string;
@@ -229,20 +229,20 @@ export interface TicketDto {
   statusId: string;
   statusType: StatusType;
   /**
-   * Gap-based ordering of the ticket within its board column (its
+   * Gap-based ordering of the mission within its board column (its
    * `(projectId, statusId)` group). Lower sorts first. Renumbered densely
    * (100, 200, 300, …) whenever a column is reordered.
    */
   boardPosition: number;
-  priority: TicketPriority | null;
+  priority: MissionPriority | null;
   /**
-   * `workspace_users.id` of the member this ticket is assigned to, or `null`
+   * `workspace_users.id` of the member this mission is assigned to, or `null`
    * when unassigned. Matches a `WorkspaceMemberDto.workspaceUserId`.
    */
   assignedWorkspaceUserId: string | null;
-  /** Human-readable acceptance criteria for the ticket. */
+  /** Human-readable acceptance criteria for the mission. */
   acceptanceCriteria: string | null;
-  /** Tool names available to the agent working on this ticket. */
+  /** Tool names available to the agent working on this mission. */
   availableTools: string[];
   createdAt: string;
   updatedAt: string;
@@ -251,17 +251,17 @@ export interface TicketDto {
   objectiveCount: number;
   /** Count of non-deleted objectives in the `complete` state (read-side aggregate). */
   completedObjectiveCount: number;
-  /** True when at least one non-deleted objective on this ticket is `executing`. */
+  /** True when at least one non-deleted objective on this mission is `executing`. */
   hasExecutingObjective: boolean;
-  /** True when at least one non-deleted objective on this ticket is `complete`. */
+  /** True when at least one non-deleted objective on this mission is `complete`. */
   hasCompletedObjective: boolean;
   /**
    * True when at least one non-deleted `draft` or `future` objective on this
-   * ticket has non-empty instruction text (i.e. work still queued behind a
+   * mission has non-empty instruction text (i.e. work still queued behind a
    * completed objective).
    */
   hasPendingObjectiveWithInstructions: boolean;
-  /** Tags assigned to this ticket, resolved from its project's `project_tags`. */
+  /** Tags assigned to this mission, resolved from its project's `project_tags`. */
   tags: ProjectTagDto[];
 }
 
@@ -269,7 +269,7 @@ export interface ObjectiveDto {
   id: string;
   workspaceId: string;
   projectId: string;
-  ticketId: string;
+  missionId: string;
   position: number;
   title: string | null;
   instructionText: string;
@@ -303,7 +303,7 @@ export interface ArtifactDto {
   id: string;
   workspaceId: string;
   projectId: string;
-  ticketId: string;
+  missionId: string;
   objectiveId: string | null;
   sessionId: string | null;
   deliveryId: string | null;
@@ -317,13 +317,13 @@ export interface ArtifactDto {
   updatedAt: string;
 }
 
-export interface TicketDetailDto extends TicketDto {
+export interface MissionDetailDto extends MissionDto {
   objectives: ObjectiveDto[];
   statuses: WorkspaceStatusDto[];
-  /** Active (queued/claimed/launching) execution requests for this ticket's objectives. */
+  /** Active (queued/claimed/launching) execution requests for this mission's objectives. */
   executionRequests: ExecutionRequestDto[];
-  /** Read-only branch/worktree metadata derived from `tickets.active_branch`. */
-  branch: TicketBranchDto | null;
+  /** Read-only branch/worktree metadata derived from `missions.active_branch`. */
+  branch: MissionBranchDto | null;
 }
 
 // `pending`         — no branch prepared yet (planner-predicted name shown).
@@ -333,22 +333,22 @@ export interface TicketDetailDto extends TicketDto {
 //                     been pushed to `origin` yet (the gap between merge Action A
 //                     and the push Action B).
 // `merged`          — branch's commits are contained in the *remote* base (`origin/<base>`).
-export type TicketBranchStatus = 'pending' | 'created' | 'published' | 'merged_unpushed' | 'merged';
+export type MissionBranchStatus = 'pending' | 'created' | 'published' | 'merged_unpushed' | 'merged';
 
-export interface TicketBranchDto {
+export interface MissionBranchDto {
   name: string;
   baseBranch: string | null;
   worktreePath: string | null;
-  status: TicketBranchStatus;
+  status: MissionBranchStatus;
   /**
    * Whether the branch's worktree has uncommitted changes (`git status
    * --porcelain` is non-empty in the worktree). `false` when no worktree exists
-   * or the branch is still `pending`. The ticket panel uses this to require a
+   * or the branch is still `pending`. The mission panel uses this to require a
    * commit before the "Update from parent & merge" action is offered.
    */
   dirty: boolean;
   /**
-   * A user-pinned branch chosen in the ticket panel to override the planner's
+   * A user-pinned branch chosen in the mission panel to override the planner's
    * default selection. When set, the next launch prepares/uses this branch
    * instead of `name`. `null` means the system chooses automatically. The
    * Runner Layer reads this to honor the override at branch-preparation time.
@@ -357,22 +357,22 @@ export interface TicketBranchDto {
 }
 
 /**
- * Available branches in a ticket project's primary repository, for the ticket
- * panel's branch selector. `current` is the branch the ticket is (or will be)
- * operating on. Returned by `GET /api/tickets/:id/branches`.
+ * Available branches in a mission project's primary repository, for the mission
+ * panel's branch selector. `current` is the branch the mission is (or will be)
+ * operating on. Returned by `GET /api/missions/:id/branches`.
  */
-export interface TicketBranchListDto {
+export interface MissionBranchListDto {
   branches: string[];
   current: string | null;
 }
 
-// ---- Ticket activity feed ----
+// ---- Mission activity feed ----
 
 /**
- * Closed vocabulary for `ticket_events.type` (see the schema contract). These
- * are the workflow events surfaced in the ticket panel's live activity feed.
+ * Closed vocabulary for `mission_events.type` (see the schema contract). These
+ * are the workflow events surfaced in the mission panel's live activity feed.
  */
-export type TicketEventType =
+export type MissionEventType =
   | 'update'
   | 'user_follow_up'
   | 'alert'
@@ -386,16 +386,16 @@ export type TicketEventType =
   | 'status_change';
 
 /**
- * A single entry in a ticket's workflow history (`ticket_events`). Append-only;
+ * A single entry in a mission's workflow history (`mission_events`). Append-only;
  * ordered oldest-first by `createdAt`. The SPA renders these as a realtime feed
- * inside the ticket panel, refetching whenever the change feed reports activity.
+ * inside the mission panel, refetching whenever the change feed reports activity.
  */
-export interface TicketEventDto {
+export interface MissionEventDto {
   id: string;
-  ticketId: string;
+  missionId: string;
   objectiveId: string | null;
   /** Closed vocabulary; unknown future values render with a neutral fallback. */
-  type: TicketEventType | string;
+  type: MissionEventType | string;
   /** Optional workflow phase recorded with the event (`attach`, `execute`, …). */
   phase: string | null;
   summary: string;
@@ -406,7 +406,7 @@ export interface TicketEventDto {
   createdAt: string;
 }
 
-// ---- Ticket file changes ----
+// ---- Mission file changes ----
 
 /**
  * Diff availability for a changed file, mirroring `changed_files.current_diff_state`.
@@ -416,13 +416,13 @@ export type FileChangeDiffState = 'present' | 'resolved' | 'unknown' | 'unavaila
 
 /**
  * A structured per-file change record (`change_rationales`) surfaced in the
- * ticket panel's File Changes section. Each row records what changed in one file
+ * mission panel's File Changes section. Each row records what changed in one file
  * along with why the agent made the change and its expected impact. Optionally
  * joined to the `changed_files` row that tracks the file's diff state.
  */
 export interface FileChangeDto {
   id: string;
-  ticketId: string;
+  missionId: string;
   objectiveId: string | null;
   /** Repository-relative path of the changed file. */
   filePath: string;
@@ -500,7 +500,7 @@ export interface LaunchSettingsDto {
   agentConfigs: Record<string, AgentLaunchConfigDto>;
   /** Per-user terminal profile for this machine's execution target. */
   terminalProfile: TerminalProfileDto;
-  /** When true, runner/direct launches prepare a per-ticket branch and worktree before spawn. */
+  /** When true, runner/direct launches prepare a per-mission branch and worktree before spawn. */
   worktreeBranchAutomationEnabled: boolean;
 }
 
@@ -531,7 +531,7 @@ export interface ExecutionRequestDto {
   id: string;
   workspaceId: string;
   projectId: string;
-  ticketId: string;
+  missionId: string;
   objectiveId: string;
   executionTargetId: string | null;
   requestedAgent: string | null;
@@ -549,7 +549,7 @@ export interface ExecutionRequestDto {
 /** Copyable prompt for running an objective through an agent manually. */
 export interface ObjectivePromptDto {
   objectiveId: string;
-  ticketId: string;
+  missionId: string;
   prompt: string;
 }
 
@@ -566,7 +566,7 @@ export interface EntityChangeDto {
   entityId: string;
   operation: ChangeOperation;
   projectId: string | null;
-  ticketId: string | null;
+  missionId: string | null;
   objectiveId: string | null;
   occurredAt: string;
 }
@@ -587,14 +587,14 @@ export interface CreateProjectBody {
   color?: string;
 }
 
-/** A per-project tag definition. Authored in project settings, assigned to tickets. */
+/** A per-project tag definition. Authored in project settings, assigned to missions. */
 export interface ProjectTagDto {
   id: string;
   projectId: string;
   label: string;
   /** Optional display color (e.g. `#fecdd3`), or `null`. */
   color: string | null;
-  /** Inactive tags are hidden from the create-ticket picker but kept for history. */
+  /** Inactive tags are hidden from the create-mission picker but kept for history. */
   active: boolean;
 }
 
@@ -616,15 +616,15 @@ export interface UpdateProjectBody {
   /** Optional 6-digit hex color (e.g. `#fecdd3`). */
   color?: string;
   /**
-   * Project base/parent branch for ticket branches. A non-empty value sets it;
+   * Project base/parent branch for mission branches. A non-empty value sets it;
    * `null` or an empty string clears it (falling back to `main`).
    */
   defaultBranch?: string | null;
 }
 
 /**
- * Body for `POST /api/tickets/:id/branch/action` — on-demand branch mutations
- * the ticket panel triggers (returns the refreshed `TicketDetailDto`).
+ * Body for `POST /api/missions/:id/branch/action` — on-demand branch mutations
+ * the mission panel triggers (returns the refreshed `MissionDetailDto`).
  *
  * - `integrate`   — Action A: merge the parent into the branch inside its worktree
  *                   (conflicts left there for IDE resolution), then advance the
@@ -662,11 +662,11 @@ export interface WorktreeDto {
   branch: string | null;
   projectId: string;
   projectName: string;
-  /** The ticket whose `active_branch` matches this worktree's branch, when known. */
-  ticketId: string | null;
-  ticketDisplayId: string | null;
-  /** Derived branch status (same vocabulary as `TicketBranchDto.status`), when the branch maps to a ticket. */
-  status: TicketBranchStatus | null;
+  /** The mission whose `active_branch` matches this worktree's branch, when known. */
+  missionId: string | null;
+  missionDisplayId: string | null;
+  /** Derived branch status (same vocabulary as `MissionBranchDto.status`), when the branch maps to a mission. */
+  status: MissionBranchStatus | null;
   /** Whether the branch has landed in the project's base branch (locally or remotely). */
   merged: boolean;
   /** Whether the worktree has uncommitted changes (purging it would lose work). */
@@ -694,92 +694,92 @@ export interface PurgeWorktreesResultDto {
   worktrees: WorktreeDto[];
 }
 
-export interface CreateTicketBody {
+export interface CreateMissionBody {
   projectId: string;
   /** Optional when `firstObjective` or `objectives` is provided; otherwise required. */
   title?: string;
-  priority?: TicketPriority;
+  priority?: MissionPriority;
   statusId?: string;
-  /** Assign the ticket to a workspace member (`workspace_users.id`), or `null` to create unassigned. Defaults to the creator when omitted. */
+  /** Assign the mission to a workspace member (`workspace_users.id`), or `null` to create unassigned. Defaults to the creator when omitted. */
   assignedWorkspaceUserId?: string | null;
   /** Optional first objective instruction; creates objective #1 when present. */
   firstObjective?: string;
   /** Optional ordered objective instructions; creates objective #1 as draft and the rest as future. */
   objectives?: Array<{ objective: string; title?: string | null; autoAdvance?: boolean }>;
-  /** Optional `project_tags.id` values to assign to the new ticket. Must belong to `projectId`. */
+  /** Optional `project_tags.id` values to assign to the new mission. Must belong to `projectId`. */
   tagIds?: string[];
 }
 
-export interface UpdateTicketBody {
+export interface UpdateMissionBody {
   title?: string;
-  priority?: TicketPriority | null;
-  /** Move the ticket to another workspace project. Status maps by type in the target project. */
+  priority?: MissionPriority | null;
+  /** Move the mission to another workspace project. Status maps by type in the target project. */
   projectId?: string;
   statusId?: string;
-  /** Assign the ticket to a workspace member (`workspace_users.id`), or `null` to unassign. */
+  /** Assign the mission to a workspace member (`workspace_users.id`), or `null` to unassign. */
   assignedWorkspaceUserId?: string | null;
   acceptanceCriteria?: string | null;
   availableTools?: string[];
   /**
-   * Pin the branch the ticket's next launch should use (overriding the planner's
+   * Pin the branch the mission's next launch should use (overriding the planner's
    * default), or `null` to clear the override and return to automatic selection.
    */
   branchOverride?: string | null;
 }
 
 /**
- * Reorders a single board column. `orderedTicketIds` lists every ticket that
+ * Reorders a single board column. `orderedMissionIds` lists every mission that
  * should occupy the `statusId` column, top-to-bottom, after the move. Any
- * ticket whose current status differs is moved into this column (its status
+ * mission whose current status differs is moved into this column (its status
  * changes to match). This one call covers both within-column reordering and the
  * destination side of a cross-column drag.
  */
 export interface ReorderBoardColumnBody {
   statusId: string;
-  orderedTicketIds: string[];
+  orderedMissionIds: string[];
 }
 
 /**
- * A ticket on the **My Tickets** selected-workspace board. Extends `TicketDto`
+ * A mission on the **My Missions** selected-workspace board. Extends `MissionDto`
  * with the cross-project context the aggregate board needs and the operator's
  * personal ordering slot.
  */
-export interface MyTicketDto extends TicketDto {
-  /** Name of the ticket's project (My Tickets aggregates across projects). */
+export interface MyMissionDto extends MissionDto {
+  /** Name of the mission's project (My Missions aggregates across projects). */
   projectName: string;
-  /** Optional hex color of the ticket's project, for the card accent. */
+  /** Optional hex color of the mission's project, for the card accent. */
   projectColor: string | null;
   /**
-   * Personal order within this ticket's My Tickets status column for the active
-   * operator. `null` when the operator has not dragged this ticket; it then
-   * sorts after positioned tickets by the default fallback order.
+   * Personal order within this mission's My Missions status column for the active
+   * operator. `null` when the operator has not dragged this mission; it then
+   * sorts after positioned missions by the default fallback order.
    */
   myPosition: number | null;
 }
 
-export interface MyTicketsResponse {
-  tickets: MyTicketDto[];
+export interface MyMissionsResponse {
+  missions: MyMissionDto[];
 }
 
 /**
- * Persist a personal reorder of one My Tickets status column. `orderedTicketIds`
- * lists every ticket assigned to the operator that should occupy `statusId`,
+ * Persist a personal reorder of one My Missions status column. `orderedMissionIds`
+ * lists every mission assigned to the operator that should occupy `statusId`,
  * top-to-bottom, after the move — mirroring `ReorderBoardColumnBody`. A
- * within-column reorder writes only `my_ticket_positions` and never touches
- * `tickets.board_position`. Any listed ticket whose current status differs is a
- * real cross-column status change that also updates the ticket's `status_id`,
+ * within-column reorder writes only `my_mission_positions` and never touches
+ * `missions.board_position`. Any listed mission whose current status differs is a
+ * real cross-column status change that also updates the mission's `status_id`,
  * `status_type`, and project-board `board_position`, subject to the
  * `(workspace_id, status_id)` composite FK. When that FK (or status resolution)
- * rejects a status the ticket's workspace lacks, the endpoint returns a typed
+ * rejects a status the mission's workspace lacks, the endpoint returns a typed
  * `STATUS_UNAVAILABLE_FOR_WORKSPACE` error.
  */
-export interface MyTicketReorderRequest {
+export interface MyMissionReorderRequest {
   statusId: string;
-  orderedTicketIds: string[];
+  orderedMissionIds: string[];
 }
 
 export interface CreateObjectiveBody {
-  ticketId: string;
+  missionId: string;
   instructionText: string;
   title?: string | null;
   state?: ObjectiveState;
@@ -787,11 +787,11 @@ export interface CreateObjectiveBody {
 }
 
 /**
- * Reorders the `future` objectives of a single ticket. `orderedObjectiveIds`
- * lists every future objective on the ticket, top-to-bottom, after the move.
+ * Reorders the `future` objectives of a single mission. `orderedObjectiveIds`
+ * lists every future objective on the mission, top-to-bottom, after the move.
  * Only objectives currently in the `future` state may be reordered; their
  * `position` is renumbered relative to one another while remaining after any
- * non-future objectives. Returns the ticket's full objective list in its new
+ * non-future objectives. Returns the mission's full objective list in its new
  * order.
  */
 export interface ReorderFutureObjectivesBody {
@@ -922,7 +922,7 @@ export interface ObjectiveAttachmentDto {
   id: string;
   workspaceId: string;
   projectId: string | null;
-  ticketId: string | null;
+  missionId: string | null;
   objectiveId: string | null;
   /** Logical bucket the file was stored in (e.g. `attachments`). */
   bucketKey: string;
@@ -945,12 +945,12 @@ export type UserTokenStatus = 'active' | 'revoked' | 'expired' | 'rotated';
 /**
  * Permission scope preset a `USER_TOKEN` is minted with.
  *  - `full`: no token-level restriction — inherits the creating user's role grants.
- *  - `ticket_lifecycle`: ticket/objective/session/runner work only (see `scopeGrants`).
+ *  - `mission_lifecycle`: mission/objective/session/runner work only (see `scopeGrants`).
  *
  * A token's effective permissions are always its creating user's role grants
  * intersected with its scope grants, so a scope can only restrict, never widen.
  */
-export type TokenScope = 'full' | 'ticket_lifecycle';
+export type TokenScope = 'full' | 'mission_lifecycle';
 
 /**
  * A `USER_TOKEN` as surfaced to the settings UI. Derived from the `user_tokens`

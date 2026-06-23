@@ -1,4 +1,4 @@
-import type { EntityChangeDto, ObjectiveDto, TicketEventDto } from '../../shared/contract.ts';
+import type { EntityChangeDto, ObjectiveDto, MissionEventDto } from '../../shared/contract.ts';
 
 import { api } from './api.ts';
 import { isNativeNotificationsEnabled } from './native-notification-preferences.ts';
@@ -22,7 +22,7 @@ function objectiveLabel(objective: ObjectiveDto | undefined, index: number): str
   return objective?.title?.trim() || `Objective ${index + 1}`;
 }
 
-function eventIsRecent(event: TicketEventDto, sinceMs: number): boolean {
+function eventIsRecent(event: MissionEventDto, sinceMs: number): boolean {
   const createdAt = Date.parse(event.createdAt);
   if (!Number.isFinite(createdAt)) return false;
   return createdAt >= sinceMs - 5_000;
@@ -65,35 +65,35 @@ function earliestChangeTime(changes: EntityChangeDto[]): number {
 }
 
 export async function notifyWorkflowChanges(changes: EntityChangeDto[]): Promise<void> {
-  const ticketIds = [
-    ...new Set(changes.map(change => change.ticketId).filter(Boolean))
+  const missionIds = [
+    ...new Set(changes.map(change => change.missionId).filter(Boolean))
   ] as string[];
-  if (ticketIds.length === 0) return;
+  if (missionIds.length === 0) return;
 
   const sinceMs = earliestChangeTime(changes);
 
-  for (const ticketId of ticketIds) {
-    const ticketChanges = changes.filter(change => change.ticketId === ticketId);
+  for (const missionId of missionIds) {
+    const missionChanges = changes.filter(change => change.missionId === missionId);
     const affectedObjectiveIds = new Set(
-      ticketChanges
+      missionChanges
         .filter(change => change.entityType === 'objective')
         .map(change => change.objectiveId)
         .filter(Boolean) as string[]
     );
 
-    const [ticket, events] = await Promise.all([
-      api.getTicket(ticketId),
-      api.listTicketEvents(ticketId)
+    const [mission, events] = await Promise.all([
+      api.getMission(missionId),
+      api.listMissionEvents(missionId)
     ]);
 
-    for (const objective of ticket.objectives) {
+    for (const objective of mission.objectives) {
       if (!affectedObjectiveIds.has(objective.id) || objective.state !== 'executing') continue;
       const key = `objective-executing:${objective.id}:${objective.updatedAt}`;
       if (!remember(key)) continue;
-      const index = ticket.objectives.findIndex(item => item.id === objective.id);
+      const index = mission.objectives.findIndex(item => item.id === objective.id);
       await showNativeNotification({
         title: 'Agent started',
-        body: `${ticket.displayId}: ${objectiveLabel(objective, index)}`,
+        body: `${mission.displayId}: ${objectiveLabel(objective, index)}`,
         tag: key
       });
     }
@@ -105,7 +105,7 @@ export async function notifyWorkflowChanges(changes: EntityChangeDto[]): Promise
         if (!remember(key)) continue;
         await showNativeNotification({
           title: 'Blocking question',
-          body: `${ticket.displayId}: ${event.summary}`,
+          body: `${mission.displayId}: ${event.summary}`,
           tag: key
         });
       }
@@ -114,7 +114,7 @@ export async function notifyWorkflowChanges(changes: EntityChangeDto[]): Promise
         if (!remember(key)) continue;
         await showNativeNotification({
           title: 'Ready for review',
-          body: `${ticket.displayId}: ${event.summary}`,
+          body: `${mission.displayId}: ${event.summary}`,
           tag: key
         });
       }

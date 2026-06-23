@@ -34,7 +34,7 @@ export type EnsureDraftSlotPlan =
   | { action: 'create_blank_draft'; assignedAgent: string | null };
 
 export type AutoAdvanceDecision =
-  | { action: 'none'; reason: 'no_non_empty_draft' | 'human_only_ticket' }
+  | { action: 'none'; reason: 'no_non_empty_draft' | 'human_only_mission' }
   | { action: 'await_approval'; objectiveId: string; reason: string }
   | { action: 'queue_launch'; objectiveId: string; idempotencyKey: string };
 
@@ -162,7 +162,7 @@ export function validateObjectiveLifecycle(
     violations.push({
       code: 'multiple_drafts',
       objectiveIds: drafts.map(o => o.id),
-      message: 'A ticket may have at most one draft objective.'
+      message: 'A mission may have at most one draft objective.'
     });
   }
 
@@ -171,7 +171,7 @@ export function validateObjectiveLifecycle(
     violations.push({
       code: 'multiple_active_objectives',
       objectiveIds: active.map(o => o.id),
-      message: 'A ticket may have at most one executing or pending-delivery objective.'
+      message: 'A mission may have at most one executing or pending-delivery objective.'
     });
   }
 
@@ -272,7 +272,7 @@ export function decideAutoAdvanceAfterDelivery(
     return { action: 'none', reason: 'no_non_empty_draft' };
   }
   if (options.humanOnly) {
-    return { action: 'none', reason: 'human_only_ticket' };
+    return { action: 'none', reason: 'human_only_mission' };
   }
   if (!nextDraft.autoAdvance) {
     return {

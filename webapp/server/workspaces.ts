@@ -112,7 +112,7 @@ function rekeyWorkspaceReferences(oldWorkspaceId: string, newWorkspaceId: string
     ).run({ previous: oldWorkspaceId, next: newWorkspaceId });
   }
   db.prepare(
-    `UPDATE ticket_sequences
+    `UPDATE mission_sequences
         SET scope_id = @next
       WHERE scope_type = 'workspace' AND scope_id = @previous`
   ).run({ previous: oldWorkspaceId, next: newWorkspaceId });
@@ -314,7 +314,7 @@ export function createWorkspace(body: CreateWorkspaceBody): WorkspaceDto {
 // ---- initial instance setup ----------------------------------------------
 //
 // Migration 001 seeds every fresh instance with a placeholder first workspace.
-// Until the operator has named it (and picked the slug that prefixes ticket
+// Until the operator has named it (and picked the slug that prefixes mission
 // identifiers like `<slug>:42`), the web UI shows a one-time setup step.
 
 const SEED_WORKSPACE_ID = 'local-workspace';
@@ -416,13 +416,13 @@ function suggestSlugFromName(name: string): string {
 
 /**
  * Complete initial instance setup: name the seeded first workspace, set the
- * slug that prefixes ticket identifiers, and mark setup done so the step never
+ * slug that prefixes mission identifiers, and mark setup done so the step never
  * reappears (even when the chosen values match the seed defaults).
  */
 export function completeInitialSetup(body: CompleteInitialSetupBody): WorkspaceDto {
   const workspaceId = completeInitialSetupTx(body);
   // Initial setup may re-key the seeded workspace. Re-point the live workspace
-  // binding when that happens so `/api/meta` and ticket display ids stay in sync.
+  // binding when that happens so `/api/meta` and mission display ids stay in sync.
   if (workspaceId === WORKSPACE.id) reloadActiveWorkspace();
   else setActiveWorkspace(workspaceId);
   const updated = listWorkspaces().find(w => w.id === workspaceId);
@@ -523,7 +523,7 @@ const deleteWorkspaceTx = db.transaction((id: string): void => {
 });
 
 /**
- * Soft-delete a workspace (tombstone via `deleted_at`; projects and tickets
+ * Soft-delete a workspace (tombstone via `deleted_at`; projects and missions
  * inside it are preserved but unreachable until restored). The last remaining
  * workspace cannot be deleted. Deleting the active workspace activates the
  * oldest remaining one. Returns the refreshed workspace list.

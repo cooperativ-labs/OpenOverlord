@@ -18,7 +18,7 @@ export function ProjectBoardShell() {
               <BoardPage />
             </ProjectWorkspaceErrorBoundary>
           </main>
-          <ProjectWorkspaceErrorBoundary region="ticket panel">
+          <ProjectWorkspaceErrorBoundary region="mission panel">
             <Outlet />
           </ProjectWorkspaceErrorBoundary>
         </div>

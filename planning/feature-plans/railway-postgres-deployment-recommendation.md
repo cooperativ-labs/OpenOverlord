@@ -1,6 +1,6 @@
 # Railway + PostgreSQL Deployment — Recommendation
 
-Ticket: `1:1495` — *Deploy OpenOverlord with PostgreSQL on Railway*
+Mission: `1:1495` — *Deploy OpenOverlord with PostgreSQL on Railway*
 
 ## TL;DR
 
@@ -49,7 +49,7 @@ Docker Postgres for dev parity and SQLite retained for local-only use.
 | --- | --- | --- |
 | Adapter selection | **Done.** `DATABASE_URL` with a `postgres(ql)://` URL selects Postgres; otherwise local SQLite. Optional `OVERLORD_PG_SCHEMA` for schema isolation. | `database/src/adapter.ts` |
 | Better Auth on Postgres | **Done.** Uses `pg` `Pool` + Kysely `PostgresDialect`, with `search_path` schema support and a bearer-token plugin. | `auth/src/auth/config.ts`, `auth/src/auth/database.ts` |
-| Postgres DDL | **Done.** Migrations exist: `001_better_auth`, `002_initial_core`, `003_rbac`, `004_storage`, plus storage-path and ticket-search migrations. | `database/postgres/migrations/` |
+| Postgres DDL | **Done.** Migrations exist: `001_better_auth`, `002_initial_core`, `003_rbac`, `004_storage`, plus storage-path and mission-search migrations. | `database/postgres/migrations/` |
 | Core service layer on Postgres | **Not done.** `webapp/server/db.ts` hardcodes `new Database()` (better-sqlite3), throws if no `.sqlite` file exists, and uses the SQLite-only `data_version` pragma for realtime polling. `repository.ts` (~2.4k lines) and siblings use ~137 synchronous `prepare/get/all/run` call sites. | `webapp/server/db.ts`, `repository.ts`, `realtime.ts` |
 | CLI data access | **Mixed.** `ovld protocol …` already talks to a service over HTTP (`OVERLORD_URL`), but the direct CLI runtime opens SQLite locally via `openDatabase()`. | `cli/src/runtime.ts`, `cli/src/management.ts` |
 | Deploy config | **None.** No Dockerfile / `railway.json` / nixpacks config in the repo. | — |
@@ -234,7 +234,7 @@ latency and resource contention for no functional gain to Overlord.
    and the "leave unset for SQLite" alternative. Make the local Postgres path the
    one shown first in the README quick-start, with SQLite as the lightweight option.
 9. Verify the Phase A migration path applies cleanly against the Docker container and
-   that the full dev flow (signup → ticket → protocol) runs on local Postgres.
+   that the full dev flow (signup → mission → protocol) runs on local Postgres.
 
 ### Phase C — Railway deploy (default hosted target)
 
@@ -242,7 +242,7 @@ latency and resource contention for no functional gain to Overlord.
     migrations then `yarn start:webapp`.
 11. Provision Railway Postgres; wire `DATABASE_URL` via a reference variable; set
     `OVERLORD_PG_SCHEMA` if you want schema isolation.
-12. Smoke test end-to-end: Better Auth signup on Postgres → create ticket → `ovld
+12. Smoke test end-to-end: Better Auth signup on Postgres → create mission → `ovld
     protocol attach/update/deliver` against the Railway service URL.
 
 ### Phase D — Documentation of the new default

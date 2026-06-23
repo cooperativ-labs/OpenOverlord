@@ -26,7 +26,7 @@ import type { TokenScope, UserTokenDto, UserTokenStatus } from '../../../shared/
 
 const SCOPE_LABELS: Record<TokenScope, string> = {
   full: 'Full user privileges',
-  ticket_lifecycle: 'Ticket lifecycle + runner'
+  mission_lifecycle: 'Mission lifecycle + runner'
 };
 
 type TokenExpiryPreset =
@@ -248,14 +248,14 @@ function CreateTokenForm() {
                 type="radio"
                 name="token-scope"
                 className="mt-0.5 size-4"
-                checked={scope === 'ticket_lifecycle'}
+                checked={scope === 'mission_lifecycle'}
                 disabled={createState === 'loading'}
-                onChange={() => setScope('ticket_lifecycle')}
+                onChange={() => setScope('mission_lifecycle')}
               />
               <span>
-                <span className="font-medium">{SCOPE_LABELS.ticket_lifecycle}</span>
+                <span className="font-medium">{SCOPE_LABELS.mission_lifecycle}</span>
                 <span className="block text-xs text-muted-foreground">
-                  Select, create, update, and delete tickets and objectives, plus everything a
+                  Select, create, update, and delete missions and objectives, plus everything a
                   runner needs. No project, user, or admin changes.
                 </span>
               </span>

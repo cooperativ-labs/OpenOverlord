@@ -2,7 +2,7 @@ contractVersion: "0.2-draft"
 componentType: connector
 componentKey: claude
 label: "Claude Code Connector"
-description: "Claude Code plugin adapter for the Overlord ticket protocol workflow."
+description: "Claude Code plugin adapter for the Overlord mission protocol workflow."
 
 connector:
   agentIdentifier: claude
@@ -39,5 +39,5 @@ connector:
     - "scripts/post-tool-use-hook.sh"
     - "scripts/stop-hook.sh"
     - "scripts/user-prompt-submit-hook.sh"
-    - "skills/overlord-ticket/SKILL.md"
+    - "skills/overlord-mission/SKILL.md"
     - "prompt-wrapper.md"

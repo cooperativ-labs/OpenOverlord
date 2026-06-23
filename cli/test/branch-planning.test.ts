@@ -5,9 +5,9 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
-  canonicalTicketBranch,
-  planTicketBranch,
-  previewTicketBranch,
+  canonicalMissionBranch,
+  planMissionBranch,
+  previewMissionBranch,
   slugifyBranchTitle
 } from '../src/branch-planning.ts';
 
@@ -20,13 +20,13 @@ const fixturePath = fileURLToPath(
 );
 const vectors = JSON.parse(readFileSync(fixturePath, 'utf8')) as {
   slugifyBranchTitle: { name: string; title: string; fallback: string; expected: string }[];
-  canonicalTicketBranch: {
+  canonicalMissionBranch: {
     name: string;
-    ticket: { title: string; sequence: number };
+    mission: { title: string; sequence: number };
     expected: string;
   }[];
-  previewTicketBranch: { name: string; input: any; expected: any }[];
-  planTicketBranch: { name: string; input: any; expected: any }[];
+  previewMissionBranch: { name: string; input: any; expected: any }[];
+  planMissionBranch: { name: string; input: any; expected: any }[];
 };
 
 test('slugifyBranchTitle matches conformance vectors', () => {
@@ -35,28 +35,28 @@ test('slugifyBranchTitle matches conformance vectors', () => {
   }
 });
 
-test('canonicalTicketBranch matches conformance vectors', () => {
-  for (const v of vectors.canonicalTicketBranch) {
-    assert.equal(canonicalTicketBranch(v.ticket), v.expected, v.name);
+test('canonicalMissionBranch matches conformance vectors', () => {
+  for (const v of vectors.canonicalMissionBranch) {
+    assert.equal(canonicalMissionBranch(v.mission), v.expected, v.name);
   }
 });
 
-test('previewTicketBranch matches conformance vectors', () => {
-  for (const v of vectors.previewTicketBranch) {
-    assert.deepEqual(previewTicketBranch(v.input), v.expected, v.name);
+test('previewMissionBranch matches conformance vectors', () => {
+  for (const v of vectors.previewMissionBranch) {
+    assert.deepEqual(previewMissionBranch(v.input), v.expected, v.name);
   }
 });
 
-test('planTicketBranch matches conformance vectors', () => {
-  for (const v of vectors.planTicketBranch) {
-    assert.deepEqual(planTicketBranch(v.input), v.expected, v.name);
+test('planMissionBranch matches conformance vectors', () => {
+  for (const v of vectors.planMissionBranch) {
+    assert.deepEqual(planMissionBranch(v.input), v.expected, v.name);
   }
 });
 
 // Sanity check that worktree paths are derived under the configured root.
 test('worktree path nests under the worktree root and project slug', () => {
-  const decision = previewTicketBranch({
-    ticket: { title: 'Automate worktree branching', sequence: 16 },
+  const decision = previewMissionBranch({
+    mission: { title: 'Automate worktree branching', sequence: 16 },
     project: { slug: 'coo' },
     base: 'main',
     worktreeRoot: path.join('/tmp', 'ovld-worktrees')

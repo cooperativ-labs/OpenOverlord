@@ -219,7 +219,7 @@ export const uploadUserImage = db.transaction((input: UploadImageInput): StoredI
 //
 // Attachments reuse the generic bucket plumbing above but, unlike images,
 // accept any content type and are recorded in the `attachments` table scoped to
-// an objective (with its ticket and project). Bytes are served as downloads via
+// an objective (with its mission and project). Bytes are served as downloads via
 // the same `/api/storage/<bucket>/<key>` route as images.
 
 const ATTACHMENTS_BUCKET_KEY = 'attachments';
@@ -227,14 +227,14 @@ const ATTACHMENTS_BUCKET_KEY = 'attachments';
 interface ObjectiveScopeRow {
   workspace_id: string;
   project_id: string;
-  ticket_id: string;
+  mission_id: string;
 }
 
-/** Resolve the objective's workspace/project/ticket scope, or 404 if absent. */
+/** Resolve the objective's workspace/project/mission scope, or 404 if absent. */
 function resolveObjectiveScope(objectiveId: string): ObjectiveScopeRow {
   const row = db
     .prepare(
-      `SELECT workspace_id, project_id, ticket_id FROM objectives
+      `SELECT workspace_id, project_id, mission_id FROM objectives
         WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
     )
     .get(objectiveId, WORKSPACE.id) as ObjectiveScopeRow | undefined;
@@ -253,7 +253,7 @@ interface AttachmentRow {
   id: string;
   workspace_id: string;
   project_id: string | null;
-  ticket_id: string | null;
+  mission_id: string | null;
   objective_id: string | null;
   storage_key: string;
   filename: string;
@@ -268,7 +268,7 @@ function toObjectiveAttachmentDto(row: AttachmentRow): ObjectiveAttachmentDto {
     id: row.id,
     workspaceId: row.workspace_id,
     projectId: row.project_id,
-    ticketId: row.ticket_id,
+    missionId: row.mission_id,
     objectiveId: row.objective_id,
     bucketKey: ATTACHMENTS_BUCKET_KEY,
     storageKey: row.storage_key,
@@ -281,7 +281,7 @@ function toObjectiveAttachmentDto(row: AttachmentRow): ObjectiveAttachmentDto {
   };
 }
 
-const ATTACHMENT_COLUMNS = `id, workspace_id, project_id, ticket_id, objective_id,
+const ATTACHMENT_COLUMNS = `id, workspace_id, project_id, mission_id, objective_id,
   storage_key, filename, content_type, size_bytes, upload_status, created_at`;
 
 export interface UploadAttachmentInput {
@@ -293,7 +293,7 @@ export interface UploadAttachmentInput {
 
 /**
  * Store an uploaded file in the `attachments` bucket and record it against an
- * objective (carrying its ticket and project). Returns the attachment
+ * objective (carrying its mission and project). Returns the attachment
  * descriptor including the URL that serves the bytes back.
  */
 export const uploadObjectiveAttachment = db.transaction(
@@ -321,11 +321,11 @@ export const uploadObjectiveAttachment = db.transaction(
 
     db.prepare(
       `INSERT INTO attachments (
-         id, workspace_id, project_id, ticket_id, objective_id, storage_bucket_id,
+         id, workspace_id, project_id, mission_id, objective_id, storage_bucket_id,
          storage_key, filename, content_type, size_bytes, checksum_sha256, upload_status,
          metadata_json, created_by_workspace_user_id, created_at, updated_at, revision
        ) VALUES (
-         @id, @workspace_id, @project_id, @ticket_id, @objective_id, @storage_bucket_id,
+         @id, @workspace_id, @project_id, @mission_id, @objective_id, @storage_bucket_id,
          @storage_key, @filename, @content_type, @size_bytes, @checksum_sha256, 'available',
          '{}', @created_by, @created_at, @created_at, 1
        )`
@@ -333,7 +333,7 @@ export const uploadObjectiveAttachment = db.transaction(
       id,
       workspace_id: scope.workspace_id,
       project_id: scope.project_id,
-      ticket_id: scope.ticket_id,
+      mission_id: scope.mission_id,
       objective_id: input.objectiveId,
       storage_bucket_id: bucket.id,
       storage_key: storageKey,
@@ -351,7 +351,7 @@ export const uploadObjectiveAttachment = db.transaction(
       operation: 'insert',
       entityRevision: 1,
       projectId: scope.project_id,
-      ticketId: scope.ticket_id,
+      missionId: scope.mission_id,
       objectiveId: input.objectiveId
     });
 
@@ -359,7 +359,7 @@ export const uploadObjectiveAttachment = db.transaction(
       id,
       workspace_id: scope.workspace_id,
       project_id: scope.project_id,
-      ticket_id: scope.ticket_id,
+      mission_id: scope.mission_id,
       objective_id: input.objectiveId,
       storage_key: storageKey,
       filename,
@@ -414,7 +414,7 @@ export const deleteObjectiveAttachment = db.transaction(
       operation: 'delete',
       entityRevision: row.revision + 1,
       projectId: scope.project_id,
-      ticketId: scope.ticket_id,
+      missionId: scope.mission_id,
       objectiveId
     });
 

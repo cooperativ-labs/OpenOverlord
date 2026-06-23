@@ -61,7 +61,7 @@ export function DangerZonePage({ workspace, isOnlyWorkspace, onOpenChange }: Dan
 
         <div className="grid gap-2">
           <p className="text-sm text-muted-foreground">
-            Deleting a workspace removes it — and access to all of its projects and tickets — from
+            Deleting a workspace removes it — and access to all of its projects and missions — from
             the web interface. If it is the active workspace, the oldest remaining workspace becomes
             active.
           </p>
@@ -90,7 +90,7 @@ export function DangerZonePage({ workspace, isOnlyWorkspace, onOpenChange }: Dan
           <DialogHeader>
             <DialogTitle>Delete {workspace.name}?</DialogTitle>
             <DialogDescription>
-              The workspace and all of its projects and tickets will no longer be reachable from the
+              The workspace and all of its projects and missions will no longer be reachable from the
               web interface. This cannot be undone from the UI.
             </DialogDescription>
           </DialogHeader>

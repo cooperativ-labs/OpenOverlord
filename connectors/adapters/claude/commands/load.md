@@ -1,22 +1,22 @@
 ---
-description: Load Overlord ticket context without creating a new session
-argument-hint: <ticket_id>
+description: Load Overlord mission context without creating a new session
+argument-hint: <mission_id>
 disable-model-invocation: true
 ---
 
-Load Overlord ticket context without attaching to the ticket.
+Load Overlord mission context without attaching to the mission.
 
 
-Treat `$ARGUMENTS` as the target ticket ID.
-If no ticket ID was provided, ask the user for one and stop.
+Treat `$ARGUMENTS` as the target mission ID.
+If no mission ID was provided, ask the user for one and stop.
 
 
 Run:
-`ovld protocol load-context --ticket-id <ticketId>`
+`ovld protocol load-context --mission-id <missionId>`
 
 Rules:
 - Use `load-context`, not `attach`.
 - Do not create or switch sessions.
-- Summarize the returned ticket details, history, artifacts, and shared context for the user.
+- Summarize the returned mission details, history, artifacts, and shared context for the user.
 
 

@@ -45,7 +45,7 @@ This choice does not change the logical schema. It does affect implementation de
 - Every persisted domain record should have a stable text ID that can survive export/import and client sync.
 - All mutable domain tables should include `created_at`, `updated_at`, `deleted_at`, and `revision`.
 - Deletes should normally be soft deletes so REST clients, realtime subscribers, and local sync clients can observe tombstones.
-- Append-only history should be preferred for audit records, ticket events, deliveries, and sync changes.
+- Append-only history should be preferred for audit records, mission events, deliveries, and sync changes.
 - The schema should avoid native database enums in the contract. Use stable text values plus adapter checks or application validation.
 - Full repository contents, raw token secrets, and raw session secrets must not be persisted.
 - Soft delete state is represented by `deleted_at`, not by duplicating terminal `deleted` or `removed` status values.
@@ -59,8 +59,8 @@ This choice does not change the logical schema. It does affect implementation de
 - Stable IDs should be UUIDv7 or ULID strings. Integer primary keys are not part of the portable contract.
 - `revision` starts at `1` for inserted mutable rows and increments by exactly one for each service-layer mutation.
 - `metadata_json` and `settings_json` are extension space, but extension keys must be namespaced. Use reverse-DNS or package-style keys such as `com.example.plugin`, with a nested `schemaVersion` where the extension stores structured data.
-- Tables without `created_at`, `updated_at`, `deleted_at`, and `revision` are intentional operational or append-only tables. Current exemptions are `ticket_sequences`, `ticket_events`, `shared_context_tags`, `entity_changes`, `sync_cursors`, `outbox_messages`, `search_documents`, `audit_log`, and `schema_migrations`.
-- Columns named `position` (and the ticket board ordering column `board_position`) must use a reorder strategy that does not violate active uniqueness mid-transaction. Services should use gap-based integer positions by default, for example `100`, `200`, `300`; compacting positions is a maintenance operation. `board_position` is not uniqueness-constrained, so services may renumber a whole board column densely on each reorder.
+- Tables without `created_at`, `updated_at`, `deleted_at`, and `revision` are intentional operational or append-only tables. Current exemptions are `mission_sequences`, `mission_events`, `shared_context_tags`, `entity_changes`, `sync_cursors`, `outbox_messages`, `search_documents`, `audit_log`, and `schema_migrations`.
+- Columns named `position` (and the mission board ordering column `board_position`) must use a reorder strategy that does not violate active uniqueness mid-transaction. Services should use gap-based integer positions by default, for example `100`, `200`, `300`; compacting positions is a maintenance operation. `board_position` is not uniqueness-constrained, so services may renumber a whole board column densely on each reorder.
 
 ## Logical Types
 
@@ -87,9 +87,9 @@ Any supported database adapter must provide:
 - ACID transactions.
 - Foreign key enforcement.
 - Unique constraints.
-- Indexed lookups by ID, workspace/project/ticket, status, and updated time.
+- Indexed lookups by ID, workspace/project/mission, status, and updated time.
 - Atomic compare-and-set updates for queue claiming and state transitions.
-- A way to allocate monotonic ticket sequence numbers.
+- A way to allocate monotonic mission sequence numbers.
 - A way to append `entity_changes` in the same transaction as domain mutations.
 - Commit-safe change-feed visibility for any multi-writer adapter.
 - Migration tracking.
@@ -121,15 +121,15 @@ SET ..., revision = revision + 1, updated_at = ?
 WHERE id = ? AND revision = ? AND deleted_at IS NULL
 ```
 
-A zero-row update is a conflict and should surface as a `409` or equivalent domain error. The domain mutation, `revision` bump, related `ticket_events`, `entity_changes`, and `outbox_messages` must be committed atomically.
+A zero-row update is a conflict and should surface as a `409` or equivalent domain error. The domain mutation, `revision` bump, related `mission_events`, `entity_changes`, and `outbox_messages` must be committed atomically.
 
 ### Tenant And Denormalized Column Invariants
 
-Denormalized ownership columns such as `workspace_id`, `project_id`, `ticket_id`, and cached `status_type` are part of the contract, not advisory metadata. Services and adapters must prevent cross-tenant rows.
+Denormalized ownership columns such as `workspace_id`, `project_id`, `mission_id`, and cached `status_type` are part of the contract, not advisory metadata. Services and adapters must prevent cross-tenant rows.
 
-Preferred enforcement is composite foreign keys such as `(workspace_id, project_id)` referencing `projects(workspace_id, id)`, plus similar constraints for ticket/objective relationships. Where a database cannot express a denormalized invariant directly, the adapter conformance suite must test service enforcement.
+Preferred enforcement is composite foreign keys such as `(workspace_id, project_id)` referencing `projects(workspace_id, id)`, plus similar constraints for mission/objective relationships. Where a database cannot express a denormalized invariant directly, the adapter conformance suite must test service enforcement.
 
-When `tickets.status_id` references `project_statuses`, `tickets.status_type` must be copied from the referenced row in the same transaction. If a project status type changes, affected tickets must be updated and emitted in `entity_changes`.
+When `missions.status_id` references `project_statuses`, `missions.status_type` must be copied from the referenced row in the same transaction. If a project status type changes, affected missions must be updated and emitted in `entity_changes`.
 
 ### Change-Feed Visibility
 
@@ -145,7 +145,7 @@ Sync clients should advance cursors only to the adapter-provided safe high-water
 
 ### Idempotency Layering
 
-Use `idempotency_keys` to guard request/response replay for protocol, REST, hooks, and worker calls. Per-table idempotency keys such as `ticket_events.idempotency_key` or `execution_requests.idempotency_key` guard domain inserts and queue effects.
+Use `idempotency_keys` to guard request/response replay for protocol, REST, hooks, and worker calls. Per-table idempotency keys such as `mission_events.idempotency_key` or `execution_requests.idempotency_key` guard domain inserts and queue effects.
 
 If the same idempotency scope/key is reused with a different `request_hash`, the operation must fail with a conflict. It must not replay a cached response for a different request body.
 
@@ -220,7 +220,7 @@ Indexes:
 
 ### `workspace_users`
 
-Represents a profile's membership and effective identity inside a workspace. Workspace-scoped resources such as ticket assignments, role assignments, project ownership, and workflow attribution should reference `workspace_users.id`, not the global `profiles.id`.
+Represents a profile's membership and effective identity inside a workspace. Workspace-scoped resources such as mission assignments, role assignments, project ownership, and workflow attribution should reference `workspace_users.id`, not the global `profiles.id`.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -362,7 +362,7 @@ Indexes:
 
 ### `project_statuses`
 
-Configurable ticket statuses per project, with stable semantic types.
+Configurable mission statuses per project, with stable semantic types.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -528,7 +528,7 @@ Indexes:
 
 ### `project_tag_definitions`
 
-Project-scoped ticket tag definitions.
+Project-scoped mission tag definitions.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -550,15 +550,15 @@ Indexes:
 - Unique active `(project_id, key)`.
 - Unique active `(project_id, lower(label))` where supported.
 
-### `ticket_tag_assignments`
+### `mission_tag_assignments`
 
-Assigns project tags to tickets.
+Assigns project tags to missions.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
-| `ticket_id` | Id | yes | FK to `tickets`. |
+| `mission_id` | Id | yes | FK to `missions`. |
 | `tag_definition_id` | Id | yes | FK to `project_tag_definitions`. |
 | `source` | text | yes | `user`, `engine`, or adapter-defined. |
 | `applied_by_workspace_user_id` | Id | no | FK to `workspace_users`. |
@@ -569,16 +569,16 @@ Assigns project tags to tickets.
 
 Indexes:
 
-- Unique active `(ticket_id, tag_definition_id, source)`.
-- `(tag_definition_id, ticket_id)`.
+- Unique active `(mission_id, tag_definition_id, source)`.
+- `(tag_definition_id, mission_id)`.
 
-Ticket tag services must verify the tag definition belongs to the ticket's project.
+Mission tag services must verify the tag definition belongs to the mission's project.
 
-## Tickets, Objectives, And Sessions
+## Missions, Objectives, And Sessions
 
-### `ticket_sequences`
+### `mission_sequences`
 
-Portable sequence allocator for human ticket numbers.
+Portable sequence allocator for human mission numbers.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -586,7 +586,7 @@ Portable sequence allocator for human ticket numbers.
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `scope_type` | text | yes | `workspace` for the default `<workspace>:<sequence>` display ID; future `project` is a migration, not a config toggle. |
 | `scope_id` | Id | yes | Workspace/project ID. |
-| `counter_name` | text | yes | Example: `ticket`. |
+| `counter_name` | text | yes | Example: `mission`. |
 | `next_value` | integer | yes | Claim inside a transaction. |
 | `updated_at` | TimestampUTC | yes |  |
 
@@ -594,13 +594,13 @@ Indexes:
 
 - Unique `(workspace_id, scope_type, scope_id, counter_name)`.
 
-### `tickets`
+### `missions`
 
 Durable work unit and review record.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `id` | Id | yes | Stable ticket ID. |
+| `id` | Id | yes | Stable mission ID. |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `project_id` | Id | yes | FK to `projects`. |
 | `display_id` | DisplayId | yes | Example: `1:1204`. |
@@ -608,7 +608,7 @@ Durable work unit and review record.
 | `title` | text | yes |  |
 | `status_id` | Id | yes | FK to `project_statuses`. |
 | `status_type` | text | yes | Cached semantic type for fast filters. |
-| `board_position` | integer | yes | Ordering of the ticket within its board column (the `(project_id, status_id)` group). Gap-based; lower sorts first. See Conventions on reorder strategy. |
+| `board_position` | integer | yes | Ordering of the mission within its board column (the `(project_id, status_id)` group). Gap-based; lower sorts first. See Conventions on reorder strategy. |
 | `priority` | text | no | Example: `low`, `normal`, `high`, `urgent`. |
 | `constraints_text` | text | no | Human-readable constraints. |
 | `acceptance_criteria_text` | text | no |  |
@@ -616,8 +616,8 @@ Durable work unit and review record.
 | `output_format_text` | text | no |  |
 | `execution_target_intent_json` | Json | yes | Target preference/intent, not necessarily resolved target. |
 | `metadata_json` | Json | yes | Extension data. |
-| `active_branch` | text | no | Git branch the ticket is currently operating on under worktree automation; null until the first launch prepares one. |
-| `branch_override` | text | no | User-pinned branch chosen in the ticket panel to override the planner's default; consumed (and cleared) by the runner at the next branch preparation. Null means automatic selection. |
+| `active_branch` | text | no | Git branch the mission is currently operating on under worktree automation; null until the first launch prepares one. |
+| `branch_override` | text | no | User-pinned branch chosen in the mission panel to override the planner's default; consumed (and cleared) by the runner at the next branch preparation. Null means automatic selection. |
 | `created_by_workspace_user_id` | Id | no | FK to `workspace_users`. |
 | `assigned_workspace_user_id` | Id | no | FK to `workspace_users`. |
 | `created_at` | TimestampUTC | yes |  |
@@ -628,24 +628,24 @@ Durable work unit and review record.
 Indexes:
 
 - Unique `(workspace_id, display_id)`.
-- Unique `(workspace_id, sequence_number)` while `ticket_sequences.scope_type = 'workspace'`.
+- Unique `(workspace_id, sequence_number)` while `mission_sequences.scope_type = 'workspace'`.
 - `(project_id, status_type, updated_at)`.
 - `(project_id, status_id, board_position)` — ordered reads of a board column.
 - `(workspace_id, created_by_workspace_user_id, updated_at)`.
 
-The default human ID format is workspace-scoped, for example `1:1204`, and `sequence_number` uniqueness must match that scope. If a future deployment introduces project-scoped display IDs, it must add a new `ticket_sequences.scope_type = 'project'` migration and adjust the unique index at the same time.
+The default human ID format is workspace-scoped, for example `1:1204`, and `sequence_number` uniqueness must match that scope. If a future deployment introduces project-scoped display IDs, it must add a new `mission_sequences.scope_type = 'project'` migration and adjust the unique index at the same time.
 
 ### `objectives`
 
-One ordered agent pass inside a ticket.
+One ordered agent pass inside a mission.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | Id | yes | Stable objective ID. |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `project_id` | Id | yes | FK to `projects`. |
-| `ticket_id` | Id | yes | FK to `tickets`. |
-| `position` | integer | yes | Ordered within ticket. |
+| `mission_id` | Id | yes | FK to `missions`. |
+| `position` | integer | yes | Ordered within mission. |
 | `title` | text | no |  |
 | `instruction_text` | text | no | Agent-facing objective text. May be null or empty while an objective is an inline-authored `draft`/`future` slot (including clearing it back to blank after authoring); submitted and later objectives require non-empty text at the service/API boundary. |
 | `state` | text | yes | `future`, `draft`, `submitted`, `launching`, `executing`, `pending_delivery`, `complete`. |
@@ -668,15 +668,15 @@ One ordered agent pass inside a ticket.
 
 Indexes:
 
-- Unique active `(ticket_id, position)`.
+- Unique active `(mission_id, position)`.
 - `(project_id, state, updated_at)`.
-- `(ticket_id, state, position)`.
+- `(mission_id, state, position)`.
 
 Services should set `completed_at` when an objective enters `complete`. A null `launch_config_json` means the runner should inherit execution-target or user-target launch defaults; a non-null object means the objective intentionally overrides those defaults, even when the override contains empty flags or no pre-command.
 
 ### `project_tags`
 
-Per-project tag definition. Tags are authored in project settings and assigned to tickets via `ticket_tags`.
+Per-project tag definition. Tags are authored in project settings and assigned to missions via `mission_tags`.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -685,7 +685,7 @@ Per-project tag definition. Tags are authored in project settings and assigned t
 | `project_id` | Id | yes | FK to `projects`. |
 | `label` | text | yes | Human-readable tag label; unique per project among non-deleted rows. |
 | `color` | text | no | Optional display color (e.g. hex). |
-| `active` | Bool | yes | Inactive tags are hidden from the ticket-create picker but kept for history. |
+| `active` | Bool | yes | Inactive tags are hidden from the mission-create picker but kept for history. |
 | `created_at` | TimestampUTC | yes |  |
 | `updated_at` | TimestampUTC | yes |  |
 | `deleted_at` | TimestampUTC | no | Tombstone. |
@@ -694,37 +694,37 @@ Per-project tag definition. Tags are authored in project settings and assigned t
 Indexes:
 
 - Unique active `(project_id, label)`.
-- Unique `(project_id, id)` — composite FK target for `ticket_tags`-style joins.
+- Unique `(project_id, id)` — composite FK target for `mission_tags`-style joins.
 - `(project_id, active)`.
 
-### `ticket_tags`
+### `mission_tags`
 
-Assignment of a `project_tags` definition to a ticket. The composite primary key makes an assignment idempotent.
+Assignment of a `project_tags` definition to a mission. The composite primary key makes an assignment idempotent.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `ticket_id` | Id | yes | FK to `tickets`; `ON DELETE CASCADE`. |
+| `mission_id` | Id | yes | FK to `missions`; `ON DELETE CASCADE`. |
 | `tag_id` | Id | yes | FK to `project_tags`; `ON DELETE CASCADE`. |
 | `created_at` | TimestampUTC | yes |  |
 
 Indexes:
 
-- Primary key `(ticket_id, tag_id)`.
-- `(tag_id)` — reverse lookup of tickets carrying a tag.
+- Primary key `(mission_id, tag_id)`.
+- `(tag_id)` — reverse lookup of missions carrying a tag.
 
-A ticket and its tags must belong to the same project; the service layer validates `tag_id` against the ticket's `project_id` before inserting.
+A mission and its tags must belong to the same project; the service layer validates `tag_id` against the mission's `project_id` before inserting.
 
-### `my_ticket_positions`
+### `my_mission_positions`
 
-Personal, per-status-column drag ordering for the **My Tickets** selected-workspace view. A row records where one operator (`workspace_user`) has manually placed one ticket within one status column on their My Tickets board. Distinct from `tickets.board_position`, which is the shared per-project board order: My Tickets ordering must never reorder another user's view or the source project boards.
+Personal, per-status-column drag ordering for the **My Missions** selected-workspace view. A row records where one operator (`workspace_user`) has manually placed one mission within one status column on their My Missions board. Distinct from `missions.board_position`, which is the shared per-project board order: My Missions ordering must never reorder another user's view or the source project boards.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | Id | yes | Stable row ID. |
 | `workspace_id` | Id | yes | FK to `workspaces`; `ON DELETE CASCADE`. |
 | `workspace_user_id` | Id | yes | FK to `workspace_users`; the operator this ordering belongs to. `ON DELETE CASCADE`. |
-| `ticket_id` | Id | yes | FK to `tickets`; `ON DELETE CASCADE`. |
-| `status_id` | Id | yes | The status column the position applies to. A position only applies at read time when it matches the ticket's current `status_id`, so a status change made elsewhere self-corrects. |
+| `mission_id` | Id | yes | FK to `missions`; `ON DELETE CASCADE`. |
+| `status_id` | Id | yes | The status column the position applies to. A position only applies at read time when it matches the mission's current `status_id`, so a status change made elsewhere self-corrects. |
 | `position` | Float | yes | Numeric order within the column; lower sorts first. Gap-based so inserts need not renumber the whole column. |
 | `created_at` | TimestampUTC | yes |  |
 | `updated_at` | TimestampUTC | yes |  |
@@ -732,12 +732,12 @@ Personal, per-status-column drag ordering for the **My Tickets** selected-worksp
 
 Indexes / constraints:
 
-- `UNIQUE (workspace_id, workspace_user_id, ticket_id)` — one position per operator per ticket.
-- Composite FK `(workspace_id, ticket_id) → tickets (workspace_id, id)` `ON DELETE CASCADE` — keeps the row in the ticket's own workspace.
+- `UNIQUE (workspace_id, workspace_user_id, mission_id)` — one position per operator per mission.
+- Composite FK `(workspace_id, mission_id) → missions (workspace_id, id)` `ON DELETE CASCADE` — keeps the row in the mission's own workspace.
 - Composite FK `(workspace_id, status_id) → workspace_statuses (workspace_id, id)` `ON DELETE CASCADE` — the column must be a status of the same workspace.
 - `(workspace_id, workspace_user_id, status_id, position)` — ordered reads of one operator's column.
 
-Rows are sparse: one exists only for a ticket the operator has dragged. Cascades fire only on **hard** delete; because tickets and statuses are soft-deleted, the read path filters non-deleted tickets and ignores positions whose `status_id` no longer matches the ticket's current column. Keyed by `workspace_id`, the table is forward-compatible with a future cross-workspace My Tickets board.
+Rows are sparse: one exists only for a mission the operator has dragged. Cascades fire only on **hard** delete; because missions and statuses are soft-deleted, the read path filters non-deleted missions and ignores positions whose `status_id` no longer matches the mission's current column. Keyed by `workspace_id`, the table is forward-compatible with a future cross-workspace My Missions board.
 
 ### `agent_sessions`
 
@@ -748,7 +748,7 @@ Live or historical attachment between an agent and one objective.
 | `id` | Id | yes | Stable session ID. |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `project_id` | Id | yes | FK to `projects`. |
-| `ticket_id` | Id | yes | FK to `tickets`. |
+| `mission_id` | Id | yes | FK to `missions`. |
 | `objective_id` | Id | yes | FK to `objectives`. |
 | `session_key_prefix` | text | yes | Non-secret display/lookup prefix. |
 | `session_key_hash` | SecretHash | yes | Hash raw session key. |
@@ -759,7 +759,7 @@ Live or historical attachment between an agent and one objective.
 | `phase` | text | yes | Protocol phase. |
 | `delivery_state` | text | yes | `not_delivered`, `delivered`, `pending_redelivery`. |
 | `started_at` | TimestampUTC | yes |  |
-| `last_heartbeat_at` | TimestampUTC | no | Heartbeats do not need ticket events. |
+| `last_heartbeat_at` | TimestampUTC | no | Heartbeats do not need mission events. |
 | `ended_at` | TimestampUTC | no |  |
 | `metadata_json` | Json | yes | No secrets. |
 | `created_by_workspace_user_id` | Id | no | FK to `workspace_users`. |
@@ -772,21 +772,21 @@ Indexes:
 
 - Unique `(workspace_id, session_key_prefix)`.
 - `(objective_id, started_at)`.
-- `(ticket_id, started_at)`.
+- `(mission_id, started_at)`.
 - `(external_session_id)` where present.
 
 ## Activity, Context, Attachments, And Review Records
 
-### `ticket_events`
+### `mission_events`
 
-Append-only ticket timeline. Heartbeats should update `agent_sessions.last_heartbeat_at` and should not normally create rows here.
+Append-only mission timeline. Heartbeats should update `agent_sessions.last_heartbeat_at` and should not normally create rows here.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `project_id` | Id | yes | FK to `projects`. |
-| `ticket_id` | Id | yes | FK to `tickets`. |
+| `mission_id` | Id | yes | FK to `missions`. |
 | `objective_id` | Id | no | FK to `objectives`. |
 | `session_id` | Id | no | FK to `agent_sessions`. |
 | `type` | text | yes | `update`, `user_follow_up`, `alert`, `discussion_summary`, `decision`, `ask`, `permission_request`, `delivery`, `execution_requested`, `awaiting_approval`, `status_change`. |
@@ -802,21 +802,21 @@ Append-only ticket timeline. Heartbeats should update `agent_sessions.last_heart
 
 Indexes:
 
-- `(ticket_id, created_at)`.
+- `(mission_id, created_at)`.
 - `(objective_id, created_at)`.
 - Unique `(workspace_id, source, idempotency_key)` where `idempotency_key` is present.
 
-When a protocol write omits `objective_id`, services should resolve it to the active executing objective for the ticket, then the most recently completed objective. Postgres adapters may implement the same behavior with triggers, but service behavior is the portable contract.
+When a protocol write omits `objective_id`, services should resolve it to the active executing objective for the mission, then the most recently completed objective. Postgres adapters may implement the same behavior with triggers, but service behavior is the portable contract.
 
 ### `shared_context_entries`
 
-Durable ticket memory for stable facts.
+Durable mission memory for stable facts.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
-| `ticket_id` | Id | yes | FK to `tickets`. |
+| `mission_id` | Id | yes | FK to `missions`. |
 | `objective_id` | Id | no | FK to `objectives` when a context entry was written for a specific objective. |
 | `key` | text | yes | Example: `repo.testing`. |
 | `value_kind` | text | yes | `string` or `json`. |
@@ -831,9 +831,9 @@ Durable ticket memory for stable facts.
 
 Indexes:
 
-- Unique active `(ticket_id, key)`.
+- Unique active `(mission_id, key)`.
 - `(objective_id, updated_at)` where `objective_id` is present.
-- `(ticket_id, updated_at)`.
+- `(mission_id, updated_at)`.
 - Optional key substring/full-text index by adapter.
 
 ### `shared_context_tags`
@@ -859,7 +859,7 @@ File metadata for explicit objective-scoped uploads/imports.
 | --- | --- | --- | --- |
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
-| `ticket_id` | Id | yes | FK to `tickets`. |
+| `mission_id` | Id | yes | FK to `missions`. |
 | `objective_id` | Id | yes | FK to `objectives`. |
 | `storage_backend` | text | yes | `local_fs`, `s3`, `blob`, etc. |
 | `storage_key` | text | yes | Backend key/path. |
@@ -878,7 +878,7 @@ File metadata for explicit objective-scoped uploads/imports.
 Indexes:
 
 - `(objective_id, created_at)`.
-- `(ticket_id, created_at)`.
+- `(mission_id, created_at)`.
 
 ### `storage_buckets`
 
@@ -976,7 +976,7 @@ Workspace attachment metadata for files that are not limited to a single objecti
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `project_id` | Id | no | FK to `projects` for project-scoped attachments. |
-| `ticket_id` | Id | no | FK to `tickets` for ticket-scoped attachments. |
+| `mission_id` | Id | no | FK to `missions` for mission-scoped attachments. |
 | `objective_id` | Id | no | FK to `objectives` for objective-scoped attachments. |
 | `storage_bucket_id` | Id | yes | FK to `storage_buckets`. |
 | `storage_key` | text | yes | Backend key/path, unique within the bucket for active rows. |
@@ -997,7 +997,7 @@ Indexes:
 - Unique active `(storage_bucket_id, storage_key)`.
 - `(workspace_id, created_at)`.
 - `(project_id, created_at)` where `project_id` is present.
-- `(ticket_id, created_at)` where `ticket_id` is present.
+- `(mission_id, created_at)` where `mission_id` is present.
 - `(objective_id, created_at)` where `objective_id` is present.
 
 Storage object deletes are soft deletes. Services should enqueue provider cleanup through `outbox_messages` after the metadata tombstone commits.
@@ -1011,7 +1011,7 @@ Final or follow-up delivery review boundary.
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `project_id` | Id | yes | FK to `projects`. |
-| `ticket_id` | Id | yes | FK to `tickets`. |
+| `mission_id` | Id | yes | FK to `missions`. |
 | `objective_id` | Id | yes | FK to `objectives`. |
 | `session_id` | Id | no | FK to `agent_sessions`; null for `record-work` deliveries created without an attached session. |
 | `summary` | text | yes | Narrative delivery summary. |
@@ -1027,7 +1027,7 @@ Final or follow-up delivery review boundary.
 
 Indexes:
 
-- `(ticket_id, delivered_at)`.
+- `(mission_id, delivered_at)`.
 - `(objective_id, delivered_at)`.
 - `(session_id)`.
 
@@ -1040,7 +1040,7 @@ Structured review artifacts, usually attached to a delivery.
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `project_id` | Id | yes | FK to `projects`. |
-| `ticket_id` | Id | yes | FK to `tickets`. |
+| `mission_id` | Id | yes | FK to `missions`. |
 | `objective_id` | Id | no | FK to `objectives`. |
 | `session_id` | Id | no | FK to `agent_sessions`. |
 | `delivery_id` | Id | no | FK to `deliveries`. |
@@ -1057,7 +1057,7 @@ Structured review artifacts, usually attached to a delivery.
 
 Indexes:
 
-- `(ticket_id, created_at)`.
+- `(mission_id, created_at)`.
 - `(delivery_id, type)`.
 
 ## Change Tracking
@@ -1071,7 +1071,7 @@ Update-time file metadata, upserted by session/objective/path.
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `project_id` | Id | yes | FK to `projects`. |
-| `ticket_id` | Id | yes | FK to `tickets`. |
+| `mission_id` | Id | yes | FK to `missions`. |
 | `objective_id` | Id | yes | FK to `objectives`. |
 | `session_id` | Id | no | FK to `agent_sessions`; null for `record-work` changed-file metadata. |
 | `resource_id` | Id | no | FK to `project_resources` when known. |
@@ -1080,7 +1080,7 @@ Update-time file metadata, upserted by session/objective/path.
 | `current_diff_state` | text | yes | `present`, `resolved`, `unknown`, `unavailable`. |
 | `first_observed_at` | TimestampUTC | yes |  |
 | `last_observed_at` | TimestampUTC | yes |  |
-| `last_observed_event_id` | Id | no | FK to `ticket_events`. |
+| `last_observed_event_id` | Id | no | FK to `mission_events`. |
 | `observed_metadata_json` | Json | yes | No full diff or file contents. |
 | `created_at` | TimestampUTC | yes |  |
 | `updated_at` | TimestampUTC | yes |  |
@@ -1090,10 +1090,10 @@ Update-time file metadata, upserted by session/objective/path.
 Indexes:
 
 - Unique active `(session_id, objective_id, file_path)` where `session_id` is present.
-- `(ticket_id, objective_id, file_path)`.
+- `(mission_id, objective_id, file_path)`.
 - `(project_id, updated_at)`.
 
-When an update-time changed-file record omits `objective_id`, services should apply the same objective auto-association rule as `ticket_events`.
+When an update-time changed-file record omits `objective_id`, services should apply the same objective auto-association rule as `mission_events`.
 
 Delivery coverage is objective-scoped. Validators must aggregate `changed_files` across every session for the objective, plus any null-session `record-work` records. If multiple sessions observed the same file, `present` wins over `unknown`/`unavailable`, and `resolved` removes the file from final coverage only when the final local workspace state no longer contains a meaningful change.
 
@@ -1106,7 +1106,7 @@ Structured rationale records for meaningful file changes.
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `project_id` | Id | yes | FK to `projects`. |
-| `ticket_id` | Id | yes | FK to `tickets`. |
+| `mission_id` | Id | yes | FK to `missions`. |
 | `objective_id` | Id | yes | FK to `objectives`. |
 | `session_id` | Id | no | FK to `agent_sessions`. |
 | `delivery_id` | Id | no | FK to `deliveries`. |
@@ -1117,7 +1117,7 @@ Structured rationale records for meaningful file changes.
 | `why` | text | yes | Why it changed. |
 | `impact` | text | yes | Behavioral impact. |
 | `hunks_json` | Json | yes | Hunk headers/metadata only. |
-| `source_event_id` | Id | no | FK to `ticket_events`. |
+| `source_event_id` | Id | no | FK to `mission_events`. |
 | `is_final` | Bool | yes | True when associated with a delivery boundary. |
 | `created_at` | TimestampUTC | yes |  |
 | `updated_at` | TimestampUTC | yes |  |
@@ -1126,7 +1126,7 @@ Structured rationale records for meaningful file changes.
 
 Indexes:
 
-- `(ticket_id, objective_id, file_path)`.
+- `(mission_id, objective_id, file_path)`.
 - `(delivery_id, file_path)`.
 - Optional unique active final rationale `(delivery_id, file_path)`.
 
@@ -1143,7 +1143,7 @@ Durable queue for manual run and auto-advance.
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `project_id` | Id | yes | FK to `projects`. |
-| `ticket_id` | Id | yes | FK to `tickets`. |
+| `mission_id` | Id | yes | FK to `missions`. |
 | `objective_id` | Id | yes | FK to `objectives`. |
 | `execution_target_id` | Id | no | FK to `execution_targets`. |
 | `requested_agent` | text | no |  |
@@ -1185,7 +1185,7 @@ Claiming must happen in one transaction:
 1. Select the oldest compatible active request.
 2. Verify the objective is launchable.
 3. Update status to `claimed`, set `claimed_by_execution_target_id`, optional `claimed_by_device_id`, `claimed_at`, and `claim_expires_at`.
-4. Append `ticket_events` and `entity_changes`.
+4. Append `mission_events` and `entity_changes`.
 
 ### `idempotency_keys`
 
@@ -1195,7 +1195,7 @@ Protects REST, protocol, hook, and worker requests from duplicate effects.
 | --- | --- | --- | --- |
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
-| `scope` | text | yes | Example: `protocol.update`, `api.ticket.create`. |
+| `scope` | text | yes | Example: `protocol.update`, `api.mission.create`. |
 | `key` | text | yes | Caller-supplied key. |
 | `request_hash` | text | yes | Hash of normalized request. |
 | `response_json` | Json | no | Optional cached response. |
@@ -1332,14 +1332,14 @@ Indexes:
 
 ### `hook_events`
 
-Raw-ish but sanitized connector lifecycle events. Important hook events should also create `ticket_events`.
+Raw-ish but sanitized connector lifecycle events. Important hook events should also create `mission_events`.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `project_id` | Id | no | FK to `projects`. |
-| `ticket_id` | Id | no | FK to `tickets`. |
+| `mission_id` | Id | no | FK to `missions`. |
 | `objective_id` | Id | no | FK to `objectives`. |
 | `session_id` | Id | no | FK to `agent_sessions`. |
 | `agent_identifier` | text | no |  |
@@ -1351,7 +1351,7 @@ Raw-ish but sanitized connector lifecycle events. Important hook events should a
 
 Indexes:
 
-- `(ticket_id, created_at)`.
+- `(mission_id, created_at)`.
 - `(session_id, created_at)`.
 - `(workspace_id, hook_type, created_at)`.
 
@@ -1363,10 +1363,10 @@ Structured record for permission prompts, linked to events.
 | --- | --- | --- | --- |
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
-| `ticket_id` | Id | yes | FK to `tickets`. |
+| `mission_id` | Id | yes | FK to `missions`. |
 | `objective_id` | Id | no | FK to `objectives`. |
 | `session_id` | Id | no | FK to `agent_sessions`. |
-| `event_id` | Id | no | FK to `ticket_events`. |
+| `event_id` | Id | no | FK to `mission_events`. |
 | `tool_name` | text | no |  |
 | `request_summary` | text | yes | Secret-redacted. |
 | `payload_json` | Json | yes | Secret-redacted. |
@@ -1380,7 +1380,7 @@ Structured record for permission prompts, linked to events.
 
 Indexes:
 
-- `(ticket_id, created_at)`.
+- `(mission_id, created_at)`.
 - `(status, created_at)`.
 
 ## Realtime, REST, And Sync
@@ -1397,7 +1397,7 @@ Every service-layer mutation should append one or more `entity_changes` rows in 
 | `id` | Id | yes | Stable change ID for export/import. |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `project_id` | Id | no | Denormalized filter. |
-| `ticket_id` | Id | no | Denormalized filter. |
+| `mission_id` | Id | no | Denormalized filter. |
 | `objective_id` | Id | no | Denormalized filter. |
 | `entity_type` | text | yes | Domain type, not necessarily physical table. |
 | `entity_id` | Id | yes | Changed entity ID. |
@@ -1415,7 +1415,7 @@ Indexes:
 - Unique `id`.
 - `(workspace_id, seq)`.
 - `(project_id, seq)`.
-- `(ticket_id, seq)`.
+- `(mission_id, seq)`.
 - `(entity_type, entity_id, seq)`.
 
 Usage:
@@ -1433,7 +1433,7 @@ Retention:
 
 - Keep a `minimum_retained_seq` value available through the sync endpoint or database metadata.
 - A client asking for `after < minimum_retained_seq` must receive a full-resync-required response.
-- Pruning append-only tables such as `entity_changes`, `ticket_events`, `hook_events`, and `audit_log` should be explicit maintenance, not silent normal writes.
+- Pruning append-only tables such as `entity_changes`, `mission_events`, `hook_events`, and `audit_log` should be explicit maintenance, not silent normal writes.
 
 ### `sync_clients`
 
@@ -1462,7 +1462,7 @@ Tracks delivered/applied cursors per client and stream.
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `sync_client_id` | Id | yes | FK to `sync_clients`. |
-| `stream_key` | text | yes | `workspace`, `project:<id>`, `ticket:<id>`, etc. |
+| `stream_key` | text | yes | `workspace`, `project:<id>`, `mission:<id>`, etc. |
 | `last_seq` | ChangeSeq | yes | Last delivered/applied `entity_changes.seq`. |
 | `updated_at` | TimestampUTC | yes |  |
 
@@ -1496,15 +1496,15 @@ Indexes:
 
 ### `search_documents`
 
-Portable search indexing table. Adapters can replace or augment this with SQLite FTS5 or Postgres `tsvector`. Every searchable document maps back to a ticket via `ticket_id`, so ticket search always returns tickets while ranking aggregates content across all source entity types.
+Portable search indexing table. Adapters can replace or augment this with SQLite FTS5 or Postgres `tsvector`. Every searchable document maps back to a mission via `mission_id`, so mission search always returns missions while ranking aggregates content across all source entity types.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `project_id` | Id | no | FK to `projects`. |
-| `ticket_id` | Id | yes | Owning ticket. For `entity_type = 'ticket'` this equals `entity_id`; for objectives and events it is the parent ticket so all documents aggregate per ticket. |
-| `entity_type` | text | yes | `ticket`, `objective`, `event`, etc. |
+| `mission_id` | Id | yes | Owning mission. For `entity_type = 'mission'` this equals `entity_id`; for objectives and events it is the parent mission so all documents aggregate per mission. |
+| `entity_type` | text | yes | `mission`, `objective`, `event`, etc. |
 | `entity_id` | Id | yes |  |
 | `title` | text | no |  |
 | `body_text` | text | yes | Redacted searchable text. |
@@ -1517,28 +1517,28 @@ Indexes:
 
 - Unique `(workspace_id, entity_type, entity_id)`.
 - `(workspace_id, project_id, entity_type)`.
-- `(ticket_id)` for per-ticket aggregation and cascade cleanup.
+- `(mission_id)` for per-mission aggregation and cascade cleanup.
 - Adapter full-text index on `title` and `body_text`.
 
-Ticket search should support:
+Mission search should support:
 
 - Exact lookup by `display_id`.
-- Ranked text search over title, display ID, objective text, and ticket-event summaries.
+- Ranked text search over title, display ID, objective text, and mission-event summaries.
 - Filters for workspace, project, status list, creator, and updated date range.
-- A bounded result limit suitable for protocol `search-tickets`.
+- A bounded result limit suitable for protocol `search-missions`.
 
-Ranking aggregates per-document relevance into one score per ticket. The reference implementation weights the title column above the body and weights source kinds by importance (ticket title > objective > event), so a query that hits a ticket's title outranks one that only appears in an event.
+Ranking aggregates per-document relevance into one score per mission. The reference implementation weights the title column above the body and weights source kinds by importance (mission title > objective > event), so a query that hits a mission's title outranks one that only appears in an event.
 
-The index is maintained by adapter triggers, not application writes: insert/update/delete on `tickets`, `objectives`, and `ticket_events` keep `search_documents` (and the adapter full-text index) in sync, and a soft delete of a ticket removes every document for that ticket so deleted tickets never surface. `content_hash` and `source_revision` allow incremental reindexing instead of blind rebuilds.
+The index is maintained by adapter triggers, not application writes: insert/update/delete on `missions`, `objectives`, and `mission_events` keep `search_documents` (and the adapter full-text index) in sync, and a soft delete of a mission removes every document for that mission so deleted missions never surface. `content_hash` and `source_revision` allow incremental reindexing instead of blind rebuilds.
 
-- **SQLite** implements the full-text index as an external-content FTS5 virtual table (`search_documents_fts`) over `search_documents`, with `ticket_id`/`entity_type` carried as `UNINDEXED` columns so a single `bm25()`-ranked query can return and weight tickets without a join back to the base table.
+- **SQLite** implements the full-text index as an external-content FTS5 virtual table (`search_documents_fts`) over `search_documents`, with `mission_id`/`entity_type` carried as `UNINDEXED` columns so a single `bm25()`-ranked query can return and weight missions without a join back to the base table.
 - **Postgres** implements it as a generated `tsvector` column with a GIN index and `plpgsql` sync triggers; trigram indexes and a stable search RPC may be added as adapter details.
 
 ## Audit And Migrations
 
 ### `audit_log`
 
-Security and administration audit log. Ticket workflow history remains in `ticket_events`.
+Security and administration audit log. Mission workflow history remains in `mission_events`.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -1597,21 +1597,21 @@ Closed values:
 - `objectives.state`: `future`, `draft`, `submitted`, `launching`, `executing`, `pending_delivery`, `complete`.
 - `execution_requests.status`: `queued`, `claimed`, `launching`, `launched`, `failed`, `cleared`, `cancelled`, `expired`.
 - `agent_sessions.delivery_state`: `not_delivered`, `delivered`, `pending_redelivery`.
-- `ticket_events.type`: `update`, `user_follow_up`, `alert`, `discussion_summary`, `decision`, `ask`, `permission_request`, `delivery`, `execution_requested`, `awaiting_approval`, `status_change`.
+- `mission_events.type`: `update`, `user_follow_up`, `alert`, `discussion_summary`, `decision`, `ask`, `permission_request`, `delivery`, `execution_requested`, `awaiting_approval`, `status_change`.
 - `permission_requests.status`: `requested`, `approved`, `denied`, `expired`, `not_required`.
 - `idempotency_keys.status`: `in_progress`, `completed`, `failed`.
 - `audit_log.result`: `allowed`, `denied`, `failed`.
 
 Open extension values:
 
-- `workspaces.kind`, `profiles.kind`, `execution_targets.type`, `project_resources.type`, `storage_buckets.storage_backend`, `artifacts.type`, `ticket_events.source`, `entity_changes.entity_type`, `entity_changes.source`, `outbox_messages.topic`, `worker_jobs.type`, RBAC permission names, and connector identifiers.
+- `workspaces.kind`, `profiles.kind`, `execution_targets.type`, `project_resources.type`, `storage_buckets.storage_backend`, `artifacts.type`, `mission_events.source`, `entity_changes.entity_type`, `entity_changes.source`, `outbox_messages.topic`, `worker_jobs.type`, RBAC permission names, and connector identifiers.
 - Extension values must be namespaced unless they are accepted into core documentation.
 
 State transition rules:
 
 - Objectives normally move `future -> draft -> submitted -> launching -> executing -> complete`.
 - `pending_delivery` is allowed only after a delivered objective starts explicit follow-up execution.
-- `complete` objectives can be reopened only through an explicit follow-up or administrative transition that records a `ticket_events` decision/status change.
+- `complete` objectives can be reopened only through an explicit follow-up or administrative transition that records a `mission_events` decision/status change.
 - Execution requests move `queued -> claimed -> launching -> launched`; failures can move to `failed`, user cleanup to `cleared`, cancellation to `cancelled`, and stale unlaunchable requests to `expired`.
 
 ## Contracted JSON Columns
@@ -1642,7 +1642,7 @@ Every fresh local database should seed the same logical minimum:
 - One implicit Better Auth `user`, matching human `profiles` row, and active `workspace_users` membership.
 - One `ADMIN` role assignment for the implicit user when RBAC tables are present.
 - Default project statuses for each project: `draft`, `next-up`, `execute`, `review`, `complete`, `blocked`, `cancelled`, with the `next-up` status mapped to `type = 'draft'`.
-- One workspace-scoped `ticket_sequences` row for `counter_name = 'ticket'`.
+- One workspace-scoped `mission_sequences` row for `counter_name = 'mission'`.
 - One local `devices` row and one local `execution_targets` row when runner features are initialized.
 
 Seed values should be deterministic enough for tests but should still use stable generated IDs in real installs.
@@ -1666,7 +1666,7 @@ The project should ship shared tests that every database adapter must pass. Requ
 - `TimestampUTC` round-trips and orders correctly.
 - `revision` compare-and-set rejects stale writes.
 - `entity_changes` is appended in the same transaction as mutations and exposes only commit-safe cursors.
-- Active uniqueness rules reject duplicate active statuses, role assignments, ticket positions, tags, and idempotency keys.
+- Active uniqueness rules reject duplicate active statuses, role assignments, mission positions, tags, and idempotency keys.
 - Queue claiming is atomic under concurrent runner attempts.
 - Soft deletes produce tombstones and change-feed rows.
 - `record-work` can create a delivery and rationales without an agent session.
@@ -1682,13 +1682,13 @@ erDiagram
   profiles ||--o{ workspace_users : joins
   workspaces ||--o{ projects : owns
   projects ||--o{ project_statuses : configures
-  projects ||--o{ tickets : contains
-  tickets ||--o{ objectives : contains
+  projects ||--o{ missions : contains
+  missions ||--o{ objectives : contains
   objectives ||--o{ agent_sessions : runs
-  tickets ||--o{ ticket_events : records
+  missions ||--o{ mission_events : records
   objectives ||--o{ deliveries : completes
   deliveries ||--o{ change_rationales : includes
-  tickets ||--o{ entity_changes : emits
+  missions ||--o{ entity_changes : emits
 ```
 
 ## REST API Boundary
@@ -1697,8 +1697,8 @@ The REST API should be the primary remote access path. It should expose domain r
 
 Recommended boundary:
 
-- `/projects`, `/projects/:id/resources`, `/projects/:id/repository`, `/tickets`, `/tickets/:id/objectives`, `/tickets/:id/events`, `/tickets/:id/context`, `/tickets/:id/deliveries`.
-- `/workspace/my-tickets` (read: tickets assigned to the active actor across the active workspace, with personal `my_ticket_positions` ordering) and `/workspace/my-tickets/order` (persist a personal column reorder; a cross-column drag is a real ticket status change validated by the `(workspace_id, status_id)` composite FK).
+- `/projects`, `/projects/:id/resources`, `/projects/:id/repository`, `/missions`, `/missions/:id/objectives`, `/missions/:id/events`, `/missions/:id/context`, `/missions/:id/deliveries`.
+- `/workspace/my-missions` (read: missions assigned to the active actor across the active workspace, with personal `my_mission_positions` ordering) and `/workspace/my-missions/order` (persist a personal column reorder; a cross-column drag is a real mission status change validated by the `(workspace_id, status_id)` composite FK).
 - `/protocol/*` endpoints mirroring `ovld protocol`.
 - `/execution-requests` for runner queue operations.
 - `/uploads/:bucketKey` (core upload service) accepts raw image bytes, persists them to the `storage_buckets` backend, records the matching object table row (e.g. `user_images`), and returns the stored descriptor; `/storage/:bucketKey/:storageKey` serves the bytes for a recorded object.
@@ -1710,7 +1710,7 @@ REST handlers should:
 - Authenticate to a user/token/session identity.
 - Authorize by domain permission.
 - Run service-layer state transitions in transactions.
-- Append `ticket_events` and `entity_changes`.
+- Append `mission_events` and `entity_changes`.
 - Use `idempotency_keys` for retried writes.
 - Return entity revisions and the latest change `seq` when useful.
 
@@ -1719,7 +1719,7 @@ REST handlers should:
 Realtime should be service-layer portable:
 
 1. A write transaction mutates domain tables.
-2. The same transaction appends `ticket_events` where applicable.
+2. The same transaction appends `mission_events` where applicable.
 3. The same transaction appends `entity_changes`.
 4. After commit, the API server wakes subscribers.
 5. Subscribers fetch or receive compact changes and then load resource details through REST.
@@ -1771,12 +1771,12 @@ The first implementable migration does not need every table above. A practical M
 
 1. Better Auth `user`, `workspaces`, `profiles`, `workspace_users`; the placeholder workspace is seeded, but the first human user/profile/membership is created by the Auth Layer account creation flow.
 2. `projects`, `project_statuses`, `devices`, `execution_targets`, `workspace_user_execution_targets`, `user_execution_target_preferences`, `project_resources`, `project_user_preferences`.
-3. `ticket_sequences`, `tickets`, `objectives`, `agent_sessions`.
-4. `ticket_events`, `shared_context_entries`, `objective_attachments`.
+3. `mission_sequences`, `missions`, `objectives`, `agent_sessions`.
+4. `mission_events`, `shared_context_entries`, `objective_attachments`.
 5. `deliveries`, `artifacts`, `changed_files`, `change_rationales`.
 6. `execution_requests`, `idempotency_keys`.
 7. `entity_changes`, `schema_migrations`.
-8. Default seed rows for the local workspace/statuses/ticket sequence.
+8. Default seed rows for the local workspace/statuses/mission sequence.
 
 Auth/RBAC expansion can then add:
 
@@ -1792,7 +1792,7 @@ Operational expansion can then add:
 - `hook_events`
 - `permission_requests`
 - `project_tag_definitions`
-- `ticket_tag_assignments`
+- `mission_tag_assignments`
 - `sync_clients`
 - `sync_cursors`
 - `outbox_messages`

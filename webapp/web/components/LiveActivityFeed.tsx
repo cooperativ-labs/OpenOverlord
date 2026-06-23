@@ -12,17 +12,17 @@ import {
   ShieldQuestion
 } from 'lucide-react';
 
-import type { TicketEventDto, TicketEventType } from '../../shared/contract.ts';
-import { useTicketEvents } from '../lib/queries.ts';
+import type { MissionEventDto, MissionEventType } from '../../shared/contract.ts';
+import { useMissionEvents } from '../lib/queries.ts';
 
 import { Badge, Spinner } from './ui.tsx';
 
 /**
- * Icon + human label for each `ticket_events.type` value. Unknown (future)
+ * Icon + human label for each `mission_events.type` value. Unknown (future)
  * types fall back to a neutral dot and the raw type string so the feed never
  * breaks when the server vocabulary grows ahead of the client.
  */
-const EVENT_META: Record<TicketEventType, { icon: LucideIcon; label: string }> = {
+const EVENT_META: Record<MissionEventType, { icon: LucideIcon; label: string }> = {
   update: { icon: Activity, label: 'Update' },
   user_follow_up: { icon: MessageSquare, label: 'Follow-up' },
   alert: { icon: AlertCircle, label: 'Alert' },
@@ -37,7 +37,7 @@ const EVENT_META: Record<TicketEventType, { icon: LucideIcon; label: string }> =
 };
 
 function eventMeta(type: string): { icon: LucideIcon | null; label: string } {
-  return EVENT_META[type as TicketEventType] ?? { icon: null, label: type.replace(/_/g, ' ') };
+  return EVENT_META[type as MissionEventType] ?? { icon: null, label: type.replace(/_/g, ' ') };
 }
 
 function formatTimestamp(iso: string): string {
@@ -45,7 +45,7 @@ function formatTimestamp(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 }
 
-function ActivityEntry({ event }: { event: TicketEventDto }) {
+function ActivityEntry({ event }: { event: MissionEventDto }) {
   const { icon: Icon, label } = eventMeta(event.type);
   const isUserFollowUp = event.type === 'user_follow_up';
 
@@ -111,12 +111,12 @@ function ActivityEntry({ event }: { event: TicketEventDto }) {
 }
 
 /**
- * Realtime feed of a ticket's workflow history (`ticket_events`). The query is
+ * Realtime feed of a mission's workflow history (`mission_events`). The query is
  * invalidated by the global SSE change feed, so updates written by the agent or
  * CLI in another process stream into the panel without a manual refresh.
  */
-export function LiveActivityFeed({ ticketId }: { ticketId: string }) {
-  const eventsQ = useTicketEvents(ticketId);
+export function LiveActivityFeed({ missionId }: { missionId: string }) {
+  const eventsQ = useMissionEvents(missionId);
 
   if (eventsQ.isLoading) {
     return (

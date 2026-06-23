@@ -31,7 +31,7 @@ Each type has a different procedure below.
 
 ## Adding a New Management Command
 
-Management commands are top-level `ovld <noun> <verb>` operations (e.g. `ovld project link`, `ovld ticket create`).
+Management commands are top-level `ovld <noun> <verb>` operations (e.g. `ovld project link`, `ovld mission create`).
 
 **Steps:**
 
@@ -68,7 +68,7 @@ The Runner Layer (stable id: `runner`) owns `execution_requests` queue claiming 
 **Steps for supporting a new execution target type:**
 
 1. **Add the new type to `execution_targets.type`** open vocabulary in `database/docs/09-database-schema-contract.md` — open vocabulary, no contract version bump needed.
-2. **Implement launch logic** in `cli/runner/<target-type>/`. The runner must claim `execution_requests` atomically via compare-and-set and append `ticket_events` + `entity_changes` in the same transaction.
+2. **Implement launch logic** in `cli/runner/<target-type>/`. The runner must claim `execution_requests` atomically via compare-and-set and append `mission_events` + `entity_changes` in the same transaction.
 3. **Add the target type to `contract/components.yaml`** under the Runner Layer capabilities.
 4. **Write tests** covering: claim, launch, failure handling, and conflict (double-claim) scenarios.
 5. **Document the new target type** in [`04-runner-and-launch-execution.md`](docs/04-runner-and-launch-execution.md).

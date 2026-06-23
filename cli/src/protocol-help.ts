@@ -18,7 +18,7 @@ export const SUPPORTED_PROTOCOL_SUBCOMMANDS = [
   'read-context',
   'record-work',
   'resume-follow-up',
-  'search-tickets',
+  'search-missions',
   'update',
   'write-context'
 ] as const;
@@ -30,10 +30,10 @@ export function printProtocolHelp({ primaryCommand }: { primaryCommand: string }
 
   console.log(`${primaryCommand} protocol [flags]
 
-Use this for ticket lifecycle work from an agent runtime: create a standalone
+Use this for mission lifecycle work from an agent runtime: create a standalone
 draft with \`${primaryCommand} protocol create\`, create-and-attach with
-\`${primaryCommand} protocol prompt\`, or attach to an existing ticket with
-\`${primaryCommand} protocol attach --ticket-id <ticket_id>\`.
+\`${primaryCommand} protocol prompt\`, or attach to an existing mission with
+\`${primaryCommand} protocol attach --mission-id <mission_id>\`.
 
 Backend and auth:
   Configure the REST backend before protocol calls:
@@ -47,7 +47,7 @@ Backend and auth:
   \`${primaryCommand} protocol auth-status\` (returns ok=true|false).
 
 Project discovery:
-  When prompting or creating tickets, the CLI resolves the project from your
+  When prompting or creating missions, the CLI resolves the project from your
   working directory when --project-id is omitted. Discover it explicitly with:
 
   ${primaryCommand} protocol discover-project
@@ -58,7 +58,7 @@ Project discovery:
   projects with \`${primaryCommand} create-project --name "<name>"\`.
 
 Agent workflow (required):
-  1. Attach first with \`${primaryCommand} protocol attach --ticket-id <id>\`.
+  1. Attach first with \`${primaryCommand} protocol attach --mission-id <id>\`.
   2. Post progress with \`${primaryCommand} protocol update\` or liveness with
      \`${primaryCommand} protocol heartbeat\`.
   3. Ask blocking questions with \`${primaryCommand} protocol ask\` and stop work.
@@ -71,37 +71,37 @@ Subcommands:
   auth-status            Return machine-readable auth/backend readiness
   discover-project       Resolve a project from the working directory or explicit id
   list-organizations     List workspaces visible to the current backend
-  attach                 Start a ticket session and return full working context
+  attach                 Start a mission session and return full working context
   connect                Start a lightweight session without full context assembly
-  load-context           Read ticket context without creating a session
-  search-tickets         Find tickets by keyword, status, or project
+  load-context           Read mission context without creating a session
+  search-missions         Find missions by keyword, status, or project
   discuss-objective      Mark a draft objective as submitted (does not start execution)
-  add-objectives         Append ordered objectives to an existing ticket
-  create                 Create a draft ticket without attaching
-  prompt                 Create a ticket and attach to it immediately
-  record-work            Record completed-from-chat work as a review ticket (no attach)
+  add-objectives         Append ordered objectives to an existing mission
+  create                 Create a draft mission without attaching
+  prompt                 Create a mission and attach to it immediately
+  record-work            Record completed-from-chat work as a review mission (no attach)
   update                 Post progress, activity events, and optional change rationales
-  heartbeat              Send a liveness ping without creating a ticket event
-  ask                    Post a blocking question and move the ticket to review
-  deliver                Finish work, send artifacts, and move the ticket to review
+  heartbeat              Send a liveness ping without creating a mission event
+  ask                    Post a blocking question and move the mission to review
+  deliver                Finish work, send artifacts, and move the mission to review
   resume-follow-up       Reopen a completed objective for post-delivery follow-up work
   hook-event             Record a connector lifecycle hook (e.g. UserPromptSubmit)
-  read-context           Read shared persistent context for this ticket
+  read-context           Read shared persistent context for this mission
   write-context          Write shared persistent context for future sessions
-  attachment-list        List objective attachments visible on the ticket
+  attachment-list        List objective attachments visible on the mission
 
 Runner queue (management commands, not protocol):
   ${primaryCommand} runner once|start|status|clear|clear-all [--branch <name>] [--no-worktree]
-  ${primaryCommand} launch <agent> --ticket-id <ticketId> [--branch <name>] [--no-worktree]
+  ${primaryCommand} launch <agent> --mission-id <missionId> [--branch <name>] [--no-worktree]
 
 Environment fallback:
   --session-key  <- SESSION_KEY printed on stderr after attach/connect/prompt/resume-follow-up
-  --ticket-id    <- ticket display id (e.g. coo:8) or UUID
+  --mission-id    <- mission display id (e.g. coo:8) or UUID
   backend URL    <- overlord.toml backend_url, OVERLORD_BACKEND_URL, or dev OVERLORD_BACKEND_URL_DEV
   auth token     <- OVERLORD_USER_TOKEN, OVLD_USER_TOKEN, or USER_TOKEN
 
 Common flags:
-  --ticket-id <id>         Ticket identifier when operating on an existing ticket
+  --mission-id <id>         Mission identifier when operating on an existing mission
   --session-key <key>      Session key returned by attach/connect/prompt/resume-follow-up
   --agent <identifier>     Agent identifier sent to Overlord (default: unknown)
   --model <identifier>     Model identifier to snapshot on executing objectives
@@ -124,16 +124,16 @@ discover-project:
 
 attach:
   Purpose:
-    Create the working session for an agent on an existing ticket. Call this first.
+    Create the working session for an agent on an existing mission. Call this first.
   Required:
-    --ticket-id <id>            Display id (e.g. coo:8) or UUID
+    --mission-id <id>            Display id (e.g. coo:8) or UUID
   Optional:
     --session-key <key>         Reuse an existing session key
     --agent <identifier>
     --model <identifier>
     --external-session-id <id>  Native agent thread/session id for resume
   Returns:
-    Full JSON including session.sessionKey, ticket, history, artifacts, sharedState,
+    Full JSON including session.sessionKey, mission, history, artifacts, sharedState,
     and promptContext with required workflow instructions.
   Notes:
     The client CLI records a VCS baseline at attach so deliver can report the
@@ -143,7 +143,7 @@ connect:
   Purpose:
     Create a lightweight session when you only need a session key, not full context.
   Required:
-    --ticket-id <id>
+    --mission-id <id>
   Optional:
     --agent <identifier>
     --external-session-id <id>
@@ -152,37 +152,37 @@ connect:
 
 load-context:
   Purpose:
-    Read ticket details without creating a session.
+    Read mission details without creating a session.
   Required:
-    --ticket-id <id>
+    --mission-id <id>
 
-search-tickets:
+search-missions:
   Purpose:
-    Find tickets by keyword, status, or project.
+    Find missions by keyword, status, or project.
   Optional:
     --query <text>              Free-text search
     --status <csv>              Comma-separated statuses (e.g. next-up,execute)
     --project-id <id>           Restrict to one project
     --limit <n>                 Max results (default: 25)
   Returns:
-    JSON with matching tickets.
+    JSON with matching missions.
 
 discuss-objective:
   Purpose:
     Mark the latest draft objective as submitted. Does not start execution — use attach.
   Required:
-    --ticket-id <id>
+    --mission-id <id>
 
 add-objectives:
   Purpose:
-    Append ordered objectives to an existing ticket.
+    Append ordered objectives to an existing mission.
   Required:
-    --ticket-id <id>
+    --mission-id <id>
     --objectives-json <json> or --objectives-file <path|->
 
 create:
   Purpose:
-    Create a draft ticket without attaching.
+    Create a draft mission without attaching.
   Required:
     --objective "<text>" or --objectives-json / --objectives-file <path|->
   Optional:
@@ -191,7 +191,7 @@ create:
 
 prompt:
   Purpose:
-    Create a ticket and attach to it in one call.
+    Create a mission and attach to it in one call.
   Required:
     --objective "<text>" or --objectives-json / --objectives-file <path|->
   Optional:
@@ -201,11 +201,11 @@ prompt:
     --model <identifier>
     --external-session-id <id>
   Returns:
-    New ticket/session JSON plus SESSION_KEY on stderr when available.
+    New mission/session JSON plus SESSION_KEY on stderr when available.
 
 record-work:
   Purpose:
-    Record work already completed in chat as a ticket in review without a session.
+    Record work already completed in chat as a mission in review without a session.
     Use instead of create + attach + deliver when logging past work.
   Required:
     --objective "<text>" (or positional objective text)
@@ -221,12 +221,12 @@ update:
     Post progress or activity events during execution.
   Required:
     --session-key <key>
-    --ticket-id <id>
+    --mission-id <id>
     --summary or --summary-file <path|->
   Optional:
     --phase draft | execute | review | deliver | complete | blocked | cancelled
     --event-type update | user_follow_up | alert | discussion_summary | decision
-    --begin-follow-up-work      Reopen a delivered/review ticket for execution
+    --begin-follow-up-work      Reopen a delivered/review mission for execution
     --follow-up-intent discussion | execution | pending_delivery
     --payload-json / --payload-file <path|->
     --external-url <url|null>
@@ -240,10 +240,10 @@ update:
 
 heartbeat:
   Purpose:
-    Send a liveness ping without creating a ticket event.
+    Send a liveness ping without creating a mission event.
   Required:
     --session-key <key>
-    --ticket-id <id>
+    --mission-id <id>
   Optional:
     --phase <phase>
     --note <text>
@@ -253,7 +253,7 @@ ask:
     Raise a blocking question for a human reviewer. Stop work after ask succeeds.
   Required:
     --session-key <key>
-    --ticket-id <id>
+    --mission-id <id>
     --question or --question-file <path|->
 
 deliver:
@@ -261,7 +261,7 @@ deliver:
     Conclude the session and submit the final narrative plus artifacts/change rationales.
   Required:
     --session-key <key>
-    --ticket-id <id>
+    --mission-id <id>
     --summary or --summary-file <path|->
     or: --payload-json / --payload-file <path|-> with { summary, artifacts, changeRationales }
   Optional:
@@ -283,7 +283,7 @@ resume-follow-up:
   Purpose:
     Reopen a completed objective for post-delivery implementation follow-up.
   Required:
-    --ticket-id <id>
+    --mission-id <id>
   Optional:
     --objective-id <id>
     --agent <identifier>
@@ -298,7 +298,7 @@ hook-event:
     Record a connector lifecycle hook without requiring a live session key.
   Required:
     --hook-type UserPromptSubmit
-    --ticket-id <id>
+    --mission-id <id>
   Optional:
     --prompt or --prompt-file <path|->
     --session-key <key>
@@ -309,7 +309,7 @@ read-context:
   Purpose:
     Read persistent shared context written by earlier sessions.
   Required:
-    --ticket-id <id>
+    --mission-id <id>
   Optional:
     --key <substring>           Filter by key substring
     --limit <n>                 Max entries (default: 50)
@@ -318,15 +318,15 @@ write-context:
   Purpose:
     Save shared facts for future sessions.
   Required:
-    --ticket-id <id>
+    --mission-id <id>
     --key <name>
     --value <text> or --value-json / --value-file <path|->
 
 attachment-list:
   Purpose:
-    List objective attachments visible on the ticket.
+    List objective attachments visible on the mission.
   Required:
-    --ticket-id <id>
+    --mission-id <id>
 
 list-organizations:
   Purpose:

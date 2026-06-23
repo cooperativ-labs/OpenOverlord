@@ -1,7 +1,7 @@
 # MCP Module — PLANNED / DEFERRED
 
 A Model Context Protocol (MCP) server surface that would expose Overlord
-capabilities (tickets, objectives, protocol operations) to MCP-aware clients.
+capabilities (missions, objectives, protocol operations) to MCP-aware clients.
 
 ## Table of Contents
 

@@ -1,7 +1,7 @@
 # Global Foreground Runner — one terminal, all accessible projects
 
-**Status:** Proposal (planning only — no code in this ticket)
-**Ticket:** coo:4 — *Automate job launch on run button click*
+**Status:** Proposal (planning only — no code in this mission)
+**Mission:** coo:4 — *Automate job launch on run button click*
 **Objective:** *Exclude `--detach`; keep the runner in an open terminal window, but run it
 globally and serve all projects the user has access to. How does that change the plan?*
 **Supersedes (for this direction):** [`runner-background-daemon.md`](runner-background-daemon.md) — see §2 for the diff
@@ -243,7 +243,7 @@ do it.
 ### 5.E — Foreground observability
 
 Since the window stays open, make it worth watching: include the **project name**
-in the launch line (`commands.ts:822-824` currently prints only agent + ticket),
+in the launch line (`commands.ts:822-824` currently prints only agent + mission),
 and print a startup banner naming the mode ("global — all projects"), the
 resolved DB path, **and its source** (global default `~/.ovld/...`, an
 `overlord.toml` `database_path` override, or `OVERLORD_SQLITE_PATH`) so the

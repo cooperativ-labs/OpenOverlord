@@ -23,8 +23,8 @@ DTO shape, auth/authorization, idempotency, and realtime.
 # Part 1 — REST API (`rest`)
 
 ## A. Resource Routing and Methods
-> Boundary: `/projects`, `/tickets`, `/tickets/:id/objectives`,
-> `/tickets/:id/events`, `/tickets/:id/context`, `/tickets/:id/deliveries`,
+> Boundary: `/projects`, `/missions`, `/missions/:id/objectives`,
+> `/missions/:id/events`, `/missions/:id/context`, `/missions/:id/deliveries`,
 > `/protocol/*`, `/execution-requests`, `/sync/changes?after=`, `/realtime`.
 
 - Each documented path + HTTP method exists and returns the documented status
@@ -62,14 +62,14 @@ DTO shape, auth/authorization, idempotency, and realtime.
 ## D. Service-Layer + Transaction Boundary (shared with Layer 3 §3.3)
 - REST handlers reach the DB **only** through the service layer — the boundary
   scan test covers REST source for raw table writes.
-- State transitions run in transactions; `ticket_events` + `entity_changes` are
+- State transitions run in transactions; `mission_events` + `entity_changes` are
   appended in the same transaction (reuses [DB §4](../../database/docs/testing.md#4-change-feed-adapter-suite-4)).
 
 ## E. Idempotency
 > "Use `idempotency_keys` for retried writes."
 
 - A retried POST with the same REST-scope idempotency key returns the first result
-  and does not double-apply (e.g. no duplicate ticket).
+  and does not double-apply (e.g. no duplicate mission).
 - Concurrent identical requests resolve to one applied write.
 
 ## F. Realtime + Sync
@@ -108,11 +108,11 @@ These tests land with the web app and are framework-agnostic.
 
 ## I. Information Architecture (per `ui/` specs)
 - The route map matches [`ui/00-structure-and-information-architecture.md`](ui/00-structure-and-information-architecture.md):
-  projects/settings, ticket board, ticket detail, execution/runner, review/delivery,
+  projects/settings, mission board, mission detail, execution/runner, review/delivery,
   current changes, connectors/doctor, settings, users/roles/tokens, search/command
   palette.
 - Component-level behavior tests for each surface assert it renders the documented
-  states (e.g. ticket board columns map to `project_statuses`; token UI never
+  states (e.g. mission board columns map to `project_statuses`; token UI never
   displays a raw secret after creation — mirrors the [auth security boundary](../../auth/docs/testing.md#b-tokens-srcauthtoken--l1--l2)).
 
 ## J. Realtime UI

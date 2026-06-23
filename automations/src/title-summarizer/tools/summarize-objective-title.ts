@@ -6,7 +6,7 @@ export const OBJECTIVE_TITLE_MAX_LENGTH = 60;
 export const AI_TITLE_THRESHOLD = 100;
 
 const OBJECTIVE_TITLE_SYSTEM_INSTRUCTION =
-  'You write concise ticket titles for a project management tool. Titles should be action-oriented (start with a verb), specific, capture the overall theme across all supplied objectives, and stay under 60 characters. Return only the title, nothing else.';
+  'You write concise mission titles for a project management tool. Titles should be action-oriented (start with a verb), specific, capture the overall theme across all supplied objectives, and stay under 60 characters. Return only the title, nothing else.';
 
 export type SummarizeObjectiveTitleInput = {
   instructionText: string;
@@ -33,7 +33,7 @@ export async function summarizeObjectiveTitleWithGemini(
   return summarizeTextWithGemini({
     text: normalized,
     systemInstruction: OBJECTIVE_TITLE_SYSTEM_INSTRUCTION,
-    prompt: `Summarize the following ticket objective context into a short, action-oriented title (max 60 characters). The context may include one objective or an ordered list of objectives across different states. Capture the overall theme of the ticket, not just the latest item. Return ONLY the title text, no quotes or punctuation wrapping.\n\nObjective context:\n${normalized}`,
+    prompt: `Summarize the following mission objective context into a short, action-oriented title (max 60 characters). The context may include one objective or an ordered list of objectives across different states. Capture the overall theme of the mission, not just the latest item. Return ONLY the title text, no quotes or punctuation wrapping.\n\nObjective context:\n${normalized}`,
     maxLength: OBJECTIVE_TITLE_MAX_LENGTH,
     logPrefix,
     ...(env ? { env } : {})

@@ -18,7 +18,7 @@ A delivery should preserve:
 Requirements:
 
 - Delivery summary is a narrative, not a command log.
-- Delivery moves the ticket to review.
+- Delivery moves the mission to review.
 - Delivery stores artifacts and change rationales as first-class records.
 - Delivery is linked to the objective and, when work happened through an attached agent, the session. `record-work` deliveries may have no session.
 - Follow-up deliveries should not destroy previous delivery history.
@@ -93,7 +93,7 @@ changed. The client CLI captures changes from VCS automatically:
 
 - When a work session begins (`attach`, `resume-follow-up`), the CLI records a **baseline** — the set of changed file paths from local `git status` for the working directory.
 - At `deliver`, the CLI reads `git status` again and computes the **run-attributable delta** (current changed paths minus the baseline), then injects it as `--changed-files-json`. This subtracts files that were already dirty before the session started.
-- **Exact attribution under concurrency**: when several tickets run against one working tree, the baseline cannot tell sessions apart — a file another ticket edits *after* this session attached has no baseline entry, so the delta alone would wrongly attribute it. To prevent this, a connector that ships a `PostToolUse` edit hook writes a per-session **touched-files log** (`<OVLD_HOME|~/.ovld>/vcs-touched/<sha256(abspath(cwd) + NUL + TICKET_ID)>.json`) recording the exact paths this agent edited. When that log exists, the run-attributable set is the **VCS delta intersected with the touched-files log**, so files this agent never touched are excluded even if they are dirty for unrelated reasons. The CLI clears the log at `attach`/`resume-follow-up` so each session starts from an empty edit set.
+- **Exact attribution under concurrency**: when several missions run against one working tree, the baseline cannot tell sessions apart — a file another mission edits *after* this session attached has no baseline entry, so the delta alone would wrongly attribute it. To prevent this, a connector that ships a `PostToolUse` edit hook writes a per-session **touched-files log** (`<OVLD_HOME|~/.ovld>/vcs-touched/<sha256(abspath(cwd) + NUL + MISSION_ID)>.json`) recording the exact paths this agent edited. When that log exists, the run-attributable set is the **VCS delta intersected with the touched-files log**, so files this agent never touched are excluded even if they are dirty for unrelated reasons. The CLI clears the log at `attach`/`resume-follow-up` so each session starts from an empty edit set.
 - Connectors without an edit hook write no touched-files log; the CLI then falls back to the baseline-delta alone (no intersection), so hookless agents behave exactly as before.
 - **`.overlordignore`**: a repo may carry an optional `.overlordignore` file at its git root listing gitignore-style patterns for paths Overlord should never report as run-attributable changes (e.g. generated artifacts like `install-state.gz`). Blank lines and `#` comments are skipped; patterns support `!` negation (last match wins), leading-`/` anchoring to the repo root, trailing-`/` directory matches, and `*`/`**`/`?` globs. Matching paths are dropped at `deliver`/`update` after the baseline-delta and touched-files intersection, so ignored files never reach the changed-file payload.
 - VCS is read **on the client only**; the CLI persists only metadata (normalized path and status), never full diffs, patch bodies, or file contents. The touched-files log likewise stores only normalized absolute paths.
@@ -117,10 +117,10 @@ Agents may also make changed files visible before delivery without increasing pr
 CLI-first requirements:
 
 - Overlord may read VCS status and diffs for a linked project, but it must not create commits, refs, branches, stashes, checkpoints, tags, resets, checkouts, patches, or any other VCS mutation.
-- Change views should be scoped around Overlord review units first: ticket, objective, and delivery.
-- `ovld changes status --ticket-id <id> [--objective-id <id>]`: summarize changed files and rationale coverage for the ticket or objective.
-- `ovld changes diff --ticket-id <id> [--objective-id <id>] [--path <path>]`: show read-only local VCS diffs grouped by objective context where possible.
-- `ovld changes rationales --ticket-id <id> [--objective-id <id>]`: show rationale coverage grouped by objective and file.
+- Change views should be scoped around Overlord review units first: mission, objective, and delivery.
+- `ovld changes status --mission-id <id> [--objective-id <id>]`: summarize changed files and rationale coverage for the mission or objective.
+- `ovld changes diff --mission-id <id> [--objective-id <id>] [--path <path>]`: show read-only local VCS diffs grouped by objective context where possible.
+- `ovld changes rationales --mission-id <id> [--objective-id <id>]`: show rationale coverage grouped by objective and file.
 - `ovld protocol deliver` rejects delivery when run-attributable tracked changes lack rationales, unless `--no-file-changes` is passed; coverage is aggregated per objective across all sessions.
 - Diffs should be annotated with recorded rationale labels and hunk headers when available.
 - Changes that cannot be associated with a specific objective should be shown as unassigned/current workspace changes, not silently attached to the wrong objective.
@@ -131,7 +131,7 @@ Future web/desktop requirements are documented in [web-app.md](../../webapp/docs
 
 Humans should be able to review:
 
-- Ticket title/objective and acceptance criteria.
+- Mission title/objective and acceptance criteria.
 - Session progress updates.
 - Blocking questions and answers.
 - Delivery summary.
@@ -141,11 +141,11 @@ Humans should be able to review:
 
 CLI review commands can be added before UI:
 
-- `ovld ticket context <id>`
-- `ovld ticket events <id>`
-- `ovld ticket deliveries <id>`
-- `ovld ticket artifacts <id>`
-- `ovld ticket rationales <id>`
+- `ovld mission context <id>`
+- `ovld mission events <id>`
+- `ovld mission deliveries <id>`
+- `ovld mission artifacts <id>`
+- `ovld mission rationales <id>`
 
 ## Security And Data Boundaries
 
@@ -154,13 +154,13 @@ Requirements:
 - Linking a repository must not automatically store repository contents.
 - Reading local VCS state is allowed only for explicit status, diff, rationale coverage, delivery validation, or review views.
 - Terminal output should only be persisted when a user or agent records it.
-- Secrets should not be pasted into tickets, artifacts, updates, or shared context.
+- Secrets should not be pasted into missions, artifacts, updates, or shared context.
 - Attachments are explicit uploads/imports.
 - Change rationales store descriptions and hunk headers, not necessarily full file contents.
 
 ## Acceptance Criteria
 
-- A delivered ticket can be reviewed without opening the original agent chat.
+- A delivered mission can be reviewed without opening the original agent chat.
 - Missing change rationales are detected before or during delivery.
 - A later objective can read shared context written by an earlier objective.
 - Artifacts and attachments are distinguishable.

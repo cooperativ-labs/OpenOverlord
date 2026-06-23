@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
 import type { ServiceContext } from './context.js';
-import { resolveTicketId } from './context.js';
+import { resolveMissionId } from './context.js';
 import { discoverProject } from './projects.js';
 
 export type ChangedFileReview = {
@@ -61,14 +61,14 @@ function currentGitStatus(
 
 function resolveWorkingDirectory({
   ctx,
-  ticketId
+  missionId
 }: {
   ctx: ServiceContext;
-  ticketId: string;
+  missionId: string;
 }): string | null {
   try {
-    const ticket = resolveTicketId(ctx, ticketId);
-    const discovery = discoverProject({ ctx, projectId: ticket.projectId });
+    const mission = resolveMissionId(ctx, missionId);
+    const discovery = discoverProject({ ctx, projectId: mission.projectId });
     return discovery.resourcePath ? path.resolve(discovery.resourcePath) : null;
   } catch {
     return null;
@@ -77,17 +77,17 @@ function resolveWorkingDirectory({
 
 export function listChangedFilesForReview({
   ctx,
-  ticketId,
+  missionId,
   objectiveId,
   includeCurrent = true
 }: {
   ctx: ServiceContext;
-  ticketId: string;
+  missionId: string;
   objectiveId?: string | null;
   includeCurrent?: boolean;
 }): ChangedFileReview[] {
-  const ticket = resolveTicketId(ctx, ticketId);
-  const params: string[] = [ticket.id];
+  const mission = resolveMissionId(ctx, missionId);
+  const params: string[] = [mission.id];
   const objectiveFilter = objectiveId ? 'AND cf.objective_id = ?' : '';
   if (objectiveId) params.push(objectiveId);
 
@@ -100,11 +100,11 @@ export function listChangedFilesForReview({
               GROUP_CONCAT(cr.label, char(10)) AS rationale_labels
        FROM changed_files cf
        LEFT JOIN change_rationales cr
-         ON cr.ticket_id = cf.ticket_id
+         ON cr.mission_id = cf.mission_id
         AND cr.objective_id = cf.objective_id
         AND cr.file_path = cf.file_path
         AND cr.deleted_at IS NULL
-       WHERE cf.ticket_id = ? AND cf.deleted_at IS NULL ${objectiveFilter}
+       WHERE cf.mission_id = ? AND cf.deleted_at IS NULL ${objectiveFilter}
        GROUP BY cf.id
        ORDER BY cf.file_path ASC`
     )
@@ -141,7 +141,7 @@ export function listChangedFilesForReview({
   }
 
   if (includeCurrent) {
-    const workingDirectory = resolveWorkingDirectory({ ctx, ticketId: ticket.id });
+    const workingDirectory = resolveWorkingDirectory({ ctx, missionId: mission.id });
     if (workingDirectory) {
       for (const current of currentGitStatus(workingDirectory)) {
         if (byPath.has(current.filePath)) continue;
@@ -167,15 +167,15 @@ export function listChangedFilesForReview({
 
 export function listRationalesForReview({
   ctx,
-  ticketId,
+  missionId,
   objectiveId
 }: {
   ctx: ServiceContext;
-  ticketId: string;
+  missionId: string;
   objectiveId?: string | null;
 }): RationaleReview[] {
-  const ticket = resolveTicketId(ctx, ticketId);
-  const params: string[] = [ticket.id];
+  const mission = resolveMissionId(ctx, missionId);
+  const params: string[] = [mission.id];
   const objectiveFilter = objectiveId ? 'AND objective_id = ?' : '';
   if (objectiveId) params.push(objectiveId);
 
@@ -184,7 +184,7 @@ export function listRationalesForReview({
       `SELECT id, file_path, label, summary, why, impact, objective_id, session_id,
               delivery_id, is_final, created_at
        FROM change_rationales
-       WHERE ticket_id = ? AND deleted_at IS NULL ${objectiveFilter}
+       WHERE mission_id = ? AND deleted_at IS NULL ${objectiveFilter}
        ORDER BY file_path ASC, created_at ASC`
     )
     .all(...params) as Array<{
@@ -218,14 +218,14 @@ export function listRationalesForReview({
 
 export function readCurrentDiff({
   ctx,
-  ticketId,
+  missionId,
   filePath
 }: {
   ctx: ServiceContext;
-  ticketId: string;
+  missionId: string;
   filePath?: string | null;
 }): { workingDirectory: string | null; diff: string; unavailable: boolean } {
-  const workingDirectory = resolveWorkingDirectory({ ctx, ticketId });
+  const workingDirectory = resolveWorkingDirectory({ ctx, missionId });
   if (!workingDirectory) {
     return { workingDirectory: null, diff: '', unavailable: true };
   }

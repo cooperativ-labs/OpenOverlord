@@ -42,7 +42,7 @@ export {
 
 export type ManageObjectiveLifecycleInput = {
   objectives: ObjectiveLifecycleObjective[];
-  ticket?: {
+  mission?: {
     humanOnly?: boolean;
   };
   ensureDraftSlot?: {
@@ -70,7 +70,7 @@ export function manageObjectiveLifecycle(
 ): ManageObjectiveLifecycleOutput {
   const view = deriveObjectiveLifecycleView(input.objectives);
   const autoAdvanceOptions =
-    input.ticket?.humanOnly === undefined ? {} : { humanOnly: input.ticket.humanOnly };
+    input.mission?.humanOnly === undefined ? {} : { humanOnly: input.mission.humanOnly };
 
   return {
     orderedObjectiveIds: view.orderedObjectives.map(objective => objective.id),

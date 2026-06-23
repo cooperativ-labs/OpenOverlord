@@ -3,7 +3,7 @@
 **Status:** Proposal
 **Problem observed:** A user sent a follow-up message after an objective had
 already been delivered. The previous session key had expired, `attach` failed
-with `No active objective found on ticket`, and the agent still made a local file
+with `No active objective found on mission`, and the agent still made a local file
 change that could not be recorded against the completed objective.
 
 ## 1. Goal
@@ -12,7 +12,7 @@ Support the normal human workflow:
 
 1. An agent delivers an objective.
 2. The user keeps chatting in the same agent session.
-3. Ordinary user messages are recorded to the ticket activity feed.
+3. Ordinary user messages are recorded to the mission activity feed.
 4. If the follow-up is discussion only, the objective stays complete.
 5. If the follow-up asks for more implementation, the same completed objective
    is explicitly reopened for follow-up execution, accepts progress events and
@@ -24,7 +24,7 @@ The mechanism should work even when:
 - the old `SESSION_KEY` is invalid or unavailable;
 - the connector hook fires before the agent has decided whether the message is
   discussion or execution;
-- the ticket has no non-complete objective.
+- the mission has no non-complete objective.
 
 ## 2. Current Behavior And Gap
 
@@ -33,7 +33,7 @@ The repo already has several intended pieces:
 - Connector manifests declare `followUpHook`.
 - Claude, Codex, and Cursor connector scripts call
   `ovld protocol hook-event --hook-type UserPromptSubmit`.
-- `ticket_events.type = user_follow_up` is a closed vocabulary value.
+- `mission_events.type = user_follow_up` is a closed vocabulary value.
 - `objectives.state = pending_delivery` exists and is documented as the state
   for follow-up work after a prior delivery.
 - `agent_sessions.delivery_state = pending_redelivery` exists.
@@ -55,7 +55,7 @@ The practical gaps are:
 
 Use two separate operations:
 
-1. **Record follow-up message**: always append a `user_follow_up` ticket event.
+1. **Record follow-up message**: always append a `user_follow_up` mission event.
    This is discussion by default and does not change objective state.
 2. **Begin follow-up execution**: explicitly create or resume a working session
    on a delivered objective, transition that objective from `complete` to
@@ -77,7 +77,7 @@ Add the missing protocol service and CLI command:
 ```bash
 ovld protocol hook-event \
   --hook-type UserPromptSubmit \
-  --ticket-id coo:5 \
+  --mission-id coo:5 \
   --prompt-file - \
   --turn-index 12 \
   --external-session-id <native-session-id> \
@@ -86,17 +86,17 @@ ovld protocol hook-event \
 
 Behavior for `UserPromptSubmit`:
 
-- Resolve the ticket by `--ticket-id`.
+- Resolve the mission by `--mission-id`.
 - Resolve an objective in this order:
   1. active objective: `executing`, `pending_delivery`, `launching`,
      `submitted`, `draft`;
   2. objective attached to a matching session key, even if the session is ended;
   3. objective attached to a matching `external_session_id`;
-  4. most recently completed objective on the ticket;
-  5. null objective only if the ticket truly has no objectives.
+  4. most recently completed objective on the mission;
+  5. null objective only if the mission truly has no objectives.
 - Resolve `session_id` if possible, but do not require a live session.
-- Insert `ticket_events.type = user_follow_up`.
-- Use phase `review` when the ticket is delivered/reviewing and no active
+- Insert `mission_events.type = user_follow_up`.
+- Use phase `review` when the mission is delivered/reviewing and no active
   execution is underway; use `execute` only when an active execution session is
   already present.
 - Store hook metadata in `payload_json`, including `hookType`, `turnIndex`,
@@ -109,7 +109,7 @@ Behavior for `UserPromptSubmit`:
 Idempotency:
 
 - Create an idempotency key such as
-  `hook.UserPromptSubmit:<ticketId>:<externalSessionId|sessionId|unknown>:<turnIndex>:<promptHash>`.
+  `hook.UserPromptSubmit:<missionId>:<externalSessionId|sessionId|unknown>:<turnIndex>:<promptHash>`.
 - If the hook fires more than once for the same turn, return the existing event.
 
 Connector requirements:
@@ -134,7 +134,7 @@ Two compatible API shapes are possible.
 
 ```bash
 ovld protocol resume-follow-up \
-  --ticket-id coo:5 \
+  --mission-id coo:5 \
   --objective-id <optional-objective-id> \
   --agent codex \
   --external-session-id <native-session-id> \
@@ -145,13 +145,13 @@ Returns the same shape as `attach`, including a new `sessionKey`.
 
 Behavior:
 
-1. Resolve the ticket.
+1. Resolve the mission.
 2. Pick the objective:
    - explicit `--objective-id`, or
    - the objective associated with the latest `user_follow_up` from this
      external session, or
    - the most recently completed objective.
-3. Reject if another objective on the ticket is already `executing` or
+3. Reject if another objective on the mission is already `executing` or
    `pending_delivery`, unless this command is idempotently resuming that same
    objective.
 4. Create a new `agent_sessions` row with:
@@ -163,22 +163,22 @@ Behavior:
    - `complete -> pending_delivery`;
    - clear `completed_at`;
    - increment `revision`.
-6. Move the ticket to an execute-type status.
-7. Insert a `ticket_events.type = update` event with payload:
+6. Move the mission to an execute-type status.
+7. Insert a `mission_events.type = update` event with payload:
    `{ "followUpIntent": "execution", "reactivated": true }`.
 8. Return attach context so the agent can continue with normal workflow.
 
 After this point, regular commands work:
 
 ```bash
-ovld protocol update --session-key <new> --ticket-id coo:5 --summary "..." --phase execute
-ovld protocol deliver --session-key <new> --ticket-id coo:5 --summary "..."
+ovld protocol update --session-key <new> --mission-id coo:5 --summary "..." --phase execute
+ovld protocol deliver --session-key <new> --mission-id coo:5 --summary "..."
 ```
 
 ### Alternative Shape: Extend `attach`
 
 ```bash
-ovld protocol attach --ticket-id coo:5 --begin-follow-up-work
+ovld protocol attach --mission-id coo:5 --begin-follow-up-work
 ```
 
 This is smaller for agents, but it makes `attach` more ambiguous. Today `attach`
@@ -243,7 +243,7 @@ Agent instructions:
 3. If the user asks for implementation or file edits, call:
 
 ```bash
-ovld protocol resume-follow-up --ticket-id <id> --summary "Beginning follow-up work."
+ovld protocol resume-follow-up --mission-id <id> --summary "Beginning follow-up work."
 ```
 
 4. Use the returned `sessionKey` for updates and delivery.
@@ -280,13 +280,13 @@ Required contract/doc updates:
 
 No database migration is required if existing values are reused:
 
-- `ticket_events.type = user_follow_up`
+- `mission_events.type = user_follow_up`
 - `objectives.state = pending_delivery`
 - `agent_sessions.delivery_state = pending_redelivery`
 
 A migration is required only if implementation needs new persisted columns for
 hook dedupe or native turn IDs. Prefer using existing `idempotency_keys` and
-`ticket_events.payload_json` first.
+`mission_events.payload_json` first.
 
 ## 10. Implementation Steps
 
@@ -312,7 +312,7 @@ hook dedupe or native turn IDs. Prefer using existing `idempotency_keys` and
 
 Reproduce the original failure as a passing flow:
 
-1. Complete a ticket objective.
+1. Complete a mission objective.
 2. Send a follow-up user message in the same agent harness.
 3. Confirm the activity feed shows a `user_follow_up` event.
 4. Confirm the objective is still `complete`.
@@ -329,5 +329,5 @@ Failure-mode acceptance:
 - Bare `attach` does not silently reopen completed work.
 - Duplicate hook events for the same turn do not duplicate activity feed rows.
 - A second follow-up execution cannot start while another objective on the same
-  ticket is already `executing` or `pending_delivery`.
+  mission is already `executing` or `pending_delivery`.
 

@@ -7,7 +7,7 @@
 # IMPORTANT: Any addition, rename, or flag change to a command in this file requires
 # a contract version update in CONTRACT.md and components.yaml.
 
-contractVersion: "0.13-draft"
+contractVersion: "0.43-draft"
 referenceSpec: "cli/docs/03-agent-protocol.md"
 
 # Transport-level shape shared by every protocol command, independent of subcommand.
@@ -33,9 +33,9 @@ requestEnvelope:
 sessionLifecycle:
 
   attach:
-    description: "Start a working session; return full ticket context including prompt context"
+    description: "Start a working session; return full mission context including prompt context"
     requiredFlags:
-      - --ticket-id
+      - --mission-id
     optionalFlags:
       - --session-key
     returnsSessionKey: true
@@ -49,7 +49,7 @@ sessionLifecycle:
   update:
     description: "Post progress event; optionally record changed files and rationales"
     requiredFlags:
-      - --ticket-id
+      - --mission-id
     requiresSessionKey: true
     optionalFlags:
       - --summary
@@ -82,14 +82,14 @@ sessionLifecycle:
       - discussion_summary
       - decision
     sideEffects:
-      - appends-ticket-event
+      - appends-mission-event
       - upserts-changed-files-by-session-objective-path
 
   hookEvent:
     description: "Record connector lifecycle events such as UserPromptSubmit without requiring a live agent session"
     requiredFlags:
       - --hook-type
-      - --ticket-id
+      - --mission-id
     optionalFlags:
       - --session-key
       - --external-session-id
@@ -99,7 +99,7 @@ sessionLifecycle:
     validHookTypes:
       - UserPromptSubmit
     sideEffects:
-      - appends-ticket-event-type-user-follow-up
+      - appends-mission-event-type-user-follow-up
     rules:
       - "UserPromptSubmit records discussion activity and does not reopen objective execution"
       - "Expired delivered sessions may be used for attribution but must not reject follow-up capture"
@@ -107,7 +107,7 @@ sessionLifecycle:
   resumeFollowUp:
     description: "Explicitly reopen a completed objective for post-delivery implementation follow-up"
     requiredFlags:
-      - --ticket-id
+      - --mission-id
     optionalFlags:
       - --objective-id
       - --agent
@@ -120,13 +120,13 @@ sessionLifecycle:
     sideEffects:
       - creates-agent-session
       - objective-state-complete-to-pending-delivery
-      - ticket-status-to-execute
-      - appends-ticket-event
+      - mission-status-to-execute
+      - appends-mission-event
 
   heartbeat:
-    description: "Update session liveness without creating a ticket event"
+    description: "Update session liveness without creating a mission event"
     requiredFlags:
-      - --ticket-id
+      - --mission-id
     requiresSessionKey: true
     optionalFlags:
       - --phase
@@ -134,12 +134,12 @@ sessionLifecycle:
       - --note
     sideEffects:
       - updates-session-last-heartbeat-only
-      # Does NOT create a ticket_events row
+      # Does NOT create a mission_events row
 
   ask:
     description: "Post a single blocking question and stop work"
     requiredFlags:
-      - --ticket-id
+      - --mission-id
     requiresSessionKey: true
     questionInput:
       flag: --question
@@ -148,12 +148,12 @@ sessionLifecycle:
       - "Agent MUST stop after calling ask"
       - "Ask exactly one blocking question per call"
     sideEffects:
-      - appends-ticket-event-type-ask
+      - appends-mission-event-type-ask
 
   deliver:
-    description: "Final delivery — mark objective complete and move ticket to review"
+    description: "Final delivery — mark objective complete and move mission to review"
     requiredFlags:
-      - --ticket-id
+      - --mission-id
     requiresSessionKey: true
     summaryInput:
       flag: --summary
@@ -180,25 +180,25 @@ sessionLifecycle:
       - upserts-changed-files-by-session-objective-path
       - stores-delivery-record
       - objective-state-to-complete
-      - ticket-status-to-review
+      - mission-status-to-review
       - may-trigger-auto-advance-for-next-objective
 
-ticketDiscovery:
+missionDiscovery:
 
   create:
-    description: "Create a draft ticket and objective without attaching"
+    description: "Create a draft mission and objective without attaching"
     sideEffects:
-      - creates-ticket
+      - creates-mission
       - creates-objective-in-draft-state
 
   prompt:
-    description: "Create a ticket and immediately attach or queue execution"
+    description: "Create a mission and immediately attach or queue execution"
     sideEffects:
-      - creates-ticket
+      - creates-mission
       - attaches-or-queues-execution
 
   loadContext:
-    description: "Read ticket context without creating a session"
+    description: "Read mission context without creating a session"
     readOnly: true
 
   connect:
@@ -206,7 +206,7 @@ ticketDiscovery:
     sideEffects:
       - creates-session-key
 
-  searchTickets:
+  searchMissions:
     description: "Search by query, status, project, creator, and update dates"
     readOnly: true
 
@@ -216,16 +216,16 @@ ticketDiscovery:
       - objective-state-draft-to-submitted
 
   addObjectives:
-    description: "Append ordered objectives to an existing ticket"
+    description: "Append ordered objectives to an existing mission"
     sideEffects:
       - creates-objectives-in-draft-state
 
   recordWork:
-    description: "Record already-completed chat work as a review ticket without an attached session"
+    description: "Record already-completed chat work as a review mission without an attached session"
     rules:
       - "For work already done in chat, not for in-progress work"
     sideEffects:
-      - creates-ticket-in-review-status
+      - creates-mission-in-review-status
       - creates-completed-objective
       - creates-delivery-record-without-session-attribution
 
@@ -236,7 +236,7 @@ sharedContext:
 
   writeContext:
     sideEffects:
-      - upserts-shared-context-entry-by-ticket-and-key
+      - upserts-shared-context-entry-by-mission-and-key
 
   attachmentList:
     readOnly: true
@@ -279,10 +279,10 @@ runnerProtocol:
     rules:
       - "Must be atomic — use compare-and-set in one transaction"
       - "Verify objective is in launchable state before claiming"
-      - "Append ticket_events and entity_changes in same claim transaction"
+      - "Append mission_events and entity_changes in same claim transaction"
     sideEffects:
       - execution-request-status-claimed
-      - appends-ticket-event-execution-claimed
+      - appends-mission-event-execution-claimed
       - appends-entity-changes
 
   listExecutionRequests:
@@ -363,7 +363,7 @@ responseShapes:
       - position
     promptContextRequiredContent:
       - task title
-      - ticket ID
+      - mission ID
       - objective ID
       - objective instruction text
       - recent activity/history

@@ -10,7 +10,7 @@ export function recordChange({
   operation,
   entityRevision,
   projectId,
-  ticketId,
+  missionId,
   objectiveId,
   changedFields
 }: {
@@ -20,18 +20,18 @@ export function recordChange({
   operation: ChangeOperation;
   entityRevision?: number | null;
   projectId?: string | null;
-  ticketId?: string | null;
+  missionId?: string | null;
   objectiveId?: string | null;
   changedFields?: string[];
 }): void {
   ctx.db
     .prepare(
       `INSERT INTO entity_changes (
-         id, workspace_id, project_id, ticket_id, objective_id,
+         id, workspace_id, project_id, mission_id, objective_id,
          entity_type, entity_id, operation, entity_revision,
          changed_fields_json, actor_workspace_user_id, actor_token_id, source, occurred_at
        ) VALUES (
-         @id, @workspace_id, @project_id, @ticket_id, @objective_id,
+         @id, @workspace_id, @project_id, @mission_id, @objective_id,
          @entity_type, @entity_id, @operation, @entity_revision,
          @changed_fields_json, @actor_workspace_user_id, NULL, @source, @occurred_at
        )`
@@ -40,7 +40,7 @@ export function recordChange({
       id: newId(),
       workspace_id: ctx.workspace.id,
       project_id: projectId ?? null,
-      ticket_id: ticketId ?? null,
+      mission_id: missionId ?? null,
       objective_id: objectiveId ?? null,
       entity_type: entityType,
       entity_id: entityId,

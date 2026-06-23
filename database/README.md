@@ -22,7 +22,7 @@ the sanctioned ways to extend the schema without forking it.
 
 ### Persistence modes
 
-Overlord stores projects, tickets, objectives, events, and other data behind a
+Overlord stores projects, missions, objectives, events, and other data behind a
 backend service. Local mode uses a backend running on your machine (Desktop
 today, and possibly a future db-only local backend) that owns SQLite and
 migrations. Cloud mode uses a hosted backend that owns Postgres. The published
@@ -116,7 +116,7 @@ in lexical version order, and records each applied migration in
 outside the default location.
 
 Do not edit a migration after it has been applied to a database you care about.
-Create a new forward-only migration such as `005_add_ticket_labels.sql`; the
+Create a new forward-only migration such as `005_add_mission_labels.sql`; the
 next backend startup applies it without wiping existing rows. If the checksum of
 an already-applied migration changes, startup fails so the mismatch can be fixed
 instead of silently rewriting history.
@@ -154,9 +154,9 @@ values from these migrations.
 ### Migrations
 
 #### `sqlite/migrations/001_initial_core.sql` and `postgres/migrations/001_initial_core.sql`
-Core MVP slice: all tables for the local ticket/objective/session workflow, the
+Core MVP slice: all tables for the local mission/objective/session workflow, the
 change feed, and idempotency. Seeds deterministic rows for the default local
-workspace, implicit user, workspace membership, and workspace-scoped ticket sequence.
+workspace, implicit user, workspace membership, and workspace-scoped mission sequence.
 
 The PostgreSQL migration uses native `jsonb`, `boolean`, `timestamptz`, and a
 `bigint` identity cursor for `entity_changes.seq`. It also adds a claimable

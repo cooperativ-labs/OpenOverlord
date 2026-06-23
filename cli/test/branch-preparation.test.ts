@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { computeMergedBranches, resolveTicketProjectSlug } from '../src/branch-preparation.ts';
+import { computeMergedBranches, resolveMissionProjectSlug } from '../src/branch-preparation.ts';
 import type { CliRuntime } from '../src/runtime.ts';
 
 function runtimeWithProjects(projects: unknown[], calls: string[] = []): CliRuntime {
@@ -26,33 +26,33 @@ function runtimeWithProjects(projects: unknown[], calls: string[] = []): CliRunt
   };
 }
 
-test('resolveTicketProjectSlug uses embedded ticket project slug when present', async () => {
+test('resolveMissionProjectSlug uses embedded mission project slug when present', async () => {
   const calls: string[] = [];
-  const slug = await resolveTicketProjectSlug({
+  const slug = await resolveMissionProjectSlug({
     runtime: runtimeWithProjects([{ id: 'p1', slug: 'from-api' }], calls),
-    ticket: { projectId: 'p1', project: { slug: 'from-ticket' } }
+    mission: { projectId: 'p1', project: { slug: 'from-mission' } }
   });
 
-  assert.equal(slug, 'from-ticket');
+  assert.equal(slug, 'from-mission');
   assert.deepEqual(calls, []);
 });
 
-test('resolveTicketProjectSlug reads existing project slug from project list', async () => {
-  const slug = await resolveTicketProjectSlug({
+test('resolveMissionProjectSlug reads existing project slug from project list', async () => {
+  const slug = await resolveMissionProjectSlug({
     runtime: runtimeWithProjects([
       { id: 'p1', slug: 'alpha' },
       { id: 'p2', slug: 'overlord' }
     ]),
-    ticket: { projectId: 'p2' }
+    mission: { projectId: 'p2' }
   });
 
   assert.equal(slug, 'overlord');
 });
 
-test('resolveTicketProjectSlug falls back for unresolved legacy payloads', async () => {
-  const slug = await resolveTicketProjectSlug({
+test('resolveMissionProjectSlug falls back for unresolved legacy payloads', async () => {
+  const slug = await resolveMissionProjectSlug({
     runtime: runtimeWithProjects([{ id: 'p1', slug: 'alpha' }]),
-    ticket: { projectId: 'missing' }
+    mission: { projectId: 'missing' }
   });
 
   assert.equal(slug, 'project');

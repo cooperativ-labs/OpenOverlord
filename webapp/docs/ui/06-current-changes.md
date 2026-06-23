@@ -1,11 +1,11 @@
 # 06 — Current Changes
 
 A **read-only** view of the linked project's local VCS state, scoped around
-Overlord review units (ticket, objective, delivery) and linked to recorded change
+Overlord review units (mission, objective, delivery) and linked to recorded change
 rationales. This is the web equivalent of `ovld changes status|diff|rationales`.
 
-**Route:** `/p/:projectId/changes?ticketId=&objectiveId=&path=` — also embedded as
-the **Changes** tab on ticket detail (doc 03) scoped to that ticket/objective.
+**Route:** `/p/:projectId/changes?missionId=&objectiveId=&path=` — also embedded as
+the **Changes** tab on mission detail (doc 03) scoped to that mission/objective.
 
 > **Hard constraint:** VCS access is strictly read-only. This screen never creates
 > commits, refs, branches, stashes, checkpoints, tags, resets, checkouts, patches,
@@ -20,10 +20,10 @@ the **Changes** tab on ticket detail (doc 03) scoped to that ticket/objective.
 A file list on the left, a diff viewer on the right, scoped by a context selector.
 
 ```
-Changes · Open0      Scope: [ Ticket 1:1429 ▾ ][ Objective: Write docs ▾ ]   ⌕ path…
-┌─ Changed files ──────────────┐ ┌─ Diff: webapp/docs/ui/03-ticket-detail.md ──────────┐
-│ ▸ rationale-covered (4)      │ │ @@ -0,0 +1,210 @@   ✦ "Add ticket detail spec"       │
-│   M src/auth/token.ts    ✓   │ │ + # 03 — Ticket Detail                               │
+Changes · Open0      Scope: [ Mission 1:1429 ▾ ][ Objective: Write docs ▾ ]   ⌕ path…
+┌─ Changed files ──────────────┐ ┌─ Diff: webapp/docs/ui/03-mission-detail.md ──────────┐
+│ ▸ rationale-covered (4)      │ │ @@ -0,0 +1,210 @@   ✦ "Add mission detail spec"       │
+│   M src/auth/token.ts    ✓   │ │ + # 03 — Mission Detail                               │
 │   A …/ui/03-…detail.md   ✓   │ │ + The core screen of the application…               │
 │   M src/auth/index.ts    ✓   │ │ …                                                   │
 │ ▸ needs rationale (1)        │ │  (read-only; line numbers; hunk headers; rationale   │
@@ -41,7 +41,7 @@ Changes · Open0      Scope: [ Ticket 1:1429 ▾ ][ Objective: Write docs ▾ ] 
 
 Change views are organized around Overlord review units first, the repo second:
 
-- **Ticket** scope: all changed files associated with the ticket's sessions/objectives.
+- **Mission** scope: all changed files associated with the mission's sessions/objectives.
 - **Objective** scope: narrow to one objective's `changed_files`.
 - **Unassigned / current workspace**: local diff hunks that can't be associated with
   a specific objective are shown explicitly as workspace changes — never silently
@@ -86,7 +86,7 @@ with live local VCS status read by the backend.
 
 | Region | Read | Realtime |
 | --- | --- | --- |
-| File list + coverage | `GET /tickets/:id/changes` (`changed_files` + `change_rationales`) → `['ticket', id, 'changes']` | `changed_files`/`change_rationale` deltas update rows/coverage live during an active session |
+| File list + coverage | `GET /missions/:id/changes` (`changed_files` + `change_rationales`) → `['mission', id, 'changes']` | `changed_files`/`change_rationale` deltas update rows/coverage live during an active session |
 | Diff body | local backend VCS read (status/diff), on demand | refetched when the file's `changed_files` revision changes |
 | Workspace/unassigned diff | local backend VCS status | local poll; not from the change feed (it's live VCS, not a domain entity) |
 
@@ -102,7 +102,7 @@ bodies are pulled from the live working tree on selection.
   need a linked local directory and the local backend." Offer `ovld add-cwd` and
   explain a browser-only deployment can't read local diffs.
 - **Clean working tree:** "No local changes" + the recorded `changed_files` history
-  for the scope (so a delivered ticket still shows what changed).
+  for the scope (so a delivered mission still shows what changed).
 - **Loading diff:** skeleton in the diff pane; file list loads first.
 - **Large diff:** collapse-by-default with "expand"; very large files offer
   "view in editor" rather than rendering inline.
@@ -116,13 +116,13 @@ bodies are pulled from the live working tree on selection.
 - Entirely depends on a **local backend** with filesystem/VCS read access; this is
   a deployment capability, not a table group. Hosted/browser-only deployments hide
   the diff panes and show the recorded `changed_files` metadata read-only.
-- Read access gated by RBAC `ticket:read` when Group 1 is installed.
+- Read access gated by RBAC `mission:read` when Group 1 is installed.
 
 ---
 
 ## Acceptance criteria
 
-- The view shows changed files for a ticket/objective grouped by rationale coverage,
+- The view shows changed files for a mission/objective grouped by rationale coverage,
   with unassigned workspace changes shown separately and never misattributed.
 - Diffs are read-only and annotated with recorded rationale labels and hunk headers;
   no control on this screen can mutate the repository.

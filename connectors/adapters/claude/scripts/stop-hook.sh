@@ -12,8 +12,8 @@ log_hook() {
   printf '%s [stop] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$1" >>"$LOG_FILE" 2>/dev/null || true
 }
 
-if [ -z "${TICKET_ID:-}" ] || ! command -v ovld >/dev/null 2>&1; then
-  log_hook "missing required ticket or ovld, skipping"
+if [ -z "${MISSION_ID:-}" ] || ! command -v ovld >/dev/null 2>&1; then
+  log_hook "missing required mission or ovld, skipping"
   exit 0
 fi
 
@@ -44,7 +44,7 @@ if [ -n "$USER_TOKEN" ]; then
 fi
 ovld protocol hook-event \
   --hook-type Stop \
-  --ticket-id "$TICKET_ID" \
+  --mission-id "$MISSION_ID" \
   --session-key "$SESSION_KEY" \
   >"$RESPONSE_FILE" 2>/dev/null
 OVLD_EXIT=$?

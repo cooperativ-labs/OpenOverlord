@@ -6,7 +6,7 @@ import { Actor, AuthorizationResult, Permission, Role, RoleDefinition } from './
  *
  * Supported wildcard forms:
  *   *                 → matches everything
- *   ticket:*          → matches any action in the ticket namespace
+ *   mission:*          → matches any action in the mission namespace
  *   user_token:self:* → matches any self-scoped token action
  */
 export function grantCoversAction(grant: string, action: string): boolean {
@@ -14,7 +14,7 @@ export function grantCoversAction(grant: string, action: string): boolean {
   if (grant === action) return true;
 
   if (grant.endsWith(':*')) {
-    const prefix = grant.slice(0, -1); // "ticket:" or "user_token:self:"
+    const prefix = grant.slice(0, -1); // "mission:" or "user_token:self:"
     return action.startsWith(prefix);
   }
 

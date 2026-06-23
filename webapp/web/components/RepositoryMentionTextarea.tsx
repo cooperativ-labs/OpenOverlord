@@ -14,7 +14,7 @@ type MentionableProps = ComponentPropsWithoutRef<typeof MentionableTextarea>;
 
 type RepositoryMentionTextareaProps = Omit<
   MentionableProps,
-  'mentionPaths' | 'projectMentionOptions' | 'ticketMentionOptions'
+  'mentionPaths' | 'projectMentionOptions' | 'missionMentionOptions'
 > & {
   /** Project whose git tree supplies the `@`-mention file list. */
   projectId: string;
@@ -24,9 +24,9 @@ type RepositoryMentionTextareaProps = Omit<
  * A {@link MentionableTextarea} wired to project context, so typing:
  *   - `@` offers the project's tracked repository files,
  *   - `#` offers any project by name (inserted as `#[name]`),
- *   - `$` offers a ticket in the current project by display id (inserted as `$<displayId>`).
+ *   - `$` offers a mission in the current project by display id (inserted as `$<displayId>`).
  *
- * Used by the ticket and objective creation/edit forms.
+ * Used by the mission and objective creation/edit forms.
  */
 export function RepositoryMentionTextarea({
   projectId,
@@ -34,14 +34,14 @@ export function RepositoryMentionTextarea({
   menuOwnerId,
   ...props
 }: RepositoryMentionTextareaProps) {
-  const { mentionPaths, projectMentionOptions, ticketMentionOptions } =
+  const { mentionPaths, projectMentionOptions, missionMentionOptions } =
     useRepositoryMentionOptions(projectId);
 
   return (
     <MentionableTextarea
       mentionPaths={mentionPaths}
       projectMentionOptions={projectMentionOptions}
-      ticketMentionOptions={ticketMentionOptions}
+      missionMentionOptions={missionMentionOptions}
       mentionMenuMode="portal"
       menuOwnerId={menuOwnerId}
       className={cn(TEXTAREA_CHROME, className)}

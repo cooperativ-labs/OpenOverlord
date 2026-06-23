@@ -130,7 +130,7 @@ export function DangerZonePage({
         ) : (
           <div className="grid gap-2">
             <p className="text-sm text-muted-foreground">
-              Archive this project to hide it from the sidebar. Tickets are preserved and the
+              Archive this project to hide it from the sidebar. Missions are preserved and the
               project can be unarchived later.
             </p>
             <Button
@@ -150,7 +150,7 @@ export function DangerZonePage({
         <div className="grid gap-2 border-t pt-6">
           <p className="text-sm font-medium">Delete project</p>
           <p className="text-sm text-muted-foreground">
-            Permanently delete this project and all of its tickets. This cannot be undone.
+            Permanently delete this project and all of its missions. This cannot be undone.
           </p>
           <Button
             type="button"
@@ -171,7 +171,7 @@ export function DangerZonePage({
           <DialogHeader>
             <DialogTitle>Archive {projectName}?</DialogTitle>
             <DialogDescription>
-              The project will be hidden from the sidebar. Tickets and objectives are preserved.
+              The project will be hidden from the sidebar. Missions and objectives are preserved.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -197,7 +197,7 @@ export function DangerZonePage({
           <DialogHeader>
             <DialogTitle>Delete {projectName}?</DialogTitle>
             <DialogDescription>
-              All tickets and objectives in this project will be permanently deleted. This cannot be
+              All missions and objectives in this project will be permanently deleted. This cannot be
               undone.
             </DialogDescription>
           </DialogHeader>

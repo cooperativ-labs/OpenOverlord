@@ -28,32 +28,32 @@ Requirements:
 config set` opens the interactive backend selector; `ovld config set local
 [url]` points the CLI at a local backend URL (default
   `http://127.0.0.1:4310`); `ovld config set cloud <url>` points it at a hosted backend URL.
-- `ovld user-token create/list/revoke/rename`: manage user-owned non-interactive credentials. `create --label <l> [--expires-in 90d] [--no-expiry] [--scope full|ticket-lifecycle]` mints a token (defaulting to a 90-day expiry and `full` scope) and prints the secret exactly once; `--scope ticket-lifecycle` restricts the token to ticket/objective/session/runner permissions. `list [--json]`, `revoke <id>`, and `rename <id> <label>` manage existing tokens. Token secrets are never reprinted, and `out_…`-shaped values are redacted from CLI diagnostics.
+- `ovld user-token create/list/revoke/rename`: manage user-owned non-interactive credentials. `create --label <l> [--expires-in 90d] [--no-expiry] [--scope full|mission-lifecycle]` mints a token (defaulting to a 90-day expiry and `full` scope) and prints the secret exactly once; `--scope mission-lifecycle` restricts the token to mission/objective/session/runner permissions. `list [--json]`, `revoke <id>`, and `rename <id> <label>` manage existing tokens. Token secrets are never reprinted, and `out_…`-shaped values are redacted from CLI diagnostics.
 - `ovld create-project --name "<name>" [--directory <path>|--no-directory]`: create a project and optionally register the current directory.
 - `ovld add-cwd [--directory <path>] [--project-id <id-or-name>] [--primary true|false]`: link a checkout to a project. When `--project-id` is omitted on an interactive terminal, lists your projects and prompts you to pick one; non-interactively it falls back to the discovered or most recent project.
 - `ovld protocol discover-project [--working-directory <path>] [--project-id <id-or-name>]`: resolve the project for a path or explicit project.
 
-### Ticket Commands For Humans
+### Mission Commands For Humans
 
 Requirements:
 
-- `ovld create "<objective>"`: create a draft ticket/objective from a prompt-like string.
-- `ovld create --objectives-json '[{"objective":"..."}]'`: create one ticket with ordered objectives.
-- `ovld prompt "<objective>"`: create a ticket and immediately queue or launch execution.
-- `ovld attach [ticketId] [agent]`: search/select a ticket and launch an agent interactively.
-- `ovld tickets list [--status <csv>] [--project-id <id-or-name>] [--limit <n>]`: list tickets.
-- `ovld ticket context <ticketId>`: print the assembled context for a ticket without starting a session.
-- `ovld protocol search-tickets --query "<text>" --status next-up,execute`: search tickets.
-- `ovld protocol add-objectives --ticket-id <id> --objectives-json '[...]'`: append objectives to an existing ticket.
-- `ovld protocol discuss-objective --ticket-id <id>`: mark a draft objective submitted without attaching.
-- `ovld protocol record-work`: record work already completed in chat as a review ticket without an active session.
+- `ovld create "<objective>"`: create a draft mission/objective from a prompt-like string.
+- `ovld create --objectives-json '[{"objective":"..."}]'`: create one mission with ordered objectives.
+- `ovld prompt "<objective>"`: create a mission and immediately queue or launch execution.
+- `ovld attach [missionId] [agent]`: search/select a mission and launch an agent interactively.
+- `ovld missions list [--status <csv>] [--project-id <id-or-name>] [--limit <n>]`: list missions.
+- `ovld mission context <missionId>`: print the assembled context for a mission without starting a session.
+- `ovld protocol search-missions --query "<text>" --status next-up,execute`: search missions.
+- `ovld protocol add-objectives --mission-id <id> --objectives-json '[...]'`: append objectives to an existing mission.
+- `ovld protocol discuss-objective --mission-id <id>`: mark a draft objective submitted without attaching.
+- `ovld protocol record-work`: record work already completed in chat as a review mission without an active session.
 
 ### Launch Commands
 
 Requirements:
 
-- `ovld launch <agent> --ticket-id <ticketId>`: launch the selected agent in the right working directory with assembled context.
-- `ovld restart <agent> --ticket-id <ticketId>`: resume when the agent supports native resume.
+- `ovld launch <agent> --mission-id <missionId>`: launch the selected agent in the right working directory with assembled context.
+- `ovld restart <agent> --mission-id <missionId>`: resume when the agent supports native resume.
 - `ovld connect`, `ovld run`, and `ovld resume` can remain compatibility aliases if useful.
 - Direct launch syntax can be supported later: `ovld <agent> "<prompt>" [overlord flags] [-- agent flags]`.
 
@@ -152,15 +152,15 @@ Requirements:
 
 - Reserved for context files, connector hook diagnostics, temporary settings, and launch scratch files.
 - CLI commands that run inside a linked project should opportunistically prune stale `.overlord/tmp/` entries instead of letting the directory grow without bound.
-- Pruning must be best-effort and age-based so recent follow-up context remains available across short ticket-review windows.
+- Pruning must be best-effort and age-based so recent follow-up context remains available across short mission-review windows.
 - Must be gitignored by generated `.gitignore` suggestions.
 - Do not gitignore the whole `.overlord/` directory by default because `project.json` is durable metadata.
 
 ## MVP CLI Acceptance Criteria
 
 - A user can initialize Overlord locally and create a project from an existing repository.
-- A user can create a ticket with ordered objectives from the CLI.
-- A user can list and inspect tickets.
-- A user can launch an agent on a ticket from the CLI.
+- A user can create a mission with ordered objectives from the CLI.
+- A user can list and inspect missions.
+- A user can launch an agent on a mission from the CLI.
 - An agent can attach, update, ask, and deliver through `ovld protocol`.
 - `ovld doctor` catches missing agent binaries, missing connector installs, invalid project metadata, missing database file, and missing primary working directory.

@@ -8,7 +8,7 @@ const AGENT = {
   args: [
     '--append-system-prompt-file',
     '/tmp/ctx.md',
-    'Start work on the attached Overlord ticket.'
+    'Start work on the attached Overlord mission.'
   ],
   workingDirectory: '/Users/jake/project'
 };

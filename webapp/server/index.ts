@@ -36,31 +36,31 @@ import {
   createProject,
   createProjectResource,
   createProjectTag,
-  createTicket,
+  createMission,
   createUserToken,
   createWorkspaceStatus,
   deleteObjective,
   deleteProject,
   deleteProjectResource,
   deleteProjectTag,
-  deleteTicket,
+  deleteMission,
   deleteWorkspaceStatus,
-  generateTicketTitle,
+  generateMissionTitle,
   getProfile,
   getProject,
   getProjectRepository,
-  getTicketDetail,
+  getMissionDetail,
   listArtifacts,
   listObjectives,
   listProjectResources,
   listProjects,
   listProjectTags,
-  listTicketBranches,
-  listTicketEvents,
-  listTicketFileChanges,
-  listTickets,
+  listMissionBranches,
+  listMissionEvents,
+  listMissionFileChanges,
+  listMissions,
   listUserTokens,
-  listWorkspaceMyTickets,
+  listWorkspaceMyMissions,
   listWorkspaceStatuses,
   listWorktrees,
   performBranchAction,
@@ -69,16 +69,16 @@ import {
   renameUserToken,
   reorderBoardColumn,
   reorderFutureObjectives,
-  reorderWorkspaceMyTickets,
+  reorderWorkspaceMyMissions,
   reorderWorkspaceStatuses,
   revokeUserToken,
-  searchTickets,
+  searchMissions,
   updateObjective,
   updateProfile,
   updateProject,
   updateProjectResource,
   updateProjectTag,
-  updateTicket,
+  updateMission,
   updateWorkspaceStatus
 } from './repository.ts';
 import {
@@ -230,7 +230,7 @@ app.get(
       // CLI-only.
       capabilities: {
         projects: true,
-        tickets: true,
+        missions: true,
         objectives: true,
         realtime: true,
         sqlStudio: getSqlStudioState().enabled,
@@ -244,7 +244,7 @@ app.get(
 
 // ---- Initial instance setup ----------------------------------------------
 //
-// Names the seeded first workspace and sets the slug that prefixes ticket
+// Names the seeded first workspace and sets the slug that prefixes mission
 // identifiers (`<slug>:<sequence>`). Changing the slug rewrites what `/api/meta`
 // reports, so resync every subscriber.
 
@@ -508,16 +508,16 @@ app.delete(
   )
 );
 
-// ---- My Tickets (selected-workspace aggregate) ---------------------------
+// ---- My Missions (selected-workspace aggregate) ---------------------------
 app.get(
-  '/api/workspace/my-tickets',
-  handle(() => listWorkspaceMyTickets(), { requires: PERMISSIONS.TICKET_READ })
+  '/api/workspace/my-missions',
+  handle(() => listWorkspaceMyMissions(), { requires: PERMISSIONS.MISSION_READ })
 );
 app.patch(
-  '/api/workspace/my-tickets/order',
-  handle(req => reorderWorkspaceMyTickets(req.body), {
+  '/api/workspace/my-missions/order',
+  handle(req => reorderWorkspaceMyMissions(req.body), {
     mutates: true,
-    requires: PERMISSIONS.TICKET_UPDATE
+    requires: PERMISSIONS.MISSION_UPDATE
   })
 );
 
@@ -591,21 +591,21 @@ app.get(
   )
 );
 app.get(
-  '/api/projects/:id/tickets',
-  handle(req => listTickets(req.params.id), { requires: PERMISSIONS.TICKET_READ })
+  '/api/projects/:id/missions',
+  handle(req => listMissions(req.params.id), { requires: PERMISSIONS.MISSION_READ })
 );
 app.patch(
   '/api/projects/:id/board/reorder',
   handle(req => reorderBoardColumn(req.params.id, req.body), {
     mutates: true,
-    requires: PERMISSIONS.TICKET_UPDATE
+    requires: PERMISSIONS.MISSION_UPDATE
   })
 );
 
-// ---- Tickets -------------------------------------------------------------
+// ---- Missions -------------------------------------------------------------
 
 app.get(
-  '/api/tickets/search',
+  '/api/missions/search',
   handle(
     req => {
       const query = typeof req.query.q === 'string' ? req.query.q : null;
@@ -618,59 +618,59 @@ app.get(
         10
       );
       const limit = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
-      return { tickets: searchTickets({ query, projectId, limit }) };
+      return { missions: searchMissions({ query, projectId, limit }) };
     },
-    { requires: PERMISSIONS.TICKET_READ }
+    { requires: PERMISSIONS.MISSION_READ }
   )
 );
 app.post(
-  '/api/tickets',
-  handle(req => createTicket(req.body), { mutates: true, requires: PERMISSIONS.TICKET_CREATE })
+  '/api/missions',
+  handle(req => createMission(req.body), { mutates: true, requires: PERMISSIONS.MISSION_CREATE })
 );
 app.get(
-  '/api/tickets/:id',
-  handle(req => getTicketDetail(req.params.id), { requires: PERMISSIONS.TICKET_READ })
+  '/api/missions/:id',
+  handle(req => getMissionDetail(req.params.id), { requires: PERMISSIONS.MISSION_READ })
 );
 app.patch(
-  '/api/tickets/:id',
-  handle(req => updateTicket(req.params.id, req.body), {
+  '/api/missions/:id',
+  handle(req => updateMission(req.params.id, req.body), {
     mutates: true,
-    requires: PERMISSIONS.TICKET_UPDATE
+    requires: PERMISSIONS.MISSION_UPDATE
   })
 );
 app.delete(
-  '/api/tickets/:id',
-  handle(req => deleteTicket(req.params.id), { mutates: true, requires: PERMISSIONS.TICKET_DELETE })
+  '/api/missions/:id',
+  handle(req => deleteMission(req.params.id), { mutates: true, requires: PERMISSIONS.MISSION_DELETE })
 );
 app.post(
-  '/api/tickets/:id/generate-title',
-  handle(req => generateTicketTitle(req.params.id), {
+  '/api/missions/:id/generate-title',
+  handle(req => generateMissionTitle(req.params.id), {
     mutates: true,
-    requires: PERMISSIONS.TICKET_UPDATE
+    requires: PERMISSIONS.MISSION_UPDATE
   })
 );
 app.get(
-  '/api/tickets/:id/objectives',
+  '/api/missions/:id/objectives',
   handle(req => listObjectives(req.params.id), { requires: PERMISSIONS.OBJECTIVE_READ })
 );
 app.patch(
-  '/api/tickets/:id/objectives/reorder',
+  '/api/missions/:id/objectives/reorder',
   handle(req => reorderFutureObjectives(req.params.id, req.body), {
     mutates: true,
     requires: PERMISSIONS.OBJECTIVE_UPDATE
   })
 );
 app.get(
-  '/api/tickets/:id/events',
-  handle(req => listTicketEvents(req.params.id), { requires: PERMISSIONS.EVENT_READ })
+  '/api/missions/:id/events',
+  handle(req => listMissionEvents(req.params.id), { requires: PERMISSIONS.EVENT_READ })
 );
 app.get(
-  '/api/tickets/:id/artifacts',
+  '/api/missions/:id/artifacts',
   handle(req => listArtifacts(req.params.id), { requires: PERMISSIONS.ARTIFACT_READ })
 );
 app.get(
-  '/api/tickets/:id/file-changes',
-  handle(req => listTicketFileChanges(req.params.id), { requires: PERMISSIONS.TICKET_READ })
+  '/api/missions/:id/file-changes',
+  handle(req => listMissionFileChanges(req.params.id), { requires: PERMISSIONS.MISSION_READ })
 );
 
 // ---- Objectives ----------------------------------------------------------
@@ -860,11 +860,11 @@ app.post(
   )
 );
 app.post(
-  '/api/tickets/:id/branch-prepared',
+  '/api/missions/:id/branch-prepared',
   handle(
     req =>
       recordBranchPrepared({
-        ticketId: req.params.id,
+        missionId: req.params.id,
         requestId: typeof req.body?.requestId === 'string' ? req.body.requestId : null,
         payload: req.body?.branchAutomation
       }),
@@ -873,19 +873,19 @@ app.post(
 );
 // On-demand branch mutations (merge with parent / push parent / publish). The
 // webapp operates directly on the host-accessible worktrees; the action is the
-// discriminator in the body. Returns the refreshed TicketDetailDto, or a typed
+// discriminator in the body. Returns the refreshed MissionDetailDto, or a typed
 // error (BRANCH_MERGE_CONFLICT / BRANCH_BUSY_EXECUTING / BRANCH_DIRTY / …).
 app.post(
-  '/api/tickets/:id/branch/action',
+  '/api/missions/:id/branch/action',
   handle(req => performBranchAction(req.params.id, req.body ?? {}), {
     mutates: true,
-    requires: PERMISSIONS.TICKET_UPDATE
+    requires: PERMISSIONS.MISSION_UPDATE
   })
 );
-// Available branches in the ticket project's primary repo, for the branch selector.
+// Available branches in the mission project's primary repo, for the branch selector.
 app.get(
-  '/api/tickets/:id/branches',
-  handle(req => listTicketBranches(req.params.id), { requires: PERMISSIONS.TICKET_READ })
+  '/api/missions/:id/branches',
+  handle(req => listMissionBranches(req.params.id), { requires: PERMISSIONS.MISSION_READ })
 );
 
 // ---- Worktrees (Settings → Worktrees) ---------------------------------------

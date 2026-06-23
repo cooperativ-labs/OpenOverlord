@@ -34,7 +34,7 @@ calls like "write the summary as a narrative, not a command list"). Reserve "let
 agent figure it out" for *genuinely novel* situations — a friction we have already
 seen and named is, by definition, not novel.
 
-**On per-connector customization** (raised in the ticket for issue 2): all three of
+**On per-connector customization** (raised in the mission for issue 2): all three of
 these live in the *shared* CLI + backend envelope, not in any one harness. A
 shared-layer fix covers Claude, Codex, Cursor, and every future connector at once. N
 per-connector doc workarounds drift and rot. Reserve per-connector customization for
@@ -46,7 +46,7 @@ not for papering over a shared-CLI quirk.
 ## Issue 1 — "The progress update needs the session key explicitly in this shell"
 
 **Root cause (documentation contradicts the code).**
-`connectors/core/overlord-ticket/SKILL.md:17` promises the CLI "persists this key
+`connectors/core/overlord-mission/SKILL.md:17` promises the CLI "persists this key
 automatically so subsequent `ovld protocol` commands in the same working directory
 resolve it without `--session-key`." The code does not do this:
 
@@ -72,11 +72,11 @@ hitting a hard requirement, and recovering with a retry.
   reference examples (`reference/cli.md`) already pass it, so only the SKILL claim is
   wrong.
 - *Durable (the real fix):* make the promise true. At `attach`, have the CLI cache the
-  returned session key keyed by `(resolve(workingDirectory), ticketId)` — exactly the
+  returned session key keyed by `(resolve(workingDirectory), missionId)` — exactly the
   pattern `native-session.ts` already uses for `externalSessionId` — and auto-inject
   `--session-key` in `runProtocolCommand` when the flag is absent. Deterministic,
   connector-agnostic, and it makes the existing documentation correct.
-  - Guardrails: scope the cache to `(workingDir, ticket)`; clear it when the session
+  - Guardrails: scope the cache to `(workingDir, mission)`; clear it when the session
     ends (deliver/complete) so a stale key can't attach to a new session; an explicit
     `--session-key` always wins over the cache.
   - Weaker alternative: let `update`/`deliver` fall back to `externalSessionId`
@@ -116,7 +116,7 @@ warns the agent it just sent two payloads down one pipe.
   backend reads the per-flag entry rather than `body.stdin`. At most one flag may still
   use literal `-` (true stdin); real file paths have no limit. This lets an agent pipe
   rationales *and* stream a long summary in one call.
-- *Per-connector note from the ticket:* the limit is in the shared CLI + backend, so the
+- *Per-connector note from the mission:* the limit is in the shared CLI + backend, so the
   fix is shared. The only legitimately connector-specific part is how a harness's shell
   handles heredocs — document that per connector if needed, but do **not** fork the
   payload-routing logic.
@@ -192,5 +192,5 @@ answer for *none* of them.
   envelope be built immediately?
 - Issue 3: ship the `filePath` alias only, or also unify the protocol on a single casing
   for both changed-files and rationales (larger, breaking-ish) as a follow-up?
-- Should these fixes land as the ticket's second (currently empty) objective, or be split
-  into their own tickets?
+- Should these fixes land as the mission's second (currently empty) objective, or be split
+  into their own missions?

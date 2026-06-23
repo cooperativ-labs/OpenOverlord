@@ -36,11 +36,11 @@ test('ovld protocol help prints agent lifecycle reference without a backend', as
   const result = await runOvld({ args: ['protocol', 'help'] });
 
   assert.equal(result.exitCode, 0, result.stderr);
-  assert.match(result.stdout, /ovld protocol attach --ticket-id/);
+  assert.match(result.stdout, /ovld protocol attach --mission-id/);
   assert.match(result.stdout, /Agent workflow \(required\)/);
   assert.match(result.stdout, /resume-follow-up/);
   assert.match(result.stdout, /auth-status/);
-  assert.doesNotMatch(result.stdout, /pending-tickets/);
+  assert.doesNotMatch(result.stdout, /pending-missions/);
   assert.doesNotMatch(result.stdout, /claim-execution/);
 });
 

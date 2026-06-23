@@ -19,7 +19,7 @@ Why this is the best fit for the current requirements:
 - The app is primarily an operational UI, so stable client-side interactivity and fast incremental updates matter more than server-rendered first paint.
 - Overlord already wants a shared service layer and explicit REST/realtime boundary; a Vite SPA maps cleanly onto that architecture.
 - Serwist has a first-party Vite integration, which keeps PWA setup direct and avoids framework-specific indirection.
-- Realtime ticket/session updates fit naturally into a client cache fed by SSE/WebSocket events and REST catch-up reads.
+- Realtime mission/session updates fit naturally into a client cache fed by SSE/WebSocket events and REST catch-up reads.
 
 Why not make Next.js the default recommendation:
 
@@ -31,15 +31,15 @@ This is a recommendation, not a hard contract commitment. If later requirements 
 
 ## Goal
 
-The web app is the shared control center for projects, tickets, objectives, execution, and review. It should call the same local/core operations as the CLI rather than becoming a separate implementation of the workflow.
+The web app is the shared control center for projects, missions, objectives, execution, and review. It should call the same local/core operations as the CLI rather than becoming a separate implementation of the workflow.
 
 ## MVP Web App Scope
 
 The first web app should provide a local UI for:
 
 - Project selection and project settings.
-- Ticket board/list.
-- Ticket creation and editing.
+- Mission board/list.
+- Mission creation and editing.
 - Objective creation, editing, ordering, and submission.
 - Manual Run requests.
 - Activity timeline.
@@ -65,7 +65,7 @@ Requirements:
 - Expose default agent/model settings.
 - Expose project workflow/status settings.
 
-### Ticket Board
+### Mission Board
 
 Requirements:
 
@@ -73,16 +73,16 @@ Requirements:
 - List view for dense review.
 - Search and filters by status, project, priority, assignee/agent, and updated date.
 - Drag/drop or explicit status movement.
-- Create ticket modal.
+- Create mission modal.
 - Quick run affordance for runnable objective.
 - Realtime or polling updates from active sessions.
 - Read/unread indicators can be deferred until multi-user support.
 
-### Ticket Detail
+### Mission Detail
 
 Requirements:
 
-- Header with title, status, priority, project, ticket ID, and execution target.
+- Header with title, status, priority, project, mission ID, and execution target.
 - Objective list with states and assigned agent/model.
 - Active objective editor.
 - Add objective.
@@ -123,9 +123,9 @@ Requirements:
 Requirements:
 
 - Show read-only local VCS status for linked project directory.
-- Show changed file list and diff hunks grouped by ticket/objective when available.
+- Show changed file list and diff hunks grouped by mission/objective when available.
 - Link hunks to recorded change rationales where possible.
-- Filter by ticket/objective.
+- Filter by mission/objective.
 - Show unassigned/current workspace changes when a local diff cannot be associated with a specific objective.
 - Show unavailable state if no local directory is linked or the browser cannot access local diffs.
 
@@ -141,7 +141,7 @@ Requirements:
 - Terminal settings: default terminal/launch command.
 - Execution targets: local device label and linked directories.
 - Project workflow: statuses and default status.
-- Danger zone: archive/delete local projects/tickets, with confirmation.
+- Danger zone: archive/delete local projects/missions, with confirmation.
 
 ## Deferred Web App Scope
 
@@ -172,7 +172,7 @@ These are upstream Overlord features that should not block CLI-first Overlord:
 
 ## UX Requirements
 
-- The first screen after launch should be the operational ticket/project UI, not a marketing page.
+- The first screen after launch should be the operational mission/project UI, not a marketing page.
 - Empty states should tell the user the next CLI or UI action.
 - Active agent work should visibly update without requiring refresh.
 - Failed launches should show the exact repair path.
@@ -181,8 +181,8 @@ These are upstream Overlord features that should not block CLI-first Overlord:
 
 ## Acceptance Criteria
 
-- A user can create a project and ticket from the web app and then execute it via the CLI runner.
-- A user can watch an executing objective update in the ticket detail.
+- A user can create a project and mission from the web app and then execute it via the CLI runner.
+- A user can watch an executing objective update in the mission detail.
 - A user can review delivery summary, artifacts, and rationales from the web app.
 - A user can identify and clear stale execution requests.
 - A user can configure connector/default launch settings without editing config files manually.

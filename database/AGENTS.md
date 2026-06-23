@@ -10,10 +10,10 @@ Extensions in this module fall into four categories:
 
 | Extension type | Example user request |
 | --- | --- |
-| New core table or column | "Add a `labels` column to tickets" |
+| New core table or column | "Add a `labels` column to missions" |
 | Schema extension (ext tables) | "Add custom metadata for a connector" |
 | New migration | "Add indexes for a query pattern" |
-| New controlled vocabulary value | "Add a new ticket status type" |
+| New controlled vocabulary value | "Add a new mission status type" |
 
 Each type has a different procedure below.
 

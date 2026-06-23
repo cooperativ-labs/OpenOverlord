@@ -2,7 +2,7 @@ import { useParams } from '@tanstack/react-router';
 import { Plus, RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { NewTicketModal } from '@/components/NewTicketModal.tsx';
+import { NewMissionModal } from '@/components/NewMissionModal.tsx';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx';
@@ -10,7 +10,7 @@ import { DRAG_REGION, getDesktopChrome, NO_DRAG_REGION } from '@/lib/desktop-chr
 import { readLastUsedProjectId } from '@/lib/last-used-project.ts';
 import { useProjects } from '@/lib/queries.ts';
 
-import { TicketSearch } from './nav-header/TicketSearch.tsx';
+import { MissionSearch } from './nav-header/MissionSearch.tsx';
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -26,8 +26,8 @@ function isMacPlatform(): boolean {
 
 /**
  * Top bar shown above the page content on every route. Holds the sidebar toggle
- * and the global ticket search, which is wired into the shared search index via
- * GET /api/tickets/search.
+ * and the global mission search, which is wired into the shared search index via
+ * GET /api/missions/search.
  *
  * Inside the desktop shell the native title bar is gone, so the bar doubles as
  * the window-drag region: the strip itself drags, while the interactive controls
@@ -38,7 +38,7 @@ export function NavHeader() {
   const { state } = useSidebar();
   const { projectId } = useParams({ strict: false }) as { projectId?: string };
   const projectsQ = useProjects();
-  const [isNewTicketOpen, setIsNewTicketOpen] = useState(false);
+  const [isNewMissionOpen, setIsNewMissionOpen] = useState(false);
   const hasProjects = (projectsQ.data?.length ?? 0) > 0;
   const [isMac] = useState(isMacPlatform);
   const handleHardRefresh = () => {
@@ -53,17 +53,17 @@ export function NavHeader() {
         !event.altKey &&
         !event.shiftKey &&
         hasProjects &&
-        !isNewTicketOpen &&
+        !isNewMissionOpen &&
         !isTypingTarget(event.target)
       ) {
         event.preventDefault();
-        setIsNewTicketOpen(true);
+        setIsNewMissionOpen(true);
       }
     };
 
     window.addEventListener('keydown', handleGlobalHotkeys);
     return () => window.removeEventListener('keydown', handleGlobalHotkeys);
-  }, [hasProjects, isNewTicketOpen]);
+  }, [hasProjects, isNewMissionOpen]);
 
   return (
     <header
@@ -92,7 +92,7 @@ export function NavHeader() {
       </div>
       <div className="flex min-w-0 flex-1 justify-center px-2">
         <div className="w-full min-w-0 max-w-xl" style={isDesktop ? NO_DRAG_REGION : undefined}>
-          <TicketSearch />
+          <MissionSearch />
         </div>
       </div>
       <div
@@ -106,22 +106,22 @@ export function NavHeader() {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setIsNewTicketOpen(true)}
+                onClick={() => setIsNewMissionOpen(true)}
                 disabled={!hasProjects}
               >
                 <Plus />
-                New ticket
+                New mission
               </Button>
             }
           />
           <TooltipContent side="bottom">
-            Press {isMac ? '⌘N' : 'Ctrl+N'} to create a new ticket
+            Press {isMac ? '⌘N' : 'Ctrl+N'} to create a new mission
           </TooltipContent>
         </Tooltip>
       </div>
-      <NewTicketModal
-        open={isNewTicketOpen}
-        onClose={() => setIsNewTicketOpen(false)}
+      <NewMissionModal
+        open={isNewMissionOpen}
+        onClose={() => setIsNewMissionOpen(false)}
         defaultProjectId={projectId ?? readLastUsedProjectId()}
       />
     </header>

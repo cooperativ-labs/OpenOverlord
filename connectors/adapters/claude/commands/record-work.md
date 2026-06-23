@@ -1,10 +1,10 @@
 ---
-description: Record completed-from-chat work as a ticket in review + feed post (no attach)
+description: Record completed-from-chat work as a mission in review + feed post (no attach)
 argument-hint: [optional additional context]
 disable-model-invocation: true
 ---
 
-Immediately record the work you just completed in this chat as a new Overlord ticket via `ovld protocol record-work`. No agent session is opened — the work is already done.
+Immediately record the work you just completed in this chat as a new Overlord mission via `ovld protocol record-work`. No agent session is opened — the work is already done.
 
 Synthesize from the current conversation:
 - `objective`: what was asked / what was done (1–3 sentences).
@@ -19,7 +19,7 @@ Run:
 
 and stream a JSON object `{ "objective": "...", "summary": "...", "artifacts": [...], "changeRationales": [...] }` on stdin via a single-quoted heredoc (`<<'EOF'`).
 
-After the command succeeds, report the new `TICKET_ID`.
+After the command succeeds, report the new `MISSION_ID`.
 
 Rules:
 - Do NOT use this for in-progress work. Use `/prompt` for that.

@@ -59,7 +59,7 @@ For `connectors/**/scripts/*.sh`
 - **Approved hook events only:** scripts implement only `UserPromptSubmit`,
   `PermissionRequest`, `Stop` — no undeclared hook type.
 - **Event-type discipline:** a hook that records an event uses only contract
-  `ticket_events.type` values; it does not invent new event types (contract:
+  `mission_events.type` values; it does not invent new event types (contract:
   "Hooks may not add new event types without contract update").
 - **Behavioral (dry-run):** feed each hook a representative payload with `ovld`
   stubbed to capture args; assert the `UserPromptSubmit` hook records a
@@ -76,7 +76,7 @@ For `connectors/**/scripts/*.sh`
 
 ## E. Connector Core Workflow
 
-- The connector core (`connectors/core/overlord-ticket/`) instructions are not
+- The connector core (`connectors/core/overlord-mission/`) instructions are not
   duplicated by an adapter — adapters extend the core, they don't replace it
   (contract constraint "extend the core, don't replace it"). A test asserts the
   adapter does not re-declare core protocol rules verbatim.

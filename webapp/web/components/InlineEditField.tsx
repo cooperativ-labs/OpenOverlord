@@ -3,7 +3,7 @@ import * as React from 'react';
 import {
   MentionableTextarea,
   type ProjectMentionOption,
-  type TicketMentionOption
+  type MissionMentionOption
 } from '@/components/MentionableTextarea';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -23,8 +23,8 @@ export type InlineEditFieldProps = {
   mentionPaths?: string[];
   /** Projects offered for `#` mentions (multiline only). */
   projectMentionOptions?: ProjectMentionOption[];
-  /** Tickets offered for `$` mentions (multiline only). */
-  ticketMentionOptions?: TicketMentionOption[];
+  /** Missions offered for `$` mentions (multiline only). */
+  missionMentionOptions?: MissionMentionOption[];
   /** Render the value as static, non-editable text. */
   disabled?: boolean;
   /** Commit an empty trimmed value instead of reverting to the previous value. */
@@ -47,12 +47,12 @@ const DEBOUNCE_SAVE_MS = 300;
 /**
  * Inline click-to-edit text. Displays a value that turns into an editor on
  * click: a single-line input, or — when `multiline` — a {@link MentionableTextarea}
- * with `@` file, `#` project, and `$` ticket mentions, markdown list
+ * with `@` file, `#` project, and `$` mission mentions, markdown list
  * continuation, and Save/Cancel affordances. Commits on blur or ⌘/Ctrl+Enter;
  * Escape cancels.
  *
  * Extracted from the former `EditableText` in `ui.tsx` and modelled on the
- * inline-edit pattern shared across the objective and ticket surfaces.
+ * inline-edit pattern shared across the objective and mission surfaces.
  */
 export function InlineEditField({
   value,
@@ -63,7 +63,7 @@ export function InlineEditField({
   inputClassName,
   mentionPaths,
   projectMentionOptions,
-  ticketMentionOptions,
+  missionMentionOptions,
   disabled = false,
   commitEmpty = false,
   ariaLabel,
@@ -164,7 +164,7 @@ export function InlineEditField({
         onValueChange={updateDraft}
         mentionPaths={mentionPaths}
         projectMentionOptions={projectMentionOptions}
-        ticketMentionOptions={ticketMentionOptions}
+        missionMentionOptions={missionMentionOptions}
         autoListContinuation="enter"
         maxHeightPx={360}
         rows={minRows}

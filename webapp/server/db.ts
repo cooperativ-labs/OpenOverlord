@@ -199,11 +199,11 @@ export function reloadActiveWorkspace(): void {
 
 const insertChangeStmt = db.prepare(`
   INSERT INTO entity_changes (
-    id, workspace_id, project_id, ticket_id, objective_id,
+    id, workspace_id, project_id, mission_id, objective_id,
     entity_type, entity_id, operation, entity_revision,
     changed_fields_json, actor_workspace_user_id, actor_token_id, source, occurred_at
   ) VALUES (
-    @id, @workspace_id, @project_id, @ticket_id, @objective_id,
+    @id, @workspace_id, @project_id, @mission_id, @objective_id,
     @entity_type, @entity_id, @operation, @entity_revision,
     @changed_fields_json, @actor_workspace_user_id, @actor_token_id, 'webapp', @occurred_at
   )
@@ -215,7 +215,7 @@ export interface RecordChangeInput {
   operation: ChangeOperation;
   entityRevision?: number | null;
   projectId?: string | null;
-  ticketId?: string | null;
+  missionId?: string | null;
   objectiveId?: string | null;
   changedFields?: string[];
   /** Override the workspace the change is attributed to (defaults to the active one). */
@@ -234,7 +234,7 @@ export function recordChange(input: RecordChangeInput): void {
     id: newId(),
     workspace_id: input.workspaceId ?? WORKSPACE.id,
     project_id: input.projectId ?? null,
-    ticket_id: input.ticketId ?? null,
+    mission_id: input.missionId ?? null,
     objective_id: input.objectiveId ?? null,
     entity_type: input.entityType,
     entity_id: input.entityId,

@@ -8,7 +8,7 @@ const tempDir = mkdtempSync(path.join(tmpdir(), 'overlord-webapp-launch-'));
 process.env.OVERLORD_SQLITE_PATH = path.join(tempDir, 'webapp.sqlite');
 
 const { db } = await import('./db.ts');
-const { createProject, createProjectResource, createTicket } = await import('./repository.ts');
+const { createProject, createProjectResource, createMission } = await import('./repository.ts');
 const { launchObjective } = await import('./launch.ts');
 
 test('launching an objective twice while a request is active returns the same request', () => {
@@ -18,11 +18,11 @@ test('launching an objective twice while a request is active returns the same re
     executionTargetId: null,
     isPrimary: true
   });
-  const ticket = createTicket({
+  const mission = createMission({
     projectId: project.id,
     firstObjective: 'Do the thing'
   });
-  const objectiveId = ticket.objectives[0]!.id;
+  const objectiveId = mission.objectives[0]!.id;
 
   const first = launchObjective(objectiveId, { agent: 'codex' });
   const second = launchObjective(objectiveId, { agent: 'codex' });

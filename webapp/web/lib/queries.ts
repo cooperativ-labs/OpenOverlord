@@ -7,21 +7,21 @@ import type {
   CreateProjectBody,
   CreateProjectResourceBody,
   CreateProjectTagBody,
-  CreateTicketBody,
+  CreateMissionBody,
   CreateUserTokenBody,
   CreateWorkspaceBody,
   CreateWorkspaceStatusBody,
   LaunchObjectiveBody,
   LaunchPreferenceDto,
-  MyTicketsResponse,
+  MyMissionsResponse,
   ObjectiveAttachmentDto,
   ProjectTagDto,
   RemoveWorktreeBody,
   ReorderFutureObjectivesBody,
   ReorderWorkspaceStatusesBody,
   StatusType,
-  TicketDetailDto,
-  TicketDto,
+  MissionDetailDto,
+  MissionDto,
   UpdateAgentLaunchConfigBody,
   UpdateLaunchPreferenceBody,
   UpdateObjectiveBody,
@@ -30,7 +30,7 @@ import type {
   UpdateProjectResourceBody,
   UpdateProjectTagBody,
   UpdateTerminalProfileBody,
-  UpdateTicketBody,
+  UpdateMissionBody,
   UpdateUserTokenBody,
   UpdateWorkspaceBody,
   UpdateWorkspaceStatusBody,
@@ -54,14 +54,14 @@ export const keys = {
   projectTags: (id: string) => ['project', id, 'tags'] as const,
   projectRepository: (id: string, executionTargetId: string | null) =>
     ['project', id, 'repository', executionTargetId ?? 'primary'] as const,
-  tickets: (projectId: string) => ['project', projectId, 'tickets'] as const,
-  myTickets: ['workspace', 'my-tickets'] as const,
-  ticket: (id: string) => ['ticket', id] as const,
-  ticketBranches: (id: string) => ['ticket', id, 'branches'] as const,
+  missions: (projectId: string) => ['project', projectId, 'missions'] as const,
+  myMissions: ['workspace', 'my-missions'] as const,
+  mission: (id: string) => ['mission', id] as const,
+  missionBranches: (id: string) => ['mission', id, 'branches'] as const,
   worktrees: ['worktrees'] as const,
-  ticketEvents: (id: string) => ['ticket', id, 'events'] as const,
-  ticketArtifacts: (id: string) => ['ticket', id, 'artifacts'] as const,
-  ticketFileChanges: (id: string) => ['ticket', id, 'file-changes'] as const,
+  missionEvents: (id: string) => ['mission', id, 'events'] as const,
+  missionArtifacts: (id: string) => ['mission', id, 'artifacts'] as const,
+  missionFileChanges: (id: string) => ['mission', id, 'file-changes'] as const,
   objectiveAttachments: (objectiveId: string) => ['objective', objectiveId, 'attachments'] as const,
   agentCatalog: ['agent-catalog'] as const,
   launchSettings: ['launch-settings'] as const,
@@ -120,25 +120,25 @@ export const useProjectRepository = (id: string, executionTargetId: string | nul
     queryFn: () => api.getProjectRepository(id, executionTargetId)
   });
 
-export const useTickets = (projectId: string) =>
-  useQuery({ queryKey: keys.tickets(projectId), queryFn: () => api.listTickets(projectId) });
+export const useMissions = (projectId: string) =>
+  useQuery({ queryKey: keys.missions(projectId), queryFn: () => api.listMissions(projectId) });
 
-// The active operator's assigned tickets across the selected workspace. The
-// global realtime SSE feed invalidates this whenever tickets change, and the
+// The active operator's assigned missions across the selected workspace. The
+// global realtime SSE feed invalidates this whenever missions change, and the
 // reorder mutation updates it optimistically.
-export const useWorkspaceMyTickets = () =>
-  useQuery({ queryKey: keys.myTickets, queryFn: () => api.listWorkspaceMyTickets() });
+export const useWorkspaceMyMissions = () =>
+  useQuery({ queryKey: keys.myMissions, queryFn: () => api.listWorkspaceMyMissions() });
 
-export const useTicket = (id: string) =>
-  useQuery({ queryKey: keys.ticket(id), queryFn: () => api.getTicket(id) });
+export const useMission = (id: string) =>
+  useQuery({ queryKey: keys.mission(id), queryFn: () => api.getMission(id) });
 
-// Available branches for the ticket's branch selector. Only fetched when the
+// Available branches for the mission's branch selector. Only fetched when the
 // selector is opened (callers pass `enabled`) so we don't shell git on every
-// ticket open.
-export const useTicketBranches = (id: string, enabled: boolean) =>
+// mission open.
+export const useMissionBranches = (id: string, enabled: boolean) =>
   useQuery({
-    queryKey: keys.ticketBranches(id),
-    queryFn: () => api.listTicketBranches(id),
+    queryKey: keys.missionBranches(id),
+    queryFn: () => api.listMissionBranches(id),
     enabled,
     staleTime: 30_000
   });
@@ -147,20 +147,20 @@ export const useWorktrees = () =>
   useQuery({ queryKey: keys.worktrees, queryFn: () => api.listWorktrees() });
 
 // The global realtime SSE feed invalidates this query whenever the database
-// changes — including ticket_events written by the CLI/agent in another process
+// changes — including mission_events written by the CLI/agent in another process
 // — so the activity feed updates in real time without bespoke wiring here.
-export const useTicketEvents = (id: string) =>
-  useQuery({ queryKey: keys.ticketEvents(id), queryFn: () => api.listTicketEvents(id) });
+export const useMissionEvents = (id: string) =>
+  useQuery({ queryKey: keys.missionEvents(id), queryFn: () => api.listMissionEvents(id) });
 
-export const useTicketArtifacts = (id: string) =>
-  useQuery({ queryKey: keys.ticketArtifacts(id), queryFn: () => api.listTicketArtifacts(id) });
+export const useMissionArtifacts = (id: string) =>
+  useQuery({ queryKey: keys.missionArtifacts(id), queryFn: () => api.listMissionArtifacts(id) });
 
 // Like the activity feed, the global realtime SSE feed invalidates this query
 // whenever the database changes — including change_rationales recorded by the
 // CLI/agent in another process — so the File Changes section stays current
 // without bespoke wiring here.
-export const useTicketFileChanges = (id: string) =>
-  useQuery({ queryKey: keys.ticketFileChanges(id), queryFn: () => api.listTicketFileChanges(id) });
+export const useMissionFileChanges = (id: string) =>
+  useQuery({ queryKey: keys.missionFileChanges(id), queryFn: () => api.listMissionFileChanges(id) });
 
 // ---- Mutations -----------------------------------------------------------
 
@@ -279,7 +279,7 @@ export function useCompleteSetup() {
   return useMutation({
     mutationFn: (body: CompleteInitialSetupBody) => api.completeSetup(body),
     // Setup renames the active workspace and changes its slug, which feed
-    // `/api/meta`, the sidebar identity, and future ticket identifiers.
+    // `/api/meta`, the sidebar identity, and future mission identifiers.
     onSuccess: () => invalidateAll(qc)
   });
 }
@@ -450,34 +450,34 @@ export function useUnarchiveProject() {
   });
 }
 
-export function useCreateTicket() {
+export function useCreateMission() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: CreateTicketBody) => api.createTicket(body),
+    mutationFn: (body: CreateMissionBody) => api.createMission(body),
     onSuccess: () => invalidateAll(qc)
   });
 }
 
-export function useUpdateTicket(id: string) {
+export function useUpdateMission(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: UpdateTicketBody) => api.updateTicket(id, body),
+    mutationFn: (body: UpdateMissionBody) => api.updateMission(id, body),
     onSuccess: () => invalidateAll(qc)
   });
 }
 
-export function useDeleteTicket() {
+export function useDeleteMission() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.deleteTicket(id),
+    mutationFn: (id: string) => api.deleteMission(id),
     onSuccess: () => invalidateAll(qc)
   });
 }
 
-export function useGenerateTicketTitle(id: string) {
+export function useGenerateMissionTitle(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => api.generateTicketTitle(id),
+    mutationFn: () => api.generateMissionTitle(id),
     onSuccess: () => invalidateAll(qc)
   });
 }
@@ -518,12 +518,12 @@ export interface ReorderBoardColumnVars {
   statusId: string;
   /** Destination column's semantic type — used only for the optimistic patch. */
   statusType: StatusType;
-  /** Every ticket id that should occupy the column, top-to-bottom, after the move. */
-  orderedTicketIds: string[];
+  /** Every mission id that should occupy the column, top-to-bottom, after the move. */
+  orderedMissionIds: string[];
 }
 
 /** Mirrors the server's board order: board_position ASC, sequence_number DESC. */
-function byBoardOrder(a: TicketDto, b: TicketDto): number {
+function byBoardOrder(a: MissionDto, b: MissionDto): number {
   if (a.boardPosition !== b.boardPosition) return a.boardPosition - b.boardPosition;
   return b.sequenceNumber - a.sequenceNumber;
 }
@@ -536,77 +536,77 @@ function byBoardOrder(a: TicketDto, b: TicketDto): number {
 export function useReorderBoardColumn() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, statusId, orderedTicketIds }: ReorderBoardColumnVars) =>
-      api.reorderBoardColumn(projectId, { statusId, orderedTicketIds }),
+    mutationFn: ({ projectId, statusId, orderedMissionIds }: ReorderBoardColumnVars) =>
+      api.reorderBoardColumn(projectId, { statusId, orderedMissionIds }),
     onMutate: async (vars: ReorderBoardColumnVars) => {
-      await qc.cancelQueries({ queryKey: keys.tickets(vars.projectId) });
-      const previous = qc.getQueryData<TicketDto[]>(keys.tickets(vars.projectId));
+      await qc.cancelQueries({ queryKey: keys.missions(vars.projectId) });
+      const previous = qc.getQueryData<MissionDto[]>(keys.missions(vars.projectId));
       if (previous) {
         const positionById = new Map(
-          vars.orderedTicketIds.map((id, index) => [id, (index + 1) * 100])
+          vars.orderedMissionIds.map((id, index) => [id, (index + 1) * 100])
         );
         const next = previous
-          .map(ticket => {
-            const position = positionById.get(ticket.id);
+          .map(mission => {
+            const position = positionById.get(mission.id);
             return position === undefined
-              ? ticket
+              ? mission
               : {
-                  ...ticket,
+                  ...mission,
                   statusId: vars.statusId,
                   statusType: vars.statusType,
                   boardPosition: position
                 };
           })
           .sort(byBoardOrder);
-        qc.setQueryData(keys.tickets(vars.projectId), next);
+        qc.setQueryData(keys.missions(vars.projectId), next);
       }
       return { previous };
     },
     onError: (_err, vars, context) => {
       if (context?.previous) {
-        qc.setQueryData(keys.tickets(vars.projectId), context.previous);
+        qc.setQueryData(keys.missions(vars.projectId), context.previous);
       }
     },
     onSettled: (_data, _err, vars) => {
-      void qc.invalidateQueries({ queryKey: keys.tickets(vars.projectId) });
+      void qc.invalidateQueries({ queryKey: keys.missions(vars.projectId) });
     }
   });
 }
 
-export interface ReorderMyTicketsVars {
+export interface ReorderMyMissionsVars {
   /** Destination column / status. */
   statusId: string;
   /** Destination column's semantic type — used only for the optimistic patch. */
   statusType: StatusType;
-  /** Every ticket id that should occupy the column, top-to-bottom, after the move. */
-  orderedTicketIds: string[];
+  /** Every mission id that should occupy the column, top-to-bottom, after the move. */
+  orderedMissionIds: string[];
 }
 
 /**
- * Reorders one My Tickets status column with an optimistic cache update. Within-
+ * Reorders one My Missions status column with an optimistic cache update. Within-
  * column drags only move the personal slot; a cross-column drag also flips the
- * moved ticket's status. On error (e.g. a status the workspace lacks) the caller
+ * moved mission's status. On error (e.g. a status the workspace lacks) the caller
  * reverts and surfaces the typed alert; here we just roll the cache back.
  */
-export function useReorderMyTickets() {
+export function useReorderMyMissions() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ statusId, orderedTicketIds }: ReorderMyTicketsVars) =>
-      api.reorderWorkspaceMyTickets({ statusId, orderedTicketIds }),
-    onMutate: async (vars: ReorderMyTicketsVars) => {
-      await qc.cancelQueries({ queryKey: keys.myTickets });
-      const previous = qc.getQueryData<MyTicketsResponse>(keys.myTickets);
+    mutationFn: ({ statusId, orderedMissionIds }: ReorderMyMissionsVars) =>
+      api.reorderWorkspaceMyMissions({ statusId, orderedMissionIds }),
+    onMutate: async (vars: ReorderMyMissionsVars) => {
+      await qc.cancelQueries({ queryKey: keys.myMissions });
+      const previous = qc.getQueryData<MyMissionsResponse>(keys.myMissions);
       if (previous) {
         const positionById = new Map(
-          vars.orderedTicketIds.map((id, index) => [id, (index + 1) * 100])
+          vars.orderedMissionIds.map((id, index) => [id, (index + 1) * 100])
         );
-        qc.setQueryData<MyTicketsResponse>(keys.myTickets, {
-          tickets: previous.tickets.map(ticket => {
-            const position = positionById.get(ticket.id);
+        qc.setQueryData<MyMissionsResponse>(keys.myMissions, {
+          missions: previous.missions.map(mission => {
+            const position = positionById.get(mission.id);
             return position === undefined
-              ? ticket
+              ? mission
               : {
-                  ...ticket,
+                  ...mission,
                   statusId: vars.statusId,
                   statusType: vars.statusType,
                   myPosition: position
@@ -617,10 +617,10 @@ export function useReorderMyTickets() {
       return { previous };
     },
     onError: (_err, _vars, context) => {
-      if (context?.previous) qc.setQueryData(keys.myTickets, context.previous);
+      if (context?.previous) qc.setQueryData(keys.myMissions, context.previous);
     },
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: keys.myTickets });
+      void qc.invalidateQueries({ queryKey: keys.myMissions });
     }
   });
 }
@@ -683,22 +683,22 @@ export function useDeleteObjectiveAttachment(objectiveId: string) {
 }
 
 export interface ReorderFutureObjectivesVars extends ReorderFutureObjectivesBody {
-  ticketId: string;
+  missionId: string;
 }
 
 /**
- * Reorders a ticket's future objectives with an optimistic cache update: the new
+ * Reorders a mission's future objectives with an optimistic cache update: the new
  * order shows instantly and is reverted only if the server rejects it. The
  * realtime SSE feed reconciles the cache with server truth on success.
  */
 export function useReorderFutureObjectives() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ ticketId, orderedObjectiveIds }: ReorderFutureObjectivesVars) =>
-      api.reorderFutureObjectives(ticketId, { orderedObjectiveIds }),
+    mutationFn: ({ missionId, orderedObjectiveIds }: ReorderFutureObjectivesVars) =>
+      api.reorderFutureObjectives(missionId, { orderedObjectiveIds }),
     onMutate: async (vars: ReorderFutureObjectivesVars) => {
-      await qc.cancelQueries({ queryKey: keys.ticket(vars.ticketId) });
-      const previous = qc.getQueryData<TicketDetailDto>(keys.ticket(vars.ticketId));
+      await qc.cancelQueries({ queryKey: keys.mission(vars.missionId) });
+      const previous = qc.getQueryData<MissionDetailDto>(keys.mission(vars.missionId));
       if (previous) {
         // Renumber the future group to match the requested order, starting at the
         // lowest position it currently occupies, then re-sort by position.
@@ -717,17 +717,17 @@ export function useReorderFutureObjectives() {
             })
             .sort((a, b) => a.position - b.position)
         };
-        qc.setQueryData(keys.ticket(vars.ticketId), next);
+        qc.setQueryData(keys.mission(vars.missionId), next);
       }
       return { previous };
     },
     onError: (_err, vars, context) => {
       if (context?.previous) {
-        qc.setQueryData(keys.ticket(vars.ticketId), context.previous);
+        qc.setQueryData(keys.mission(vars.missionId), context.previous);
       }
     },
     onSettled: (_data, _err, vars) => {
-      void qc.invalidateQueries({ queryKey: keys.ticket(vars.ticketId) });
+      void qc.invalidateQueries({ queryKey: keys.mission(vars.missionId) });
     }
   });
 }

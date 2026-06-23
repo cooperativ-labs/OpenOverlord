@@ -1,7 +1,7 @@
 # Desktop App Module — Integration Plan
 
-**Status:** Proposal (planning only — no code in this ticket)
-**Ticket:** 1:1493 — Plan Desktop App Module Integration
+**Status:** Proposal (planning only — no code in this mission)
+**Mission:** 1:1493 — Plan Desktop App Module Integration
 **Contract baseline:** `0.5-draft`
 **Owning module (proposed):** `desktop/` → `@overlord/desktop` workspace package
 
@@ -28,7 +28,7 @@ Two deliberate departures from the closed-source `apps/desktop`:
    credential the auth module already specifies) instead of an OAuth access
    token.
 
-2. **Terminal/plugin/agent-install settings stay in the CLI** (per the ticket).
+2. **Terminal/plugin/agent-install settings stay in the CLI** (per the mission).
    The desktop module owns no terminal-config UI and no AppleScript terminal
    matrix. Instead it makes the **existing CLI/runner launch path** actually
    open a visible terminal window — which is the one real capability gap today
@@ -44,7 +44,7 @@ implementation plan with concrete follow-up objectives.
 ## 2. How the closed Overlord `apps/desktop` works
 
 Source: `github.com/cooperativ-labs/Overlord/tree/main/apps/desktop` (read for
-this ticket). Layout:
+this mission). Layout:
 
 ```
 apps/desktop/
@@ -86,7 +86,7 @@ Key behaviors that matter for our port:
   The renderer calls `electronAPI.launchAgent(payload)` →
   `ipcMain.handle('terminal:launch-agent')`. `prepareAgentLaunch()` resolves an
   OAuth bearer token, validates the working directory, and builds an
-  **`ovld launch <agent> --ticket-id … --working-directory …`** command plus an
+  **`ovld launch <agent> --mission-id … --working-directory …`** command plus an
   env block (`OVERLORD_URL`, `OVERLORD_CONNECTOR_URL`, `OVERLORD_ACCESS_TOKEN`,
   `OVERLORD_LOCAL_SECRET`, `OVERLORD_ORGANIZATION_ID`). `terminal.ts` writes a
   guarded bash launch script to a temp file and **opens a visible terminal
@@ -246,7 +246,7 @@ not exist yet**.
 
 ### 6.2 Recommended approach — put terminal-opening in the CLI/runner
 
-This respects the ticket ("leave terminal settings in the CLI") and the contract
+This respects the mission ("leave terminal settings in the CLI") and the contract
 (CLI owns "Default terminal configuration"; the Runner owns launch/execution),
 and it benefits non-desktop users too (anyone running `ovld runner`).
 
@@ -277,7 +277,7 @@ and it benefits non-desktop users too (anyone running `ovld runner`).
 We *could* port `ipc/terminal.ts` + `services/agent-launcher.ts` into
 `desktop/src/ipc/launch.ts` and have Electron open the terminal (AppleScript
 matrix etc.). **Not recommended as the primary path:** it duplicates terminal
-configuration **outside** the CLI (contradicting the ticket), is macOS-centric,
+configuration **outside** the CLI (contradicting the mission), is macOS-centric,
 and leaves non-desktop runner users without window-opening. Keep it in our back
 pocket only if we must ship the desktop shell before touching the CLI.
 
@@ -433,7 +433,7 @@ Mirror the closed app's proven setup, scaled down:
 
 ## 11. Phased implementation plan (proposed follow-up objectives)
 
-Each phase is a candidate objective/ticket. Phases 0–2 deliver a usable wrapper;
+Each phase is a candidate objective/mission. Phases 0–2 deliver a usable wrapper;
 3–5 make it a polished product.
 
 - **Phase 0 — Contract + scaffold.**
@@ -457,7 +457,7 @@ Each phase is a candidate objective/ticket. Phases 0–2 deliver a usable wrappe
   Desktop supervises a runner (`runner-supervisor.ts`) so clicking **Launch** in
   the SPA opens a real terminal with the agent. Add `terminal:choose-directory`.
   **Acceptance:** from the desktop app, launching an objective opens the
-  configured terminal running `ovld launch <agent> --ticket-id …` in the
+  configured terminal running `ovld launch <agent> --mission-id …` in the
   project directory; `--dry-run` proves the command/script shape in tests.
 
 - **Phase 3 — `ovld serve` + server supervision.**

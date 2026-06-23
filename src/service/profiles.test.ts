@@ -11,7 +11,7 @@ import {
 import { createProject } from './projects.js';
 import { attachSession } from './protocol.js';
 import { seedServiceOperator } from './test-helpers.js';
-import { createTicketWithObjectives } from './tickets.js';
+import { createMissionWithObjectives } from './missions.js';
 
 describe('profile metadata helpers', () => {
   it('round-trips agent instructions through metadata_json', () => {
@@ -47,14 +47,14 @@ describe('promptContext custom agent instructions', () => {
     );
 
     const project = createProject({ ctx, name: 'Custom Instructions' });
-    const { ticket, objectives } = createTicketWithObjectives({
+    const { mission, objectives } = createMissionWithObjectives({
       ctx,
       projectId: project.id,
       objectives: [{ objective: 'Verify custom instructions' }]
     });
     ctx.db.prepare(`UPDATE objectives SET state = 'submitted' WHERE id = ?`).run(objectives[0]?.id);
 
-    const attached = attachSession({ ctx, ticketId: ticket.id });
+    const attached = attachSession({ ctx, missionId: mission.id });
     assert.match(attached.promptContext, /## Additional Instructions/);
     assert.match(attached.promptContext, /Prefer yarn over npm\./);
 

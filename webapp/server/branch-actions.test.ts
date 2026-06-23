@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 
-// Exercises the on-demand branch actions (POST /api/tickets/:id/branch/action) end
+// Exercises the on-demand branch actions (POST /api/missions/:id/branch/action) end
 // to end against real git repos with a bare "origin": integrate (Action A) advances
 // the local parent (→ merged_unpushed), push_parent (Action B) publishes it (→
 // merged), conflicts are surfaced and left in the worktree, and publish pushes the
@@ -62,7 +62,7 @@ describe('branch actions', () => {
     const { worktreeRoot, api, runner, primary } = await setup();
     const project = api.createProject({ name: 'Branch Actions Test' });
     api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
-    const ticket = api.createTicket({ projectId: project.id, firstObjective: 'Work' });
+    const mission = api.createMission({ projectId: project.id, firstObjective: 'Work' });
 
     // Branch cut from main with its own commit, in its own worktree.
     const branchName = 'overlord/feat-1';
@@ -78,19 +78,19 @@ describe('branch actions', () => {
     git(primary, ['commit', '-q', '-m', 'parent advances']);
 
     runner.recordBranchPrepared({
-      ticketId: ticket.displayId,
+      missionId: mission.displayId,
       payload: { branchName, baseBranch: 'main', worktreePath, action: 'create', cycle: 1 }
     });
-    assert.equal(api.getTicketDetail(ticket.id).branch?.status, 'created');
+    assert.equal(api.getMissionDetail(mission.id).branch?.status, 'created');
 
     // Action A: integrate → local main contains the branch, not pushed.
-    const afterIntegrate = api.performBranchAction(ticket.id, { action: 'integrate' });
+    const afterIntegrate = api.performBranchAction(mission.id, { action: 'integrate' });
     assert.equal(afterIntegrate.branch?.status, 'merged_unpushed');
     // Local main now contains the branch's file, via a merge commit (parent diverged).
     assert.equal(git(primary, ['rev-list', '--count', `origin/main..main`]) !== '0', true);
 
     // Action B: push parent → origin/main contains the branch ⇒ merged.
-    const afterPush = api.performBranchAction(ticket.id, { action: 'push_parent' });
+    const afterPush = api.performBranchAction(mission.id, { action: 'push_parent' });
     assert.equal(afterPush.branch?.status, 'merged');
     assert.equal(git(primary, ['rev-list', '--count', `origin/main..main`]), '0');
   });
@@ -99,7 +99,7 @@ describe('branch actions', () => {
     const { worktreeRoot, api, runner, primary } = await setup();
     const project = api.createProject({ name: 'Conflict Test' });
     api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
-    const ticket = api.createTicket({ projectId: project.id, firstObjective: 'Work' });
+    const mission = api.createMission({ projectId: project.id, firstObjective: 'Work' });
 
     const branchName = 'overlord/conflict-1';
     const worktreePath = path.join(worktreeRoot, project.slug, branchLeaf(branchName));
@@ -113,12 +113,12 @@ describe('branch actions', () => {
     git(primary, ['commit', '-q', '-m', 'parent edit']);
 
     runner.recordBranchPrepared({
-      ticketId: ticket.displayId,
+      missionId: mission.displayId,
       payload: { branchName, baseBranch: 'main', worktreePath, action: 'create', cycle: 1 }
     });
 
     assert.throws(
-      () => api.performBranchAction(ticket.id, { action: 'integrate' }),
+      () => api.performBranchAction(mission.id, { action: 'integrate' }),
       (err: unknown) => (err as { code?: string }).code === 'BRANCH_MERGE_CONFLICT'
     );
     // The conflicted merge is left in place for IDE resolution.
@@ -130,7 +130,7 @@ describe('branch actions', () => {
     const { worktreeRoot, api, runner, primary } = await setup();
     const project = api.createProject({ name: 'Commit Test' });
     api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
-    const ticket = api.createTicket({ projectId: project.id, firstObjective: 'Work' });
+    const mission = api.createMission({ projectId: project.id, firstObjective: 'Work' });
 
     const branchName = 'feat-commit-1';
     const worktreePath = path.join(worktreeRoot, project.slug, branchLeaf(branchName));
@@ -139,12 +139,12 @@ describe('branch actions', () => {
     writeFileSync(path.join(worktreePath, 'b.txt'), 'b\n');
 
     runner.recordBranchPrepared({
-      ticketId: ticket.displayId,
+      missionId: mission.displayId,
       payload: { branchName, baseBranch: 'main', worktreePath, action: 'create', cycle: 1 }
     });
-    assert.equal(api.getTicketDetail(ticket.id).branch?.dirty, true);
+    assert.equal(api.getMissionDetail(mission.id).branch?.dirty, true);
 
-    const after = api.performBranchAction(ticket.id, {
+    const after = api.performBranchAction(mission.id, {
       action: 'commit',
       message: 'Add b.txt'
     });
@@ -158,26 +158,26 @@ describe('branch actions', () => {
     const { worktreeRoot, api, runner, primary } = await setup();
     const project = api.createProject({ name: 'Commit Guard Test' });
     api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
-    const ticket = api.createTicket({ projectId: project.id, firstObjective: 'Work' });
+    const mission = api.createMission({ projectId: project.id, firstObjective: 'Work' });
 
     const branchName = 'feat-commit-2';
     const worktreePath = path.join(worktreeRoot, project.slug, branchLeaf(branchName));
     git(primary, ['worktree', 'add', '-q', '-b', branchName, worktreePath, 'main']);
     writeFileSync(path.join(worktreePath, 'b.txt'), 'b\n');
     runner.recordBranchPrepared({
-      ticketId: ticket.displayId,
+      missionId: mission.displayId,
       payload: { branchName, baseBranch: 'main', worktreePath, action: 'create', cycle: 1 }
     });
 
     assert.throws(
-      () => api.performBranchAction(ticket.id, { action: 'commit', message: '   ' }),
+      () => api.performBranchAction(mission.id, { action: 'commit', message: '   ' }),
       (err: unknown) => (err as { code?: string }).code === 'BRANCH_COMMIT_MESSAGE_REQUIRED'
     );
 
     // Commit it, then a second commit attempt finds nothing to commit.
-    api.performBranchAction(ticket.id, { action: 'commit', message: 'Add b.txt' });
+    api.performBranchAction(mission.id, { action: 'commit', message: 'Add b.txt' });
     assert.throws(
-      () => api.performBranchAction(ticket.id, { action: 'commit', message: 'again' }),
+      () => api.performBranchAction(mission.id, { action: 'commit', message: 'again' }),
       (err: unknown) => (err as { code?: string }).code === 'BRANCH_NOTHING_TO_COMMIT'
     );
   });
@@ -186,7 +186,7 @@ describe('branch actions', () => {
     const { worktreeRoot, api, runner, primary } = await setup();
     const project = api.createProject({ name: 'Publish Test' });
     api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
-    const ticket = api.createTicket({ projectId: project.id, firstObjective: 'Work' });
+    const mission = api.createMission({ projectId: project.id, firstObjective: 'Work' });
 
     const branchName = 'overlord/publish-1';
     const worktreePath = path.join(worktreeRoot, project.slug, branchLeaf(branchName));
@@ -196,12 +196,12 @@ describe('branch actions', () => {
     git(worktreePath, ['commit', '-q', '-m', 'work']);
 
     runner.recordBranchPrepared({
-      ticketId: ticket.displayId,
+      missionId: mission.displayId,
       payload: { branchName, baseBranch: 'main', worktreePath, action: 'create', cycle: 1 }
     });
-    assert.equal(api.getTicketDetail(ticket.id).branch?.status, 'created');
+    assert.equal(api.getMissionDetail(mission.id).branch?.status, 'created');
 
-    const afterPublish = api.performBranchAction(ticket.id, { action: 'publish' });
+    const afterPublish = api.performBranchAction(mission.id, { action: 'publish' });
     assert.equal(afterPublish.branch?.status, 'published');
   });
 });

@@ -3,7 +3,7 @@ import { type Permission, PERMISSIONS } from '@overlord/auth';
 import type { ServiceContext } from '../../src/service/context.ts';
 import { discoverProject } from '../../src/service/projects.ts';
 import {
-  addObjectivesToTicket,
+  addObjectivesToMission,
   askQuestion,
   attachSession,
   authStatus,
@@ -13,13 +13,13 @@ import {
   discussObjective,
   heartbeatSession,
   listSharedContext,
-  loadTicketContext,
+  loadMissionContext,
   protocolCreate,
   protocolPrompt,
   recordHookEvent,
   recordWork,
   resumeFollowUp,
-  searchTickets,
+  searchMissions,
   updateSession,
   writeSharedContext
 } from '../../src/service/protocol.ts';
@@ -209,7 +209,7 @@ const handlers: Record<string, Handler> = {
   attach: (ctx, body) =>
     attachSession({
       ctx,
-      ticketId: requireFlag(body, '--ticket-id'),
+      missionId: requireFlag(body, '--mission-id'),
       agentIdentifier: strFlag(body, '--agent') ?? 'unknown',
       modelIdentifier: strFlag(body, '--model') ?? null,
       existingSessionKey: strFlag(body, '--session-key') ?? null,
@@ -219,7 +219,7 @@ const handlers: Record<string, Handler> = {
   update: (ctx, body) =>
     updateSession({
       ctx,
-      ticketId: requireFlag(body, '--ticket-id'),
+      missionId: requireFlag(body, '--mission-id'),
       sessionKey: requireFlag(body, '--session-key'),
       summary: resolveInput(body, '--summary', '--summary-file') ?? '',
       phase: strFlag(body, '--phase') ?? null,
@@ -248,7 +248,7 @@ const handlers: Record<string, Handler> = {
   heartbeat: (ctx, body) =>
     heartbeatSession({
       ctx,
-      ticketId: requireFlag(body, '--ticket-id'),
+      missionId: requireFlag(body, '--mission-id'),
       sessionKey: requireFlag(body, '--session-key'),
       phase: strFlag(body, '--phase') ?? null,
       note: strFlag(body, '--note') ?? null
@@ -257,7 +257,7 @@ const handlers: Record<string, Handler> = {
   ask: (ctx, body) =>
     askQuestion({
       ctx,
-      ticketId: requireFlag(body, '--ticket-id'),
+      missionId: requireFlag(body, '--mission-id'),
       sessionKey: requireFlag(body, '--session-key'),
       question: resolveInput(body, '--question', '--question-file') ?? ''
     }),
@@ -265,7 +265,7 @@ const handlers: Record<string, Handler> = {
   deliver: (ctx, body) =>
     deliverSession({
       ctx,
-      ticketId: requireFlag(body, '--ticket-id'),
+      missionId: requireFlag(body, '--mission-id'),
       sessionKey: requireFlag(body, '--session-key'),
       summary: resolveInput(body, '--summary', '--summary-file') ?? '',
       artifacts: parseJsonInput<ArtifactInput[]>(body, '--artifacts', '--artifacts-file') ?? [],
@@ -293,7 +293,7 @@ const handlers: Record<string, Handler> = {
   'hook-event': (ctx, body) =>
     recordHookEvent({
       ctx,
-      ticketId: requireFlag(body, '--ticket-id'),
+      missionId: requireFlag(body, '--mission-id'),
       hookType: requireFlag(body, '--hook-type'),
       prompt: resolveInput(body, '--prompt', '--prompt-file') ?? '',
       sessionKey: strFlag(body, '--session-key') ?? null,
@@ -304,7 +304,7 @@ const handlers: Record<string, Handler> = {
   'resume-follow-up': (ctx, body) =>
     resumeFollowUp({
       ctx,
-      ticketId: requireFlag(body, '--ticket-id'),
+      missionId: requireFlag(body, '--mission-id'),
       objectiveId: strFlag(body, '--objective-id') ?? null,
       agentIdentifier: strFlag(body, '--agent') ?? 'unknown',
       modelIdentifier: strFlag(body, '--model') ?? null,
@@ -312,7 +312,7 @@ const handlers: Record<string, Handler> = {
       summary: resolveInput(body, '--summary', '--summary-file') ?? null
     }),
 
-  // Ticket creation and discovery -----------------------------------------
+  // Mission creation and discovery -----------------------------------------
   create: (ctx, body) =>
     protocolCreate({
       ctx,
@@ -332,18 +332,18 @@ const handlers: Record<string, Handler> = {
     }),
 
   'load-context': (ctx, body) =>
-    loadTicketContext({ ctx, ticketId: requireFlag(body, '--ticket-id') }),
+    loadMissionContext({ ctx, missionId: requireFlag(body, '--mission-id') }),
 
   connect: (ctx, body) =>
     connectSession({
       ctx,
-      ticketId: requireFlag(body, '--ticket-id'),
+      missionId: requireFlag(body, '--mission-id'),
       agentIdentifier: strFlag(body, '--agent') ?? 'unknown',
       externalSessionId: externalSessionId(body)
     }),
 
-  'search-tickets': (ctx, body) =>
-    searchTickets({
+  'search-missions': (ctx, body) =>
+    searchMissions({
       ctx,
       query: strFlag(body, '--query') ?? null,
       statusTypes: csvFlag(body, '--status') ?? null,
@@ -352,12 +352,12 @@ const handlers: Record<string, Handler> = {
     }),
 
   'discuss-objective': (ctx, body) =>
-    discussObjective({ ctx, ticketId: requireFlag(body, '--ticket-id') }),
+    discussObjective({ ctx, missionId: requireFlag(body, '--mission-id') }),
 
   'add-objectives': (ctx, body) =>
-    addObjectivesToTicket({
+    addObjectivesToMission({
       ctx,
-      ticketId: requireFlag(body, '--ticket-id'),
+      missionId: requireFlag(body, '--mission-id'),
       objectives:
         parseJsonInput<Array<{ objective: string; title?: string | null }>>(
           body,
@@ -386,7 +386,7 @@ const handlers: Record<string, Handler> = {
   'read-context': (ctx, body) =>
     listSharedContext({
       ctx,
-      ticketId: requireFlag(body, '--ticket-id'),
+      missionId: requireFlag(body, '--mission-id'),
       keySubstring: strFlag(body, '--key') ?? null,
       limit: intFlag(body, '--limit') ?? 50
     }),
@@ -396,14 +396,14 @@ const handlers: Record<string, Handler> = {
     const value = valueJson !== undefined ? valueJson : (strFlag(body, '--value') ?? '');
     return writeSharedContext({
       ctx,
-      ticketId: requireFlag(body, '--ticket-id'),
+      missionId: requireFlag(body, '--mission-id'),
       key: requireFlag(body, '--key'),
       value
     });
   },
 
   'attachment-list': (ctx, body) =>
-    loadTicketContext({ ctx, ticketId: requireFlag(body, '--ticket-id') }).attachments,
+    loadMissionContext({ ctx, missionId: requireFlag(body, '--mission-id') }).attachments,
 
   // Auth and discovery -----------------------------------------------------
   'auth-status': ctx => authStatus({ ctx }),
@@ -423,7 +423,7 @@ const handlers: Record<string, Handler> = {
 /**
  * RBAC permission each protocol subcommand requires. Enforced before dispatch so
  * a scoped `USER_TOKEN` (and any under-privileged actor) is rejected uniformly —
- * the `ticket_lifecycle` scope grants exactly the set used here. `auth-status` is
+ * the `mission_lifecycle` scope grants exactly the set used here. `auth-status` is
  * intentionally ungated so any authenticated actor can check who it is.
  */
 const SUBCOMMAND_PERMISSIONS: Record<string, Permission | null> = {
@@ -434,16 +434,16 @@ const SUBCOMMAND_PERMISSIONS: Record<string, Permission | null> = {
   deliver: PERMISSIONS.EVENT_CREATE,
   'hook-event': PERMISSIONS.EVENT_CREATE,
   'resume-follow-up': PERMISSIONS.SESSION_ATTACH,
-  create: PERMISSIONS.TICKET_CREATE,
-  prompt: PERMISSIONS.TICKET_CREATE,
-  'load-context': PERMISSIONS.TICKET_READ,
+  create: PERMISSIONS.MISSION_CREATE,
+  prompt: PERMISSIONS.MISSION_CREATE,
+  'load-context': PERMISSIONS.MISSION_READ,
   connect: PERMISSIONS.SESSION_ATTACH,
-  'search-tickets': PERMISSIONS.TICKET_READ,
+  'search-missions': PERMISSIONS.MISSION_READ,
   'discuss-objective': PERMISSIONS.OBJECTIVE_SUBMIT,
   'add-objectives': PERMISSIONS.OBJECTIVE_UPDATE,
-  'record-work': PERMISSIONS.TICKET_CREATE,
-  'read-context': PERMISSIONS.TICKET_READ,
-  'write-context': PERMISSIONS.TICKET_UPDATE,
+  'record-work': PERMISSIONS.MISSION_CREATE,
+  'read-context': PERMISSIONS.MISSION_READ,
+  'write-context': PERMISSIONS.MISSION_UPDATE,
   'attachment-list': PERMISSIONS.ARTIFACT_READ,
   'auth-status': null,
   'discover-project': PERMISSIONS.PROJECT_READ,

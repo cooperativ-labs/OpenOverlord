@@ -79,7 +79,7 @@ export function AppSidebar() {
   }, [projects.data]);
 
   const pathname = useRouterState({ select: state => state.location.pathname });
-  const isMyTicketsActive = pathname === '/workspace' || pathname.startsWith('/workspace/');
+  const isMyMissionsActive = pathname === '/workspace' || pathname.startsWith('/workspace/');
 
   // On macOS the shell insets the traffic lights at (14, 14), which sit over the
   // top-left of the sidebar. Reserve vertical room for them and make the cleared
@@ -105,11 +105,11 @@ export function AppSidebar() {
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     render={<Link to="/workspace" />}
-                    isActive={isMyTicketsActive}
-                    tooltip="My Tickets"
+                    isActive={isMyMissionsActive}
+                    tooltip="My Missions"
                   >
                     <Inbox />
-                    <span>My Tickets</span>
+                    <span>My Missions</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>

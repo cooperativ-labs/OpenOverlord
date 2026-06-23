@@ -128,10 +128,10 @@ introduces a small shared toolkit (no third-party deps):
 
 - **`database/test/harness.ts`** — `withAdapter(fn)` runs `fn(db)` once per
   adapter (SQLite always; Postgres when configured), applying all migrations to a
-  fresh database and seeding the default local workspace/user/statuses/ticket
+  fresh database and seeding the default local workspace/user/statuses/mission
   sequence. This is the single entry point for every L2/L3 test that needs a DB.
 - **`database/test/factories.ts`** — builder functions (`makeProject`,
-  `makeTicket`, `makeObjective`, `makeSession`, …) that create valid rows through
+  `makeMission`, `makeObjective`, `makeSession`, …) that create valid rows through
   the **service layer**, never via raw inserts, so factories themselves exercise
   the sanctioned surface.
 - **`contract/conformance/loaders.ts`** — parse `CONTRACT.md` tables and every
@@ -178,14 +178,14 @@ Closed vocabularies in `contract/extension-points.yaml` are the source of truth.
 - **DB ↔ contract parity:** parse the `CHECK (... IN (...))` constraints from the
   SQLite and Postgres migrations and assert each closed-vocab column's allowed set
   **equals** the contract list (e.g. `objectives.state`, `execution_requests.status`,
-  `project_statuses.type`, `ticket_events.type`, `permission_requests.status`,
+  `project_statuses.type`, `mission_events.type`, `permission_requests.status`,
   `idempotency_keys.status`, `audit_log.result`, `agent_sessions.delivery_state`).
   A value added to one side but not the other fails this test.
 - **Closed-set rejection:** the service layer rejects writes with a value outside
   the closed set (both adapters), and the rejection surfaces as a domain error,
   not a raw DB constraint error leaking to the caller.
 - **Open-vocab namespacing:** extension-supplied open-vocab values
-  (`artifacts.type`, `ticket_events.source`, `entity_changes.entity_type/source`,
+  (`artifacts.type`, `mission_events.source`, `entity_changes.entity_type/source`,
   `outbox_messages.topic`, `worker_jobs.type`, RBAC permission names,
   connector identifiers) must be namespaced when not a documented core value.
 
@@ -198,7 +198,7 @@ These tests prove components only talk through sanctioned surfaces:
   Kysely `insertInto`/`updateTable`/`deleteFrom`) outside `database/` service
   modules and fails on any hit. Mirrors the contract rule "No direct table writes
   from protocol handlers."
-- **Auth never writes core tables.** Auth-layer source must not mutate `tickets`,
+- **Auth never writes core tables.** Auth-layer source must not mutate `missions`,
   `projects`, `objectives`, etc. (contract: "Auth Layer must not write to core
   domain tables").
 - **Auth-internal tables are private.** No module outside `auth/`/`auth/src/auth`
@@ -206,7 +206,7 @@ These tests prove components only talk through sanctioned surfaces:
 - **Hook scripts use protocol only.** `connectors/**/scripts/*.sh` must invoke
   `ovld protocol …` and contain no DB connection strings or SQL.
 - **Same service layer for every surface.** A test asserts CLI, Protocol, and REST
-  create-ticket paths all converge on the identical service function (by reference,
+  create-mission paths all converge on the identical service function (by reference,
   not duplication).
 
 ### 3.4 Contract drift guard
@@ -233,10 +233,10 @@ Asserts the live CLI matches `contract/protocol-commands.yaml`:
 - `attach` output satisfies `attach-response-v1`: all `requiredTopLevelFields`
   present, `session` has `sessionKey`+`state`, `objectives[]` have
   `id/objective/state/position`, and `promptContext` contains every
-  `promptContextRequiredContent` item (task title, ticket ID, objective ID,
+  `promptContextRequiredContent` item (task title, mission ID, objective ID,
   objective text, recent activity, required protocol workflow instructions).
 - Declared `sideEffects` happen and undeclared ones do not — e.g. `heartbeat`
-  updates session liveness but creates **no** `ticket_events` row.
+  updates session liveness but creates **no** `mission_events` row.
 - `validPhases`/`validEventTypes` are enforced; out-of-set values are rejected.
 
 ### 3.6 State-machine conformance
@@ -247,7 +247,7 @@ layer (both adapters):
 - `objectives.state`: legal path `future → draft → submitted → launching →
   executing → complete`; `executing → pending_delivery` only after a prior
   delivery begins follow-up; illegal jumps rejected; reopen requires an explicit
-  follow-up/admin transition that records a `ticket_events` row.
+  follow-up/admin transition that records a `mission_events` row.
 - `execution_requests.status`: `queued → claimed → launching → launched`;
   terminal states (`failed/cleared/cancelled/expired`) are sinks.
 - `project_statuses.type`: exactly one active `execute`, one active `review`, and
@@ -286,7 +286,7 @@ checklist for "rigorous about contract adherence."
 | components.yaml `connectorToProtocol` | Hooks use protocol only, no DB | L3 | `conformance/boundaries` |
 | protocol-commands.yaml | Required flags / session-key / phases / event types | L3+L4 | `conformance/protocol`, `cli/test/e2e` |
 | protocol-commands.yaml `attach-response-v1` | Response shape + promptContext content | L3 | `conformance/protocol` |
-| protocol-commands.yaml `heartbeat` | No `ticket_events` row created | L2 | `cli` |
+| protocol-commands.yaml `heartbeat` | No `mission_events` row created | L2 | `cli` |
 | extension-points.yaml closed vocab | DB CHECK == contract list | L3 | `conformance/vocab` |
 | extension-points.yaml transitions | Objective/exec/status state machines | L3 | `conformance/state` |
 | extension-points.yaml capabilities/hooks | Manifest values within approved sets | L3 | `conformance/manifest` |
@@ -342,7 +342,7 @@ ships its tests with its code — never after.
 | Phase | Implementation focus | Tests that land with it |
 | --- | --- | --- |
 | 0 | Skeleton, config, SQLite connection, schema source | L0 contract/manifest validation; `withAdapter` harness; migration-applies test |
-| 1 | CLI ticket management, seed | L2 service-layer CRUD; ticket-sequence; L4 `ovld` smoke |
+| 1 | CLI mission management, seed | L2 service-layer CRUD; mission-sequence; L4 `ovld` smoke |
 | 2 | Agent protocol MVP | L3 protocol-surface + attach-response; rationale-on-deliver; state machine (objectives) |
 | 3 | Local launch + runner | L3 runner queue atomicity; execution_requests state machine |
 | 4 | Review features | L2 artifacts/rationales/shared-context; record-work without session |

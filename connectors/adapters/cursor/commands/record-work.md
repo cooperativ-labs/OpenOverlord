@@ -1,4 +1,4 @@
-Immediately record the work you just completed in this chat as a new Overlord ticket via `ovld protocol record-work`. No agent session is opened — the work is already done.
+Immediately record the work you just completed in this chat as a new Overlord mission via `ovld protocol record-work`. No agent session is opened — the work is already done.
 
 Synthesize from the current conversation:
 - `objective`: what was asked / what was done.
@@ -10,6 +10,6 @@ If text was provided after `/record-work`, treat it as additional context for th
 
 Run `ovld protocol record-work --payload-file -` and stream the JSON payload `{ "objective": "...", "summary": "...", "artifacts": [...], "changeRationales": [...] }` on stdin via a single-quoted heredoc.
 
-After the command succeeds, report the new TICKET_ID.
+After the command succeeds, report the new MISSION_ID.
 
 Do NOT use for in-progress work — use `/prompt` for that.

@@ -14,20 +14,20 @@ Its closest analogues are Linear, GitHub Projects, and a local ops console. The
 mental model the UI must make obvious:
 
 ```
-Project  ──contains──▶  Tickets  ──contain──▶  Objectives  ──map 1:1──▶  Agent Sessions
+Project  ──contains──▶  Missions  ──contain──▶  Objectives  ──map 1:1──▶  Agent Sessions
    │                       │                        │                          │
  git repo +            durable goal +          one agent pass            live attach → deliver
  resources            shared context          (ordered, stateful)        (updates, asks, artifacts)
 ```
 
-The first screen after launch is the **operational ticket/project UI**, never a
+The first screen after launch is the **operational mission/project UI**, never a
 marketing or login page (auth is optional and capability-gated). The home route
-resolves to the active project's ticket board.
+resolves to the active project's mission board.
 
 ### Design tenets
 
 1. **Mirror the workflow, not the database.** Surfaces are organized around
-   Project → Ticket → Objective → Session/Review, the same units the CLI uses.
+   Project → Mission → Objective → Session/Review, the same units the CLI uses.
 2. **Live by default.** Anything an agent is actively changing animates in place.
    A user watching an executing objective should never need to refresh.
 3. **Every empty state names the next action** — a UI button or the exact `ovld`
@@ -54,7 +54,7 @@ A persistent three-region shell wraps all authenticated/operational routes.
 │ SIDEBAR      │ MAIN (router outlet)                                         │
 │              │                                                              │
 │  ▸ Board     │   <page content — board / detail / review / settings>        │
-│  ▸ Tickets   │                                                              │
+│  ▸ Missions   │                                                              │
 │  ▸ Changes   │                                                              │
 │  ▸ Runner    │                                                              │
 │  ▸ Connectors│                                                              │
@@ -74,7 +74,7 @@ A persistent three-region shell wraps all authenticated/operational routes.
   launches), and connectivity to the realtime stream.
 - **Sidebar** is primary navigation, scoped to the active project. Capability-gated
   items (e.g. multi-user admin) only appear when their table group is installed.
-- **Main** is the router outlet. Detail views (ticket, review) open as full routes,
+- **Main** is the router outlet. Detail views (mission, review) open as full routes,
   not modals, so they are deep-linkable and survive reload.
 
 The shell collapses to a single column under ~960px: the sidebar becomes a
@@ -86,17 +86,17 @@ slide-over, the topbar keeps the project switcher, search, and status cluster.
 
 Routing uses **TanStack Router** with typed params and search-param state. URL is
 the source of truth for "where am I and what am I filtering," so every board
-filter, selected ticket, and open tab is deep-linkable and reload-safe.
+filter, selected mission, and open tab is deep-linkable and reload-safe.
 
 ```
 /                                   → redirect to /p/:activeProjectId/board
-/p/:projectId/board                 → Ticket Board (kanban)        [doc 02]
-/p/:projectId/board?view=list       → Ticket Board (list view)     [doc 02]
-/p/:projectId/tickets/:ticketId     → Ticket Detail                [doc 03]
-   …/tickets/:ticketId?tab=activity|objectives|context|artifacts|changes
-   …/tickets/:ticketId/review       → Review & Delivery            [doc 05]
+/p/:projectId/board                 → Mission Board (kanban)        [doc 02]
+/p/:projectId/board?view=list       → Mission Board (list view)     [doc 02]
+/p/:projectId/missions/:missionId     → Mission Detail                [doc 03]
+   …/missions/:missionId?tab=activity|objectives|context|artifacts|changes
+   …/missions/:missionId/review       → Review & Delivery            [doc 05]
 /p/:projectId/changes               → Current Changes               [doc 06]
-   …/changes?ticketId=&objectiveId=&path=
+   …/changes?missionId=&objectiveId=&path=
 /p/:projectId/runner                → Execution & Runner queue      [doc 04]
 /p/:projectId/settings             → Project Settings              [doc 01]
 /connectors                         → Connectors & Doctor           [doc 07]
@@ -111,7 +111,7 @@ Notes:
 - `:projectId` is part of the path so a project is always in scope; the project
   switcher rewrites the current route to the equivalent route in another project
   when possible, otherwise drops to that project's board.
-- Ticket detail uses a `tab` search param rather than nested routes for its inner
+- Mission detail uses a `tab` search param rather than nested routes for its inner
   tabs so a deep link restores the exact sub-view.
 - `/connectors`, `/settings`, and `/search` are workspace-scoped (not project-scoped)
   and live below the divider in the sidebar.
@@ -127,9 +127,9 @@ cache over the REST boundary** with a **change-feed-driven invalidation layer**.
 
 From the [REST API Boundary](../../../database/docs/09-database-schema-contract.md#rest-api-boundary):
 
-- `GET /projects`, `GET/POST /tickets`, `GET /tickets/:id`,
-  `GET/POST /tickets/:id/objectives`, `GET /tickets/:id/events`,
-  `GET /tickets/:id/context`, `GET /tickets/:id/deliveries`
+- `GET /projects`, `GET/POST /missions`, `GET /missions/:id`,
+  `GET/POST /missions/:id/objectives`, `GET /missions/:id/events`,
+  `GET /missions/:id/context`, `GET /missions/:id/deliveries`
 - `POST /protocol/*` — endpoints mirroring `ovld protocol` (create, prompt,
   add-objectives, discuss-objective, update, ask, deliver, write-context,
   request-execution, clear-execution-requests, …)
@@ -145,7 +145,7 @@ enumerated in the documented REST API Boundary and should be added to it (they a
 owned by the `rest` module and fit the existing boundary — they expose domain
 resources, not raw tables):
 
-- `GET /tickets/:id/changes` — `changed_files` + `change_rationales` for review/coverage
+- `GET /missions/:id/changes` — `changed_files` + `change_rationales` for review/coverage
   (docs 05, 06).
 - `GET /runner/status` and `GET /execution-requests?projectId=` — runner identity and
   queue (doc 04).
@@ -165,12 +165,12 @@ Query keys mirror the resource hierarchy so invalidation is precise:
 ```
 ['projects']
 ['project', projectId]
-['tickets', projectId, filtersHash]          // board / list
-['ticket', ticketId]                          // header + objectives + status
-['ticket', ticketId, 'events']                // activity timeline (append-only)
-['ticket', ticketId, 'context']               // shared context entries
-['ticket', ticketId, 'deliveries']            // delivery + artifacts + rationales
-['ticket', ticketId, 'changes']               // changed_files + coverage
+['missions', projectId, filtersHash]          // board / list
+['mission', missionId]                          // header + objectives + status
+['mission', missionId, 'events']                // activity timeline (append-only)
+['mission', missionId, 'context']               // shared context entries
+['mission', missionId, 'deliveries']            // delivery + artifacts + rationales
+['mission', missionId, 'changes']               // changed_files + coverage
 ['executionRequests', projectId]              // runner queue
 ['runner', 'status']                          // local device + queue summary
 ['connectors']                                // doctor / installations  (gated G4)
@@ -178,12 +178,12 @@ Query keys mirror the resource hierarchy so invalidation is precise:
 ```
 
 - **Lists** are normalized by id; detail fetches hydrate the same entities.
-- **Mutations** (create ticket, add objective, request execution, ask, deliver…)
+- **Mutations** (create mission, add objective, request execution, ask, deliver…)
   POST to `/protocol/*` and, on success, the server returns the authoritative
   `revision` and the latest change `seq`. The mutation updates the cache and
   reconciles against the next change-feed delta.
 - **Optimistic UI** is allowed only for low-risk edits (objective text/title/order,
-  ticket title) and always reconciled against the returned revision; lifecycle
+  mission title) and always reconciled against the returned revision; lifecycle
   transitions are never faked optimistically.
 
 ### 4.3 Realtime invalidation loop
@@ -191,14 +191,14 @@ Query keys mirror the resource hierarchy so invalidation is precise:
 ```
  1. Open app → fetch needed lists/details via REST (each carries its entity revision)
  2. Open one /realtime connection for the active workspace
- 3. Server pushes compact entity_changes rows: {entityType, entityId, ticketId,
+ 3. Server pushes compact entity_changes rows: {entityType, entityId, missionId,
     projectId, objectiveId, operation, entityRevision, changedFields, seq}
  4. Client maps each change → affected query keys → invalidate / patch
-       ticket update   → ['ticket', ticketId] + ['tickets', projectId, *]
-       ticket_event    → ['ticket', ticketId, 'events'] (append)
-       objective update→ ['ticket', ticketId]
+       mission update   → ['mission', missionId] + ['missions', projectId, *]
+       mission_event    → ['mission', missionId, 'events'] (append)
+       objective update→ ['mission', missionId]
        execution_request → ['executionRequests', projectId] + ['runner','status']
-       delivery        → ['ticket', ticketId, 'deliveries'] + status badge
+       delivery        → ['mission', missionId, 'deliveries'] + status badge
  5. Track the max applied seq. On reconnect, call /sync/changes?after=<seq>
     to replay missed deltas. If after < minimumRetainedSeq → full resync (refetch).
 ```
@@ -273,15 +273,15 @@ not invent new status words.
 
 | Token | Applies to | Vocabulary values |
 | --- | --- | --- |
-| `status.draft` (neutral/slate) | ticket status, objective `draft`/`future` | `draft`, `next-up` |
-| `status.execute` (blue, animated when live) | ticket `execute`, objective `launching`/`executing` | `execute` |
-| `status.review` (amber) | ticket `review`, objective `pending_delivery` | `review` |
-| `status.complete` (green) | ticket `complete`, objective `complete` | `complete` |
-| `status.blocked` (red) | ticket `blocked`, asks, failed launches | `blocked` |
-| `status.cancelled` (muted) | ticket `cancelled`, `expired`/`cleared` requests | `cancelled` |
+| `status.draft` (neutral/slate) | mission status, objective `draft`/`future` | `draft`, `next-up` |
+| `status.execute` (blue, animated when live) | mission `execute`, objective `launching`/`executing` | `execute` |
+| `status.review` (amber) | mission `review`, objective `pending_delivery` | `review` |
+| `status.complete` (green) | mission `complete`, objective `complete` | `complete` |
+| `status.blocked` (red) | mission `blocked`, asks, failed launches | `blocked` |
+| `status.cancelled` (muted) | mission `cancelled`, `expired`/`cleared` requests | `cancelled` |
 
-Objective state and ticket status are **rendered distinctly** (objective = small
-inline pill on the objective row; ticket status = board column / header badge),
+Objective state and mission status are **rendered distinctly** (objective = small
+inline pill on the objective row; mission status = board column / header badge),
 because the contract separates the two vocabularies.
 
 ### 6.3 Core reusable components
@@ -289,9 +289,9 @@ because the contract separates the two vocabularies.
 These are referenced by name across page docs:
 
 - `StatusBadge`, `ObjectiveStatePill`, `PriorityTag`, `TagChip` (gated G5)
-- `TicketCard` (board) / `TicketRow` (list)
+- `MissionCard` (board) / `MissionRow` (list)
 - `ObjectiveRow` + `ObjectiveEditor`
-- `ActivityTimeline` + `EventItem` (one renderer per `ticket_events.type`)
+- `ActivityTimeline` + `EventItem` (one renderer per `mission_events.type`)
 - `AgentSessionStrip` (live session: agent, model, phase, last heartbeat age)
 - `RunControl` (agent + model + effort picker → request-execution)
 - `ExecutionRequestRow` (queued/claimed/launching/launched/failed)
@@ -325,8 +325,8 @@ Every page document assumes these patterns rather than re-specifying them.
 
 ### Empty
 - `EmptyState` with: what this is, the **primary action**, and the **CLI hint**.
-  Examples: no projects → "Create a project" + `ovld create-project`; no tickets →
-  "Create a ticket" + `ovld create "<objective>"`; empty queue → "Nothing queued"
+  Examples: no projects → "Create a project" + `ovld create-project`; no missions →
+  "Create a mission" + `ovld create "<objective>"`; empty queue → "Nothing queued"
   + `ovld runner status`.
 
 ### Error
@@ -349,7 +349,7 @@ Every page document assumes these patterns rather than re-specifying them.
 ## 8. Accessibility, keyboard & PWA
 
 - **Keyboard-first.** Global `⌘K` palette (doc 10); `j/k` to move between board
-  cards / timeline items; `Enter` opens; `c` creates a ticket; `r` runs the
+  cards / timeline items; `Enter` opens; `c` creates a mission; `r` runs the
   focused runnable objective; `?` shows shortcuts. All actions reachable without a
   pointer.
 - **Focus & SR semantics.** Live regions announce new asks / failed launches /
@@ -378,7 +378,7 @@ site. These can attach later behind capability gates without reshaping the core 
   forced-login page.
 - Every route in §3 is deep-linkable and restores its filter/tab state on reload.
 - An objective moving `submitted → executing → complete` updates the board card,
-  ticket header, and timeline **without a manual refresh**, driven by `entity_changes`.
+  mission header, and timeline **without a manual refresh**, driven by `entity_changes`.
 - Dropping and restoring the network re-syncs via `/sync/changes?after=<seq>` and
   shows the correct Live/Catching-up/Polling/Offline state throughout.
 - Running the same install with only **core** table groups hides every gated

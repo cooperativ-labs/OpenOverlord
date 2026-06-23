@@ -59,7 +59,7 @@ Default roles (`ADMIN`, `MEMBER`) are defined in `auth/src/rbac/roles.ts` and en
 
 ## Adding a New Permission
 
-Permissions are domain-capability strings (e.g. `project:create`, `ticket:read`). They are an open vocabulary; new ones do not require a contract version bump.
+Permissions are domain-capability strings (e.g. `project:create`, `mission:read`). They are an open vocabulary; new ones do not require a contract version bump.
 
 **Steps:**
 

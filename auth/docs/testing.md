@@ -20,7 +20,7 @@ Extends the existing `authorizer.test.ts`.
 
 ### A1. Role grants (already partially covered)
 - `ADMIN` wildcard grants every domain action.
-- `MEMBER` allows `ticket:*` and `user_token:self:*`, project read but not create,
+- `MEMBER` allows `mission:*` and `user_token:self:*`, project read but not create,
   and denies user management, role assignment, connector configuration.
 - No roles → everything denied.
 - Denial/approval reasons include the deciding role name.
@@ -29,7 +29,7 @@ Extends the existing `authorizer.test.ts`.
 - **Capabilities, not table names.** Every permission name is a domain capability;
   a test asserts no permission string is a raw table name (contract security
   boundary: "Authorization grants use domain capabilities, not table names").
-- **Wildcard semantics.** `ticket:*` grants `ticket:create/read/update/delete` but
+- **Wildcard semantics.** `mission:*` grants `mission:create/read/update/delete` but
   not `user:*`; `user_token:self:*` does not grant `user_token:` on other users.
 - **Open vocab.** RBAC permission names are an open vocabulary — custom permissions
   must be namespaced (shared with [Layer 3 §3.2](../../TEST_PLAN.md#32-controlled-vocabulary-enforcement)).
@@ -79,7 +79,7 @@ Extends the existing `authorizer.test.ts`.
   per contract; `agent_sessions.delivery_state` is one of
   `not_delivered|delivered|pending_redelivery` (closed vocab, shared with
   [Layer 3 §3.2](../../TEST_PLAN.md#32-controlled-vocabulary-enforcement)).
-- Heartbeat updates liveness without creating a `ticket_events` row (cross-checked
+- Heartbeat updates liveness without creating a `mission_events` row (cross-checked
   with [CLI §B4](../../cli/docs/testing.md#b4-side-effect-fidelity)).
 
 ---
@@ -99,7 +99,7 @@ These tests prove the auth layer obeys its interaction-surface rules.
 - **Auth-internal tables are private:** no module outside `auth/`/`auth/src/auth` reads
   `user`, `session`, `account`, `verification`, `apikey` directly.
 - **Auth never writes core tables:** auth-layer source contains no writes to
-  `tickets`, `projects`, `objectives`, etc.
+  `missions`, `projects`, `objectives`, etc.
 - **Audit attribution preserved:** auth writes `actor_workspace_user_id` and
   `actor_token_id` to `audit_log` (a custom auth provider must too — contract
   auth-provider constraint).

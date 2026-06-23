@@ -569,7 +569,7 @@ function configureClaudeHarness({
       {
         name: 'overlord',
         source: relativeSource,
-        description: 'Overlord ticket protocol workflow for Claude Code.'
+        description: 'Overlord mission protocol workflow for Claude Code.'
       }
     ]
   };

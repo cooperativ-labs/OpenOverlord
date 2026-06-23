@@ -1,4 +1,4 @@
-// Deterministic per-ticket branch/worktree planning for the service layer (webapp).
+// Deterministic per-mission branch/worktree planning for the service layer (webapp).
 //
 // This is one of Overlord's "Shared Deterministic Algorithms" (see CONTRACT.md):
 // the Runner Layer keeps a byte-for-byte-equivalent copy at
@@ -11,7 +11,7 @@ import path from 'node:path';
 export type BranchAutomationAction = 'create' | 'reuse' | 'new_cycle';
 
 export type BranchDecisionInput = {
-  ticket: { title: string; sequence: number };
+  mission: { title: string; sequence: number };
   project: { slug: string };
   recordedBranch: string | null;
   base: string;
@@ -45,9 +45,9 @@ export type BranchDecision =
       from: string;
     };
 
-export type TicketBranchPreviewInput = Pick<
+export type MissionBranchPreviewInput = Pick<
   BranchDecisionInput,
-  'ticket' | 'project' | 'base' | 'worktreeRoot'
+  'mission' | 'project' | 'base' | 'worktreeRoot'
 >;
 
 const TITLE_SLUG_MAX = 48;
@@ -88,17 +88,17 @@ export function sanitizeBranchName(branch: string, fallback: string): string {
   return sanitized || fallback;
 }
 
-export function canonicalTicketBranch(ticket: { title: string; sequence: number }): string {
-  const fallback = `ticket-${ticket.sequence}`;
-  const titleSlug = slugifyBranchTitle(ticket.title, fallback);
-  return sanitizeBranchName(`${titleSlug}-${ticket.sequence}`, fallback);
+export function canonicalMissionBranch(mission: { title: string; sequence: number }): string {
+  const fallback = `mission-${mission.sequence}`;
+  const titleSlug = slugifyBranchTitle(mission.title, fallback);
+  return sanitizeBranchName(`${titleSlug}-${mission.sequence}`, fallback);
 }
 
 function branchLeaf(branch: string): string {
   return branch.replace(/[\\/]+/g, '-').replace(/^-+|-+$/g, '') || 'branch';
 }
 
-export function ticketWorktreePath({
+export function missionWorktreePath({
   worktreeRoot,
   projectSlug,
   branch
@@ -135,13 +135,13 @@ function highestExistingCycle(baseBranch: string, refs: Set<string>): number {
 }
 
 function withWorktreeFields(input: BranchDecisionInput, branch: string) {
-  const canonicalBranch = canonicalTicketBranch(input.ticket);
+  const canonicalBranch = canonicalMissionBranch(input.mission);
   const cycleMatch = branch.startsWith(`${canonicalBranch}-`)
     ? Number.parseInt(branch.slice(canonicalBranch.length + 1), 10)
     : 1;
   return {
     branch,
-    worktreePath: ticketWorktreePath({
+    worktreePath: missionWorktreePath({
       worktreeRoot: input.worktreeRoot,
       projectSlug: input.project.slug,
       branch
@@ -151,8 +151,8 @@ function withWorktreeFields(input: BranchDecisionInput, branch: string) {
   };
 }
 
-export function planTicketBranch(input: BranchDecisionInput): BranchDecision {
-  const baseBranch = canonicalTicketBranch(input.ticket);
+export function planMissionBranch(input: BranchDecisionInput): BranchDecision {
+  const baseBranch = canonicalMissionBranch(input.mission);
   const allRefs = refSet([...input.refs.local, ...input.refs.remote]);
   const mergedRefs = refSet(input.refs.merged);
   const checkedOutRefs = refSet(input.refs.checkedOut ?? []);
@@ -192,8 +192,8 @@ export function planTicketBranch(input: BranchDecisionInput): BranchDecision {
   return { action: 'new_cycle', ...withWorktreeFields(input, candidate), from: input.base };
 }
 
-export function previewTicketBranch(input: TicketBranchPreviewInput): BranchDecision {
-  return planTicketBranch({
+export function previewMissionBranch(input: MissionBranchPreviewInput): BranchDecision {
+  return planMissionBranch({
     ...input,
     recordedBranch: null,
     refs: { local: [], remote: [], merged: [] }

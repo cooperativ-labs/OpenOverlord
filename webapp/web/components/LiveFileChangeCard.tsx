@@ -26,7 +26,7 @@ function joinAbsolutePath(rootPath: string, filePath: string): string {
 }
 
 /**
- * A single collapsible file-change entry in the ticket panel's File Changes
+ * A single collapsible file-change entry in the mission panel's File Changes
  * section. Collapsed it shows the file name and recorded time; expanded it
  * reveals the full path and the structured change/why/impact rationale. Adapted
  * from the reference `LiveFileChangeCard` for this app's stack. When the

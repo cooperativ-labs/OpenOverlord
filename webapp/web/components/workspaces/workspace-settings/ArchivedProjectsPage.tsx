@@ -52,7 +52,7 @@ export function ArchivedProjectsPage() {
             <thead className="bg-muted/50 text-xs text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 text-left font-medium">Project</th>
-                <th className="px-3 py-2 text-left font-medium">Tickets</th>
+                <th className="px-3 py-2 text-left font-medium">Missions</th>
                 <th className="px-3 py-2" />
               </tr>
             </thead>
@@ -70,7 +70,7 @@ export function ArchivedProjectsPage() {
                       <span className="text-sm">{project.name}</span>
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">{project.ticketCount}</td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">{project.missionCount}</td>
                   <td className="px-3 py-2 text-right">
                     <Button
                       variant="outline"

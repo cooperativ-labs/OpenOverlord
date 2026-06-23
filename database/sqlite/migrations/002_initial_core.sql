@@ -258,7 +258,7 @@ CREATE TABLE project_user_preferences (
 CREATE UNIQUE INDEX idx_project_user_preferences_active_project_user ON project_user_preferences (project_id, workspace_user_id)
   WHERE deleted_at IS NULL;
 
-CREATE TABLE ticket_sequences (
+CREATE TABLE mission_sequences (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
   scope_type TEXT NOT NULL CHECK (scope_type IN ('workspace')),
@@ -268,9 +268,9 @@ CREATE TABLE ticket_sequences (
   updated_at TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??.???Z')
 );
 
-CREATE UNIQUE INDEX idx_ticket_sequences_scope ON ticket_sequences (workspace_id, scope_type, scope_id, counter_name);
+CREATE UNIQUE INDEX idx_mission_sequences_scope ON mission_sequences (workspace_id, scope_type, scope_id, counter_name);
 
-CREATE TABLE tickets (
+CREATE TABLE missions (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
   project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE RESTRICT,
@@ -297,42 +297,42 @@ CREATE TABLE tickets (
   FOREIGN KEY (workspace_id, status_id) REFERENCES workspace_statuses (workspace_id, id) ON DELETE RESTRICT
 );
 
-CREATE UNIQUE INDEX idx_tickets_workspace_display_id ON tickets (workspace_id, display_id);
-CREATE UNIQUE INDEX idx_tickets_workspace_sequence_number ON tickets (workspace_id, sequence_number);
-CREATE UNIQUE INDEX idx_tickets_workspace_id ON tickets (workspace_id, id);
-CREATE UNIQUE INDEX idx_tickets_project_id ON tickets (project_id, id);
-CREATE INDEX idx_tickets_project_status_updated ON tickets (project_id, status_type, updated_at);
-CREATE INDEX idx_tickets_project_status_board ON tickets (project_id, status_id, board_position);
-CREATE INDEX idx_tickets_workspace_creator_updated ON tickets (workspace_id, created_by_workspace_user_id, updated_at);
+CREATE UNIQUE INDEX idx_missions_workspace_display_id ON missions (workspace_id, display_id);
+CREATE UNIQUE INDEX idx_missions_workspace_sequence_number ON missions (workspace_id, sequence_number);
+CREATE UNIQUE INDEX idx_missions_workspace_id ON missions (workspace_id, id);
+CREATE UNIQUE INDEX idx_missions_project_id ON missions (project_id, id);
+CREATE INDEX idx_missions_project_status_updated ON missions (project_id, status_type, updated_at);
+CREATE INDEX idx_missions_project_status_board ON missions (project_id, status_id, board_position);
+CREATE INDEX idx_missions_workspace_creator_updated ON missions (workspace_id, created_by_workspace_user_id, updated_at);
 
--- Personal My Tickets ordering: per-operator, per-status-column drag order for
--- the My Tickets selected-workspace view. Kept separate from
--- tickets.board_position (the shared project board order) so a personal reorder
+-- Personal My Missions ordering: per-operator, per-status-column drag order for
+-- the My Missions selected-workspace view. Kept separate from
+-- missions.board_position (the shared project board order) so a personal reorder
 -- never reorders another user's view or a source project board. Sparse: one row
--- per ticket the operator has dragged.
-CREATE TABLE my_ticket_positions (
+-- per mission the operator has dragged.
+CREATE TABLE my_mission_positions (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE CASCADE,
   workspace_user_id TEXT NOT NULL REFERENCES workspace_users (id) ON DELETE CASCADE,
-  ticket_id TEXT NOT NULL REFERENCES tickets (id) ON DELETE CASCADE,
+  mission_id TEXT NOT NULL REFERENCES missions (id) ON DELETE CASCADE,
   status_id TEXT NOT NULL REFERENCES workspace_statuses (id) ON DELETE CASCADE,
   position REAL NOT NULL,
   created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
   updated_at TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??.???Z'),
   revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
-  UNIQUE (workspace_id, workspace_user_id, ticket_id),
-  FOREIGN KEY (workspace_id, ticket_id) REFERENCES tickets (workspace_id, id) ON DELETE CASCADE,
+  UNIQUE (workspace_id, workspace_user_id, mission_id),
+  FOREIGN KEY (workspace_id, mission_id) REFERENCES missions (workspace_id, id) ON DELETE CASCADE,
   FOREIGN KEY (workspace_id, status_id) REFERENCES workspace_statuses (workspace_id, id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_my_ticket_positions_user_status
-  ON my_ticket_positions (workspace_id, workspace_user_id, status_id, position);
+CREATE INDEX idx_my_mission_positions_user_status
+  ON my_mission_positions (workspace_id, workspace_user_id, status_id, position);
 
 CREATE TABLE objectives (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
   project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE RESTRICT,
-  ticket_id TEXT NOT NULL REFERENCES tickets (id) ON DELETE RESTRICT,
+  mission_id TEXT NOT NULL REFERENCES missions (id) ON DELETE RESTRICT,
   position INTEGER NOT NULL CHECK (position >= 0),
   title TEXT,
   instruction_text TEXT,
@@ -353,23 +353,23 @@ CREATE TABLE objectives (
   deleted_at TEXT CHECK (deleted_at IS NULL OR deleted_at GLOB '????-??-??T??:??:??.???Z'),
   revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
   FOREIGN KEY (workspace_id, project_id) REFERENCES projects (workspace_id, id) ON DELETE RESTRICT,
-  FOREIGN KEY (workspace_id, ticket_id) REFERENCES tickets (workspace_id, id) ON DELETE RESTRICT,
-  FOREIGN KEY (project_id, ticket_id) REFERENCES tickets (project_id, id) ON DELETE RESTRICT
+  FOREIGN KEY (workspace_id, mission_id) REFERENCES missions (workspace_id, id) ON DELETE RESTRICT,
+  FOREIGN KEY (project_id, mission_id) REFERENCES missions (project_id, id) ON DELETE RESTRICT
 );
 
-CREATE UNIQUE INDEX idx_objectives_active_ticket_position ON objectives (ticket_id, position)
+CREATE UNIQUE INDEX idx_objectives_active_mission_position ON objectives (mission_id, position)
   WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX idx_objectives_workspace_id ON objectives (workspace_id, id);
 CREATE UNIQUE INDEX idx_objectives_project_id ON objectives (project_id, id);
-CREATE UNIQUE INDEX idx_objectives_ticket_id ON objectives (ticket_id, id);
+CREATE UNIQUE INDEX idx_objectives_mission_id ON objectives (mission_id, id);
 CREATE INDEX idx_objectives_project_state_updated ON objectives (project_id, state, updated_at);
-CREATE INDEX idx_objectives_ticket_state_position ON objectives (ticket_id, state, position);
+CREATE INDEX idx_objectives_mission_state_position ON objectives (mission_id, state, position);
 
 CREATE TABLE agent_sessions (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
   project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE RESTRICT,
-  ticket_id TEXT NOT NULL REFERENCES tickets (id) ON DELETE RESTRICT,
+  mission_id TEXT NOT NULL REFERENCES missions (id) ON DELETE RESTRICT,
   objective_id TEXT NOT NULL REFERENCES objectives (id) ON DELETE RESTRICT,
   session_key_prefix TEXT NOT NULL CHECK (length(trim(session_key_prefix)) > 0),
   session_key_hash TEXT NOT NULL CHECK (length(trim(session_key_hash)) > 0),
@@ -389,22 +389,22 @@ CREATE TABLE agent_sessions (
   deleted_at TEXT CHECK (deleted_at IS NULL OR deleted_at GLOB '????-??-??T??:??:??.???Z'),
   revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
   FOREIGN KEY (workspace_id, project_id) REFERENCES projects (workspace_id, id) ON DELETE RESTRICT,
-  FOREIGN KEY (workspace_id, ticket_id) REFERENCES tickets (workspace_id, id) ON DELETE RESTRICT,
+  FOREIGN KEY (workspace_id, mission_id) REFERENCES missions (workspace_id, id) ON DELETE RESTRICT,
   FOREIGN KEY (workspace_id, objective_id) REFERENCES objectives (workspace_id, id) ON DELETE RESTRICT
 );
 
 CREATE UNIQUE INDEX idx_agent_sessions_workspace_session_key_prefix ON agent_sessions (workspace_id, session_key_prefix);
 CREATE UNIQUE INDEX idx_agent_sessions_workspace_id ON agent_sessions (workspace_id, id);
 CREATE INDEX idx_agent_sessions_objective_started ON agent_sessions (objective_id, started_at);
-CREATE INDEX idx_agent_sessions_ticket_started ON agent_sessions (ticket_id, started_at);
+CREATE INDEX idx_agent_sessions_mission_started ON agent_sessions (mission_id, started_at);
 CREATE INDEX idx_agent_sessions_external_session_id ON agent_sessions (external_session_id)
   WHERE external_session_id IS NOT NULL;
 
-CREATE TABLE ticket_events (
+CREATE TABLE mission_events (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
   project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE RESTRICT,
-  ticket_id TEXT NOT NULL REFERENCES tickets (id) ON DELETE RESTRICT,
+  mission_id TEXT NOT NULL REFERENCES missions (id) ON DELETE RESTRICT,
   objective_id TEXT REFERENCES objectives (id) ON DELETE SET NULL,
   session_id TEXT REFERENCES agent_sessions (id) ON DELETE SET NULL,
   type TEXT NOT NULL CHECK (type IN ('update', 'user_follow_up', 'alert', 'discussion_summary', 'decision', 'ask', 'permission_request', 'delivery', 'execution_requested', 'awaiting_approval', 'status_change')),
@@ -418,18 +418,18 @@ CREATE TABLE ticket_events (
   idempotency_key TEXT,
   created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
   FOREIGN KEY (workspace_id, project_id) REFERENCES projects (workspace_id, id) ON DELETE RESTRICT,
-  FOREIGN KEY (workspace_id, ticket_id) REFERENCES tickets (workspace_id, id) ON DELETE RESTRICT
+  FOREIGN KEY (workspace_id, mission_id) REFERENCES missions (workspace_id, id) ON DELETE RESTRICT
 );
 
-CREATE INDEX idx_ticket_events_ticket_created ON ticket_events (ticket_id, created_at);
-CREATE INDEX idx_ticket_events_objective_created ON ticket_events (objective_id, created_at);
-CREATE UNIQUE INDEX idx_ticket_events_idempotency ON ticket_events (workspace_id, source, idempotency_key)
+CREATE INDEX idx_mission_events_mission_created ON mission_events (mission_id, created_at);
+CREATE INDEX idx_mission_events_objective_created ON mission_events (objective_id, created_at);
+CREATE UNIQUE INDEX idx_mission_events_idempotency ON mission_events (workspace_id, source, idempotency_key)
   WHERE idempotency_key IS NOT NULL;
 
 CREATE TABLE shared_context_entries (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
-  ticket_id TEXT NOT NULL REFERENCES tickets (id) ON DELETE RESTRICT,
+  mission_id TEXT NOT NULL REFERENCES missions (id) ON DELETE RESTRICT,
   objective_id TEXT REFERENCES objectives (id) ON DELETE SET NULL,
   key TEXT NOT NULL CHECK (length(trim(key)) > 0),
   value_kind TEXT NOT NULL CHECK (value_kind IN ('string', 'json')),
@@ -447,16 +447,16 @@ CREATE TABLE shared_context_entries (
   )
 );
 
-CREATE UNIQUE INDEX idx_shared_context_entries_active_ticket_key ON shared_context_entries (ticket_id, key)
+CREATE UNIQUE INDEX idx_shared_context_entries_active_mission_key ON shared_context_entries (mission_id, key)
   WHERE deleted_at IS NULL;
 CREATE INDEX idx_shared_context_entries_objective_updated ON shared_context_entries (objective_id, updated_at)
   WHERE objective_id IS NOT NULL;
-CREATE INDEX idx_shared_context_entries_ticket_updated ON shared_context_entries (ticket_id, updated_at);
+CREATE INDEX idx_shared_context_entries_mission_updated ON shared_context_entries (mission_id, updated_at);
 
 CREATE TABLE objective_attachments (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
-  ticket_id TEXT NOT NULL REFERENCES tickets (id) ON DELETE RESTRICT,
+  mission_id TEXT NOT NULL REFERENCES missions (id) ON DELETE RESTRICT,
   objective_id TEXT NOT NULL REFERENCES objectives (id) ON DELETE RESTRICT,
   storage_backend TEXT NOT NULL CHECK (length(trim(storage_backend)) > 0),
   storage_key TEXT NOT NULL CHECK (length(trim(storage_key)) > 0),
@@ -474,13 +474,13 @@ CREATE TABLE objective_attachments (
 );
 
 CREATE INDEX idx_objective_attachments_objective_created ON objective_attachments (objective_id, created_at);
-CREATE INDEX idx_objective_attachments_ticket_created ON objective_attachments (ticket_id, created_at);
+CREATE INDEX idx_objective_attachments_mission_created ON objective_attachments (mission_id, created_at);
 
 CREATE TABLE deliveries (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
   project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE RESTRICT,
-  ticket_id TEXT NOT NULL REFERENCES tickets (id) ON DELETE RESTRICT,
+  mission_id TEXT NOT NULL REFERENCES missions (id) ON DELETE RESTRICT,
   objective_id TEXT NOT NULL REFERENCES objectives (id) ON DELETE RESTRICT,
   session_id TEXT REFERENCES agent_sessions (id) ON DELETE SET NULL,
   summary TEXT NOT NULL CHECK (length(trim(summary)) > 0),
@@ -496,7 +496,7 @@ CREATE TABLE deliveries (
 );
 
 CREATE UNIQUE INDEX idx_deliveries_workspace_id ON deliveries (workspace_id, id);
-CREATE INDEX idx_deliveries_ticket_delivered ON deliveries (ticket_id, delivered_at);
+CREATE INDEX idx_deliveries_mission_delivered ON deliveries (mission_id, delivered_at);
 CREATE INDEX idx_deliveries_objective_delivered ON deliveries (objective_id, delivered_at);
 CREATE INDEX idx_deliveries_session ON deliveries (session_id);
 
@@ -504,7 +504,7 @@ CREATE TABLE artifacts (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
   project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE RESTRICT,
-  ticket_id TEXT NOT NULL REFERENCES tickets (id) ON DELETE RESTRICT,
+  mission_id TEXT NOT NULL REFERENCES missions (id) ON DELETE RESTRICT,
   objective_id TEXT REFERENCES objectives (id) ON DELETE SET NULL,
   session_id TEXT REFERENCES agent_sessions (id) ON DELETE SET NULL,
   delivery_id TEXT REFERENCES deliveries (id) ON DELETE SET NULL,
@@ -521,14 +521,14 @@ CREATE TABLE artifacts (
   CHECK (content_text IS NOT NULL OR content_json IS NOT NULL OR external_url IS NOT NULL)
 );
 
-CREATE INDEX idx_artifacts_ticket_created ON artifacts (ticket_id, created_at);
+CREATE INDEX idx_artifacts_mission_created ON artifacts (mission_id, created_at);
 CREATE INDEX idx_artifacts_delivery_type ON artifacts (delivery_id, type);
 
 CREATE TABLE changed_files (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
   project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE RESTRICT,
-  ticket_id TEXT NOT NULL REFERENCES tickets (id) ON DELETE RESTRICT,
+  mission_id TEXT NOT NULL REFERENCES missions (id) ON DELETE RESTRICT,
   objective_id TEXT NOT NULL REFERENCES objectives (id) ON DELETE RESTRICT,
   session_id TEXT REFERENCES agent_sessions (id) ON DELETE SET NULL,
   resource_id TEXT REFERENCES project_resources (id) ON DELETE SET NULL,
@@ -537,7 +537,7 @@ CREATE TABLE changed_files (
   current_diff_state TEXT NOT NULL CHECK (current_diff_state IN ('present', 'resolved', 'unknown', 'unavailable')),
   first_observed_at TEXT NOT NULL CHECK (first_observed_at GLOB '????-??-??T??:??:??.???Z'),
   last_observed_at TEXT NOT NULL CHECK (last_observed_at GLOB '????-??-??T??:??:??.???Z'),
-  last_observed_event_id TEXT REFERENCES ticket_events (id) ON DELETE SET NULL,
+  last_observed_event_id TEXT REFERENCES mission_events (id) ON DELETE SET NULL,
   observed_metadata_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(observed_metadata_json)),
   created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
   updated_at TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??.???Z'),
@@ -547,14 +547,14 @@ CREATE TABLE changed_files (
 
 CREATE UNIQUE INDEX idx_changed_files_active_session_objective_path ON changed_files (session_id, objective_id, file_path)
   WHERE session_id IS NOT NULL AND deleted_at IS NULL;
-CREATE INDEX idx_changed_files_ticket_objective_path ON changed_files (ticket_id, objective_id, file_path);
+CREATE INDEX idx_changed_files_mission_objective_path ON changed_files (mission_id, objective_id, file_path);
 CREATE INDEX idx_changed_files_project_updated ON changed_files (project_id, updated_at);
 
 CREATE TABLE change_rationales (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
   project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE RESTRICT,
-  ticket_id TEXT NOT NULL REFERENCES tickets (id) ON DELETE RESTRICT,
+  mission_id TEXT NOT NULL REFERENCES missions (id) ON DELETE RESTRICT,
   objective_id TEXT NOT NULL REFERENCES objectives (id) ON DELETE RESTRICT,
   session_id TEXT REFERENCES agent_sessions (id) ON DELETE SET NULL,
   delivery_id TEXT REFERENCES deliveries (id) ON DELETE SET NULL,
@@ -565,7 +565,7 @@ CREATE TABLE change_rationales (
   why TEXT NOT NULL CHECK (length(trim(why)) > 0),
   impact TEXT NOT NULL CHECK (length(trim(impact)) > 0),
   hunks_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(hunks_json)),
-  source_event_id TEXT REFERENCES ticket_events (id) ON DELETE SET NULL,
+  source_event_id TEXT REFERENCES mission_events (id) ON DELETE SET NULL,
   is_final INTEGER NOT NULL DEFAULT 0 CHECK (is_final IN (0, 1)),
   created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
   updated_at TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??.???Z'),
@@ -573,7 +573,7 @@ CREATE TABLE change_rationales (
   revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)
 );
 
-CREATE INDEX idx_change_rationales_ticket_objective_path ON change_rationales (ticket_id, objective_id, file_path);
+CREATE INDEX idx_change_rationales_mission_objective_path ON change_rationales (mission_id, objective_id, file_path);
 CREATE INDEX idx_change_rationales_delivery_path ON change_rationales (delivery_id, file_path);
 CREATE UNIQUE INDEX idx_change_rationales_active_final_delivery_path ON change_rationales (delivery_id, file_path)
   WHERE is_final = 1 AND delivery_id IS NOT NULL AND deleted_at IS NULL;
@@ -582,7 +582,7 @@ CREATE TABLE execution_requests (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
   project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE RESTRICT,
-  ticket_id TEXT NOT NULL REFERENCES tickets (id) ON DELETE RESTRICT,
+  mission_id TEXT NOT NULL REFERENCES missions (id) ON DELETE RESTRICT,
   objective_id TEXT NOT NULL REFERENCES objectives (id) ON DELETE RESTRICT,
   execution_target_id TEXT REFERENCES execution_targets (id) ON DELETE SET NULL,
   requested_agent TEXT,
@@ -642,7 +642,7 @@ CREATE TABLE entity_changes (
   id TEXT NOT NULL UNIQUE,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
   project_id TEXT REFERENCES projects (id) ON DELETE SET NULL,
-  ticket_id TEXT REFERENCES tickets (id) ON DELETE SET NULL,
+  mission_id TEXT REFERENCES missions (id) ON DELETE SET NULL,
   objective_id TEXT REFERENCES objectives (id) ON DELETE SET NULL,
   entity_type TEXT NOT NULL CHECK (length(trim(entity_type)) > 0),
   entity_id TEXT NOT NULL CHECK (length(trim(entity_id)) > 0),
@@ -657,7 +657,7 @@ CREATE TABLE entity_changes (
 
 CREATE INDEX idx_entity_changes_workspace_seq ON entity_changes (workspace_id, seq);
 CREATE INDEX idx_entity_changes_project_seq ON entity_changes (project_id, seq);
-CREATE INDEX idx_entity_changes_ticket_seq ON entity_changes (ticket_id, seq);
+CREATE INDEX idx_entity_changes_mission_seq ON entity_changes (mission_id, seq);
 CREATE INDEX idx_entity_changes_entity_seq ON entity_changes (entity_type, entity_id, seq);
 
 CREATE TABLE schema_migrations (
@@ -693,11 +693,11 @@ INSERT INTO workspace_users (
   '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1
 );
 
-INSERT INTO ticket_sequences (
+INSERT INTO mission_sequences (
   id, workspace_id, scope_type, scope_id, counter_name, next_value, updated_at
 ) VALUES (
-  'local-workspace-ticket-sequence', 'local-workspace', 'workspace',
-  'local-workspace', 'ticket', 1, '2026-01-01T00:00:00.000Z'
+  'local-workspace-mission-sequence', 'local-workspace', 'workspace',
+  'local-workspace', 'mission', 1, '2026-01-01T00:00:00.000Z'
 );
 
 INSERT INTO workspace_statuses (

@@ -5,46 +5,46 @@ import { useCallback, useState } from 'react';
 
 import { Badge, STATUS_CONFIG, statusClasses } from '@/components/ui.tsx';
 
-import type { TicketDto, WorkspaceMemberDto, WorkspaceStatusDto } from '../../shared/contract.ts';
+import type { MissionDto, WorkspaceMemberDto, WorkspaceStatusDto } from '../../shared/contract.ts';
 
-import { BlankTicketCard, type BlankTicketCreateOptions } from './BlankTicketCard.tsx';
+import { BlankMissionCard, type BlankMissionCreateOptions } from './BlankMissionCard.tsx';
 import { resolveAssignee } from './board-shared.ts';
-import { SortableTicketCard } from './SortableTicketCard.tsx';
-import { TicketCard } from './TicketCard.tsx';
+import { SortableMissionCard } from './SortableMissionCard.tsx';
+import { MissionCard } from './MissionCard.tsx';
 
 export function BoardColumn({
   status,
-  tickets,
+  missions,
   count,
   projectId,
   projectName,
   projectColor,
   membersByWorkspaceUserId,
-  selectedTicketId,
+  selectedMissionId,
   draggable = true,
-  onCreateTicket,
-  onCreateAndOpenTicket
+  onCreateMission,
+  onCreateAndOpenMission
 }: {
   status: WorkspaceStatusDto;
-  tickets: TicketDto[];
+  missions: MissionDto[];
   count: number;
   projectId: string;
   projectName: string;
   projectColor: string | null;
   membersByWorkspaceUserId: Map<string, WorkspaceMemberDto>;
-  selectedTicketId?: string;
+  selectedMissionId?: string;
   draggable?: boolean;
-  onCreateTicket: (
+  onCreateMission: (
     statusId: string,
     objective: string,
     position: 'top' | 'bottom',
-    options?: BlankTicketCreateOptions
+    options?: BlankMissionCreateOptions
   ) => Promise<void> | void;
-  onCreateAndOpenTicket?: (
+  onCreateAndOpenMission?: (
     statusId: string,
     objective: string,
     position: 'top' | 'bottom',
-    options?: BlankTicketCreateOptions
+    options?: BlankMissionCreateOptions
   ) => Promise<void> | void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status.id });
@@ -56,7 +56,7 @@ export function BoardColumn({
   const inputId = `board-column-input-${status.id}`;
   const topInputId = `board-column-input-top-${status.id}`;
 
-  // The BlankTicketCard scrolls itself into view once it mounts (see its
+  // The BlankMissionCard scrolls itself into view once it mounts (see its
   // scroll-into-view effect), so opening here only needs to reveal the card.
   const handleStartAddingBottom = useCallback(() => setIsAddingBottom(true), []);
 
@@ -76,23 +76,23 @@ export function BoardColumn({
       }`}
     >
       {isAddingTop ? (
-        <BlankTicketCard
+        <BlankMissionCard
           inputId={topInputId}
           statusId={status.id}
           position="top"
           projectId={projectId}
-          onCreateTicket={onCreateTicket}
-          onCreateAndOpenTicket={onCreateAndOpenTicket}
+          onCreateMission={onCreateMission}
+          onCreateAndOpenMission={onCreateAndOpenMission}
           onClose={handleCloseTopBlankCard}
           onSubmitted={() => setTopFocusEditorCount(c => c + 1)}
           focusTrigger={topFocusEditorCount}
         />
       ) : null}
-      {tickets.map(ticket => {
-        const assignee = resolveAssignee(ticket, membersByWorkspaceUserId);
-        const selected = ticket.id === selectedTicketId;
+      {missions.map(mission => {
+        const assignee = resolveAssignee(mission, membersByWorkspaceUserId);
+        const selected = mission.id === selectedMissionId;
         const cardProps = {
-          ticket,
+          mission,
           projectId,
           projectName,
           projectColor,
@@ -101,19 +101,19 @@ export function BoardColumn({
         };
 
         return draggable ? (
-          <SortableTicketCard key={ticket.id} {...cardProps} />
+          <SortableMissionCard key={mission.id} {...cardProps} />
         ) : (
-          <TicketCard key={ticket.id} {...cardProps} />
+          <MissionCard key={mission.id} {...cardProps} />
         );
       })}
       {isAddingBottom ? (
-        <BlankTicketCard
+        <BlankMissionCard
           inputId={inputId}
           statusId={status.id}
           position="bottom"
           projectId={projectId}
-          onCreateTicket={onCreateTicket}
-          onCreateAndOpenTicket={onCreateAndOpenTicket}
+          onCreateMission={onCreateMission}
+          onCreateAndOpenMission={onCreateAndOpenMission}
           onClose={handleCloseBlankCard}
           onSubmitted={() => setFocusEditorCount(c => c + 1)}
           focusTrigger={focusEditorCount}
@@ -125,7 +125,7 @@ export function BoardColumn({
           className="flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-muted-foreground/20 py-2 text-xs text-muted-foreground/40 transition-colors hover:border-muted-foreground/40 hover:text-muted-foreground/70"
         >
           <Plus className="h-3 w-3" />
-          Add ticket
+          Add mission
         </button>
       )}
     </div>
@@ -143,7 +143,7 @@ export function BoardColumn({
           <button
             type="button"
             onClick={handleStartAddingTop}
-            aria-label="Add ticket to top of column"
+            aria-label="Add mission to top of column"
             className="rounded-md p-0.5 text-muted-foreground/40 transition-colors hover:bg-[var(--color-surface-2)]/60 hover:text-muted-foreground/80"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -151,7 +151,7 @@ export function BoardColumn({
         </div>
       </div>
       {draggable ? (
-        <SortableContext items={tickets.map(t => t.id)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={missions.map(t => t.id)} strategy={verticalListSortingStrategy}>
           {content}
         </SortableContext>
       ) : (

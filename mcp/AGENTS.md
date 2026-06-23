@@ -6,12 +6,12 @@ This file tells agents how to extend the MCP module to add new capabilities for 
 
 ## What "extending MCP" means
 
-The MCP module will expose Overlord capabilities (tickets, objectives, protocol operations) to MCP-aware clients. Once implemented, extensions will fall into:
+The MCP module will expose Overlord capabilities (missions, objectives, protocol operations) to MCP-aware clients. Once implemented, extensions will fall into:
 
 | Extension type | Example user request |
 | --- | --- |
-| New MCP tool | "Expose `create_ticket` as an MCP tool" |
-| New MCP resource | "Expose ticket history as a readable MCP resource" |
+| New MCP tool | "Expose `create_mission` as an MCP tool" |
+| New MCP resource | "Expose mission history as a readable MCP resource" |
 | MCP extension module | "Add namespaced tools for a third-party integration" |
 
 ---
@@ -35,7 +35,7 @@ When MCP is implemented, it should follow the same patterns as the REST API Laye
 - MCP tool handlers call the **service layer** — the same functions used by `cli/` and `webapp/`.
 - Auth is resolved via the **Auth Layer** before any service call.
 - No direct database table writes from MCP handlers.
-- MCP tool names follow a consistent naming convention (e.g. `overlord_create_ticket`, `overlord_list_objectives`).
+- MCP tool names follow a consistent naming convention (e.g. `overlord_create_mission`, `overlord_list_objectives`).
 
 ---
 
@@ -57,7 +57,7 @@ MCP resources expose read-only data to clients. Resources derive from the same l
 
 **Steps:**
 
-1. **Define the resource URI pattern** (e.g. `overlord://tickets/{ticketId}/history`).
+1. **Define the resource URI pattern** (e.g. `overlord://missions/{missionId}/history`).
 2. **Implement** in `mcp/resources/<area>.ts`.
 3. **Document** the URI pattern and response shape in `CONTRACT.md` MCP section.
 
@@ -79,7 +79,7 @@ Third-party MCP extensions should use a namespaced tool prefix to avoid conflict
 ```
 mcp/
   tools/                  ← MCP tool definitions, one file per resource domain
-    tickets.ts
+    missions.ts
     objectives.ts
     <area>.ts
     <area>.test.ts

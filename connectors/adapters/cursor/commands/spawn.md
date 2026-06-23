@@ -1,6 +1,6 @@
 Deprecated — use `/prompt` instead.
 
-Create a new Overlord ticket and attach immediately for execution.
+Create a new Overlord mission and attach immediately for execution.
 
 Use the text after `/spawn` as the objective unless raw flags are present.
 

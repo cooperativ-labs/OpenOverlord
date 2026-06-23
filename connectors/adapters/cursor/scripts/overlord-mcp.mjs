@@ -82,11 +82,11 @@ process.stdin.on('data', async chunk => {
           tools: [
             {
               name: 'attach',
-              description: 'Attach to an Overlord ticket.',
+              description: 'Attach to an Overlord mission.',
               inputSchema: {
                 type: 'object',
-                properties: { ticket_id: { type: 'string' } },
-                required: ['ticket_id']
+                properties: { mission_id: { type: 'string' } },
+                required: ['mission_id']
               }
             },
             {
@@ -96,11 +96,11 @@ process.stdin.on('data', async chunk => {
                 type: 'object',
                 properties: {
                   session_key: { type: 'string' },
-                  ticket_id: { type: 'string' },
+                  mission_id: { type: 'string' },
                   summary: { type: 'string' },
                   phase: { type: 'string' }
                 },
-                required: ['session_key', 'ticket_id', 'summary']
+                required: ['session_key', 'mission_id', 'summary']
               }
             },
             {
@@ -110,10 +110,10 @@ process.stdin.on('data', async chunk => {
                 type: 'object',
                 properties: {
                   session_key: { type: 'string' },
-                  ticket_id: { type: 'string' },
+                  mission_id: { type: 'string' },
                   summary: { type: 'string' }
                 },
-                required: ['session_key', 'ticket_id', 'summary']
+                required: ['session_key', 'mission_id', 'summary']
               }
             }
           ]
@@ -128,7 +128,7 @@ process.stdin.on('data', async chunk => {
         send({
           jsonrpc: '2.0',
           id: message.id,
-          result: await runProtocol('attach', { 'ticket-id': args.ticket_id })
+          result: await runProtocol('attach', { 'mission-id': args.mission_id })
         });
       } else if (toolName === 'update') {
         send({
@@ -136,7 +136,7 @@ process.stdin.on('data', async chunk => {
           id: message.id,
           result: await runProtocol('update', {
             'session-key': args.session_key,
-            'ticket-id': args.ticket_id,
+            'mission-id': args.mission_id,
             summary: args.summary,
             phase: args.phase && String(args.phase).trim() ? String(args.phase).trim() : 'execute'
           })
@@ -147,7 +147,7 @@ process.stdin.on('data', async chunk => {
           id: message.id,
           result: await runProtocol('deliver', {
             'session-key': args.session_key,
-            'ticket-id': args.ticket_id,
+            'mission-id': args.mission_id,
             summary: args.summary
           })
         });

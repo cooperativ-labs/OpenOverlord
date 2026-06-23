@@ -81,7 +81,7 @@ export function WorkspaceCreationFields({
       </div>
 
       <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
-        <p className="text-muted-foreground">Tickets in this workspace will be identified as</p>
+        <p className="text-muted-foreground">Missions in this workspace will be identified as</p>
         <p className="mt-1 font-mono text-foreground">
           {exampleSlug}:1, {exampleSlug}:2, {exampleSlug}:3, …
         </p>

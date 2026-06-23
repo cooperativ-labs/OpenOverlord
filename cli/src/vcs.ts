@@ -15,7 +15,7 @@ import { resolveGlobalDataDir } from './config.js';
  * paths whose worktree state differs from that baseline.
  *
  * The worktree baseline cannot tell concurrent sessions apart: when several
- * tickets run against the same repo at once, a file another ticket edits *after*
+ * missions run against the same repo at once, a file another mission edits *after*
  * this session attached has no baseline entry, so the worktree delta alone would
  * wrongly attribute it here. To stay accurate the CLI also consumes a per-session
  * "touched files" log written by the agent's PostToolUse edit hook (the exact set
@@ -107,48 +107,48 @@ export function readChangedFiles(workingDirectory: string): ChangedFile[] {
 }
 
 /**
- * Stable per-session key for the working dir + ticket. MUST stay in sync with the
+ * Stable per-session key for the working dir + mission. MUST stay in sync with the
  * key the agents' PostToolUse edit hooks compute, so the touched-files log written
  * by the hook resolves to the same file the CLI reads at deliver. The hook mirror
- * is `sha256(abspath(cwd) + "\0" + TICKET_ID)`.
+ * is `sha256(abspath(cwd) + "\0" + MISSION_ID)`.
  */
 function sessionKeyHash({
   workingDirectory,
-  ticketId
+  missionId
 }: {
   workingDirectory: string;
-  ticketId: string;
+  missionId: string;
 }): string {
   return createHash('sha256')
-    .update(`${path.resolve(workingDirectory)}\0${ticketId}`)
+    .update(`${path.resolve(workingDirectory)}\0${missionId}`)
     .digest('hex');
 }
 
 function baselineFilePath({
   workingDirectory,
-  ticketId
+  missionId
 }: {
   workingDirectory: string;
-  ticketId: string;
+  missionId: string;
 }): string {
   return path.join(
     resolveGlobalDataDir(),
     'vcs-baselines',
-    `${sessionKeyHash({ workingDirectory, ticketId })}.json`
+    `${sessionKeyHash({ workingDirectory, missionId })}.json`
   );
 }
 
 function touchedFilesPath({
   workingDirectory,
-  ticketId
+  missionId
 }: {
   workingDirectory: string;
-  ticketId: string;
+  missionId: string;
 }): string {
   return path.join(
     resolveGlobalDataDir(),
     'vcs-touched',
-    `${sessionKeyHash({ workingDirectory, ticketId })}.json`
+    `${sessionKeyHash({ workingDirectory, missionId })}.json`
   );
 }
 
@@ -199,13 +199,13 @@ function gitRepoRoot(workingDirectory: string): string | null {
  */
 export function resetTouchedFiles({
   workingDirectory,
-  ticketId
+  missionId
 }: {
   workingDirectory: string;
-  ticketId: string;
+  missionId: string;
 }): void {
   try {
-    const target = touchedFilesPath({ workingDirectory, ticketId });
+    const target = touchedFilesPath({ workingDirectory, missionId });
     if (existsSync(target)) rmSync(target);
   } catch {
     // Best-effort: a stale log at worst keeps prior edits in scope; the worktree
@@ -219,11 +219,11 @@ export function resetTouchedFiles({
  */
 export function recordTouchedFiles({
   workingDirectory,
-  ticketId,
+  missionId,
   files
 }: {
   workingDirectory: string;
-  ticketId: string;
+  missionId: string;
   files: string[];
 }): void {
   try {
@@ -232,9 +232,9 @@ export function recordTouchedFiles({
       .filter(Boolean)
       .map(filePath => normalizeAbsolute(path.resolve(workingDirectory, filePath)));
     if (additions.length === 0) return;
-    const target = touchedFilesPath({ workingDirectory, ticketId });
+    const target = touchedFilesPath({ workingDirectory, missionId });
     mkdirSync(path.dirname(target), { recursive: true });
-    const existing = readTouchedPaths({ workingDirectory, ticketId }) ?? new Set<string>();
+    const existing = readTouchedPaths({ workingDirectory, missionId }) ?? new Set<string>();
     for (const filePath of additions) existing.add(filePath);
     writeFileSync(
       target,
@@ -253,13 +253,13 @@ export function recordTouchedFiles({
  */
 function readTouchedPaths({
   workingDirectory,
-  ticketId
+  missionId
 }: {
   workingDirectory: string;
-  ticketId: string;
+  missionId: string;
 }): Set<string> | null {
   try {
-    const target = touchedFilesPath({ workingDirectory, ticketId });
+    const target = touchedFilesPath({ workingDirectory, missionId });
     if (!existsSync(target)) return null;
     const raw = JSON.parse(readFileSync(target, 'utf8')) as { paths?: unknown };
     const result = new Set<string>();
@@ -291,15 +291,15 @@ function snapshotBaselineFiles({
 /** Record the baseline snapshot for a session's working dir. */
 export function writeBaseline({
   workingDirectory,
-  ticketId,
+  missionId,
   files
 }: {
   workingDirectory: string;
-  ticketId: string;
+  missionId: string;
   files: ChangedFile[];
 }): void {
   try {
-    const target = baselineFilePath({ workingDirectory, ticketId });
+    const target = baselineFilePath({ workingDirectory, missionId });
     mkdirSync(path.dirname(target), { recursive: true });
     const snapshot: BaselineSnapshot = {
       capturedAt: new Date().toISOString(),
@@ -314,13 +314,13 @@ export function writeBaseline({
 
 function readBaselineSnapshot({
   workingDirectory,
-  ticketId
+  missionId
 }: {
   workingDirectory: string;
-  ticketId: string;
+  missionId: string;
 }): Map<string, BaselineFile> {
   try {
-    const target = baselineFilePath({ workingDirectory, ticketId });
+    const target = baselineFilePath({ workingDirectory, missionId });
     if (!existsSync(target)) return new Map();
     const raw = JSON.parse(readFileSync(target, 'utf8')) as {
       files?: unknown;
@@ -487,7 +487,7 @@ function isIgnoredPath(rules: IgnoreRule[], relativePath: string): boolean {
  * A path qualifies when its worktree state differs from the session baseline AND
  * — when the connector's edit hook recorded a touched-files log — this agent
  * actually edited it. The intersection is what makes attribution exact under
- * concurrency: a file dirtied by another ticket *after* this session attached has
+ * concurrency: a file dirtied by another mission *after* this session attached has
  * no baseline entry (so it passes the `!base` check) but is absent from the
  * touched-files log, so it is excluded here. Hookless connectors get `null` from
  * `readTouchedPaths` and fall back to the baseline-only behavior.
@@ -500,15 +500,15 @@ function isIgnoredPath(rules: IgnoreRule[], relativePath: string): boolean {
  */
 export function filterRunAttributableChanges({
   workingDirectory,
-  ticketId,
+  missionId,
   files
 }: {
   workingDirectory: string;
-  ticketId: string;
+  missionId: string;
   files: ChangedFile[];
 }): ChangedFile[] {
-  const baseline = readBaselineSnapshot({ workingDirectory, ticketId });
-  const touched = readTouchedPaths({ workingDirectory, ticketId });
+  const baseline = readBaselineSnapshot({ workingDirectory, missionId });
+  const touched = readTouchedPaths({ workingDirectory, missionId });
   const repoRoot = gitRepoRoot(workingDirectory) ?? workingDirectory;
   const ignoreRules = loadIgnoreRules(repoRoot);
   return files.filter(entry => {
@@ -527,14 +527,14 @@ export function filterRunAttributableChanges({
 /** Files whose worktree state changed since the session began. */
 export function computeRunDelta({
   workingDirectory,
-  ticketId
+  missionId
 }: {
   workingDirectory: string;
-  ticketId: string;
+  missionId: string;
 }): ChangedFile[] {
   return filterRunAttributableChanges({
     workingDirectory,
-    ticketId,
+    missionId,
     files: readChangedFiles(workingDirectory)
   });
 }

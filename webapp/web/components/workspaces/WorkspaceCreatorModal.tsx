@@ -75,7 +75,7 @@ export function WorkspaceCreatorModal({ open, onOpenChange }: WorkspaceCreatorMo
         <DialogHeader>
           <DialogTitle>New workspace</DialogTitle>
           <DialogDescription>
-            Workspaces keep their own projects, tickets, and members. You&apos;ll be switched into
+            Workspaces keep their own projects, missions, and members. You&apos;ll be switched into
             the new workspace.
           </DialogDescription>
         </DialogHeader>

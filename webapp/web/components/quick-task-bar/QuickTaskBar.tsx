@@ -8,7 +8,7 @@ import { api } from '@/lib/api.ts';
 import { primaryResourceConnection } from '@/lib/project-resources.ts';
 import {
   useAgentCatalog,
-  useCreateTicket,
+  useCreateMission,
   useLaunchObjective,
   useLaunchPreference,
   useLaunchSettings,
@@ -39,7 +39,7 @@ type QuickTaskBarProps = {
 
 export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
   const projectsQ = useProjects();
-  const createTicket = useCreateTicket();
+  const createMission = useCreateMission();
   const launchObjective = useLaunchObjective();
   const updateObjective = useUpdateObjective();
   const catalogQ = useAgentCatalog();
@@ -248,13 +248,13 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
         throw new Error(primaryConnection.message ?? 'Primary resource is not connected.');
       }
 
-      const detail = await createTicket.mutateAsync({
+      const detail = await createMission.mutateAsync({
         projectId: selectedProject.id,
         firstObjective: trimmed
       });
       const createdObjective = detail.objectives[0];
       if (!createdObjective) {
-        throw new Error('Ticket was created without an objective.');
+        throw new Error('Mission was created without an objective.');
       }
 
       writeStoredDefaultProjectId(selectedProject.id);
@@ -295,7 +295,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
       handleClose();
     } catch (error) {
       console.error('Failed to create quick task:', error);
-      setSubmitError(error instanceof Error ? error.message : 'Failed to create ticket.');
+      setSubmitError(error instanceof Error ? error.message : 'Failed to create mission.');
     } finally {
       setObjectiveSelection(defaultSelection);
       setIsSubmitting(false);

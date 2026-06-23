@@ -256,9 +256,16 @@ test('a .env.local-backfilled OVERLORD_BACKEND_URL_DEV is used when overlord.tom
 test('writeConfig no longer writes terminal launcher keys', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
   const configPath = path.join(dir, 'config.toml');
-  writeConfig({ targetPath: configPath, config: { instanceName: 'Local Overlord' } });
-  const raw = readFileSync(configPath, 'utf8');
-  assert.ok(!raw.includes('terminal_launcher'));
+  const previous = process.env.OVERLORD_ALLOW_CONFIG_WRITE;
+  process.env.OVERLORD_ALLOW_CONFIG_WRITE = '1';
+  try {
+    writeConfig({ targetPath: configPath, config: { instanceName: 'Local Overlord' } });
+    const raw = readFileSync(configPath, 'utf8');
+    assert.ok(!raw.includes('terminal_launcher'));
+  } finally {
+    if (previous === undefined) delete process.env.OVERLORD_ALLOW_CONFIG_WRITE;
+    else process.env.OVERLORD_ALLOW_CONFIG_WRITE = previous;
+  }
 });
 
 test('loadConfig parses agent_catalog tables', () => {

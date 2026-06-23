@@ -5,12 +5,12 @@ CLI-first; the web app is a **Vite-powered React SPA** over a small Express
 REST + realtime layer that reads and writes the local SQLite database directly
 through `better-sqlite3`.
 
-A first slice has landed: a realtime console for **projects, tickets, and
+A first slice has landed: a realtime console for **projects, missions, and
 objectives** — list/create/edit each, with the UI reflecting database changes
 (including writes made by the CLI) live over Server-Sent Events. The settings
 surface now covers per-user local execution-target launch defaults (terminal
 profile plus per-agent flags/pre-commands); launching objectives still follows
-the existing ticket/objective controls.
+the existing mission/objective controls.
 
 ## Table of Contents
 
@@ -34,7 +34,7 @@ The web app runs as part of a backend process at the configured host/port. In
 packaged local mode, Desktop supervises that backend. The current local default
 is `http://127.0.0.1:4310`, which is also the CLI's default `backend_url`.
 
-Open that URL in your browser to manage projects, tickets, and objectives on a
+Open that URL in your browser to manage projects, missions, and objectives on a
 realtime Kanban board. Changes made through the CLI appear live without a
 manual refresh. The settings surface lets you configure per-user local
 execution-target launch defaults (terminal profile plus per-agent flags and
@@ -42,14 +42,14 @@ pre-commands).
 
 ### AI title summarization
 
-Ticket and objective titles are derived from instruction text via the
+Mission and objective titles are derived from instruction text via the
 [`automations`](../automations/README.md) module (`serviceToAutomations`):
 
 - On create (and when an objective's instruction changes without an explicit
   title edit), the server sets an immediate local title, then asynchronously
   refines it with Gemini when `GEMINI_API_KEY` is set in the active env file.
 - Title updates are written through the same `entity_changes` feed, so the
-  board and ticket panel refresh live.
+  board and mission panel refresh live.
 
 ## For Developers
 
@@ -106,7 +106,7 @@ camelCase per the [REST API Boundary](../database/docs/09-database-schema-contra
 | Method & path | Purpose |
 | --- | --- |
 | `GET /api/meta` | Workspace + capability flags (what this build supports), plus `needsSetup` while the seeded first workspace is still unnamed |
-| `POST /api/setup` | One-time initial instance setup: names the first workspace and sets the slug that prefixes ticket identifiers (`<slug>:<sequence>`) |
+| `POST /api/setup` | One-time initial instance setup: names the first workspace and sets the slug that prefixes mission identifiers (`<slug>:<sequence>`) |
 | `GET /api/stream` | SSE realtime feed of `entity_changes` deltas |
 | `GET /api/agent-catalog`, `POST /api/agent-catalog/refresh` | Workspace agent catalog for launch/settings surfaces |
 | `GET /api/launch-settings` | The acting user's local execution-target launch defaults |
@@ -123,9 +123,9 @@ camelCase per the [REST API Boundary](../database/docs/09-database-schema-contra
 | `PATCH /api/projects/:id/resources/:resourceId` | Set a project resource as primary |
 | `DELETE /api/projects/:id/resources/:resourceId` | Remove a linked project resource |
 | `GET /api/projects/:id/repository?executionTargetId=...` | Git repository metadata and file tree for the selected linked resource |
-| `GET /api/projects/:id/tickets` | Tickets in a project |
-| `POST /api/tickets`, `GET/PATCH/DELETE /api/tickets/:id` | Tickets (DELETE soft-deletes ticket + objectives) |
-| `GET /api/tickets/:id/objectives` | Objectives of a ticket |
+| `GET /api/projects/:id/missions` | Missions in a project |
+| `POST /api/missions`, `GET/PATCH/DELETE /api/missions/:id` | Missions (DELETE soft-deletes mission + objectives) |
+| `GET /api/missions/:id/objectives` | Objectives of a mission |
 | `POST /api/objectives`, `PATCH/DELETE /api/objectives/:id` | Objectives |
 
 **Deviations from the recommended boundary, to ratify:** the realtime endpoint
@@ -152,14 +152,14 @@ or the protocol CLI surface (→ [CLI module](../cli/README.md)).
 
 - [Web App Requirements](docs/web-app.md): deferred UI / control-center requirements, kept separate from the CLI-first implementation.
 - [Framework Recommendation](docs/framework-recommendation.md): why the first implementation should prefer Vite + React + TanStack Router/Query + Serwist over Next.js.
-- [UI Design Documents](docs/ui/README.md): the detailed design specification for the realtime React interface — a structure/information-architecture document followed by one detailed spec per page (projects, board, ticket detail, execution/runner, review, changes, connectors, settings, users/tokens, search).
+- [UI Design Documents](docs/ui/README.md): the detailed design specification for the realtime React interface — a structure/information-architecture document followed by one detailed spec per page (projects, board, mission detail, execution/runner, review, changes, connectors, settings, users/tokens, search).
 - [Implementation Plan](docs/implementation-plan.md): the dependency-ordered build plan that turns the framework recommendation and UI design docs into phased milestones (contract-first API, realtime spine first, vertical slice, then breadth, then gated surfaces).
 - REST API Boundary: see the "REST API Boundary" section of [09 — Database Schema Contract](../database/docs/09-database-schema-contract.md) (owned by the [Database module](../database/README.md)).
 - [Test Plan](docs/testing.md): REST API conformance (routing, camelCase DTO shape, auth/authorization, idempotency, realtime/sync) plus the framework-agnostic web-UI test plan. Part of the root [TEST_PLAN.md](../TEST_PLAN.md).
 
 ### Status
 
-A first realtime slice has landed (projects / tickets / objectives CRUD +
+A first realtime slice has landed (projects / missions / objectives CRUD +
 live updates). The remaining surfaces described in the [UI design
 docs](docs/ui/README.md) and [implementation plan](docs/implementation-plan.md)
 — execution & runner, review & delivery, current changes, connectors, settings,

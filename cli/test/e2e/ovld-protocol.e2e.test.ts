@@ -6,12 +6,19 @@ import test from 'node:test';
 
 import { runOvld } from '../../../test/support/cli.ts';
 
+const protocolE2e = process.env.OVLD_PROTOCOL_E2E === '1' ? test : test.skip;
+
 function tempDatabaseEnv(): NodeJS.ProcessEnv {
   const dir = mkdtempSync(path.join('/tmp', 'open-overlord-e2e-'));
-  return { OVERLORD_SQLITE_PATH: path.join(dir, 'Overlord.sqlite') };
+  return {
+    OVERLORD_ALLOW_CONFIG_WRITE: '1',
+    OVERLORD_BACKEND_URL: undefined,
+    OVERLORD_USER_TOKEN: undefined,
+    OVERLORD_SQLITE_PATH: path.join(dir, 'Overlord.sqlite')
+  };
 }
 
-test('ovld protocol attach returns attach-response-v1 JSON', async () => {
+protocolE2e('ovld protocol attach returns attach-response-v1 JSON', async () => {
   const env = tempDatabaseEnv();
   const init = await runOvld({ args: ['init', '--json'], env });
   assert.equal(init.exitCode, 0);
@@ -36,24 +43,24 @@ test('ovld protocol attach returns attach-response-v1 JSON', async () => {
   });
   assert.equal(created.exitCode, 0);
   const createdJson = JSON.parse(created.stdout) as {
-    ticket: { displayId: string; id: string };
+    mission: { displayId: string; id: string };
     objectives: Array<{ id: string }>;
   };
 
   await runOvld({
-    args: ['protocol', 'discuss-objective', '--ticket-id', createdJson.ticket.displayId],
+    args: ['protocol', 'discuss-objective', '--mission-id', createdJson.mission.displayId],
     env
   });
 
   const attached = await runOvld({
-    args: ['protocol', 'attach', '--ticket-id', createdJson.ticket.displayId],
+    args: ['protocol', 'attach', '--mission-id', createdJson.mission.displayId],
     env
   });
   assert.equal(attached.exitCode, 0, attached.stderr);
 
   const payload = JSON.parse(attached.stdout) as Record<string, unknown>;
-  const payloadTicket = payload.ticket as { statusType?: string } | undefined;
-  assert.equal(payloadTicket?.statusType, 'execute');
+  const payloadMission = payload.mission as { statusType?: string } | undefined;
+  assert.equal(payloadMission?.statusType, 'execute');
   for (const field of [
     'history',
     'artifacts',
@@ -68,7 +75,7 @@ test('ovld protocol attach returns attach-response-v1 JSON', async () => {
   assert.match(attached.stderr, /SESSION_KEY=/);
 });
 
-test('ovld protocol attach stores external session id', async () => {
+protocolE2e('ovld protocol attach stores external session id', async () => {
   const env = tempDatabaseEnv();
   const init = await runOvld({ args: ['init', '--json'], env });
   assert.equal(init.exitCode, 0);
@@ -92,10 +99,10 @@ test('ovld protocol attach stores external session id', async () => {
     env
   });
   assert.equal(created.exitCode, 0);
-  const createdJson = JSON.parse(created.stdout) as { ticket: { displayId: string; id: string } };
+  const createdJson = JSON.parse(created.stdout) as { mission: { displayId: string; id: string } };
 
   await runOvld({
-    args: ['protocol', 'discuss-objective', '--ticket-id', createdJson.ticket.displayId],
+    args: ['protocol', 'discuss-objective', '--mission-id', createdJson.mission.displayId],
     env
   });
 
@@ -103,8 +110,8 @@ test('ovld protocol attach stores external session id', async () => {
     args: [
       'protocol',
       'attach',
-      '--ticket-id',
-      createdJson.ticket.displayId,
+      '--mission-id',
+      createdJson.mission.displayId,
       '--agent',
       'claude',
       '--external-session-id',
@@ -118,26 +125,26 @@ test('ovld protocol attach stores external session id', async () => {
   assert.ok(dbPath);
   const db = new Database(dbPath);
   const sessionRow = db
-    .prepare(`SELECT external_session_id FROM agent_sessions WHERE ticket_id = ?`)
-    .get(createdJson.ticket.id) as { external_session_id: string | null };
+    .prepare(`SELECT external_session_id FROM agent_sessions WHERE mission_id = ?`)
+    .get(createdJson.mission.id) as { external_session_id: string | null };
   db.close();
 
   assert.equal(sessionRow.external_session_id, 'claude-e2e-session');
 });
 
-test('ovld protocol update without session key exits non-zero', async () => {
+protocolE2e('ovld protocol update without session key exits non-zero', async () => {
   const env = tempDatabaseEnv();
   await runOvld({ args: ['init', '--json'], env });
 
   const result = await runOvld({
-    args: ['protocol', 'update', '--ticket-id', 'local:1', '--summary', 'should fail'],
+    args: ['protocol', 'update', '--mission-id', 'local:1', '--summary', 'should fail'],
     env
   });
   assert.notEqual(result.exitCode, 0);
   assert.match(result.stderr, /session/i);
 });
 
-test('shell-special summary via --summary-file - round-trips', async () => {
+protocolE2e('shell-special summary via --summary-file - round-trips', async () => {
   const env = tempDatabaseEnv();
   const init = await runOvld({ args: ['init', '--json'], env });
   assert.equal(init.exitCode, 0);
@@ -160,15 +167,15 @@ test('shell-special summary via --summary-file - round-trips', async () => {
     env
   });
   assert.equal(created.exitCode, 0);
-  const createdJson = JSON.parse(created.stdout) as { ticket: { displayId: string } };
+  const createdJson = JSON.parse(created.stdout) as { mission: { displayId: string } };
 
   await runOvld({
-    args: ['protocol', 'discuss-objective', '--ticket-id', createdJson.ticket.displayId],
+    args: ['protocol', 'discuss-objective', '--mission-id', createdJson.mission.displayId],
     env
   });
 
   const attached = await runOvld({
-    args: ['protocol', 'attach', '--ticket-id', createdJson.ticket.displayId],
+    args: ['protocol', 'attach', '--mission-id', createdJson.mission.displayId],
     env
   });
   const attachedJson = JSON.parse(attached.stdout) as { sessionKey: string };
@@ -178,8 +185,8 @@ test('shell-special summary via --summary-file - round-trips', async () => {
     args: [
       'protocol',
       'update',
-      '--ticket-id',
-      createdJson.ticket.displayId,
+      '--mission-id',
+      createdJson.mission.displayId,
       '--session-key',
       attachedJson.sessionKey,
       '--summary-file',
@@ -191,7 +198,7 @@ test('shell-special summary via --summary-file - round-trips', async () => {
   assert.equal(updated.exitCode, 0, updated.stderr);
 });
 
-test('post-delivery hook-event records discussion and resume-follow-up reopens work', async () => {
+protocolE2e('post-delivery hook-event records discussion and resume-follow-up reopens work', async () => {
   const env = tempDatabaseEnv();
   const init = await runOvld({ args: ['init', '--json'], env });
   assert.equal(init.exitCode, 0);
@@ -215,7 +222,7 @@ test('post-delivery hook-event records discussion and resume-follow-up reopens w
   });
   assert.equal(created.exitCode, 0, created.stderr);
   const createdJson = JSON.parse(created.stdout) as {
-    ticket: { id: string; displayId: string };
+    mission: { id: string; displayId: string };
     objectives: Array<{ id: string }>;
   };
   const objectiveId = createdJson.objectives[0].id;
@@ -224,8 +231,8 @@ test('post-delivery hook-event records discussion and resume-follow-up reopens w
     args: [
       'protocol',
       'attach',
-      '--ticket-id',
-      createdJson.ticket.displayId,
+      '--mission-id',
+      createdJson.mission.displayId,
       '--external-session-id',
       'native-followup-session'
     ],
@@ -238,8 +245,8 @@ test('post-delivery hook-event records discussion and resume-follow-up reopens w
     args: [
       'protocol',
       'deliver',
-      '--ticket-id',
-      createdJson.ticket.displayId,
+      '--mission-id',
+      createdJson.mission.displayId,
       '--session-key',
       attachedJson.sessionKey,
       '--summary',
@@ -255,8 +262,8 @@ test('post-delivery hook-event records discussion and resume-follow-up reopens w
       'hook-event',
       '--hook-type',
       'UserPromptSubmit',
-      '--ticket-id',
-      createdJson.ticket.displayId,
+      '--mission-id',
+      createdJson.mission.displayId,
       '--prompt-file',
       '-',
       '--turn-index',
@@ -282,7 +289,7 @@ test('post-delivery hook-event records discussion and resume-follow-up reopens w
     .get(objectiveId) as { state: string };
   const eventRow = db
     .prepare(
-      `SELECT type, summary FROM ticket_events WHERE objective_id = ? ORDER BY created_at DESC LIMIT 1`
+      `SELECT type, summary FROM mission_events WHERE objective_id = ? ORDER BY created_at DESC LIMIT 1`
     )
     .get(objectiveId) as { type: string; summary: string };
   assert.equal(discussionState.state, 'complete');
@@ -290,7 +297,7 @@ test('post-delivery hook-event records discussion and resume-follow-up reopens w
   assert.equal(eventRow.summary, 'Please tweak the docs.');
 
   const attachAfterComplete = await runOvld({
-    args: ['protocol', 'attach', '--ticket-id', createdJson.ticket.displayId],
+    args: ['protocol', 'attach', '--mission-id', createdJson.mission.displayId],
     env
   });
   assert.notEqual(attachAfterComplete.exitCode, 0);
@@ -300,8 +307,8 @@ test('post-delivery hook-event records discussion and resume-follow-up reopens w
     args: [
       'protocol',
       'resume-follow-up',
-      '--ticket-id',
-      createdJson.ticket.displayId,
+      '--mission-id',
+      createdJson.mission.displayId,
       '--external-session-id',
       'native-followup-session',
       '--summary',
@@ -323,8 +330,8 @@ test('post-delivery hook-event records discussion and resume-follow-up reopens w
     args: [
       'protocol',
       'update',
-      '--ticket-id',
-      createdJson.ticket.displayId,
+      '--mission-id',
+      createdJson.mission.displayId,
       '--session-key',
       resumedJson.sessionKey,
       '--summary',
@@ -340,8 +347,8 @@ test('post-delivery hook-event records discussion and resume-follow-up reopens w
     args: [
       'protocol',
       'deliver',
-      '--ticket-id',
-      createdJson.ticket.displayId,
+      '--mission-id',
+      createdJson.mission.displayId,
       '--session-key',
       resumedJson.sessionKey,
       '--summary',

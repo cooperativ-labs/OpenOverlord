@@ -2,7 +2,7 @@ contractVersion: "0.2-draft"
 componentType: connector
 componentKey: cursor
 label: "Cursor Connector"
-description: "Cursor plugin adapter for the Overlord ticket protocol workflow."
+description: "Cursor plugin adapter for the Overlord mission protocol workflow."
 
 connector:
   agentIdentifier: cursor
@@ -31,9 +31,9 @@ connector:
     - "prompt-wrapper.md"
     - "rules/overlord-local.mdc"
     - "scripts/overlord-mcp.mjs"
-    - "skills/overlord-ticket/SKILL.md"
-    - "skills/overlord-ticket/reference/cli.md"
-    - "skills/overlord-ticket/reference/context.md"
-    - "skills/overlord-ticket/reference/devices.md"
-    - "skills/overlord-ticket/reference/mcp.md"
-    - "skills/overlord-ticket/reference/shell-escaping.md"
+    - "skills/overlord-mission/SKILL.md"
+    - "skills/overlord-mission/reference/cli.md"
+    - "skills/overlord-mission/reference/context.md"
+    - "skills/overlord-mission/reference/devices.md"
+    - "skills/overlord-mission/reference/mcp.md"
+    - "skills/overlord-mission/reference/shell-escaping.md"

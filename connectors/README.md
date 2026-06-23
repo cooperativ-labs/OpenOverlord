@@ -2,7 +2,7 @@
 
 How Overlord plugs into AI coding harnesses (Claude Code, Codex, Cursor,
 OpenCode, Antigravity, and others). A connector is what lets an agent speak the
-`ovld protocol` and inherit ticket context inside its native harness.
+`ovld protocol` and inherit mission context inside its native harness.
 
 ## Table of Contents
 

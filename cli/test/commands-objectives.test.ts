@@ -16,7 +16,7 @@ test('ovld create sends objectives-json as one REST array payload', async () => 
       post: async ({ path, body }: { path: string; body?: unknown }) => {
         posts.push({ path, body });
         return {
-          id: 'ticket-1',
+          id: 'mission-1',
           displayId: 'local:1',
           objectives: [
             { id: 'objective-1', objective: 'First objective' },
@@ -52,7 +52,7 @@ test('ovld create sends objectives-json as one REST array payload', async () => 
   }
 
   assert.equal(posts.length, 1);
-  assert.equal(posts[0]?.path, '/api/tickets');
+  assert.equal(posts[0]?.path, '/api/missions');
   assert.deepEqual(posts[0]?.body, {
     projectId: 'project-1',
     title: 'First objective',

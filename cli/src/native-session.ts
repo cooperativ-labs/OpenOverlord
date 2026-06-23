@@ -9,30 +9,30 @@ const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 function sessionCachePath({
   agent,
-  ticketId,
+  missionId,
   workingDirectory
 }: {
   agent: string;
-  ticketId: string;
+  missionId: string;
   workingDirectory: string;
 }): string {
   const key = createHash('sha256')
-    .update(`${path.resolve(workingDirectory)}\0${ticketId}\0${agent}`)
+    .update(`${path.resolve(workingDirectory)}\0${missionId}\0${agent}`)
     .digest('hex');
   return path.join(resolveGlobalDataDir(), 'native-sessions', key);
 }
 
 function readCachedNativeSessionId({
   agent,
-  ticketId,
+  missionId,
   workingDirectory
 }: {
   agent: string;
-  ticketId: string;
+  missionId: string;
   workingDirectory: string;
 }): string | undefined {
   try {
-    const filePath = sessionCachePath({ agent, ticketId, workingDirectory });
+    const filePath = sessionCachePath({ agent, missionId, workingDirectory });
     if (!existsSync(filePath)) return undefined;
     const raw = JSON.parse(readFileSync(filePath, 'utf8')) as { externalSessionId?: unknown };
     return typeof raw.externalSessionId === 'string' && raw.externalSessionId.trim()
@@ -102,13 +102,13 @@ function detectCodexSessionIdFromDisk(workingDirectory: string): string | undefi
 export function resolveNativeSessionId({
   explicit,
   agent,
-  ticketId,
+  missionId,
   workingDirectory = process.cwd(),
   env = process.env
 }: {
   explicit?: string;
   agent: string;
-  ticketId: string;
+  missionId: string;
   workingDirectory?: string;
   env?: NodeJS.ProcessEnv;
 }): string | null | undefined {
@@ -122,18 +122,18 @@ export function resolveNativeSessionId({
     return (
       env.CODEX_THREAD_ID?.trim() ||
       env.CODEX_SESSION_ID?.trim() ||
-      readCachedNativeSessionId({ agent: 'codex', ticketId, workingDirectory }) ||
+      readCachedNativeSessionId({ agent: 'codex', missionId, workingDirectory }) ||
       detectCodexSessionIdFromDisk(workingDirectory)
     );
   }
 
   if (normalizedAgent === 'claude') {
-    return readCachedNativeSessionId({ agent: 'claude', ticketId, workingDirectory });
+    return readCachedNativeSessionId({ agent: 'claude', missionId, workingDirectory });
   }
 
   if (normalizedAgent === 'cursor') {
-    return readCachedNativeSessionId({ agent: 'cursor', ticketId, workingDirectory });
+    return readCachedNativeSessionId({ agent: 'cursor', missionId, workingDirectory });
   }
 
-  return readCachedNativeSessionId({ agent: normalizedAgent, ticketId, workingDirectory });
+  return readCachedNativeSessionId({ agent: normalizedAgent, missionId, workingDirectory });
 }

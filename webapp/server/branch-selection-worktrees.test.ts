@@ -5,7 +5,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 
 // Exercises objective-3 features end to end against real git repos:
-//  - branch override: stored on the ticket, surfaced on TicketBranchDto, cleared
+//  - branch override: stored on the mission, surfaced on MissionBranchDto, cleared
 //    when the runner records a prepared branch;
 //  - available-branch listing for the selector;
 //  - per-objective branch recording (via an execution request);
@@ -87,18 +87,18 @@ describe('branch selection and worktree management', () => {
     const { api, runner, primary } = await setup();
     const project = api.createProject({ name: 'Override Test' });
     api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
-    const ticket = api.createTicket({ projectId: project.id, firstObjective: 'Work' });
+    const mission = api.createMission({ projectId: project.id, firstObjective: 'Work' });
 
     // Pinning an override is reflected on the (still-pending) branch DTO and in
     // the predicted branch name the next launch will use.
-    let detail = api.updateTicket(ticket.id, { branchOverride: 'overlord/custom-pick' });
+    let detail = api.updateMission(mission.id, { branchOverride: 'overlord/custom-pick' });
     assert.equal(detail.branch?.overrideBranch, 'overlord/custom-pick');
     assert.equal(detail.branch?.name, 'overlord/custom-pick');
     assert.equal(detail.branch?.status, 'pending');
 
     // Once a branch is prepared, the override is consumed (active_branch wins).
     runner.recordBranchPrepared({
-      ticketId: ticket.displayId,
+      missionId: mission.displayId,
       payload: {
         branchName: 'overlord/custom-pick',
         baseBranch: 'main',
@@ -107,12 +107,12 @@ describe('branch selection and worktree management', () => {
         cycle: 1
       }
     });
-    detail = api.getTicketDetail(ticket.id);
+    detail = api.getMissionDetail(mission.id);
     assert.equal(detail.branch?.overrideBranch, null);
     assert.equal(detail.branch?.name, 'overlord/custom-pick');
 
     // Clearing via null is accepted.
-    const cleared = api.updateTicket(ticket.id, { branchOverride: null });
+    const cleared = api.updateMission(mission.id, { branchOverride: null });
     assert.equal(cleared.branch?.overrideBranch, null);
   });
 
@@ -120,12 +120,12 @@ describe('branch selection and worktree management', () => {
     const { api, primary } = await setup();
     const project = api.createProject({ name: 'List Branches Test' });
     api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
-    const ticket = api.createTicket({ projectId: project.id, firstObjective: 'Work' });
+    const mission = api.createMission({ projectId: project.id, firstObjective: 'Work' });
 
     git(primary, ['branch', 'feature/x']);
     git(primary, ['branch', 'release/1.0']);
 
-    const result = api.listTicketBranches(ticket.id);
+    const result = api.listMissionBranches(mission.id);
     assert.ok(result.branches.includes('main'));
     assert.ok(result.branches.includes('feature/x'));
     assert.ok(result.branches.includes('release/1.0'));
@@ -137,12 +137,12 @@ describe('branch selection and worktree management', () => {
     const { api, launch, runner, primary } = await setup();
     const project = api.createProject({ name: 'Per-Objective Test' });
     api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
-    const ticket = api.createTicket({ projectId: project.id, firstObjective: 'Work' });
-    const objectiveId = api.getTicketDetail(ticket.id).objectives[0]!.id;
+    const mission = api.createMission({ projectId: project.id, firstObjective: 'Work' });
+    const objectiveId = api.getMissionDetail(mission.id).objectives[0]!.id;
 
     const request = launch.launchObjective(objectiveId, { agent: 'claude' });
     runner.recordBranchPrepared({
-      ticketId: ticket.displayId,
+      missionId: mission.displayId,
       requestId: request.id,
       payload: {
         branchName: 'overlord/per-objective-1',
@@ -153,7 +153,7 @@ describe('branch selection and worktree management', () => {
       }
     });
 
-    const objective = api.getTicketDetail(ticket.id).objectives.find(o => o.id === objectiveId);
+    const objective = api.getMissionDetail(mission.id).objectives.find(o => o.id === objectiveId);
     assert.equal(objective?.branch, 'overlord/per-objective-1');
   });
 
@@ -209,10 +209,10 @@ describe('branch selection and worktree management', () => {
     // Active branch: a commit not in main.
     const active = makeBranchWorktree(git, primary, worktreeRoot, project.slug, 'overlord/active');
 
-    // A ticket maps the merged branch so status derivation marks it merged.
-    const ticket = api.createTicket({ projectId: project.id, firstObjective: 'Work' });
+    // A mission maps the merged branch so status derivation marks it merged.
+    const mission = api.createMission({ projectId: project.id, firstObjective: 'Work' });
     runner.recordBranchPrepared({
-      ticketId: ticket.displayId,
+      missionId: mission.displayId,
       payload: {
         branchName: 'overlord/merged',
         baseBranch: 'main',
@@ -232,19 +232,19 @@ describe('branch selection and worktree management', () => {
     const { worktreeRoot, api, runner, primary } = await setup();
     const project = api.createProject({ name: 'Auto Remove Test' });
     api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
-    const ticket = api.createTicket({ projectId: project.id, firstObjective: 'Work' });
+    const mission = api.createMission({ projectId: project.id, firstObjective: 'Work' });
 
     const branchName = 'overlord/auto-remove';
     const worktreePath = makeBranchWorktree(git, primary, worktreeRoot, project.slug, branchName);
 
     runner.recordBranchPrepared({
-      ticketId: ticket.displayId,
+      missionId: mission.displayId,
       payload: { branchName, baseBranch: 'main', worktreePath, action: 'create', cycle: 1 }
     });
 
-    api.performBranchAction(ticket.id, { action: 'integrate' });
+    api.performBranchAction(mission.id, { action: 'integrate' });
     assert.equal(existsSync(worktreePath), true);
-    const afterPush = api.performBranchAction(ticket.id, { action: 'push_parent' });
+    const afterPush = api.performBranchAction(mission.id, { action: 'push_parent' });
     assert.equal(afterPush.branch?.status, 'merged');
     // The merged worktree is cleaned up automatically.
     assert.equal(existsSync(worktreePath), false);

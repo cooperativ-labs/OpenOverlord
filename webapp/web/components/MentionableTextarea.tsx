@@ -17,7 +17,7 @@ export type ProjectMentionOption = {
   name: string;
 };
 
-export type TicketMentionOption = {
+export type MissionMentionOption = {
   id: string;
   /** Human-facing display id (e.g. `1:1489`) inserted as the `$` mention token. */
   displayId: string;
@@ -32,7 +32,7 @@ type MentionableTextareaProps = Omit<
   onValueChange: (nextValue: string) => void;
   mentionPaths?: string[];
   projectMentionOptions?: ProjectMentionOption[];
-  ticketMentionOptions?: TicketMentionOption[];
+  missionMentionOptions?: MissionMentionOption[];
   containerClassName?: string;
   menuClassName?: string;
   mentionMenuMode?: 'portal' | 'inline';
@@ -40,7 +40,7 @@ type MentionableTextareaProps = Omit<
   onMentionMenuOpenChange?: (open: boolean) => void;
   onMentionSelect?: (filePath: string) => void;
   onProjectMentionSelect?: (project: ProjectMentionOption) => void;
-  onTicketMentionSelect?: (ticket: TicketMentionOption) => void;
+  onMissionMentionSelect?: (mission: MissionMentionOption) => void;
   /** Continue `1. ` / `- ` lists on newline; use `shift-enter` when plain Enter is reserved (e.g. submit). */
   autoListContinuation?: AutoListContinuationMode | false;
   /** When set, caps auto-grown height so the textarea scrolls internally instead of expanding past this pixel height. */
@@ -56,7 +56,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       onValueChange,
       mentionPaths = [],
       projectMentionOptions = [],
-      ticketMentionOptions = [],
+      missionMentionOptions = [],
       className,
       containerClassName,
       menuClassName,
@@ -69,7 +69,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       onMentionMenuOpenChange,
       onMentionSelect,
       onProjectMentionSelect,
-      onTicketMentionSelect,
+      onMissionMentionSelect,
       autoListContinuation = false,
       maxHeightPx,
       menuOwnerId,
@@ -80,7 +80,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
     const containerRef = React.useRef<HTMLDivElement>(null);
     const mentionListRef = React.useRef<HTMLDivElement>(null);
     const projectMentionListRef = React.useRef<HTMLDivElement>(null);
-    const ticketMentionListRef = React.useRef<HTMLDivElement>(null);
+    const missionMentionListRef = React.useRef<HTMLDivElement>(null);
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
     // File (@) mention state
@@ -93,10 +93,10 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
     const [projectMentionQuery, setProjectMentionQuery] = React.useState('');
     const [projectMentionIndex, setProjectMentionIndex] = React.useState(0);
 
-    // Ticket ($) mention state
-    const [ticketMentionStart, setTicketMentionStart] = React.useState<number | null>(null);
-    const [ticketMentionQuery, setTicketMentionQuery] = React.useState('');
-    const [ticketMentionIndex, setTicketMentionIndex] = React.useState(0);
+    // Mission ($) mention state
+    const [missionMentionStart, setMissionMentionStart] = React.useState<number | null>(null);
+    const [missionMentionQuery, setMissionMentionQuery] = React.useState('');
+    const [missionMentionIndex, setMissionMentionIndex] = React.useState(0);
 
     const [mentionMenuPlacement, setMentionMenuPlacement] = React.useState<'top' | 'bottom'>(
       'bottom'
@@ -127,20 +127,20 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
 
     const projectMentionMenuOpen = projectMentionStart !== null && projectMentionResults.length > 0;
 
-    const ticketMentionResults = React.useMemo(
+    const missionMentionResults = React.useMemo(
       () =>
-        ticketMentionOptions
+        missionMentionOptions
           .filter(t => {
-            const needle = ticketMentionQuery.toLowerCase();
+            const needle = missionMentionQuery.toLowerCase();
             return (
               t.displayId.toLowerCase().includes(needle) || t.title.toLowerCase().includes(needle)
             );
           })
           .slice(0, MAX_MENTION_RESULTS),
-      [ticketMentionOptions, ticketMentionQuery]
+      [missionMentionOptions, missionMentionQuery]
     );
 
-    const ticketMentionMenuOpen = ticketMentionStart !== null && ticketMentionResults.length > 0;
+    const missionMentionMenuOpen = missionMentionStart !== null && missionMentionResults.length > 0;
 
     const setRefs = React.useCallback(
       (node: HTMLTextAreaElement | null) => {
@@ -167,10 +167,10 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       setProjectMentionIndex(0);
     }, []);
 
-    const clearTicketMentionState = React.useCallback(() => {
-      setTicketMentionStart(null);
-      setTicketMentionQuery('');
-      setTicketMentionIndex(0);
+    const clearMissionMentionState = React.useCallback(() => {
+      setMissionMentionStart(null);
+      setMissionMentionQuery('');
+      setMissionMentionIndex(0);
     }, []);
 
     const updateMentionState = React.useCallback(
@@ -207,19 +207,19 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
           }
         }
 
-        if (ticketMentionOptions.length === 0) {
-          clearTicketMentionState();
+        if (missionMentionOptions.length === 0) {
+          clearMissionMentionState();
         } else {
           const beforeCursor = nextValue.slice(0, cursorPosition);
           const tokenMatch = beforeCursor.match(/(^|[\s([])\$([^\s$[]*)$/);
           if (!tokenMatch) {
-            clearTicketMentionState();
+            clearMissionMentionState();
           } else {
             const query = tokenMatch[2] ?? '';
             const dollarPosition = cursorPosition - query.length - 1;
-            setTicketMentionStart(dollarPosition);
-            setTicketMentionQuery(query);
-            setTicketMentionIndex(0);
+            setMissionMentionStart(dollarPosition);
+            setMissionMentionQuery(query);
+            setMissionMentionIndex(0);
           }
         }
       },
@@ -228,8 +228,8 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
         clearMentionState,
         projectMentionOptions.length,
         clearProjectMentionState,
-        ticketMentionOptions.length,
-        clearTicketMentionState
+        missionMentionOptions.length,
+        clearMissionMentionState
       ]
     );
 
@@ -325,41 +325,41 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       [projectMentionStart, value, onValueChange, onProjectMentionSelect, clearProjectMentionState]
     );
 
-    const insertTicketMentionAtCursor = React.useCallback(
-      (ticket: TicketMentionOption) => {
+    const insertMissionMentionAtCursor = React.useCallback(
+      (mission: MissionMentionOption) => {
         const textArea = textareaRef.current as
           | (TextareaHandle & {
               selectionStart: number | null;
             })
           | null;
 
-        if (!textArea || ticketMentionStart === null || !ticket.displayId) return;
+        if (!textArea || missionMentionStart === null || !mission.displayId) return;
 
         const cursor = textArea.selectionStart ?? value.length;
-        let mentionText = `$${ticket.displayId}`;
+        let mentionText = `$${mission.displayId}`;
         const suffix = value.slice(cursor);
 
         if (suffix.length === 0 || (!suffix.startsWith(' ') && !suffix.startsWith('\n'))) {
           mentionText += ' ';
         }
 
-        const nextValue = `${value.slice(0, ticketMentionStart)}${mentionText}${suffix}`;
-        const nextCursor = ticketMentionStart + mentionText.length;
+        const nextValue = `${value.slice(0, missionMentionStart)}${mentionText}${suffix}`;
+        const nextCursor = missionMentionStart + mentionText.length;
 
         onValueChange(nextValue);
-        onTicketMentionSelect?.(ticket);
-        clearTicketMentionState();
+        onMissionMentionSelect?.(mission);
+        clearMissionMentionState();
 
         requestAnimationFrame(() => {
           textArea.focus();
           textArea.setSelectionRange(nextCursor, nextCursor);
         });
       },
-      [ticketMentionStart, value, onValueChange, onTicketMentionSelect, clearTicketMentionState]
+      [missionMentionStart, value, onValueChange, onMissionMentionSelect, clearMissionMentionState]
     );
 
     React.useEffect(() => {
-      const anyMenuOpen = mentionMenuOpen || projectMentionMenuOpen || ticketMentionMenuOpen;
+      const anyMenuOpen = mentionMenuOpen || projectMentionMenuOpen || missionMentionMenuOpen;
       if (!anyMenuOpen || mentionMenuMode !== 'portal') return;
 
       updateMentionMenuPosition();
@@ -373,14 +373,14 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
     }, [
       mentionMenuOpen,
       projectMentionMenuOpen,
-      ticketMentionMenuOpen,
+      missionMentionMenuOpen,
       mentionMenuMode,
       updateMentionMenuPosition
     ]);
 
     React.useEffect(() => {
-      onMentionMenuOpenChange?.(mentionMenuOpen || projectMentionMenuOpen || ticketMentionMenuOpen);
-    }, [mentionMenuOpen, projectMentionMenuOpen, ticketMentionMenuOpen, onMentionMenuOpenChange]);
+      onMentionMenuOpenChange?.(mentionMenuOpen || projectMentionMenuOpen || missionMentionMenuOpen);
+    }, [mentionMenuOpen, projectMentionMenuOpen, missionMentionMenuOpen, onMentionMenuOpenChange]);
 
     React.useEffect(() => {
       if (!mentionMenuOpen) return;
@@ -405,16 +405,16 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
     }, [projectMentionMenuOpen, projectMentionIndex]);
 
     React.useEffect(() => {
-      if (!ticketMentionMenuOpen) return;
+      if (!missionMentionMenuOpen) return;
 
-      const listEl = ticketMentionListRef.current;
+      const listEl = missionMentionListRef.current;
       if (!listEl) return;
 
       const active = listEl.querySelector<HTMLElement>(
-        `[data-ticket-mention-index="${ticketMentionIndex}"]`
+        `[data-mission-mention-index="${missionMentionIndex}"]`
       );
       active?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    }, [ticketMentionMenuOpen, ticketMentionIndex]);
+    }, [missionMentionMenuOpen, missionMentionIndex]);
 
     React.useEffect(() => {
       if (mentionPaths.length > 0) return;
@@ -427,9 +427,9 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
     }, [projectMentionOptions.length, clearProjectMentionState]);
 
     React.useEffect(() => {
-      if (ticketMentionOptions.length > 0) return;
-      clearTicketMentionState();
-    }, [ticketMentionOptions.length, clearTicketMentionState]);
+      if (missionMentionOptions.length > 0) return;
+      clearMissionMentionState();
+    }, [missionMentionOptions.length, clearMissionMentionState]);
 
     React.useEffect(() => {
       const textarea = textareaRef.current;
@@ -462,7 +462,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
     const mentionMenu = mentionMenuOpen ? (
       <div
         ref={mentionListRef}
-        data-blank-ticket-card-owner={menuOwnerId}
+        data-blank-mission-card-owner={menuOwnerId}
         className={cn(
           mentionMenuMode === 'portal'
             ? 'fixed z-50 w-max max-w-[min(64rem,calc(100vw-1rem))] overflow-x-auto overflow-y-auto rounded-md border bg-popover p-1 shadow-md'
@@ -504,7 +504,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
     const projectMentionMenu = projectMentionMenuOpen ? (
       <div
         ref={projectMentionListRef}
-        data-blank-ticket-card-owner={menuOwnerId}
+        data-blank-mission-card-owner={menuOwnerId}
         className={cn(
           mentionMenuMode === 'portal'
             ? 'fixed z-50 w-max max-w-[min(48rem,calc(100vw-1rem))] overflow-x-auto overflow-y-auto rounded-md border bg-popover p-1 shadow-md'
@@ -535,10 +535,10 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       </div>
     ) : null;
 
-    const ticketMentionMenu = ticketMentionMenuOpen ? (
+    const missionMentionMenu = missionMentionMenuOpen ? (
       <div
-        ref={ticketMentionListRef}
-        data-blank-ticket-card-owner={menuOwnerId}
+        ref={missionMentionListRef}
+        data-blank-mission-card-owner={menuOwnerId}
         className={cn(
           mentionMenuMode === 'portal'
             ? 'fixed z-50 w-max max-w-[min(48rem,calc(100vw-1rem))] overflow-x-auto overflow-y-auto rounded-md border bg-popover p-1 shadow-md'
@@ -547,30 +547,30 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
         )}
         style={menuStyle}
       >
-        {ticketMentionResults.map((ticket, index) => (
+        {missionMentionResults.map((mission, index) => (
           <button
-            key={ticket.id}
-            data-ticket-mention-index={index}
+            key={mission.id}
+            data-mission-mention-index={index}
             className={cn(
               'block w-full whitespace-nowrap rounded px-2 py-1.5 text-left text-sm transition-colors',
-              index === ticketMentionIndex
+              index === missionMentionIndex
                 ? 'bg-muted-foreground/30 text-foreground shadow-sm'
                 : 'text-foreground hover:bg-muted-foreground/30'
             )}
             type="button"
             onMouseDown={event => {
               event.preventDefault();
-              insertTicketMentionAtCursor(ticket);
+              insertMissionMentionAtCursor(mission);
             }}
           >
-            <span className="font-medium">${ticket.displayId}</span>
+            <span className="font-medium">${mission.displayId}</span>
             <span
               className={cn(
                 'ml-2 text-xs',
-                index === ticketMentionIndex ? 'text-foreground' : 'text-muted-foreground'
+                index === missionMentionIndex ? 'text-foreground' : 'text-muted-foreground'
               )}
             >
-              {ticket.title}
+              {mission.title}
             </span>
           </button>
         ))}
@@ -603,7 +603,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
           onBlur={event => {
             clearMentionState();
             clearProjectMentionState();
-            clearTicketMentionState();
+            clearMissionMentionState();
             onBlur?.(event);
           }}
           onKeyDown={event => {
@@ -666,18 +666,18 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
               }
             }
 
-            if (ticketMentionMenuOpen) {
+            if (missionMentionMenuOpen) {
               if (event.key === 'ArrowDown') {
                 event.preventDefault();
-                setTicketMentionIndex(current => (current + 1) % ticketMentionResults.length);
+                setMissionMentionIndex(current => (current + 1) % missionMentionResults.length);
                 return;
               }
 
               if (event.key === 'ArrowUp') {
                 event.preventDefault();
-                setTicketMentionIndex(
+                setMissionMentionIndex(
                   current =>
-                    (current - 1 + ticketMentionResults.length) % ticketMentionResults.length
+                    (current - 1 + missionMentionResults.length) % missionMentionResults.length
                 );
                 return;
               }
@@ -685,14 +685,14 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
               if (event.key === 'Enter' || event.key === 'Tab') {
                 event.preventDefault();
                 const selected =
-                  ticketMentionResults[ticketMentionIndex] ?? ticketMentionResults[0];
-                if (selected) insertTicketMentionAtCursor(selected);
+                  missionMentionResults[missionMentionIndex] ?? missionMentionResults[0];
+                if (selected) insertMissionMentionAtCursor(selected);
                 return;
               }
 
               if (event.key === 'Escape') {
                 event.preventDefault();
-                clearTicketMentionState();
+                clearMissionMentionState();
                 return;
               }
             }
@@ -744,9 +744,9 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
           ? createPortal(projectMentionMenu, document.body)
           : projectMentionMenu}
 
-        {mentionMenuMode === 'portal' && ticketMentionMenu
-          ? createPortal(ticketMentionMenu, document.body)
-          : ticketMentionMenu}
+        {mentionMenuMode === 'portal' && missionMentionMenu
+          ? createPortal(missionMentionMenu, document.body)
+          : missionMentionMenu}
       </div>
     );
   }

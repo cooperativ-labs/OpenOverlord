@@ -27,18 +27,18 @@ Requirements:
 
 `USER_TOKEN` authentication is a modular expansion feature. When enabled, protocol requests may authenticate with a user-owned token that initially confers all permissions of the creating user. Future token scopes should restrict that user's permissions rather than grant additional access.
 
-### Ticket Creation And Discovery
+### Mission Creation And Discovery
 
 Requirements:
 
-- `create`: create a draft ticket/objective without attaching.
-- `prompt`: create a ticket and attach or queue execution immediately.
-- `load-context`: read ticket context without creating a session.
+- `create`: create a draft mission/objective without attaching.
+- `prompt`: create a mission and attach or queue execution immediately.
+- `load-context`: read mission context without creating a session.
 - `connect`: create a lightweight session key without full context.
-- `search-tickets`: search by query, status, project, creator, and update dates.
+- `search-missions`: search by query, status, project, creator, and update dates.
 - `discuss-objective`: mark a draft objective submitted.
-- `add-objectives`: append ordered objectives to a ticket.
-- `record-work`: record already-completed chat work as a review ticket with completed objective and delivery record.
+- `add-objectives`: append ordered objectives to a mission.
+- `record-work`: record already-completed chat work as a review mission with completed objective and delivery record.
 
 ### Session Lifecycle
 
@@ -46,9 +46,9 @@ Requirements:
 
 - `attach`: start the working session and return full context.
 - `update`: post progress, discussion/decision events, optional change rationales, and follow-up execution transitions.
-- `heartbeat`: update liveness and transient telemetry without creating a ticket event.
+- `heartbeat`: update liveness and transient telemetry without creating a mission event.
 - `ask`: post a blocking question and stop work.
-- `deliver`: finish work, store artifacts/rationales, mark objective complete, and move ticket to review.
+- `deliver`: finish work, store artifacts/rationales, mark objective complete, and move mission to review.
 - `hook-event`: record connector lifecycle events such as `UserPromptSubmit` and future `Stop`. `UserPromptSubmit` records follow-up user activity without requiring a live session and without reopening execution.
 - `resume-follow-up`: explicitly reopen a completed objective for post-delivery implementation follow-up, returning a new session key.
 - `permission-request`: record that an agent asked for tool permission.
@@ -101,11 +101,11 @@ connector hook caches and store the result in `agent_sessions.external_session_i
 
 `attach` must return:
 
-- Ticket metadata.
+- Mission metadata.
 - Current objective metadata, including objective ID and instruction text.
 - All objective IDs and states in order.
 - Session object with `sessionKey`.
-- History/events relevant to the ticket.
+- History/events relevant to the mission.
 - Artifacts.
 - Attachments visible to the active objective.
 - Shared context.
@@ -115,7 +115,7 @@ connector hook caches and store the result in `agent_sessions.external_session_i
 The assembled prompt context should include:
 
 - Task title.
-- Ticket ID.
+- Mission ID.
 - Objective ID.
 - Project identifier/name.
 - Objective instruction.
@@ -134,7 +134,7 @@ The assembled prompt context should include:
 `update` fields:
 
 - `session-key`
-- `ticket-id`
+- `mission-id`
 - `summary` or `summary-file`
 - `phase`
 - `event-type`
@@ -215,7 +215,7 @@ Delivery rules:
 - Delivery validates rationale coverage against the changed-file records for the objective (aggregated across all sessions and no-session `record-work` records). The client supplies the current run's changed files from local VCS; the agent can pass `--no-file-changes` to declare the run made no file changes.
 - Delivery is the final review boundary, but it should not be the first time Overlord learns which files changed during the session.
 - Delivery moves the active objective to `complete`.
-- Delivery moves the ticket to review unless another explicit status is requested later.
+- Delivery moves the mission to review unless another explicit status is requested later.
 - Delivery may trigger auto-advance for the next objective.
 - After delivery, implementation work must not continue until follow-up execution is explicitly started.
 
@@ -225,7 +225,7 @@ Delivery rules:
 
 Requirements:
 
-- Create a ticket directly in review.
+- Create a mission directly in review.
 - Create a completed objective.
 - Store a delivery summary.
 - Store artifacts and change rationales if provided.

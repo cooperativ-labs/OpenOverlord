@@ -11,7 +11,7 @@ import {
   recordHookEvent,
   updateSession
 } from '../../src/service/protocol.ts';
-import { createTicketWithObjectives } from '../../src/service/tickets.ts';
+import { createMissionWithObjectives } from '../../src/service/missions.ts';
 
 test('protocol lifecycle: attach → update → deliver', () => {
   const db = new Database(':memory:');
@@ -27,18 +27,18 @@ test('protocol lifecycle: attach → update → deliver', () => {
     isPrimary: true
   });
 
-  const { ticket, objectives } = createTicketWithObjectives({
+  const { mission, objectives } = createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [{ objective: 'Implement feature X' }]
   });
-  assert.equal(ticket.statusType, 'draft');
+  assert.equal(mission.statusType, 'draft');
 
   ctx.db.prepare(`UPDATE objectives SET state = 'submitted' WHERE id = ?`).run(objectives[0]?.id);
 
-  const attached = attachSession({ ctx, ticketId: ticket.id, agentIdentifier: 'test-agent' });
+  const attached = attachSession({ ctx, missionId: mission.id, agentIdentifier: 'test-agent' });
   assert.ok(attached.sessionKey);
-  assert.equal(attached.ticket.statusType, 'execute');
+  assert.equal(attached.mission.statusType, 'execute');
   assert.equal(attached.objective.state, 'executing');
   assert.match(attached.promptContext, /Implement feature X/);
 
@@ -49,23 +49,23 @@ test('protocol lifecycle: attach → update → deliver', () => {
 
   updateSession({
     ctx,
-    ticketId: ticket.displayId,
+    missionId: mission.displayId,
     sessionKey: attached.sessionKey,
     summary: 'Made progress on feature X'
   });
 
   const delivered = deliverSession({
     ctx,
-    ticketId: ticket.displayId,
+    missionId: mission.displayId,
     sessionKey: attached.sessionKey,
     summary: 'Completed feature X implementation'
   });
   assert.ok(delivered.deliveryId);
 
-  const ticketRow = ctx.db
-    .prepare(`SELECT status_type FROM tickets WHERE id = ?`)
-    .get(ticket.id) as { status_type: string };
-  assert.equal(ticketRow.status_type, 'review');
+  const missionRow = ctx.db
+    .prepare(`SELECT status_type FROM missions WHERE id = ?`)
+    .get(mission.id) as { status_type: string };
+  assert.equal(missionRow.status_type, 'review');
 
   const objectiveRow = ctx.db
     .prepare(`SELECT state FROM objectives WHERE id = ?`)
@@ -82,7 +82,7 @@ test('attach records and clears native external session id', () => {
   const ctx = createServiceContext({ db, source: 'protocol' });
 
   const project = createProject({ ctx, name: 'External Session Test' });
-  const { ticket, objectives } = createTicketWithObjectives({
+  const { mission, objectives } = createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [{ objective: 'Track native session id' }]
@@ -91,7 +91,7 @@ test('attach records and clears native external session id', () => {
 
   const attached = attachSession({
     ctx,
-    ticketId: ticket.id,
+    missionId: mission.id,
     agentIdentifier: 'claude',
     externalSessionId: 'claude-native-123'
   });
@@ -103,7 +103,7 @@ test('attach records and clears native external session id', () => {
 
   attachSession({
     ctx,
-    ticketId: ticket.id,
+    missionId: mission.id,
     existingSessionKey: attached.sessionKey,
     externalSessionId: null
   });
@@ -123,18 +123,18 @@ test('hook-event persists external session id on the active agent session', () =
   const ctx = createServiceContext({ db, source: 'protocol' });
 
   const project = createProject({ ctx, name: 'Hook external session test' });
-  const { ticket, objectives } = createTicketWithObjectives({
+  const { mission, objectives } = createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [{ objective: 'Capture hook session id' }]
   });
   ctx.db.prepare(`UPDATE objectives SET state = 'submitted' WHERE id = ?`).run(objectives[0]?.id);
 
-  const attached = attachSession({ ctx, ticketId: ticket.id, agentIdentifier: 'cursor' });
+  const attached = attachSession({ ctx, missionId: mission.id, agentIdentifier: 'cursor' });
 
   recordHookEvent({
     ctx,
-    ticketId: ticket.displayId,
+    missionId: mission.displayId,
     hookType: 'UserPromptSubmit',
     prompt: 'Follow-up from the harness',
     sessionKey: attached.sessionKey,
@@ -157,15 +157,15 @@ test('attach response includes attach-response-v1 fields', () => {
   const ctx = createServiceContext({ db, source: 'protocol' });
 
   const project = createProject({ ctx, name: 'Shape Test' });
-  const { ticket, objectives } = createTicketWithObjectives({
+  const { mission, objectives } = createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [{ objective: 'Verify attach shape' }]
   });
   ctx.db.prepare(`UPDATE objectives SET state = 'submitted' WHERE id = ?`).run(objectives[0]?.id);
 
-  const attached = attachSession({ ctx, ticketId: ticket.id });
-  assert.equal(attached.ticket.statusType, 'execute');
+  const attached = attachSession({ ctx, missionId: mission.id });
+  assert.equal(attached.mission.statusType, 'execute');
   for (const field of [
     'history',
     'artifacts',

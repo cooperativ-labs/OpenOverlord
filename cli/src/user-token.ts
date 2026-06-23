@@ -5,7 +5,7 @@ import { printJson } from './output.js';
 
 // Light local mirrors of the relevant shared DTOs (the CLI package does not
 // depend on the webapp shared contract). Only the fields the CLI reads/sends.
-type TokenScope = 'full' | 'ticket_lifecycle';
+type TokenScope = 'full' | 'mission_lifecycle';
 
 interface UserTokenDto {
   id: string;
@@ -71,9 +71,9 @@ function normalizeScope(raw: string | undefined): TokenScope | undefined {
   if (raw === undefined) return undefined;
   const value = raw.trim().toLowerCase();
   if (value === 'full') return 'full';
-  if (value === 'ticket-lifecycle' || value === 'ticket_lifecycle') return 'ticket_lifecycle';
+  if (value === 'mission-lifecycle' || value === 'mission_lifecycle') return 'mission_lifecycle';
   throw new CliError({
-    message: `Unknown --scope '${raw}'. Use 'full' or 'ticket-lifecycle'.`
+    message: `Unknown --scope '${raw}'. Use 'full' or 'mission-lifecycle'.`
   });
 }
 

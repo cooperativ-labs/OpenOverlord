@@ -73,7 +73,7 @@ its budget re-explaining itself.
   is the gold input: it contains the reasoning, the edits, and the user's objective.
 - The mechanical **changed-file list + per-file `git diff`** (computed client-side, never
   leaves the box if the model runs locally/edge).
-- The **objective text** from the ticket.
+- The **objective text** from the mission.
 
 ### Output
 - A draft `summary` (narrative) and a full set of `changeRationales` (one per meaningful

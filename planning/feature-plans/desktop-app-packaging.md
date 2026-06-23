@@ -1,7 +1,7 @@
 # Desktop App Packaging — SQLite Distribution & Signed macOS Build
 
-**Status:** Proposal (planning only — no code in this ticket)
-**Ticket:** coo:2 — *Package desktop app with SQLite and CLI*
+**Status:** Proposal (planning only — no code in this mission)
+**Mission:** coo:2 — *Package desktop app with SQLite and CLI*
 **Contract baseline:** `0.5-draft` (this plan rides the `0.6-draft` bump proposed by [`desktop-app-module.md`](desktop-app-module.md))
 **Companion plans:**
 - [`desktop-app-module.md`](desktop-app-module.md) — the Electron *shell* (window, security, auth, terminal launcher). **Read it first.**
@@ -239,7 +239,7 @@ processes open the *same* path on a local (non-network) filesystem
 
 ## 6. The build & signing script (the headline deliverable)
 
-> **Goal restated from the ticket:** "a script I can use to generate and sign the
+> **Goal restated from the mission:** "a script I can use to generate and sign the
 > macOS binary and output it to a folder I specify ... inputs are just our
 > existing modules."
 
@@ -278,7 +278,7 @@ orchestrates `electron-builder`; thin enough to read top-to-bottom.
    (Electron Helpers, the `.node`, the staged CLI executables) with the
    **Developer ID Application** identity + hardened runtime + entitlements.
 7. **Notarize** — `afterSign` hook runs `@electron/notarize` (→ `notarytool`)
-   and **staples** the ticket to the `.app`/`.dmg`.
+   and **staples** the mission to the `.app`/`.dmg`.
 8. **Emit to `--out`** — copy the signed `.dmg` (+ `.zip` for auto-update later)
    and a `latest-mac.yml` into the operator's folder; print the artifact paths
    and `spctl`/`codesign --verify` results.
@@ -400,7 +400,7 @@ introduces.
 
 ## 10. Phased plan (slots onto the shell plan)
 
-The [shell plan](desktop-app-module.md) defines Phases 0–5. This ticket
+The [shell plan](desktop-app-module.md) defines Phases 0–5. This mission
 **realizes its Phase 5** and front-loads the SQLite portability work the shell
 plan glossed over. Concretely:
 
@@ -409,7 +409,7 @@ plan glossed over. Concretely:
   `OVERLORD_STORAGE_DIR`; make the server boot path create the DB instead of
   throwing. **Acceptance:** `OVERLORD_SQLITE_PATH=/tmp/x.sqlite ovld serve` on a
   clean machine creates, migrates, seeds, and serves — verified by signup →
-  ticket → `ovld protocol attach/deliver` against that fresh DB.
+  mission → `ovld protocol attach/deliver` against that fresh DB.
 
 - **P1 — Server bundle.**
   esbuild `webapp/server` → `webapp/dist-server/index.js` with `better-sqlite3`
@@ -425,7 +425,7 @@ plan glossed over. Concretely:
 - **P3 — CLI in the bundle + Install CLI.**
   Stage the packed CLI with a Node-ABI native build; "Install CLI" symlink
   pointed at the app-data DB. **Acceptance:** after Install CLI, a fresh terminal
-  `ovld tickets` lists the same data the window shows.
+  `ovld missions` lists the same data the window shows.
 
 - **P4 — `scripts/build-desktop.ts` + signing/notarization.**
   electron-builder mac dmg/zip, hardened-runtime entitlements, Developer-ID

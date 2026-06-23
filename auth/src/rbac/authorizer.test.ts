@@ -15,7 +15,7 @@ describe('Authorizer', () => {
       assert.equal(auth.can(admin, PERMISSIONS.USER_CREATE).allowed, true);
       assert.equal(auth.can(admin, PERMISSIONS.ROLE_ASSIGN).allowed, true);
       assert.equal(auth.can(admin, PERMISSIONS.CONNECTOR_CONFIGURE).allowed, true);
-      assert.equal(auth.can(admin, PERMISSIONS.TICKET_DELETE).allowed, true);
+      assert.equal(auth.can(admin, PERMISSIONS.MISSION_DELETE).allowed, true);
       assert.equal(auth.can(admin, PERMISSIONS.WORKSPACE_IMAGE_CREATE).allowed, true);
       assert.equal(auth.can(admin, PERMISSIONS.ATTACHMENT_DELETE).allowed, true);
     });
@@ -24,11 +24,11 @@ describe('Authorizer', () => {
   describe('MEMBER role', () => {
     const member = makeActor('member-user', [Role.MEMBER]);
 
-    it('allows ticket operations via ticket:* wildcard', () => {
-      assert.equal(auth.can(member, PERMISSIONS.TICKET_CREATE).allowed, true);
-      assert.equal(auth.can(member, PERMISSIONS.TICKET_READ).allowed, true);
-      assert.equal(auth.can(member, PERMISSIONS.TICKET_UPDATE).allowed, true);
-      assert.equal(auth.can(member, PERMISSIONS.TICKET_DELETE).allowed, true);
+    it('allows mission operations via mission:* wildcard', () => {
+      assert.equal(auth.can(member, PERMISSIONS.MISSION_CREATE).allowed, true);
+      assert.equal(auth.can(member, PERMISSIONS.MISSION_READ).allowed, true);
+      assert.equal(auth.can(member, PERMISSIONS.MISSION_UPDATE).allowed, true);
+      assert.equal(auth.can(member, PERMISSIONS.MISSION_DELETE).allowed, true);
     });
 
     it('allows own token management via user_token:self:* wildcard', () => {
@@ -93,7 +93,7 @@ describe('Authorizer', () => {
       assert.equal(auth.can(publicActor, PERMISSIONS.WORKSPACE_IMAGE_CREATE).allowed, false);
       assert.equal(auth.can(publicActor, PERMISSIONS.USER_IMAGE_SELF_CREATE).allowed, false);
       assert.equal(auth.can(publicActor, PERMISSIONS.ATTACHMENT_READ).allowed, false);
-      assert.equal(auth.can(publicActor, PERMISSIONS.TICKET_READ).allowed, false);
+      assert.equal(auth.can(publicActor, PERMISSIONS.MISSION_READ).allowed, false);
     });
   });
 
@@ -101,7 +101,7 @@ describe('Authorizer', () => {
     const noRoles = makeActor('anon', []);
 
     it('denies everything', () => {
-      assert.equal(auth.can(noRoles, PERMISSIONS.TICKET_READ).allowed, false);
+      assert.equal(auth.can(noRoles, PERMISSIONS.MISSION_READ).allowed, false);
       assert.equal(auth.can(noRoles, PERMISSIONS.PROJECT_READ).allowed, false);
     });
   });
