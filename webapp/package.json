@@ -1,6 +1,6 @@
 {
   "name": "@overlord/webapp",
-  "version": "0.2606231157.0",
+  "version": "0.2606231735.0",
   "private": true,
   "type": "module",
   "description": "Overlord realtime web control center (REST + realtime API backed by the local SQLite database, plus the React SPA that consumes it).",
