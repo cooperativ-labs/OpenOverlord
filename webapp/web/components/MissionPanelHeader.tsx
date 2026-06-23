@@ -2,9 +2,7 @@ import { ArrowRightToLine, EllipsisVertical } from 'lucide-react';
 
 import { CopyMissionIdentifierButton } from '@/components/CopyMissionIdentifierButton';
 import { DeleteMissionButton } from '@/components/DeleteMissionButton';
-import { MissionMemberSelect } from '@/components/MissionMemberSelect';
-import { MissionProjectSelect } from '@/components/MissionProjectSelect';
-import { MissionStatusSelect } from '@/components/MissionStatusSelect';
+import { MissionBranchControl } from '@/components/MissionBranchControl';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -18,15 +16,9 @@ type MissionPanelHeaderProps = {
   mission: MissionDetailDto;
   projectId: string;
   onClose: () => void;
-  onProjectChanged?: (projectId: string) => void;
 };
 
-export function MissionPanelHeader({
-  mission,
-  projectId,
-  onClose,
-  onProjectChanged
-}: MissionPanelHeaderProps) {
+export function MissionPanelHeader({ mission, projectId, onClose }: MissionPanelHeaderProps) {
   return (
     <div className="relative flex shrink-0 items-center justify-between gap-2 overflow-hidden border-b border-[var(--color-border)] px-4 py-2.5">
       <div className="flex min-w-0 items-center gap-2">
@@ -70,24 +62,8 @@ export function MissionPanelHeader({
         </span>
       </div>
 
-      <div className="flex shrink-0 items-center justify-end gap-3">
-        <div className="flex items-center gap-1.5">
-          <MissionMemberSelect
-            missionId={mission.id}
-            workspaceId={mission.workspaceId}
-            assignedWorkspaceUserId={mission.assignedWorkspaceUserId}
-          />
-          <MissionProjectSelect
-            missionId={mission.id}
-            projectId={projectId}
-            onProjectChanged={onProjectChanged}
-          />
-          <MissionStatusSelect
-            missionId={mission.id}
-            currentStatusId={mission.statusId}
-            statuses={mission.statuses}
-          />
-        </div>
+      <div className="flex min-w-0 shrink items-center justify-end gap-2">
+        <MissionBranchControl mission={mission} />
 
         <Button
           type="button"
