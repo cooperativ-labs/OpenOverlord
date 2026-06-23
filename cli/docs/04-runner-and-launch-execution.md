@@ -111,7 +111,7 @@ project resource and before spawning the agent.
 Branch names use:
 
 ```text
-overlord/<ticket-title-slug>-<ticket-sequence>
+<ticket-title-slug>-<ticket-sequence>
 ```
 
 The worktree lives under:

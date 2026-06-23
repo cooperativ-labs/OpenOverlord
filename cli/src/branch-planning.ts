@@ -50,7 +50,6 @@ export type TicketBranchPreviewInput = Pick<
   'ticket' | 'project' | 'base' | 'worktreeRoot'
 >;
 
-const BRANCH_PREFIX = 'overlord';
 const TITLE_SLUG_MAX = 48;
 
 function stripCombiningMarks(value: string): string {
@@ -92,10 +91,7 @@ export function sanitizeBranchName(branch: string, fallback: string): string {
 export function canonicalTicketBranch(ticket: { title: string; sequence: number }): string {
   const fallback = `ticket-${ticket.sequence}`;
   const titleSlug = slugifyBranchTitle(ticket.title, fallback);
-  return sanitizeBranchName(
-    `${BRANCH_PREFIX}/${titleSlug}-${ticket.sequence}`,
-    `${BRANCH_PREFIX}/${fallback}`
-  );
+  return sanitizeBranchName(`${titleSlug}-${ticket.sequence}`, fallback);
 }
 
 function branchLeaf(branch: string): string {
