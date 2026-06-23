@@ -50,7 +50,6 @@ export type MissionBranchPreviewInput = Pick<
   'mission' | 'project' | 'base' | 'worktreeRoot'
 >;
 
-const BRANCH_PREFIX = 'overlord';
 const TITLE_SLUG_MAX = 48;
 
 function stripCombiningMarks(value: string): string {
@@ -92,10 +91,7 @@ export function sanitizeBranchName(branch: string, fallback: string): string {
 export function canonicalMissionBranch(mission: { title: string; sequence: number }): string {
   const fallback = `mission-${mission.sequence}`;
   const titleSlug = slugifyBranchTitle(mission.title, fallback);
-  return sanitizeBranchName(
-    `${BRANCH_PREFIX}/${titleSlug}-${mission.sequence}`,
-    `${BRANCH_PREFIX}/${fallback}`
-  );
+  return sanitizeBranchName(`${titleSlug}-${mission.sequence}`, fallback);
 }
 
 function branchLeaf(branch: string): string {

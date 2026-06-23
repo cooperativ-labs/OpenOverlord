@@ -543,18 +543,33 @@ function resolveRef(repoPath: string, ref: string): string | null {
   return sha || null;
 }
 
-// True only when the branch has actually been merged into the base: it must have
-// diverged from the base (different tip) AND be fully contained in it (no commits
-// of its own that are absent from the base). A branch freshly cut from the base
-// shares the base's tip, so it is NOT merged — fixing the bug where a just-created
-// branch reported as "merged" because `git branch --merged <base>` lists every
-// branch whose tip is reachable from the base, including brand-new ones.
+// True when `sha` sits on the base's first-parent trunk — the linear backbone you
+// walk by always taking the first parent. Overlord's merge-with-parent flow brings
+// a branch in with a `--no-ff` merge commit whose SECOND parent is the branch tip,
+// so a genuinely merged branch tip is NOT on this trunk. A branch the base merely
+// advanced past linearly (e.g. an empty mission branch whose parent moved forward)
+// stays on it. This is what distinguishes "landed via merge" from "merely reachable".
+function isOnFirstParentTrunk(repoPath: string, base: string, sha: string): boolean {
+  const trunk = runGit(repoPath, ['rev-list', '--first-parent', base]);
+  if (!trunk) return false;
+  return trunk.split('\n').some(line => line.trim() === sha);
+}
+
+// True only when the branch has actually been merged into the base via the
+// merge-with-parent flow: its tip must be fully contained in the base (no commits
+// of its own absent from the base) AND off the base's first-parent trunk, meaning
+// it entered through a `--no-ff` merge commit rather than being a plain ancestor.
+// A branch freshly cut from the base shares the base's tip, and an empty branch the
+// base later advanced past is still a first-parent ancestor — neither is "merged",
+// fixing the bug where such branches reported as merged because they were merely
+// reachable from the base (`git branch --merged <base>` / containment alone).
 function branchMergedIntoBase(repoPath: string, branchSha: string, base: string): boolean {
   const baseSha = resolveRef(repoPath, base);
   if (!baseSha) return false;
   if (baseSha === branchSha) return false;
   const ahead = runGit(repoPath, ['rev-list', '--count', `${baseSha}..${branchSha}`]).trim();
-  return ahead === '0';
+  if (ahead !== '0') return false;
+  return !isOnFirstParentTrunk(repoPath, base, branchSha);
 }
 
 // Derives the mission-panel branch status from the real git state in the project's
@@ -641,11 +656,13 @@ function missionBranchDto(row: MissionRow): MissionBranchDto {
   const overrideBranch = row.branch_override?.trim() || null;
   const name = row.active_branch?.trim();
   if (name) {
+    const worktreePath = missionWorktreePath({ worktreeRoot, projectSlug, branch: name });
     return {
       name,
       baseBranch,
-      worktreePath: missionWorktreePath({ worktreeRoot, projectSlug, branch: name }),
+      worktreePath,
       status: deriveBranchStatus({ projectId: row.project_id, branchName: name, baseBranch }),
+      dirty: existsSync(worktreePath) && worktreeIsDirty(worktreePath),
       overrideBranch
     };
   }
@@ -668,6 +685,8 @@ function missionBranchDto(row: MissionRow): MissionBranchDto {
         ? preview.worktreePath
         : missionWorktreePath({ worktreeRoot, projectSlug, branch: previewName }),
     status: 'pending',
+    // No branch/worktree exists yet, so there is nothing to be dirty.
+    dirty: false,
     overrideBranch
   };
 }
@@ -704,7 +723,7 @@ function runGitResult(cwd: string, args: string[]): GitRun {
   }
 }
 
-export type BranchActionName = 'integrate' | 'push_parent' | 'publish';
+export type BranchActionName = 'integrate' | 'commit' | 'push_parent' | 'publish';
 
 interface BranchActionContext {
   missionId: string;
@@ -901,6 +920,68 @@ function integrateBranch(ctx: BranchActionContext): string {
   return `Merged ${baseBranch} into ${branchName} and advanced ${baseBranch} locally.`;
 }
 
+// Commit — stage and commit all changes in the branch's own worktree. This is the
+// "commit changes first" step the merge flow requires: the integrate action refuses
+// a dirty worktree, so the panel offers this commit affordance while the branch has
+// uncommitted work. Runs entirely in the branch's worktree (never the parent).
+function commitBranch(ctx: BranchActionContext, message: string): string {
+  const { branchName, worktreePath } = ctx;
+  const trimmed = message.trim();
+  if (!trimmed) {
+    throw new ApiError(
+      400,
+      'A commit message is required.',
+      undefined,
+      'BRANCH_COMMIT_MESSAGE_REQUIRED'
+    );
+  }
+  if (!existsSync(worktreePath)) {
+    throw new ApiError(
+      409,
+      `The branch's worktree is not present at ${worktreePath}.`,
+      undefined,
+      'BRANCH_NO_WORKTREE'
+    );
+  }
+  const wtBranch = runGitResult(worktreePath, ['branch', '--show-current']);
+  if (!wtBranch.ok || wtBranch.stdout !== branchName) {
+    throw new ApiError(
+      409,
+      `The worktree at ${worktreePath} is not checked out on ${branchName}.`,
+      undefined,
+      'BRANCH_WORKTREE_MISMATCH'
+    );
+  }
+  if (!worktreeIsDirty(worktreePath)) {
+    throw new ApiError(
+      409,
+      'There are no uncommitted changes in the branch worktree to commit.',
+      worktreePath,
+      'BRANCH_NOTHING_TO_COMMIT'
+    );
+  }
+
+  const staged = runGitResult(worktreePath, ['add', '-A']);
+  if (!staged.ok) {
+    throw new ApiError(
+      500,
+      `Failed to stage changes in ${worktreePath}.`,
+      staged.stderr || staged.stdout,
+      'BRANCH_COMMIT_FAILED'
+    );
+  }
+  const commit = runGitResult(worktreePath, ['commit', '-m', trimmed]);
+  if (!commit.ok) {
+    throw new ApiError(
+      500,
+      `Failed to commit changes on ${branchName}.`,
+      commit.stderr || commit.stdout,
+      'BRANCH_COMMIT_FAILED'
+    );
+  }
+  return `Committed changes on ${branchName}.`;
+}
+
 // Action B — publish the merged parent to origin. Once pushed, the branch has
 // truly landed (status → merged), so its worktree is no longer needed; we remove
 // it automatically (best-effort, only when clean) to keep the worktree list tidy
@@ -985,10 +1066,15 @@ const recordBranchActionActivity = db.transaction((ctx: BranchActionContext, sum
 // success do we record the activity + realtime change in a single transaction.
 export function performBranchAction(
   missionRef: string,
-  body: { action?: unknown; confirmBusy?: unknown }
+  body: { action?: unknown; message?: unknown; confirmBusy?: unknown }
 ): MissionDetailDto {
   const action = String(body.action ?? '');
-  if (action !== 'integrate' && action !== 'push_parent' && action !== 'publish') {
+  if (
+    action !== 'integrate' &&
+    action !== 'commit' &&
+    action !== 'push_parent' &&
+    action !== 'publish'
+  ) {
     throw new ApiError(400, 'Invalid branch action.');
   }
   const ctx = loadBranchActionContext(missionRef);
@@ -1004,9 +1090,11 @@ export function performBranchAction(
   const summary =
     action === 'integrate'
       ? integrateBranch(ctx)
-      : action === 'push_parent'
-        ? pushParent(ctx)
-        : publishBranch(ctx);
+      : action === 'commit'
+        ? commitBranch(ctx, typeof body.message === 'string' ? body.message : '')
+        : action === 'push_parent'
+          ? pushParent(ctx)
+          : publishBranch(ctx);
 
   recordBranchActionActivity(ctx, summary);
   return getMissionDetail(ctx.missionId);

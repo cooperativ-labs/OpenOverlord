@@ -63,6 +63,6 @@ test('worktree path nests under the worktree root and project slug', () => {
   });
   assert.equal(
     decision.worktreePath,
-    path.join('/tmp', 'ovld-worktrees', 'coo', 'overlord-automate-worktree-branching-16')
+    path.join('/tmp', 'ovld-worktrees', 'coo', 'automate-worktree-branching-16')
   );
 });
