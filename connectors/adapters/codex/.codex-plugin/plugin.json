@@ -1,7 +1,7 @@
 {
   "name": "overlord",
   "version": "0.2.3",
-  "description": "Chat-driven access to Overlord ticket protocol workflows with hook-driven activity capture.",
+  "description": "Chat-driven access to Overlord mission protocol workflows with hook-driven activity capture.",
   "author": {
     "name": "Cooperativ",
     "url": "https://github.com/cooperativ"
@@ -15,8 +15,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Overlord",
-    "shortDescription": "Run Overlord ticket workflows from Codex chat",
-    "longDescription": "Connect Codex to Overlord's local ticket workflow through the existing `ovld protocol` CLI. The plugin bundles workflow skills plus MCP tools for ticket attachment, progress updates, shared context, artifacts, delivery, and follow-up ticket creation.",
+    "shortDescription": "Run Overlord mission workflows from Codex chat",
+    "longDescription": "Connect Codex to Overlord's local mission workflow through the existing `ovld protocol` CLI. The plugin bundles workflow skills plus MCP tools for mission attachment, progress updates, shared context, artifacts, delivery, and follow-up mission creation.",
     "developerName": "Cooperativ",
     "category": "Productivity",
     "capabilities": ["Interactive", "Write"],
@@ -24,9 +24,9 @@
     "privacyPolicyURL": "https://www.ovld.ai/privacy",
     "termsOfServiceURL": "https://www.ovld.ai/terms",
     "defaultPrompt": [
-      "Attach to Overlord ticket 123 and summarize the context before editing code",
-      "Post an execute update to this Overlord ticket after a meaningful implementation step",
-      "Deliver this Overlord ticket with artifacts and change rationales"
+      "Attach to Overlord mission 123 and summarize the context before editing code",
+      "Post an execute update to this Overlord mission after a meaningful implementation step",
+      "Deliver this Overlord mission with artifacts and change rationales"
     ],
     "brandColor": "#1E6B5C",
     "composerIcon": "./assets/icon.png",
