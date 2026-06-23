@@ -2,7 +2,10 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 
 const STORAGE_KEY = 'mission-drawer-width';
 const DEFAULT_WIDTH = 420;
-const MIN_WIDTH = 320;
+// Must stay >= MissionPanel's intrinsic `min-w-[375px]`: the panel can't shrink
+// below that, so a smaller drawer would force the panel to overflow this aside's
+// `overflow-hidden` container and clip its items off the right edge of the app.
+const MIN_WIDTH = 375;
 const MAX_WIDTH = 640;
 
 export function MissionDrawer({ children }: { children: ReactNode }) {
