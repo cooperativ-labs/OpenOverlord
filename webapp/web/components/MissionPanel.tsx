@@ -319,7 +319,9 @@ function BranchSelector({ mission }: { mission: MissionDetailDto }) {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="min-w-56">
             <DropdownMenuItem onClick={() => handleChange(AUTO_BRANCH)}>
-              <Check className={cn('h-3 w-3', selected === AUTO_BRANCH ? 'opacity-100' : 'opacity-0')} />
+              <Check
+                className={cn('h-3 w-3', selected === AUTO_BRANCH ? 'opacity-100' : 'opacity-0')}
+              />
               Automatic (system default)
             </DropdownMenuItem>
             {branches.isLoading && <DropdownMenuItem disabled>Loading branches…</DropdownMenuItem>}
@@ -582,7 +584,7 @@ export function MissionPanel({
   onProjectChanged?: (nextProjectId: string) => void;
 }) {
   const navigate = useNavigate();
-  const missionQ = useMission(missionId);
+  const missionQ = useMission(missionId, { refetchBranchState: true });
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollIdleTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
