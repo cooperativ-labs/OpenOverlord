@@ -30,7 +30,7 @@ function MemberAvatar({ member }: { member: WorkspaceMemberDto }) {
   return (
     <Avatar className="h-4 w-4">
       {member.avatarUrl ? <AvatarImage src={member.avatarUrl} alt={memberLabel(member)} /> : null}
-      <AvatarFallback className="text-[8px]">{memberInitials(member)}</AvatarFallback>
+      <AvatarFallback className="rounded-full text-[8px]">{memberInitials(member)}</AvatarFallback>
     </Avatar>
   );
 }

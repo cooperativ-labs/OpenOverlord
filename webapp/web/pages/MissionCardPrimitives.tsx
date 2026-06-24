@@ -52,7 +52,7 @@ export function MissionAssigneeAvatar({
   return (
     <Avatar className="h-5 w-5 shrink-0 ring-1 ring-border" title={`Assigned to ${label}`}>
       {assignee.avatarUrl ? <AvatarImage src={assignee.avatarUrl} alt={label} /> : null}
-      <AvatarFallback className="text-[8px]">{memberInitials(assignee)}</AvatarFallback>
+      <AvatarFallback className="rounded-full text-[8px]">{memberInitials(assignee)}</AvatarFallback>
     </Avatar>
   );
 }

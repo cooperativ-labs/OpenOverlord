@@ -136,9 +136,9 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
           height: container.offsetHeight,
           barOffsetTop: Math.round(barTop - containerTop)
         })
-        .catch(() => {});
+        .catch(() => { });
     } else {
-      quickTaskApi.setHeight(container.offsetHeight).catch(() => {});
+      quickTaskApi.setHeight(container.offsetHeight).catch(() => { });
     }
   }, [resolveTextarea]);
 
@@ -175,7 +175,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
   const handleClose = useCallback(() => {
     const quickTaskApi = getQuickTaskApi();
     if (quickTaskApi) {
-      quickTaskApi.close().catch(() => {});
+      quickTaskApi.close().catch(() => { });
       return;
     }
     setObjective('');
@@ -366,14 +366,14 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
 
         <div
           ref={controlBarRef}
-          className="electron-no-drag flex items-center justify-between gap-2"
+          className="flex items-center justify-between gap-2"
         >
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 ">
             <button
               type="button"
               aria-label="Attach files"
               onClick={() => fileInputRef.current?.click()}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="electron-no-drag flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               disabled={!selectedProject || isSubmitting}
             >
               <Plus className="h-4 w-4" />
@@ -381,7 +381,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
             <input
               ref={fileInputRef}
               type="file"
-              className="hidden"
+              className="hidden electron-no-drag"
               multiple
               onChange={event => {
                 handleFilesSelected(event.target.files);
@@ -395,6 +395,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
               aria-expanded={activeMenu === 'project'}
               onClick={() => setActiveMenu(current => (current === 'project' ? null : 'project'))}
               className={cn(
+                'electron-no-drag',
                 'flex h-8 items-center gap-1.5 rounded-full px-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
                 activeMenu === 'project' && 'bg-muted text-foreground'
               )}
@@ -415,18 +416,19 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
               </span>
             </button>
 
-            <AgentModelChooserButton
-              catalog={catalog}
-              selection={objectiveSelection}
-              onChange={handleSelectionChange}
-              agentConfigs={agentConfigs}
-              onLaunchConfigCommit={(agentKey, config) => {
-                updateAgentConfig.mutate({ agentKey, body: config });
-              }}
-              disabled={isSubmitting}
-              compact
-            />
-          </div>
+            <div className="electron-no-drag">
+              <AgentModelChooserButton
+                catalog={catalog}
+                selection={objectiveSelection}
+                onChange={handleSelectionChange}
+                agentConfigs={agentConfigs}
+                onLaunchConfigCommit={(agentKey, config) => {
+                  updateAgentConfig.mutate({ agentKey, body: config });
+                }}
+                disabled={isSubmitting}
+                compact
+              />
+            </div></div>
 
           <button
             type="button"
@@ -434,7 +436,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
             onClick={() => void handleSubmit()}
             disabled={!canSubmit}
             className={cn(
-              'flex h-8 w-8 items-center justify-center rounded-full transition-colors',
+              'electron-no-drag flex h-8 w-8 items-center justify-center rounded-full transition-colors',
               canSubmit
                 ? 'bg-primary text-primary-foreground hover:bg-primary/90'
                 : 'bg-muted text-muted-foreground/60'
@@ -452,7 +454,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
         {!primaryConnection.connected && selectionLoaded ? (
           <div
             role="alert"
-            className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-800 dark:text-amber-200"
+            className="electron-no-drag flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-800 dark:text-amber-200"
           >
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
             <p>{primaryConnection.message}</p>

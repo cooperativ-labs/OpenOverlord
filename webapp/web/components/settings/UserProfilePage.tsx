@@ -168,7 +168,7 @@ function AvatarUploader({ profile }: { profile: ProfileDto }) {
           {profile.avatarUrl ? (
             <AvatarImage src={profile.avatarUrl} alt={profile.displayName} />
           ) : null}
-          <AvatarFallback>{initialsFor(profile)}</AvatarFallback>
+          <AvatarFallback className="rounded-full">{initialsFor(profile)}</AvatarFallback>
         </Avatar>
       </ImageDropzone>
       <div className="min-w-0">
