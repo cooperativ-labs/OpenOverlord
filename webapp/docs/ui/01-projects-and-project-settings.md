@@ -66,9 +66,7 @@ New project
 ┌───────────────────────────────────────────────┐
 │ Name*           [ ______________________ ]     │
 │ Description     [ ______________________ ]     │
-│ Link directory  (•) This directory  ( ) None   │
-│                 /Users/jake/dev/Overlord   │  ← detected cwd of local backend
-│                 [x] Mark primary               │
+│ Primary resource [ /Users/jake/dev/Overlord ] [ Browse ] │
 │ Default agent   [ claude ▾ ]  Model [ opus ▾ ] │
 │ Default effort  [ high ▾ ]                      │
 │ ────────────────────────────────────────────── │
@@ -76,9 +74,10 @@ New project
 └───────────────────────────────────────────────┘
 ```
 
-- Maps to `POST /protocol/create-project` (+ `add-project-resource` when a
-  directory is linked). Linking writes `.overlord/project.json` into the directory
-  via the local backend — the UI does not write files itself.
+- Maps to `POST /api/projects`; when a primary resource path is supplied, the
+  request also creates the initial primary `project_resource` atomically. Linking
+  writes `.overlord/project.json` into the directory via the local backend — the UI
+  does not write files itself.
 - Directory linking is only offered when a **local backend** is present (a
   browser-only deployment cannot see the filesystem); otherwise show the directory
   section as "link from the CLI: `ovld add-cwd`".

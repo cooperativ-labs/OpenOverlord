@@ -637,18 +637,77 @@ function getProjectSlug(projectId: string): string {
   return row?.slug ?? 'project';
 }
 
-// The fallback base/parent branch when a project has not configured one.
+// The fallback base/parent branch when neither project configuration nor an
+// inspectable primary checkout can provide one.
 const FALLBACK_BASE_BRANCH = 'main';
 
-// Resolves the base/parent branch for a project's mission branches: the
-// project-configured default branch (Resources settings) when set, otherwise the
-// repo default `main`. This is both the branch missions are cut from and the
-// parent that "Merge with parent" advances.
+function primaryCheckoutBranch(projectId: string): string | null {
+  const repoPath = primaryResourcePath(projectId);
+  if (!repoPath || !existsSync(repoPath)) return null;
+
+  const worktrees = runGit(repoPath, ['worktree', 'list', '--porcelain']);
+  let inMainWorktree = false;
+  for (const line of worktrees.split('\n')) {
+    if (line.startsWith('worktree ')) {
+      if (inMainWorktree) break;
+      inMainWorktree = true;
+      continue;
+    }
+    if (!inMainWorktree || !line.startsWith('branch ')) continue;
+    const branch = normalizeBranchRef(line.slice('branch '.length));
+    return branch || null;
+  }
+
+  const current = runGit(repoPath, ['branch', '--show-current']);
+  return current || null;
+}
+
+// Resolves the base/parent branch for new mission branches: the project-
+// configured default branch (Resources settings) when set, otherwise the branch
+// checked out in the project's primary/main worktree, otherwise `main`.
 function resolveProjectBaseBranch(projectId: string): string {
   const row = db
     .prepare(`SELECT settings_json FROM projects WHERE id = ? AND workspace_id = ?`)
     .get(projectId, WORKSPACE.id) as { settings_json: string } | undefined;
-  return (row && readProjectDefaultBranch(row.settings_json)) || FALLBACK_BASE_BRANCH;
+  return (
+    (row && readProjectDefaultBranch(row.settings_json)) ||
+    primaryCheckoutBranch(projectId) ||
+    FALLBACK_BASE_BRANCH
+  );
+}
+
+function preparedBaseBranch(missionId: string, branchName: string): string | null {
+  const rows = db
+    .prepare(
+      `SELECT payload_json FROM mission_events
+        WHERE workspace_id = ? AND mission_id = ?
+          AND payload_json IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT 50`
+    )
+    .all(WORKSPACE.id, missionId) as { payload_json: string | null }[];
+
+  for (const row of rows) {
+    if (!row.payload_json) continue;
+    try {
+      const payload = JSON.parse(row.payload_json) as Record<string, unknown>;
+      let payloadBranch = '';
+      if (typeof payload.branchName === 'string') {
+        payloadBranch = payload.branchName.trim();
+      } else if (typeof payload.branch === 'string') {
+        payloadBranch = payload.branch.trim();
+      }
+      const baseBranch = typeof payload.baseBranch === 'string' ? payload.baseBranch.trim() : '';
+      if (payloadBranch === branchName && baseBranch) return baseBranch;
+    } catch {
+      // Ignore unrelated or legacy event payloads.
+    }
+  }
+  return null;
+}
+
+function resolveMissionBaseBranch(projectId: string, missionId: string, branchName: string): string {
+  return preparedBaseBranch(missionId, branchName) || resolveProjectBaseBranch(projectId);
 }
 
 // Normalizes the raw `missions.worktree_preference` column to the contract type.
@@ -698,13 +757,13 @@ function resolvePreparedWorktreePath(
 function missionBranchDto(row: MissionRow): MissionBranchDto {
   const projectSlug = getProjectSlug(row.project_id);
   const worktreeRoot = resolveWorktreeRoot();
-  const baseBranch = resolveProjectBaseBranch(row.project_id);
   const overrideBranch = row.branch_override?.trim() || null;
   const worktreePreference = parseWorktreePreference(row.worktree_preference);
   const { automationEnabled, willPrepareBranch, willUseWorktree } =
     resolveBranchAutomation(worktreePreference);
   const name = row.active_branch?.trim();
   if (name) {
+    const baseBranch = resolveMissionBaseBranch(row.project_id, row.id, name);
     const canonical = missionWorktreePath({ worktreeRoot, projectSlug, branch: name });
     const worktreePath = resolvePreparedWorktreePath(row.project_id, name, canonical);
     return {
@@ -724,6 +783,7 @@ function missionBranchDto(row: MissionRow): MissionBranchDto {
   // No branch prepared yet: preview the name the next launch will use. A pinned
   // override wins over the planner's canonical prediction so the panel reflects
   // exactly what the next launch will prepare.
+  const baseBranch = resolveProjectBaseBranch(row.project_id);
   const preview = previewMissionBranch({
     mission: { title: row.title, sequence: row.sequence_number },
     project: { slug: projectSlug },
@@ -838,7 +898,7 @@ function loadBranchActionContext(missionRef: string): BranchActionContext {
     missionId: row.id,
     projectId: row.project_id,
     branchName,
-    baseBranch: resolveProjectBaseBranch(row.project_id),
+    baseBranch: resolveMissionBaseBranch(row.project_id, row.id, branchName),
     worktreePath: resolvePreparedWorktreePath(row.project_id, branchName, canonicalWorktree),
     primaryRepoPath
   };
@@ -1381,7 +1441,9 @@ function toWorktreeDto(entry: WorktreeListEntry): WorktreeDto {
       missionId = mission.id;
       missionDisplayId = mission.display_id;
     }
-    const baseBranch = resolveProjectBaseBranch(entry.projectId);
+    const baseBranch = missionId
+      ? resolveMissionBaseBranch(entry.projectId, missionId, entry.branch)
+      : resolveProjectBaseBranch(entry.projectId);
     status = deriveBranchStatus({
       projectId: entry.projectId,
       branchName: entry.branch,
@@ -1950,51 +2012,61 @@ export function listProjectResources(projectId: string): ProjectResourceDto[] {
   return rows.map(toProjectResourceDto);
 }
 
+function insertProjectResource(
+  project: Pick<ProjectDto, 'id' | 'workspaceId'>,
+  body: CreateProjectResourceBody & { path?: string },
+  pathRequiredMessage: string
+): string {
+  const resourcePath = (body.directoryPath ?? body.path ?? '').trim();
+  if (!resourcePath) throw new ApiError(400, pathRequiredMessage);
+  const executionTargetId = resolveResourceExecutionTargetId(body.executionTargetId);
+
+  const now = nowIso();
+  if (body.isPrimary !== false) {
+    clearPrimaryResourcesForTarget({ projectId: project.id, executionTargetId, now });
+  }
+
+  const resourceId = newId();
+  db.prepare(
+    `INSERT INTO project_resources
+       (id, workspace_id, project_id, execution_target_id, type, label, path,
+        is_primary, status, metadata_json, created_at, updated_at, revision)
+     VALUES (?, ?, ?, ?, 'local_directory', ?, ?, ?, 'active', '{}', ?, ?, 1)`
+  ).run(
+    resourceId,
+    project.workspaceId,
+    project.id,
+    executionTargetId,
+    body.label ?? null,
+    resourcePath,
+    body.isPrimary === false ? 0 : 1,
+    now,
+    now
+  );
+
+  writeProjectJson({
+    directoryPath: resourcePath,
+    projectId: project.id,
+    resourceId,
+    isPrimary: body.isPrimary !== false
+  });
+
+  recordChange({
+    entityType: 'project_resource',
+    entityId: resourceId,
+    operation: 'insert',
+    entityRevision: 1,
+    projectId: project.id,
+    changedFields: ['path', 'is_primary']
+  });
+
+  return resourceId;
+}
+
 export const createProjectResource = db.transaction(
   (projectId: string, body: CreateProjectResourceBody & { path?: string }): ProjectResourceDto => {
     const project = getProject(projectId);
-    const resourcePath = (body.directoryPath ?? body.path ?? '').trim();
-    if (!resourcePath) throw new ApiError(400, 'directoryPath is required');
-    const executionTargetId = resolveResourceExecutionTargetId(body.executionTargetId);
-
-    const now = nowIso();
-    if (body.isPrimary !== false) {
-      clearPrimaryResourcesForTarget({ projectId, executionTargetId, now });
-    }
-
-    const id = newId();
-    db.prepare(
-      `INSERT INTO project_resources
-         (id, workspace_id, project_id, execution_target_id, type, label, path,
-          is_primary, status, metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, 'local_directory', ?, ?, ?, 'active', '{}', ?, ?, 1)`
-    ).run(
-      id,
-      project.workspaceId,
-      projectId,
-      executionTargetId,
-      body.label ?? null,
-      resourcePath,
-      body.isPrimary === false ? 0 : 1,
-      now,
-      now
-    );
-
-    writeProjectJson({
-      directoryPath: resourcePath,
-      projectId,
-      resourceId: id,
-      isPrimary: body.isPrimary !== false
-    });
-
-    recordChange({
-      entityType: 'project_resource',
-      entityId: id,
-      operation: 'insert',
-      entityRevision: 1,
-      projectId,
-      changedFields: ['path', 'is_primary']
-    });
+    const id = insertProjectResource(project, body, 'directoryPath is required');
 
     const row = db
       .prepare(
@@ -2226,6 +2298,20 @@ export const createProject = db.transaction((body: CreateProjectBody): ProjectDt
     entityRevision: 1,
     projectId: id
   });
+
+  const primaryResourcePath = body.primaryResource?.directoryPath?.trim() ?? '';
+  if (primaryResourcePath) {
+    insertProjectResource(
+      { id, workspaceId: WORKSPACE.id },
+      {
+        directoryPath: primaryResourcePath,
+        executionTargetId: body.primaryResource?.executionTargetId,
+        isPrimary: true
+      },
+      'primaryResource.directoryPath is required'
+    );
+  }
+
   return getProject(id);
 });
 

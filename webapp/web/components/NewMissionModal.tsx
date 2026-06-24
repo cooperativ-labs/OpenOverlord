@@ -148,6 +148,7 @@ export function NewMissionModal({
   const isBusy = pendingAction !== null;
   const canSubmit =
     Boolean(instruction.trim()) && Boolean(selectedProjectId) && selectionLoaded && !isBusy;
+  const canRun = canSubmit && primaryConnection.connected;
 
   async function submit(shouldLaunch: boolean) {
     const text = instruction.trim();
@@ -391,7 +392,7 @@ export function NewMissionModal({
                 variant="primary"
                 className="h-8 gap-1.5 px-3 text-xs"
                 onClick={() => void submit(true)}
-                disabled={!canSubmit}
+                disabled={!canRun}
               >
                 {pendingAction === 'run' ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />

@@ -624,6 +624,11 @@ export interface CreateProjectBody {
   description?: string | null;
   /** Optional 6-digit hex color (e.g. `#fecdd3`). */
   color?: string;
+  /** Optional initial primary resource to create with the project. */
+  primaryResource?: {
+    directoryPath: string;
+    executionTargetId?: string | null;
+  } | null;
 }
 
 /** A per-project tag definition. Authored in project settings, assigned to missions. */

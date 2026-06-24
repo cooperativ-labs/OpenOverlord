@@ -20,6 +20,7 @@ import { type FileDropZoneDragState, useFileDropZone } from '../ui/file-drop-zon
 
 /** Client-side mirror of the server's per-attachment ceiling. */
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const MAX_ATTACHMENT_LABEL = '25 MB';
 
 function formatFileSize(bytes: number | null): string {
   if (bytes === null) return '';
@@ -52,7 +53,7 @@ export function useObjectiveAttachmentState(
       setError(null);
       for (const file of files) {
         if (file.size > MAX_ATTACHMENT_BYTES) {
-          setError(`"${file.name}" is too large (max 25 MB).`);
+          setError(`File too large. Attachments can be no longer than ${MAX_ATTACHMENT_LABEL}.`);
           continue;
         }
         try {

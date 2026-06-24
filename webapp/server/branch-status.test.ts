@@ -110,20 +110,32 @@ describe('branch status derivation', () => {
     assert.equal(getMissionDetail(emptyMission.id).branch?.status, 'created');
   });
 
-  it('uses the project-configured default branch as the mission base/parent', async () => {
+  it('uses the primary checkout branch as the fallback mission base/parent', async () => {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-default-branch-'));
     process.env.OVERLORD_SQLITE_PATH = path.join(dir, 'Overlord.sqlite');
 
-    const { createProject, createMission, getMissionDetail, getProject, updateProject } =
-      await import('./repository.ts');
+    const {
+      createProject,
+      createMission,
+      createProjectResource,
+      getMissionDetail,
+      getProject,
+      updateProject
+    } = await import('./repository.ts');
+
+    const repo = initRepo();
+    git(repo, ['checkout', '-q', '-b', 'release/current']);
+    git(repo, ['commit', '-q', '--allow-empty', '-m', 'release base']);
 
     const project = createProject({ name: 'Default Branch Test' });
-    // Unconfigured: falls back to main.
+    createProjectResource(project.id, { directoryPath: repo, isPrimary: true });
+    // Unconfigured: falls back to the branch the user has checked out in the
+    // primary worktree.
     assert.equal(getProject(project.id).defaultBranch, null);
     const beforeMission = createMission({ projectId: project.id, firstObjective: 'Before config' });
-    assert.equal(getMissionDetail(beforeMission.id).branch?.baseBranch, 'main');
+    assert.equal(getMissionDetail(beforeMission.id).branch?.baseBranch, 'release/current');
 
-    // Configure a project default branch; it surfaces on the DTO and as the base.
+    // Configure a project default branch; it still wins when explicitly set.
     const updated = updateProject(project.id, { defaultBranch: 'develop' });
     assert.equal(updated.defaultBranch, 'develop');
     const afterMission = createMission({ projectId: project.id, firstObjective: 'After config' });
@@ -132,9 +144,51 @@ describe('branch status derivation', () => {
     // Invalid branch names are rejected at the REST boundary.
     assert.throws(() => updateProject(project.id, { defaultBranch: 'bad branch name' }));
 
-    // Clearing falls back to main again.
+    // Clearing falls back to the primary checkout again.
     assert.equal(updateProject(project.id, { defaultBranch: null }).defaultBranch, null);
     const clearedMission = createMission({ projectId: project.id, firstObjective: 'Cleared' });
-    assert.equal(getMissionDetail(clearedMission.id).branch?.baseBranch, 'main');
+    assert.equal(getMissionDetail(clearedMission.id).branch?.baseBranch, 'release/current');
+  });
+
+  it('keeps a prepared mission tied to the base branch recorded by the runner', async () => {
+    const dir = mkdtempSync(path.join('/tmp', 'ovld-prepared-base-'));
+    process.env.OVERLORD_SQLITE_PATH = path.join(dir, 'Overlord.sqlite');
+
+    const { createProject, createMission, createProjectResource, getMissionDetail } =
+      await import('./repository.ts');
+    const { recordBranchPrepared } = await import('./runner.ts');
+
+    const repo = initRepo();
+    git(repo, ['checkout', '-q', '-b', 'release/prepared']);
+    git(repo, ['commit', '-q', '--allow-empty', '-m', 'release base']);
+
+    const project = createProject({ name: 'Prepared Base Test' });
+    createProjectResource(project.id, { directoryPath: repo, isPrimary: true });
+    const mission = createMission({ projectId: project.id, firstObjective: 'Prepared work' });
+
+    const branchName = 'overlord/prepared-base-1';
+    const worktreePath = path.join(dir, 'prepared-base-worktree');
+    git(repo, ['worktree', 'add', '-q', '-b', branchName, worktreePath, 'release/prepared']);
+    git(worktreePath, ['commit', '-q', '--allow-empty', '-m', 'branch work']);
+    recordBranchPrepared({
+      missionId: mission.displayId,
+      payload: {
+        branchName,
+        baseBranch: 'release/prepared',
+        worktreePath,
+        action: 'create',
+        cycle: 1
+      }
+    });
+
+    git(repo, ['merge', '-q', '--no-ff', '-m', 'merge prepared base', branchName]);
+    assert.equal(getMissionDetail(mission.id).branch?.baseBranch, 'release/prepared');
+    assert.equal(getMissionDetail(mission.id).branch?.status, 'merged_unpushed');
+
+    // If the user later checks out another branch in the primary repo, this
+    // mission still reports and acts against the parent it was prepared from.
+    git(repo, ['checkout', '-q', 'main']);
+    assert.equal(getMissionDetail(mission.id).branch?.baseBranch, 'release/prepared');
+    assert.equal(getMissionDetail(mission.id).branch?.status, 'merged_unpushed');
   });
 });

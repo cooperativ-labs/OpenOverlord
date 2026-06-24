@@ -86,7 +86,7 @@ function resolveGitRoot(workingDirectory: string): string {
   return path.resolve(root);
 }
 
-function defaultBranch(gitRoot: string): string {
+function repoDefaultBranch(gitRoot: string): string {
   const symbolic = runGit(gitRoot, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], {
     optional: true
   });
@@ -96,6 +96,26 @@ function defaultBranch(gitRoot: string): string {
   if (local.includes('main')) return 'main';
   if (local.includes('master')) return 'master';
   return local[0] ?? 'main';
+}
+
+function mainWorktreeBranch(gitRoot: string): string | null {
+  const out = runGit(gitRoot, ['worktree', 'list', '--porcelain'], { optional: true });
+  let inMainWorktree = false;
+  for (const line of out.split('\n')) {
+    if (line.startsWith('worktree ')) {
+      if (inMainWorktree) break;
+      inMainWorktree = true;
+      continue;
+    }
+    if (!inMainWorktree || !line.startsWith('branch ')) continue;
+    const branch = line
+      .slice('branch '.length)
+      .trim()
+      .replace(/^refs\/heads\//, '');
+    return branch || null;
+  }
+  const current = runGit(gitRoot, ['branch', '--show-current'], { optional: true });
+  return current || null;
 }
 
 function refExists(gitRoot: string, ref: string): boolean {
@@ -111,15 +131,18 @@ function refExists(gitRoot: string, ref: string): boolean {
 
 // Resolves the base/parent branch to cut from. The project-configured default
 // branch (surfaced on the mission as `branch.baseBranch`) wins when it actually
-// exists in this checkout; otherwise we fall back to the repo's git default so a
-// stale/misconfigured setting never blocks branch preparation.
+// exists in this checkout. Otherwise, use the user's primary checkout branch
+// (the main worktree, not a linked worktree the runner may be standing in) before
+// falling back to the repo's git default.
 function resolveBaseBranch(gitRoot: string, mission: MissionShape): string {
   const configured = mission.branch?.baseBranch;
   if (typeof configured === 'string' && configured.trim()) {
     const base = configured.trim();
     if (refExists(gitRoot, base)) return base;
   }
-  return defaultBranch(gitRoot);
+  const checkedOut = mainWorktreeBranch(gitRoot);
+  if (checkedOut && refExists(gitRoot, checkedOut)) return checkedOut;
+  return repoDefaultBranch(gitRoot);
 }
 
 function currentWorktrees(gitRoot: string): string[] {

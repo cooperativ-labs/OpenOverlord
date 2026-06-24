@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -16,6 +16,11 @@ const {
   updateProjectResource
 } = await import('./repository.ts');
 const { getLaunchSettings } = await import('./launch.ts');
+
+test.after(() => {
+  db.close();
+  rmSync(tempDir, { recursive: true, force: true });
+});
 
 test('project resource mutations keep primaries scoped per execution target', () => {
   const project = createProject({ name: 'Web resource mutations' });
@@ -54,6 +59,35 @@ test('project resource mutations keep primaries scoped per execution target', ()
   assert.equal(rows.find(row => row.id === globalResource.id)?.isPrimary, true);
   assert.equal(rows.find(row => row.id === firstLocalResource.id)?.isPrimary, true);
 
-  db.close();
-  rmSync(tempDir, { recursive: true, force: true });
+});
+
+test('createProject can create an initial primary resource atomically', () => {
+  const resourceDir = mkdtempSync(path.join(tempDir, 'project-create-resource-'));
+  const launchSettings = getLaunchSettings();
+
+  const project = createProject({
+    name: 'Create Project With Resource',
+    primaryResource: {
+      directoryPath: resourceDir,
+      executionTargetId: launchSettings.executionTargetId
+    }
+  });
+
+  const rows = listProjectResources(project.id);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.path, resourceDir);
+  assert.equal(rows[0]?.isPrimary, true);
+  assert.equal(rows[0]?.executionTargetId, launchSettings.executionTargetId);
+
+  const projectJsonPath = path.join(resourceDir, '.overlord', 'project.json');
+  assert.equal(existsSync(projectJsonPath), true);
+  const projectJson = JSON.parse(readFileSync(projectJsonPath, 'utf8')) as {
+    projectId: string;
+    resourceId: string;
+    isPrimary: boolean;
+  };
+  assert.equal(projectJson.projectId, project.id);
+  assert.equal(projectJson.resourceId, rows[0]?.id);
+  assert.equal(projectJson.isPrimary, true);
+
 });

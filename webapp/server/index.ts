@@ -176,7 +176,18 @@ function parsePort(value: string, name: string): number {
 const app = express();
 app.use(cors());
 app.all('/api/auth/*', authNodeHandler);
-app.use(express.json());
+
+const jsonBody = express.json();
+function isRawUploadRequest(req: Request): boolean {
+  if (req.method !== 'POST') return false;
+  if (req.path.startsWith('/api/uploads/')) return true;
+  return /^\/api\/objectives\/[^/]+\/attachments$/.test(req.path);
+}
+
+app.use((req, res, next) => {
+  if (isRawUploadRequest(req)) return next();
+  return jsonBody(req, res, next);
+});
 
 // Small wrapper so handlers can throw ApiError / Error and get a clean response.
 // Also triggers an immediate realtime poll after mutations for snappy echoes.

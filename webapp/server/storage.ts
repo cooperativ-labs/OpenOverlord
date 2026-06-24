@@ -38,6 +38,7 @@ export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
  * limit. Larger than images because attachments include documents and archives.
  */
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const MAX_ATTACHMENT_LABEL = '25 MB';
 
 /**
  * Raster image media types we accept. SVG is intentionally excluded: it can
@@ -302,7 +303,10 @@ export const uploadObjectiveAttachment = db.transaction(
       throw new ApiError(400, 'No file data received');
     }
     if (input.bytes.length > MAX_ATTACHMENT_BYTES) {
-      throw new ApiError(413, 'File is too large. The maximum size is 25 MB.');
+      throw new ApiError(
+        413,
+        `File too large. Attachments can be no longer than ${MAX_ATTACHMENT_LABEL}.`
+      );
     }
 
     const scope = resolveObjectiveScope(input.objectiveId);

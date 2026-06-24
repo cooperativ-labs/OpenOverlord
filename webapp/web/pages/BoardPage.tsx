@@ -280,18 +280,22 @@ export function BoardPage() {
           initialName={projectName}
           initialColor={projectColor}
         />
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] px-5 py-3">
-          <MissionsViewToggle value={view} onChange={handleViewChange} />
-          <MissionTagFilterDropdown
-            tagOptions={tagOptions}
-            selectedTagIds={selectedTagIds}
-            onClear={() => setSelectedTagIds([])}
-            onToggle={tagId =>
-              setSelectedTagIds(current =>
-                current.includes(tagId) ? current.filter(id => id !== tagId) : [...current, tagId]
-              )
-            }
-          />
+        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] px-5 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <MissionsViewToggle value={view} onChange={handleViewChange} />
+            <MissionTagFilterDropdown
+              tagOptions={tagOptions}
+              selectedTagIds={selectedTagIds}
+              onClear={() => setSelectedTagIds([])}
+              onToggle={tagId =>
+                setSelectedTagIds(current =>
+                  current.includes(tagId)
+                    ? current.filter(id => id !== tagId)
+                    : [...current, tagId]
+                )
+              }
+            />
+          </div>
         </div>
       </header>
 

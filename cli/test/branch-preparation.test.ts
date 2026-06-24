@@ -131,6 +131,74 @@ test('prepareMissionBranch creates a worktree when the mission resolves to workt
   }
 });
 
+test('prepareMissionBranch falls back to the primary checkout branch as base', async () => {
+  const repo = initRepo('ovld-prep-current-base-');
+  const worktreeRoot = mkdtempSync(path.join(os.tmpdir(), 'ovld-prep-current-base-wt-'));
+  process.env.OVERLORD_WORKTREE_ROOT = worktreeRoot;
+  git(repo, ['checkout', '-q', '-b', 'release/current']);
+  git(repo, ['commit', '-q', '--allow-empty', '-m', 'release base']);
+
+  try {
+    const result = await prepareMissionBranch({
+      runtime: runtimeForMission({
+        title: 'Use checked out base',
+        sequence: 12,
+        projectId: 'p1',
+        project: { slug: 'demo' },
+        branch: { willPrepareBranch: true, willUseWorktree: true }
+      }),
+      options: {
+        missionId: 'coo:12',
+        workingDirectory: repo,
+        workspaceAutomationEnabled: false
+      }
+    });
+
+    assert.equal(result.branchAutomation?.baseBranch, 'release/current');
+    assert.equal(
+      git(repo, ['rev-parse', result.branchAutomation!.branchName]),
+      git(repo, ['rev-parse', 'release/current'])
+    );
+  } finally {
+    delete process.env.OVERLORD_WORKTREE_ROOT;
+  }
+});
+
+test('prepareMissionBranch ignores a linked worktree checkout when resolving the base', async () => {
+  const repo = initRepo('ovld-prep-primary-base-');
+  const worktreeRoot = mkdtempSync(path.join(os.tmpdir(), 'ovld-prep-primary-base-wt-'));
+  process.env.OVERLORD_WORKTREE_ROOT = worktreeRoot;
+  git(repo, ['checkout', '-q', '-b', 'release/primary']);
+  git(repo, ['commit', '-q', '--allow-empty', '-m', 'primary base']);
+  const linked = mkdtempSync(path.join(os.tmpdir(), 'ovld-prep-linked-'));
+  git(repo, ['worktree', 'add', '-q', '-b', 'scratch/worktree', linked, 'main']);
+
+  try {
+    const result = await prepareMissionBranch({
+      runtime: runtimeForMission({
+        title: 'Use primary checkout',
+        sequence: 13,
+        projectId: 'p1',
+        project: { slug: 'demo' },
+        branch: { willPrepareBranch: true, willUseWorktree: true }
+      }),
+      options: {
+        missionId: 'coo:13',
+        workingDirectory: linked,
+        workspaceAutomationEnabled: false
+      }
+    });
+
+    assert.equal(result.branchAutomation?.baseBranch, 'release/primary');
+    assert.equal(
+      git(repo, ['rev-parse', result.branchAutomation!.branchName]),
+      git(repo, ['rev-parse', 'release/primary'])
+    );
+  } finally {
+    delete process.env.OVERLORD_WORKTREE_ROOT;
+  }
+});
+
 test('prepareMissionBranch checks the branch out in the primary repo for branch-only mode', async () => {
   const repo = initRepo('ovld-prep-branch-only-');
   const result = await prepareMissionBranch({
