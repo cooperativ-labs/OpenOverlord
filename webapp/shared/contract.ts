@@ -340,6 +340,14 @@ export type MissionBranchStatus =
   | 'merged_unpushed'
   | 'merged';
 
+// Per-mission override of the workspace worktree-automation setting.
+// `'worktree'` — prepare a branch + worktree for this mission (full automation
+//   behavior) even when the workspace setting is off.
+// `'branch'`   — prepare a branch for this mission without a dedicated worktree
+//   (the branch is checked out in the project's primary repo).
+// `null` (the absence of an override) means "inherit the workspace setting".
+export type MissionWorktreePreference = 'worktree' | 'branch';
+
 export interface MissionBranchDto {
   name: string;
   baseBranch: string | null;
@@ -359,6 +367,32 @@ export interface MissionBranchDto {
    * Runner Layer reads this to honor the override at branch-preparation time.
    */
   overrideBranch: string | null;
+  /**
+   * Whether the workspace-wide worktree/branch automation setting
+   * (`worktreeBranchAutomationEnabled`) is on. Surfaced here so the mission panel
+   * and the Runner Layer can resolve the mission's effective branch behavior
+   * without a separate launch-settings read.
+   */
+  worktreeAutomationEnabled: boolean;
+  /**
+   * The mission's per-mission override of the workspace setting, or `null` to
+   * inherit it. See `MissionWorktreePreference`. Lets a user opt an individual
+   * mission into a branch/worktree while automation is globally off (and vice
+   * versa). The Runner Layer reads this to decide branch preparation.
+   */
+  worktreePreference: MissionWorktreePreference | null;
+  /**
+   * Whether the mission's next launch will prepare a branch at all, resolving
+   * `worktreePreference` against `worktreeAutomationEnabled`. `false` means the
+   * mission works directly off `baseBranch`.
+   */
+  willPrepareBranch: boolean;
+  /**
+   * Whether that branch preparation will create a dedicated worktree (vs. a
+   * branch checked out in the primary repo). Only meaningful when
+   * `willPrepareBranch` is true.
+   */
+  willUseWorktree: boolean;
 }
 
 /**
@@ -746,6 +780,12 @@ export interface UpdateMissionBody {
    * default), or `null` to clear the override and return to automatic selection.
    */
   branchOverride?: string | null;
+  /**
+   * Set this mission's per-mission worktree/branch mode, overriding the workspace
+   * automation setting (`'worktree'` or `'branch'`), or `null` to clear it and
+   * inherit the workspace setting. See `MissionWorktreePreference`.
+   */
+  worktreePreference?: MissionWorktreePreference | null;
 }
 
 /**

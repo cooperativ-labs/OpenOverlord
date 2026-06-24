@@ -618,6 +618,7 @@ Durable work unit and review record.
 | `metadata_json` | Json | yes | Extension data. |
 | `active_branch` | text | no | Git branch the mission is currently operating on under worktree automation; null until the first launch prepares one. |
 | `branch_override` | text | no | User-pinned branch chosen in the mission panel to override the planner's default; consumed (and cleared) by the runner at the next branch preparation. Null means automatic selection. |
+| `worktree_preference` | text | no | Per-mission override of the workspace `worktreeBranchAutomationEnabled` setting. `null` inherits the workspace setting; `'worktree'` forces a branch + worktree for this mission even when automation is off; `'branch'` forces a branch without a dedicated worktree (checked out in the project's primary repo). Persistent (not cleared by the runner). App-validated open set (no DB CHECK). |
 | `created_by_workspace_user_id` | Id | no | FK to `workspace_users`. |
 | `assigned_workspace_user_id` | Id | no | FK to `workspace_users`. |
 | `created_at` | TimestampUTC | yes |  |

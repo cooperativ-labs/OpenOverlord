@@ -26,6 +26,7 @@ import type {
   MissionDetailDto,
   MissionDto,
   MissionEventDto,
+  MissionWorktreePreference,
   MyMissionDto,
   MyMissionReorderRequest,
   MyMissionsResponse,
@@ -63,7 +64,8 @@ import {
   dequeueObjective,
   getLaunchPreference,
   LAUNCHABLE_STATES,
-  listMissionExecutionRequests
+  listMissionExecutionRequests,
+  readWorktreeBranchAutomationEnabled
 } from './launch.ts';
 import { loadActorRoles } from './rbac.ts';
 import {
@@ -298,6 +300,7 @@ interface MissionRow {
   revision: number;
   active_branch: string | null;
   branch_override: string | null;
+  worktree_preference: string | null;
   objective_count: number;
   completed_objective_count: number;
   has_executing_objective: number;
@@ -648,6 +651,47 @@ function resolveProjectBaseBranch(projectId: string): string {
   return (row && readProjectDefaultBranch(row.settings_json)) || FALLBACK_BASE_BRANCH;
 }
 
+// Normalizes the raw `missions.worktree_preference` column to the contract type.
+// Unknown values (forward-compat with future modes) read as "inherit" (null).
+function parseWorktreePreference(value: string | null): MissionWorktreePreference | null {
+  return value === 'worktree' || value === 'branch' ? value : null;
+}
+
+// Resolves a mission's effective branch behavior by combining its per-mission
+// preference with the workspace automation setting (coo:9). When the preference
+// is null the mission inherits the workspace setting (the original behavior);
+// `'worktree'`/`'branch'` opt an individual mission in regardless of the setting.
+function resolveBranchAutomation(preference: MissionWorktreePreference | null): {
+  automationEnabled: boolean;
+  willPrepareBranch: boolean;
+  willUseWorktree: boolean;
+} {
+  const automationEnabled = readWorktreeBranchAutomationEnabled();
+  const willPrepareBranch =
+    preference === 'worktree' ||
+    preference === 'branch' ||
+    (preference === null && automationEnabled);
+  const willUseWorktree = preference === 'worktree' || (preference === null && automationEnabled);
+  return { automationEnabled, willPrepareBranch, willUseWorktree };
+}
+
+// Where a prepared branch actually lives. Worktree-mode missions live in their
+// dedicated worktree (the canonical path); branch-only missions are checked out
+// in the project's primary repo. Prefer git's view of where the branch is
+// checked out, falling back to the canonical worktree path.
+function resolvePreparedWorktreePath(
+  projectId: string,
+  branchName: string,
+  fallback: string
+): string {
+  const primary = primaryResourcePath(projectId);
+  if (primary && existsSync(primary)) {
+    const checkedOut = worktreePathForBranch(primary, branchName);
+    if (checkedOut) return checkedOut;
+  }
+  return fallback;
+}
+
 // Derives the mission-panel branch metadata from `missions.active_branch` (the
 // source of truth the runner writes). When it is null no branch has been
 // prepared yet, so we surface the planner's predicted name with a pending status.
@@ -656,16 +700,24 @@ function missionBranchDto(row: MissionRow): MissionBranchDto {
   const worktreeRoot = resolveWorktreeRoot();
   const baseBranch = resolveProjectBaseBranch(row.project_id);
   const overrideBranch = row.branch_override?.trim() || null;
+  const worktreePreference = parseWorktreePreference(row.worktree_preference);
+  const { automationEnabled, willPrepareBranch, willUseWorktree } =
+    resolveBranchAutomation(worktreePreference);
   const name = row.active_branch?.trim();
   if (name) {
-    const worktreePath = missionWorktreePath({ worktreeRoot, projectSlug, branch: name });
+    const canonical = missionWorktreePath({ worktreeRoot, projectSlug, branch: name });
+    const worktreePath = resolvePreparedWorktreePath(row.project_id, name, canonical);
     return {
       name,
       baseBranch,
       worktreePath,
       status: deriveBranchStatus({ projectId: row.project_id, branchName: name, baseBranch }),
       dirty: existsSync(worktreePath) && worktreeIsDirty(worktreePath),
-      overrideBranch
+      overrideBranch,
+      worktreeAutomationEnabled: automationEnabled,
+      worktreePreference,
+      willPrepareBranch,
+      willUseWorktree
     };
   }
 
@@ -689,7 +741,11 @@ function missionBranchDto(row: MissionRow): MissionBranchDto {
     status: 'pending',
     // No branch/worktree exists yet, so there is nothing to be dirty.
     dirty: false,
-    overrideBranch
+    overrideBranch,
+    worktreeAutomationEnabled: automationEnabled,
+    worktreePreference,
+    willPrepareBranch,
+    willUseWorktree
   };
 }
 
@@ -769,16 +825,21 @@ function loadBranchActionContext(missionRef: string): BranchActionContext {
       'BRANCH_NO_PRIMARY'
     );
   }
+  // A worktree-mode mission lives in its dedicated worktree (the canonical path);
+  // a branch-only mission (coo:9) is checked out in the primary repo. Resolve the
+  // location git actually has the branch checked out at so the action operates in
+  // the right place, falling back to the canonical worktree path.
+  const canonicalWorktree = missionWorktreePath({
+    worktreeRoot: resolveWorktreeRoot(),
+    projectSlug: getProjectSlug(row.project_id),
+    branch: branchName
+  });
   return {
     missionId: row.id,
     projectId: row.project_id,
     branchName,
     baseBranch: resolveProjectBaseBranch(row.project_id),
-    worktreePath: missionWorktreePath({
-      worktreeRoot: resolveWorktreeRoot(),
-      projectSlug: getProjectSlug(row.project_id),
-      branch: branchName
-    }),
+    worktreePath: resolvePreparedWorktreePath(row.project_id, branchName, canonicalWorktree),
     primaryRepoPath
   };
 }
@@ -2296,6 +2357,7 @@ const selectMissionsSql = `
          t.assigned_workspace_user_id,
          t.acceptance_criteria_text, t.available_tools_json,
          t.created_at, t.updated_at, t.revision, t.active_branch, t.branch_override,
+         t.worktree_preference,
          (SELECT COUNT(*) FROM objectives o
             WHERE o.mission_id = t.id AND o.deleted_at IS NULL) AS objective_count,
          (SELECT COUNT(*) FROM objectives o
@@ -2969,6 +3031,15 @@ const patchMissionFieldsTx = db.transaction(
       fields.push('branch_override = @branch_override');
       params.branch_override = override;
       changed.push('branch_override');
+    }
+    if (body.worktreePreference !== undefined) {
+      const preference = body.worktreePreference;
+      if (preference !== null && preference !== 'worktree' && preference !== 'branch') {
+        throw new ApiError(400, "worktreePreference must be 'worktree', 'branch', or null");
+      }
+      fields.push('worktree_preference = @worktree_preference');
+      params.worktree_preference = preference;
+      changed.push('worktree_preference');
     }
     if (fields.length === 0) return getMissionDetail(id);
 

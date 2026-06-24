@@ -640,9 +640,10 @@ export async function runManagementCommand({
         options: {
           missionId,
           workingDirectory,
-          enabled: !dryRun && (await readWorktreeBranchAutomationEnabled(runtime)),
+          workspaceAutomationEnabled: await readWorktreeBranchAutomationEnabled(runtime),
+          dryRun,
           overrideBranch: flagValue(parsed.flags, '--branch'),
-          noWorktree: dryRun || flagBoolean(parsed.flags, '--no-worktree')
+          noWorktree: flagBoolean(parsed.flags, '--no-worktree')
         }
       });
       await recordBranchPrepared({
@@ -818,9 +819,10 @@ async function runRunnerCommand({
         options: {
           missionId,
           workingDirectory: String(requestRecord.workingDirectory ?? process.cwd()),
-          enabled: !dryRun && (await readWorktreeBranchAutomationEnabled(runtime)),
+          workspaceAutomationEnabled: await readWorktreeBranchAutomationEnabled(runtime),
+          dryRun,
           overrideBranch: flagValue(parsed.flags, '--branch'),
-          noWorktree: dryRun || flagBoolean(parsed.flags, '--no-worktree')
+          noWorktree: flagBoolean(parsed.flags, '--no-worktree')
         }
       });
       await recordBranchPrepared({

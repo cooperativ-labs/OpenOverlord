@@ -5,7 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { computeMergedBranches, resolveMissionProjectSlug } from '../src/branch-preparation.ts';
+import {
+  computeMergedBranches,
+  prepareMissionBranch,
+  resolveMissionProjectSlug
+} from '../src/branch-preparation.ts';
 import type { CliRuntime } from '../src/runtime.ts';
 
 function runtimeWithProjects(projects: unknown[], calls: string[] = []): CliRuntime {
@@ -71,6 +75,134 @@ function git(cwd: string, args: string[]): string {
     }
   }).trim();
 }
+
+function runtimeForMission(mission: Record<string, unknown>): CliRuntime {
+  return {
+    backend: {
+      baseUrl: 'http://localhost.test',
+      health: async () => ({ ok: true }),
+      get: async (p: string) => {
+        if (p === '/api/projects') return [{ id: 'p1', slug: 'demo' }] as never;
+        if (p.startsWith('/api/missions/')) return mission as never;
+        throw new Error(`unexpected GET ${p}`);
+      },
+      post: async () => null as never,
+      patch: async () => null as never,
+      delete: async () => null as never
+    },
+    close: () => {}
+  };
+}
+
+function initRepo(prefix: string): string {
+  const repo = mkdtempSync(path.join(os.tmpdir(), prefix));
+  git(repo, ['init', '-q', '-b', 'main']);
+  git(repo, ['commit', '-q', '--allow-empty', '-m', 'base']);
+  return repo;
+}
+
+test('prepareMissionBranch creates a worktree when the mission resolves to worktree mode', async () => {
+  const repo = initRepo('ovld-prep-worktree-');
+  const worktreeRoot = mkdtempSync(path.join(os.tmpdir(), 'ovld-prep-wt-root-'));
+  process.env.OVERLORD_WORKTREE_ROOT = worktreeRoot;
+  try {
+    const result = await prepareMissionBranch({
+      runtime: runtimeForMission({
+        title: 'Add feature',
+        sequence: 7,
+        projectId: 'p1',
+        project: { slug: 'demo' },
+        branch: { baseBranch: 'main', willPrepareBranch: true, willUseWorktree: true }
+      }),
+      options: {
+        missionId: 'coo:7',
+        workingDirectory: repo,
+        workspaceAutomationEnabled: false
+      }
+    });
+    assert.ok(result.branchAutomation, 'expected a branch automation payload');
+    assert.equal(result.workingDirectory, result.branchAutomation?.worktreePath);
+    assert.ok(result.workingDirectory.startsWith(worktreeRoot), 'worktree under the worktree root');
+    // The branch is checked out in a *separate* worktree, not the primary repo.
+    const list = git(repo, ['worktree', 'list', '--porcelain']);
+    assert.ok(list.includes(result.workingDirectory), 'a dedicated worktree was registered');
+  } finally {
+    delete process.env.OVERLORD_WORKTREE_ROOT;
+  }
+});
+
+test('prepareMissionBranch checks the branch out in the primary repo for branch-only mode', async () => {
+  const repo = initRepo('ovld-prep-branch-only-');
+  const result = await prepareMissionBranch({
+    runtime: runtimeForMission({
+      title: 'Quick fix',
+      sequence: 3,
+      projectId: 'p1',
+      project: { slug: 'demo' },
+      branch: {
+        baseBranch: 'main',
+        willPrepareBranch: true,
+        willUseWorktree: false,
+        worktreePreference: 'branch'
+      }
+    }),
+    options: {
+      missionId: 'coo:3',
+      workingDirectory: repo,
+      workspaceAutomationEnabled: false
+    }
+  });
+  assert.ok(result.branchAutomation, 'expected a branch automation payload');
+  // Branch-only: the working directory IS the primary repo (no separate worktree).
+  assert.equal(result.workingDirectory, repo);
+  assert.equal(result.branchAutomation?.worktreePath, repo);
+  // The branch is now checked out in the primary repo.
+  assert.equal(git(repo, ['branch', '--show-current']), result.branchAutomation?.branchName);
+  // No extra worktree directory was added.
+  const worktrees = git(repo, ['worktree', 'list', '--porcelain'])
+    .split('\n')
+    .filter(line => line.startsWith('worktree '));
+  assert.equal(worktrees.length, 1, 'only the primary repo worktree exists');
+});
+
+test('prepareMissionBranch prepares nothing when the mission runs off its base branch', async () => {
+  const repo = initRepo('ovld-prep-off-');
+  const result = await prepareMissionBranch({
+    runtime: runtimeForMission({
+      title: 'No branch',
+      sequence: 1,
+      projectId: 'p1',
+      project: { slug: 'demo' },
+      branch: { baseBranch: 'main', willPrepareBranch: false, willUseWorktree: false }
+    }),
+    options: {
+      missionId: 'coo:1',
+      workingDirectory: repo,
+      workspaceAutomationEnabled: false
+    }
+  });
+  assert.equal(result.branchAutomation, null);
+  assert.equal(result.workingDirectory, repo);
+  assert.equal(git(repo, ['branch', '--show-current']), 'main');
+});
+
+test('prepareMissionBranch never touches git on a dry run', async () => {
+  const repo = initRepo('ovld-prep-dryrun-');
+  const result = await prepareMissionBranch({
+    runtime: runtimeForMission({
+      branch: { baseBranch: 'main', willPrepareBranch: true, willUseWorktree: true }
+    }),
+    options: {
+      missionId: 'coo:9',
+      workingDirectory: repo,
+      workspaceAutomationEnabled: true,
+      dryRun: true
+    }
+  });
+  assert.equal(result.branchAutomation, null);
+  assert.equal(result.workingDirectory, repo);
+  assert.equal(git(repo, ['branch', '--show-current']), 'main');
+});
 
 test('computeMergedBranches reports only branches that genuinely landed via merge', () => {
   const repo = mkdtempSync(path.join(os.tmpdir(), 'ovld-merged-branches-'));

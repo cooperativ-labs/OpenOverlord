@@ -1,0 +1,21 @@
+-- Per-mission worktree/branch opt-in (coo:9).
+--
+-- missions.worktree_preference lets an individual mission override the workspace
+-- `worktreeBranchAutomationEnabled` setting so users who keep automation OFF can
+-- still create a branch (and optionally a worktree) for selected missions:
+--
+--   null        -- inherit the workspace setting (current behavior)
+--   'worktree'  -- prepare a branch + worktree for this mission, even if the
+--                  workspace setting is off (full worktree automation behavior)
+--   'branch'    -- prepare a branch for this mission without a dedicated worktree
+--                  (the branch is checked out in the project's primary repo)
+--
+-- Unlike branch_override (a one-shot pin consumed at branch preparation), this is
+-- a persistent per-mission mode that all of the mission's objectives honor; the
+-- runner does not clear it. Nullable + default null, so existing rows are
+-- unaffected and keep inheriting the workspace setting. Validated in the app
+-- layer (no DB CHECK) so it stays forward-compatible with future modes.
+--
+-- Contract: database/docs/09-database-schema-contract.md → missions.worktree_preference
+
+ALTER TABLE missions ADD COLUMN worktree_preference TEXT;

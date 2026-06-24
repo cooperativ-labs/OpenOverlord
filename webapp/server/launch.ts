@@ -108,7 +108,7 @@ function persistCatalog(catalog: StoredCatalog): void {
   writeWorkspaceSettings(settings);
 }
 
-function readWorktreeBranchAutomationEnabled(): boolean {
+export function readWorktreeBranchAutomationEnabled(): boolean {
   const settings = readWorkspaceSettings();
   return settings[WORKTREE_BRANCH_AUTOMATION_SETTINGS_KEY] === true;
 }

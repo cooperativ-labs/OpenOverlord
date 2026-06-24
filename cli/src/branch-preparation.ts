@@ -3,15 +3,23 @@ import { existsSync, mkdirSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { type BranchDecision, planMissionBranch, sanitizeBranchName } from './branch-planning.js';
+import { type BranchDecision, planMissionBranch } from './branch-planning.js';
 import type { CliRuntime } from './runtime.js';
 
 export type BranchPreparationOptions = {
   missionId: string;
   workingDirectory: string;
-  enabled: boolean;
-  overrideBranch?: string | null;
+  /**
+   * The workspace-wide worktree/branch automation setting. Used as a fallback to
+   * recompute the mission's effective decision when the mission DTO does not
+   * carry the resolved `willPrepareBranch`/`willUseWorktree` flags.
+   */
+  workspaceAutomationEnabled: boolean;
+  /** No git side-effects; used for launch previews. */
+  dryRun?: boolean;
+  /** The `--no-worktree` flag: downgrade a worktree decision to a branch-only checkout. */
   noWorktree?: boolean;
+  overrideBranch?: string | null;
 };
 
 export type BranchPreparationResult = {
@@ -39,6 +47,9 @@ export type MissionShape = {
     status?: unknown;
     baseBranch?: unknown;
     overrideBranch?: unknown;
+    worktreePreference?: unknown;
+    willPrepareBranch?: unknown;
+    willUseWorktree?: unknown;
   } | null;
 };
 
@@ -292,6 +303,55 @@ function ensureWorktree(gitRoot: string, decision: BranchDecision): void {
   runGit(gitRoot, ['worktree', 'add', '-b', decision.branch, decision.worktreePath, decision.from]);
 }
 
+// Creates (when needed) and checks out the planned branch directly in the
+// primary repo — the "branch without a worktree" mode (coo:9). Unlike
+// `ensureWorktree`, no separate worktree directory is added; the branch lives in
+// the working repo, switching it onto the branch.
+function ensureBranchCheckout(gitRoot: string, decision: BranchDecision): void {
+  ensureBranchRef(gitRoot, decision);
+  const exists = runGit(gitRoot, ['rev-parse', '--verify', '--quiet', decision.branch], {
+    optional: true
+  });
+  if (!exists) {
+    if (decision.action === 'reuse') {
+      runGit(gitRoot, ['checkout', decision.branch]);
+      return;
+    }
+    runGit(gitRoot, ['branch', decision.branch, decision.from]);
+  }
+  runGit(gitRoot, ['checkout', decision.branch]);
+}
+
+// Resolves the mission's effective branch behavior. Prefers the resolved flags
+// the REST layer computes on the mission DTO (`willPrepareBranch`/
+// `willUseWorktree`); falls back to recomputing from the per-mission
+// `worktreePreference` and the workspace automation setting for older backends.
+function resolveBranchDecision(
+  mission: MissionShape,
+  workspaceAutomationEnabled: boolean
+): { willPrepareBranch: boolean; willUseWorktree: boolean } {
+  const branch = mission.branch;
+  if (
+    branch &&
+    typeof branch.willPrepareBranch === 'boolean' &&
+    typeof branch.willUseWorktree === 'boolean'
+  ) {
+    return {
+      willPrepareBranch: branch.willPrepareBranch,
+      willUseWorktree: branch.willUseWorktree
+    };
+  }
+  const raw = branch?.worktreePreference;
+  const preference = raw === 'worktree' || raw === 'branch' ? raw : null;
+  const willPrepareBranch =
+    preference === 'worktree' ||
+    preference === 'branch' ||
+    (preference === null && workspaceAutomationEnabled);
+  const willUseWorktree =
+    preference === 'worktree' || (preference === null && workspaceAutomationEnabled);
+  return { willPrepareBranch, willUseWorktree };
+}
+
 export async function prepareMissionBranch({
   runtime,
   options
@@ -299,17 +359,8 @@ export async function prepareMissionBranch({
   runtime: CliRuntime;
   options: BranchPreparationOptions;
 }): Promise<BranchPreparationResult> {
-  if (!options.enabled || options.noWorktree) {
-    const override = options.overrideBranch?.trim();
-    if (override) {
-      const gitRoot = resolveGitRoot(options.workingDirectory);
-      const branch = sanitizeBranchName(override, override);
-      runGit(gitRoot, ['check-ref-format', '--branch', branch]);
-      if (!runGit(gitRoot, ['rev-parse', '--verify', branch], { optional: true })) {
-        runGit(gitRoot, ['branch', branch]);
-      }
-      runGit(gitRoot, ['checkout', branch]);
-    }
+  // A launch preview must never touch git.
+  if (options.dryRun) {
     return { workingDirectory: options.workingDirectory, branchAutomation: null };
   }
 
@@ -317,11 +368,26 @@ export async function prepareMissionBranch({
   const mission = (await runtime.backend.get(
     `/api/missions/${encodeURIComponent(options.missionId)}`
   )) as MissionShape;
+
+  const { willPrepareBranch, willUseWorktree } = resolveBranchDecision(
+    mission,
+    options.workspaceAutomationEnabled
+  );
+  const overrideFlag = options.overrideBranch?.trim() || null;
+  // An explicit `--branch` always forces at least a branch, even for a mission
+  // that would otherwise run off its base (the legacy escape hatch).
+  const prepareBranch = willPrepareBranch || Boolean(overrideFlag);
+  if (!prepareBranch) {
+    return { workingDirectory: options.workingDirectory, branchAutomation: null };
+  }
+  // `--no-worktree` downgrades a worktree decision to a branch-only checkout.
+  const useWorktree = willUseWorktree && !options.noWorktree;
+
   const base = resolveBaseBranch(gitRoot, mission);
   const refs = repoRefs(gitRoot, base);
   // The explicit `--branch` flag wins; otherwise honor the mission's pinned
   // override (set in the mission panel's branch selector).
-  const overrideBranch = options.overrideBranch?.trim() || missionOverrideBranch(mission);
+  const overrideBranch = overrideFlag || missionOverrideBranch(mission);
   const projectSlug = await resolveMissionProjectSlug({ runtime, mission });
   const decision = planMissionBranch({
     mission: {
@@ -336,13 +402,30 @@ export async function prepareMissionBranch({
     overrideBranch
   });
 
-  ensureWorktree(gitRoot, decision);
+  if (useWorktree) {
+    ensureWorktree(gitRoot, decision);
+    return {
+      workingDirectory: decision.worktreePath,
+      branchAutomation: {
+        branchName: decision.branch,
+        baseBranch: decision.baseBranch,
+        worktreePath: decision.worktreePath,
+        action: decision.action,
+        cycle: decision.cycle
+      }
+    };
+  }
+
+  // Branch-only: check the branch out in the primary repo (no worktree). The
+  // branch's "worktree" is the primary repo itself, which the mission panel's
+  // git-state derivation resolves via `git worktree list`.
+  ensureBranchCheckout(gitRoot, decision);
   return {
-    workingDirectory: decision.worktreePath,
+    workingDirectory: gitRoot,
     branchAutomation: {
       branchName: decision.branch,
       baseBranch: decision.baseBranch,
-      worktreePath: decision.worktreePath,
+      worktreePath: gitRoot,
       action: decision.action,
       cycle: decision.cycle
     }

@@ -37,7 +37,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from './ui/dropdown-menu.tsx';
+import { Label } from './ui/label.tsx';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.tsx';
+import { Switch } from './ui/switch.tsx';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip.tsx';
 import { Button } from './ui.tsx';
 
@@ -237,6 +239,71 @@ function BranchSelector({ mission }: { mission: MissionDetailDto }) {
 }
 
 /**
+ * Shown when a mission would run directly off its base branch — i.e. worktree
+ * automation is off (workspace-wide) and the mission has no per-mission opt-in
+ * (coo:9). Lets the user opt this single mission into a dedicated branch, with a
+ * checkbox choosing whether that branch gets its own worktree (default on). The
+ * choice is persisted as the mission's `worktreePreference`; the runner prepares
+ * the branch/worktree at the mission's next launch — no git side-effects here.
+ */
+function CreateBranchForm({ mission }: { mission: MissionDetailDto }) {
+  const branch = mission.branch;
+  const update = useUpdateMission(mission.id);
+  const [useWorktree, setUseWorktree] = useState(true);
+
+  if (!branch) return null;
+  const base = branch.baseBranch ?? 'main';
+
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="flex min-w-0 items-center gap-2">
+        <GitBranch className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="shrink-0 text-xs text-muted-foreground">From</span>
+        <code className="min-w-0 flex-1 truncate text-[0.8rem] font-medium" title={base}>
+          {base}
+        </code>
+      </div>
+
+      <div className="space-y-3 rounded-md border border-border/60 bg-muted/30 p-2.5">
+        <p className="text-xs text-muted-foreground">
+          Create a dedicated branch for this mission. Overlord prepares it the next time the mission
+          runs, then follows the usual branch workflow.
+        </p>
+        <div className="flex min-w-0 items-center gap-1.5 text-xs">
+          <GitBranchPlus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <code className="min-w-0 flex-1 truncate text-[0.75rem] font-medium" title={branch.name}>
+            {branch.name}
+          </code>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="create-in-worktree" className="text-xs font-normal">
+            Create in a worktree
+          </Label>
+          <Switch
+            id="create-in-worktree"
+            checked={useWorktree}
+            disabled={update.isPending}
+            onCheckedChange={setUseWorktree}
+          />
+        </div>
+        <Button
+          variant="primary"
+          className="w-full justify-center"
+          disabled={update.isPending}
+          onClick={() => update.mutate({ worktreePreference: useWorktree ? 'worktree' : 'branch' })}
+        >
+          <GitBranchPlus className="h-3.5 w-3.5" />
+          {update.isPending ? 'Creating…' : 'Create branch'}
+        </Button>
+      </div>
+      {update.isError && (
+        <p className="text-xs text-destructive">{(update.error as Error).message}</p>
+      )}
+    </div>
+  );
+}
+
+/**
  * The full git control surface for a mission's branch: status, identity, and the
  * lifecycle actions (commit, merge in parent, push, publish, open a PR). Rendered
  * inside the header popover; its layout assumes the surrounding popover supplies
@@ -246,6 +313,7 @@ function BranchPanel({ mission }: { mission: MissionDetailDto }) {
   const branch = mission.branch;
   const branchAction = useBranchAction(mission.id);
   const generateCommitMessage = useGenerateCommitMessage(mission.id);
+  const update = useUpdateMission(mission.id);
   const [actionError, setActionError] = useState<string | null>(null);
   // When an action needs confirmation (an objective is executing on the branch),
   // we stash the intended action and surface an inline confirm prompt.
@@ -254,7 +322,16 @@ function BranchPanel({ mission }: { mission: MissionDetailDto }) {
   const [commitMessage, setCommitMessage] = useState('');
 
   if (!branch) return null;
+  // Worktree automation is off for this mission and it hasn't been opted in, so it
+  // runs off the base branch: offer the per-mission create-branch affordance.
+  if (!branch.willPrepareBranch) return <CreateBranchForm mission={mission} />;
   const status = BRANCH_STATUS_META[branch.status];
+  // A per-mission opt-in that hasn't been prepared yet can still be reverted to
+  // "work off the base branch" (only meaningful while automation is globally off).
+  const canRevertToBase =
+    !branch.worktreeAutomationEnabled &&
+    branch.worktreePreference !== null &&
+    branch.status === 'pending';
 
   const parent = branch.baseBranch ?? 'main';
   // A GitHub PR can only target a pushed branch, so this is offered on `published`.
@@ -347,7 +424,24 @@ function BranchPanel({ mission }: { mission: MissionDetailDto }) {
               {parent}
             </code>
           </div>
+          {branch.worktreePreference !== null && (
+            <p className="pl-6 text-[0.7rem] text-muted-foreground">
+              Per-mission {branch.worktreePreference === 'worktree' ? 'worktree' : 'branch'}{' '}
+              (workspace automation is off)
+            </p>
+          )}
         </div>
+
+        {canRevertToBase && (
+          <button
+            type="button"
+            disabled={update.isPending}
+            onClick={() => update.mutate({ worktreePreference: null })}
+            className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-60"
+          >
+            Cancel — work off {parent} instead
+          </button>
+        )}
 
         {showCommit && (
           <div className="space-y-2.5 rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5">
@@ -533,8 +627,18 @@ export function MissionBranchControl({ mission }: { mission: MissionDetailDto })
   const branch = mission.branch;
   if (!branch) return null;
 
+  // When the mission will run off its base branch (worktree automation off and no
+  // per-mission opt-in), the control reads "<base>" with a muted
+  // treatment; the popover then offers the create-branch affordance (coo:9).
+  const workingOffBase = !branch.willPrepareBranch;
+  const base = branch.baseBranch ?? 'main';
   const status = BRANCH_STATUS_META[branch.status];
-  const StatusIcon = status.icon;
+  const StatusIcon = workingOffBase ? GitBranch : status.icon;
+  const label = workingOffBase ? base : branch.name;
+  const title = workingOffBase ? `${base}` : `${branch.name} · ${status.label}`;
+  const ariaLabel = workingOffBase
+    ? `Git: working off ${base}`
+    : `Git branch: ${branch.name} (${status.label})`;
 
   return (
     <Popover>
@@ -542,14 +646,19 @@ export function MissionBranchControl({ mission }: { mission: MissionDetailDto })
         render={
           <button
             type="button"
-            aria-label={`Git branch: ${branch.name} (${status.label})`}
-            title={`${branch.name} · ${status.label}`}
+            aria-label={ariaLabel}
+            title={title}
             className="flex h-7 min-w-0 max-w-[220px] items-center gap-1.5 rounded-md border border-border bg-transparent px-2 text-xs hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         }
       >
-        <StatusIcon className={cn('h-3.5 w-3.5 shrink-0', status.accent)} />
-        <code className="min-w-0 truncate font-medium">{branch.name}</code>
+        <StatusIcon
+          className={cn(
+            'h-3.5 w-3.5 shrink-0',
+            workingOffBase ? 'text-muted-foreground' : status.accent
+          )}
+        />
+        <code className="min-w-0 truncate font-medium">{label}</code>
         <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={6} className="w-80 p-3">

@@ -534,6 +534,7 @@ export interface Missions {
   title: string;
   updated_at: string;
   workspace_id: string;
+  worktree_preference: string | null;
 }
 
 export interface MissionSequences {

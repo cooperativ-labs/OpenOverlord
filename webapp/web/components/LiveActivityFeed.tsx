@@ -50,18 +50,18 @@ function ActivityEntry({ event }: { event: MissionEventDto }) {
   const isUserFollowUp = event.type === 'user_follow_up';
 
   return (
-    <article className="flex gap-3">
+    <article className="flex min-w-0 gap-3">
       <div className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center">
         {Icon ? (
           <Icon
             className={
               isUserFollowUp
                 ? 'h-3.5 w-3.5 text-sky-500'
-                : 'h-3.5 w-3.5 text-[var(--color-ink-dim)]'
+                : 'h-3.5 w-3.5 text-(--color-ink-dim)'
             }
           />
         ) : (
-          <div className="h-2 w-2 rounded-full bg-[var(--color-ink-dim)]/40" />
+          <div className="h-2 w-2 rounded-full bg-(--color-ink-dim)/40" />
         )}
       </div>
       <div className="grid min-w-0 flex-1 gap-1">
@@ -70,7 +70,7 @@ function ActivityEntry({ event }: { event: MissionEventDto }) {
             className={
               isUserFollowUp
                 ? 'text-xs font-medium text-sky-600 dark:text-sky-400'
-                : 'text-xs font-medium text-[var(--color-ink)]'
+                : 'text-xs font-medium text-(--color-ink)'
             }
           >
             {label}
@@ -78,7 +78,7 @@ function ActivityEntry({ event }: { event: MissionEventDto }) {
           {event.phase && (
             <Badge className="px-2 py-0 text-[10px] uppercase tracking-wide">{event.phase}</Badge>
           )}
-          <span className="text-[11px] text-[var(--color-ink-dim)]">
+          <span className="text-[11px] text-(--color-ink-dim)">
             {formatTimestamp(event.createdAt)}
           </span>
         </div>
@@ -86,14 +86,14 @@ function ActivityEntry({ event }: { event: MissionEventDto }) {
           <p
             className={
               isUserFollowUp
-                ? 'whitespace-pre-wrap break-words text-sm text-sky-700 dark:text-sky-300'
-                : 'whitespace-pre-wrap break-words text-sm text-[var(--color-ink-dim)]'
+                ? 'whitespace-pre-wrap wrap-anywhere text-sm text-sky-700 dark:text-sky-300'
+                : 'whitespace-pre-wrap wrap-anywhere text-sm text-(--color-ink-dim)'
             }
           >
             {event.summary}
           </p>
         ) : (
-          <p className="text-sm italic text-[var(--color-ink-dim)]">No summary.</p>
+          <p className="text-sm italic text-(--color-ink-dim)">No summary.</p>
         )}
         {event.externalUrl && (
           <a
@@ -136,11 +136,11 @@ export function LiveActivityFeed({ missionId }: { missionId: string }) {
 
   const events = eventsQ.data ?? [];
   if (events.length === 0) {
-    return <p className="text-sm italic text-[var(--color-ink-dim)]">No activity yet.</p>;
+    return <p className="text-sm italic text-(--color-ink-dim)">No activity yet.</p>;
   }
 
   return (
-    <div className="grid gap-3">
+    <div className="grid min-w-0 gap-3">
       {events.map(event => (
         <ActivityEntry key={event.id} event={event} />
       ))}
