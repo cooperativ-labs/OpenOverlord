@@ -18,20 +18,19 @@ import type { TextareaHandle } from '@/lib/types/text-control';
 import { cn } from '@/lib/utils.ts';
 
 /**
- * Walk up from `node` to the nearest ancestor that actually scrolls vertically
- * (overflow-y of auto/scroll/overlay with real overflow). The board nests scroll
- * regions — the column's `overflow-y-auto` content area inside the page's
- * `overflow-auto` region — so we resolve the column's own scroller and move only
- * that, instead of letting `scrollIntoView` also shift the whole board.
+ * Walk up from `node` to the nearest ancestor styled as a vertical scroll
+ * container (overflow-y of auto/scroll/overlay). The board nests scroll regions
+ * — the column's `overflow-y-auto` content area inside the page's `overflow-auto`
+ * region — so we resolve the column's own scroller and move only that, never the
+ * whole board. This intentionally does *not* gate on current overflow: the bottom
+ * card grows after mount (async pickers, field-sizing textarea), so a deferred
+ * re-pin must still resolve the column even at the instant before it overflows.
  */
-function findScrollableParent(node: HTMLElement): HTMLElement | null {
+function findScrollContainer(node: HTMLElement): HTMLElement | null {
   let el: HTMLElement | null = node.parentElement;
   while (el) {
     const overflowY = getComputedStyle(el).overflowY;
-    if (
-      (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') &&
-      el.scrollHeight > el.clientHeight
-    ) {
+    if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
       return el;
     }
     el = el.parentElement;
@@ -40,27 +39,20 @@ function findScrollableParent(node: HTMLElement): HTMLElement | null {
 }
 
 /**
- * Bring the whole `card` (footer included) into view within its own scroll
- * container, and only when it overflows — a no-op when it already fits, so it
- * never yanks the view while the user types. Falls back to the browser's
- * `scrollIntoView` when no scrollable ancestor resolves.
+ * The bottom card is always the last child of the column's scroll area, so
+ * pinning that scroller to its maximum offset flushes the card's footer to the
+ * bottom of the column — which sits at the bottom of the window in the board
+ * layout. This stays correct as the card grows (where a one-shot geometry delta
+ * lands short) and is a natural no-op when the column doesn't overflow. Falls
+ * back to the browser's `scrollIntoView` when no scroll container resolves.
  */
-function revealCard(card: HTMLElement): void {
-  const scroller = findScrollableParent(card);
+function pinCardToBottom(card: HTMLElement): void {
+  const scroller = findScrollContainer(card);
   if (!scroller) {
     card.scrollIntoView({ block: 'nearest' });
     return;
   }
-  const cardRect = card.getBoundingClientRect();
-  const viewRect = scroller.getBoundingClientRect();
-  const margin = 8;
-  const overflowBottom = cardRect.bottom - (viewRect.bottom - margin);
-  const overflowTop = viewRect.top + margin - cardRect.top;
-  if (overflowBottom > 0) {
-    scroller.scrollTop += overflowBottom;
-  } else if (overflowTop > 0) {
-    scroller.scrollTop -= overflowTop;
-  }
+  scroller.scrollTop = scroller.scrollHeight;
 }
 
 /** Options chosen in the card footer and forwarded to the create-mission handler. */
@@ -158,27 +150,27 @@ export function BlankMissionCard({
   // already fills the page, entirely below the bottom of the window. autoFocus
   // only scrolls the textarea into view (and races our own scroll), and the
   // card keeps growing *after* it mounts as its async project/tag pickers load
-  // and the textarea autosizes, so a single post-mount scroll lands too early
-  // and the card drifts back out of view. Reveal the whole card after layout
-  // settles, then keep it visible across those later size changes with a
-  // ResizeObserver. revealCard moves only the column's own scroller and only
-  // when the card overflows it, so it never shifts the board or fights typing.
-  // Re-runs on focusTrigger so the card stays visible after each submit.
+  // and the field-sizing textarea grows with input, so a single post-mount
+  // scroll lands too early and the card drifts back out of view. Pin the column
+  // to the bottom after layout settles, then keep it pinned across those later
+  // size changes with a ResizeObserver. pinCardToBottom moves only the column's
+  // own scroller, so it never shifts the board. Re-runs on focusTrigger so the
+  // card stays in view after each submit.
   useEffect(() => {
     if (position !== 'bottom') return;
     const card = cardRef.current;
     if (!card) return;
 
-    const reveal = () => revealCard(card);
+    const pin = () => pinCardToBottom(card);
 
-    // Defer past autoFocus's scroll and the first paint so we read final
-    // geometry instead of the card's initial (still-growing) height.
+    // Defer past autoFocus's scroll and the first paint so the column has its
+    // final scrollHeight (with the freshly mounted card) before we pin.
     let raf = requestAnimationFrame(() => {
-      raf = requestAnimationFrame(reveal);
+      raf = requestAnimationFrame(pin);
     });
 
-    // Keep the card in view as it grows once the pickers/textarea settle.
-    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(reveal) : null;
+    // Keep the card pinned as it grows once the pickers/textarea settle.
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(pin) : null;
     observer?.observe(card);
 
     return () => {
