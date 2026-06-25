@@ -619,6 +619,7 @@ Durable work unit and review record.
 | `active_branch` | text | no | Git branch the mission is currently operating on under worktree automation; null until the first launch prepares one. |
 | `branch_override` | text | no | User-pinned branch chosen in the mission panel to override the planner's default; consumed (and cleared) by the runner at the next branch preparation. Null means automatic selection. |
 | `worktree_preference` | text | no | Per-mission override of the workspace `worktreeBranchAutomationEnabled` setting. `null` inherits the workspace setting; `'worktree'` forces a branch + worktree for this mission even when automation is off; `'branch'` forces a branch without a dedicated worktree (checked out in the project's primary repo). Persistent (not cleared by the runner). App-validated open set (no DB CHECK). |
+| `everhour_task_id` | text | no | Everhour task this mission is linked to for time tracking, written when a user first starts a timer or links the mission from the mission panel. Everhour task IDs are platform-prefixed strings (for example `ev:3000010034`), so this is text. Null until the mission is linked. The workspace Everhour API key lives in `workspaces.settings_json` and the linked Everhour project id/name/section live in `projects.settings_json`. |
 | `created_by_workspace_user_id` | Id | no | FK to `workspace_users`. |
 | `assigned_workspace_user_id` | Id | no | FK to `workspace_users`. |
 | `created_at` | TimestampUTC | yes |  |

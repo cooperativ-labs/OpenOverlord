@@ -2,6 +2,7 @@ import { ArrowRightToLine, EllipsisVertical } from 'lucide-react';
 
 import { CopyMissionIdentifierButton } from '@/components/CopyMissionIdentifierButton';
 import { DeleteMissionButton } from '@/components/DeleteMissionButton';
+import { MissionTimerPopover } from '@/components/everhour/MissionTimerPopover';
 import { MissionBranchControl } from '@/components/MissionBranchControl';
 import { Button } from '@/components/ui/button';
 import {
@@ -63,6 +64,7 @@ export function MissionPanelHeader({ mission, projectId, onClose }: MissionPanel
       </div>
 
       <div className="flex min-w-0 shrink items-center justify-end gap-2">
+        <MissionTimerPopover missionId={mission.id} />
         <MissionBranchControl mission={mission} />
 
         <Button

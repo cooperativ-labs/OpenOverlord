@@ -3,6 +3,7 @@ import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tansta
 import type {
   BranchActionBody,
   CompleteInitialSetupBody,
+  CreateEverhourTimeBody,
   CreateMissionBody,
   CreateObjectiveBody,
   CreateProjectBody,
@@ -13,6 +14,7 @@ import type {
   CreateWorkspaceStatusBody,
   LaunchObjectiveBody,
   LaunchPreferenceDto,
+  LinkProjectEverhourBody,
   MissionDetailDto,
   MissionDto,
   MyMissionsResponse,
@@ -23,6 +25,7 @@ import type {
   ReorderWorkspaceStatusesBody,
   StatusType,
   UpdateAgentLaunchConfigBody,
+  UpdateEverhourTimeBody,
   UpdateLaunchPreferenceBody,
   UpdateMissionBody,
   UpdateObjectiveBody,
@@ -65,7 +68,9 @@ export const keys = {
   objectiveAttachments: (objectiveId: string) => ['objective', objectiveId, 'attachments'] as const,
   agentCatalog: ['agent-catalog'] as const,
   launchSettings: ['launch-settings'] as const,
-  launchPreference: (projectId: string) => ['project', projectId, 'launch-preference'] as const
+  launchPreference: (projectId: string) => ['project', projectId, 'launch-preference'] as const,
+  everhourIntegration: ['integrations', 'everhour'] as const,
+  missionEverhour: (id: string) => ['mission', id, 'everhour'] as const
 };
 
 // Realtime invalidation is global, but mutations also invalidate eagerly so the
@@ -818,5 +823,101 @@ export function useRefreshAgentCatalog() {
   return useMutation({
     mutationFn: () => api.refreshAgentCatalog(),
     onSuccess: data => qc.setQueryData(keys.agentCatalog, data)
+  });
+}
+
+// ---- Everhour integration ------------------------------------------------
+
+/** Workspace Everhour connection state. Used to gate all Everhour UI. */
+export const useEverhourIntegration = () =>
+  useQuery({ queryKey: keys.everhourIntegration, queryFn: () => api.getEverhourIntegration() });
+
+export function useSetEverhourApiKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (apiKey: string) => api.setEverhourApiKey(apiKey),
+    onSuccess: data => {
+      qc.setQueryData(keys.everhourIntegration, data);
+      void qc.invalidateQueries();
+    }
+  });
+}
+
+export function useClearEverhourApiKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.clearEverhourApiKey(),
+    onSuccess: data => {
+      qc.setQueryData(keys.everhourIntegration, data);
+      void qc.invalidateQueries();
+    }
+  });
+}
+
+export function useLinkProjectEverhour(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: LinkProjectEverhourBody) => api.linkProjectEverhour(projectId, body),
+    onSuccess: data => {
+      qc.setQueryData(keys.project(projectId), data);
+      void qc.invalidateQueries();
+    }
+  });
+}
+
+/**
+ * Everhour state for one mission. Only enabled once we know the workspace is
+ * connected, so a disconnected workspace never hits the proxy. Polls while the
+ * caller opts in (e.g. a running timer) to keep elapsed time roughly fresh.
+ */
+export const useMissionEverhour = (
+  id: string,
+  options: { enabled?: boolean; poll?: boolean } = {}
+) =>
+  useQuery({
+    queryKey: keys.missionEverhour(id),
+    queryFn: () => api.getMissionEverhour(id),
+    enabled: options.enabled ?? true,
+    refetchInterval: options.poll ? 15_000 : false
+  });
+
+export function useStartMissionTimer(missionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.startMissionTimer(missionId),
+    onSuccess: data => qc.setQueryData(keys.missionEverhour(missionId), data)
+  });
+}
+
+export function useStopMissionTimer(missionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.stopMissionTimer(missionId),
+    onSuccess: data => qc.setQueryData(keys.missionEverhour(missionId), data)
+  });
+}
+
+export function useAddMissionTime(missionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateEverhourTimeBody) => api.addMissionTime(missionId, body),
+    onSuccess: data => qc.setQueryData(keys.missionEverhour(missionId), data)
+  });
+}
+
+export function useUpdateMissionTime(missionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ recordId, body }: { recordId: string; body: UpdateEverhourTimeBody }) =>
+      api.updateMissionTime(missionId, recordId, body),
+    onSuccess: data => qc.setQueryData(keys.missionEverhour(missionId), data)
+  });
+}
+
+export function useDeleteMissionTime(missionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (recordId: string) => api.deleteMissionTime(missionId, recordId),
+    onSuccess: data => qc.setQueryData(keys.missionEverhour(missionId), data)
   });
 }

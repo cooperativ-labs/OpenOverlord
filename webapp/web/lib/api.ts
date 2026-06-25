@@ -3,6 +3,7 @@ import type {
   ArtifactDto,
   BranchActionBody,
   CompleteInitialSetupBody,
+  CreateEverhourTimeBody,
   CreateMissionBody,
   CreateObjectiveBody,
   CreateProjectBody,
@@ -12,16 +13,19 @@ import type {
   CreateUserTokenResultDto,
   CreateWorkspaceBody,
   CreateWorkspaceStatusBody,
+  EverhourIntegrationDto,
   ExecutionRequestDto,
   FileChangeDto,
   GenerateCommitMessageResultDto,
   LaunchObjectiveBody,
   LaunchPreferenceDto,
   LaunchSettingsDto,
+  LinkProjectEverhourBody,
   MissionBranchListDto,
   MissionDetailDto,
   MissionDto,
   MissionEventDto,
+  MissionEverhourStateDto,
   MyMissionReorderRequest,
   MyMissionsResponse,
   ObjectiveAttachmentDto,
@@ -39,6 +43,7 @@ import type {
   ReorderWorkspaceStatusesBody,
   StoredImageDto,
   UpdateAgentLaunchConfigBody,
+  UpdateEverhourTimeBody,
   UpdateLaunchPreferenceBody,
   UpdateMissionBody,
   UpdateObjectiveBody,
@@ -284,5 +289,34 @@ export const api = {
   getLaunchPreference: (projectId: string) =>
     request<LaunchPreferenceDto>('GET', `/api/projects/${projectId}/launch-preference`),
   updateLaunchPreference: (projectId: string, body: UpdateLaunchPreferenceBody) =>
-    request<LaunchPreferenceDto>('PUT', `/api/projects/${projectId}/launch-preference`, body)
+    request<LaunchPreferenceDto>('PUT', `/api/projects/${projectId}/launch-preference`, body),
+
+  // ---- Everhour integration ----------------------------------------------
+  getEverhourIntegration: () =>
+    request<EverhourIntegrationDto>('GET', '/api/integrations/everhour'),
+  setEverhourApiKey: (apiKey: string) =>
+    request<EverhourIntegrationDto>('PUT', '/api/integrations/everhour', { apiKey }),
+  clearEverhourApiKey: () =>
+    request<EverhourIntegrationDto>('DELETE', '/api/integrations/everhour'),
+  linkProjectEverhour: (projectId: string, body: LinkProjectEverhourBody) =>
+    request<ProjectDto>('PUT', `/api/projects/${projectId}/everhour-link`, body),
+  getMissionEverhour: (missionId: string) =>
+    request<MissionEverhourStateDto>('GET', `/api/missions/${missionId}/everhour`),
+  startMissionTimer: (missionId: string) =>
+    request<MissionEverhourStateDto>('POST', `/api/missions/${missionId}/everhour/timer/start`),
+  stopMissionTimer: (missionId: string) =>
+    request<MissionEverhourStateDto>('POST', `/api/missions/${missionId}/everhour/timer/stop`),
+  addMissionTime: (missionId: string, body: CreateEverhourTimeBody) =>
+    request<MissionEverhourStateDto>('POST', `/api/missions/${missionId}/everhour/time`, body),
+  updateMissionTime: (missionId: string, recordId: string, body: UpdateEverhourTimeBody) =>
+    request<MissionEverhourStateDto>(
+      'PATCH',
+      `/api/missions/${missionId}/everhour/time/${recordId}`,
+      body
+    ),
+  deleteMissionTime: (missionId: string, recordId: string) =>
+    request<MissionEverhourStateDto>(
+      'DELETE',
+      `/api/missions/${missionId}/everhour/time/${recordId}`
+    )
 };

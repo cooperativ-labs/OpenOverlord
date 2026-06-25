@@ -98,6 +98,9 @@ interface ProjectRow {
 
 const PROJECT_COLOR_SETTINGS_KEY = 'overlord.color';
 const PROJECT_DEFAULT_BRANCH_SETTINGS_KEY = 'overlord.defaultBranch';
+export const PROJECT_EVERHOUR_PROJECT_ID_SETTINGS_KEY = 'overlord.everhourProjectId';
+export const PROJECT_EVERHOUR_PROJECT_NAME_SETTINGS_KEY = 'overlord.everhourProjectName';
+export const PROJECT_EVERHOUR_SECTION_ID_SETTINGS_KEY = 'overlord.everhourSectionId';
 
 function readProjectStringSetting(settingsJson: string, key: string): string | null {
   try {
@@ -111,6 +114,18 @@ function readProjectStringSetting(settingsJson: string, key: string): string | n
 
 function readProjectColor(settingsJson: string): string | null {
   return readProjectStringSetting(settingsJson, PROJECT_COLOR_SETTINGS_KEY);
+}
+
+export function readProjectEverhourProjectId(settingsJson: string): string | null {
+  return readProjectStringSetting(settingsJson, PROJECT_EVERHOUR_PROJECT_ID_SETTINGS_KEY);
+}
+
+export function readProjectEverhourProjectName(settingsJson: string): string | null {
+  return readProjectStringSetting(settingsJson, PROJECT_EVERHOUR_PROJECT_NAME_SETTINGS_KEY);
+}
+
+export function readProjectEverhourSectionId(settingsJson: string): string | null {
+  return readProjectStringSetting(settingsJson, PROJECT_EVERHOUR_SECTION_ID_SETTINGS_KEY);
 }
 
 // The project-configured base/parent branch for mission branches. `null` means
@@ -339,6 +354,8 @@ function toProjectDto(r: ProjectRow): ProjectDto {
     description: r.description,
     color: readProjectColor(r.settings_json),
     defaultBranch: readProjectDefaultBranch(r.settings_json),
+    everhourProjectName: readProjectEverhourProjectName(r.settings_json),
+    everhourProjectId: readProjectEverhourProjectId(r.settings_json),
     status: r.status as ProjectDto['status'],
     createdAt: r.created_at,
     updatedAt: r.updated_at,

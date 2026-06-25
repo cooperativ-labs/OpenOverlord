@@ -7,6 +7,7 @@ import {
   KeyRound,
   MonitorDown,
   Palette,
+  Plug,
   ShieldCheck,
   Terminal,
   User
@@ -21,6 +22,7 @@ import { DesktopUpdatesPage } from '@/components/settings/DesktopUpdatesPage';
 import { ExecutionTargetsPage } from '@/components/settings/ExecutionTargetsPage';
 import { HotkeysPage } from '@/components/settings/HotkeysPage';
 import { IdePage } from '@/components/settings/IdePage';
+import { IntegrationsPage } from '@/components/settings/IntegrationsPage';
 import { NotificationsPage } from '@/components/settings/NotificationsPage';
 import {
   SettingsDialogShell,
@@ -46,6 +48,7 @@ const workflowNavItems: SettingsNavItem[] = [
 
 const appNavItems: SettingsNavItem[] = [
   { name: 'Application', icon: Palette },
+  { name: 'Integrations', icon: Plug },
   { name: 'Notifications', icon: Bell },
   { name: 'About', icon: Info }
 ];
@@ -118,6 +121,7 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
       }
     >
       {activeNav === 'Application' && <ApplicationPage />}
+      {activeNav === 'Integrations' && <IntegrationsPage />}
       {activeNav === 'Notifications' && <NotificationsPage />}
       {activeNav === 'Execution Targets' && <ExecutionTargetsPage />}
       {activeNav === 'Worktrees' && <WorktreesPage />}
