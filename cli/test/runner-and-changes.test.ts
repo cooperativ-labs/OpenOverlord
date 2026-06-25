@@ -11,6 +11,7 @@ import {
   claimNextExecutionRequest,
   clearExecutionRequests,
   createExecutionRequest,
+  expireStaleExecutionRequests,
   listExecutionRequests,
   markExecutionLaunched,
   markExecutionLaunching
@@ -166,6 +167,28 @@ test('execution request queue can create, claim, launch, and clear active reques
   assert.ok(claimed);
   assert.equal(claimed.status, 'claimed');
   assert.equal(claimed.workingDirectory, process.cwd());
+  assert.ok(claimed.claimedByDeviceId);
+  assert.ok(claimed.claimedByExecutionTargetId);
+  assert.ok(claimed.claimExpiresAt);
+
+  const claimEvent = db
+    .prepare(
+      `SELECT id FROM mission_events
+        WHERE mission_id = ? AND objective_id = ? AND type = 'status_change'
+          AND summary = 'Runner claimed execution request.'`
+    )
+    .get(mission.id, objectives[0]?.id);
+  assert.ok(claimEvent, 'claim should write a mission status event');
+
+  const claimChange = db
+    .prepare(
+      `SELECT changed_fields_json FROM entity_changes
+        WHERE entity_type = 'execution_request' AND entity_id = ? AND operation = 'update'
+        ORDER BY occurred_at DESC LIMIT 1`
+    )
+    .get(claimed.id) as { changed_fields_json: string } | undefined;
+  assert.ok(claimChange, 'claim should write an entity change');
+  assert.match(claimChange.changed_fields_json, /claimed_by_device_id/);
 
   const launching = markExecutionLaunching({ ctx, requestId: claimed.id });
   assert.equal(launching.status, 'launching');
@@ -184,6 +207,184 @@ test('execution request queue can create, claim, launch, and clear active reques
   });
   assert.equal(second.status, 'queued');
   assert.equal(clearExecutionRequests({ ctx, objectiveId: objectives[0]?.id }).cleared, 1);
+
+  db.close();
+});
+
+test('execution request state machine rejects illegal launch transitions', () => {
+  const { db, ctx } = createContext();
+  const project = createProject({ ctx, name: 'Runner Illegal Transition Test' });
+  addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
+  const { mission, objectives } = createMissionWithObjectives({
+    ctx,
+    projectId: project.id,
+    objectives: [{ objective: 'Reject illegal transition' }]
+  });
+
+  const request = createExecutionRequest({
+    ctx,
+    missionId: mission.displayId,
+    objectiveId: objectives[0]?.id,
+    requestedAgent: 'codex',
+    requestedSource: 'cli'
+  });
+
+  assert.throws(
+    () => markExecutionLaunched({ ctx, requestId: request.id }),
+    (error: unknown) =>
+      error instanceof Error &&
+      'code' in error &&
+      (error as { code: string }).code === 'invalid_execution_request_transition'
+  );
+
+  db.close();
+});
+
+test('stale claims expire with event and change records', () => {
+  const { db, ctx } = createContext();
+  const project = createProject({ ctx, name: 'Runner Claim Expiry Test' });
+  addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
+  const { mission, objectives } = createMissionWithObjectives({
+    ctx,
+    projectId: project.id,
+    objectives: [{ objective: 'Expire stale claim' }]
+  });
+  const request = createExecutionRequest({
+    ctx,
+    missionId: mission.displayId,
+    objectiveId: objectives[0]?.id,
+    requestedAgent: 'codex',
+    requestedSource: 'cli'
+  });
+  const claimed = claimNextExecutionRequest({ ctx });
+  assert.equal(claimed?.id, request.id);
+
+  db.prepare(`UPDATE execution_requests SET claim_expires_at = ? WHERE id = ?`).run(
+    '2000-01-01T00:00:00.000Z',
+    request.id
+  );
+
+  assert.equal(expireStaleExecutionRequests({ ctx }).expired, 1);
+  const expired = db
+    .prepare(`SELECT status, last_error FROM execution_requests WHERE id = ?`)
+    .get(request.id) as { status: string; last_error: string };
+  assert.equal(expired.status, 'expired');
+  assert.match(expired.last_error, /expired before launch started/);
+
+  db.close();
+});
+
+test('launched requests expire when no agent attaches before the deadline', () => {
+  const { db, ctx } = createContext();
+  const project = createProject({ ctx, name: 'Runner Launch Expiry Test' });
+  addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
+  const { mission, objectives } = createMissionWithObjectives({
+    ctx,
+    projectId: project.id,
+    objectives: [{ objective: 'Expire launched-but-unattached' }]
+  });
+  const request = createExecutionRequest({
+    ctx,
+    missionId: mission.displayId,
+    objectiveId: objectives[0]?.id,
+    requestedAgent: 'codex',
+    requestedSource: 'cli'
+  });
+  const claimed = claimNextExecutionRequest({ ctx });
+  assert.equal(claimed?.id, request.id);
+  markExecutionLaunching({ ctx, requestId: request.id });
+  markExecutionLaunched({ ctx, requestId: request.id });
+
+  // The terminal opened but the agent never attached: drive launch_completed_at
+  // past the attach deadline while launched_session_id stays null.
+  db.prepare(`UPDATE execution_requests SET launch_completed_at = ? WHERE id = ?`).run(
+    '2000-01-01T00:00:00.000Z',
+    request.id
+  );
+
+  assert.equal(expireStaleExecutionRequests({ ctx }).expired, 1);
+  const expired = db
+    .prepare(`SELECT status, last_error FROM execution_requests WHERE id = ?`)
+    .get(request.id) as { status: string; last_error: string };
+  assert.equal(expired.status, 'expired');
+  assert.match(expired.last_error, /expired before the launched agent attached/);
+
+  db.close();
+});
+
+test('a launched request linked to a session is not expired', () => {
+  const { db, ctx } = createContext();
+  const project = createProject({ ctx, name: 'Runner Launch Linked Test' });
+  addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
+  const { mission, objectives } = createMissionWithObjectives({
+    ctx,
+    projectId: project.id,
+    objectives: [{ objective: 'Linked launched request survives expiry' }]
+  });
+  const request = createExecutionRequest({
+    ctx,
+    missionId: mission.displayId,
+    objectiveId: objectives[0]?.id,
+    requestedAgent: 'codex',
+    requestedSource: 'cli'
+  });
+  claimNextExecutionRequest({ ctx });
+  markExecutionLaunching({ ctx, requestId: request.id });
+  markExecutionLaunched({ ctx, requestId: request.id });
+
+  // The agent attached: launched_session_id is populated, so even a stale
+  // launch_completed_at must not trip the launched-without-attach sweep.
+  attachSession({
+    ctx,
+    missionId: mission.displayId,
+    agentIdentifier: 'codex',
+    executionRequestId: request.id
+  });
+  db.prepare(`UPDATE execution_requests SET launch_completed_at = ? WHERE id = ?`).run(
+    '2000-01-01T00:00:00.000Z',
+    request.id
+  );
+
+  assert.equal(expireStaleExecutionRequests({ ctx }).expired, 0);
+  const survived = db
+    .prepare(`SELECT status FROM execution_requests WHERE id = ?`)
+    .get(request.id) as { status: string };
+  assert.equal(survived.status, 'launched');
+
+  db.close();
+});
+
+test('attach links a launched execution request to the created session', () => {
+  const { db, ctx } = createContext();
+  const project = createProject({ ctx, name: 'Attach Request Link Test' });
+  addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
+  const { mission, objectives } = createMissionWithObjectives({
+    ctx,
+    projectId: project.id,
+    objectives: [{ objective: 'Attach should link request' }]
+  });
+  const request = createExecutionRequest({
+    ctx,
+    missionId: mission.displayId,
+    objectiveId: objectives[0]?.id,
+    requestedAgent: 'codex',
+    requestedSource: 'cli'
+  });
+  const claimed = claimNextExecutionRequest({ ctx });
+  assert.equal(claimed?.id, request.id);
+  markExecutionLaunching({ ctx, requestId: request.id });
+
+  const attached = attachSession({
+    ctx,
+    missionId: mission.displayId,
+    agentIdentifier: 'codex',
+    executionRequestId: request.id
+  });
+
+  const linked = db
+    .prepare(`SELECT launched_session_id FROM execution_requests WHERE id = ?`)
+    .get(request.id) as { launched_session_id: string | null };
+  assert.equal(linked.launched_session_id, attached.session.id);
 
   db.close();
 });

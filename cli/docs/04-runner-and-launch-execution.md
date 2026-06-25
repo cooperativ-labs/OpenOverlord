@@ -14,8 +14,9 @@ The same pipeline should power manual run and auto-advance:
 4. The runner resolves a working directory.
 5. The runner prepares the mission branch/worktree when worktree branch automation is enabled.
 6. The runner launches the requested agent locally from the prepared directory.
-7. The launched agent attaches to the mission.
-8. The runner marks the launch successful or failed.
+7. The runner marks the terminal/launch command open as successful or failed.
+8. The launched agent attaches to the mission, and attach links the session back
+   to the execution request when the launch context carries the request id.
 
 ## Execution Requests
 
@@ -27,7 +28,9 @@ Requirements:
 - A request must be claimable only when its objective is launchable: `draft`, `submitted`, or `launching`.
 - Duplicate auto-advance requests for the same objective should be prevented by an idempotency key.
 - Manual run should allow repeat requests with distinct client request IDs.
-- Stale claims should expire and become retryable or failed with a clear event.
+- Stale claims should expire with a clear event. A launched request that never
+  attaches should also expire so a terminal-open success does not masquerade as
+  a durable agent session.
 - Queue claiming must be atomic. Competing runners should not be able to claim the same active execution request.
 
 ## Runner Requirements
@@ -58,7 +61,7 @@ MVP behavior:
 - Prepare a per-mission git branch in a per-mission worktree under `~/.ovld/worktrees`
   (or `OVERLORD_WORKTREE_ROOT`) unless disabled in launch settings.
 - Spawn the launch command.
-- Record launch success/failure through the backend API.
+- Record terminal-open success/failure through the backend API.
 - Print status with device identity and active queue.
 
 Future behavior:

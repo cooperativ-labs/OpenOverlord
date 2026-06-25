@@ -67,30 +67,19 @@ Requirements:
 
 For the SQLite/local MVP, attachments can use local file storage instead of signed URLs, but keep the command contract compatible.
 
-### Runner And Device Protocol
+### Runner, Device, And Project Resource Management
 
-Requirements:
+Runner queue/device/project-resource operations are not part of the agent
+protocol. They are management surfaces:
 
-- `get-device`: identify/register the local device.
-- `update-device`: rename the local device label.
-- `request-execution`: queue an objective for runner execution.
-- `claim-execution`: runner claims a queued execution request.
-- `list-execution-requests`: inspect active runner queue.
-- `clear-execution-requests`: clear queued/claimed/launching requests.
-- `complete-execution-launch`: mark a runner launch successful.
-- `fail-execution-launch`: mark a runner launch failed.
-- `list-execution-targets`: can be local-only in MVP; remote target details deferred.
+- `ovld runner once|start|status|clear|clear-all` uses `/api/runner/*` REST
+  endpoints to claim and update execution requests.
+- `ovld create-project` and `ovld add-cwd` use project REST endpoints to create
+  projects and register checkout paths.
 
-### Project Resource Protocol
-
-Requirements:
-
-- `create-project`
-- `list-project-resources`
-- `add-project-resource`
-- `update-project-resource`
-
-Delete operations can be added once project/resource lifecycle semantics are settled.
+Agents should treat objective execution as: attach to a mission, report progress,
+ask when blocked, and deliver. They should not claim queue work through
+`ovld protocol`.
 
 ## Attach Response Requirements
 
@@ -98,6 +87,9 @@ Delete operations can be added once project/resource lifecycle semantics are set
 attribution with `external-session-id`. When the flag is omitted, the CLI may
 auto-detect known agent session IDs from harness environment variables or
 connector hook caches and store the result in `agent_sessions.external_session_id`.
+Runner-launched agents may also carry `OVERLORD_EXECUTION_REQUEST_ID`; the CLI
+forwards it as `--execution-request-id` during `attach` so the backend can link
+`execution_requests.launched_session_id` to the created session.
 
 `attach` must return:
 

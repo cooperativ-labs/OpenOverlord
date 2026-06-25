@@ -90,8 +90,9 @@ function writeFilteredChangedFilesToFlags({
 
 /**
  * Filter protocol changed-file payloads so only run-attributable paths (not in
- * the session baseline) are sent. At deliver, also merges the VCS delta when the
- * agent did not enumerate files.
+ * the session baseline) are sent. At deliver, merge explicit payloads with the
+ * VCS delta so a partial explicit list does not suppress mechanically observed
+ * files.
  */
 function applySessionChangedFiles({
   flags,
@@ -128,7 +129,12 @@ function applySessionChangedFiles({
   if (subcommand === 'update' && !hasExplicitPayload) return;
 
   const explicit = readChangedFilesFromFlags(flags, stdin);
-  const merged = subcommand === 'deliver' ? (hasExplicitPayload ? explicit : delta) : explicit;
+  const merged =
+    subcommand === 'deliver'
+      ? [...explicit, ...delta].filter(
+          (entry, index, all) => all.findIndex(item => item.filePath === entry.filePath) === index
+        )
+      : explicit;
   const attributable = filterRunAttributableChanges({
     workingDirectory,
     missionId,
@@ -370,6 +376,13 @@ export async function runProtocolCommand({
   const workingDirectory = process.cwd();
   const missionId = flagValue(parsed.flags, '--mission-id') ?? parsed.positional[0];
   const flags = Object.fromEntries(parsed.flags);
+  if (
+    subcommand === 'attach' &&
+    typeof flags['--execution-request-id'] !== 'string' &&
+    process.env.OVERLORD_EXECUTION_REQUEST_ID
+  ) {
+    flags['--execution-request-id'] = process.env.OVERLORD_EXECUTION_REQUEST_ID;
+  }
   const { fileInputs, stdin: protocolStdin } = await resolveProtocolFileInputs({
     flags: parsed.flags,
     stdin
@@ -850,15 +863,12 @@ async function runRunnerCommand({
             : [],
           preCommand:
             typeof launchConfig.preCommand === 'string' ? launchConfig.preCommand : undefined,
+          executionRequestId: requestId,
           ...terminal,
           dryRun
         }
       });
       if (result.status && result.status !== 0) {
-        await runtime.backend.post({
-          path: `/api/runner/requests/${requestId}/failed`,
-          body: { error: `Launch command exited with status ${result.status}` }
-        });
         throw new CliError({ message: `Launch command exited with status ${result.status}` });
       }
       await runtime.backend.post({ path: `/api/runner/requests/${requestId}/launched` });

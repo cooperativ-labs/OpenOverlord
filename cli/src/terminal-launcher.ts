@@ -87,12 +87,14 @@ function agentShellCommand({
  */
 function terminalInnerCommand({
   workingDirectory,
-  agentCommand
+  agentCommand,
+  extraEnv = {}
 }: {
   workingDirectory: string;
   agentCommand: string;
+  extraEnv?: Record<string, string>;
 }): string {
-  const exports = Object.entries(tmpEnvFor(workingDirectory))
+  const exports = Object.entries({ ...tmpEnvFor(workingDirectory), ...extraEnv })
     .map(([key, value]) => `export ${key}=${shellQuote(value)}`)
     .join('; ');
   return `cd ${shellQuote(workingDirectory)} && ${exports}; ${agentCommand}`;
@@ -289,12 +291,14 @@ export function resolveLaunchExecution({
   preCommand,
   terminalLauncher,
   terminalLaunchPlacement = 'window',
-  terminalLaunchChord
+  terminalLaunchChord,
+  extraEnv = {}
 }: {
   command: string;
   args: string[];
   workingDirectory: string;
   preCommand?: string | null;
+  extraEnv?: Record<string, string>;
 } & TerminalLaunchSettings): LaunchExecution {
   const agentCommand = agentShellCommand({ command, args, preCommand });
   const launcher = terminalLauncher?.trim();
@@ -307,7 +311,7 @@ export function resolveLaunchExecution({
       : { command, args, useShell: false, terminal: null, display: agentCommand };
   }
 
-  const inner = terminalInnerCommand({ workingDirectory, agentCommand });
+  const inner = terminalInnerCommand({ workingDirectory, agentCommand, extraEnv });
   const builtin = resolveBuiltinTerminal(launcher);
 
   if (builtin === 'terminal') {

@@ -213,7 +213,8 @@ const handlers: Record<string, Handler> = {
       agentIdentifier: strFlag(body, '--agent') ?? 'unknown',
       modelIdentifier: strFlag(body, '--model') ?? null,
       existingSessionKey: strFlag(body, '--session-key') ?? null,
-      externalSessionId: externalSessionId(body)
+      externalSessionId: externalSessionId(body),
+      executionRequestId: strFlag(body, '--execution-request-id') ?? null
     }),
 
   update: (ctx, body) =>

@@ -58,7 +58,6 @@ test('project resource mutations keep primaries scoped per execution target', ()
   );
   assert.equal(rows.find(row => row.id === globalResource.id)?.isPrimary, true);
   assert.equal(rows.find(row => row.id === firstLocalResource.id)?.isPrimary, true);
-
 });
 
 test('createProject can create an initial primary resource atomically', () => {
@@ -89,5 +88,4 @@ test('createProject can create an initial primary resource atomically', () => {
   assert.equal(projectJson.projectId, project.id);
   assert.equal(projectJson.resourceId, rows[0]?.id);
   assert.equal(projectJson.isPrimary, true);
-
 });

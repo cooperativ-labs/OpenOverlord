@@ -289,9 +289,7 @@ export function BoardPage() {
               onClear={() => setSelectedTagIds([])}
               onToggle={tagId =>
                 setSelectedTagIds(current =>
-                  current.includes(tagId)
-                    ? current.filter(id => id !== tagId)
-                    : [...current, tagId]
+                  current.includes(tagId) ? current.filter(id => id !== tagId) : [...current, tagId]
                 )
               }
             />

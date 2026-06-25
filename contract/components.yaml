@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '0.50-draft'
+contractVersion: '0.51-draft'
 
 components:
   protocol:
@@ -19,6 +19,7 @@ components:
       - 'request envelope: per-flag fileInputs map (at most one stdin payload) and change-rationale file_path/filePath alias normalization'
       - 'changed-file and change-rationale recording protocol'
       - 'idempotency key scope naming: protocol.*'
+      - 'agent-facing mission lifecycle commands only; runner queue/device/project-resource management commands live on CLI/Runner/REST surfaces'
     dependsOn:
       - database
       - auth
@@ -93,6 +94,8 @@ components:
       - 'deterministic branch/worktree planning algorithm (cli/src/branch-planning.ts), co-owned with the service layer and pinned to contract/branch-planning-vectors.json'
       - 'ovld runner commands'
       - 'execution target selection logic'
+      - 'runner queue REST operations used by ovld runner: GET /api/runner/status, POST /api/runner/claim, POST /api/runner/clear, POST /api/runner/requests/:id/launching, POST /api/runner/requests/:id/launched, POST /api/runner/requests/:id/failed'
+      - 'branch-preparation acknowledgement through POST /api/missions/:id/branch-prepared'
     dependsOn:
       - database
       - connector
@@ -241,7 +244,12 @@ interactionSurfaces:
     to: rest
     transport: http-json
     rules:
+      - 'Runner queue endpoints are GET /api/runner/status, POST /api/runner/claim, POST /api/runner/clear, POST /api/runner/requests/:id/launching, POST /api/runner/requests/:id/launched, POST /api/runner/requests/:id/failed, and POST /api/missions/:id/branch-prepared'
       - 'Backend claim endpoint must perform atomic compare-and-set on execution_requests'
+      - 'Backend claim must set claimed_by_device_id, claimed_by_execution_target_id when known, and claim_expires_at'
+      - 'Backend state transitions must append mission_events and entity_changes in the same transaction'
+      - 'Allowed transitions are queued → claimed → launching → launched|failed; active requests may be cleared; stale claims and launched-without-attach requests may move to expired; other terminal statuses are sinks unless a new request is explicitly queued'
+      - 'Protocol attach links execution_requests.launched_session_id when launch context supplies an execution request id'
       - 'Runner launches agents locally after a successful claim'
       - 'Runner reports launching/launched/failed state back through backend endpoints'
 

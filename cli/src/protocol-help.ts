@@ -131,6 +131,7 @@ attach:
     --session-key <key>         Reuse an existing session key
     --agent <identifier>
     --model <identifier>
+    --execution-request-id <id> Link this attach to a runner execution request
     --external-session-id <id>  Native agent thread/session id for resume
   Returns:
     Full JSON including session.sessionKey, mission, history, artifacts, sharedState,

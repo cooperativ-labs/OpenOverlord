@@ -55,9 +55,7 @@ function ActivityEntry({ event }: { event: MissionEventDto }) {
         {Icon ? (
           <Icon
             className={
-              isUserFollowUp
-                ? 'h-3.5 w-3.5 text-sky-500'
-                : 'h-3.5 w-3.5 text-(--color-ink-dim)'
+              isUserFollowUp ? 'h-3.5 w-3.5 text-sky-500' : 'h-3.5 w-3.5 text-(--color-ink-dim)'
             }
           />
         ) : (

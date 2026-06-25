@@ -8,7 +8,8 @@ const tempDir = mkdtempSync(path.join(tmpdir(), 'overlord-webapp-launch-'));
 process.env.OVERLORD_SQLITE_PATH = path.join(tempDir, 'webapp.sqlite');
 
 const { db } = await import('./db.ts');
-const { createProject, createProjectResource, createMission } = await import('./repository.ts');
+const { createProject, createProjectResource, createMission, updateObjective } =
+  await import('./repository.ts');
 const { launchObjective } = await import('./launch.ts');
 
 test('launching an objective twice while a request is active returns the same request', () => {
@@ -32,6 +33,34 @@ test('launching an objective twice while a request is active returns the same re
     .prepare(`SELECT COUNT(*) AS n FROM execution_requests WHERE objective_id = ?`)
     .get(objectiveId) as { n: number };
   assert.equal(count.n, 1);
+
+  updateObjective(objectiveId, { state: 'complete' });
+
+  const cleared = db
+    .prepare(`SELECT status FROM execution_requests WHERE id = ?`)
+    .get(first.id) as { status: string };
+  assert.equal(cleared.status, 'cleared');
+
+  const manualEvent = db
+    .prepare(
+      `SELECT summary, payload_json FROM mission_events
+        WHERE objective_id = ? AND type = 'status_change'
+        ORDER BY created_at DESC LIMIT 1`
+    )
+    .get(objectiveId) as { summary: string; payload_json: string };
+  assert.equal(
+    manualEvent.summary,
+    'Objective completed: cleared 1 queued execution request(s) and ended 0 active session(s).'
+  );
+  assert.equal(JSON.parse(manualEvent.payload_json).clearedRequests, 1);
+
+  const serviceClearEvents = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM mission_events
+        WHERE objective_id = ? AND summary = 'Cleared execution request.'`
+    )
+    .get(objectiveId) as { n: number };
+  assert.equal(serviceClearEvents.n, 0);
 
   db.close();
   rmSync(tempDir, { recursive: true, force: true });

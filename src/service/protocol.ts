@@ -6,7 +6,7 @@ import { listRationalesForReview, type RationaleReview } from './changes.js';
 import type { ServiceContext } from './context.js';
 import { resolveMissionId, resolveProjectId } from './context.js';
 import { ServiceError } from './errors.js';
-import { createExecutionRequest } from './execution-requests.js';
+import { createExecutionRequest, linkExecutionRequestToSession } from './execution-requests.js';
 import {
   addObjectivesToMission,
   type ArtifactSummary,
@@ -366,7 +366,8 @@ export function attachSession({
   modelIdentifier,
   connectionMethod = 'cli',
   existingSessionKey,
-  externalSessionId
+  externalSessionId,
+  executionRequestId
 }: {
   ctx: ServiceContext;
   missionId: string;
@@ -375,6 +376,7 @@ export function attachSession({
   connectionMethod?: string;
   existingSessionKey?: string | null;
   externalSessionId?: string | null;
+  executionRequestId?: string | null;
 }): AttachResponse & { sessionKey: string } {
   const context = loadMissionContext({ ctx, missionId });
   const objective = context.objective;
@@ -392,6 +394,13 @@ export function attachSession({
         )
         .run(externalSessionId, nowIso(), existing.id);
     }
+    linkExecutionRequestToSession({
+      ctx,
+      missionId: context.mission.id,
+      objectiveId: existing.objective_id,
+      sessionId: existing.id,
+      executionRequestId: executionRequestId ?? null
+    });
     return {
       ...context,
       session: {
@@ -518,6 +527,14 @@ export function attachSession({
       projectId: context.mission.projectId,
       missionId: context.mission.id,
       objectiveId: objective.id
+    });
+
+    linkExecutionRequestToSession({
+      ctx,
+      missionId: context.mission.id,
+      objectiveId: objective.id,
+      sessionId,
+      executionRequestId: executionRequestId ?? null
     });
   });
 

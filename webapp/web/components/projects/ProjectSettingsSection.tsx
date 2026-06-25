@@ -1,4 +1,4 @@
-import { Settings } from 'lucide-react';
+import { Code2, Settings } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import {
@@ -14,7 +14,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
-import { useUpdateProject } from '@/lib/queries';
+import { buildEditorFileHref, getEditorSchemeLabel } from '@/lib/helpers/editor-scheme';
+import { useProfile, useProjectRepository, useUpdateProject } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
 type ProjectSettingsSectionProps = {
@@ -30,6 +31,8 @@ export function ProjectSettingsSection({
 }: ProjectSettingsSectionProps) {
   const updateProject = useUpdateProject(projectId);
   const projectSettings = useProjectSettings();
+  const repositoryQ = useProjectRepository(projectId, null);
+  const profileQ = useProfile();
   const [name, setName] = useState(initialName);
   const [savedName, setSavedName] = useState(initialName);
   const [savedColor, setSavedColor] = useState(initialColor ?? DEFAULT_PROJECT_COLOR);
@@ -101,6 +104,11 @@ export function ProjectSettingsSection({
     }
   }
 
+  const rootPath = repositoryQ.data?.rootPath ?? null;
+  const editorScheme = profileQ.data?.editorScheme ?? null;
+  const ideHref = rootPath ? buildEditorFileHref(rootPath, editorScheme) : null;
+  const ideLabel = getEditorSchemeLabel(editorScheme);
+
   return (
     <section className="border-b border-[var(--color-border)] px-5 py-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -149,6 +157,19 @@ export function ProjectSettingsSection({
                 {savedName || 'Untitled project'}
               </button>
             )}
+            {ideHref ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="shrink-0"
+                onClick={() => window.open(ideHref, '_blank', 'noopener,noreferrer')}
+                aria-label={`Open in ${ideLabel}`}
+                title={`Open in ${ideLabel}`}
+              >
+                <Code2 className="h-3.5 w-3.5" />
+              </Button>
+            ) : null}
             {projectSettings ? (
               <Button
                 type="button"

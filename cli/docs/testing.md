@@ -136,27 +136,29 @@ shared with [Layer 3 §3.5](../../TEST_PLAN.md#35-protocol-command-surface-confo
 ## C. Runner (`runner`)
 
 Derived from [04-runner-and-launch-execution.md](04-runner-and-launch-execution.md)
-and the `runnerProtocol` section of `protocol-commands.yaml`.
+and the Runner -> REST surface in `contract/components.yaml`.
 
 ### C1. Queue claiming atomicity
-- `claimExecution` is atomic under concurrent runners — exactly one winner
+- `POST /api/runner/claim` is atomic under concurrent runners — exactly one winner
   (shared with [DB §6](../../database/docs/testing.md#6-queue-claiming-atomicity-adapter-suite-6)).
 - Claim verifies the objective is launchable before claiming; appends
-  `mission_events` + `entity_changes` in the same transaction.
+  `mission_events` + `entity_changes` in the same transaction, and sets claim
+  device/target/expiry metadata.
 
 ### C2. Execution-request state machine
 - `execution_requests.status`: `queued → claimed → launching → launched`;
   terminal `failed/cleared/cancelled/expired` are sinks
   ([Layer 3 §3.6](../../TEST_PLAN.md#36-state-machine-conformance)).
-- `completeExecutionLaunch` sets `launched` + launched session id;
-  `failExecutionLaunch` sets `failed` + last error; `clearExecutionRequests` sets
-  `cleared`.
+- `/api/runner/requests/:id/launched` records terminal-open success;
+  protocol `attach` sets `launched_session_id` when launch context carries the
+  request id. `/api/runner/requests/:id/failed` sets `failed` + last error;
+  `/api/runner/clear` sets active requests to `cleared`.
 
 ### C3. Device + target resolution
-- `getDevice` registers/returns a device idempotently; `updateDevice` updates the
-  label.
+- The service-layer device helper registers/returns a device idempotently.
 - Working-directory resolution and execution-target selection pick the documented
-  target; `listExecutionTargets` / `listExecutionRequests` are read-only.
+  target; `ovld runner status` / `GET /api/runner/status` are read-only queue
+  inspection surfaces.
 
 ### C4. Auto-advance
 - A delivered objective with auto-advance enabled queues the next objective

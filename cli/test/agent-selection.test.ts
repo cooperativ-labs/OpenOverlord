@@ -49,9 +49,11 @@ test('runner fails an execution request that has no agent instead of defaulting'
     (error: unknown) => error instanceof CliError && /no agent/i.test(error.message)
   );
 
-  const failed = posts.find(post => post.path === '/api/runner/requests/req-1/failed');
+  const failurePosts = posts.filter(post => post.path === '/api/runner/requests/req-1/failed');
+  assert.equal(failurePosts.length, 1);
+  const failed = failurePosts[0];
   assert.ok(failed, 'the request should be marked failed');
-  assert.match(String((failed!.body as { error: string }).error), /no agent/i);
+  assert.match(String((failed.body as { error: string }).error), /no agent/i);
   // It must never reach the launched state with a substituted agent.
   assert.ok(!posts.some(post => post.path === '/api/runner/requests/req-1/launched'));
 });

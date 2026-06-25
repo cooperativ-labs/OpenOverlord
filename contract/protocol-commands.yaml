@@ -7,7 +7,7 @@
 # IMPORTANT: Any addition, rename, or flag change to a command in this file requires
 # a contract version update in CONTRACT.md and components.yaml.
 
-contractVersion: "0.43-draft"
+contractVersion: "0.51-draft"
 referenceSpec: "cli/docs/03-agent-protocol.md"
 
 # Transport-level shape shared by every protocol command, independent of subcommand.
@@ -38,6 +38,7 @@ sessionLifecycle:
       - --mission-id
     optionalFlags:
       - --session-key
+      - --execution-request-id
     returnsSessionKey: true
     responseShape: attach-response-v1
     clientCapture:
@@ -257,72 +258,27 @@ sharedContext:
     sideEffects:
       - creates-and-finalizes-attachment
 
-runnerProtocol:
-
-  getDevice:
-    description: "Identify or register the local device"
-    sideEffects:
-      - creates-or-returns-device-record
-
-  updateDevice:
-    description: "Update local device label"
-    sideEffects:
-      - updates-device-label
-
-  requestExecution:
-    description: "Queue an objective for runner execution"
-    sideEffects:
-      - creates-execution-request-in-queued-state
-
-  claimExecution:
-    description: "Runner atomically claims a queued execution request"
+managementSurfaces:
+  runnerQueue:
+    description: "Runner queue/device/project-resource operations are management surfaces, not ovld protocol commands."
+    owner: "runner"
+    transport: "Runner -> REST"
+    endpoints:
+      - "GET /api/runner/status"
+      - "POST /api/runner/claim"
+      - "POST /api/runner/clear"
+      - "POST /api/runner/requests/:id/launching"
+      - "POST /api/runner/requests/:id/launched"
+      - "POST /api/runner/requests/:id/failed"
+      - "POST /api/missions/:id/branch-prepared"
     rules:
-      - "Must be atomic — use compare-and-set in one transaction"
-      - "Verify objective is in launchable state before claiming"
-      - "Append mission_events and entity_changes in same claim transaction"
-    sideEffects:
-      - execution-request-status-claimed
-      - appends-mission-event-execution-claimed
-      - appends-entity-changes
-
-  listExecutionRequests:
-    readOnly: true
-
-  clearExecutionRequests:
-    sideEffects:
-      - execution-request-status-cleared
-
-  completeExecutionLaunch:
-    sideEffects:
-      - execution-request-status-launched
-      - sets-launched-session-id
-
-  failExecutionLaunch:
-    sideEffects:
-      - execution-request-status-failed
-      - sets-last-error
-
-  listExecutionTargets:
-    readOnly: true
-
-projectResources:
-
-  createProject:
-    sideEffects:
-      - creates-project-record
-      - seeds-default-project-statuses
-
-  listProjectResources:
-    readOnly: true
-
-  addProjectResource:
-    sideEffects:
-      - creates-project-resource-record
-      - writes-project-json-file
-
-  updateProjectResource:
-    sideEffects:
-      - updates-project-resource-record
+      - "ovld runner uses these REST endpoints through the configured backend."
+      - "Agents use attach/update/heartbeat/ask/deliver for mission lifecycle work."
+  projectResources:
+    description: "Project/resource setup is exposed through top-level CLI management commands and REST project endpoints, not ovld protocol commands."
+    examples:
+      - "ovld create-project --name <name>"
+      - "ovld add-cwd --project-id <id-or-name>"
 
 authAndDiscovery:
 

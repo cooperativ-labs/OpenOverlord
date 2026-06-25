@@ -706,7 +706,11 @@ function preparedBaseBranch(missionId: string, branchName: string): string | nul
   return null;
 }
 
-function resolveMissionBaseBranch(projectId: string, missionId: string, branchName: string): string {
+function resolveMissionBaseBranch(
+  projectId: string,
+  missionId: string,
+  branchName: string
+): string {
   return preparedBaseBranch(missionId, branchName) || resolveProjectBaseBranch(projectId);
 }
 

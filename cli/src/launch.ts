@@ -20,6 +20,7 @@ export type LaunchOptions = {
   thinking?: string | null;
   flags?: string[];
   preCommand?: string | null;
+  executionRequestId?: string | null;
   /**
    * Open the agent in a new terminal window. A built-in name (`iTerm2`,
    * `Terminal`) or a raw prefix command (e.g. `open -a Ghostty --args`).
@@ -148,12 +149,15 @@ export async function buildLaunchPlan({
     tmpDir,
     `mission-${context.displayId.replace(/[^a-zA-Z0-9_-]/g, '-')}.md`
   );
-  writeFileSync(contextFile, `${context.promptContext}\n`);
+  const promptContext = options.executionRequestId
+    ? `${context.promptContext}\nExecution request: ${options.executionRequestId}`
+    : context.promptContext;
+  writeFileSync(contextFile, `${promptContext}\n`);
 
   const prompt =
-    context.promptContext.length > 4000
+    promptContext.length > 4000
       ? `Use the Overlord context file at ${contextFile} and attach to mission ${context.displayId}.`
-      : context.promptContext;
+      : promptContext;
 
   const command = buildAgentCommand({
     agent: options.agent,
@@ -172,7 +176,10 @@ export async function buildLaunchPlan({
     preCommand: options.preCommand,
     terminalLauncher: options.terminalLauncher,
     terminalLaunchPlacement: options.terminalLaunchPlacement,
-    terminalLaunchChord: options.terminalLaunchChord
+    terminalLaunchChord: options.terminalLaunchChord,
+    extraEnv: options.executionRequestId
+      ? { OVERLORD_EXECUTION_REQUEST_ID: options.executionRequestId }
+      : {}
   });
 
   return {
@@ -198,7 +205,10 @@ export async function launchAgent({
 
   const env = {
     ...process.env,
-    ...tmpEnvFor(options.workingDirectory)
+    ...tmpEnvFor(options.workingDirectory),
+    ...(options.executionRequestId
+      ? { OVERLORD_EXECUTION_REQUEST_ID: options.executionRequestId }
+      : {})
   };
 
   const { execution } = plan;

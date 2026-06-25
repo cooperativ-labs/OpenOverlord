@@ -20,6 +20,12 @@ import { resolveInstanceAgentCatalog } from '../../cli/src/agent-catalog.ts';
 import { loadConfig } from '../../cli/src/config.ts';
 import type { TerminalProfile } from '../../cli/src/terminal-profile-types.ts';
 import {
+  ACTIVE_EXECUTION_REQUEST_STATUSES,
+  clearExecutionRequests,
+  createExecutionRequest,
+  type ExecutionRequestSummary
+} from '../../src/service/execution-requests.ts';
+import {
   ensureLocalExecutionTarget,
   updateTerminalProfile as persistTerminalProfile
 } from '../../src/service/execution-targets.ts';
@@ -467,6 +473,31 @@ function toExecutionRequestDto(r: ExecutionRequestRow): ExecutionRequestDto {
   };
 }
 
+function executionSummaryToDto(r: ExecutionRequestSummary): ExecutionRequestDto {
+  return {
+    id: r.id,
+    workspaceId: r.workspaceId,
+    projectId: r.projectId,
+    missionId: r.missionId,
+    objectiveId: r.objectiveId,
+    executionTargetId: r.executionTargetId,
+    requestedAgent: r.requestedAgent,
+    requestedModel: r.requestedModel,
+    requestedReasoningEffort: r.requestedReasoningEffort,
+    launchConfig: {
+      preCommand: typeof r.launchFlags.preCommand === 'string' ? r.launchFlags.preCommand : '',
+      flags: Array.isArray(r.launchFlags.flags)
+        ? r.launchFlags.flags.filter((f): f is string => typeof f === 'string')
+        : []
+    },
+    status: r.status as ExecutionRequestStatus,
+    requestedSource: r.requestedSource,
+    lastError: r.lastError,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt
+  };
+}
+
 const EXECUTION_REQUEST_COLUMNS = `
   id, workspace_id, project_id, mission_id, objective_id, execution_target_id,
   requested_agent, requested_model, requested_reasoning_effort, launch_flags_json,
@@ -478,11 +509,12 @@ export function listMissionExecutionRequests(missionId: string): ExecutionReques
   const rows = db
     .prepare(
       `SELECT ${EXECUTION_REQUEST_COLUMNS} FROM execution_requests
-        WHERE mission_id = ? AND status IN ('queued', 'claimed', 'launching')
+        WHERE mission_id = ?
+          AND status IN (${ACTIVE_EXECUTION_REQUEST_STATUSES.map(() => '?').join(', ')})
           AND deleted_at IS NULL
         ORDER BY created_at DESC`
     )
-    .all(missionId) as ExecutionRequestRow[];
+    .all(missionId, ...ACTIVE_EXECUTION_REQUEST_STATUSES) as ExecutionRequestRow[];
   return rows.map(toExecutionRequestDto);
 }
 
@@ -502,13 +534,6 @@ interface LaunchObjectiveRow {
 }
 
 export const LAUNCHABLE_STATES = ['draft', 'submitted', 'launching'];
-
-/**
- * Execution-request statuses that keep an objective "in the runner queue": the
- * runner only claims `queued` rows, but `claimed`/`launching` rows are mid-flight
- * and must also be retired when the objective leaves the launch pipeline.
- */
-const ACTIVE_EXECUTION_STATUSES = ['queued', 'claimed', 'launching'];
 
 /**
  * Remove an objective from the runner queue when a user manually completes,
@@ -538,35 +563,12 @@ export function dequeueObjective({
   newState: string | null;
   now: string;
 }): { clearedRequests: number; endedSessions: number } {
-  const activeRequests = db
-    .prepare(
-      `SELECT id, revision FROM execution_requests
-        WHERE workspace_id = ? AND objective_id = ? AND deleted_at IS NULL
-          AND status IN (${ACTIVE_EXECUTION_STATUSES.map(() => '?').join(', ')})`
-    )
-    .all(WORKSPACE.id, objectiveId, ...ACTIVE_EXECUTION_STATUSES) as Array<{
-    id: string;
-    revision: number;
-  }>;
-
-  for (const request of activeRequests) {
-    const revision = request.revision + 1;
-    db.prepare(
-      `UPDATE execution_requests
-         SET status = 'cleared', updated_at = @now, revision = @revision
-       WHERE id = @id AND workspace_id = @workspace_id`
-    ).run({ id: request.id, workspace_id: WORKSPACE.id, now, revision });
-    recordChange({
-      entityType: 'execution_request',
-      entityId: request.id,
-      operation: 'update',
-      entityRevision: revision,
-      projectId,
-      missionId,
-      objectiveId,
-      changedFields: ['status']
-    });
-  }
+  const { cleared } = clearExecutionRequests({
+    ctx: serviceContext(),
+    objectiveId,
+    now,
+    emitEvents: false
+  });
 
   // A completed objective ends its session cleanly; a disconnect/delete leaves
   // it blocked since the agent never reached a delivery.
@@ -598,7 +600,7 @@ export function dequeueObjective({
     });
   }
 
-  if (activeRequests.length > 0 || openSessions.length > 0) {
+  if (cleared > 0 || openSessions.length > 0) {
     db.prepare(
       `INSERT INTO mission_events
          (id, workspace_id, project_id, mission_id, objective_id, type, phase, summary,
@@ -610,12 +612,12 @@ export function dequeueObjective({
       projectId,
       missionId,
       objectiveId,
-      `Objective ${reason}: cleared ${activeRequests.length} queued execution request(s) ` +
+      `Objective ${reason}: cleared ${cleared} queued execution request(s) ` +
         `and ended ${openSessions.length} active session(s).`,
       JSON.stringify({
         reason,
         newState,
-        clearedRequests: activeRequests.length,
+        clearedRequests: cleared,
         endedSessions: openSessions.length
       }),
       ACTOR_WORKSPACE_USER_ID,
@@ -623,7 +625,7 @@ export function dequeueObjective({
     );
   }
 
-  return { clearedRequests: activeRequests.length, endedSessions: openSessions.length };
+  return { clearedRequests: cleared, endedSessions: openSessions.length };
 }
 
 /**
@@ -805,72 +807,32 @@ export const launchObjective = db.transaction(
       .prepare(
         `SELECT ${EXECUTION_REQUEST_COLUMNS} FROM execution_requests
           WHERE objective_id = ? AND deleted_at IS NULL
-            AND status IN (${ACTIVE_EXECUTION_STATUSES.map(() => '?').join(', ')})
+            AND status IN (${ACTIVE_EXECUTION_REQUEST_STATUSES.map(() => '?').join(', ')})
           ORDER BY created_at DESC LIMIT 1`
       )
-      .get(objective.id, ...ACTIVE_EXECUTION_STATUSES) as ExecutionRequestRow | undefined;
+      .get(objective.id, ...ACTIVE_EXECUTION_REQUEST_STATUSES) as ExecutionRequestRow | undefined;
     if (activeRequestRow) {
       return toExecutionRequestDto(activeRequestRow);
     }
 
-    const requestId = newId();
-    db.prepare(
-      `INSERT INTO execution_requests
-         (id, workspace_id, project_id, mission_id, objective_id, execution_target_id,
-          requested_agent, requested_model, requested_reasoning_effort,
-          launch_mode, launch_flags_json, target_kind, requested_source, status,
-          requested_by_workspace_user_id, metadata_json, created_at, updated_at, revision)
-       VALUES (@id, @ws, @project_id, @mission_id, @objective_id, @execution_target_id,
-          @requested_agent, @requested_model, @requested_reasoning_effort,
-          'run', @launch_flags_json, 'local', 'webapp', 'queued',
-          @actor, @metadata_json, @now, @now, 1)`
-    ).run({
-      id: requestId,
-      ws: WORKSPACE.id,
-      project_id: objective.project_id,
-      mission_id: objective.mission_id,
-      objective_id: objective.id,
-      execution_target_id: target.executionTargetId,
-      requested_agent: agentKey,
-      requested_model: model,
-      requested_reasoning_effort: reasoningEffort,
-      launch_flags_json: JSON.stringify(resolved.config),
-      metadata_json: JSON.stringify({ launchConfigSource: resolved.source }),
-      actor: ACTOR_WORKSPACE_USER_ID,
-      now
-    });
-
-    db.prepare(
-      `INSERT INTO mission_events
-         (id, workspace_id, project_id, mission_id, objective_id, type, phase, summary,
-          payload_json, source, actor_workspace_user_id, created_at)
-       VALUES (?, ?, ?, ?, ?, 'execution_requested', 'execute', ?, ?, 'webapp', ?, ?)`
-    ).run(
-      newId(),
-      WORKSPACE.id,
-      objective.project_id,
-      objective.mission_id,
-      objective.id,
-      `Queued ${agentKey}${model ? ` (${model})` : ''} execution for a runner.`,
-      JSON.stringify({ executionRequestId: requestId, agent: agentKey, model, reasoningEffort }),
-      ACTOR_WORKSPACE_USER_ID,
-      now
-    );
-
-    recordChange({
-      entityType: 'execution_request',
-      entityId: requestId,
-      operation: 'insert',
-      entityRevision: 1,
-      projectId: objective.project_id,
+    const request = createExecutionRequest({
+      ctx: serviceContext(),
       missionId: objective.mission_id,
-      objectiveId: objective.id
+      objectiveId: objective.id,
+      requestedAgent: agentKey,
+      requestedModel: model,
+      requestedReasoningEffort: reasoningEffort,
+      launchFlags: {
+        preCommand: resolved.config.preCommand,
+        flags: resolved.config.flags
+      },
+      requestedSource: 'webapp',
+      executionTargetId: target.executionTargetId,
+      metadata: { launchConfigSource: resolved.source },
+      eventSummary: `Queued ${agentKey}${model ? ` (${model})` : ''} execution for a runner.`,
+      eventPayload: { agent: agentKey, model, reasoningEffort }
     });
-
-    const row = db
-      .prepare(`SELECT ${EXECUTION_REQUEST_COLUMNS} FROM execution_requests WHERE id = ?`)
-      .get(requestId) as ExecutionRequestRow;
-    return toExecutionRequestDto(row);
+    return executionSummaryToDto(request);
   }
 );
 

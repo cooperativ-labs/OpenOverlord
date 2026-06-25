@@ -136,9 +136,9 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
           height: container.offsetHeight,
           barOffsetTop: Math.round(barTop - containerTop)
         })
-        .catch(() => { });
+        .catch(() => {});
     } else {
-      quickTaskApi.setHeight(container.offsetHeight).catch(() => { });
+      quickTaskApi.setHeight(container.offsetHeight).catch(() => {});
     }
   }, [resolveTextarea]);
 
@@ -175,7 +175,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
   const handleClose = useCallback(() => {
     const quickTaskApi = getQuickTaskApi();
     if (quickTaskApi) {
-      quickTaskApi.close().catch(() => { });
+      quickTaskApi.close().catch(() => {});
       return;
     }
     setObjective('');
@@ -364,10 +364,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
 
         <StagedFilesRow stagedFiles={stagedFiles} onRemoveFile={handleRemoveFile} />
 
-        <div
-          ref={controlBarRef}
-          className="flex items-center justify-between gap-2"
-        >
+        <div ref={controlBarRef} className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1 ">
             <button
               type="button"
@@ -428,7 +425,8 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
                 disabled={isSubmitting}
                 compact
               />
-            </div></div>
+            </div>
+          </div>
 
           <button
             type="button"
