@@ -1019,9 +1019,11 @@ function integrateBranch(ctx: BranchActionContext): string {
   if (!merge.ok) {
     const conflicted = runGitResult(worktreePath, ['diff', '--name-only', '--diff-filter=U']);
     const files = conflicted.ok && conflicted.stdout ? conflicted.stdout.split('\n') : [];
+    // Keep `detail` to the factual specifics (worktree path + conflicting files);
+    // the client renders the "what to do" steps for the BRANCH_MERGE_CONFLICT code.
     const detail =
-      `Resolve the conflicts in ${worktreePath}, commit, then run "Update from ${baseBranch} & merge" again.` +
-      (files.length ? ` Conflicted files: ${files.join(', ')}.` : '');
+      `Worktree: ${worktreePath}.` +
+      (files.length ? ` Conflicting files: ${files.join(', ')}.` : '');
     throw new ApiError(
       409,
       `Merging ${baseBranch} into ${branchName} hit conflicts.`,

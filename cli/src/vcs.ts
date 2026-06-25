@@ -35,6 +35,30 @@ import { resolveGlobalDataDir } from './config.js';
 
 export type ChangedFile = { filePath: string; vcsStatus: string };
 
+export type RationaleNoteInput = {
+  filePath: string;
+  toolName?: string | null;
+  intent?: string | null;
+  transcriptContext?: string | null;
+};
+
+type RationaleNote = {
+  filePath: string;
+  toolName: string | null;
+  intent: string | null;
+  transcriptContext: string | null;
+  contentHash: string | null;
+  recordedAt: string;
+};
+
+export type DraftChangeRationale = {
+  file_path: string;
+  label: string;
+  summary: string;
+  why: string;
+  impact: string;
+};
+
 type BaselineFile = {
   filePath: string;
   vcsStatus: string;
@@ -152,6 +176,20 @@ function touchedFilesPath({
   );
 }
 
+function rationaleNotesPath({
+  workingDirectory,
+  missionId
+}: {
+  workingDirectory: string;
+  missionId: string;
+}): string {
+  return path.join(
+    resolveGlobalDataDir(),
+    'vcs-rationale-notes',
+    `${sessionKeyHash({ workingDirectory, missionId })}.json`
+  );
+}
+
 /**
  * Absolute, symlink-resolved, slash-normalized path for cross-checking VCS and
  * touched entries. Resolving symlinks is what keeps both sides comparable: the
@@ -210,6 +248,124 @@ export function resetTouchedFiles({
   } catch {
     // Best-effort: a stale log at worst keeps prior edits in scope; the worktree
     // delta still gates what is reported.
+  }
+}
+
+/** Clear any rationale-note log for this session. */
+export function resetRationaleNotes({
+  workingDirectory,
+  missionId
+}: {
+  workingDirectory: string;
+  missionId: string;
+}): void {
+  try {
+    const target = rationaleNotesPath({ workingDirectory, missionId });
+    if (existsSync(target)) rmSync(target);
+  } catch {
+    // Best-effort: stale notes only create reviewable drafts; they do not expand
+    // changed-file attribution because the VCS delta still decides coverage.
+  }
+}
+
+function truncateNoteText(value: string | null | undefined, max = 500): string | null {
+  const trimmed = (value ?? '').replace(/\s+/g, ' ').trim();
+  if (!trimmed) return null;
+  return trimmed.length > max ? `${trimmed.slice(0, max - 1)}...` : trimmed;
+}
+
+function readRationaleNotes({
+  workingDirectory,
+  missionId
+}: {
+  workingDirectory: string;
+  missionId: string;
+}): RationaleNote[] {
+  try {
+    const target = rationaleNotesPath({ workingDirectory, missionId });
+    if (!existsSync(target)) return [];
+    const raw = JSON.parse(readFileSync(target, 'utf8')) as { notes?: unknown };
+    if (!Array.isArray(raw.notes)) return [];
+    return raw.notes.flatMap(note => {
+      if (
+        typeof note !== 'object' ||
+        note === null ||
+        typeof (note as RationaleNote).filePath !== 'string'
+      ) {
+        return [];
+      }
+      const candidate = note as Partial<RationaleNote> & { filePath: string };
+      return [
+        {
+          filePath: normalizeAbsolute(candidate.filePath),
+          toolName: truncateNoteText(candidate.toolName),
+          intent: truncateNoteText(candidate.intent),
+          transcriptContext: truncateNoteText(candidate.transcriptContext),
+          contentHash:
+            typeof candidate.contentHash === 'string' && candidate.contentHash.trim()
+              ? candidate.contentHash
+              : null,
+          recordedAt:
+            typeof candidate.recordedAt === 'string' && candidate.recordedAt.trim()
+              ? candidate.recordedAt
+              : new Date(0).toISOString()
+        }
+      ];
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Record lightweight edit context that can later become draft change
+ * rationales. Notes are local-only session state, stored next to touched-file
+ * logs, and are keyed by the same working directory + mission hash.
+ */
+export function recordRationaleNotes({
+  workingDirectory,
+  missionId,
+  notes
+}: {
+  workingDirectory: string;
+  missionId: string;
+  notes: RationaleNoteInput[];
+}): void {
+  try {
+    const additions = notes
+      .map(note => ({
+        filePath: (note.filePath ?? '').trim(),
+        toolName: truncateNoteText(note.toolName, 80),
+        intent: truncateNoteText(note.intent),
+        transcriptContext: truncateNoteText(note.transcriptContext)
+      }))
+      .filter(note => note.filePath)
+      .map(note => {
+        const absolute = normalizeAbsolute(path.resolve(workingDirectory, note.filePath));
+        return {
+          filePath: absolute,
+          toolName: note.toolName,
+          intent: note.intent,
+          transcriptContext: note.transcriptContext,
+          contentHash: hashWorktreeFile({
+            workingDirectory,
+            filePath: path.relative(workingDirectory, absolute)
+          }),
+          recordedAt: new Date().toISOString()
+        };
+      });
+    if (additions.length === 0) return;
+
+    const target = rationaleNotesPath({ workingDirectory, missionId });
+    mkdirSync(path.dirname(target), { recursive: true });
+    const prior = readRationaleNotes({ workingDirectory, missionId });
+    const notesToKeep = [...prior, ...additions].slice(-200);
+    writeFileSync(
+      target,
+      JSON.stringify({ updatedAt: new Date().toISOString(), notes: notesToKeep })
+    );
+  } catch {
+    // Best-effort: deliver can still proceed with explicit rationales.
   }
 }
 
@@ -521,6 +677,75 @@ export function filterRunAttributableChanges({
       return false;
     }
     return true;
+  });
+}
+
+function titleFromPath(filePath: string): string {
+  const base = path.basename(filePath).replace(/\.[^.]+$/, '');
+  const words = base
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[-_]+/g, ' ')
+    .trim();
+  if (!words) return `Update ${filePath}`;
+  return `Update ${words.replace(/\b\w/g, char => char.toUpperCase())}`;
+}
+
+function latestRelevantNote({
+  notes,
+  filePath,
+  currentHash
+}: {
+  notes: RationaleNote[];
+  filePath: string;
+  currentHash: string | null;
+}): RationaleNote | null {
+  const candidates = notes
+    .filter(note => note.filePath === filePath)
+    .sort((left, right) => right.recordedAt.localeCompare(left.recordedAt));
+  if (candidates.length === 0) return null;
+  return (
+    candidates.find(note => currentHash && note.contentHash && note.contentHash === currentHash) ??
+    candidates[0] ??
+    null
+  );
+}
+
+/**
+ * Build reviewable draft rationales for the current run-attributable files from
+ * local edit notes. This preserves the server-side coverage contract: the caller
+ * can merge drafts for files that do not already have explicit rationales.
+ */
+export function draftChangeRationalesFromNotes({
+  workingDirectory,
+  missionId,
+  files
+}: {
+  workingDirectory: string;
+  missionId: string;
+  files: ChangedFile[];
+}): DraftChangeRationale[] {
+  const notes = readRationaleNotes({ workingDirectory, missionId });
+  if (notes.length === 0 || files.length === 0) return [];
+  const repoRoot = gitRepoRoot(workingDirectory) ?? workingDirectory;
+  return files.flatMap(file => {
+    const absolute = normalizeAbsolute(path.resolve(repoRoot, file.filePath));
+    const currentHash = hashWorktreeFile({ workingDirectory, filePath: file.filePath });
+    const note = latestRelevantNote({ notes, filePath: absolute, currentHash });
+    if (!note) return [];
+
+    const action = note.intent ?? `edited with ${note.toolName ?? 'a file-editing tool'}`;
+    const context = note.transcriptContext ? ` Session context: ${note.transcriptContext}` : '';
+    return [
+      {
+        file_path: normalizePath(file.filePath),
+        label: titleFromPath(file.filePath),
+        summary: `Draft from local edit notes: ${action}.${context}`.slice(0, 700),
+        why: `This file was changed for the active objective; the draft was generated from the edit note captured when the change was made.`,
+        impact: `Preserves review coverage for ${normalizePath(
+          file.filePath
+        )}; review the final diff before delivery if a more specific product impact is needed.`
+      }
+    ];
   });
 }
 

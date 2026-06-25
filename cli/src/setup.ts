@@ -34,8 +34,8 @@ const DESKTOP_DOWNLOAD_URL =
   'https://github.com/cooperativ-labs/OpenOverlord/releases/latest/download/';
 
 const TERMINAL_OPTIONS = [
-  { label: 'iTerm2', launcher: 'iTerm2' },
   { label: 'Terminal', launcher: 'Terminal' },
+  { label: 'iTerm2', launcher: 'iTerm2' },
   { label: 'Ghostty', launcher: "open -a 'Ghostty' --args" },
   { label: 'Warp', launcher: "open -a 'Warp' --args" },
   { label: 'WezTerm', launcher: "open -a 'WezTerm' --args" },
@@ -381,7 +381,7 @@ async function resolveCurrentTerminalProfile({
   } catch {
     return (
       readLegacyTerminalProfileFromToml() ?? {
-        launcher: null,
+        launcher: 'Terminal',
         placement: 'window',
         chord: null
       }

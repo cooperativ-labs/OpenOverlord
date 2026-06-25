@@ -29,14 +29,14 @@ const INLINE_LAUNCHER = '__inline__';
 const CUSTOM_LAUNCHER = '__custom__';
 
 const TERMINAL_OPTIONS = [
-  { label: 'Inline in this terminal', launcher: INLINE_LAUNCHER },
-  { label: 'iTerm2', launcher: 'iTerm2' },
   { label: 'Terminal', launcher: 'Terminal' },
+  { label: 'iTerm2', launcher: 'iTerm2' },
   { label: 'Ghostty', launcher: "open -a 'Ghostty' --args" },
   { label: 'Warp', launcher: "open -a 'Warp' --args" },
   { label: 'WezTerm', launcher: "open -a 'WezTerm' --args" },
   { label: 'Alacritty', launcher: "open -a 'Alacritty' --args" },
   { label: 'Kitty', launcher: "open -a 'kitty' --args" },
+  { label: 'Inline in this terminal', launcher: INLINE_LAUNCHER },
   { label: 'Custom launcher command', launcher: CUSTOM_LAUNCHER }
 ] as const;
 
@@ -90,7 +90,7 @@ export function ExecutionTargetsPage() {
   const updateAgentLaunchConfig = useUpdateAgentLaunchConfig();
   const updateTerminalProfile = useUpdateTerminalProfile();
 
-  const [launcherChoice, setLauncherChoice] = useState<string>(INLINE_LAUNCHER);
+  const [launcherChoice, setLauncherChoice] = useState<string>('Terminal');
   const [customLauncher, setCustomLauncher] = useState('');
   const [placement, setPlacement] = useState<TerminalProfileDto['placement']>('window');
   const [chord, setChord] = useState('');

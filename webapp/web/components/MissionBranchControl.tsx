@@ -38,6 +38,7 @@ import {
   DropdownMenuTrigger
 } from './ui/dropdown-menu.tsx';
 import { Label } from './ui/label.tsx';
+import { LoadingButton } from './ui/loading-button.tsx';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.tsx';
 import { Switch } from './ui/switch.tsx';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip.tsx';
@@ -303,6 +304,79 @@ function CreateBranchForm({ mission }: { mission: MissionDetailDto }) {
   );
 }
 
+// A branch-action failure, reshaped for display: a short title, one clear
+// instruction, and optional factual specifics (paths, conflicting files).
+interface BranchErrorView {
+  title: string;
+  instruction: string;
+  detail?: string;
+}
+
+/**
+ * Turns a raw branch-action error into a short title + plain-language instruction
+ * the user can act on, instead of a single run-on red sentence. Common typed
+ * failures (merge conflicts, a dirty worktree, a failed push) each get tailored
+ * guidance; the server's `detail` (worktree path, conflicting files) rides along
+ * as secondary context. Anything unrecognized falls back to the server message.
+ */
+function describeBranchError(err: unknown, parent: string): BranchErrorView {
+  if (!(err instanceof ApiRequestError)) {
+    return {
+      title: 'Branch action failed',
+      instruction: err instanceof Error ? err.message : 'Something went wrong. Please try again.'
+    };
+  }
+  switch (err.code) {
+    case 'BRANCH_MERGE_CONFLICT':
+      return {
+        title: 'Merge conflicts need resolving',
+        instruction: `Open the branch's worktree, resolve the conflicting files, commit them, then run "Merge in ${parent}" again.`,
+        detail: err.detail
+      };
+    case 'BRANCH_DIRTY':
+      return {
+        title: 'Uncommitted changes',
+        instruction: 'Commit or discard the changes in the worktree, then try again.',
+        detail: err.detail
+      };
+    case 'BRANCH_NOTHING_TO_COMMIT':
+      return {
+        title: 'Nothing to commit',
+        instruction: 'The branch worktree has no changes to commit.',
+        detail: err.detail
+      };
+    case 'BRANCH_PARENT_NOT_CHECKED_OUT':
+      return {
+        title: `${parent} isn't checked out`,
+        instruction: `Check out ${parent} in the primary working directory, then try again.`,
+        detail: err.detail
+      };
+    case 'BRANCH_PUSH_FAILED':
+      return {
+        title: 'Push to origin failed',
+        instruction: 'Check your network and git remote credentials, then try again.',
+        detail: err.detail
+      };
+    case 'BRANCH_NO_WORKTREE':
+    case 'BRANCH_WORKTREE_MISMATCH':
+      return {
+        title: 'Worktree unavailable',
+        instruction: 'The branch worktree is missing or on the wrong branch.',
+        detail: err.detail
+      };
+    case 'BRANCH_NO_PRIMARY':
+      return {
+        title: 'No working directory',
+        instruction:
+          'Connect a primary working directory for this project on this device, then try again.',
+        detail: err.detail
+      };
+    default:
+      // Unrecognized: the merged server message is the best we have.
+      return { title: 'Branch action failed', instruction: err.message };
+  }
+}
+
 /**
  * The full git control surface for a mission's branch: status, identity, and the
  * lifecycle actions (commit, merge in parent, push, publish, open a PR). Rendered
@@ -314,7 +388,7 @@ function BranchPanel({ mission }: { mission: MissionDetailDto }) {
   const branchAction = useBranchAction(mission.id);
   const generateCommitMessage = useGenerateCommitMessage(mission.id);
   const update = useUpdateMission(mission.id);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<BranchErrorView | null>(null);
   // When an action needs confirmation (an objective is executing on the branch),
   // we stash the intended action and surface an inline confirm prompt.
   const [confirmAction, setConfirmAction] = useState<BranchActionName | null>(null);
@@ -362,7 +436,7 @@ function BranchPanel({ mission }: { mission: MissionDetailDto }) {
         return;
       }
       setConfirmAction(null);
-      setActionError(err instanceof Error ? err.message : 'Branch action failed.');
+      setActionError(describeBranchError(err, parent));
     }
   }
 
@@ -543,14 +617,18 @@ function BranchPanel({ mission }: { mission: MissionDetailDto }) {
               </Tooltip>
             )}
             {showPushParent && (
-              <Button
-                variant="primary"
-                disabled={branchAction.isPending}
+              <LoadingButton
+                variant="default"
+                buttonState={branchAction.isPending ? 'loading' : 'default'}
                 onClick={() => handleAction('push_parent')}
-              >
-                <ArrowUp className="h-3.5 w-3.5" />
-                Push {parent}
-              </Button>
+                text={
+                  <>
+                    <ArrowUp className="h-3.5 w-3.5" />
+                    Push {parent}
+                  </>
+                }
+                loadingText={`Push ${parent}`}
+              />
             )}
             {showPublish && (
               <Button
@@ -611,7 +689,20 @@ function BranchPanel({ mission }: { mission: MissionDetailDto }) {
           </div>
         )}
 
-        {actionError && <p className="text-xs text-destructive">{actionError}</p>}
+        {actionError && (
+          <div className="space-y-1 rounded-md border border-destructive/30 bg-destructive/10 p-2.5">
+            <p className="flex items-start gap-1.5 text-xs font-medium text-destructive">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{actionError.title}</span>
+            </p>
+            <p className="pl-5 text-xs text-destructive/90">{actionError.instruction}</p>
+            {actionError.detail && (
+              <p className="break-words pl-5 font-mono text-[0.7rem] text-muted-foreground">
+                {actionError.detail}
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </TooltipProvider>
   );

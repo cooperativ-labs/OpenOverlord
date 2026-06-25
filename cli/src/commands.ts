@@ -26,13 +26,24 @@ import type { TerminalLaunchSettings } from './terminal-launcher.js';
 import { fetchTerminalProfile, terminalProfileToLaunchSettings } from './terminal-profile.js';
 import {
   computeRunDelta,
+  draftChangeRationalesFromNotes,
   filterRunAttributableChanges,
   readChangedFiles,
+  resetRationaleNotes,
   resetTouchedFiles,
   writeBaseline
 } from './vcs.js';
 
 type ChangedFileEntry = { filePath: string; vcsStatus?: string | null };
+type ChangeRationaleEntry = {
+  file_path?: string;
+  filePath?: string;
+  label?: string;
+  summary?: string;
+  why?: string;
+  impact?: string;
+  [key: string]: unknown;
+};
 
 /** Parse an inline `--changed-files-json` value into entries (best-effort). */
 function parseChangedFilesJson(value: unknown): ChangedFileEntry[] {
@@ -86,6 +97,82 @@ function writeFilteredChangedFilesToFlags({
     return;
   }
   flags['--changed-files-json'] = JSON.stringify(files);
+}
+
+function parseJsonArray(value: unknown): unknown[] {
+  if (typeof value !== 'string' || value.trim() === '') return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function readJsonFlagContent({
+  flags,
+  fileInputs,
+  jsonFlag,
+  fileFlag
+}: {
+  flags: Record<string, string | true>;
+  fileInputs: Record<string, string>;
+  jsonFlag: string;
+  fileFlag: string;
+}): string | undefined {
+  const filePath = flags[fileFlag];
+  if (typeof filePath === 'string') {
+    if (fileInputs[fileFlag] !== undefined) return fileInputs[fileFlag];
+    try {
+      return readFileSync(filePath, 'utf8');
+    } catch {
+      return undefined;
+    }
+  }
+  return typeof flags[jsonFlag] === 'string' ? flags[jsonFlag] : undefined;
+}
+
+function readChangeRationalesFromFlags({
+  flags,
+  fileInputs
+}: {
+  flags: Record<string, string | true>;
+  fileInputs: Record<string, string>;
+}): ChangeRationaleEntry[] {
+  const direct = parseJsonArray(
+    readJsonFlagContent({
+      flags,
+      fileInputs,
+      jsonFlag: '--change-rationales-json',
+      fileFlag: '--change-rationales-file'
+    })
+  ).filter((entry): entry is ChangeRationaleEntry => typeof entry === 'object' && entry !== null);
+
+  const payloadRaw = readJsonFlagContent({
+    flags,
+    fileInputs,
+    jsonFlag: '--payload-json',
+    fileFlag: '--payload-file'
+  });
+  let payloadRationales: ChangeRationaleEntry[] = [];
+  if (payloadRaw) {
+    try {
+      const payload = JSON.parse(payloadRaw) as { changeRationales?: unknown };
+      payloadRationales = Array.isArray(payload.changeRationales)
+        ? payload.changeRationales.filter(
+            (entry): entry is ChangeRationaleEntry => typeof entry === 'object' && entry !== null
+          )
+        : [];
+    } catch {
+      payloadRationales = [];
+    }
+  }
+
+  return [...payloadRationales, ...direct];
+}
+
+function rationalePath(rationale: ChangeRationaleEntry): string {
+  return (rationale.file_path ?? rationale.filePath ?? '').replace(/\\/g, '/').trim();
 }
 
 /**
@@ -148,6 +235,46 @@ function applySessionChangedFiles({
   }));
 
   writeFilteredChangedFilesToFlags({ flags, files: attributable });
+}
+
+function applyDraftChangeRationales({
+  flags,
+  fileInputs,
+  workingDirectory,
+  missionId
+}: {
+  flags: Record<string, string | true>;
+  fileInputs: Record<string, string>;
+  workingDirectory: string;
+  missionId: string;
+}): void {
+  const changedFiles = readChangedFilesFromFlags(flags, fileInputs['--changed-files-file']).map(
+    entry => ({
+      filePath: entry.filePath,
+      vcsStatus: entry.vcsStatus ?? 'changed'
+    })
+  );
+  if (changedFiles.length === 0) return;
+
+  const explicitRationales = readChangeRationalesFromFlags({ flags, fileInputs });
+  const covered = new Set(explicitRationales.map(rationalePath).filter(Boolean));
+  const drafts = draftChangeRationalesFromNotes({
+    workingDirectory,
+    missionId,
+    files: changedFiles
+  }).filter(draft => !covered.has(draft.file_path));
+  if (drafts.length === 0) return;
+
+  const merged = [...explicitRationales, ...drafts];
+  if (typeof flags['--change-rationales-file'] === 'string') {
+    fileInputs['--change-rationales-file'] = JSON.stringify(merged, null, 2);
+  } else {
+    flags['--change-rationales-json'] = JSON.stringify(merged);
+  }
+
+  console.error(
+    `[overlord] prefilled ${drafts.length} draft change rationale(s) from local edit notes.`
+  );
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -414,6 +541,15 @@ export async function runProtocolCommand({
     });
   }
 
+  if (subcommand === 'deliver' && missionId) {
+    applyDraftChangeRationales({
+      flags,
+      fileInputs,
+      workingDirectory,
+      missionId
+    });
+  }
+
   const result = await runtime.backend.post<unknown>({
     path: `/api/protocol/${encodeURIComponent(subcommand)}`,
     body: {
@@ -442,6 +578,7 @@ export async function runProtocolCommand({
       files: readChangedFiles(workingDirectory)
     });
     resetTouchedFiles({ workingDirectory, missionId });
+    resetRationaleNotes({ workingDirectory, missionId });
   }
 
   const resultRecord = asRecord(result);

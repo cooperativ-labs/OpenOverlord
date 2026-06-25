@@ -7,8 +7,11 @@ import test from 'node:test';
 
 import {
   computeRunDelta,
+  draftChangeRationalesFromNotes,
   readChangedFiles,
+  recordRationaleNotes,
   recordTouchedFiles,
+  resetRationaleNotes,
   resetTouchedFiles,
   writeBaseline
 } from '../src/vcs.ts';
@@ -153,4 +156,72 @@ test('resetTouchedFiles clears a prior session log so its edits are not re-attri
 
   // stale.ts is still dirty but belongs to the prior session, so it is excluded.
   assert.deepEqual(paths(repo), ['mine.ts']);
+});
+
+test('draftChangeRationalesFromNotes drafts rationales for changed files with edit notes', () => {
+  const repo = makeRepo();
+  writeBaseline({ workingDirectory: repo, missionId: MISSION_ID, files: readChangedFiles(repo) });
+  resetTouchedFiles({ workingDirectory: repo, missionId: MISSION_ID });
+  resetRationaleNotes({ workingDirectory: repo, missionId: MISSION_ID });
+
+  const changed = path.join(repo, 'delivery-draft.ts');
+  writeFileSync(changed, 'export const draft = true;\n');
+  recordTouchedFiles({ workingDirectory: repo, missionId: MISSION_ID, files: [changed] });
+  recordRationaleNotes({
+    workingDirectory: repo,
+    missionId: MISSION_ID,
+    notes: [
+      {
+        filePath: changed,
+        toolName: 'Write',
+        intent: 'added local delivery rationale draft support',
+        transcriptContext: 'Implement Track A rationale prefill.'
+      }
+    ]
+  });
+
+  const drafts = draftChangeRationalesFromNotes({
+    workingDirectory: repo,
+    missionId: MISSION_ID,
+    files: computeRunDelta({ workingDirectory: repo, missionId: MISSION_ID })
+  });
+
+  assert.equal(drafts.length, 1);
+  assert.equal(drafts[0]?.file_path, 'delivery-draft.ts');
+  assert.match(drafts[0]?.label ?? '', /Delivery Draft/);
+  assert.match(drafts[0]?.summary ?? '', /added local delivery rationale draft support/);
+  assert.match(drafts[0]?.summary ?? '', /Implement Track A/);
+  assert.match(drafts[0]?.why ?? '', /active objective/);
+});
+
+test('draftChangeRationalesFromNotes prefers a note whose content hash matches the current file', () => {
+  const repo = makeRepo();
+  writeBaseline({ workingDirectory: repo, missionId: MISSION_ID, files: readChangedFiles(repo) });
+  resetTouchedFiles({ workingDirectory: repo, missionId: MISSION_ID });
+  resetRationaleNotes({ workingDirectory: repo, missionId: MISSION_ID });
+
+  const changed = path.join(repo, 'reuse.ts');
+  writeFileSync(changed, 'first\n');
+  recordTouchedFiles({ workingDirectory: repo, missionId: MISSION_ID, files: [changed] });
+  recordRationaleNotes({
+    workingDirectory: repo,
+    missionId: MISSION_ID,
+    notes: [{ filePath: changed, toolName: 'Write', intent: 'wrote the first draft' }]
+  });
+
+  writeFileSync(changed, 'second\n');
+  recordRationaleNotes({
+    workingDirectory: repo,
+    missionId: MISSION_ID,
+    notes: [{ filePath: changed, toolName: 'Edit', intent: 'updated to the final draft' }]
+  });
+
+  const drafts = draftChangeRationalesFromNotes({
+    workingDirectory: repo,
+    missionId: MISSION_ID,
+    files: computeRunDelta({ workingDirectory: repo, missionId: MISSION_ID })
+  });
+
+  assert.equal(drafts.length, 1);
+  assert.match(drafts[0]?.summary ?? '', /updated to the final draft/);
 });

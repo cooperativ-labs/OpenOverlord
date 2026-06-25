@@ -7,33 +7,41 @@ export type TerminalProfile = {
   chord: string | null;
 };
 
-export const EMPTY_TERMINAL_PROFILE: TerminalProfile = {
-  launcher: null,
+export const DEFAULT_TERMINAL_PROFILE: TerminalProfile = {
+  launcher: 'Terminal',
   placement: 'window',
   chord: null
 };
 
+export const EMPTY_TERMINAL_PROFILE = DEFAULT_TERMINAL_PROFILE;
+
 export function parseTerminalProfileJson(json: string | null | undefined): TerminalProfile {
-  if (!json?.trim()) return { ...EMPTY_TERMINAL_PROFILE };
+  if (!json?.trim()) return { ...DEFAULT_TERMINAL_PROFILE };
   try {
     const parsed = JSON.parse(json) as {
       launcher?: unknown;
       placement?: unknown;
       chord?: unknown;
     };
-    const placementRaw = typeof parsed.placement === 'string' ? parsed.placement.trim() : 'window';
+    const hasLauncher = Object.prototype.hasOwnProperty.call(parsed, 'launcher');
+    const placementRaw =
+      typeof parsed.placement === 'string'
+        ? parsed.placement.trim()
+        : DEFAULT_TERMINAL_PROFILE.placement;
     const placement: TerminalLaunchPlacement =
       placementRaw === 'tab' ? 'tab' : placementRaw === 'chord' ? 'chord' : 'window';
     return {
       launcher:
         typeof parsed.launcher === 'string' && parsed.launcher.trim()
           ? parsed.launcher.trim()
-          : null,
+          : hasLauncher
+            ? null
+            : DEFAULT_TERMINAL_PROFILE.launcher,
       placement,
       chord: typeof parsed.chord === 'string' && parsed.chord.trim() ? parsed.chord.trim() : null
     };
   } catch {
-    return { ...EMPTY_TERMINAL_PROFILE };
+    return { ...DEFAULT_TERMINAL_PROFILE };
   }
 }
 

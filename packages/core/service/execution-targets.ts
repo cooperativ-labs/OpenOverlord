@@ -1,7 +1,7 @@
 import { hostname } from 'node:os';
 
 import {
-  EMPTY_TERMINAL_PROFILE,
+  DEFAULT_TERMINAL_PROFILE,
   parseTerminalProfileJson,
   serializeTerminalProfile,
   type TerminalProfile
@@ -75,14 +75,23 @@ function ensureUserExecutionTargetPreference({
 
   const id = newId();
   const now = nowIso();
+  const terminalProfile = { ...DEFAULT_TERMINAL_PROFILE };
   ctx.db
     .prepare(
       `INSERT INTO user_execution_target_preferences
          (id, profile_id, target_type, target_fingerprint, agent_configs_json,
           terminal_profile_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, '{}', '{}', ?, ?, 1)`
+       VALUES (?, ?, ?, ?, '{}', ?, ?, ?, 1)`
     )
-    .run(id, profileId, targetType, targetFingerprint, now, now);
+    .run(
+      id,
+      profileId,
+      targetType,
+      targetFingerprint,
+      serializeTerminalProfile(terminalProfile),
+      now,
+      now
+    );
   recordChange({
     ctx,
     entityType: 'user_execution_target_preference',
@@ -91,7 +100,7 @@ function ensureUserExecutionTargetPreference({
     entityRevision: 1
   });
 
-  return { id, terminalProfile: { ...EMPTY_TERMINAL_PROFILE } };
+  return { id, terminalProfile };
 }
 
 /** Provision the local device, execution target, and user-target row for this machine. */
@@ -136,7 +145,7 @@ export function ensureLocalExecutionTarget({ ctx }: { ctx: ServiceContext }): Lo
 
   let userTargetId: string | null = null;
   let preferenceId: string | null = null;
-  let terminalProfile = { ...EMPTY_TERMINAL_PROFILE };
+  let terminalProfile = { ...DEFAULT_TERMINAL_PROFILE };
 
   if (ctx.actorWorkspaceUserId) {
     const userTarget = ctx.db

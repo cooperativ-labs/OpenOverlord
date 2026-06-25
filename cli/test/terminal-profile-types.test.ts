@@ -8,6 +8,14 @@ import {
 
 test('parseTerminalProfileJson defaults missing fields', () => {
   assert.deepEqual(parseTerminalProfileJson('{}'), {
+    launcher: 'Terminal',
+    placement: 'window',
+    chord: null
+  });
+});
+
+test('parseTerminalProfileJson preserves explicit inline launcher', () => {
+  assert.deepEqual(parseTerminalProfileJson('{"launcher":null}'), {
     launcher: null,
     placement: 'window',
     chord: null

@@ -20,7 +20,7 @@ import {
   WORKSPACE
 } from './db.ts';
 import { ApiError } from './errors.ts';
-import { requireAdmin } from './rbac.ts';
+import { actorIsAdmin, requireAdmin } from './rbac.ts';
 import { syncSqlStudioForWorkspace } from './sql-studio-manager.ts';
 import { readSqlStudioEnabled, writeSqlStudioEnabled } from './workspace-settings.ts';
 
@@ -157,6 +157,38 @@ function resolveLocalUserId(): string {
     .get() as { id: string } | undefined;
   if (!fallback) throw new ApiError(409, 'No local user exists to own the workspace');
   return fallback.id;
+}
+
+function resolveCurrentProfileId(): string {
+  if (ACTOR_WORKSPACE_USER_ID) {
+    const row = db
+      .prepare(`SELECT profile_id FROM workspace_users WHERE id = ?`)
+      .get(ACTOR_WORKSPACE_USER_ID) as { profile_id: string } | undefined;
+    if (row) return row.profile_id;
+  }
+  return resolveLocalUserId();
+}
+
+function requireWorkspaceAdmin(workspaceId: string): void {
+  const membership = db
+    .prepare(
+      `SELECT id FROM workspace_users
+         WHERE workspace_id = ? AND profile_id = ? AND status = 'active' AND deleted_at IS NULL
+         ORDER BY created_at ASC LIMIT 1`
+    )
+    .get(workspaceId, resolveCurrentProfileId()) as { id: string } | undefined;
+  if (!membership || !actorIsAdmin({ workspaceId, workspaceUserId: membership.id })) {
+    throw new ApiError(403, 'Admin role required');
+  }
+}
+
+function csvCell(value: string | null | undefined): string {
+  return `"${(value ?? '').replaceAll('"', '""')}"`;
+}
+
+export interface WorkspaceObjectivesCsvExport {
+  filename: string;
+  content: string;
 }
 
 /** Grant workspace-level ADMIN when a member has no active role rows yet. */
@@ -590,6 +622,67 @@ export function listWorkspaceMembers(workspaceId: string): WorkspaceMemberDto[] 
       avatarUrl
     };
   });
+}
+
+interface WorkspaceObjectiveExportRow {
+  mission_title: string;
+  instruction_text: string;
+  objective_created_at: string;
+  project_name: string;
+  mission_status_name: string | null;
+  mission_status_type: string;
+}
+
+/**
+ * Export every non-deleted objective in the requested workspace as a CSV
+ * attachment payload. Only admins of the requested workspace may export it.
+ */
+export function exportWorkspaceObjectivesCsv(workspaceId: string): WorkspaceObjectivesCsvExport {
+  const workspace = db
+    .prepare(`SELECT id, slug FROM workspaces WHERE id = ? AND deleted_at IS NULL`)
+    .get(workspaceId) as { id: string; slug: string } | undefined;
+  if (!workspace) throw new ApiError(404, 'Workspace not found');
+
+  requireWorkspaceAdmin(workspaceId);
+
+  const rows = db
+    .prepare(
+      `SELECT m.title AS mission_title,
+              o.instruction_text,
+              o.created_at AS objective_created_at,
+              p.name AS project_name,
+              ws.name AS mission_status_name,
+              m.status_type AS mission_status_type
+         FROM objectives o
+         JOIN missions m
+           ON m.id = o.mission_id AND m.deleted_at IS NULL
+         JOIN projects p
+           ON p.id = o.project_id AND p.deleted_at IS NULL
+         LEFT JOIN workspace_statuses ws
+           ON ws.id = m.status_id AND ws.deleted_at IS NULL
+        WHERE o.workspace_id = ? AND o.deleted_at IS NULL
+        ORDER BY p.name COLLATE NOCASE ASC,
+                 m.title COLLATE NOCASE ASC,
+                 o.position ASC,
+                 o.created_at ASC`
+    )
+    .all(workspaceId) as WorkspaceObjectiveExportRow[];
+
+  const lines = [
+    ['Mission name', 'Objective instructions', 'Date created', 'Project name', 'Mission status'],
+    ...rows.map(row => [
+      row.mission_title,
+      row.instruction_text,
+      row.objective_created_at,
+      row.project_name,
+      row.mission_status_name ?? row.mission_status_type
+    ])
+  ];
+
+  return {
+    filename: `${workspace.slug}-objectives-${new Date().toISOString().slice(0, 10)}.csv`,
+    content: `${lines.map(columns => columns.map(value => csvCell(value)).join(',')).join('\n')}\n`
+  };
 }
 
 /** Switch the active workspace and return the refreshed workspace list. */

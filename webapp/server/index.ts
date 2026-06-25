@@ -121,6 +121,7 @@ import {
   completeInitialSetup,
   createWorkspace,
   deleteWorkspace,
+  exportWorkspaceObjectivesCsv,
   listWorkspaceMembers,
   listWorkspaces,
   needsInitialSetup,
@@ -332,6 +333,18 @@ app.delete(
 app.get(
   '/api/workspaces/:id/members',
   handle(req => listWorkspaceMembers(req.params.id), { requires: PERMISSIONS.WORKSPACE_READ })
+);
+app.get(
+  '/api/workspaces/:id/objectives.csv',
+  handle(
+    (req, res) => {
+      const exportFile = exportWorkspaceObjectivesCsv(req.params.id);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${exportFile.filename}"`);
+      res.send(exportFile.content);
+    },
+    { requires: PERMISSIONS.WORKSPACE_READ }
+  )
 );
 app.post(
   '/api/workspaces/:id/activate',

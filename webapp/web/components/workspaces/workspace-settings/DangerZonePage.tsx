@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router';
-import { Trash2 } from 'lucide-react';
+import { Download, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,8 @@ import {
 } from '@/components/ui/dialog';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { LoadingButton } from '@/components/ui/loading-button';
-import { useDeleteWorkspace } from '@/lib/queries';
+import { api } from '@/lib/api';
+import { useDeleteWorkspace, useProfile } from '@/lib/queries';
 
 import type { WorkspaceDto } from '../../../../shared/contract.ts';
 
@@ -27,9 +28,34 @@ type DangerZonePageProps = {
 export function DangerZonePage({ workspace, isOnlyWorkspace, onOpenChange }: DangerZonePageProps) {
   const navigate = useNavigate();
   const deleteWorkspace = useDeleteWorkspace();
+  const profile = useProfile();
+  const isAdmin = (profile.data?.roles ?? []).includes('ADMIN');
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [exportState, setExportState] = useState<ButtonLoadingState>('default');
+  const [exportError, setExportError] = useState<string | null>(null);
   const [deleteState, setDeleteState] = useState<ButtonLoadingState>('default');
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function handleExportObjectives() {
+    setExportState('loading');
+    setExportError(null);
+
+    try {
+      const download = await api.downloadWorkspaceObjectivesCsv(workspace.id);
+      const url = URL.createObjectURL(download.blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = download.filename ?? `${workspace.slug}-objectives.csv`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setExportState('success');
+    } catch (error) {
+      setExportState('error');
+      setExportError(error instanceof Error ? error.message : 'Failed to export objectives.');
+    }
+  }
 
   async function handleDeleteWorkspace() {
     setDeleteState('loading');
@@ -59,7 +85,37 @@ export function DangerZonePage({ workspace, isOnlyWorkspace, onOpenChange }: Dan
           </p>
         </div>
 
-        <div className="grid gap-2">
+        {isAdmin ? (
+          <div className="grid gap-2">
+            <p className="text-sm font-medium">Export objectives</p>
+            <p className="text-sm text-muted-foreground">
+              Download every objective in this workspace as a CSV file for offline review or
+              reporting.
+            </p>
+            <LoadingButton
+              buttonState={exportState}
+              setButtonState={setExportState}
+              text={
+                <>
+                  <Download className="h-3.5 w-3.5" />
+                  Export objectives (.csv)
+                </>
+              }
+              loadingText="Exporting…"
+              successText="Exported"
+              errorText="Retry export"
+              reset
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-fit gap-1.5"
+              onClick={handleExportObjectives}
+            />
+            {exportError ? <p className="text-xs text-destructive">{exportError}</p> : null}
+          </div>
+        ) : null}
+
+        <div className="grid gap-2 border-t pt-6">
           <p className="text-sm text-muted-foreground">
             Deleting a workspace removes it — and access to all of its projects and missions — from
             the web interface. If it is the active workspace, the oldest remaining workspace becomes

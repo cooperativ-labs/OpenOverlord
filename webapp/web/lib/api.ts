@@ -79,7 +79,13 @@ export class ApiRequestError extends Error {
     message: string,
     public status: number,
     /** Machine-readable code (e.g. `STATUS_UNAVAILABLE_FOR_WORKSPACE`), when present. */
-    public code?: string
+    public code?: string,
+    /**
+     * The server's `detail` field on its own. `message` already folds this in for
+     * generic display; `detail` is kept separate so callers that render a tailored
+     * message per `code` can surface the specifics (paths, files) on their own line.
+     */
+    public detail?: string
   ) {
     super(message);
     this.name = 'ApiRequestError';
@@ -108,18 +114,54 @@ async function request<T>(
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`;
     let code: string | undefined;
+    let detail: string | undefined;
     try {
       const payload = (await res.json()) as { error?: string; detail?: string; code?: string };
       message = payload.error ?? message;
+      detail = payload.detail;
       if (payload.detail) message += ` — ${payload.detail}`;
       code = payload.code;
     } catch {
       /* non-JSON error body */
     }
-    throw new ApiRequestError(message, res.status, code);
+    throw new ApiRequestError(message, res.status, code, detail);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+function parseDownloadFilename(disposition: string | null): string | null {
+  if (!disposition) return null;
+  const utf8 = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8) return decodeURIComponent(utf8[1]);
+  const basic = disposition.match(/filename="([^"]+)"/i) ?? disposition.match(/filename=([^;]+)/i);
+  return basic?.[1]?.trim() ?? null;
+}
+
+async function requestDownload(
+  method: string,
+  url: string
+): Promise<{ blob: Blob; filename: string | null }> {
+  const res = await fetch(url, { method, credentials: 'same-origin' });
+  if (!res.ok) {
+    let message = `${res.status} ${res.statusText}`;
+    let code: string | undefined;
+    let detail: string | undefined;
+    try {
+      const payload = (await res.json()) as { error?: string; detail?: string; code?: string };
+      message = payload.error ?? message;
+      detail = payload.detail;
+      if (payload.detail) message += ` — ${payload.detail}`;
+      code = payload.code;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ApiRequestError(message, res.status, code, detail);
+  }
+  return {
+    blob: await res.blob(),
+    filename: parseDownloadFilename(res.headers.get('content-disposition'))
+  };
 }
 
 export const api = {
@@ -159,6 +201,8 @@ export const api = {
   deleteWorkspace: (id: string) => request<WorkspaceDto[]>('DELETE', `/api/workspaces/${id}`),
   listWorkspaceMembers: (id: string) =>
     request<WorkspaceMemberDto[]>('GET', `/api/workspaces/${id}/members`),
+  downloadWorkspaceObjectivesCsv: (id: string) =>
+    requestDownload('GET', `/api/workspaces/${id}/objectives.csv`),
 
   listProjects: () => request<ProjectDto[]>('GET', '/api/projects'),
   getProject: (id: string) => request<ProjectDto>('GET', `/api/projects/${id}`),

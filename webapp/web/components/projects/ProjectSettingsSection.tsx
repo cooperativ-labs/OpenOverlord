@@ -157,19 +157,6 @@ export function ProjectSettingsSection({
                 {savedName || 'Untitled project'}
               </button>
             )}
-            {ideHref ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="shrink-0"
-                onClick={() => window.open(ideHref, '_blank', 'noopener,noreferrer')}
-                aria-label={`Open in ${ideLabel}`}
-                title={`Open in ${ideLabel}`}
-              >
-                <Code2 className="h-3.5 w-3.5" />
-              </Button>
-            ) : null}
             {projectSettings ? (
               <Button
                 type="button"
@@ -180,6 +167,19 @@ export function ProjectSettingsSection({
                 aria-label="Project settings"
               >
                 <Settings className="h-3.5 w-3.5" />
+              </Button>
+            ) : null}
+            {ideHref ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shrink-0 gap-1.5"
+                onClick={() => window.open(ideHref, '_blank', 'noopener,noreferrer')}
+                aria-label={`Open in ${ideLabel}`}
+              >
+                <Code2 className="h-3.5 w-3.5" />
+                Open in {ideLabel}
               </Button>
             ) : null}
           </div>
