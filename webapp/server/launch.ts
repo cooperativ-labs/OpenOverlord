@@ -24,12 +24,12 @@ import {
   clearExecutionRequests,
   createExecutionRequest,
   type ExecutionRequestSummary
-} from '../../src/service/execution-requests.ts';
+} from '../../packages/core/service/execution-requests.ts';
 import {
   ensureLocalExecutionTarget,
   updateTerminalProfile as persistTerminalProfile
-} from '../../src/service/execution-targets.ts';
-import { assertPrimaryResourceConnected } from '../../src/service/projects.ts';
+} from '../../packages/core/service/execution-targets.ts';
+import { assertPrimaryResourceConnected } from '../../packages/core/service/projects.ts';
 import type {
   AgentCatalogAgentDto,
   AgentCatalogDto,

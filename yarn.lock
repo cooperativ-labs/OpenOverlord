@@ -1728,6 +1728,16 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@overlord/core@workspace:packages/core":
+  version: 0.0.0-use.local
+  resolution: "@overlord/core@workspace:packages/core"
+  dependencies:
+    "@overlord/auth": "workspace:*"
+    "@overlord/database": "workspace:*"
+    kysely: "npm:^0.29.2"
+  languageName: unknown
+  linkType: soft
+
 "@overlord/database@workspace:*, @overlord/database@workspace:database":
   version: 0.0.0-use.local
   resolution: "@overlord/database@workspace:database"

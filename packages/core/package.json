@@ -1,0 +1,41 @@
+{
+  "name": "@overlord/core",
+  "version": "0.1.0",
+  "description": "Overlord protocol/service core: shared service, repository, and generated database types.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./types/index.ts",
+  "types": "./types/index.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.ts",
+      "default": "./types/index.ts"
+    },
+    "./service/*": {
+      "types": "./service/*.ts",
+      "default": "./service/*.ts"
+    },
+    "./repository/*": {
+      "types": "./repository/*.ts",
+      "default": "./repository/*.ts"
+    },
+    "./types/*": {
+      "types": "./types/*.ts",
+      "default": "./types/*.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project ../../tsconfig.build.json",
+    "typecheck": "tsc --project ../../tsconfig.build.json --noEmit",
+    "test": "node ../../scripts/with-ovld-home.mjs tsx --test '**/*.test.ts'"
+  },
+  "dependencies": {
+    "@overlord/auth": "workspace:*",
+    "@overlord/database": "workspace:*",
+    "kysely": "^0.29.2"
+  },
+  "license": "MIT"
+}

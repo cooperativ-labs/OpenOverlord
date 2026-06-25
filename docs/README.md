@@ -48,7 +48,7 @@ The cross-module `NN-*.md` behavior specs, read as one narrative:
 
 Each workspace owns its detailed specs and test plan under `<module>/docs/`:
 
-- [database/](../database/README.md) · [cli/](../cli/README.md) ·
+- [packages/core/](../packages/core/README.md) · [database/](../database/README.md) · [cli/](../cli/README.md) ·
   [auth/](../auth/README.md) · [webapp/](../webapp/README.md) ·
   [connectors/](../connectors/README.md) · [automations/](../automations/README.md) ·
   [desktop/](../desktop/README.md) · [contract/](../contract/README.md)

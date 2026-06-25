@@ -67,7 +67,7 @@ exercise every module against the same normative source.
 | Layer | Name | Scope | Speed | Where it lives |
 | --- | --- | --- | --- | --- |
 | **L0** | Static / schema | Lint, typecheck, YAML-schema validation of contract + manifest files | instant | `contract/conformance/static/` |
-| **L1** | Unit | Pure functions: RBAC authorizer, token hashing, validators, id/sequence logic | very fast | `src/**/*.test.ts` colocated |
+| **L1** | Unit | Pure functions: RBAC authorizer, token hashing, validators, id/sequence logic | very fast | `packages/core/**/*.test.ts` colocated |
 | **L2** | Module integration | One module against a real database via the service layer | fast | `<module>` + `database/test/` |
 | **L3** | Contract conformance | Cross-module invariants asserted against `contract/*.yaml` | fast–medium | `contract/conformance/` |
 | **L4** | Surface / E2E | Real `ovld` subprocess, real REST server over HTTP, connector launch dry-run | slow | `<module>/test/e2e/` |
@@ -83,7 +83,7 @@ confidence layer that the wiring at the real surface matches what L2/L3 proved.
 The project already standardizes on Node's built-in runner (see `package.json`):
 
 ```jsonc
-"test": "node --test --experimental-strip-types 'src/**/*.test.ts'"
+"test": "node --test --experimental-strip-types 'packages/core/**/*.test.ts'"
 ```
 
 The plan extends this rather than introducing a heavyweight framework:
@@ -109,8 +109,8 @@ The plan extends this rather than introducing a heavyweight framework:
 
 ```jsonc
 {
-  "test":            "node --test --experimental-strip-types 'src/**/*.test.ts' '*/test/**/*.test.ts' 'contract/conformance/**/*.test.ts'",
-  "test:unit":       "node --test --experimental-strip-types 'src/**/*.test.ts'",
+  "test":            "node --test --experimental-strip-types 'packages/core/**/*.test.ts' '*/test/**/*.test.ts' 'contract/conformance/**/*.test.ts'",
+  "test:unit":       "node --test --experimental-strip-types 'packages/core/**/*.test.ts'",
   "test:db":         "node --test --experimental-strip-types 'database/test/**/*.test.ts'",
   "test:contract":   "node --test --experimental-strip-types 'contract/conformance/**/*.test.ts'",
   "test:e2e":        "node --test --experimental-strip-types '*/test/e2e/**/*.test.ts'",

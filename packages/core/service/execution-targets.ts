@@ -5,7 +5,7 @@ import {
   parseTerminalProfileJson,
   serializeTerminalProfile,
   type TerminalProfile
-} from '../../cli/src/terminal-profile-types.ts';
+} from '../../../cli/src/terminal-profile-types.ts';
 
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';

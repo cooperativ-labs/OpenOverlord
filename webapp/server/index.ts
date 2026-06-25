@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { loadConfig } from '../../cli/src/config.ts';
 import { isExplicitRuntimeEnv, resolveLayeredEnv } from '../../cli/src/env.ts';
-import { ServiceError } from '../../src/service/errors.ts';
+import { ServiceError } from '../../packages/core/service/errors.ts';
 import { loadRepoEnvForProfile } from '../load-repo-env.ts';
 
 import { authNodeHandler, requireAuthenticatedSession } from './auth.ts';

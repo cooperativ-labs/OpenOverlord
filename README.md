@@ -268,12 +268,12 @@ Common tasks (every command is run from the repo root):
 
 | Command | What it does |
 | --- | --- |
-| `yarn build:prod` | Build all workspaces (database, auth, automations, root, CLI, webapp) |
+| `yarn build:prod` | Build all workspaces (database, auth, automations, core, CLI, webapp) |
 | `yarn test` / `yarn test:watch` | Run all tests / watch the root suite |
 | `yarn typecheck` | Typecheck all workspaces |
 | `yarn db:start` | Launch the local SQLite database |
 | `yarn db:reset` | Wipe local state and relaunch the database |
-| `yarn db:codegen` | Regenerate `src/types/db.ts` from the local schema |
+| `yarn db:codegen` | Regenerate `packages/core/types/db.ts` from the local schema |
 | `yarn pack:cli:prod` | Produce the publishable `open-overlord` tarball |
 
 To work inside a single package, use `yarn workspace <name> <script>`
@@ -306,6 +306,7 @@ planning, and security audits), and records where each kind of doc lives.
 
 | Module | Purpose | Contract component(s) |
 | --- | --- | --- |
+| [packages/core/](packages/core/) | Shared protocol/service core: service functions, repository helpers, and generated database types (the `@overlord/core` workspace package) | `protocol` / service layer |
 | [database/](database/README.md) | SQLite/Postgres persistence, migrations, and schema extension system used behind local/cloud backends | `database`, `extension` |
 | [cli/](cli/README.md) | The client-only `ovld` command surface: config, backend API client, agent protocol forwarding, and local runner/launcher | `cli`, `protocol`, `runner` |
 | [auth/](auth/README.md) | Mix-and-match authentication (tokens) and RBAC authorization (the `@overlord/auth` workspace package — runtime in `auth/src/`) | `auth` |
@@ -316,7 +317,7 @@ planning, and security audits), and records where each kind of doc lives.
 | [desktop/](desktop/README.md) | Optional Electron desktop shell wrapping the webapp (the `@overlord/desktop` workspace package) — **not built by default** | `desktop` |
 | [contract/](contract/README.md) | The connecting spec — machine-readable counterparts to `CONTRACT.md` | _(spec)_ |
 
-> The contract defines nine fine-grained components; the seven modules above are
+> The contract defines nine fine-grained components; the modules above are
 > friendlier developer-facing groupings, and each module's README maps to the
 > contract component(s) it contains. Behavior specs are colocated with their
 > owning module under `<module>/docs/`; each module README links to its relevant

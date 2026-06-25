@@ -3,9 +3,9 @@ import Database from 'better-sqlite3';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createServiceContext } from '../../src/service/context.ts';
-import { addObjectivesToMission, createMissionWithObjectives } from '../../src/service/missions.ts';
-import { createProject } from '../../src/service/projects.ts';
+import { createServiceContext } from '../../packages/core/service/context.ts';
+import { addObjectivesToMission, createMissionWithObjectives } from '../../packages/core/service/missions.ts';
+import { createProject } from '../../packages/core/service/projects.ts';
 
 function createContext() {
   const db = new Database(':memory:');

@@ -1,7 +1,7 @@
 import { type Permission, PERMISSIONS } from '@overlord/auth';
 
-import type { ServiceContext } from '../../src/service/context.ts';
-import { discoverProject } from '../../src/service/projects.ts';
+import type { ServiceContext } from '../../packages/core/service/context.ts';
+import { discoverProject } from '../../packages/core/service/projects.ts';
 import {
   addObjectivesToMission,
   askQuestion,
@@ -22,7 +22,7 @@ import {
   searchMissions,
   updateSession,
   writeSharedContext
-} from '../../src/service/protocol.ts';
+} from '../../packages/core/service/protocol.ts';
 
 import { ACTOR_WORKSPACE_USER_ID, db, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';

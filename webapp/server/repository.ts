@@ -5,9 +5,9 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { readRepositoryTree, RepositoryReadError } from '../../src/repository/git-tree.ts';
-import { ensureLocalExecutionTarget } from '../../src/service/execution-targets.ts';
-import { writeProjectJson } from '../../src/service/projects.ts';
+import { readRepositoryTree, RepositoryReadError } from '../../packages/core/repository/git-tree.ts';
+import { ensureLocalExecutionTarget } from '../../packages/core/service/execution-targets.ts';
+import { writeProjectJson } from '../../packages/core/service/projects.ts';
 import type {
   ArtifactDto,
   CreateMissionBody,
