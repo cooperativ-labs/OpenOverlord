@@ -82,6 +82,65 @@ test('new draft objectives leave the agent unset without a launch preference', (
   assert.equal(mission.objectives[0]!.assignedAgent, null);
 });
 
+test('marking a queued objective executing promotes the earliest future objective to draft', () => {
+  const project = createProject({ name: 'Promote Future On Execute' });
+  const mission = createMission({ projectId: project.id, firstObjective: 'Execute first' });
+  const running = mission.objectives[0]!;
+  const future = createObjective({
+    missionId: mission.id,
+    instructionText: 'Continue with second objective',
+    state: 'draft'
+  });
+
+  assert.equal(future.state, 'future');
+
+  updateObjective(running.id, { state: 'executing' });
+
+  const rows = db
+    .prepare(
+      `SELECT id, instruction_text, state
+       FROM objectives
+       WHERE mission_id = ? AND deleted_at IS NULL
+       ORDER BY position ASC`
+    )
+    .all(mission.id) as Array<{ id: string; instruction_text: string; state: string }>;
+
+  assert.deepEqual(
+    rows.map(row => row.state),
+    ['executing', 'draft']
+  );
+  assert.equal(rows[1]!.id, future.id);
+  assert.equal(rows[1]!.instruction_text, 'Continue with second objective');
+});
+
+test('marking the only queued objective executing creates a blank draft fallback', () => {
+  const project = createProject({ name: 'Blank Draft On Execute' });
+  const mission = createMission({ projectId: project.id, firstObjective: 'Execute first' });
+  const running = mission.objectives[0]!;
+
+  updateObjective(running.id, { state: 'executing', assignedAgent: 'codex' });
+
+  const rows = db
+    .prepare(
+      `SELECT instruction_text, state, assigned_agent
+       FROM objectives
+       WHERE mission_id = ? AND deleted_at IS NULL
+       ORDER BY position ASC`
+    )
+    .all(mission.id) as Array<{
+    instruction_text: string;
+    state: string;
+    assigned_agent: string | null;
+  }>;
+
+  assert.deepEqual(
+    rows.map(row => row.state),
+    ['executing', 'draft']
+  );
+  assert.equal(rows[1]!.instruction_text, '');
+  assert.equal(rows[1]!.assigned_agent, 'codex');
+});
+
 test.after(() => {
   db.close();
   rmSync(tempDir, { recursive: true, force: true });

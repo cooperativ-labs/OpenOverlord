@@ -147,4 +147,35 @@ describe('protocol objective creation', () => {
 
     db.close();
   });
+
+  it('promotes the earliest future objective when attach consumes the next-up objective', () => {
+    const db = openInMemoryDatabase();
+    const ctx = createServiceContext({ db, source: 'protocol' });
+    const project = createProject({ ctx, name: 'Attach Future Refill' });
+    const { mission, objectives } = createMissionWithObjectives({
+      ctx,
+      projectId: project.id,
+      objectives: [
+        { objective: 'Run current objective' },
+        { objective: 'Use existing future objective' }
+      ]
+    });
+
+    const attached = attachSession({
+      ctx,
+      missionId: mission.displayId,
+      agentIdentifier: 'codex'
+    });
+
+    assert.equal(attached.objective.state, 'executing');
+    assert.equal(attached.objectives.length, 2);
+    assert.deepEqual(
+      attached.objectives.map(objective => objective.state),
+      ['executing', 'draft']
+    );
+    assert.equal(attached.objectives[1]?.id, objectives[1]?.id);
+    assert.equal(attached.objectives[1]?.objective, 'Use existing future objective');
+
+    db.close();
+  });
 });

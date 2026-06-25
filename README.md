@@ -299,6 +299,11 @@ contents. The normative spec for how modules interact is
 [`CONTRACT.md`](CONTRACT.md) — read it before any change that crosses a module
 boundary.
 
+**Documentation map →** [`docs/README.md`](docs/README.md) is the front door to
+every documentation surface (user guides, the
+[architecture series in reading order](docs/architecture.md), module specs,
+planning, and security audits), and records where each kind of doc lives.
+
 | Module | Purpose | Contract component(s) |
 | --- | --- | --- |
 | [database/](database/README.md) | SQLite/Postgres persistence, migrations, and schema extension system used behind local/cloud backends | `database`, `extension` |

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -99,6 +99,10 @@ function initRepo(prefix: string): string {
   git(repo, ['init', '-q', '-b', 'main']);
   git(repo, ['commit', '-q', '--allow-empty', '-m', 'base']);
   return repo;
+}
+
+function canonicalPath(value: string): string {
+  return realpathSync(value);
 }
 
 test('prepareMissionBranch creates a worktree when the mission resolves to worktree mode', async () => {
@@ -222,8 +226,8 @@ test('prepareMissionBranch checks the branch out in the primary repo for branch-
   });
   assert.ok(result.branchAutomation, 'expected a branch automation payload');
   // Branch-only: the working directory IS the primary repo (no separate worktree).
-  assert.equal(result.workingDirectory, repo);
-  assert.equal(result.branchAutomation?.worktreePath, repo);
+  assert.equal(canonicalPath(result.workingDirectory), canonicalPath(repo));
+  assert.equal(canonicalPath(result.branchAutomation!.worktreePath), canonicalPath(repo));
   // The branch is now checked out in the primary repo.
   assert.equal(git(repo, ['branch', '--show-current']), result.branchAutomation?.branchName);
   // No extra worktree directory was added.

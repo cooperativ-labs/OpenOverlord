@@ -1,6 +1,7 @@
-import { CheckCircle2, MoreVertical, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import { Check, CheckCircle2, Copy, MoreVertical, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 
 import type { ObjectiveState } from '../../../shared/contract.ts';
+import { useCopyToClipboard } from '../../lib/hooks/use-copy-to-clipboard.ts';
 import { useDeleteObjective, useUpdateObjective } from '../../lib/queries.ts';
 import {
   DropdownMenu,
@@ -24,6 +25,7 @@ type ObjectiveMenuButtonProps = {
 export function ObjectiveMenuButton({ objectiveId, state, onEditTitle }: ObjectiveMenuButtonProps) {
   const update = useUpdateObjective();
   const remove = useDeleteObjective();
+  const { copied, copy } = useCopyToClipboard();
 
   const pending = update.isPending || remove.isPending;
 
@@ -36,6 +38,10 @@ export function ObjectiveMenuButton({ objectiveId, state, onEditTitle }: Objecti
 
   function handleDelete() {
     if (confirm('Delete this objective?')) remove.mutate(objectiveId);
+  }
+
+  async function handleCopyId() {
+    await copy(objectiveId);
   }
 
   return (
@@ -75,6 +81,14 @@ export function ObjectiveMenuButton({ objectiveId, state, onEditTitle }: Objecti
             Mark draft
           </DropdownMenuItem>
         ) : null}
+        <DropdownMenuItem className="gap-2 text-xs" onClick={handleCopyId}>
+          {copied ? (
+            <Check className="h-3.5 w-3.5 text-green-600" />
+          ) : (
+            <Copy className="h-3.5 w-3.5" />
+          )}
+          Copy objective ID
+        </DropdownMenuItem>
         <DropdownMenuItem
           className="gap-2 text-xs"
           variant="destructive"

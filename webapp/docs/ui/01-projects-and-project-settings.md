@@ -2,7 +2,7 @@
 
 Covers the project switcher, the projects list, and the per-project settings
 screen. Projects are the top-level container that maps to a git repository and one
-or more local resource directories ([core domain spec](../../../cli/docs/01-core-domain-and-lifecycle.md#project)).
+or more local resource directories ([core domain spec](../../../cli/docs/06-core-domain-and-lifecycle.md#project)).
 
 ---
 

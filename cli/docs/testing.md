@@ -9,8 +9,8 @@ components that all ship inside the `ovld` binary:
 - **`runner`** — execution queue + launch ([04-runner-and-launch-execution.md](04-runner-and-launch-execution.md))
 
 Core domain semantics come from
-[01-core-domain-and-lifecycle.md](01-core-domain-and-lifecycle.md) and review
-semantics from [05-review-artifacts-and-change-tracking.md](05-review-artifacts-and-change-tracking.md).
+[06-core-domain-and-lifecycle.md](06-core-domain-and-lifecycle.md) and review
+semantics from [11-review-artifacts-and-change-tracking.md](11-review-artifacts-and-change-tracking.md).
 
 CLI, protocol, and runner all reach persistence through the **same service layer**
 as REST. Most behavioral assertions therefore live at L2 (service-layer

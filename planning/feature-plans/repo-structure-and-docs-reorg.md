@@ -110,6 +110,9 @@ and code paths — roughly **23 path references in `CONTRACT.md`** alone (e.g.
 of these.** This is exactly why the ergonomics proposal deliberately kept every
 directory in place ("Workspace conversion keeps every directory… in place").
 
+### 1.5 present downloadable app
+Documentation should feature a link to the latest release of the desktop app
+
 ---
 
 ## 2. The `apps/` question

@@ -7,7 +7,7 @@ behavior can be replicated on any storage layer or runtime.
 
 It complements, and must stay consistent with:
 
-- [`cli/docs/01-core-domain-and-lifecycle.md`](../../../cli/docs/01-core-domain-and-lifecycle.md) — domain concepts and required states.
+- [`cli/docs/06-core-domain-and-lifecycle.md`](../../../cli/docs/06-core-domain-and-lifecycle.md) — domain concepts and required states.
 - [`cli/docs/03-agent-protocol.md`](../../../cli/docs/03-agent-protocol.md) — the protocol verbs that drive transitions.
 - [`cli/docs/04-runner-and-launch-execution.md`](../../../cli/docs/04-runner-and-launch-execution.md) — the execution-request queue and runner.
 - [`database/docs/09-database-schema-contract.md`](../../../database/docs/09-database-schema-contract.md) — the `objectives` and `execution_requests` tables.
@@ -443,7 +443,7 @@ without state gymnastics.
 Objective transitions drive the mission's board status. Status names are configurable
 per project, but status _types_ are stable (`draft`, `execute`, `review`, `complete`,
 `blocked`, `cancelled` — see
-[`cli/docs/01-core-domain-and-lifecycle.md`](../../../cli/docs/01-core-domain-and-lifecycle.md));
+[`cli/docs/06-core-domain-and-lifecycle.md`](../../../cli/docs/06-core-domain-and-lifecycle.md));
 transitions resolve the project's preferred status name per type.
 
 | Objective event                                                 | Mission effect                                                                                  |

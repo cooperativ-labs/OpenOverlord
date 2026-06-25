@@ -3723,9 +3723,11 @@ export const reorderFutureObjectives = db.transaction(
   }
 );
 
+type InternalCreateObjectiveBody = CreateObjectiveBody & { assignedAgent?: string | null };
+
 // Internal insert used by both createObjective and createMission's first objective.
 // Assumes it runs within a transaction.
-function insertObjective(body: CreateObjectiveBody): ObjectiveDto {
+function insertObjective(body: InternalCreateObjectiveBody): ObjectiveDto {
   const instruction = (body.instructionText ?? '').trim();
 
   const mission = db
@@ -3768,8 +3770,9 @@ function insertObjective(body: CreateObjectiveBody): ObjectiveDto {
   // reads the stored agent, and auto-advance/execution use it, so what the user
   // sees and what runs stay in agreement instead of falling back to a hardcoded
   // runner default.
+  const explicitAgent = body.assignedAgent?.trim() || null;
   const launchSelection =
-    state === 'draft' || state === 'future'
+    !explicitAgent && (state === 'draft' || state === 'future')
       ? getLaunchPreference(mission.project_id)
       : { selectedAgent: null, selectedModel: null, selectedReasoningEffort: null };
 
@@ -3794,9 +3797,9 @@ function insertObjective(body: CreateObjectiveBody): ObjectiveDto {
       (instruction ? initialTitleFromInstruction(instruction) : 'New objective'),
     instruction,
     state,
-    assigned_agent: launchSelection.selectedAgent,
-    model: launchSelection.selectedModel,
-    reasoning_effort: launchSelection.selectedReasoningEffort,
+    assigned_agent: explicitAgent ?? launchSelection.selectedAgent,
+    model: explicitAgent ? null : launchSelection.selectedModel,
+    reasoning_effort: explicitAgent ? null : launchSelection.selectedReasoningEffort,
     auto_advance: body.autoAdvance ? 1 : 0,
     actor: ACTOR_WORKSPACE_USER_ID,
     now
@@ -3831,6 +3834,68 @@ export function createObjective(body: CreateObjectiveBody): ObjectiveDto {
   }
 
   return objective;
+}
+
+function ensureDraftSlotAfterObjectiveLeavesQueue({
+  missionId,
+  projectId,
+  assignedAgent,
+  now
+}: {
+  missionId: string;
+  projectId: string;
+  assignedAgent: string | null;
+  now: string;
+}): void {
+  const existingDraft = db
+    .prepare(
+      `SELECT id FROM objectives
+       WHERE mission_id = ? AND workspace_id = ? AND state = 'draft' AND deleted_at IS NULL
+       LIMIT 1`
+    )
+    .get(missionId, WORKSPACE.id) as { id: string } | undefined;
+  if (existingDraft) return;
+
+  const nextFuture = db
+    .prepare(
+      `SELECT id, revision FROM objectives
+       WHERE mission_id = ? AND workspace_id = ? AND state = 'future' AND deleted_at IS NULL
+       ORDER BY position ASC, created_at ASC LIMIT 1`
+    )
+    .get(missionId, WORKSPACE.id) as { id: string; revision: number } | undefined;
+
+  if (nextFuture) {
+    const nextRevision = nextFuture.revision + 1;
+    db.prepare(
+      `UPDATE objectives
+       SET state = 'draft', completed_at = NULL, updated_at = @now, revision = @revision
+       WHERE id = @id AND workspace_id = @workspace_id`
+    ).run({
+      id: nextFuture.id,
+      workspace_id: WORKSPACE.id,
+      now,
+      revision: nextRevision
+    });
+
+    recordChange({
+      entityType: 'objective',
+      entityId: nextFuture.id,
+      operation: 'update',
+      entityRevision: nextRevision,
+      projectId,
+      missionId,
+      objectiveId: nextFuture.id,
+      changedFields: ['state', 'completed_at']
+    });
+    return;
+  }
+
+  insertObjective({
+    missionId,
+    instructionText: '',
+    state: 'draft',
+    assignedAgent
+  });
 }
 
 const updateObjectiveTx = db.transaction(
@@ -3958,6 +4023,22 @@ const updateObjectiveTx = db.transaction(
       objectiveId: id,
       changedFields: changed
     });
+
+    if (
+      body.state === 'executing' &&
+      body.state !== existing.state &&
+      (existing.state === 'draft' || existing.state === 'future')
+    ) {
+      ensureDraftSlotAfterObjectiveLeavesQueue({
+        missionId: existing.mission_id,
+        projectId: existing.project_id,
+        assignedAgent:
+          body.assignedAgent !== undefined
+            ? body.assignedAgent?.trim() || null
+            : existing.assigned_agent,
+        now
+      });
+    }
 
     // When a user manually moves an objective out of the launch pipeline
     // (completing it, or disconnecting it back to future/executing/pending),
