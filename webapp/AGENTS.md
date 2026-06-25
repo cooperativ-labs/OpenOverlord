@@ -4,7 +4,7 @@ This file tells agents how to extend the Web App module to add new capabilities 
 
 > **Status note:** A first realtime slice has landed — projects/missions/objectives CRUD with live updates. It lives in `server/` (Express REST + SSE realtime over `better-sqlite3`), `web/` (the React SPA), and `shared/` (the typed DTO contract). The remaining surfaces are still deferred; this guide describes the intended patterns so they land consistently.
 >
-> **Temporary deviation:** the landed `server/` reads/writes the SQLite tables directly because the shared **service layer** does not exist in `src/` yet. The rule below (REST handlers call the service layer, never tables directly) still holds — when that layer lands, move `server/repository.ts` onto it. Do not add new direct-table writers in the meantime without recording the same caveat.
+> **Temporary deviation:** some landed `server/` paths still read/write SQLite tables directly instead of going through the shared service layer in `packages/core/service/`. The rule below (REST handlers call the service layer, never tables directly) still holds — move direct-table writers onto the shared service layer as those areas are touched. Do not add new direct-table writers without recording the same caveat.
 
 ---
 

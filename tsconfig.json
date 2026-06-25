@@ -12,5 +12,5 @@
     "rewriteRelativeImportExtensions": true,
     "types": ["node"]
   },
-  "include": ["src", "test", "database/test", "scripts"]
+  "include": ["packages/core", "test", "database/test", "scripts"]
 }

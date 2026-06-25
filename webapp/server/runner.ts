@@ -1,4 +1,4 @@
-import type { ServiceContext } from '../../src/service/context.ts';
+import type { ServiceContext } from '../../packages/core/service/context.ts';
 import {
   claimNextExecutionRequest,
   clearExecutionRequests,
@@ -8,7 +8,7 @@ import {
   markExecutionFailed,
   markExecutionLaunched,
   markExecutionLaunching
-} from '../../src/service/execution-requests.ts';
+} from '../../packages/core/service/execution-requests.ts';
 
 import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';

@@ -42,7 +42,7 @@ A clear-eyed starting point, because it determines the whole sequence.
 | React frontend | None — `webapp/` contains docs only |
 | REST endpoints (`/projects`, `/missions`, `/protocol/*`, …) | None implemented |
 | `/realtime` SSE/WebSocket + `/sync/changes` feed | None implemented |
-| Shared service layer (CLI/protocol/REST call into it) | Not present in `src/` |
+| Shared service layer (CLI/protocol/REST call into it) | Present under `packages/core/service/`; some REST areas still need migration onto it |
 | Auth + RBAC | Partially present (`auth/src/auth/`, `auth/src/rbac/`) |
 | Database schema / `entity_changes` feed | Specified in the schema contract; not migrated |
 

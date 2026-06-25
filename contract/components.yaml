@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '0.52-draft'
+contractVersion: '0.53-draft'
 
 components:
   protocol:
@@ -13,6 +13,7 @@ components:
     referenceSpec: 'planning/feature-plans/03-agent-protocol.md'
     owns:
       - 'ovld protocol subcommand names and flags'
+      - 'packages/core protocol/service source package: shared service functions, repository helpers, and generated database types'
       - 'session lifecycle: attach → (update|heartbeat)* → (ask|deliver)'
       - 'context assembly format from attach'
       - 'delivery payload structure and validation rules'

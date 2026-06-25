@@ -14,7 +14,7 @@ export default [
       '**/dist/**',
       '**/build/**',
       'coverage/**',
-      'src/types/db.ts',
+      'packages/core/types/db.ts',
       '**/*.d.ts',
       '**/*.js',
       // Desktop: bundled server, staged SPA/CLI, migrations (see desktop/.gitignore)

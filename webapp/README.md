@@ -165,11 +165,11 @@ docs](docs/ui/README.md) and [implementation plan](docs/implementation-plan.md)
 — execution & runner, review & delivery, current changes, connectors, settings,
 users/roles/tokens — are still deferred and remain CLI-only.
 
-> **Scope note for this slice:** the current server reads and writes the SQLite
-> database directly through `better-sqlite3` rather than calling a shared
-> service layer (that layer is not yet present in `src/`). When the service
-> layer lands, the REST handlers in `server/` should be moved onto it per
-> `AGENTS.md` so business logic is not duplicated.
+> **Scope note for this slice:** some server paths still read and write the
+> SQLite database directly through `better-sqlite3` rather than calling the
+> shared service layer in `packages/core/service/`. Move those REST handlers
+> onto the service layer as the areas are touched per `AGENTS.md`, so business
+> logic is not duplicated.
 
 ### Code & Tests
 
