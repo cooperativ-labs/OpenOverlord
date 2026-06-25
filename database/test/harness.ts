@@ -4,7 +4,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createServiceContext } from '../../dist/packages/core/service/context.js';
-import { createMissionWithObjectives, listMissions } from '../../dist/packages/core/service/missions.js';
+import {
+  createMissionWithObjectives,
+  listMissions
+} from '../../dist/packages/core/service/missions.js';
 import { createProject } from '../../dist/packages/core/service/projects.js';
 
 test('withAdapter-style harness creates seeded workspace', () => {

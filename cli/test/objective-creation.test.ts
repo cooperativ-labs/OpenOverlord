@@ -4,7 +4,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createServiceContext } from '../../packages/core/service/context.ts';
-import { addObjectivesToMission, createMissionWithObjectives } from '../../packages/core/service/missions.ts';
+import {
+  addObjectivesToMission,
+  createMissionWithObjectives
+} from '../../packages/core/service/missions.ts';
 import { createProject } from '../../packages/core/service/projects.ts';
 
 function createContext() {

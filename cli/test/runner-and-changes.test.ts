@@ -5,7 +5,10 @@ import { rmSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
-import { listChangedFilesForReview, listRationalesForReview } from '../../packages/core/service/changes.ts';
+import {
+  listChangedFilesForReview,
+  listRationalesForReview
+} from '../../packages/core/service/changes.ts';
 import { createServiceContext } from '../../packages/core/service/context.ts';
 import {
   claimNextExecutionRequest,
@@ -18,7 +21,11 @@ import {
 } from '../../packages/core/service/execution-requests.ts';
 import { createMissionWithObjectives } from '../../packages/core/service/missions.ts';
 import { addProjectResource, createProject } from '../../packages/core/service/projects.ts';
-import { attachSession, deliverSession, updateSession } from '../../packages/core/service/protocol.ts';
+import {
+  attachSession,
+  deliverSession,
+  updateSession
+} from '../../packages/core/service/protocol.ts';
 import { newId } from '../../packages/core/service/util.ts';
 
 function createContext() {
