@@ -70,6 +70,28 @@ async function loadMissionContext({
   const displayId = String(mission.displayId ?? mission.id ?? missionId);
   const title = String(mission.title ?? '(untitled)');
   const objectives = Array.isArray(mission.objectives) ? mission.objectives.map(asRecord) : [];
+
+  // Attachments are stored per objective and are not part of the mission detail
+  // payload, so fetch them for each objective. Surfacing them in the launch
+  // prompt is what lets the agent know files were attached to its objective
+  // (otherwise it only ever sees them if it parses the raw attach JSON).
+  const attachmentLines: string[] = [];
+  await Promise.all(
+    objectives.map(async (objective, index) => {
+      const objectiveId = objective.id;
+      if (typeof objectiveId !== 'string' || objectiveId.length === 0) return;
+      const attachments = await runtime.backend
+        .get<unknown[]>(`/api/objectives/${encodeURIComponent(objectiveId)}/attachments`)
+        .catch(() => []);
+      for (const attachment of attachments) {
+        const record = asRecord(attachment);
+        const filename = String(record.filename ?? 'attachment');
+        const contentType = record.contentType ? ` (${String(record.contentType)})` : '';
+        attachmentLines.push(`- [objective ${index + 1}] ${filename}${contentType}`);
+      }
+    })
+  );
+
   const promptContext = [
     `# Overlord Mission: ${displayId}: ${title}`,
     '',
@@ -82,6 +104,14 @@ async function loadMissionContext({
       return `${index + 1}. [${objective.state ?? 'unknown'}] ${instruction}`;
     }),
     '',
+    ...(attachmentLines.length > 0
+      ? [
+          '## Attachments',
+          'Files attached to the objective(s) below. Use `ovld protocol attachment-list` and `ovld protocol attachment-download-url` to retrieve them.',
+          ...attachmentLines,
+          ''
+        ]
+      : []),
     '## Recent Activity',
     ...events.slice(-20).map(event => `- ${asRecord(event).summary ?? JSON.stringify(event)}`),
     '',

@@ -2,6 +2,7 @@ import { Tag } from 'lucide-react';
 import type { MouseEvent, PointerEvent } from 'react';
 
 import { DeleteMissionButton } from '@/components/DeleteMissionButton';
+import { MissionTimerCircleButton } from '@/components/everhour/MissionTimerButtons';
 import { Button } from '@/components/ui/button';
 import { CardFooter } from '@/components/ui/card';
 import {
@@ -103,6 +104,7 @@ export function MissionCardHoverFooter({
             >
               {displayId}
             </span>
+            <MissionTimerCircleButton missionId={missionId} />
             <DeleteMissionButton
               missionId={missionId}
               projectId={projectId}

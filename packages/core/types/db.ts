@@ -37,6 +37,7 @@ export interface AgentSessions {
   id: string | null;
   last_heartbeat_at: string | null;
   metadata_json: Generated<string>;
+  mission_id: string;
   model_identifier: string | null;
   objective_id: string;
   phase: string;
@@ -45,7 +46,6 @@ export interface AgentSessions {
   session_key_hash: string;
   session_key_prefix: string;
   started_at: string;
-  mission_id: string;
   updated_at: string;
   workspace_id: string;
 }
@@ -60,11 +60,11 @@ export interface Artifacts {
   external_url: string | null;
   id: string | null;
   label: string;
+  mission_id: string;
   objective_id: string | null;
   project_id: string;
   revision: Generated<number>;
   session_id: string | null;
-  mission_id: string;
   type: string;
   updated_at: string;
   workspace_id: string;
@@ -79,13 +79,13 @@ export interface Attachments {
   filename: string;
   id: string | null;
   metadata_json: Generated<string>;
+  mission_id: string | null;
   objective_id: string | null;
   project_id: string | null;
   revision: Generated<number>;
   size_bytes: number | null;
   storage_bucket_id: string;
   storage_key: string;
-  mission_id: string | null;
   updated_at: string;
   upload_status: string;
   workspace_id: string;
@@ -100,13 +100,13 @@ export interface ChangedFiles {
   id: string | null;
   last_observed_at: string;
   last_observed_event_id: string | null;
+  mission_id: string;
   objective_id: string;
   observed_metadata_json: Generated<string>;
   project_id: string;
   resource_id: string | null;
   revision: Generated<number>;
   session_id: string | null;
-  mission_id: string;
   updated_at: string;
   vcs_status: string | null;
   workspace_id: string;
@@ -123,13 +123,13 @@ export interface ChangeRationales {
   impact: string;
   is_final: Generated<number>;
   label: string;
+  mission_id: string;
   objective_id: string;
   project_id: string;
   revision: Generated<number>;
   session_id: string | null;
   source_event_id: string | null;
   summary: string;
-  mission_id: string;
   updated_at: string;
   why: string;
   workspace_id: string;
@@ -142,13 +142,13 @@ export interface Deliveries {
   delivered_by_workspace_user_id: string | null;
   follow_up_notes: string | null;
   id: string | null;
+  mission_id: string;
   objective_id: string;
   payload_json: Generated<string>;
   project_id: string;
   revision: Generated<number>;
   session_id: string | null;
   summary: string;
-  mission_id: string;
   updated_at: string;
   verification_summary: string | null;
   workspace_id: string;
@@ -177,13 +177,13 @@ export interface EntityChanges {
   entity_revision: number | null;
   entity_type: string;
   id: string;
+  mission_id: string | null;
   objective_id: string | null;
   occurred_at: string;
   operation: string;
   project_id: string | null;
   seq: Generated<number | null>;
   source: string;
-  mission_id: string | null;
   workspace_id: string;
 }
 
@@ -205,6 +205,7 @@ export interface ExecutionRequests {
   launch_started_at: string | null;
   launched_session_id: string | null;
   metadata_json: Generated<string>;
+  mission_id: string;
   objective_id: string;
   project_id: string;
   requested_agent: string | null;
@@ -217,7 +218,6 @@ export interface ExecutionRequests {
   revision: Generated<number>;
   status: string;
   target_kind: string;
-  mission_id: string;
   updated_at: string;
   workspace_id: string;
 }
@@ -251,13 +251,77 @@ export interface IdempotencyKeys {
   workspace_id: string;
 }
 
+export interface MissionEvents {
+  actor_token_id: string | null;
+  actor_workspace_user_id: string | null;
+  created_at: string;
+  external_url: string | null;
+  id: string | null;
+  idempotency_key: string | null;
+  mission_id: string;
+  objective_id: string | null;
+  payload_json: Generated<string>;
+  phase: string | null;
+  project_id: string;
+  session_id: string | null;
+  source: string;
+  summary: string;
+  type: string;
+  workspace_id: string;
+}
+
+export interface Missions {
+  acceptance_criteria_text: string | null;
+  active_branch: string | null;
+  assigned_workspace_user_id: string | null;
+  available_tools_json: Generated<string>;
+  board_position: Generated<number>;
+  branch_override: string | null;
+  constraints_text: string | null;
+  created_at: string;
+  created_by_workspace_user_id: string | null;
+  deleted_at: string | null;
+  display_id: string;
+  everhour_task_id: string | null;
+  execution_target_intent_json: Generated<string>;
+  id: string | null;
+  metadata_json: Generated<string>;
+  output_format_text: string | null;
+  priority: string | null;
+  project_id: string;
+  revision: Generated<number>;
+  sequence_number: number;
+  status_id: string;
+  status_type: string;
+  title: string;
+  updated_at: string;
+  workspace_id: string;
+  worktree_preference: string | null;
+}
+
+export interface MissionSequences {
+  counter_name: string;
+  id: string | null;
+  next_value: number;
+  scope_id: string;
+  scope_type: string;
+  updated_at: string;
+  workspace_id: string;
+}
+
+export interface MissionTags {
+  created_at: string;
+  mission_id: string;
+  tag_id: string;
+}
+
 export interface MyMissionPositions {
   created_at: string;
   id: string | null;
+  mission_id: string;
   position: number;
   revision: Generated<number>;
   status_id: string;
-  mission_id: string;
   updated_at: string;
   workspace_id: string;
   workspace_user_id: string;
@@ -272,12 +336,12 @@ export interface ObjectiveAttachments {
   filename: string;
   id: string | null;
   metadata_json: Generated<string>;
+  mission_id: string;
   objective_id: string;
   revision: Generated<number>;
   size_bytes: number | null;
   storage_backend: string;
   storage_key: string;
-  mission_id: string;
   updated_at: string;
   upload_status: string;
   workspace_id: string;
@@ -298,13 +362,13 @@ export interface Objectives {
   id: string | null;
   instruction_text: string | null;
   launch_config_json: string | null;
+  mission_id: string;
   model: string | null;
   position: number;
   project_id: string;
   reasoning_effort: string | null;
   revision: Generated<number>;
   state: string;
-  mission_id: string;
   title: string | null;
   updated_at: string;
   workspace_id: string;
@@ -412,9 +476,9 @@ export interface SearchDocuments {
   id: string | null;
   indexed_at: string;
   metadata_json: Generated<string>;
+  mission_id: string;
   project_id: string | null;
   source_revision: number | null;
-  mission_id: string;
   title: string | null;
   workspace_id: string;
 }
@@ -465,9 +529,9 @@ export interface SharedContextEntries {
   deleted_at: string | null;
   id: string | null;
   key: string;
+  mission_id: string;
   objective_id: string | null;
   revision: Generated<number>;
-  mission_id: string;
   updated_at: string;
   value_json: string | null;
   value_kind: string;
@@ -488,69 +552,6 @@ export interface StorageBuckets {
   storage_backend: string;
   updated_at: string;
   workspace_id: string;
-}
-
-export interface MissionEvents {
-  actor_token_id: string | null;
-  actor_workspace_user_id: string | null;
-  created_at: string;
-  external_url: string | null;
-  id: string | null;
-  idempotency_key: string | null;
-  objective_id: string | null;
-  payload_json: Generated<string>;
-  phase: string | null;
-  project_id: string;
-  session_id: string | null;
-  source: string;
-  summary: string;
-  mission_id: string;
-  type: string;
-  workspace_id: string;
-}
-
-export interface Missions {
-  acceptance_criteria_text: string | null;
-  active_branch: string | null;
-  assigned_workspace_user_id: string | null;
-  available_tools_json: Generated<string>;
-  board_position: Generated<number>;
-  branch_override: string | null;
-  constraints_text: string | null;
-  created_at: string;
-  created_by_workspace_user_id: string | null;
-  deleted_at: string | null;
-  display_id: string;
-  execution_target_intent_json: Generated<string>;
-  id: string | null;
-  metadata_json: Generated<string>;
-  output_format_text: string | null;
-  priority: string | null;
-  project_id: string;
-  revision: Generated<number>;
-  sequence_number: number;
-  status_id: string;
-  status_type: string;
-  title: string;
-  updated_at: string;
-  workspace_id: string;
-  worktree_preference: string | null;
-}
-
-export interface MissionSequences {
-  counter_name: string;
-  id: string | null;
-  next_value: number;
-  scope_id: string;
-  scope_type: string;
-  updated_at: string;
-  workspace_id: string;
-}
-
-export interface MissionTags {
-  created_at: string;
-  tag_id: string;
-  mission_id: string;
 }
 
 export interface User {
@@ -732,6 +733,10 @@ export interface DB {
   execution_requests: ExecutionRequests;
   execution_targets: ExecutionTargets;
   idempotency_keys: IdempotencyKeys;
+  mission_events: MissionEvents;
+  mission_sequences: MissionSequences;
+  mission_tags: MissionTags;
+  missions: Missions;
   my_mission_positions: MyMissionPositions;
   objective_attachments: ObjectiveAttachments;
   objectives: Objectives;
@@ -751,10 +756,6 @@ export interface DB {
   session: Session;
   shared_context_entries: SharedContextEntries;
   storage_buckets: StorageBuckets;
-  mission_events: MissionEvents;
-  mission_sequences: MissionSequences;
-  mission_tags: MissionTags;
-  missions: Missions;
   user: User;
   user_execution_target_preferences: UserExecutionTargetPreferences;
   user_images: UserImages;
