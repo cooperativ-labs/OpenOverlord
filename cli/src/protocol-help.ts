@@ -216,6 +216,9 @@ record-work:
     --project-id <id>
     --artifacts-json / --artifacts-file <path|->
     --change-rationales-json / --change-rationales-file <path|->
+  Notes:
+    Change-rationale entries use the same shape documented under \`deliver\`
+    (file_path, label, summary, why, impact; summary is named "summary", not "rationale").
 
 update:
   Purpose:
@@ -238,6 +241,8 @@ update:
     Pass --summary-file - to read the summary from stdin and avoid shell quoting issues.
     Inline --*-json values larger than ~8 KB are rejected; use the paired --*-file - flag.
     After delivery, pass --begin-follow-up-work before posting execution updates.
+    Change-rationale entries use the same shape documented under \`deliver\`
+    (file_path, label, summary, why, impact; summary is named "summary", not "rationale").
 
 heartbeat:
   Purpose:
@@ -272,6 +277,17 @@ deliver:
     --no-file-changes             Assert this run changed no files
     --verification-summary <text>
     --follow-up-notes <text>
+  Change-rationale entry shape (each item in --change-rationales-json / -file):
+    {
+      "file_path": "src/api.ts",   // required. repo-relative path. "filePath" also accepted; no "path" field.
+      "label":     "Add retry",     // required. short reviewer-facing title.
+      "summary":   "Added retry.",  // required. WHAT changed. The field is named "summary", NOT "rationale".
+      "why":       "Flaky calls.",  // required. WHY it changed.
+      "impact":    "Retries 3x.",   // required. behavioral impact.
+      "hunks":     [{ "header": "@@ -10,6 +10,14 @@" }]  // optional.
+    }
+    Pass an array of these. Do NOT wrap entries under a "rationale" key and do not send a
+    top-level "file_changes" artifact. label/summary/why/impact must be non-empty strings.
   Notes:
     Changed files are captured mechanically: the CLI records a VCS baseline at attach
     and injects the run-attributable delta at deliver. Meaningful tracked changes

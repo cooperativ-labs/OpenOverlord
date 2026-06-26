@@ -66,9 +66,28 @@ const PROTOCOL_WORKFLOW = `
 1. Attach first with \`ovld protocol attach --mission-id <id>\`.
 2. Post progress with \`ovld protocol update\` or liveness with \`ovld protocol heartbeat\`.
 3. Ask blocking questions with \`ovld protocol ask\` and stop work.
-4. Deliver with \`ovld protocol deliver\` with \`change-rationales\` when work is complete.
+4. Deliver with \`ovld protocol deliver\` when work is complete, passing one change-rationale
+   entry per meaningful file you changed for this mission.
 5. Do not stage or commit changes unless explicitly instructed to do so.
-6. Do not continue implementation after delivery without \`--begin-follow-up-work\`.`;
+6. Do not continue implementation after delivery without \`--begin-follow-up-work\`.
+
+Change-rationale format (deliver requires this exact shape):
+  Pass an array via \`--change-rationales-json '[ ... ]'\` (or stream it on stdin with
+  \`--change-rationales-file -\` for large arrays). Each entry is a JSON object — use these
+  exact field names:
+    - \`file_path\` (string, required) — repo-relative path of the changed file. \`filePath\` is
+      also accepted, but there is no \`path\` field.
+    - \`label\`     (string, required) — short reviewer-facing title for the change.
+    - \`summary\`   (string, required) — what changed. This field is named \`summary\`, NOT
+      \`rationale\`; an entry whose explanation key is anything else is rejected.
+    - \`why\`       (string, required) — why the change was made.
+    - \`impact\`    (string, required) — behavioral impact of the change.
+    - \`hunks\`     (optional) — array of { "header": "@@ -10,6 +10,14 @@" } diff-hunk headers.
+  Do NOT wrap entries under a \`rationale\` key, and do not send a top-level \`file_changes\`
+  artifact. Example single entry:
+    {"file_path":"src/api.ts","label":"Add retry","summary":"Added retry with backoff.","why":"Transient failures.","impact":"Requests retry up to 3x."}
+  Changed files are detected for you (VCS baseline at attach vs. \`git status\` at deliver); you
+  only supply the rationale per file. If the run changed no files, deliver with \`--no-file-changes\`.`;
 
 function resolveActiveObjective(objectives: ObjectiveSummary[]): ObjectiveSummary {
   const active =
