@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 
 import { listChangedFilesForReview } from './changes.js';
 import { createServiceContext } from './context.js';
-import { createMissionWithObjectives } from './missions.js';
+import { createMissionWithObjectives, insertObjective } from './missions.js';
 import { createProject } from './projects.js';
 import { attachSession, deliverSession, updateSession } from './protocol.js';
 import { nowIso } from './util.js';
@@ -27,6 +27,56 @@ function submittedMission(ctx: ReturnType<typeof createServiceContext>, name: st
 }
 
 describe('deliverSession mechanical change capture', () => {
+  it('promotes a future objective over a blank draft placeholder after delivery', () => {
+    const { db, ctx } = setup();
+    const project = createProject({ ctx, name: 'Deliver Future Before Placeholder' });
+    const { mission } = createMissionWithObjectives({
+      ctx,
+      projectId: project.id,
+      objectives: [{ objective: 'Complete current objective' }]
+    });
+    const attached = attachSession({ ctx, missionId: mission.displayId });
+    const placeholder = attached.objectives.find(objective => objective.state === 'draft');
+    assert.ok(placeholder);
+
+    const future = insertObjective({
+      ctx,
+      missionId: mission.id,
+      instructionText: 'Continue with real objective',
+      state: 'draft'
+    });
+    assert.equal(future.state, 'future');
+
+    deliverSession({
+      ctx,
+      missionId: mission.displayId,
+      sessionKey: attached.sessionKey,
+      summary: 'Delivered current objective.'
+    });
+
+    const rows = ctx.db
+      .prepare(
+        `SELECT id, instruction_text, state
+         FROM objectives
+         WHERE mission_id = ? AND deleted_at IS NULL
+         ORDER BY position ASC`
+      )
+      .all(mission.id) as Array<{ id: string; instruction_text: string; state: string }>;
+    assert.deepEqual(
+      rows.map(row => row.state),
+      ['complete', 'draft']
+    );
+    assert.equal(rows[1]?.id, future.id);
+    assert.equal(rows[1]?.instruction_text, 'Continue with real objective');
+
+    const placeholderRow = ctx.db
+      .prepare(`SELECT deleted_at FROM objectives WHERE id = ?`)
+      .get(placeholder.id) as { deleted_at: string | null };
+    assert.ok(placeholderRow.deleted_at);
+
+    db.close();
+  });
+
   it('records run-supplied changed files and enforces rationale coverage', () => {
     const { db, ctx } = setup();
     const { mission } = submittedMission(ctx, 'Deliver Capture');

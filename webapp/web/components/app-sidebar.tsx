@@ -90,7 +90,7 @@ export function AppSidebar() {
     <>
       <Sidebar collapsible="icon">
         <SidebarHeader
-          className={isMacDesktop ? 'pt-7' : undefined}
+          className={isMacDesktop ? 'pt-10' : undefined}
           style={isMacDesktop ? DRAG_REGION : undefined}
         >
           <div style={isMacDesktop ? NO_DRAG_REGION : undefined}>

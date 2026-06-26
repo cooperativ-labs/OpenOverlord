@@ -2707,6 +2707,10 @@ interface MissionEventRow {
   phase: string | null;
   summary: string;
   source: string;
+  actor_workspace_user_id: string | null;
+  actor_display_name: string | null;
+  actor_handle: string | null;
+  actor_metadata_json: string | null;
   external_url: string | null;
   created_at: string;
 }
@@ -2720,10 +2724,21 @@ export function listMissionEvents(missionRef: string, limit = 200): MissionEvent
   const mission = getMissionRow(missionRef);
   const rows = db
     .prepare(
-      `SELECT id, mission_id, objective_id, type, phase, summary, source, external_url, created_at
-         FROM mission_events
-        WHERE mission_id = @mission_id AND workspace_id = @workspace_id
-        ORDER BY created_at DESC, id DESC
+      `SELECT me.id, me.mission_id, me.objective_id, me.type, me.phase, me.summary,
+              me.source, me.actor_workspace_user_id, me.external_url, me.created_at,
+              p.display_name AS actor_display_name,
+              p.handle AS actor_handle,
+              p.metadata_json AS actor_metadata_json
+         FROM mission_events me
+         LEFT JOIN workspace_users wu
+           ON wu.id = me.actor_workspace_user_id
+          AND wu.workspace_id = me.workspace_id
+          AND wu.deleted_at IS NULL
+         LEFT JOIN profiles p
+           ON p.id = wu.profile_id
+          AND p.deleted_at IS NULL
+        WHERE me.mission_id = @mission_id AND me.workspace_id = @workspace_id
+        ORDER BY me.created_at DESC, me.id DESC
         LIMIT @limit`
     )
     .all({ mission_id: mission.id, workspace_id: WORKSPACE.id, limit }) as MissionEventRow[];
@@ -2735,6 +2750,16 @@ export function listMissionEvents(missionRef: string, limit = 200): MissionEvent
     phase: row.phase,
     summary: row.summary,
     source: row.source,
+    actorWorkspaceUserId: row.actor_workspace_user_id,
+    actor:
+      row.actor_workspace_user_id && row.actor_display_name
+        ? {
+            workspaceUserId: row.actor_workspace_user_id,
+            displayName: row.actor_display_name,
+            handle: row.actor_handle,
+            avatarUrl: avatarUrlFromMetadata(row.actor_metadata_json ?? '{}')
+          }
+        : null,
     externalUrl: row.external_url,
     createdAt: row.created_at
   }));
@@ -3869,14 +3894,19 @@ function ensureDraftSlotAfterObjectiveLeavesQueue({
   assignedAgent: string | null;
   now: string;
 }): void {
-  const existingDraft = db
+  const drafts = db
     .prepare(
-      `SELECT id FROM objectives
+      `SELECT id, instruction_text, revision FROM objectives
        WHERE mission_id = ? AND workspace_id = ? AND state = 'draft' AND deleted_at IS NULL
-       LIMIT 1`
+       ORDER BY position ASC, created_at ASC`
     )
-    .get(missionId, WORKSPACE.id) as { id: string } | undefined;
-  if (existingDraft) return;
+    .all(missionId, WORKSPACE.id) as Array<{
+    id: string;
+    instruction_text: string;
+    revision: number;
+  }>;
+
+  if (drafts.some(draft => draft.instruction_text.trim())) return;
 
   const nextFuture = db
     .prepare(
@@ -3887,6 +3917,30 @@ function ensureDraftSlotAfterObjectiveLeavesQueue({
     .get(missionId, WORKSPACE.id) as { id: string; revision: number } | undefined;
 
   if (nextFuture) {
+    for (const draft of drafts) {
+      const draftRevision = draft.revision + 1;
+      db.prepare(
+        `UPDATE objectives
+         SET deleted_at = @now, updated_at = @now, revision = @revision
+         WHERE id = @id AND workspace_id = @workspace_id`
+      ).run({
+        id: draft.id,
+        workspace_id: WORKSPACE.id,
+        now,
+        revision: draftRevision
+      });
+
+      recordChange({
+        entityType: 'objective',
+        entityId: draft.id,
+        operation: 'delete',
+        entityRevision: draftRevision,
+        projectId,
+        missionId,
+        objectiveId: draft.id
+      });
+    }
+
     const nextRevision = nextFuture.revision + 1;
     db.prepare(
       `UPDATE objectives
@@ -3912,12 +3966,14 @@ function ensureDraftSlotAfterObjectiveLeavesQueue({
     return;
   }
 
-  insertObjective({
-    missionId,
-    instructionText: '',
-    state: 'draft',
-    assignedAgent
-  });
+  if (drafts.length === 0) {
+    insertObjective({
+      missionId,
+      instructionText: '',
+      state: 'draft',
+      assignedAgent
+    });
+  }
 }
 
 const updateObjectiveTx = db.transaction(
@@ -4049,7 +4105,10 @@ const updateObjectiveTx = db.transaction(
     if (
       body.state === 'executing' &&
       body.state !== existing.state &&
-      (existing.state === 'draft' || existing.state === 'future')
+      (existing.state === 'draft' ||
+        existing.state === 'future' ||
+        existing.state === 'submitted' ||
+        existing.state === 'launching')
     ) {
       ensureDraftSlotAfterObjectiveLeavesQueue({
         missionId: existing.mission_id,

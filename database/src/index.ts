@@ -9,6 +9,15 @@
  */
 export { type AdapterConfig, resolveAdapter } from './adapter.js';
 export {
+  createPostgresClient,
+  createSqliteClient,
+  type DatabaseClient,
+  openDatabaseClient,
+  type RunResult,
+  type SqlDialect,
+  toPostgresPlaceholders
+} from './client.js';
+export {
   fixupLocalStoragePaths,
   listSqliteMigrationFiles,
   migrateDatabase,
@@ -38,3 +47,4 @@ export {
   resolveGlobalDatabasePath,
   resolveGlobalDataDir
 } from './local-paths.js';
+export { listPostgresMigrationFiles, migratePostgres } from './migrate-postgres.js';

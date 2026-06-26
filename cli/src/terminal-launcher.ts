@@ -70,14 +70,25 @@ export function tmpEnvFor(workingDirectory: string): Record<string, string> {
 function agentShellCommand({
   command,
   args,
-  preCommand
+  preCommand,
+  extraEnv = {},
+  includeEnvPrefix = false
 }: {
   command: string;
   args: string[];
   preCommand?: string | null;
+  extraEnv?: Record<string, string>;
+  includeEnvPrefix?: boolean;
 }): string {
   const base = [shellQuote(command), ...args.map(shellQuote)].join(' ');
-  return preCommand?.trim() ? `${preCommand.trim()} ${base}` : base;
+  const invocation = preCommand?.trim() ? `${preCommand.trim()} ${base}` : base;
+  if (!includeEnvPrefix) return invocation;
+
+  const assignments = Object.entries(extraEnv)
+    .filter(([key, value]) => key.trim() && value.trim())
+    .map(([key, value]) => `${key}=${shellQuote(value)}`)
+    .join(' ');
+  return assignments ? `env ${assignments} ${invocation}` : invocation;
 }
 
 /**
@@ -301,6 +312,13 @@ export function resolveLaunchExecution({
   extraEnv?: Record<string, string>;
 } & TerminalLaunchSettings): LaunchExecution {
   const agentCommand = agentShellCommand({ command, args, preCommand });
+  const genericAgentCommand = agentShellCommand({
+    command,
+    args,
+    preCommand,
+    extraEnv,
+    includeEnvPrefix: true
+  });
   const launcher = terminalLauncher?.trim();
   const placement = terminalLaunchPlacement ?? 'window';
   const chordClause = resolveChordClause(terminalLaunchChord);
@@ -347,7 +365,12 @@ export function resolveLaunchExecution({
 
   const full =
     placement === 'window'
-      ? `${launcher} ${agentCommand}`
-      : buildGenericPlacementShell({ launcher, inner: agentCommand, placement, chordClause });
+      ? `${launcher} ${genericAgentCommand}`
+      : buildGenericPlacementShell({
+          launcher,
+          inner: genericAgentCommand,
+          placement,
+          chordClause
+        });
   return { command: full, args: [], useShell: true, terminal: launcher, display: full };
 }

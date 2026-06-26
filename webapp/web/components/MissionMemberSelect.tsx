@@ -59,7 +59,7 @@ export function MissionMemberSelect({
         id="mission-member-select"
         aria-label="Select assignee"
         size="sm"
-        className="h-6 w-auto max-w-[10rem] rounded-md border bg-transparent px-2 text-xs font-base hover:bg-muted"
+        className="h-[22px] w-auto max-w-[9rem] rounded-full border-border/50 bg-transparent px-2 text-[11px] font-normal text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
       >
         <SelectValue placeholder="Unassigned">
           {currentMember ? (

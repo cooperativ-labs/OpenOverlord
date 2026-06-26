@@ -61,12 +61,33 @@ async function everhourFetch<T>(
     } catch {
       /* non-JSON error body */
     }
-    const status = res.status === 401 ? 401 : res.status === 429 ? 429 : 502;
+    // Forward genuine client errors (auth, permission, not-found, rate limit)
+    // with their real status so the UI shows an actionable message instead of a
+    // generic "Bad Gateway". Only true upstream/server failures (5xx or unknown)
+    // become a 502.
+    const status = res.status >= 400 && res.status < 500 ? res.status : 502;
     throw new ApiError(status, `Everhour API error (${res.status}): ${detail || res.statusText}`);
   }
 
   if (!text) return null as T;
   return JSON.parse(text) as T;
+}
+
+// The id of the user the API key authenticates as. Everhour denies creating
+// sections/tasks in a project this user is not a member of, so we must add them
+// to any project we link for time tracking.
+async function getCurrentEverhourUserId(apiKey: string): Promise<number | null> {
+  const user = await everhourFetch<EverhourUser>(apiKey, '/users/me');
+  return typeof user?.id === 'number' ? user.id : null;
+}
+
+// Native Everhour projects/tasks use the `ev:` id prefix. Every other prefix
+// (`gh:` GitHub, `jr:` Jira, `as:` Asana, `tr:` Trello, …) denotes an
+// integration-synced project whose tasks mirror the external source and which
+// rejects API task creation with a 403 "Access denied". The timer feature
+// requires creating a task, so those projects cannot back time tracking.
+function isNativeEverhourProjectId(id: string | null | undefined): boolean {
+  return typeof id === 'string' && id.startsWith('ev:');
 }
 
 function requireApiKey(): string {
@@ -87,6 +108,8 @@ interface EverhourUser {
 interface EverhourProject {
   id: string;
   name: string;
+  type?: string;
+  users?: number[];
 }
 
 interface EverhourSection {
@@ -236,41 +259,60 @@ async function resolveEverhourProject(
     apiKey,
     `/projects?query=${query}&limit=100`
   );
+  // Only reuse a *native* Everhour project. Matching an integration-synced
+  // project here (e.g. a GitHub project that happens to share the name) would
+  // silently break timer start later, since API task creation in those projects
+  // is denied; fall through to creating a native board project instead.
   const match = unwrapArray<EverhourProject>(found).find(
-    p => p.name?.trim().toLowerCase() === name.trim().toLowerCase()
+    p =>
+      p.name?.trim().toLowerCase() === name.trim().toLowerCase() && isNativeEverhourProjectId(p.id)
   );
+
+  // Everhour returns 403 "Access denied" on section/task creation in a project the
+  // API user is not a member of, so the linked project must list this user. Assign
+  // them when creating, and backfill membership when reusing an existing project.
+  const userId = await getCurrentEverhourUserId(apiKey);
+
   const project =
     match ??
     (await everhourFetch<EverhourProject>(apiKey, '/projects', {
       method: 'POST',
-      body: { name, type: 'board' }
+      body: { name, type: 'board', ...(userId !== null ? { users: [userId] } : {}) }
     }));
+
+  if (match && userId !== null && !(match.users ?? []).includes(userId)) {
+    await everhourFetch(apiKey, `/projects/${encodeURIComponent(match.id)}`, {
+      method: 'PUT',
+      body: {
+        name: match.name,
+        type: match.type ?? 'board',
+        users: [...(match.users ?? []), userId]
+      }
+    });
+  }
 
   return { id: project.id, sectionId: await resolveSectionId(apiKey, project.id) };
 }
 
 // Resolve a section to create tasks in (board projects require one). Reuses the
-// first existing section, else creates an "Overlord" section. Some integration-
-// backed projects don't support API-managed sections; there we return null and
-// create tasks without a section.
+// first existing section, else creates an "Overlord" section. Only ever called for
+// native Everhour projects (the link flow never binds to integration-synced ones),
+// so a genuine API error here is a real problem and is allowed to propagate rather
+// than being swallowed into a sectionless — and therefore invalid — task request.
 async function resolveSectionId(apiKey: string, projectId: string): Promise<string | null> {
-  try {
-    const sections = unwrapArray<EverhourSection>(
-      await everhourFetch<EverhourSection[]>(
-        apiKey,
-        `/projects/${encodeURIComponent(projectId)}/sections`
-      )
-    );
-    if (sections.length > 0) return String(sections[0].id);
-    const created = await everhourFetch<EverhourSection>(
+  const sections = unwrapArray<EverhourSection>(
+    await everhourFetch<EverhourSection[]>(
       apiKey,
-      `/projects/${encodeURIComponent(projectId)}/sections`,
-      { method: 'POST', body: { name: 'Overlord', position: 1 } }
-    );
-    return created?.id !== undefined && created.id !== null ? String(created.id) : null;
-  } catch {
-    return null;
-  }
+      `/projects/${encodeURIComponent(projectId)}/sections`
+    )
+  );
+  if (sections.length > 0) return String(sections[0].id);
+  const created = await everhourFetch<EverhourSection>(
+    apiKey,
+    `/projects/${encodeURIComponent(projectId)}/sections`,
+    { method: 'POST', body: { name: 'Overlord', position: 1 } }
+  );
+  return created?.id !== undefined && created.id !== null ? String(created.id) : null;
 }
 
 /**
@@ -374,13 +416,54 @@ async function ensureMissionTask(apiKey: string, missionId: string): Promise<str
     );
   }
 
-  const body: Record<string, unknown> = { name: mission.title || 'Untitled mission' };
-  if (sectionId) body.section = Number(sectionId);
-  const task = await everhourFetch<EverhourTask>(
-    apiKey,
-    `/projects/${encodeURIComponent(everhourProjectId)}/tasks`,
-    { method: 'POST', body }
-  );
+  // A project linked to an integration source (GitHub/Jira/Asana/…) cannot host
+  // API-created tasks, so the timer can never work against it. Fail fast with an
+  // actionable message rather than letting the doomed POST surface a bare 403.
+  if (!isNativeEverhourProjectId(everhourProjectId)) {
+    throw new ApiError(
+      400,
+      'This project is linked to an integration-backed Everhour project (e.g. GitHub or Jira), ' +
+        'which does not allow creating tasks via the API. Re-link it to a native Everhour project ' +
+        'in project settings to track mission time.'
+    );
+  }
+
+  // Everhour requires `section` when creating a board task (TaskRequest.section is
+  // mandatory). The section is captured at link time, but resolve it on demand
+  // when the stored link predates this requirement or the section was removed, so
+  // we never POST a task missing its required field.
+  const resolvedSectionId = sectionId ?? (await resolveSectionId(apiKey, everhourProjectId));
+  if (!resolvedSectionId) {
+    throw new ApiError(
+      502,
+      'Could not find or create an Everhour section to hold the mission task. ' +
+        'Re-link the project to a native Everhour project in project settings, then try again.'
+    );
+  }
+
+  const body: Record<string, unknown> = {
+    name: mission.title || 'Untitled mission',
+    section: Number(resolvedSectionId)
+  };
+  let task: EverhourTask;
+  try {
+    task = await everhourFetch<EverhourTask>(
+      apiKey,
+      `/projects/${encodeURIComponent(everhourProjectId)}/tasks`,
+      { method: 'POST', body }
+    );
+  } catch (err) {
+    // Safety net for any other access denial (e.g. a member-level API key): keep
+    // the upstream detail but guide the user toward the likely fix.
+    if (err instanceof ApiError && err.status === 403) {
+      throw new ApiError(
+        403,
+        `Everhour denied creating a task for this mission (${err.message}). Confirm the linked ` +
+          'Everhour project is a native project your API key can write to.'
+      );
+    }
+    throw err;
+  }
   if (!task?.id) throw new ApiError(502, 'Everhour did not return a task id.');
   writeMissionTaskId(missionId, task.id, mission.revision);
   return task.id;

@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Textarea } from '@/components/ui/textarea';
-import { useEverhourIntegration, useLinkProjectEverhour, useUpdateProject } from '@/lib/queries';
+import { useUpdateProject } from '@/lib/queries';
 
 import type { ProjectDto } from '../../../../shared/contract.ts';
 
@@ -19,88 +19,10 @@ type GeneralPageProps = {
   open: boolean;
   project: ProjectDto;
   onOpenChange: (open: boolean) => void;
+  onNavigateToIntegrations: () => void;
 };
 
-/**
- * Links the Overlord project to an Everhour project by name. Only shown when the
- * workspace has an Everhour API key configured. Defaults the input to the linked
- * name, falling back to the Overlord project name so a first save reuses it.
- */
-function EverhourProjectField({ open, project }: { open: boolean; project: ProjectDto }) {
-  const integration = useEverhourIntegration();
-  const link = useLinkProjectEverhour(project.id);
-  const defaultName = project.everhourProjectName ?? project.name;
-  const [name, setName] = useState(defaultName);
-  const [saved, setSaved] = useState(project.everhourProjectName);
-  const [saveState, setSaveState] = useState<ButtonLoadingState>('default');
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    setName(project.everhourProjectName ?? project.name);
-    setSaved(project.everhourProjectName);
-    setSaveState('default');
-    setError(null);
-  }, [open, project]);
-
-  if (!integration.data?.connected) return null;
-
-  async function handleSave() {
-    const trimmed = name.trim();
-    if (trimmed === (saved ?? '')) return;
-    setSaveState('loading');
-    setError(null);
-    try {
-      const updated = await link.mutateAsync({ everhourProjectName: trimmed || null });
-      setSaved(updated.everhourProjectName);
-      setSaveState('success');
-    } catch (err) {
-      setSaveState('error');
-      setError(err instanceof Error ? err.message : 'Failed to link Everhour project.');
-    }
-  }
-
-  return (
-    <div className="grid max-w-lg gap-2">
-      <Label htmlFor="project-settings-everhour">Everhour project</Label>
-      <div className="flex gap-2">
-        <Input
-          id="project-settings-everhour"
-          value={name}
-          onChange={e => setName(e.target.value)}
-          placeholder={project.name}
-          className="h-8"
-          onBlur={handleSave}
-          onKeyDown={e => {
-            if (e.key === 'Enter') void handleSave();
-          }}
-          disabled={saveState === 'loading'}
-        />
-        <LoadingButton
-          buttonState={saveState}
-          setButtonState={setSaveState}
-          text="Link"
-          loadingText="Linking…"
-          successText="Linked"
-          errorText="Retry"
-          reset
-          size="sm"
-          variant="outline"
-          className="h-8 shrink-0"
-          onClick={handleSave}
-        />
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {saved
-          ? `Linked to Everhour project "${saved}". Missions create tasks here when you track time.`
-          : 'Find or create an Everhour project with this name. Defaults to the project name.'}
-      </p>
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
-    </div>
-  );
-}
-
-export function GeneralPage({ open, project }: GeneralPageProps) {
+export function GeneralPage({ open, project, onNavigateToIntegrations }: GeneralPageProps) {
   const updateProject = useUpdateProject(project.id);
   const [name, setName] = useState(project.name);
   const [savedName, setSavedName] = useState(project.name);
@@ -261,7 +183,20 @@ export function GeneralPage({ open, project }: GeneralPageProps) {
         {colorError ? <p className="text-xs text-destructive">{colorError}</p> : null}
       </div>
 
-      <EverhourProjectField open={open} project={project} />
+      <div className="max-w-lg rounded-lg border border-border p-4">
+        <p className="text-sm text-muted-foreground">
+          To configure Everhour time tracking for this project, visit the{' '}
+          <button
+            type="button"
+            className="font-medium text-foreground underline-offset-4 hover:underline"
+            onClick={onNavigateToIntegrations}
+          >
+            Integrations
+          </button>{' '}
+          page. Set your Everhour API key in <strong>Settings → Integrations</strong> to get
+          started.
+        </p>
+      </div>
 
       <div className="grid max-w-lg gap-2">
         <Label>Project ID</Label>

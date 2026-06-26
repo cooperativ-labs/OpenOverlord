@@ -342,6 +342,91 @@ export function insertObjective({
   });
 }
 
+export function ensureNextDraftObjective({
+  ctx,
+  missionId,
+  projectId,
+  assignedAgent,
+  now
+}: {
+  ctx: ServiceContext;
+  missionId: string;
+  projectId: string;
+  assignedAgent: string | null;
+  now: string;
+}): void {
+  const drafts = ctx.db
+    .prepare(
+      `SELECT id, instruction_text, revision FROM objectives
+       WHERE mission_id = ? AND state = 'draft' AND deleted_at IS NULL
+       ORDER BY position ASC, created_at ASC`
+    )
+    .all(missionId) as Array<{ id: string; instruction_text: string; revision: number }>;
+
+  if (drafts.some(draft => draft.instruction_text.trim())) return;
+
+  const nextFuture = ctx.db
+    .prepare(
+      `SELECT id, revision FROM objectives
+       WHERE mission_id = ? AND state = 'future' AND deleted_at IS NULL
+       ORDER BY position ASC, created_at ASC LIMIT 1`
+    )
+    .get(missionId) as { id: string; revision: number } | undefined;
+
+  if (nextFuture) {
+    for (const draft of drafts) {
+      const revision = draft.revision + 1;
+      ctx.db
+        .prepare(
+          `UPDATE objectives SET deleted_at = ?, updated_at = ?, revision = ?
+           WHERE id = ? AND mission_id = ?`
+        )
+        .run(now, now, revision, draft.id, missionId);
+      recordChange({
+        ctx,
+        entityType: 'objective',
+        entityId: draft.id,
+        operation: 'delete',
+        entityRevision: revision,
+        projectId,
+        missionId,
+        objectiveId: draft.id
+      });
+    }
+
+    const revision = nextFuture.revision + 1;
+    ctx.db
+      .prepare(
+        `UPDATE objectives SET state = 'draft', updated_at = ?, revision = ?
+         WHERE id = ? AND mission_id = ?`
+      )
+      .run(now, revision, nextFuture.id, missionId);
+
+    recordChange({
+      ctx,
+      entityType: 'objective',
+      entityId: nextFuture.id,
+      operation: 'update',
+      entityRevision: revision,
+      projectId,
+      missionId,
+      objectiveId: nextFuture.id,
+      changedFields: ['state']
+    });
+    return;
+  }
+
+  if (drafts.length === 0) {
+    insertObjective({
+      ctx,
+      missionId,
+      instructionText: '',
+      state: 'draft',
+      assignedAgent
+    });
+  }
+}
+
 export function createMissionWithObjectives({
   ctx,
   projectId,

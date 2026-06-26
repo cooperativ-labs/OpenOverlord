@@ -6,17 +6,39 @@ import {
   redirect,
   useRouterState
 } from '@tanstack/react-router';
+import { useState } from 'react';
 
 import { AppSidebar } from './components/app-sidebar.tsx';
 import { NavHeader } from './components/nav-header.tsx';
+import { ProjectCreatorModal } from './components/projects/ProjectCreatorModal.tsx';
 import { InitialSetupScreen } from './components/setup/InitialSetupScreen.tsx';
 import { SidebarInset, SidebarProvider } from './components/ui/sidebar.tsx';
-import { useMeta } from './lib/queries.ts';
+import { useMeta, useProjects, useWorkspaceMyMissions } from './lib/queries.ts';
 import { MissionPanelRoute } from './pages/MissionPage.tsx';
 import { MyMissionsShell, WorkspaceMissionPanelRoute } from './pages/MyMissionsShell.tsx';
 import { ProjectBoardShell } from './pages/ProjectBoardShell.tsx';
 import { ProjectsPage } from './pages/ProjectsPage.tsx';
 import { QuickTaskPage } from './pages/QuickTaskPage.tsx';
+
+function EmptyWorkspaceModal() {
+  const projects = useProjects();
+  const myMissions = useWorkspaceMyMissions();
+  const [dismissed, setDismissed] = useState(false);
+
+  const loaded = !projects.isPending && !myMissions.isPending;
+  const isEmpty =
+    (projects.data?.length ?? 1) === 0 && (myMissions.data?.missions.length ?? 1) === 0;
+  const open = loaded && isEmpty && !dismissed;
+
+  return (
+    <ProjectCreatorModal
+      open={open}
+      onOpenChange={next => {
+        if (!next) setDismissed(true);
+      }}
+    />
+  );
+}
 
 function RootLayout() {
   const isQuickTask = useRouterState({
@@ -43,6 +65,7 @@ function RootLayout() {
           <Outlet />
         </div>
       </SidebarInset>
+      <EmptyWorkspaceModal />
     </SidebarProvider>
   );
 }

@@ -31,8 +31,8 @@ export function MissionTagFilterDropdown({
         render={
           <ToolbarButton
             variant="outline"
-            size="sm"
-            className="gap-1.5"
+            size="lg"
+            className="px-3"
             aria-label="Filter missions by tag"
           />
         }

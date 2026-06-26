@@ -39,6 +39,7 @@ type LaunchPlan = {
   contextFile: string;
   workingDirectory: string;
   execution: LaunchExecution;
+  env: Record<string, string>;
 };
 
 type MissionContext = {
@@ -46,6 +47,23 @@ type MissionContext = {
   title: string;
   promptContext: string;
 };
+
+function overlordLaunchEnv({
+  backendUrl,
+  missionId,
+  executionRequestId
+}: {
+  backendUrl: string;
+  missionId: string;
+  executionRequestId?: string | null;
+}): Record<string, string> {
+  return {
+    MISSION_ID: missionId,
+    OVERLORD_MISSION_ID: missionId,
+    OVERLORD_BACKEND_URL: backendUrl,
+    ...(executionRequestId ? { OVERLORD_EXECUTION_REQUEST_ID: executionRequestId } : {})
+  };
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
@@ -183,6 +201,11 @@ export async function buildLaunchPlan({
     ? `${context.promptContext}\nExecution request: ${options.executionRequestId}`
     : context.promptContext;
   writeFileSync(contextFile, `${promptContext}\n`);
+  const launchEnv = overlordLaunchEnv({
+    backendUrl: runtime.backend.baseUrl,
+    missionId: context.displayId,
+    executionRequestId: options.executionRequestId
+  });
 
   const prompt =
     promptContext.length > 4000
@@ -207,9 +230,7 @@ export async function buildLaunchPlan({
     terminalLauncher: options.terminalLauncher,
     terminalLaunchPlacement: options.terminalLaunchPlacement,
     terminalLaunchChord: options.terminalLaunchChord,
-    extraEnv: options.executionRequestId
-      ? { OVERLORD_EXECUTION_REQUEST_ID: options.executionRequestId }
-      : {}
+    extraEnv: launchEnv
   });
 
   return {
@@ -217,7 +238,8 @@ export async function buildLaunchPlan({
     prompt,
     contextFile,
     workingDirectory: options.workingDirectory,
-    execution
+    execution,
+    env: launchEnv
   };
 }
 
@@ -236,9 +258,7 @@ export async function launchAgent({
   const env = {
     ...process.env,
     ...tmpEnvFor(options.workingDirectory),
-    ...(options.executionRequestId
-      ? { OVERLORD_EXECUTION_REQUEST_ID: options.executionRequestId }
-      : {})
+    ...plan.env
   };
 
   const { execution } = plan;

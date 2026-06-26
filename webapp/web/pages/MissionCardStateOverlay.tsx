@@ -14,7 +14,7 @@ export function MissionCardStateOverlay({ state }: { state: MissionCardState }) 
   return (
     <>
       {state.shimmer ? (
-        <div className="pointer-events-none absolute inset-0 animate-[shimmer_2s_linear_infinite] bg-[length:200%_100%] bg-linear-to-r from-transparent via-emerald-500/20 to-transparent" />
+        <div className="pointer-events-none absolute inset-0 animate-[shimmer_3s_linear_infinite] bg-size-[200%_100%] bg-linear-to-r from-transparent via-emerald-500/20 to-transparent" />
       ) : null}
     </>
   );

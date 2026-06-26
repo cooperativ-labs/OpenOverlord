@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '0.54-draft'
+contractVersion: '0.55-draft'
 
 components:
   protocol:
@@ -181,9 +181,10 @@ components:
     optional: true
     owns:
       - 'Electron app/window lifecycle and the hardened BrowserWindow security baseline (contextIsolation, sandbox, nodeIntegration: false, preload)'
-      - 'loopback-scoped CSP, single-instance lock, external-navigation handling'
-      - 'process supervision of the bundled web/REST server (Node utilityProcess) and optionally a local runner'
-      - 'the minimal window.overlord preload bridge surface (feature-detected by the SPA, never required by it)'
+      - 'profile-scoped CSP (loopback in Local mode; remote REST + wss origins added in Remote mode), single-instance lock, shell-local navigation guard, external-navigation handling'
+      - 'process supervision of the bundled web/REST server (Node utilityProcess) in Local mode only; Remote mode does not fork the embedded server'
+      - 'backend profiles ({ id, label, mode: local|remote, backendUrl } + active id) in userData/settings.json, per-profile Electron session partitions (persist:backend-<id>), per-backend bearer-token storage via safeStorage, and the reload-and-login switcher / first-run chooser (0.55-draft, additive; Local is the default unchanged behavior)'
+      - 'the minimal window.overlord preload bridge surface (feature-detected by the SPA, never required by it), incl. getActiveBackend/listBackends/addBackend/removeBackend/switchBackend'
       - 'desktop packaging metadata and the build/sign/notarize pipeline (electron-builder, entitlements, app-data layout)'
     dependsOn:
       - rest
@@ -226,8 +227,9 @@ interactionSurfaces:
     transport: http-json
     rules:
       - 'CLI must not import database adapters or service internals'
-      - 'Backend URL comes from backend_url in overlord.toml/global config'
+      - 'Backend URL comes from backend_url (loopback for Local, HTTPS for Cloud); a container/agent-pod CLI consumes the injected runtime OVERLORD_BACKEND_URL and must not persist config (0.36/0.55-draft)'
       - 'Mutations go through backend endpoints that own persistence and idempotency'
+      - 'Cloud/headless runners authenticate with scoped service tokens that can claim only their own target/workspace requests (0.55-draft)'
 
   connectorToProtocol:
     description: 'Connector hook scripts invoke protocol commands via subprocess'
@@ -302,13 +304,15 @@ interactionSurfaces:
       - 'Reactions to core events via service APIs, entity_changes, or outbox_messages only'
 
   shellToRest:
-    description: "The desktop shell's BrowserWindow loads the SPA and calls /api/* (incl. SSE /api/stream) over the loopback origin — another HTTP client of the existing REST surface"
+    description: "The desktop shell's BrowserWindow loads the SPA and calls /api/* (incl. SSE realtime) over the loopback origin (Local) or the hosted backend's HTTPS/wss origin (Remote, 0.55-draft) via the SPA's runtime-injected API base URL — another HTTP client of the existing REST surface"
     from: desktop
     to: rest
-    transport: loopback-http-and-sse
+    transport: loopback-or-https-http-and-sse
     rules:
       - 'The shell must not fork or modify the SPA'
-      - 'Better Auth session cookies work natively on the shared loopback origin; the shell injects no headers and stores no tokens for in-app requests'
+      - 'Local mode: Better Auth session cookies work natively on the shared loopback origin; the shell injects no headers and stores no tokens for in-app requests'
+      - 'Remote mode (cross-origin): a per-backend bearer token (safeStorage/keychain) is injected into the SPA API client instead of cross-site cookies, unifying with the CLI USER_TOKEN model'
+      - 'Navigation stays scoped to the shell origin in both modes; the remote REST + wss origins are added to CSP connect-src per the active profile'
       - 'Desktop-only affordances are exposed only via the feature-detected window.overlord preload bridge'
 
   shellToCli:

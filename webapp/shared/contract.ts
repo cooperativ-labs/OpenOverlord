@@ -436,6 +436,13 @@ export type MissionEventType =
   | 'awaiting_approval'
   | 'status_change';
 
+export interface MissionEventActorDto {
+  workspaceUserId: string;
+  displayName: string;
+  handle: string | null;
+  avatarUrl: string | null;
+}
+
 /**
  * A single entry in a mission's workflow history (`mission_events`). Append-only;
  * ordered oldest-first by `createdAt`. The SPA renders these as a realtime feed
@@ -452,6 +459,8 @@ export interface MissionEventDto {
   summary: string;
   /** Open vocabulary describing what produced the event (`agent`, `cli`, …). */
   source: string;
+  actorWorkspaceUserId: string | null;
+  actor: MissionEventActorDto | null;
   /** Optional external link associated with the event. */
   externalUrl: string | null;
   createdAt: string;

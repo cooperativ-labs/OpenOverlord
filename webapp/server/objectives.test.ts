@@ -113,6 +113,50 @@ test('marking a queued objective executing promotes the earliest future objectiv
   assert.equal(rows[1]!.instruction_text, 'Continue with second objective');
 });
 
+test('marking a queued objective executing promotes future over a blank draft placeholder', () => {
+  const project = createProject({ name: 'Promote Future Over Placeholder' });
+  const mission = createMission({ projectId: project.id, firstObjective: 'Execute first' });
+  const running = mission.objectives[0]!;
+  db.prepare(`UPDATE objectives SET state = 'launching' WHERE id = ?`).run(running.id);
+
+  const placeholder = createObjective({
+    missionId: mission.id,
+    instructionText: '',
+    state: 'draft'
+  });
+  const future = createObjective({
+    missionId: mission.id,
+    instructionText: 'Continue with real future objective',
+    state: 'draft'
+  });
+
+  assert.equal(placeholder.state, 'draft');
+  assert.equal(future.state, 'future');
+
+  updateObjective(running.id, { state: 'executing' });
+
+  const rows = db
+    .prepare(
+      `SELECT id, instruction_text, state
+       FROM objectives
+       WHERE mission_id = ? AND deleted_at IS NULL
+       ORDER BY position ASC`
+    )
+    .all(mission.id) as Array<{ id: string; instruction_text: string; state: string }>;
+
+  assert.deepEqual(
+    rows.map(row => row.state),
+    ['executing', 'draft']
+  );
+  assert.equal(rows[1]!.id, future.id);
+  assert.equal(rows[1]!.instruction_text, 'Continue with real future objective');
+
+  const placeholderRow = db
+    .prepare(`SELECT deleted_at FROM objectives WHERE id = ?`)
+    .get(placeholder.id) as { deleted_at: string | null };
+  assert.ok(placeholderRow.deleted_at);
+});
+
 test('marking the only queued objective executing creates a blank draft fallback', () => {
   const project = createProject({ name: 'Blank Draft On Execute' });
   const mission = createMission({ projectId: project.id, firstObjective: 'Execute first' });

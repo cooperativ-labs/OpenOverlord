@@ -150,7 +150,7 @@ function MissionSettingsBar({
   onProjectChanged?: (projectId: string) => void;
 }) {
   return (
-    <section className="flex flex-wrap items-center gap-1.5 border-b border-[var(--color-border)] bg-[var(--color-surface-1)] px-5 py-2">
+    <section className="flex flex-wrap items-center gap-1 border-b border-[var(--color-border)] bg-[var(--color-surface-1)] px-5 py-1.5">
       <MissionMemberSelect
         missionId={mission.id}
         workspaceId={mission.workspaceId}

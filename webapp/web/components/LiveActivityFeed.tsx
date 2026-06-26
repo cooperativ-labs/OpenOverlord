@@ -12,6 +12,8 @@ import {
   ShieldQuestion
 } from 'lucide-react';
 
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+
 import type { MissionEventDto, MissionEventType } from '../../shared/contract.ts';
 import { useMissionEvents } from '../lib/queries.ts';
 
@@ -45,14 +47,40 @@ function formatTimestamp(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 }
 
+function actorLabel(event: MissionEventDto): string {
+  return event.actor?.displayName?.trim() || event.actor?.handle || 'User';
+}
+
+function actorInitials(label: string): string {
+  return (
+    label
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map(part => part[0])
+      .join('')
+      .toUpperCase() || 'U'
+  );
+}
+
 function ActivityEntry({ event }: { event: MissionEventDto }) {
   const { icon: Icon, label } = eventMeta(event.type);
   const isUserFollowUp = event.type === 'user_follow_up';
+  const userLabel = actorLabel(event);
 
   return (
     <article className="flex min-w-0 gap-3">
-      <div className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center">
-        {Icon ? (
+      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center">
+        {isUserFollowUp && event.actor ? (
+          <Avatar size="sm" title={userLabel}>
+            {event.actor.avatarUrl ? (
+              <AvatarImage src={event.actor.avatarUrl} alt={userLabel} />
+            ) : null}
+            <AvatarFallback className="rounded-full text-[9px]">
+              {actorInitials(userLabel)}
+            </AvatarFallback>
+          </Avatar>
+        ) : Icon ? (
           <Icon
             className={
               isUserFollowUp ? 'h-3.5 w-3.5 text-sky-500' : 'h-3.5 w-3.5 text-(--color-ink-dim)'
@@ -71,8 +99,11 @@ function ActivityEntry({ event }: { event: MissionEventDto }) {
                 : 'text-xs font-medium text-(--color-ink)'
             }
           >
-            {label}
+            {isUserFollowUp && event.actor ? userLabel : label}
           </span>
+          {isUserFollowUp && event.actor ? (
+            <span className="text-[11px] text-(--color-ink-dim)">Follow-up</span>
+          ) : null}
           {event.phase && (
             <Badge className="px-2 py-0 text-[10px] uppercase tracking-wide">{event.phase}</Badge>
           )}

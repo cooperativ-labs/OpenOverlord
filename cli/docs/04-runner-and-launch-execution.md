@@ -147,6 +147,9 @@ requests.
 - Write large context payloads to `.overlord/tmp/` when a project directory is known.
 - Opportunistically prune stale `.overlord/tmp/` entries before writing new launch scratch files.
 - Export `TMPDIR`, `TMP`, `TEMP`, and `OVERLORD_TMPDIR` to the project `.overlord/tmp/`.
+- Export `MISSION_ID`, `OVERLORD_MISSION_ID`, and the resolved `OVERLORD_BACKEND_URL`
+  into launched agent terminals so connector hooks can publish prompt and permission
+  activity to the same mission/backend.
 - Pass concise prompt text or context-file references to the agent.
 - Preserve model/thinking/flags.
 - Support `--branch <name>` and `--no-worktree` with the same semantics as the

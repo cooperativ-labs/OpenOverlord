@@ -30,3 +30,5 @@ webapp/.yarn/install-state.gz
 
 **/.DS_Store
 
+# private-docs
+# private-docs/**/*

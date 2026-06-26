@@ -178,4 +178,47 @@ describe('protocol objective creation', () => {
 
     db.close();
   });
+
+  it('promotes a future objective over a blank draft placeholder when attach begins execution', () => {
+    const db = openInMemoryDatabase();
+    const ctx = createServiceContext({ db, source: 'protocol' });
+    const project = createProject({ ctx, name: 'Attach Future Before Placeholder' });
+    const { mission, objectives } = createMissionWithObjectives({
+      ctx,
+      projectId: project.id,
+      objectives: [
+        { objective: 'Run current objective' },
+        { objective: 'Use queued future objective' }
+      ]
+    });
+
+    ctx.db.prepare(`UPDATE objectives SET state = 'launching' WHERE id = ?`).run(objectives[0]?.id);
+    const placeholder = insertObjective({
+      ctx,
+      missionId: mission.id,
+      instructionText: '',
+      state: 'draft'
+    });
+
+    const attached = attachSession({
+      ctx,
+      missionId: mission.displayId,
+      agentIdentifier: 'codex'
+    });
+
+    assert.equal(attached.objective.state, 'executing');
+    assert.deepEqual(
+      attached.objectives.map(objective => objective.state),
+      ['executing', 'draft']
+    );
+    assert.equal(attached.objectives[1]?.id, objectives[1]?.id);
+    assert.equal(attached.objectives[1]?.objective, 'Use queued future objective');
+
+    const placeholderRow = ctx.db
+      .prepare(`SELECT deleted_at FROM objectives WHERE id = ?`)
+      .get(placeholder.id) as { deleted_at: string | null };
+    assert.ok(placeholderRow.deleted_at);
+
+    db.close();
+  });
 });

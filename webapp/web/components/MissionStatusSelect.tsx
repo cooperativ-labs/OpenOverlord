@@ -34,7 +34,7 @@ export function MissionStatusSelect({
         id="mission-status-select"
         aria-label="Select status"
         size="sm"
-        className="h-6 w-auto rounded-md border bg-transparent px-3 text-xs font-base hover:bg-muted"
+        className="h-[22px] w-auto rounded-full border-border/50 bg-transparent px-2.5 text-[11px] font-normal text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
       >
         <SelectValue>{currentStatus?.name ?? 'Status'}</SelectValue>
       </SelectTrigger>

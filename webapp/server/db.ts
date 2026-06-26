@@ -1,4 +1,4 @@
-import { fixupLocalStoragePaths, migrateDatabase } from '@overlord/database';
+import { fixupLocalStoragePaths, migrateDatabase, resolveAdapter } from '@overlord/database';
 import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
@@ -28,6 +28,26 @@ export function resolveDatabasePath(): string {
 }
 
 const databasePath = resolveDatabasePath();
+
+// Fail loudly when a Postgres backend is configured. This synchronous REST data
+// layer is still `better-sqlite3`-only; the hosted Postgres runtime runs through
+// the async `DatabaseClient` (`@overlord/database`). Silently opening a default
+// SQLite file when an operator configured `database_url`/`DATABASE_URL` for
+// Postgres would serve an empty/wrong database, so adapter selection is made
+// explicit here instead of implicitly resolving to `better-sqlite3`.
+// `resolveDatabasePath` already bridged `overlord.toml`'s `database_url` into the
+// environment, so `resolveAdapter()` sees the same value the rest of the stack does.
+{
+  const adapter = resolveAdapter();
+  if (adapter.type === 'postgres') {
+    throw new Error(
+      'A Postgres backend is configured (database_url/DATABASE_URL), but the embedded ' +
+        'webapp REST server runs on better-sqlite3 only. The hosted Postgres runtime is ' +
+        'served through the async DatabaseClient; do not point this local server at Postgres. ' +
+        'Run migrations with `yarn db:migrate:postgres` and serve the hosted backend instead.'
+    );
+  }
+}
 
 // Open the local Overlord database directly through better-sqlite3, exactly as
 // the objective specifies. WAL mode lets the CLI write concurrently while the

@@ -1,0 +1,20 @@
+# Keep the build context lean and never ship local state or secrets into the image.
+node_modules
+**/node_modules
+.git
+.yarn/cache
+.yarn/install-state.gz
+**/.yarn/install-state.gz
+dist
+**/dist
+webapp/dist
+webapp/dist-server
+.env
+.env.*
+!.env.prod.example
+!.env.local.example
+.neon
+*.log
+.DS_Store
+desktop/release
+desktop/out

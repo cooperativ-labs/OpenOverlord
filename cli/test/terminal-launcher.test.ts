@@ -47,6 +47,31 @@ test('iTerm2 launcher drives osascript to open a new window', () => {
   assert.ok(script.includes(`'claude'`));
 });
 
+test('terminal launch exports mission env for connector hooks', () => {
+  const exec = resolveLaunchExecution({
+    ...AGENT,
+    terminalLauncher: 'iTerm2',
+    extraEnv: {
+      MISSION_ID: 'coo:11',
+      OVERLORD_BACKEND_URL: 'http://127.0.0.1:4310',
+      OVERLORD_EXECUTION_REQUEST_ID: 'req-123'
+    }
+  });
+  const script = exec.args[1] ?? '';
+  assert.ok(script.includes(`export MISSION_ID='coo:11'`));
+  assert.ok(script.includes(`export OVERLORD_BACKEND_URL='http://127.0.0.1:4310'`));
+  assert.ok(script.includes(`export OVERLORD_EXECUTION_REQUEST_ID='req-123'`));
+});
+
+test('custom terminal prefixes receive mission env in the agent command', () => {
+  const exec = resolveLaunchExecution({
+    ...AGENT,
+    terminalLauncher: 'open -a Ghostty --args',
+    extraEnv: { MISSION_ID: 'coo:11' }
+  });
+  assert.ok(exec.command.includes(`env MISSION_ID='coo:11' 'claude'`));
+});
+
 test('iTerm2 tab placement creates a tab in the current window', () => {
   const exec = resolveLaunchExecution({
     ...AGENT,

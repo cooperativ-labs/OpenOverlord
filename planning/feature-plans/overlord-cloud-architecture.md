@@ -411,6 +411,27 @@ Target types:
    queue/claim/launch/fail logic before expanding remote runners; remote targets
    magnify duplicated state handling and stale-launch gaps.
 
+### Headless by design — no virtual desktops
+
+The cloud execution model is **fully headless**, which keeps the Railway managed
+runner within Railway's terms (VNC and virtual desktops are not permitted there):
+
+- Agents are **CLI processes** (Claude Code, Codex CLI, etc.) launched by
+  `ovld runner` in the headless launch profile — stdout/stderr captured to
+  per-request logs, optional `tmux` for an inspectable TTY. No X server, no
+  display server, no VNC, no graphical desktop.
+- Inference runs on the user's own connected agent service, not on the runner,
+  so the runner is just Node + Git + `ovld` + agent CLIs in a container.
+- The UX items that sound graphical are not desktops: **"browser preview"** means
+  headless Chromium (screenshots / DOM) or proxying the dev server's HTTP port,
+  and **"Open shell"** means a PTY/terminal streamed over an audited backend
+  session — neither needs a GUI.
+
+If a use case ever genuinely requires a graphical desktop (a windowed IDE, a
+human-watched interactive browser, VNC), it does **not** belong on Railway —
+route it to a Daytona sandbox or a dedicated VM provider that permits virtual
+desktops. The baseline Overlord Cloud offering does not need this.
+
 ### Future execution targets
 
 - **Managed cloud persistent runner (Railway volume-backed service):** one

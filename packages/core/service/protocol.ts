@@ -8,13 +8,11 @@ import { resolveMissionId, resolveProjectId } from './context.js';
 import { ServiceError } from './errors.js';
 import { createExecutionRequest, linkExecutionRequestToSession } from './execution-requests.js';
 import {
-  addObjectivesToMission,
   type ArtifactSummary,
   type AttachmentSummary,
   createMissionWithObjectives,
-  discussObjective,
+  ensureNextDraftObjective,
   getMissionSummary,
-  insertObjective,
   listArtifacts,
   listAttachments,
   listMissionEvents,
@@ -25,7 +23,6 @@ import {
   moveMissionToExecute,
   moveMissionToReview,
   type ObjectiveSummary,
-  searchMissions,
   type SharedContextEntry
 } from './missions.js';
 import { loadAgentInstructionsForWorkspaceUser } from './profiles.js';
@@ -440,53 +437,13 @@ export function attachSession({
       )
       .run(inheritedDraftAgent || null, now, objective.id, context.mission.id);
 
-    const existingDraft = ctx.db
-      .prepare(
-        `SELECT id FROM objectives
-         WHERE mission_id = ? AND state = 'draft' AND deleted_at IS NULL
-         LIMIT 1`
-      )
-      .get(context.mission.id) as { id: string } | undefined;
-
-    if (!existingDraft) {
-      const nextFuture = ctx.db
-        .prepare(
-          `SELECT id, revision FROM objectives
-           WHERE mission_id = ? AND state = 'future' AND deleted_at IS NULL
-           ORDER BY position ASC, created_at ASC LIMIT 1`
-        )
-        .get(context.mission.id) as { id: string; revision: number } | undefined;
-
-      if (nextFuture) {
-        const nextRevision = nextFuture.revision + 1;
-        ctx.db
-          .prepare(
-            `UPDATE objectives SET state = 'draft', updated_at = ?, revision = ?
-             WHERE id = ? AND mission_id = ?`
-          )
-          .run(now, nextRevision, nextFuture.id, context.mission.id);
-
-        recordChange({
-          ctx,
-          entityType: 'objective',
-          entityId: nextFuture.id,
-          operation: 'update',
-          entityRevision: nextRevision,
-          projectId: context.mission.projectId,
-          missionId: context.mission.id,
-          objectiveId: nextFuture.id,
-          changedFields: ['state']
-        });
-      } else {
-        insertObjective({
-          ctx,
-          missionId: context.mission.id,
-          instructionText: '',
-          state: 'draft',
-          assignedAgent: inheritedDraftAgent || null
-        });
-      }
-    }
+    ensureNextDraftObjective({
+      ctx,
+      missionId: context.mission.id,
+      projectId: context.mission.projectId,
+      assignedAgent: inheritedDraftAgent || null,
+      now
+    });
 
     moveMissionToExecute({ ctx, missionId: context.mission.id });
 
@@ -1497,6 +1454,14 @@ export function deliverSession({
     .get(session.objective_id) as
     | { assigned_agent: string | null; model: string | null; reasoning_effort: string | null }
     | undefined;
+
+  ensureNextDraftObjective({
+    ctx,
+    missionId: mission.id,
+    projectId: mission.projectId,
+    assignedAgent: deliveredObjective?.assigned_agent ?? null,
+    now: nowIso()
+  });
 
   const nextObjective = ctx.db
     .prepare(
