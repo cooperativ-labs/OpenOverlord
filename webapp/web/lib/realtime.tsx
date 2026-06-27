@@ -3,6 +3,10 @@ import { createContext, type ReactNode, useContext, useEffect, useState } from '
 
 import type { EntityChangeDto } from '../../shared/contract.ts';
 
+import { getBearerAuthorizationHeader, isRemoteBackend } from './api-base.ts';
+import { resolveEventSourceUrl } from './api-transport.ts';
+import { connectEventStream } from './fetch-sse.ts';
+
 export type LinkState = 'connecting' | 'live' | 'reconnecting';
 
 interface RealtimeValue {
@@ -17,11 +21,6 @@ const RealtimeContext = createContext<RealtimeValue>({
   lastChanges: []
 });
 
-/**
- * Holds one SSE connection to `GET /api/stream` for the whole app. Every delta
- * (or coarse refresh) invalidates the TanStack Query cache, so any change to the
- * underlying database — whether made here or by the CLI — is reflected live.
- */
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [state, setState] = useState<LinkState>('connecting');
@@ -29,10 +28,35 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const [lastChanges, setLastChanges] = useState<EntityChangeDto[]>([]);
 
   useEffect(() => {
-    const source = new EventSource('/api/stream');
-
-    const onLive = () => setState('live');
     const invalidateAll = () => queryClient.invalidateQueries();
+    const onLive = () => setState('live');
+
+    if (isRemoteBackend()) {
+      const close = connectEventStream({
+        url: resolveEventSourceUrl('/api/stream'),
+        headers: getBearerAuthorizationHeader(),
+        handlers: {
+          onOpen: onLive,
+          onHello: cursor => setLastSeq(cursor ?? 0),
+          onChange: payload => {
+            onLive();
+            setLastSeq(payload.cursor ?? 0);
+            setLastChanges(
+              Array.isArray(payload.changes) ? (payload.changes as EntityChangeDto[]) : []
+            );
+            invalidateAll();
+          },
+          onRefresh: () => {
+            onLive();
+            invalidateAll();
+          },
+          onError: () => setState('reconnecting')
+        }
+      });
+      return close;
+    }
+
+    const source = new EventSource('/api/stream');
 
     source.addEventListener('open', onLive);
     source.addEventListener('hello', event => {
@@ -62,7 +86,6 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       invalidateAll();
     });
     source.addEventListener('error', () => {
-      // EventSource auto-reconnects; reflect the gap in the UI meanwhile.
       setState('reconnecting');
     });
 

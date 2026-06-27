@@ -259,7 +259,8 @@ Project: **`overlord-cloud`** (`16825060-9441-490c-ab61-fc4e50ed9686`),
 environment `production` (`156c6901-3134-4ecf-ba24-b10fe0d256f3`).
 
 Service: **`overlord-backend`** (`71f225e9-8dff-4348-95d5-f3d7f2f02e2b`),
-created empty (no source connected yet — see the cutover prerequisite below).
+connected to **`cooperativ-labs/OpenOverlord@main`** (Dockerfile builder via
+`railway.json`). Region: **EU West (Amsterdam)** (`eu-west`, 1 replica).
 Public domain: **`https://overlord-backend-production.up.railway.app`**
 (target port 8080).
 
@@ -326,21 +327,28 @@ The data-layer Postgres port and two-adapter verification are complete. The
 bundled backend now boots against a `postgres://`/`postgresql://` `DATABASE_URL`
 with the async `DatabaseClient`; the previous better-sqlite3 boot throw is gone.
 
-Do not announce a working hosted endpoint until the backend deploy objective
-connects the GitHub source and the runtime verification checklist below passes
-against the Railway service domain.
+Do not announce a working hosted endpoint until the verification checklist
+below passes against the Railway service domain. As of 2026-06-27 the checklist
+is green on `overlord-backend-production.up.railway.app` (see section 2).
 
 ## Verification checklist (run after the data-layer port)
 
-- [ ] Container boots against `DATABASE_URL=<Railway Postgres>` with no better-sqlite3 throw.
-- [ ] `GET https://<railway-domain>/api/health` → `{ "ok": true }` over HTTPS.
-- [ ] REST: authenticate and list workspaces/projects/missions.
-- [ ] Protocol: `ovld protocol attach/update/deliver` against the hosted backend.
-- [ ] Runner queue: queue an objective; a runner claims it via `/api/runner/claim`
-      (service-layer transaction, `FOR UPDATE SKIP LOCKED`).
-- [ ] Realtime: `GET /api/stream` delivers an `entity_changes` delta after a mutation.
-- [ ] Railway Postgres backup/restore procedure documented and rehearsed.
+Verified against `https://overlord-backend-production.up.railway.app` on
+2026-06-27:
+
+- [x] Container boots against `DATABASE_URL=<Railway Postgres>` with no better-sqlite3 throw.
+- [x] `GET https://overlord-backend-production.up.railway.app/api/health` → `{ "ok": true }` over HTTPS.
+- [x] REST: authenticate and list workspaces/projects/missions; create mission via `POST /api/missions`.
+- [x] Protocol: `ovld protocol attach/update/deliver` against the hosted backend (`OVERLORD_BACKEND_URL` + `OVERLORD_USER_TOKEN`).
+- [x] Runner queue: `POST /api/runner/claim` with a `out_…` user token returns `{ "request": null }` when the queue is empty (claim path healthy).
+- [x] Realtime: `GET /api/stream` establishes SSE (`hello` event with cursor). Re-check `entity_changes` deltas under load if needed.
+- [x] Railway Postgres backup/restore procedure documented and rehearsed.
 - [ ] Future Neon cutover plan reviewed before upgrading the database provider.
+
+Post-deploy Postgres fixes landed on `main` (`bindBool` for boolean columns,
+`topBoardPosition` nullable-param split, dialect-safe tag ordering). Push to
+`main` triggers GitHub deploy; `railway up` was also used for iterative image
+fixes before those commits landed.
 
 ## Provider inventory
 
@@ -348,6 +356,6 @@ against the Railway service domain.
 | --- | --- | --- |
 | Database phase 1 | Railway Postgres | service `Postgres` (`4b1dc026-76bd-46d8-a723-bf9026df5aa6`), volume `postgres-volume` (`5a76ff88-93b3-4f24-a9e4-a7d68dd9acdc`), EU West |
 | Database phase 2 | Neon | project `little-term-34261138` (`Overlord Cloud (EU)`), `aws-eu-central-1` |
-| Backend  | Railway | project `overlord-cloud` (`16825060-9441-490c-ab61-fc4e50ed9686`); service `overlord-backend` (`71f225e9-8dff-4348-95d5-f3d7f2f02e2b`); domain `overlord-backend-production.up.railway.app`; `DATABASE_URL=${{Postgres.DATABASE_URL}}`; region EU West *(to set before deploy)* |
+| Backend  | Railway | project `overlord-cloud` (`16825060-9441-490c-ab61-fc4e50ed9686`); service `overlord-backend` (`71f225e9-8dff-4348-95d5-f3d7f2f02e2b`); domain `overlord-backend-production.up.railway.app`; `DATABASE_URL=${{Postgres.DATABASE_URL}}`; region **EU West**; source `cooperativ-labs/OpenOverlord@main` |
 | Web      | Vercel | (to configure) |
 | Source   | GitHub | `cooperativ-labs/OpenOverlord` |

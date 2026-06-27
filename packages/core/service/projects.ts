@@ -195,7 +195,13 @@ export async function addProjectResource({
     await ctx.db.run(
       `UPDATE project_resources SET is_primary = ?, updated_at = ?, revision = revision + 1
          WHERE project_id = ? AND deleted_at IS NULL AND is_primary = ? AND execution_target_id = ?`,
-      [bindBool(ctx.db.dialect, false), now, resolvedProjectId, bindBool(ctx.db.dialect, true), executionTargetId]
+      [
+        bindBool(ctx.db.dialect, false),
+        now,
+        resolvedProjectId,
+        bindBool(ctx.db.dialect, true),
+        executionTargetId
+      ]
     );
   }
 

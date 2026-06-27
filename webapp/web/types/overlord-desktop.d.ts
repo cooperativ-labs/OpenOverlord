@@ -37,6 +37,24 @@ declare global {
     updateCommand: string;
   };
 
+  type DesktopBackendMode = 'local' | 'remote';
+
+  type DesktopBackendInfo = {
+    id: string;
+    label: string;
+    mode: DesktopBackendMode;
+    backendUrl: string;
+    apiBaseUrl: string;
+    shellOrigin: string;
+  };
+
+  type DesktopBackendProfile = {
+    id: string;
+    label: string;
+    mode: DesktopBackendMode;
+    backendUrl: string;
+  };
+
   type OverlordDesktopBridge = {
     isDesktop: true;
     platform: NodeJS.Platform;
@@ -68,6 +86,17 @@ declare global {
       update: () => Promise<CliUpdateStatus>;
       onStatus: (callback: (status: CliUpdateStatus) => void) => () => void;
     };
+    getActiveBackend?: () => Promise<DesktopBackendInfo>;
+    listBackends?: () => Promise<DesktopBackendProfile[]>;
+    addBackend?: (payload: {
+      label: string;
+      backendUrl: string;
+    }) => Promise<DesktopBackendProfile>;
+    removeBackend?: (id: string) => Promise<boolean>;
+    switchBackend?: (id: string) => Promise<DesktopBackendInfo>;
+    getBearerToken?: (profileId: string) => Promise<string | null>;
+    setBearerToken?: (payload: { profileId: string; token: string }) => Promise<boolean>;
+    clearBearerToken?: (profileId: string) => Promise<boolean>;
   };
 
   interface Window {

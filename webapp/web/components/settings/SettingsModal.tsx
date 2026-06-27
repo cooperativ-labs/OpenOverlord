@@ -1,5 +1,6 @@
 import {
   Bell,
+  Cloud,
   Code2,
   GitBranch,
   Info,
@@ -18,6 +19,7 @@ import { RealtimeStatus } from '@/components/RealtimeStatus';
 import { AboutPage } from '@/components/settings/AboutPage';
 import { AccountPage } from '@/components/settings/AccountPage';
 import { ApplicationPage } from '@/components/settings/ApplicationPage';
+import { BackendPage } from '@/components/settings/BackendPage';
 import { DesktopUpdatesPage } from '@/components/settings/DesktopUpdatesPage';
 import { ExecutionTargetsPage } from '@/components/settings/ExecutionTargetsPage';
 import { HotkeysPage } from '@/components/settings/HotkeysPage';
@@ -53,7 +55,10 @@ const appNavItems: SettingsNavItem[] = [
   { name: 'About', icon: Info }
 ];
 
-const desktopNavItem: SettingsNavItem = { name: 'Desktop', icon: MonitorDown };
+const desktopNavItems: SettingsNavItem[] = [
+  { name: 'Backend', icon: Cloud },
+  { name: 'Desktop', icon: MonitorDown }
+];
 
 const userNavItems: SettingsNavItem[] = [
   { name: 'Profile', icon: User },
@@ -62,24 +67,33 @@ const userNavItems: SettingsNavItem[] = [
   { name: 'Hotkeys', icon: Keyboard }
 ];
 
-const navItems: SettingsNavItem[] = [
-  ...workflowNavItems,
-  ...userNavItems,
-  ...appNavItems,
-  desktopNavItem
-];
-
-export type SettingsNavSection = (typeof navItems)[number]['name'];
+export type SettingsNavSection =
+  | (typeof workflowNavItems)[number]['name']
+  | (typeof appNavItems)[number]['name']
+  | (typeof desktopNavItems)[number]['name']
+  | (typeof userNavItems)[number]['name'];
 
 export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalProps) {
   const [activeNav, setActiveNav] = useState<SettingsNavSection>('Profile');
   const meta = useMeta();
   const isDesktop = typeof window !== 'undefined' && window.overlord?.isDesktop === true;
+  const navItems = useMemo<SettingsNavItem[]>(
+    () => [
+      ...workflowNavItems,
+      ...userNavItems,
+      ...appNavItems,
+      ...(isDesktop ? desktopNavItems : [])
+    ],
+    [isDesktop]
+  );
   const navGroups = useMemo<SettingsNavGroup[]>(
     () => [
       { label: 'Workflow', items: workflowNavItems },
       { label: 'User', items: userNavItems },
-      { label: 'Application', items: isDesktop ? [...appNavItems, desktopNavItem] : appNavItems }
+      {
+        label: 'Application',
+        items: isDesktop ? [...appNavItems, ...desktopNavItems] : appNavItems
+      }
     ],
     [isDesktop]
   );
@@ -125,6 +139,7 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
       {activeNav === 'Notifications' && <NotificationsPage />}
       {activeNav === 'Execution Targets' && <ExecutionTargetsPage />}
       {activeNav === 'Worktrees' && <WorktreesPage />}
+      {activeNav === 'Backend' && <BackendPage />}
       {activeNav === 'Desktop' && <DesktopUpdatesPage />}
       {activeNav === 'Profile' && <UserProfilePage open={open} />}
       {activeNav === 'Account' && <AccountPage open={open} />}

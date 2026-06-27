@@ -1,5 +1,16 @@
 import { BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron';
 
+import {
+  addRemoteBackend,
+  type BackendRuntimeController,
+  clearBearerTokenForProfile,
+  getPublicActiveBackend,
+  listPublicBackends,
+  readBearerTokenForProfile,
+  removeRemoteBackend,
+  switchActiveBackend,
+  writeBearerTokenForProfile
+} from './backend-runtime.js';
 import type { CliUpdater } from './cli-updater.js';
 import { isNativeThemeSource, setNativeThemeSource } from './native-theme.js';
 import {
@@ -22,12 +33,16 @@ export function registerIpc({
   getWindow,
   updater,
   cliUpdater,
-  preloadPath
+  preloadPath,
+  getShellOrigin,
+  getBackendController
 }: {
   getWindow: () => BrowserWindow | null;
   updater: DesktopUpdater;
   cliUpdater: CliUpdater;
   preloadPath: string;
+  getShellOrigin: () => string;
+  getBackendController: () => BackendRuntimeController | null;
 }): void {
   // Pick a local directory (e.g. to link a project to a checkout).
   ipcMain.handle('overlord:choose-directory', async () => {
@@ -93,6 +108,66 @@ export function registerIpc({
   ipcMain.handle('overlord:cli-updates:get-status', () => cliUpdater.getStatus());
   ipcMain.handle('overlord:cli-updates:check', () => cliUpdater.checkForUpdates());
   ipcMain.handle('overlord:cli-updates:update', () => cliUpdater.runUpdate());
+
+  ipcMain.handle('overlord:backend:get-active', () =>
+    getPublicActiveBackend({ shellOrigin: getShellOrigin() })
+  );
+
+  ipcMain.handle('overlord:backend:list', () =>
+    listPublicBackends({ shellOrigin: getShellOrigin() })
+  );
+
+  ipcMain.handle(
+    'overlord:backend:add',
+    (_event, payload: { label?: unknown; backendUrl?: unknown }) => {
+      if (typeof payload?.label !== 'string' || typeof payload?.backendUrl !== 'string') {
+        throw new Error('Backend label and URL are required.');
+      }
+      return addRemoteBackend({ label: payload.label, backendUrl: payload.backendUrl });
+    }
+  );
+
+  ipcMain.handle('overlord:backend:remove', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id.length === 0) {
+      throw new Error('Backend profile id is required.');
+    }
+    removeRemoteBackend(id);
+    return true;
+  });
+
+  ipcMain.handle('overlord:backend:switch', async (_event, id: unknown) => {
+    if (typeof id !== 'string' || id.length === 0) {
+      throw new Error('Backend profile id is required.');
+    }
+    const controller = getBackendController();
+    if (!controller) {
+      throw new Error('Backend controller is not ready.');
+    }
+    await switchActiveBackend({ id, controller });
+    return getPublicActiveBackend({ shellOrigin: getShellOrigin() });
+  });
+
+  ipcMain.handle('overlord:backend:get-bearer-token', (_event, profileId: unknown) => {
+    if (typeof profileId !== 'string' || profileId.length === 0) return null;
+    return readBearerTokenForProfile(profileId);
+  });
+
+  ipcMain.handle(
+    'overlord:backend:set-bearer-token',
+    (_event, payload: { profileId?: unknown; token?: unknown }) => {
+      if (typeof payload?.profileId !== 'string' || typeof payload?.token !== 'string') {
+        throw new Error('Profile id and token are required.');
+      }
+      writeBearerTokenForProfile({ profileId: payload.profileId, token: payload.token });
+      return true;
+    }
+  );
+
+  ipcMain.handle('overlord:backend:clear-bearer-token', (_event, profileId: unknown) => {
+    if (typeof profileId !== 'string' || profileId.length === 0) return false;
+    clearBearerTokenForProfile(profileId);
+    return true;
+  });
 
   ipcMain.handle('overlord:quick-task:get-hotkey', () => ({
     accelerator: getStoredQuickTaskHotkey(),

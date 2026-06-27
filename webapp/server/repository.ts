@@ -63,8 +63,8 @@ import type {
 import { missionWorktreePath, previewMissionBranch } from './branch-planning.ts';
 import { generateCommitMessageFromDiff } from './commit-message-automation.ts';
 import {
-  getActorWorkspaceUserId,
   DATABASE_DIALECT,
+  getActorWorkspaceUserId,
   newId,
   nowIso,
   recordChange,
@@ -515,7 +515,13 @@ async function clearPrimaryResourcesForTarget(
         AND deleted_at IS NULL
         AND is_primary = ?
         AND execution_target_id = ?`,
-      [bindBool(DATABASE_DIALECT, false), now, projectId, bindBool(DATABASE_DIALECT, true), executionTargetId]
+      [
+        bindBool(DATABASE_DIALECT, false),
+        now,
+        projectId,
+        bindBool(DATABASE_DIALECT, true),
+        executionTargetId
+      ]
     );
   }
 }

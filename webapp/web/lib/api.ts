@@ -92,6 +92,8 @@ export class ApiRequestError extends Error {
   }
 }
 
+import { fetchApi } from './api-transport.ts';
+
 async function request<T>(
   method: string,
   url: string,
@@ -101,9 +103,8 @@ async function request<T>(
   // A Blob/File body is sent as-is (used by the upload service); everything else
   // is JSON. `rawHeaders` lets callers send a binary body with its own headers.
   const isRaw = rawHeaders !== undefined;
-  const res = await fetch(url, {
+  const res = await fetchApi(url, {
     method,
-    credentials: 'same-origin',
     headers: isRaw
       ? rawHeaders
       : body !== undefined
@@ -142,7 +143,7 @@ async function requestDownload(
   method: string,
   url: string
 ): Promise<{ blob: Blob; filename: string | null }> {
-  const res = await fetch(url, { method, credentials: 'same-origin' });
+  const res = await fetchApi(url, { method });
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`;
     let code: string | undefined;

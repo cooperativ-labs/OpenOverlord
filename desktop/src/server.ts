@@ -59,24 +59,78 @@ export async function waitForHealth({
   host,
   port,
   timeoutMs = 30_000,
-  intervalMs = 300
+  intervalMs = 300,
+  https = false
 }: {
   host: string;
   port: number;
   timeoutMs?: number;
   intervalMs?: number;
+  https?: boolean;
 }): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (await pingHealth(host, port)) return true;
+    if (await pingHealth({ host, port, https })) return true;
     await delay(intervalMs);
   }
   return false;
 }
 
-function pingHealth(host: string, port: number): Promise<boolean> {
+export async function waitForRemoteHealth({
+  backendUrl,
+  timeoutMs = 30_000,
+  intervalMs = 500
+}: {
+  backendUrl: string;
+  timeoutMs?: number;
+  intervalMs?: number;
+}): Promise<boolean> {
+  const parsed = new URL(backendUrl);
+  const https = parsed.protocol === 'https:';
+  const port = parsed.port ? Number(parsed.port) : https ? 443 : 80;
+  return waitForHealth({
+    host: parsed.hostname,
+    port,
+    timeoutMs,
+    intervalMs,
+    https
+  });
+}
+
+function pingHealth({
+  host,
+  port,
+  https
+}: {
+  host: string;
+  port: number;
+  https: boolean;
+}): Promise<boolean> {
   return new Promise(resolve => {
-    const req = http.get({ host, port, path: '/api/health', timeout: 2_000 }, res => {
+    const path = '/api/health';
+    if (https) {
+      import('node:https').then(({ get }) => {
+        const req = get({ host, port, path, timeout: 4_000 }, res => {
+          let body = '';
+          res.on('data', chunk => (body += chunk));
+          res.on('end', () => {
+            try {
+              resolve(res.statusCode === 200 && JSON.parse(body).ok === true);
+            } catch {
+              resolve(false);
+            }
+          });
+        });
+        req.on('error', () => resolve(false));
+        req.on('timeout', () => {
+          req.destroy();
+          resolve(false);
+        });
+      });
+      return;
+    }
+
+    const req = http.get({ host, port, path, timeout: 2_000 }, res => {
       let body = '';
       res.on('data', d => (body += d));
       res.on('end', () => {

@@ -36,6 +36,24 @@ export type CliUpdateStatus = {
   updateCommand: string;
 };
 
+export type DesktopBackendMode = 'local' | 'remote';
+
+export type DesktopBackendInfo = {
+  id: string;
+  label: string;
+  mode: DesktopBackendMode;
+  backendUrl: string;
+  apiBaseUrl: string;
+  shellOrigin: string;
+};
+
+export type DesktopBackendProfile = {
+  id: string;
+  label: string;
+  mode: DesktopBackendMode;
+  backendUrl: string;
+};
+
 /**
  * The `window.overlord` bridge. Kept deliberately tiny: a few shell-only
  * affordances the unmodified SPA can *feature-detect* (`if (window.overlord)`),
@@ -110,7 +128,22 @@ const api = {
         ipcRenderer.removeListener('overlord:cli-updates:status', listener);
       };
     }
-  }
+  },
+  getActiveBackend: (): Promise<DesktopBackendInfo> =>
+    ipcRenderer.invoke('overlord:backend:get-active'),
+  listBackends: (): Promise<DesktopBackendProfile[]> => ipcRenderer.invoke('overlord:backend:list'),
+  addBackend: (payload: { label: string; backendUrl: string }): Promise<DesktopBackendProfile> =>
+    ipcRenderer.invoke('overlord:backend:add', payload),
+  removeBackend: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('overlord:backend:remove', id),
+  switchBackend: (id: string): Promise<DesktopBackendInfo> =>
+    ipcRenderer.invoke('overlord:backend:switch', id),
+  getBearerToken: (profileId: string): Promise<string | null> =>
+    ipcRenderer.invoke('overlord:backend:get-bearer-token', profileId),
+  setBearerToken: (payload: { profileId: string; token: string }): Promise<boolean> =>
+    ipcRenderer.invoke('overlord:backend:set-bearer-token', payload),
+  clearBearerToken: (profileId: string): Promise<boolean> =>
+    ipcRenderer.invoke('overlord:backend:clear-bearer-token', profileId)
 };
 
 export type OverlordBridge = typeof api;

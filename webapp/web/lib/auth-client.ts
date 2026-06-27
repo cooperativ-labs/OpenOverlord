@@ -1,7 +1,13 @@
 import { createAuthClient } from 'better-auth/react';
 
+import { getAuthBaseUrl } from './api-base.ts';
+
 export const authClient = createAuthClient({
-  basePath: '/api/auth'
+  baseURL: getAuthBaseUrl(),
+  basePath: '/api/auth',
+  fetchOptions: {
+    credentials: 'include'
+  }
 });
 
 export function normalizeLocalUsername(username: string): string {

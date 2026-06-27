@@ -377,3 +377,10 @@ export function initQuickTaskWindow({
   ensureWindow(preloadPath);
   registerQuickTaskHotkey({ preloadPath });
 }
+
+export function setQuickTaskBaseUrl(appOrigin: string): void {
+  baseUrl = appOrigin;
+  if (quickWindow && !quickWindow.isDestroyed()) {
+    void quickWindow.loadURL(getQuickTaskUrl());
+  }
+}

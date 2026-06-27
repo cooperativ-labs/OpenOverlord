@@ -39,5 +39,10 @@ export const store = {
     const current = load();
     current[key] = value;
     save();
+  },
+  delete(key: string): void {
+    const current = load();
+    delete current[key];
+    save();
   }
 };

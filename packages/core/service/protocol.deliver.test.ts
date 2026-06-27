@@ -233,14 +233,8 @@ describe('deliverSession mechanical change capture', () => {
       missionId: mission.displayId,
       includeCurrent: false
     });
-    assert.equal(
-      files.find(file => file.filePath === 'src/mine.ts')?.coverage,
-      'covered'
-    );
-    assert.equal(
-      files.find(file => file.filePath === 'webapp/package.json')?.coverage,
-      'skipped'
-    );
+    assert.equal(files.find(file => file.filePath === 'src/mine.ts')?.coverage, 'covered');
+    assert.equal(files.find(file => file.filePath === 'webapp/package.json')?.coverage, 'skipped');
 
     await db.close();
   });

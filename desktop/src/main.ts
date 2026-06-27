@@ -10,41 +10,44 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { resolveActiveBackend, sessionPartitionForProfile } from './backend-profiles.js';
+import {
+  type BackendRuntimeController,
+  bootActiveBackend,
+  createBackendRuntimeController,
+  resolveInitialShellOrigin,
+  stopAllBackendServers
+} from './backend-runtime.js';
 import { CliUpdater } from './cli-updater.js';
 import { registerIpc } from './ipc.js';
 import {
   hideQuickTaskWindow,
   initQuickTaskWindow,
+  setQuickTaskBaseUrl,
   unregisterQuickTaskHotkey
 } from './quick-task-window.js';
-import { findFreePort, startServer, stopServer, waitForHealth } from './server.js';
 import { DesktopUpdater } from './updater.js';
 import { applyCsp, createWindow, guardNavigation } from './window.js';
 
 loadDesktopEnvDefaults();
 
-// `__dirname` is the dist-electron directory (esbuild emits CJS). The preload
-// and splash assets are emitted alongside this bundle.
 const PRELOAD = path.join(__dirname, 'preload.cjs');
 const SPLASH = path.join(__dirname, 'splash.html');
 
 const HOST = process.env.OVERLORD_WEB_HOST ?? '127.0.0.1';
 const PREFERRED_PORT = parsePort(process.env.OVERLORD_WEB_PORT, 4310, 'OVERLORD_WEB_PORT');
 
-// Dev: connect to an already-running server (`yarn start` / `ovld serve`) instead
-// of forking the bundle, so a dev loop needs no Electron-ABI native rebuild.
 const DEV_CONNECT = process.env.OVERLORD_DESKTOP_DEV === '1';
 const DEV_URL = process.env.OVERLORD_DESKTOP_URL ?? `http://${HOST}:${PREFERRED_PORT}`;
 
 let mainWindow: BrowserWindow | null = null;
-let appOrigin = `http://${HOST}:${PREFERRED_PORT}`;
+let shellOrigin = `http://${HOST}:${PREFERRED_PORT}`;
+let backendController: BackendRuntimeController | null = null;
 let updater: DesktopUpdater | null = null;
 let cliUpdater: CliUpdater | null = null;
 
-// Expose the version to the preload bridge.
 process.env.OVERLORD_DESKTOP_VERSION = app.getVersion();
 
-// Single-instance lock: focus the existing window instead of opening a second.
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -66,6 +69,25 @@ if (!app.requestSingleInstanceLock()) {
 
 async function boot(): Promise<void> {
   ensurePackagedConfig();
+  shellOrigin = await resolveInitialShellOrigin({
+    host: HOST,
+    preferredPort: PREFERRED_PORT,
+    devConnect: DEV_CONNECT,
+    devUrl: DEV_URL
+  });
+
+  backendController = createBackendRuntimeController({
+    host: HOST,
+    preferredPort: PREFERRED_PORT,
+    devConnect: DEV_CONNECT,
+    devUrl: DEV_URL,
+    recreateWindow: async ({ shellOrigin: nextShellOrigin, active }) => {
+      shellOrigin = nextShellOrigin;
+      configureSessionPolicy(active);
+      return openMainWindow({ reloadExisting: true });
+    }
+  });
+
   updater = new DesktopUpdater(
     () => mainWindow,
     () => installApplicationMenu(updater!)
@@ -76,25 +98,92 @@ async function boot(): Promise<void> {
     getWindow: () => mainWindow,
     updater,
     cliUpdater,
-    preloadPath: PRELOAD
+    preloadPath: PRELOAD,
+    getShellOrigin: () => shellOrigin,
+    getBackendController: () => backendController
   });
 
-  // In connect-only dev mode the origin is the running dev server; otherwise we
-  // claim a free loopback port and the supervised server binds to it.
-  appOrigin = DEV_CONNECT
-    ? new URL(DEV_URL).origin
-    : `http://${HOST}:${await findFreePort(PREFERRED_PORT, HOST)}`;
+  const { active, healthy } = await bootActiveBackend({
+    shellOrigin,
+    host: HOST,
+    devConnect: DEV_CONNECT
+  });
+  configureSessionPolicy(active);
 
-  applyCsp(session.defaultSession, appOrigin);
+  if (!healthy) {
+    const { response } = await dialog.showMessageBox({
+      type: 'error',
+      title: 'Overlord',
+      message: 'Overlord could not start',
+      detail: startupFailureMessage(active),
+      buttons: ['Retry', 'Quit'],
+      defaultId: 0,
+      cancelId: 1
+    });
+    if (response === 0) {
+      await boot();
+      return;
+    }
+    app.quit();
+    return;
+  }
 
-  await openMainWindow();
-  initQuickTaskWindow({ appOrigin, preloadPath: PRELOAD });
+  await openMainWindow({ reloadExisting: false });
+  initQuickTaskWindow({ appOrigin: shellOrigin, preloadPath: PRELOAD });
+  setQuickTaskBaseUrl(shellOrigin);
   updater.startAutomaticChecks();
   cliUpdater.startAutomaticChecks();
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) void openMainWindow();
+    if (BrowserWindow.getAllWindows().length === 0) void openMainWindow({ reloadExisting: false });
   });
+}
+
+function configureSessionPolicy(active: ReturnType<typeof resolveActiveBackend>): void {
+  const partition = session.fromPartition(sessionPartitionForProfile(active.id));
+  applyCsp({
+    session: partition,
+    shellOrigin: active.shellOrigin,
+    apiOrigin: active.apiBaseUrl
+  });
+}
+
+async function openMainWindow({
+  reloadExisting
+}: {
+  reloadExisting: boolean;
+}): Promise<BrowserWindow | null> {
+  const active = resolveActiveBackend({ shellOrigin });
+  const partition = sessionPartitionForProfile(active.id);
+
+  if (reloadExisting && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.destroy();
+    mainWindow = null;
+  }
+
+  mainWindow = createWindow({ preloadPath: PRELOAD, partition });
+  guardNavigation(mainWindow, active.shellOrigin);
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+
+  await mainWindow.loadFile(SPLASH);
+
+  if (!mainWindow) return null;
+
+  await mainWindow.loadURL(`${active.shellOrigin}/`);
+  setQuickTaskBaseUrl(active.shellOrigin);
+  return mainWindow;
+}
+
+function startupFailureMessage(active: ReturnType<typeof resolveActiveBackend>): string {
+  if (active.mode === 'remote') {
+    return `Could not reach ${active.label} at ${active.apiBaseUrl}.\nCheck the URL and your network connection, then retry or switch back to Local.`;
+  }
+  if (DEV_CONNECT) {
+    return `Could not reach the Overlord dev server at ${shellOrigin}.\nStart it with \`ovld serve\` (or \`yarn start\`) and retry.`;
+  }
+  return `The Overlord server did not become ready at ${shellOrigin}.`;
 }
 
 function loadDesktopEnvDefaults(): void {
@@ -197,65 +286,15 @@ function tomlString(value: string): string {
   return JSON.stringify(value);
 }
 
-async function openMainWindow(): Promise<void> {
-  mainWindow = createWindow(PRELOAD);
-  guardNavigation(mainWindow, appOrigin);
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
-
-  await mainWindow.loadFile(SPLASH);
-
-  if (!DEV_CONNECT) startServer({ host: HOST, port: portOf(appOrigin) });
-
-  const healthy = await waitForHealth({ host: hostOf(appOrigin), port: portOf(appOrigin) });
-  if (!mainWindow) return;
-
-  if (healthy) {
-    await mainWindow.loadURL(`${appOrigin}/`);
-  } else {
-    await showStartupError();
-  }
-}
-
-async function showStartupError(): Promise<void> {
-  if (!mainWindow) return;
-  const message = DEV_CONNECT
-    ? `Could not reach the Overlord dev server at ${appOrigin}.\nStart it with \`ovld serve\` (or \`yarn start\`) and retry.`
-    : `The Overlord server did not become ready at ${appOrigin}.`;
-  const { response } = await dialog.showMessageBox(mainWindow, {
-    type: 'error',
-    title: 'Overlord',
-    message: 'Overlord could not start',
-    detail: message,
-    buttons: ['Retry', 'Quit'],
-    defaultId: 0,
-    cancelId: 1
-  });
-  if (response === 0) {
-    const healthy = await waitForHealth({
-      host: hostOf(appOrigin),
-      port: portOf(appOrigin),
-      timeoutMs: 15_000
-    });
-    if (healthy && mainWindow) await mainWindow.loadURL(`${appOrigin}/`);
-    else if (mainWindow) await showStartupError();
-  } else {
-    app.quit();
-  }
-}
-
 app.on('before-quit', () => {
   updater?.stopAutomaticChecks();
   cliUpdater?.stopAutomaticChecks();
   unregisterQuickTaskHotkey();
   hideQuickTaskWindow();
-  stopServer();
+  stopAllBackendServers();
 });
 
 app.on('window-all-closed', () => {
-  // A wrapper around a single web UI: closing the window quits the app (and the
-  // supervised server via `before-quit`) on every platform.
   app.quit();
 });
 
@@ -313,15 +352,6 @@ function installApplicationMenu(updater: DesktopUpdater): void {
       : ([] as MenuItemConstructorOptions[]))
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
-}
-
-function hostOf(origin: string): string {
-  return new URL(origin).hostname;
-}
-
-function portOf(origin: string): number {
-  const { port } = new URL(origin);
-  return port ? Number(port) : 80;
 }
 
 function describe(error: unknown): string {

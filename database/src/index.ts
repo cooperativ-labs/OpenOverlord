@@ -16,8 +16,8 @@ export {
   type DatabaseClient,
   openDatabaseClient,
   type RunResult,
-  type SqlDialect,
   sqlBoolLiteral,
+  type SqlDialect,
   toPostgresPlaceholders
 } from './client.js';
 export {

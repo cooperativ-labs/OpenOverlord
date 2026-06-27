@@ -26,7 +26,13 @@ const isMac = process.platform === 'darwin';
  * content stays opaque via `bg-background` in the renderer. The SPA syncs
  * `nativeTheme.themeSource` via IPC so vibrancy follows the app's theme toggle.
  */
-export function createWindow(preloadPath: string): BrowserWindow {
+export function createWindow({
+  preloadPath,
+  partition
+}: {
+  preloadPath: string;
+  partition?: string;
+}): BrowserWindow {
   const window = new BrowserWindow({
     width: 1280,
     height: 860,
@@ -48,7 +54,8 @@ export function createWindow(preloadPath: string): BrowserWindow {
       sandbox: true,
       nodeIntegration: false,
       webSecurity: true,
-      spellcheck: true
+      spellcheck: true,
+      partition
     }
   });
 
@@ -115,8 +122,25 @@ export function registerNativeContextMenu(window: BrowserWindow): void {
  * covers the SPA's fetches and the SSE stream. We allow inline styles (the SPA's
  * theming injects them) and `data:`/`blob:` images/fonts.
  */
-export function applyCsp(session: Session, appOrigin: string): void {
-  const wsOrigin = appOrigin.replace(/^http/, 'ws');
+export function applyCsp({
+  session,
+  shellOrigin,
+  apiOrigin
+}: {
+  session: Session;
+  shellOrigin: string;
+  apiOrigin?: string;
+}): void {
+  const connectOrigins = new Set<string>([
+    "'self'",
+    shellOrigin,
+    shellOrigin.replace(/^http/, 'ws')
+  ]);
+  if (apiOrigin && apiOrigin !== shellOrigin) {
+    connectOrigins.add(apiOrigin);
+    connectOrigins.add(apiOrigin.replace(/^http/, 'ws'));
+  }
+
   const csp = [
     `default-src 'self'`,
     // The SPA's index.html carries one tiny inline theme-bootstrap script; allow
@@ -126,7 +150,7 @@ export function applyCsp(session: Session, appOrigin: string): void {
     `style-src 'self' 'unsafe-inline'`,
     `img-src 'self' data: blob:`,
     `font-src 'self' data:`,
-    `connect-src 'self' ${appOrigin} ${wsOrigin}`,
+    `connect-src ${[...connectOrigins].join(' ')}`,
     `object-src 'none'`,
     `base-uri 'self'`,
     `frame-ancestors 'none'`
@@ -147,10 +171,10 @@ export function applyCsp(session: Session, appOrigin: string): void {
  * (docs links, GitHub, external auth) to the system browser. Origin comparison
  * only — identical to the closed app's handlers.
  */
-export function guardNavigation(window: BrowserWindow, appOrigin: string): void {
+export function guardNavigation(window: BrowserWindow, shellOrigin: string): void {
   const isExternal = (target: string): boolean => {
     try {
-      return new URL(target).origin !== appOrigin;
+      return new URL(target).origin !== shellOrigin;
     } catch {
       return true;
     }
