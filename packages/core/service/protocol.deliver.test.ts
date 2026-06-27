@@ -1,4 +1,4 @@
-import { openInMemoryDatabase } from '@overlord/database';
+import { createSqliteClient, openInMemoryDatabase } from '@overlord/database';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
@@ -9,37 +9,40 @@ import { createProject } from './projects.js';
 import { attachSession, deliverSession, updateSession } from './protocol.js';
 import { nowIso } from './util.js';
 
-function setup() {
-  const db = openInMemoryDatabase();
-  const ctx = createServiceContext({ db, source: 'cli' });
+async function setup() {
+  const db = createSqliteClient(openInMemoryDatabase());
+  const ctx = await createServiceContext({ db, source: 'cli' });
   return { db, ctx };
 }
 
-function submittedMission(ctx: ReturnType<typeof createServiceContext>, name: string) {
-  const project = createProject({ ctx, name });
-  const { mission, objectives } = createMissionWithObjectives({
+async function submittedMission(
+  ctx: Awaited<ReturnType<typeof createServiceContext>>,
+  name: string
+) {
+  const project = await createProject({ ctx, name });
+  const { mission, objectives } = await createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [{ objective: `Work for ${name}` }]
   });
-  ctx.db.prepare(`UPDATE objectives SET state = 'submitted' WHERE id = ?`).run(objectives[0]?.id);
+  await ctx.db.run(`UPDATE objectives SET state = 'submitted' WHERE id = ?`, [objectives[0]?.id]);
   return { project, mission, objectiveId: objectives[0]?.id as string };
 }
 
 describe('deliverSession mechanical change capture', () => {
-  it('promotes a future objective over a blank draft placeholder after delivery', () => {
-    const { db, ctx } = setup();
-    const project = createProject({ ctx, name: 'Deliver Future Before Placeholder' });
-    const { mission } = createMissionWithObjectives({
+  it('promotes a future objective over a blank draft placeholder after delivery', async () => {
+    const { db, ctx } = await setup();
+    const project = await createProject({ ctx, name: 'Deliver Future Before Placeholder' });
+    const { mission } = await createMissionWithObjectives({
       ctx,
       projectId: project.id,
       objectives: [{ objective: 'Complete current objective' }]
     });
-    const attached = attachSession({ ctx, missionId: mission.displayId });
+    const attached = await attachSession({ ctx, missionId: mission.displayId });
     const placeholder = attached.objectives.find(objective => objective.state === 'draft');
     assert.ok(placeholder);
 
-    const future = insertObjective({
+    const future = await insertObjective({
       ctx,
       missionId: mission.id,
       instructionText: 'Continue with real objective',
@@ -47,21 +50,20 @@ describe('deliverSession mechanical change capture', () => {
     });
     assert.equal(future.state, 'future');
 
-    deliverSession({
+    await deliverSession({
       ctx,
       missionId: mission.displayId,
       sessionKey: attached.sessionKey,
       summary: 'Delivered current objective.'
     });
 
-    const rows = ctx.db
-      .prepare(
-        `SELECT id, instruction_text, state
+    const rows = (await ctx.db.all(
+      `SELECT id, instruction_text, state
          FROM objectives
          WHERE mission_id = ? AND deleted_at IS NULL
-         ORDER BY position ASC`
-      )
-      .all(mission.id) as Array<{ id: string; instruction_text: string; state: string }>;
+         ORDER BY position ASC`,
+      [mission.id]
+    )) as Array<{ id: string; instruction_text: string; state: string }>;
     assert.deepEqual(
       rows.map(row => row.state),
       ['complete', 'draft']
@@ -69,24 +71,24 @@ describe('deliverSession mechanical change capture', () => {
     assert.equal(rows[1]?.id, future.id);
     assert.equal(rows[1]?.instruction_text, 'Continue with real objective');
 
-    const placeholderRow = ctx.db
-      .prepare(`SELECT deleted_at FROM objectives WHERE id = ?`)
-      .get(placeholder.id) as { deleted_at: string | null };
+    const placeholderRow = (await ctx.db.get(`SELECT deleted_at FROM objectives WHERE id = ?`, [
+      placeholder.id
+    ])) as { deleted_at: string | null };
     assert.ok(placeholderRow.deleted_at);
 
-    db.close();
+    await db.close();
   });
 
-  it('records run-supplied changed files and enforces rationale coverage', () => {
-    const { db, ctx } = setup();
-    const { mission } = submittedMission(ctx, 'Deliver Capture');
-    const attached = attachSession({ ctx, missionId: mission.displayId });
+  it('records run-supplied changed files and enforces rationale coverage', async () => {
+    const { db, ctx } = await setup();
+    const { mission } = await submittedMission(ctx, 'Deliver Capture');
+    const attached = await attachSession({ ctx, missionId: mission.displayId });
 
     // The CLI injects the VCS delta as changedFiles at deliver; a changed file
     // without a rationale must block delivery.
-    assert.throws(
-      () =>
-        deliverSession({
+    await assert.rejects(
+      async () =>
+        await deliverSession({
           ctx,
           missionId: mission.displayId,
           sessionKey: attached.sessionKey,
@@ -97,7 +99,7 @@ describe('deliverSession mechanical change capture', () => {
     );
 
     // With the rationale, delivery succeeds and the file is recorded and covered.
-    deliverSession({
+    await deliverSession({
       ctx,
       missionId: mission.displayId,
       sessionKey: attached.sessionKey,
@@ -114,7 +116,7 @@ describe('deliverSession mechanical change capture', () => {
       ]
     });
 
-    const files = listChangedFilesForReview({
+    const files = await listChangedFilesForReview({
       ctx,
       missionId: mission.displayId,
       includeCurrent: false
@@ -123,18 +125,18 @@ describe('deliverSession mechanical change capture', () => {
     assert.equal(files[0]?.filePath, 'src/feature.ts');
     assert.equal(files[0]?.coverage, 'covered');
 
-    db.close();
+    await db.close();
   });
 
-  it('accepts the camelCase filePath alias for a rationale', () => {
-    const { db, ctx } = setup();
-    const { mission } = submittedMission(ctx, 'Rationale Alias');
-    const attached = attachSession({ ctx, missionId: mission.displayId });
+  it('accepts the camelCase filePath alias for a rationale', async () => {
+    const { db, ctx } = await setup();
+    const { mission } = await submittedMission(ctx, 'Rationale Alias');
+    const attached = await attachSession({ ctx, missionId: mission.displayId });
 
     // An agent that generalizes the changed-files `filePath` casing to a
     // rationale must no longer be rejected; the alias normalizes to file_path
     // and satisfies coverage for the same path.
-    deliverSession({
+    await deliverSession({
       ctx,
       missionId: mission.displayId,
       sessionKey: attached.sessionKey,
@@ -151,7 +153,7 @@ describe('deliverSession mechanical change capture', () => {
       ]
     });
 
-    const files = listChangedFilesForReview({
+    const files = await listChangedFilesForReview({
       ctx,
       missionId: mission.displayId,
       includeCurrent: false
@@ -160,17 +162,17 @@ describe('deliverSession mechanical change capture', () => {
     assert.equal(files[0]?.filePath, 'src/alias.ts');
     assert.equal(files[0]?.coverage, 'covered');
 
-    db.close();
+    await db.close();
   });
 
-  it('skips rationale coverage when the run declares no file changes', () => {
-    const { db, ctx } = setup();
-    const { mission, objectiveId } = submittedMission(ctx, 'No File Changes');
-    const attached = attachSession({ ctx, missionId: mission.displayId });
+  it('skips rationale coverage when the run declares no file changes', async () => {
+    const { db, ctx } = await setup();
+    const { mission, objectiveId } = await submittedMission(ctx, 'No File Changes');
+    const attached = await attachSession({ ctx, missionId: mission.displayId });
 
     // A changed file was observed earlier, but the explicit no-file-changes
     // declaration must skip coverage so a genuine no-op run can deliver.
-    updateSession({
+    await updateSession({
       ctx,
       missionId: mission.displayId,
       sessionKey: attached.sessionKey,
@@ -178,7 +180,7 @@ describe('deliverSession mechanical change capture', () => {
       changedFiles: [{ filePath: 'src/leftover.ts', vcsStatus: 'M' }]
     });
 
-    const result = deliverSession({
+    const result = await deliverSession({
       ctx,
       missionId: mission.displayId,
       sessionKey: attached.sessionKey,
@@ -187,32 +189,30 @@ describe('deliverSession mechanical change capture', () => {
     });
     assert.ok(result.deliveryId);
 
-    const objective = ctx.db
-      .prepare(`SELECT state FROM objectives WHERE id = ?`)
-      .get(objectiveId) as { state: string };
+    const objective = (await ctx.db.get(`SELECT state FROM objectives WHERE id = ?`, [
+      objectiveId
+    ])) as { state: string };
     assert.equal(objective.state, 'complete');
 
-    db.close();
+    await db.close();
   });
 
-  it('enforces coverage objective-scoped across no-session records', () => {
-    const { db, ctx } = setup();
-    const { project, mission, objectiveId } = submittedMission(ctx, 'Objective Scope');
-    const attached = attachSession({ ctx, missionId: mission.displayId });
+  it('enforces coverage objective-scoped across no-session records', async () => {
+    const { db, ctx } = await setup();
+    const { project, mission, objectiveId } = await submittedMission(ctx, 'Objective Scope');
+    const attached = await attachSession({ ctx, missionId: mission.displayId });
 
     // A changed file recorded with no session (record-work style) for this
     // objective. Under the old session-scoped check a different session's
     // delivery would miss it; objective-scoped coverage must still require it.
     const now = nowIso();
-    ctx.db
-      .prepare(
-        `INSERT INTO changed_files
+    await ctx.db.run(
+      `INSERT INTO changed_files
            (id, workspace_id, project_id, mission_id, objective_id, session_id, file_path, vcs_status,
             current_diff_state, first_observed_at, last_observed_at, observed_metadata_json,
             created_at, updated_at, revision)
-         VALUES (?, ?, ?, ?, ?, NULL, ?, 'M', 'present', ?, ?, '{}', ?, ?, 1)`
-      )
-      .run(
+         VALUES (?, ?, ?, ?, ?, NULL, ?, 'M', 'present', ?, ?, '{}', ?, ?, 1)`,
+      [
         'cf-scope-1',
         ctx.workspace.id,
         project.id,
@@ -223,11 +223,12 @@ describe('deliverSession mechanical change capture', () => {
         now,
         now,
         now
-      );
+      ]
+    );
 
-    assert.throws(
-      () =>
-        deliverSession({
+    await assert.rejects(
+      async () =>
+        await deliverSession({
           ctx,
           missionId: mission.displayId,
           sessionKey: attached.sessionKey,
@@ -236,6 +237,6 @@ describe('deliverSession mechanical change capture', () => {
       /Missing change rationale for src\/shared\.ts/
     );
 
-    db.close();
+    await db.close();
   });
 });

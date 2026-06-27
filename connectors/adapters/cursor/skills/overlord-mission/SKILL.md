@@ -1,13 +1,9 @@
 ---
 name: overlord-mission
-description: Cursor adapter overlay for the shared Overlord mission workflow.
+description: Cursor adapter for the shared Overlord mission workflow.
 ---
 
-# Cursor Overlord Mission
-
-This Cursor skill is the adapter-specific entrypoint for the shared Connector Core at `connectors/core/overlord-mission/SKILL.md`.
-
-When working inside an Overlord source checkout, read and follow that core before using the Cursor-specific notes below. When this plugin is packaged for installation, setup copies the bundled skill and reference files into the installed plugin so the runtime package is self-contained.
+<!-- @connector-core -->
 
 ## Cursor Adapter Notes
 
@@ -27,24 +23,3 @@ When working inside an Overlord source checkout, read and follow that core befor
 - Attach for execution: `/attach` or `ovld protocol attach --mission-id <mission_id>`
 - Resume delivered work for follow-up execution: `ovld protocol resume-follow-up --mission-id <mission_id>`
 - Add ordered follow-up objectives: `/add-objectives` or `ovld protocol add-objectives --mission-id <mission_id> --objectives-json '[{"objective":"..."}]'`
-
-## Shared Lifecycle
-
-Follow the shared Connector Core lifecycle rules in the bundled reference files:
-
-1. Attach first with `ovld protocol attach --mission-id <mission_id>`.
-2. Post updates while working with `ovld protocol update` or liveness with `ovld protocol heartbeat`.
-3. Ask blocking questions with `ovld protocol ask` and stop work.
-4. Deliver with `ovld protocol deliver` when work is complete, including `changeRationales` only for meaningful file changes made as part of this mission. Do not include unrelated worktree changes in the delivery report or rationales, even to mark them as pre-existing.
-5. Do not continue implementation after delivery without `ovld protocol resume-follow-up` or `--begin-follow-up-work` on a still-live session.
-
-For full command syntax, flags, phase values, and event types see [reference/cli.md](reference/cli.md).
-
-## References
-
-- Shared source: `connectors/core/overlord-mission/SKILL.md`
-- [reference/cli.md](reference/cli.md)
-- [reference/context.md](reference/context.md)
-- [reference/devices.md](reference/devices.md)
-- [reference/mcp.md](reference/mcp.md)
-- [reference/shell-escaping.md](reference/shell-escaping.md)

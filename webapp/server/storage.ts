@@ -24,7 +24,14 @@ import { fileURLToPath } from 'node:url';
 
 import type { ObjectiveAttachmentDto, StoredImageDto } from '../shared/contract.ts';
 
-import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
+import {
+  getActorWorkspaceUserId,
+  newId,
+  nowIso,
+  recordChange,
+  requireDatabaseClient,
+  WORKSPACE
+} from './db.ts';
 import { ApiError } from './errors.ts';
 
 // webapp/server/storage.ts -> repo root is two levels up from server/.
@@ -61,14 +68,13 @@ interface StorageBucketRow {
 }
 
 /** Resolve the active workspace's bucket for `bucketKey`, or 404 if absent. */
-function resolveBucket(bucketKey: string): StorageBucketRow {
-  const row = db
-    .prepare(
-      `SELECT id, bucket_key, storage_backend, base_url, local_path
-         FROM storage_buckets
-        WHERE workspace_id = ? AND bucket_key = ? AND deleted_at IS NULL`
-    )
-    .get(WORKSPACE.id, bucketKey) as StorageBucketRow | undefined;
+async function resolveBucket(bucketKey: string): Promise<StorageBucketRow> {
+  const row = await requireDatabaseClient().get<StorageBucketRow>(
+    `SELECT id, bucket_key, storage_backend, base_url, local_path
+       FROM storage_buckets
+      WHERE workspace_id = ? AND bucket_key = ? AND deleted_at IS NULL`,
+    [WORKSPACE.id, bucketKey]
+  );
   if (!row) throw new ApiError(404, `Unknown storage bucket '${bucketKey}'`);
   return row;
 }
@@ -143,20 +149,20 @@ function writeImageObject(bucket: StorageBucketRow, input: UploadImageInput): Wr
 }
 
 /** Resolve the operator's `profiles.id` for the active workspace actor. */
-function operatorUserId(): string {
-  if (ACTOR_WORKSPACE_USER_ID) {
-    const row = db
-      .prepare(`SELECT profile_id FROM workspace_users WHERE id = ?`)
-      .get(ACTOR_WORKSPACE_USER_ID) as { profile_id: string } | undefined;
+async function operatorUserId(): Promise<string> {
+  const client = requireDatabaseClient();
+  if (getActorWorkspaceUserId()) {
+    const row = await client.get<{ profile_id: string }>(
+      `SELECT profile_id FROM workspace_users WHERE id = ?`,
+      [getActorWorkspaceUserId()]
+    );
     if (row) return row.profile_id;
   }
-  const fallback = db
-    .prepare(
-      `SELECT id FROM profiles
-        WHERE kind = 'human' AND status = 'active' AND deleted_at IS NULL
-        ORDER BY created_at ASC LIMIT 1`
-    )
-    .get() as { id: string } | undefined;
+  const fallback = await client.get<{ id: string }>(
+    `SELECT id FROM profiles
+      WHERE kind = 'human' AND status = 'active' AND deleted_at IS NULL
+      ORDER BY created_at ASC LIMIT 1`
+  );
   if (!fallback) throw new ApiError(409, 'No local user profile exists');
   return fallback.id;
 }
@@ -165,56 +171,63 @@ function operatorUserId(): string {
  * Upload an image to the `user-images` bucket and record it against the local
  * operator. Returns the stored-image descriptor including the URL to serve it.
  */
-export const uploadUserImage = db.transaction((input: UploadImageInput): StoredImageDto => {
-  const bucket = resolveBucket('user-images');
+export async function uploadUserImage(input: UploadImageInput): Promise<StoredImageDto> {
+  const bucket = await resolveBucket('user-images');
   const written = writeImageObject(bucket, input);
-  const userId = operatorUserId();
+  const userId = await operatorUserId();
   const now = nowIso();
   const filename = input.filename.trim() || `image${path.extname(written.storageKey)}`;
 
-  db.prepare(
-    `INSERT INTO user_images (
-       id, workspace_id, profile_id, storage_bucket_id, storage_key,
-       filename, content_type, size_bytes, checksum_sha256, public_url, metadata_json,
-       created_by_workspace_user_id, created_at, updated_at, revision
-     ) VALUES (
-       @id, @workspace_id, @user_id, @storage_bucket_id, @storage_key,
-       @filename, @content_type, @size_bytes, @checksum_sha256, @public_url, '{}',
-       @created_by, @created_at, @created_at, 1
-     )`
-  ).run({
-    id: written.id,
-    workspace_id: WORKSPACE.id,
-    user_id: userId,
-    storage_bucket_id: bucket.id,
-    storage_key: written.storageKey,
-    filename,
-    content_type: written.contentType,
-    size_bytes: written.sizeBytes,
-    checksum_sha256: written.checksum,
-    public_url: written.publicUrl,
-    created_by: ACTOR_WORKSPACE_USER_ID,
-    created_at: now
-  });
+  return requireDatabaseClient().transaction(async tx => {
+    await tx.run(
+      `INSERT INTO user_images (
+         id, workspace_id, profile_id, storage_bucket_id, storage_key,
+         filename, content_type, size_bytes, checksum_sha256, public_url, metadata_json,
+         created_by_workspace_user_id, created_at, updated_at, revision
+       ) VALUES (
+         ?, ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, '{}',
+         ?, ?, ?, 1
+       )`,
+      [
+        written.id,
+        WORKSPACE.id,
+        userId,
+        bucket.id,
+        written.storageKey,
+        filename,
+        written.contentType,
+        written.sizeBytes,
+        written.checksum,
+        written.publicUrl,
+        getActorWorkspaceUserId(),
+        now,
+        now
+      ]
+    );
 
-  recordChange({
-    entityType: 'user_image',
-    entityId: written.id,
-    operation: 'insert',
-    entityRevision: 1
-  });
+    await recordChange(
+      {
+        entityType: 'user_image',
+        entityId: written.id,
+        operation: 'insert',
+        entityRevision: 1
+      },
+      tx
+    );
 
-  return {
-    id: written.id,
-    bucketKey: bucket.bucket_key,
-    storageKey: written.storageKey,
-    filename,
-    contentType: written.contentType,
-    sizeBytes: written.sizeBytes,
-    url: written.publicUrl,
-    createdAt: now
-  };
-});
+    return {
+      id: written.id,
+      bucketKey: bucket.bucket_key,
+      storageKey: written.storageKey,
+      filename,
+      contentType: written.contentType,
+      sizeBytes: written.sizeBytes,
+      url: written.publicUrl,
+      createdAt: now
+    };
+  });
+}
 
 // ---- Objective attachments (attachments bucket) --------------------------
 //
@@ -232,13 +245,12 @@ interface ObjectiveScopeRow {
 }
 
 /** Resolve the objective's workspace/project/mission scope, or 404 if absent. */
-function resolveObjectiveScope(objectiveId: string): ObjectiveScopeRow {
-  const row = db
-    .prepare(
-      `SELECT workspace_id, project_id, mission_id FROM objectives
-        WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
-    )
-    .get(objectiveId, WORKSPACE.id) as ObjectiveScopeRow | undefined;
+async function resolveObjectiveScope(objectiveId: string): Promise<ObjectiveScopeRow> {
+  const row = await requireDatabaseClient().get<ObjectiveScopeRow>(
+    `SELECT workspace_id, project_id, mission_id FROM objectives
+      WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+    [objectiveId, WORKSPACE.id]
+  );
   if (!row) throw new ApiError(404, 'Objective not found');
   return row;
 }
@@ -297,67 +309,74 @@ export interface UploadAttachmentInput {
  * objective (carrying its mission and project). Returns the attachment
  * descriptor including the URL that serves the bytes back.
  */
-export const uploadObjectiveAttachment = db.transaction(
-  (input: UploadAttachmentInput): ObjectiveAttachmentDto => {
-    if (!input.bytes || input.bytes.length === 0) {
-      throw new ApiError(400, 'No file data received');
-    }
-    if (input.bytes.length > MAX_ATTACHMENT_BYTES) {
-      throw new ApiError(
-        413,
-        `File too large. Attachments can be no longer than ${MAX_ATTACHMENT_LABEL}.`
-      );
-    }
+export async function uploadObjectiveAttachment(
+  input: UploadAttachmentInput
+): Promise<ObjectiveAttachmentDto> {
+  if (!input.bytes || input.bytes.length === 0) {
+    throw new ApiError(400, 'No file data received');
+  }
+  if (input.bytes.length > MAX_ATTACHMENT_BYTES) {
+    throw new ApiError(
+      413,
+      `File too large. Attachments can be no longer than ${MAX_ATTACHMENT_LABEL}.`
+    );
+  }
 
-    const scope = resolveObjectiveScope(input.objectiveId);
-    const bucket = resolveBucket(ATTACHMENTS_BUCKET_KEY);
+  const scope = await resolveObjectiveScope(input.objectiveId);
+  const bucket = await resolveBucket(ATTACHMENTS_BUCKET_KEY);
 
-    const id = newId();
-    const storageKey = `${id}${attachmentExtension(input.filename)}`;
-    const root = localRootFor(bucket);
-    if (!existsSync(root)) mkdirSync(root, { recursive: true });
-    writeFileSync(path.join(root, storageKey), input.bytes);
+  const id = newId();
+  const storageKey = `${id}${attachmentExtension(input.filename)}`;
+  const root = localRootFor(bucket);
+  if (!existsSync(root)) mkdirSync(root, { recursive: true });
+  writeFileSync(path.join(root, storageKey), input.bytes);
 
-    const now = nowIso();
-    const contentType = input.contentType.split(';')[0].trim().toLowerCase() || null;
-    const filename = input.filename.trim() || `attachment${path.extname(storageKey)}`;
-    const checksum = createHash('sha256').update(input.bytes).digest('hex');
+  const now = nowIso();
+  const contentType = input.contentType.split(';')[0].trim().toLowerCase() || null;
+  const filename = input.filename.trim() || `attachment${path.extname(storageKey)}`;
+  const checksum = createHash('sha256').update(input.bytes).digest('hex');
 
-    db.prepare(
+  return requireDatabaseClient().transaction(async tx => {
+    await tx.run(
       `INSERT INTO attachments (
          id, workspace_id, project_id, mission_id, objective_id, storage_bucket_id,
          storage_key, filename, content_type, size_bytes, checksum_sha256, upload_status,
          metadata_json, created_by_workspace_user_id, created_at, updated_at, revision
        ) VALUES (
-         @id, @workspace_id, @project_id, @mission_id, @objective_id, @storage_bucket_id,
-         @storage_key, @filename, @content_type, @size_bytes, @checksum_sha256, 'available',
-         '{}', @created_by, @created_at, @created_at, 1
-       )`
-    ).run({
-      id,
-      workspace_id: scope.workspace_id,
-      project_id: scope.project_id,
-      mission_id: scope.mission_id,
-      objective_id: input.objectiveId,
-      storage_bucket_id: bucket.id,
-      storage_key: storageKey,
-      filename,
-      content_type: contentType,
-      size_bytes: input.bytes.length,
-      checksum_sha256: checksum,
-      created_by: ACTOR_WORKSPACE_USER_ID,
-      created_at: now
-    });
+         ?, ?, ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, 'available',
+         '{}', ?, ?, ?, 1
+       )`,
+      [
+        id,
+        scope.workspace_id,
+        scope.project_id,
+        scope.mission_id,
+        input.objectiveId,
+        bucket.id,
+        storageKey,
+        filename,
+        contentType,
+        input.bytes.length,
+        checksum,
+        getActorWorkspaceUserId(),
+        now,
+        now
+      ]
+    );
 
-    recordChange({
-      entityType: 'attachment',
-      entityId: id,
-      operation: 'insert',
-      entityRevision: 1,
-      projectId: scope.project_id,
-      missionId: scope.mission_id,
-      objectiveId: input.objectiveId
-    });
+    await recordChange(
+      {
+        entityType: 'attachment',
+        entityId: id,
+        operation: 'insert',
+        entityRevision: 1,
+        projectId: scope.project_id,
+        missionId: scope.mission_id,
+        objectiveId: input.objectiveId
+      },
+      tx
+    );
 
     return toObjectiveAttachmentDto({
       id,
@@ -372,19 +391,20 @@ export const uploadObjectiveAttachment = db.transaction(
       upload_status: 'available',
       created_at: now
     });
-  }
-);
+  });
+}
 
 /** List an objective's active attachments, oldest first. */
-export function listObjectiveAttachments(objectiveId: string): ObjectiveAttachmentDto[] {
-  resolveObjectiveScope(objectiveId);
-  const rows = db
-    .prepare(
-      `SELECT ${ATTACHMENT_COLUMNS} FROM attachments
-        WHERE objective_id = ? AND workspace_id = ? AND deleted_at IS NULL
-        ORDER BY created_at ASC`
-    )
-    .all(objectiveId, WORKSPACE.id) as AttachmentRow[];
+export async function listObjectiveAttachments(
+  objectiveId: string
+): Promise<ObjectiveAttachmentDto[]> {
+  await resolveObjectiveScope(objectiveId);
+  const rows = await requireDatabaseClient().all<AttachmentRow>(
+    `SELECT ${ATTACHMENT_COLUMNS} FROM attachments
+      WHERE objective_id = ? AND workspace_id = ? AND deleted_at IS NULL
+      ORDER BY created_at ASC`,
+    [objectiveId, WORKSPACE.id]
+  );
   return rows.map(toObjectiveAttachmentDto);
 }
 
@@ -393,38 +413,50 @@ export function listObjectiveAttachments(objectiveId: string): ObjectiveAttachme
  * left on disk for now; provider cleanup is a separate concern per the schema
  * contract. Returns the objective's remaining attachments.
  */
-export const deleteObjectiveAttachment = db.transaction(
-  (objectiveId: string, attachmentId: string): ObjectiveAttachmentDto[] => {
-    const scope = resolveObjectiveScope(objectiveId);
-    const row = db
-      .prepare(
-        `SELECT id, revision FROM attachments
-          WHERE id = ? AND objective_id = ? AND workspace_id = ? AND deleted_at IS NULL`
-      )
-      .get(attachmentId, objectiveId, WORKSPACE.id) as { id: string; revision: number } | undefined;
+export async function deleteObjectiveAttachment(
+  objectiveId: string,
+  attachmentId: string
+): Promise<ObjectiveAttachmentDto[]> {
+  return requireDatabaseClient().transaction(async tx => {
+    const scope = await resolveObjectiveScope(objectiveId);
+    const row = await tx.get<{ id: string; revision: number }>(
+      `SELECT id, revision FROM attachments
+        WHERE id = ? AND objective_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+      [attachmentId, objectiveId, WORKSPACE.id]
+    );
     if (!row) throw new ApiError(404, 'Attachment not found');
 
     const now = nowIso();
-    db.prepare(
+    await tx.run(
       `UPDATE attachments
-          SET deleted_at = @now, upload_status = 'deleted', updated_at = @now,
+          SET deleted_at = ?, upload_status = 'deleted', updated_at = ?,
               revision = revision + 1
-        WHERE id = @id`
-    ).run({ id: attachmentId, now });
+        WHERE id = ?`,
+      [now, now, attachmentId]
+    );
 
-    recordChange({
-      entityType: 'attachment',
-      entityId: attachmentId,
-      operation: 'delete',
-      entityRevision: row.revision + 1,
-      projectId: scope.project_id,
-      missionId: scope.mission_id,
-      objectiveId
-    });
+    await recordChange(
+      {
+        entityType: 'attachment',
+        entityId: attachmentId,
+        operation: 'delete',
+        entityRevision: row.revision + 1,
+        projectId: scope.project_id,
+        missionId: scope.mission_id,
+        objectiveId
+      },
+      tx
+    );
 
-    return listObjectiveAttachments(objectiveId);
-  }
-);
+    const rows = await tx.all<AttachmentRow>(
+      `SELECT ${ATTACHMENT_COLUMNS} FROM attachments
+        WHERE objective_id = ? AND workspace_id = ? AND deleted_at IS NULL
+        ORDER BY created_at ASC`,
+      [objectiveId, WORKSPACE.id]
+    );
+    return rows.map(toObjectiveAttachmentDto);
+  });
+}
 
 export interface ResolvedStoredObject {
   absolutePath: string;
@@ -446,17 +478,22 @@ const SERVABLE_OBJECT_TABLES: Record<string, string> = {
  * traversal via `storageKey` is impossible. Attachments (arbitrary types) are
  * flagged for download so untrusted bytes are never rendered inline.
  */
-export function resolveStoredObject(bucketKey: string, storageKey: string): ResolvedStoredObject {
-  const bucket = resolveBucket(bucketKey);
+export async function resolveStoredObject(
+  bucketKey: string,
+  storageKey: string
+): Promise<ResolvedStoredObject> {
+  const bucket = await resolveBucket(bucketKey);
   const table = SERVABLE_OBJECT_TABLES[bucketKey];
   if (!table) throw new ApiError(404, `Serving is not configured for bucket '${bucketKey}'`);
 
-  const row = db
-    .prepare(
-      `SELECT content_type, filename FROM ${table}
-        WHERE storage_bucket_id = ? AND storage_key = ? AND deleted_at IS NULL`
-    )
-    .get(bucket.id, storageKey) as { content_type: string | null; filename: string } | undefined;
+  const row = await requireDatabaseClient().get<{
+    content_type: string | null;
+    filename: string;
+  }>(
+    `SELECT content_type, filename FROM ${table}
+      WHERE storage_bucket_id = ? AND storage_key = ? AND deleted_at IS NULL`,
+    [bucket.id, storageKey]
+  );
   if (!row) throw new ApiError(404, 'File not found');
 
   const absolutePath = path.join(localRootFor(bucket), storageKey);

@@ -41,7 +41,10 @@ Adapters own harness-specific packaging:
 - launch prompt wrappers
 - model, effort, and context-file flag mapping
 
-When building a Connector Plugin, materialize this core into the installable plugin package and layer the adapter-specific overlay beside it. Do not fork the core protocol rules into each adapter.
+When building a Connector Plugin, adapter skill templates include `<!-- @connector-core -->`.
+`ovld agent-setup <agent>` interpolates connector core content from
+`connectors/core/overlord-mission/` into that marker and copies core reference files
+into the installable plugin package. Do not fork the core protocol rules into each adapter.
 
 ### Files
 

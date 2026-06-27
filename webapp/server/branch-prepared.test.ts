@@ -16,29 +16,27 @@ describe('branch preparation recording', () => {
       await import('./repository.ts');
     const { recordBranchPrepared } = await import('./runner.ts');
 
-    const project = createProject({ name: 'Branch Prepared Test' });
-    const mission = createMission({
+    const project = await createProject({ name: 'Branch Prepared Test' });
+    const mission = await createMission({
       projectId: project.id,
       firstObjective: 'Prepare a branch'
     });
 
     // Before any launch, the DTO predicts the canonical branch with a pending status.
-    assert.equal(getMissionDetail(mission.id).branch?.status, 'pending');
+    assert.equal((await getMissionDetail(mission.id)).branch?.status, 'pending');
 
-    assert.doesNotThrow(() =>
-      recordBranchPrepared({
-        missionId: mission.displayId,
-        payload: {
-          branchName: 'overlord/prepare-a-branch-1',
-          baseBranch: 'main',
-          worktreePath: '/tmp/.ovld/worktrees/branch-prepared/overlord-prepare-a-branch-1',
-          action: 'create',
-          cycle: 1
-        }
-      })
-    );
+    await recordBranchPrepared({
+      missionId: mission.displayId,
+      payload: {
+        branchName: 'overlord/prepare-a-branch-1',
+        baseBranch: 'main',
+        worktreePath: '/tmp/.ovld/worktrees/branch-prepared/overlord-prepare-a-branch-1',
+        action: 'create',
+        cycle: 1
+      }
+    });
 
-    const branch = getMissionDetail(mission.id).branch;
+    const branch = (await getMissionDetail(mission.id)).branch;
     assert.equal(branch?.name, 'overlord/prepare-a-branch-1');
     assert.equal(branch?.baseBranch, 'main');
     // No real git checkout backs the test project, so the branch reads as created
@@ -46,7 +44,7 @@ describe('branch preparation recording', () => {
     assert.equal(branch?.status, 'created');
 
     // The audit entry is recorded under an allowed event type, not `branch_prepared`.
-    const events = listMissionEvents(mission.displayId);
+    const events = await listMissionEvents(mission.displayId);
     assert.ok(events.some(event => event.summary.includes('Prepared branch')));
     assert.ok(!events.some(event => event.type === 'branch_prepared'));
   });

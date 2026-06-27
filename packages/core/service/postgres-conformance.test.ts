@@ -248,7 +248,7 @@ for (const adapter of adapters) {
         const graph = await seedGraph(client);
         await insertQueuedRequest(client, graph, { idempotencyKey: 'dup-key' });
         await assert.rejects(
-          () => insertQueuedRequest(client, graph, { idempotencyKey: 'dup-key' }),
+          async () => await insertQueuedRequest(client, graph, { idempotencyKey: 'dup-key' }),
           /duplicate|unique|constraint/i
         );
         // A null key never collides.
@@ -266,11 +266,11 @@ for (const adapter of adapters) {
         await insertQueuedRequest(client, graph);
 
         const [a, b] = await Promise.all([
-          claimNextQueuedRequest(client, {
+          await claimNextQueuedRequest(client, {
             workspaceId: WORKSPACE_ID,
             executionTargetId: graph.executionTargetId
           }),
-          claimNextQueuedRequest(client, {
+          await claimNextQueuedRequest(client, {
             workspaceId: WORKSPACE_ID,
             executionTargetId: graph.executionTargetId
           })

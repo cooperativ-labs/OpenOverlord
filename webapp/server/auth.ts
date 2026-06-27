@@ -1,3 +1,4 @@
+import { resolveAdapter } from '@overlord/database';
 import { verifyUserToken } from '@overlord/auth';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
 import type { NextFunction, Request, Response } from 'express';
@@ -5,14 +6,16 @@ import type { NextFunction, Request, Response } from 'express';
 import { createAuth } from '../../auth/src/auth/config.ts';
 
 import {
+  authDomainDatabase,
   DATABASE_PATH,
-  db,
   newId,
   nowIso,
   recordChange,
   resolveActorForWorkspace,
+  requireDatabaseClient,
   setActiveTokenAuth,
   setActiveWorkspaceUser,
+  withRequestContextAsync,
   WORKSPACE
 } from './db.ts';
 import { grantWorkspaceAdminRole } from './workspaces.ts';
@@ -40,8 +43,18 @@ function resolveAuthTrustedOrigins({
   return [...origins];
 }
 
+const authAdapter = resolveAdapter({ databasePath: DATABASE_PATH });
 export const auth = createAuth({
-  database: { type: 'sqlite', path: DATABASE_PATH },
+  database:
+    authAdapter.type === 'sqlite'
+      ? { type: 'sqlite', path: authAdapter.path }
+      : authAdapter.schema
+        ? {
+            type: 'postgres',
+            connectionString: authAdapter.connectionString,
+            schema: authAdapter.schema
+          }
+        : { type: 'postgres', connectionString: authAdapter.connectionString },
   trustedOrigins: resolveAuthTrustedOrigins({
     baseUrl: authBaseUrl,
     devPort: process.env.OVERLORD_WEB_DEV_PORT
@@ -77,39 +90,39 @@ function isLoopbackRequest(req: Request): boolean {
 }
 
 /** Active scope grant patterns for a token (empty = `full`, no restriction). */
-function loadTokenScopeGrants(tokenId: string): string[] {
-  const rows = db
-    .prepare(
-      `SELECT permission FROM user_token_scopes
-         WHERE token_id = ? AND workspace_id = ? AND deleted_at IS NULL`
-    )
-    .all(tokenId, WORKSPACE.id) as Array<{ permission: string }>;
+async function loadTokenScopeGrants(tokenId: string): Promise<string[]> {
+  const rows = await requireDatabaseClient().all<{ permission: string }>(
+    `SELECT permission FROM user_token_scopes
+       WHERE token_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+    [tokenId, WORKSPACE.id]
+  );
   return rows.map(r => r.permission);
 }
 
-function ensureWorkspaceUser(profileId: string): string {
-  const existing = db
-    .prepare(
-      `SELECT id
-         FROM workspace_users
-        WHERE workspace_id = ?
-          AND profile_id = ?
-          AND status = 'active'
-          AND deleted_at IS NULL
-        LIMIT 1`
-    )
-    .get(WORKSPACE.id, profileId) as { id: string } | undefined;
+async function ensureWorkspaceUser(profileId: string): Promise<string> {
+  const client = requireDatabaseClient();
+  const existing = await client.get<{ id: string }>(
+    `SELECT id
+       FROM workspace_users
+      WHERE workspace_id = ?
+        AND profile_id = ?
+        AND status = 'active'
+        AND deleted_at IS NULL
+      LIMIT 1`,
+    [WORKSPACE.id, profileId]
+  );
   if (existing) {
-    grantWorkspaceAdminRole({
+    await grantWorkspaceAdminRole({
       workspaceId: WORKSPACE.id,
       workspaceUserId: existing.id
     });
     return existing.id;
   }
 
-  const profile = db
-    .prepare(`SELECT id FROM profiles WHERE id = ? AND deleted_at IS NULL LIMIT 1`)
-    .get(profileId) as { id: string } | undefined;
+  const profile = await client.get<{ id: string }>(
+    `SELECT id FROM profiles WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
+    [profileId]
+  );
   if (!profile) {
     throw new Error('Authenticated user is missing an Overlord profile');
   }
@@ -117,35 +130,33 @@ function ensureWorkspaceUser(profileId: string): string {
   const now = nowIso();
   const workspaceUserId = newId();
 
-  db.transaction(() => {
-    db.prepare(
+  await client.transaction(async tx => {
+    await tx.run(
       `INSERT INTO workspace_users
          (id, workspace_id, profile_id, member_key, status, metadata_json,
           created_at, updated_at, revision)
        VALUES
-         (@id, @workspace_id, @profile_id, @member_key, 'active', '{}',
-          @now, @now, 1)`
-    ).run({
-      id: workspaceUserId,
-      workspace_id: WORKSPACE.id,
-      profile_id: profileId,
-      member_key: `auth:${profileId}`,
-      now
-    });
+         (?, ?, ?, ?, 'active', '{}', ?, ?, 1)`,
+      [workspaceUserId, WORKSPACE.id, profileId, `auth:${profileId}`, now, now]
+    );
 
-    grantWorkspaceAdminRole({
+    await grantWorkspaceAdminRole({
       workspaceId: WORKSPACE.id,
-      workspaceUserId
+      workspaceUserId,
+      client: tx
     });
 
-    recordChange({
-      entityType: 'workspace_user',
-      entityId: workspaceUserId,
-      operation: 'insert',
-      entityRevision: 1,
-      actorWorkspaceUserId: workspaceUserId
-    });
-  })();
+    await recordChange(
+      {
+        entityType: 'workspace_user',
+        entityId: workspaceUserId,
+        operation: 'insert',
+        entityRevision: 1,
+        actorWorkspaceUserId: workspaceUserId
+      },
+      tx
+    );
+  });
 
   return workspaceUserId;
 }
@@ -155,53 +166,55 @@ export async function requireAuthenticatedSession(
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  try {
-    const nonBrowser = usesNonBrowserAuthSurface(req);
+  return withRequestContextAsync(async () => {
+    try {
+      const nonBrowser = usesNonBrowserAuthSurface(req);
 
-    // 1. Browser session auth (Better Auth cookies). The CLI protocol/runner
-    //    surface never carries cookies, so skip the session lookup for it.
-    if (!nonBrowser) {
-      const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
-      if (session) {
-        const workspaceUserId = ensureWorkspaceUser(session.user.id);
-        setActiveWorkspaceUser(workspaceUserId);
+      // 1. Browser session auth (Better Auth cookies). The CLI protocol/runner
+      //    surface never carries cookies, so skip the session lookup for it.
+      if (!nonBrowser) {
+        const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+        if (session) {
+          const workspaceUserId = await ensureWorkspaceUser(session.user.id);
+          setActiveWorkspaceUser(workspaceUserId);
+          next();
+          return;
+        }
+      }
+
+      // 2. USER_TOKEN bearer auth (any surface). Resolve the token's scope grants so
+      //    the `requirePermission` gate can intersect them with the user's role.
+      const bearerToken = extractBearerToken(req);
+      if (bearerToken?.startsWith('out_')) {
+        const verified = await verifyUserToken(authDomainDatabase(), bearerToken, WORKSPACE.id);
+        if (!verified) {
+          res.status(401).json({ error: 'Invalid or expired USER_TOKEN' });
+          return;
+        }
+        const scopeGrants = await loadTokenScopeGrants(verified.id);
+        setActiveTokenAuth({
+          workspaceUserId: verified.workspaceUserId,
+          tokenId: verified.id,
+          scopeGrants: scopeGrants.length > 0 ? scopeGrants : null
+        });
         next();
         return;
       }
-    }
 
-    // 2. USER_TOKEN bearer auth (any surface). Resolve the token's scope grants so
-    //    the `requirePermission` gate can intersect them with the user's role.
-    const bearerToken = extractBearerToken(req);
-    if (bearerToken?.startsWith('out_')) {
-      const verified = await verifyUserToken(db, bearerToken, WORKSPACE.id);
-      if (!verified) {
-        res.status(401).json({ error: 'Invalid or expired USER_TOKEN' });
+      // 3. Loopback-trusted local operator for the CLI protocol/runner surface,
+      //    which historically ran unauthenticated on localhost. This resolves only
+      //    to an existing workspace user; on a fresh database, account creation must
+      //    happen first so RBAC has a real actor to evaluate. Browser `/api` routes
+      //    deliberately do NOT get this fallback, preserving web login.
+      if (nonBrowser && isLoopbackRequest(req)) {
+        setActiveWorkspaceUser(await resolveActorForWorkspace(WORKSPACE.id));
+        next();
         return;
       }
-      const scopeGrants = loadTokenScopeGrants(verified.id);
-      setActiveTokenAuth({
-        workspaceUserId: verified.workspaceUserId,
-        tokenId: verified.id,
-        scopeGrants: scopeGrants.length > 0 ? scopeGrants : null
-      });
-      next();
-      return;
-    }
 
-    // 3. Loopback-trusted local operator for the CLI protocol/runner surface,
-    //    which historically ran unauthenticated on localhost. This resolves only
-    //    to an existing workspace user; on a fresh database, account creation must
-    //    happen first so RBAC has a real actor to evaluate. Browser `/api` routes
-    //    deliberately do NOT get this fallback, preserving web login.
-    if (nonBrowser && isLoopbackRequest(req)) {
-      setActiveWorkspaceUser(resolveActorForWorkspace(WORKSPACE.id));
-      next();
-      return;
+      res.status(401).json({ error: 'Authentication required' });
+    } catch (err) {
+      next(err);
     }
-
-    res.status(401).json({ error: 'Authentication required' });
-  } catch (err) {
-    next(err);
-  }
+  });
 }

@@ -56,43 +56,43 @@ describe('generate commit message', () => {
 
   it('rejects a clean worktree with nothing to draft from', async () => {
     const { worktreeRoot, api, runner, primary } = await setup();
-    const project = api.createProject({ name: 'Draft Clean Test' });
-    api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
-    const mission = api.createMission({ projectId: project.id, firstObjective: 'Work' });
+    const project = await api.createProject({ name: 'Draft Clean Test' });
+    await api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
+    const mission = await api.createMission({ projectId: project.id, firstObjective: 'Work' });
 
     const branchName = 'feat-draft-clean';
     const worktreePath = path.join(worktreeRoot, project.slug, branchLeaf(branchName));
     git(primary, ['worktree', 'add', '-q', '-b', branchName, worktreePath, 'main']);
-    runner.recordBranchPrepared({
+    await runner.recordBranchPrepared({
       missionId: mission.displayId,
       payload: { branchName, baseBranch: 'main', worktreePath, action: 'create', cycle: 1 }
     });
 
     await assert.rejects(
-      () => api.generateCommitMessage(mission.id),
+      api.generateCommitMessage(mission.id),
       (err: unknown) => (err as { code?: string }).code === 'BRANCH_NOTHING_TO_COMMIT'
     );
   });
 
   it('surfaces a typed failure when the summarizer is unconfigured', async () => {
     const { worktreeRoot, api, runner, primary } = await setup();
-    const project = api.createProject({ name: 'Draft Unconfigured Test' });
-    api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
-    const mission = api.createMission({ projectId: project.id, firstObjective: 'Work' });
+    const project = await api.createProject({ name: 'Draft Unconfigured Test' });
+    await api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
+    const mission = await api.createMission({ projectId: project.id, firstObjective: 'Work' });
 
     const branchName = 'feat-draft-dirty';
     const worktreePath = path.join(worktreeRoot, project.slug, branchLeaf(branchName));
     git(primary, ['worktree', 'add', '-q', '-b', branchName, worktreePath, 'main']);
     // Uncommitted work so the diff gather succeeds and the Gemini call is attempted.
     writeFileSync(path.join(worktreePath, 'b.txt'), 'b\n');
-    runner.recordBranchPrepared({
+    await runner.recordBranchPrepared({
       missionId: mission.displayId,
       payload: { branchName, baseBranch: 'main', worktreePath, action: 'create', cycle: 1 }
     });
-    assert.equal(api.getMissionDetail(mission.id).branch?.dirty, true);
+    assert.equal((await api.getMissionDetail(mission.id)).branch?.dirty, true);
 
     await assert.rejects(
-      () => api.generateCommitMessage(mission.id),
+      api.generateCommitMessage(mission.id),
       (err: unknown) => (err as { code?: string }).code === 'COMMIT_MESSAGE_GENERATION_FAILED'
     );
   });

@@ -8,7 +8,7 @@ const tempDir = mkdtempSync(path.join(tmpdir(), 'overlord-webapp-objectives-'));
 process.env.OVERLORD_SQLITE_PATH = path.join(tempDir, 'webapp.sqlite');
 
 const { db, WORKSPACE, setActiveWorkspaceUser, nowIso, newId } = await import('./db.ts');
-const { createMission, createProject, createObjective, updateObjective } =
+const { createMission, createProject, createObjective, reorderFutureObjectives, updateObjective } =
   await import('./repository.ts');
 const { updateLaunchPreference } = await import('./launch.ts');
 const { ApiError } = await import('./errors.ts');
@@ -30,30 +30,30 @@ const { ApiError } = await import('./errors.ts');
   setActiveWorkspaceUser(operatorId);
 }
 
-test('clearing a draft objective instruction to empty leaves it blank instead of erroring', () => {
-  const project = createProject({ name: 'Clear Instruction Test' });
-  const mission = createMission({ projectId: project.id, firstObjective: 'Do the thing' });
+test('clearing a draft objective instruction to empty leaves it blank instead of erroring', async () => {
+  const project = await createProject({ name: 'Clear Instruction Test' });
+  const mission = await createMission({ projectId: project.id, firstObjective: 'Do the thing' });
   const objectiveId = mission.objectives[0]!.id;
 
-  const updated = updateObjective(objectiveId, { instructionText: '   ' });
+  const updated = await updateObjective(objectiveId, { instructionText: '   ' });
 
   assert.equal(updated.instructionText, '');
 });
 
-test('clearing a submitted objective instruction to empty is still rejected', () => {
-  const project = createProject({ name: 'Clear Submitted Instruction Test' });
-  const mission = createMission({ projectId: project.id, firstObjective: 'Do the thing' });
+test('clearing a submitted objective instruction to empty is still rejected', async () => {
+  const project = await createProject({ name: 'Clear Submitted Instruction Test' });
+  const mission = await createMission({ projectId: project.id, firstObjective: 'Do the thing' });
   const objectiveId = mission.objectives[0]!.id;
-  updateObjective(objectiveId, { state: 'submitted' });
+  await updateObjective(objectiveId, { state: 'submitted' });
 
-  assert.throws(
-    () => updateObjective(objectiveId, { instructionText: '   ' }),
+  await assert.rejects(
+    updateObjective(objectiveId, { instructionText: '   ' }),
     (err: unknown) => err instanceof ApiError && err.status === 400
   );
 });
 
-test('new draft objectives inherit the project last-used agent', () => {
-  const project = createProject({ name: 'Default Agent Objectives' });
+test('new draft objectives inherit the project last-used agent', async () => {
+  const project = await createProject({ name: 'Default Agent Objectives' });
   updateLaunchPreference(project.id, {
     selectedAgent: 'claude',
     selectedModel: 'claude-opus-4-8',
@@ -62,7 +62,7 @@ test('new draft objectives inherit the project last-used agent', () => {
 
   // The mission's first objective is created through the same insert path and must
   // record the launch selection so the button and execution read it from the db.
-  const mission = createMission({ projectId: project.id, firstObjective: 'Do the thing' });
+  const mission = await createMission({ projectId: project.id, firstObjective: 'Do the thing' });
   const firstObjective = mission.objectives[0]!;
   assert.equal(firstObjective.assignedAgent, 'claude');
   assert.equal(firstObjective.model, 'claude-opus-4-8');
@@ -70,23 +70,55 @@ test('new draft objectives inherit the project last-used agent', () => {
 
   // A blank draft slot added afterwards (the add-objective affordance) also stamps
   // the agent rather than leaving it null for auto-advance to misread.
-  const added = createObjective({ missionId: mission.id, instructionText: '' });
+  const added = await createObjective({ missionId: mission.id, instructionText: '' });
   assert.equal(added.assignedAgent, 'claude');
   assert.equal(added.model, 'claude-opus-4-8');
   assert.equal(added.reasoningEffort, 'high');
 });
 
-test('new draft objectives leave the agent unset without a launch preference', () => {
-  const project = createProject({ name: 'No Preference Objectives' });
-  const mission = createMission({ projectId: project.id, firstObjective: 'Do the thing' });
+test('new draft objectives leave the agent unset without a launch preference', async () => {
+  const project = await createProject({ name: 'No Preference Objectives' });
+  const mission = await createMission({ projectId: project.id, firstObjective: 'Do the thing' });
   assert.equal(mission.objectives[0]!.assignedAgent, null);
 });
 
-test('marking a queued objective executing promotes the earliest future objective to draft', () => {
-  const project = createProject({ name: 'Promote Future On Execute' });
-  const mission = createMission({ projectId: project.id, firstObjective: 'Execute first' });
+test('reordering future objectives persists swaps without violating the unique position constraint', async () => {
+  const project = await createProject({ name: 'Future Objective Reorder' });
+  const mission = await createMission({ projectId: project.id, firstObjective: 'First draft' });
+  const second = await createObjective({
+    missionId: mission.id,
+    instructionText: 'Second future objective',
+    state: 'draft'
+  });
+  const third = await createObjective({
+    missionId: mission.id,
+    instructionText: 'Third future objective',
+    state: 'draft'
+  });
+
+  const reordered = await reorderFutureObjectives(mission.id, {
+    orderedObjectiveIds: [third.id, second.id]
+  });
+
+  assert.deepEqual(
+    reordered.map(objective => ({
+      text: objective.instructionText,
+      state: objective.state,
+      position: objective.position
+    })),
+    [
+      { text: 'First draft', state: 'draft', position: 0 },
+      { text: 'Third future objective', state: 'future', position: 1 },
+      { text: 'Second future objective', state: 'future', position: 2 }
+    ]
+  );
+});
+
+test('marking a queued objective executing promotes the earliest future objective to draft', async () => {
+  const project = await createProject({ name: 'Promote Future On Execute' });
+  const mission = await createMission({ projectId: project.id, firstObjective: 'Execute first' });
   const running = mission.objectives[0]!;
-  const future = createObjective({
+  const future = await createObjective({
     missionId: mission.id,
     instructionText: 'Continue with second objective',
     state: 'draft'
@@ -94,7 +126,7 @@ test('marking a queued objective executing promotes the earliest future objectiv
 
   assert.equal(future.state, 'future');
 
-  updateObjective(running.id, { state: 'executing' });
+  await updateObjective(running.id, { state: 'executing' });
 
   const rows = db
     .prepare(
@@ -113,18 +145,18 @@ test('marking a queued objective executing promotes the earliest future objectiv
   assert.equal(rows[1]!.instruction_text, 'Continue with second objective');
 });
 
-test('marking a queued objective executing promotes future over a blank draft placeholder', () => {
-  const project = createProject({ name: 'Promote Future Over Placeholder' });
-  const mission = createMission({ projectId: project.id, firstObjective: 'Execute first' });
+test('marking a queued objective executing promotes future over a blank draft placeholder', async () => {
+  const project = await createProject({ name: 'Promote Future Over Placeholder' });
+  const mission = await createMission({ projectId: project.id, firstObjective: 'Execute first' });
   const running = mission.objectives[0]!;
   db.prepare(`UPDATE objectives SET state = 'launching' WHERE id = ?`).run(running.id);
 
-  const placeholder = createObjective({
+  const placeholder = await createObjective({
     missionId: mission.id,
     instructionText: '',
     state: 'draft'
   });
-  const future = createObjective({
+  const future = await createObjective({
     missionId: mission.id,
     instructionText: 'Continue with real future objective',
     state: 'draft'
@@ -133,7 +165,7 @@ test('marking a queued objective executing promotes future over a blank draft pl
   assert.equal(placeholder.state, 'draft');
   assert.equal(future.state, 'future');
 
-  updateObjective(running.id, { state: 'executing' });
+  await updateObjective(running.id, { state: 'executing' });
 
   const rows = db
     .prepare(
@@ -157,12 +189,12 @@ test('marking a queued objective executing promotes future over a blank draft pl
   assert.ok(placeholderRow.deleted_at);
 });
 
-test('marking the only queued objective executing creates a blank draft fallback', () => {
-  const project = createProject({ name: 'Blank Draft On Execute' });
-  const mission = createMission({ projectId: project.id, firstObjective: 'Execute first' });
+test('marking the only queued objective executing creates a blank draft fallback', async () => {
+  const project = await createProject({ name: 'Blank Draft On Execute' });
+  const mission = await createMission({ projectId: project.id, firstObjective: 'Execute first' });
   const running = mission.objectives[0]!;
 
-  updateObjective(running.id, { state: 'executing', assignedAgent: 'codex' });
+  await updateObjective(running.id, { state: 'executing', assignedAgent: 'codex' });
 
   const rows = db
     .prepare(

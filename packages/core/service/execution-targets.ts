@@ -34,18 +34,17 @@ function requireActor(ctx: ServiceContext): string {
   return ctx.actorWorkspaceUserId;
 }
 
-function actorProfileId(ctx: ServiceContext): string | null {
+async function actorProfileId(ctx: ServiceContext): Promise<string | null> {
   if (!ctx.actorWorkspaceUserId) return null;
-  const row = ctx.db
-    .prepare(
-      `SELECT profile_id FROM workspace_users
-        WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
-    )
-    .get(ctx.actorWorkspaceUserId, ctx.workspace.id) as { profile_id: string } | undefined;
+  const row = (await ctx.db.get(
+    `SELECT profile_id FROM workspace_users
+        WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+    [ctx.actorWorkspaceUserId, ctx.workspace.id]
+  )) as { profile_id: string } | undefined;
   return row?.profile_id ?? null;
 }
 
-function ensureUserExecutionTargetPreference({
+async function ensureUserExecutionTargetPreference({
   ctx,
   profileId,
   targetType,
@@ -55,16 +54,13 @@ function ensureUserExecutionTargetPreference({
   profileId: string;
   targetType: string;
   targetFingerprint: string;
-}): { id: string; terminalProfile: TerminalProfile } {
-  const existing = ctx.db
-    .prepare(
-      `SELECT id, terminal_profile_json FROM user_execution_target_preferences
+}): Promise<{ id: string; terminalProfile: TerminalProfile }> {
+  const existing = (await ctx.db.get(
+    `SELECT id, terminal_profile_json FROM user_execution_target_preferences
         WHERE profile_id = ? AND target_type = ? AND target_fingerprint = ?
-          AND deleted_at IS NULL`
-    )
-    .get(profileId, targetType, targetFingerprint) as
-    | { id: string; terminal_profile_json: string }
-    | undefined;
+          AND deleted_at IS NULL`,
+    [profileId, targetType, targetFingerprint]
+  )) as { id: string; terminal_profile_json: string } | undefined;
 
   if (existing) {
     return {
@@ -76,14 +72,12 @@ function ensureUserExecutionTargetPreference({
   const id = newId();
   const now = nowIso();
   const terminalProfile = { ...DEFAULT_TERMINAL_PROFILE };
-  ctx.db
-    .prepare(
-      `INSERT INTO user_execution_target_preferences
+  await ctx.db.run(
+    `INSERT INTO user_execution_target_preferences
          (id, profile_id, target_type, target_fingerprint, agent_configs_json,
           terminal_profile_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, '{}', ?, ?, ?, 1)`
-    )
-    .run(
+       VALUES (?, ?, ?, ?, '{}', ?, ?, ?, 1)`,
+    [
       id,
       profileId,
       targetType,
@@ -91,8 +85,9 @@ function ensureUserExecutionTargetPreference({
       serializeTerminalProfile(terminalProfile),
       now,
       now
-    );
-  recordChange({
+    ]
+  );
+  await recordChange({
     ctx,
     entityType: 'user_execution_target_preference',
     entityId: id,
@@ -104,27 +99,28 @@ function ensureUserExecutionTargetPreference({
 }
 
 /** Provision the local device, execution target, and user-target row for this machine. */
-export function ensureLocalExecutionTarget({ ctx }: { ctx: ServiceContext }): LocalExecutionTarget {
-  const device = getDevice({ ctx });
+export async function ensureLocalExecutionTarget({
+  ctx
+}: {
+  ctx: ServiceContext;
+}): Promise<LocalExecutionTarget> {
+  const device = await getDevice({ ctx });
   const now = nowIso();
 
-  let target = ctx.db
-    .prepare(
-      `SELECT id FROM execution_targets
-        WHERE workspace_id = ? AND device_id = ? AND type = 'local' AND deleted_at IS NULL`
-    )
-    .get(ctx.workspace.id, device.id) as { id: string } | undefined;
+  let target = (await ctx.db.get(
+    `SELECT id FROM execution_targets
+        WHERE workspace_id = ? AND device_id = ? AND type = 'local' AND deleted_at IS NULL`,
+    [ctx.workspace.id, device.id]
+  )) as { id: string } | undefined;
 
   if (!target) {
     const id = newId();
-    ctx.db
-      .prepare(
-        `INSERT INTO execution_targets
+    await ctx.db.run(
+      `INSERT INTO execution_targets
            (id, workspace_id, device_id, owner_workspace_user_id, type, label, status,
             connection_json, created_at, updated_at, revision)
-         VALUES (?, ?, ?, ?, 'local', ?, 'active', '{}', ?, ?, 1)`
-      )
-      .run(
+         VALUES (?, ?, ?, ?, 'local', ?, 'active', '{}', ?, ?, 1)`,
+      [
         id,
         ctx.workspace.id,
         device.id,
@@ -132,8 +128,9 @@ export function ensureLocalExecutionTarget({ ctx }: { ctx: ServiceContext }): Lo
         device.label || hostname(),
         now,
         now
-      );
-    recordChange({
+      ]
+    );
+    await recordChange({
       ctx,
       entityType: 'execution_target',
       entityId: id,
@@ -148,27 +145,25 @@ export function ensureLocalExecutionTarget({ ctx }: { ctx: ServiceContext }): Lo
   let terminalProfile = { ...DEFAULT_TERMINAL_PROFILE };
 
   if (ctx.actorWorkspaceUserId) {
-    const userTarget = ctx.db
-      .prepare(
-        `SELECT id FROM workspace_user_execution_targets
+    const userTarget = (await ctx.db.get(
+      `SELECT id FROM workspace_user_execution_targets
           WHERE workspace_id = ? AND workspace_user_id = ? AND execution_target_id = ?
-            AND deleted_at IS NULL`
-      )
-      .get(ctx.workspace.id, ctx.actorWorkspaceUserId, target.id) as { id: string } | undefined;
+            AND deleted_at IS NULL`,
+      [ctx.workspace.id, ctx.actorWorkspaceUserId, target.id]
+    )) as { id: string } | undefined;
 
     if (userTarget) {
       userTargetId = userTarget.id;
     } else {
       userTargetId = newId();
-      ctx.db
-        .prepare(
-          `INSERT INTO workspace_user_execution_targets
+      await ctx.db.run(
+        `INSERT INTO workspace_user_execution_targets
              (id, workspace_id, workspace_user_id, execution_target_id, access_status,
               created_at, updated_at, revision)
-           VALUES (?, ?, ?, ?, 'active', ?, ?, 1)`
-        )
-        .run(userTargetId, ctx.workspace.id, ctx.actorWorkspaceUserId, target.id, now, now);
-      recordChange({
+           VALUES (?, ?, ?, ?, 'active', ?, ?, 1)`,
+        [userTargetId, ctx.workspace.id, ctx.actorWorkspaceUserId, target.id, now, now]
+      );
+      await recordChange({
         ctx,
         entityType: 'workspace_user_execution_target',
         entityId: userTargetId,
@@ -177,9 +172,9 @@ export function ensureLocalExecutionTarget({ ctx }: { ctx: ServiceContext }): Lo
       });
     }
 
-    const profileId = actorProfileId(ctx);
+    const profileId = await actorProfileId(ctx);
     if (profileId) {
-      const preference = ensureUserExecutionTargetPreference({
+      const preference = await ensureUserExecutionTargetPreference({
         ctx,
         profileId,
         targetType: 'local',
@@ -201,14 +196,14 @@ export function ensureLocalExecutionTarget({ ctx }: { ctx: ServiceContext }): Lo
   };
 }
 
-export function updateTerminalProfile({
+export async function updateTerminalProfile({
   ctx,
   profile
 }: {
   ctx: ServiceContext;
   profile: TerminalProfile;
-}): LocalExecutionTarget {
-  const target = ensureLocalExecutionTarget({ ctx });
+}): Promise<LocalExecutionTarget> {
+  const target = await ensureLocalExecutionTarget({ ctx });
   requireActor(ctx);
   if (!target.preferenceId) {
     throw new ServiceError(
@@ -219,15 +214,14 @@ export function updateTerminalProfile({
   }
   const serialized = serializeTerminalProfile(profile);
 
-  ctx.db
-    .prepare(
-      `UPDATE user_execution_target_preferences
+  await ctx.db.run(
+    `UPDATE user_execution_target_preferences
           SET terminal_profile_json = ?, updated_at = ?, revision = revision + 1
-        WHERE id = ?`
-    )
-    .run(serialized, nowIso(), target.preferenceId);
+        WHERE id = ?`,
+    [serialized, nowIso(), target.preferenceId]
+  );
 
-  recordChange({
+  await recordChange({
     ctx,
     entityType: 'user_execution_target_preference',
     entityId: target.preferenceId,

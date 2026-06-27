@@ -52,7 +52,7 @@ export type ProjectDiscovery = {
 
 const PROJECT_JSON_VERSION = 1;
 
-export function createProject({
+export async function createProject({
   ctx,
   name,
   description,
@@ -62,7 +62,7 @@ export function createProject({
   name: string;
   description?: string | null;
   slug?: string | null;
-}): ProjectSummary {
+}): Promise<ProjectSummary> {
   const trimmedName = name.trim();
   if (!trimmedName) {
     throw new ServiceError('Project name is required', 'validation_error');
@@ -72,15 +72,14 @@ export function createProject({
   const id = newId();
   const slug = slugInput?.trim() ? slugify(slugInput) : slugify(trimmedName);
 
-  const tx = ctx.db.transaction(() => {
-    ctx.db
-      .prepare(
-        `INSERT INTO projects
+  await ctx.db.transaction(async tx => {
+    const txCtx = { ...ctx, db: tx };
+    await txCtx.db.run(
+      `INSERT INTO projects
            (id, workspace_id, slug, name, description, status, settings_json,
             created_by_workspace_user_id, created_at, updated_at, revision)
-         VALUES (?, ?, ?, ?, ?, 'active', '{}', ?, ?, ?, 1)`
-      )
-      .run(
+         VALUES (?, ?, ?, ?, ?, 'active', '{}', ?, ?, ?, 1)`,
+      [
         id,
         ctx.workspace.id,
         slug,
@@ -89,13 +88,14 @@ export function createProject({
         ctx.actorWorkspaceUserId,
         now,
         now
-      );
+      ]
+    );
 
     // Card statuses are configured once per workspace (see `workspace_statuses`),
     // so project creation no longer seeds its own status set.
 
-    recordChange({
-      ctx,
+    await recordChange({
+      ctx: txCtx,
       entityType: 'project',
       entityId: id,
       operation: 'insert',
@@ -103,25 +103,22 @@ export function createProject({
       projectId: id
     });
   });
-
-  tx();
-  return getProject({ ctx, projectId: id });
+  return await getProject({ ctx, projectId: id });
 }
 
-export function getProject({
+export async function getProject({
   ctx,
   projectId
 }: {
   ctx: ServiceContext;
   projectId: string;
-}): ProjectSummary {
-  const id = resolveProjectId(ctx, projectId);
-  const row = ctx.db
-    .prepare(
-      `SELECT id, slug, name, description, status, created_at, updated_at
-       FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
-    )
-    .get(id, ctx.workspace.id) as
+}): Promise<ProjectSummary> {
+  const id = await resolveProjectId(ctx, projectId);
+  const row = (await ctx.db.get(
+    `SELECT id, slug, name, description, status, created_at, updated_at
+       FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+    [id, ctx.workspace.id]
+  )) as
     | {
         id: string;
         slug: string;
@@ -148,14 +145,13 @@ export function getProject({
   };
 }
 
-export function listProjects({ ctx }: { ctx: ServiceContext }): ProjectSummary[] {
-  const rows = ctx.db
-    .prepare(
-      `SELECT id, slug, name, description, status, created_at, updated_at
+export async function listProjects({ ctx }: { ctx: ServiceContext }): Promise<ProjectSummary[]> {
+  const rows = (await ctx.db.all(
+    `SELECT id, slug, name, description, status, created_at, updated_at
        FROM projects WHERE workspace_id = ? AND deleted_at IS NULL
-       ORDER BY created_at ASC`
-    )
-    .all(ctx.workspace.id) as Array<{
+       ORDER BY created_at ASC`,
+    [ctx.workspace.id]
+  )) as Array<{
     id: string;
     slug: string;
     name: string;
@@ -176,7 +172,7 @@ export function listProjects({ ctx }: { ctx: ServiceContext }): ProjectSummary[]
   }));
 }
 
-export function addProjectResource({
+export async function addProjectResource({
   ctx,
   projectId,
   directoryPath,
@@ -188,30 +184,27 @@ export function addProjectResource({
   directoryPath: string;
   label?: string | null;
   isPrimary?: boolean;
-}): ProjectResourceSummary {
-  const resolvedProjectId = resolveProjectId(ctx, projectId);
+}): Promise<ProjectResourceSummary> {
+  const resolvedProjectId = await resolveProjectId(ctx, projectId);
   const resolvedPath = path.resolve(directoryPath);
-  const executionTargetId = ensureLocalExecutionTarget({ ctx }).executionTargetId;
+  const executionTargetId = (await ensureLocalExecutionTarget({ ctx })).executionTargetId;
   const now = nowIso();
   const id = newId();
 
   if (isPrimary) {
-    ctx.db
-      .prepare(
-        `UPDATE project_resources SET is_primary = 0, updated_at = ?, revision = revision + 1
-         WHERE project_id = ? AND deleted_at IS NULL AND is_primary = 1 AND execution_target_id = ?`
-      )
-      .run(now, resolvedProjectId, executionTargetId);
+    await ctx.db.run(
+      `UPDATE project_resources SET is_primary = 0, updated_at = ?, revision = revision + 1
+         WHERE project_id = ? AND deleted_at IS NULL AND is_primary = 1 AND execution_target_id = ?`,
+      [now, resolvedProjectId, executionTargetId]
+    );
   }
 
-  ctx.db
-    .prepare(
-      `INSERT INTO project_resources
+  await ctx.db.run(
+    `INSERT INTO project_resources
          (id, workspace_id, project_id, execution_target_id, type, label, path, is_primary, status,
           metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, 'local_directory', ?, ?, ?, 'active', '{}', ?, ?, 1)`
-    )
-    .run(
+       VALUES (?, ?, ?, ?, 'local_directory', ?, ?, ?, 'active', '{}', ?, ?, 1)`,
+    [
       id,
       ctx.workspace.id,
       resolvedProjectId,
@@ -221,7 +214,8 @@ export function addProjectResource({
       isPrimary ? 1 : 0,
       now,
       now
-    );
+    ]
+  );
 
   writeProjectJson({
     directoryPath: resolvedPath,
@@ -230,7 +224,7 @@ export function addProjectResource({
     isPrimary
   });
 
-  recordChange({
+  await recordChange({
     ctx,
     entityType: 'project_resource',
     entityId: id,
@@ -251,22 +245,21 @@ export function addProjectResource({
   };
 }
 
-export function listProjectResources({
+export async function listProjectResources({
   ctx,
   projectId
 }: {
   ctx: ServiceContext;
   projectId: string;
-}): ProjectResourceSummary[] {
-  const resolvedProjectId = resolveProjectId(ctx, projectId);
-  const rows = ctx.db
-    .prepare(
-      `SELECT id, project_id, execution_target_id, type, label, path, is_primary, status
+}): Promise<ProjectResourceSummary[]> {
+  const resolvedProjectId = await resolveProjectId(ctx, projectId);
+  const rows = (await ctx.db.all(
+    `SELECT id, project_id, execution_target_id, type, label, path, is_primary, status
        FROM project_resources
        WHERE project_id = ? AND deleted_at IS NULL
-       ORDER BY is_primary DESC, created_at ASC`
-    )
-    .all(resolvedProjectId) as Array<{
+       ORDER BY is_primary DESC, created_at ASC`,
+    [resolvedProjectId]
+  )) as Array<{
     id: string;
     project_id: string;
     execution_target_id: string | null;
@@ -289,7 +282,7 @@ export function listProjectResources({
   }));
 }
 
-export function findPrimaryProjectResource({
+export async function findPrimaryProjectResource({
   ctx,
   projectId,
   executionTargetId = null
@@ -297,15 +290,14 @@ export function findPrimaryProjectResource({
   ctx: ServiceContext;
   projectId: string;
   executionTargetId?: string | null;
-}): ProjectResourceSummary | null {
-  const resolvedProjectId = resolveProjectId(ctx, projectId);
+}): Promise<ProjectResourceSummary | null> {
+  const resolvedProjectId = await resolveProjectId(ctx, projectId);
   const targetPredicate =
     executionTargetId === null
       ? ''
       : 'AND (execution_target_id = @execution_target_id OR execution_target_id IS NULL)';
-  const row = ctx.db
-    .prepare(
-      `SELECT id, project_id, execution_target_id, type, label, path, is_primary, status
+  const row = (await ctx.db.get(
+    `SELECT id, project_id, execution_target_id, type, label, path, is_primary, status
        FROM project_resources
        WHERE project_id = @project_id
          AND deleted_at IS NULL
@@ -314,9 +306,9 @@ export function findPrimaryProjectResource({
        ORDER BY
          CASE WHEN execution_target_id = @execution_target_id THEN 0 ELSE 1 END,
          created_at ASC
-       LIMIT 1`
-    )
-    .get({ project_id: resolvedProjectId, execution_target_id: executionTargetId }) as
+       LIMIT 1`,
+    [{ project_id: resolvedProjectId, execution_target_id: executionTargetId }]
+  )) as
     | {
         id: string;
         project_id: string;
@@ -343,7 +335,7 @@ export function findPrimaryProjectResource({
   };
 }
 
-export function assertPrimaryResourceConnected({
+export async function assertPrimaryResourceConnected({
   ctx,
   projectId,
   executionTargetId = null
@@ -351,8 +343,8 @@ export function assertPrimaryResourceConnected({
   ctx: ServiceContext;
   projectId: string;
   executionTargetId?: string | null;
-}): PrimaryResourceConnection {
-  const primary = findPrimaryProjectResource({ ctx, projectId, executionTargetId });
+}): Promise<PrimaryResourceConnection> {
+  const primary = await findPrimaryProjectResource({ ctx, projectId, executionTargetId });
   if (!primary) {
     throw new ServiceError(
       `No primary resource is linked for this project. ${PRIMARY_RESOURCE_REPAIR_HINT}`,
@@ -381,7 +373,7 @@ export function assertPrimaryResourceConnected({
   };
 }
 
-export function discoverProject({
+export async function discoverProject({
   ctx,
   workingDirectory,
   projectId
@@ -389,11 +381,11 @@ export function discoverProject({
   ctx: ServiceContext;
   workingDirectory?: string | null;
   projectId?: string | null;
-}): ProjectDiscovery {
+}): Promise<ProjectDiscovery> {
   if (projectId) {
-    const resolvedProjectId = resolveProjectId(ctx, projectId);
-    const project = getProject({ ctx, projectId: resolvedProjectId });
-    const resources = listProjectResources({ ctx, projectId: resolvedProjectId });
+    const resolvedProjectId = await resolveProjectId(ctx, projectId);
+    const project = await getProject({ ctx, projectId: resolvedProjectId });
+    const resources = await listProjectResources({ ctx, projectId: resolvedProjectId });
     const primary = resources.find(r => r.isPrimary) ?? resources[0];
     return {
       projectId: project.id,
@@ -412,15 +404,12 @@ export function discoverProject({
     try {
       const raw = readProjectJsonFile(projectJsonPath);
       if (raw) {
-        const project = getProject({ ctx, projectId: raw.projectId });
-        const resource = ctx.db
-          .prepare(
-            `SELECT id, path, is_primary FROM project_resources
-             WHERE id = ? AND project_id = ? AND deleted_at IS NULL`
-          )
-          .get(raw.resourceId, raw.projectId) as
-          | { id: string; path: string; is_primary: number }
-          | undefined;
+        const project = await getProject({ ctx, projectId: raw.projectId });
+        const resource = (await ctx.db.get(
+          `SELECT id, path, is_primary FROM project_resources
+             WHERE id = ? AND project_id = ? AND deleted_at IS NULL`,
+          [raw.resourceId, raw.projectId]
+        )) as { id: string; path: string; is_primary: number } | undefined;
 
         return {
           projectId: project.id,

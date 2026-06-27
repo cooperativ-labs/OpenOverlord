@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
+import { managedFileSourceExists } from '../dist/connector-core-render.js';
 import {
   inspectConnector,
   listAvailableConnectors,
@@ -45,9 +46,12 @@ test('claude connector is available and every managed file exists on disk', () =
   assert.ok(listAvailableConnectors().includes('claude'));
   const manifest = readConnectorManifest('claude');
   assert.ok(manifest.connector.managedFiles.length > 0);
+  const sourceDir = path.join(repoRoot, 'connectors', 'adapters', 'claude');
   for (const relativePath of manifest.connector.managedFiles) {
-    const source = path.join(repoRoot, 'connectors', 'adapters', 'claude', relativePath);
-    assert.ok(existsSync(source), `missing managed source: ${relativePath}`);
+    assert.ok(
+      managedFileSourceExists({ sourceDir, relativePath }),
+      `missing managed source: ${relativePath}`
+    );
   }
 });
 
@@ -55,9 +59,12 @@ test('cursor connector is available and every managed file exists on disk', () =
   assert.ok(listAvailableConnectors().includes('cursor'));
   const manifest = readConnectorManifest('cursor');
   assert.ok(manifest.connector.managedFiles.length > 0);
+  const sourceDir = path.join(repoRoot, 'connectors', 'adapters', 'cursor');
   for (const relativePath of manifest.connector.managedFiles) {
-    const source = path.join(repoRoot, 'connectors', 'adapters', 'cursor', relativePath);
-    assert.ok(existsSync(source), `missing managed source: ${relativePath}`);
+    assert.ok(
+      managedFileSourceExists({ sourceDir, relativePath }),
+      `missing managed source: ${relativePath}`
+    );
   }
 });
 
@@ -65,9 +72,12 @@ test('codex connector is available and every managed file exists on disk', () =>
   assert.ok(listAvailableConnectors().includes('codex'));
   const manifest = readConnectorManifest('codex');
   assert.ok(manifest.connector.managedFiles.length > 0);
+  const sourceDir = path.join(repoRoot, 'connectors', 'adapters', 'codex');
   for (const relativePath of manifest.connector.managedFiles) {
-    const source = path.join(repoRoot, 'connectors', 'adapters', 'codex', relativePath);
-    assert.ok(existsSync(source), `missing managed source: ${relativePath}`);
+    assert.ok(
+      managedFileSourceExists({ sourceDir, relativePath }),
+      `missing managed source: ${relativePath}`
+    );
   }
 });
 

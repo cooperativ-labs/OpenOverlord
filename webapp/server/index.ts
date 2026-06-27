@@ -12,7 +12,7 @@ import { ServiceError } from '../../packages/core/service/errors.ts';
 import { loadRepoEnvForProfile } from '../load-repo-env.ts';
 
 import { authNodeHandler, requireAuthenticatedSession } from './auth.ts';
-import { DATABASE_PATH, WORKSPACE } from './db.ts';
+import { DATABASE_DIALECT, DATABASE_PATH, initDatabase, WORKSPACE } from './db.ts';
 import { ENV_PROFILE, REPO_ROOT } from './env-profile.ts';
 import { apiErrorFromDatabaseError } from './errors.ts';
 import {
@@ -176,10 +176,6 @@ const envSqlStudioEnabled =
       ? false
       : null;
 
-syncSqlStudioForWorkspace({
-  enabled: envSqlStudioEnabled ?? readSqlStudioEnabled({ workspaceId: WORKSPACE.id })
-});
-
 function parsePort(value: string, name: string): number {
   const port = Number(value.trim());
   if (Number.isInteger(port) && port >= 0 && port < 65536) return port;
@@ -212,20 +208,16 @@ function handle(
   options: { mutates?: boolean; requires?: Permission } = {}
 ) {
   return (req: Request, res: Response, next: NextFunction) => {
-    try {
-      if (options.requires) requirePermission(options.requires);
-      // `Promise.resolve` lets a handler return either a plain value or a
-      // promise (e.g. one that awaits an Automations Layer call) through the
-      // same path without forking sync/async response handling.
-      Promise.resolve(fn(req, res))
-        .then(result => {
-          if (options.mutates) realtime.pollNow();
-          if (!res.headersSent) res.json(result ?? { ok: true });
-        })
-        .catch(next);
-    } catch (err) {
-      next(err);
-    }
+    void (async () => {
+      try {
+        if (options.requires) await requirePermission(options.requires);
+        const result = await Promise.resolve(fn(req, res));
+        if (options.mutates) realtime.pollNow();
+        if (!res.headersSent) res.json(result ?? { ok: true });
+      } catch (err) {
+        next(err);
+      }
+    })();
   };
 }
 
@@ -238,11 +230,11 @@ app.use('/api', requireAuthenticatedSession);
 app.get(
   '/api/meta',
   handle(
-    () => ({
+    async () => ({
       workspace: WORKSPACE,
       // True while the seeded first workspace is still unnamed; the web UI shows
       // the one-time initial setup step until `POST /api/setup` completes.
-      needsSetup: needsInitialSetup(),
+      needsSetup: await needsInitialSetup(),
       databasePath: DATABASE_PATH,
       web: {
         host: bindHost,
@@ -276,8 +268,8 @@ app.get(
 app.post(
   '/api/setup',
   handle(
-    req => {
-      const result = completeInitialSetup(req.body);
+    async req => {
+      const result = await completeInitialSetup(req.body);
       realtime.refreshAll();
       return result;
     },
@@ -298,8 +290,8 @@ app.get(
 app.post(
   '/api/workspaces',
   handle(
-    req => {
-      const result = createWorkspace(req.body);
+    async req => {
+      const result = await createWorkspace(req.body);
       realtime.refreshAll();
       return result;
     },
@@ -309,8 +301,8 @@ app.post(
 app.patch(
   '/api/workspaces/:id',
   handle(
-    req => {
-      const result = updateWorkspace(req.params.id, req.body);
+    async req => {
+      const result = await updateWorkspace(req.params.id, req.body);
       // Renaming the active workspace changes `/api/meta`, so resync everyone.
       if (result.isActive) realtime.refreshAll();
       return result;
@@ -321,8 +313,8 @@ app.patch(
 app.delete(
   '/api/workspaces/:id',
   handle(
-    req => {
-      const result = deleteWorkspace(req.params.id);
+    async req => {
+      const result = await deleteWorkspace(req.params.id);
       // Deleting may switch the active workspace; resync all subscribers.
       realtime.refreshAll();
       return result;
@@ -337,8 +329,8 @@ app.get(
 app.get(
   '/api/workspaces/:id/objectives.csv',
   handle(
-    (req, res) => {
-      const exportFile = exportWorkspaceObjectivesCsv(req.params.id);
+    async (req, res) => {
+      const exportFile = await exportWorkspaceObjectivesCsv(req.params.id);
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${exportFile.filename}"`);
       res.send(exportFile.content);
@@ -349,8 +341,8 @@ app.get(
 app.post(
   '/api/workspaces/:id/activate',
   handle(
-    req => {
-      const result = activateWorkspace(req.params.id);
+    async req => {
+      const result = await activateWorkspace(req.params.id);
       realtime.refreshAll();
       return result;
     },
@@ -449,36 +441,40 @@ app.post(
 app.get(
   '/api/storage/:bucketKey/:storageKey',
   (req: Request, res: Response, next: NextFunction) => {
-    try {
-      requirePermission(PERMISSIONS.PROJECT_READ);
-      const resolved = resolveStoredObject(req.params.bucketKey, req.params.storageKey);
-      res.type(resolved.contentType);
-      res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
-      if (resolved.forceDownload) {
-        res.setHeader('X-Content-Type-Options', 'nosniff');
-        res.setHeader(
-          'Content-Disposition',
-          `attachment; filename="${encodeURIComponent(resolved.filename)}"`
-        );
+    void (async () => {
+      try {
+        await requirePermission(PERMISSIONS.PROJECT_READ);
+        const resolved = await resolveStoredObject(req.params.bucketKey, req.params.storageKey);
+        res.type(resolved.contentType);
+        res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+        if (resolved.forceDownload) {
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+          res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="${encodeURIComponent(resolved.filename)}"`
+          );
+        }
+        res.sendFile(resolved.absolutePath);
+      } catch (err) {
+        next(err);
       }
-      res.sendFile(resolved.absolutePath);
-    } catch (err) {
-      next(err);
-    }
+    })();
   }
 );
 
 // ---- Realtime ------------------------------------------------------------
 
 app.get('/api/stream', (req: Request, res: Response) => {
-  try {
-    requirePermission(PERMISSIONS.PROJECT_READ);
-  } catch {
-    res.status(403).json({ error: 'Permission denied: realtime stream' });
-    return;
-  }
-  realtime.addClient(res);
-  req.on('close', () => realtime.removeClient(res));
+  void (async () => {
+    try {
+      await requirePermission(PERMISSIONS.PROJECT_READ);
+    } catch {
+      res.status(403).json({ error: 'Permission denied: realtime stream' });
+      return;
+    }
+    realtime.addClient(res);
+    req.on('close', () => realtime.removeClient(res));
+  })();
 });
 
 // ---- Projects ------------------------------------------------------------
@@ -1071,6 +1067,16 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 // and a CJS bundle lets the many CommonJS dependencies (dotenv, express, the
 // google-auth chain, …) use native `require` instead of esbuild's ESM shim.
 async function start(): Promise<void> {
+  await initDatabase();
+
+  syncSqlStudioForWorkspace({
+    enabled:
+      DATABASE_DIALECT === 'sqlite' &&
+      (envSqlStudioEnabled ?? (await readSqlStudioEnabled({ workspaceId: WORKSPACE.id })))
+        ? true
+        : false
+  });
+
   // Downstream forks inject their own automations via OVERLORD_AUTOMATIONS_MODULE
   // (custom-automation extension point); a no-op when the env var is unset.
   const externalAutomations = await loadExternalAutomations();

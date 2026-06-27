@@ -15,16 +15,16 @@ describe('mission reference resolution', () => {
     const { createProject, createMission, getMissionDetail, listMissionEvents } =
       await import('./repository.ts');
 
-    const project = createProject({ name: 'Mission Ref Test' });
-    const created = createMission({
+    const project = await createProject({ name: 'Mission Ref Test' });
+    const created = await createMission({
       projectId: project.id,
       firstObjective: 'Resolve by display id'
     });
 
-    assert.equal(getMissionDetail(created.id).id, created.id);
-    assert.equal(getMissionDetail(created.displayId).id, created.id);
-    assert.equal(getMissionDetail(created.displayId).displayId, created.displayId);
-    assert.doesNotThrow(() => listMissionEvents(created.displayId));
+    assert.equal((await getMissionDetail(created.id)).id, created.id);
+    assert.equal((await getMissionDetail(created.displayId)).id, created.id);
+    assert.equal((await getMissionDetail(created.displayId)).displayId, created.displayId);
+    await assert.doesNotReject(listMissionEvents(created.displayId));
 
     const actor = db
       .prepare(`SELECT profile_id FROM workspace_users WHERE id = ?`)
@@ -53,7 +53,7 @@ describe('mission reference resolution', () => {
       nowIso()
     );
 
-    const followUp = listMissionEvents(created.displayId).find(
+    const followUp = (await listMissionEvents(created.displayId)).find(
       event => event.summary === 'Please publish this prompt.'
     );
     assert.equal(followUp?.actorWorkspaceUserId, workspaceUserId);
@@ -69,14 +69,14 @@ describe('mission reference resolution', () => {
     const { createProject, createMission } = await import('./repository.ts');
     const { ACTOR_WORKSPACE_USER_ID } = await import('./db.ts');
 
-    const project = createProject({ name: 'Mission Assignee Test' });
-    const created = createMission({
+    const project = await createProject({ name: 'Mission Assignee Test' });
+    const created = await createMission({
       projectId: project.id,
       firstObjective: 'Default assignee to creator'
     });
     assert.equal(created.assignedWorkspaceUserId, ACTOR_WORKSPACE_USER_ID);
 
-    const explicitlyUnassigned = createMission({
+    const explicitlyUnassigned = await createMission({
       projectId: project.id,
       firstObjective: 'Allow explicit unassign on create',
       assignedWorkspaceUserId: null

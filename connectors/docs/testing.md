@@ -38,7 +38,9 @@ For each connector's `conformance-manifest.yaml`
 
 > Connector owns "per-agent plugin/adapter files and managed file manifests."
 
-- Every path in the manifest's `managedFiles` exists on disk under the connector.
+- Every path in the manifest's `managedFiles` exists on disk under the connector
+  adapter or under `connectors/core/overlord-mission/` when the path is a rendered
+  core reference (`skills/overlord-mission/reference/*.md`).
 - Conversely, the connector's installed plugin files are all declared in
   `managedFiles` (no undeclared managed file — drift between the manifest and the
   actual file set fails).
@@ -77,9 +79,10 @@ For `connectors/**/scripts/*.sh`
 ## E. Connector Core Workflow
 
 - The connector core (`connectors/core/overlord-mission/`) instructions are not
-  duplicated by an adapter — adapters extend the core, they don't replace it
-  (contract constraint "extend the core, don't replace it"). A test asserts the
-  adapter does not re-declare core protocol rules verbatim.
+  duplicated by an adapter — adapters extend the core via a `<!-- @connector-core -->`
+  marker in `skills/overlord-mission/SKILL.md`, and `ovld agent-setup` interpolates
+  the core body at install time (contract constraint "extend the core, don't replace it").
+  A test asserts the adapter template does not re-declare core protocol rules verbatim.
 - The plugin's slash commands map 1:1 to protocol operations (cross-checked with
   the `drift-review` skill's concern); a command referencing a non-existent
   protocol subcommand fails.

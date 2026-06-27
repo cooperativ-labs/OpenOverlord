@@ -59,23 +59,23 @@ function currentGitStatus(
   }
 }
 
-function resolveWorkingDirectory({
+async function resolveWorkingDirectory({
   ctx,
   missionId
 }: {
   ctx: ServiceContext;
   missionId: string;
-}): string | null {
+}): Promise<string | null> {
   try {
-    const mission = resolveMissionId(ctx, missionId);
-    const discovery = discoverProject({ ctx, projectId: mission.projectId });
+    const mission = await resolveMissionId(ctx, missionId);
+    const discovery = await discoverProject({ ctx, projectId: mission.projectId });
     return discovery.resourcePath ? path.resolve(discovery.resourcePath) : null;
   } catch {
     return null;
   }
 }
 
-export function listChangedFilesForReview({
+export async function listChangedFilesForReview({
   ctx,
   missionId,
   objectiveId,
@@ -85,15 +85,14 @@ export function listChangedFilesForReview({
   missionId: string;
   objectiveId?: string | null;
   includeCurrent?: boolean;
-}): ChangedFileReview[] {
-  const mission = resolveMissionId(ctx, missionId);
+}): Promise<ChangedFileReview[]> {
+  const mission = await resolveMissionId(ctx, missionId);
   const params: string[] = [mission.id];
   const objectiveFilter = objectiveId ? 'AND cf.objective_id = ?' : '';
   if (objectiveId) params.push(objectiveId);
 
-  const rows = ctx.db
-    .prepare(
-      `SELECT cf.file_path, cf.vcs_status, cf.current_diff_state, cf.objective_id, cf.session_id,
+  const rows = (await ctx.db.all(
+    `SELECT cf.file_path, cf.vcs_status, cf.current_diff_state, cf.objective_id, cf.session_id,
               cf.first_observed_at, cf.last_observed_at,
               COUNT(cr.id) AS rationale_count,
               SUM(CASE WHEN cr.is_final = 1 THEN 1 ELSE 0 END) AS final_rationale_count,
@@ -106,9 +105,9 @@ export function listChangedFilesForReview({
         AND cr.deleted_at IS NULL
        WHERE cf.mission_id = ? AND cf.deleted_at IS NULL ${objectiveFilter}
        GROUP BY cf.id
-       ORDER BY cf.file_path ASC`
-    )
-    .all(...params) as Array<{
+       ORDER BY cf.file_path ASC`,
+    params
+  )) as Array<{
     file_path: string;
     vcs_status: string | null;
     current_diff_state: string | null;
@@ -141,7 +140,7 @@ export function listChangedFilesForReview({
   }
 
   if (includeCurrent) {
-    const workingDirectory = resolveWorkingDirectory({ ctx, missionId: mission.id });
+    const workingDirectory = await resolveWorkingDirectory({ ctx, missionId: mission.id });
     if (workingDirectory) {
       for (const current of currentGitStatus(workingDirectory)) {
         if (byPath.has(current.filePath)) continue;
@@ -165,7 +164,7 @@ export function listChangedFilesForReview({
   return Array.from(byPath.values()).sort((a, b) => a.filePath.localeCompare(b.filePath));
 }
 
-export function listRationalesForReview({
+export async function listRationalesForReview({
   ctx,
   missionId,
   objectiveId
@@ -173,21 +172,20 @@ export function listRationalesForReview({
   ctx: ServiceContext;
   missionId: string;
   objectiveId?: string | null;
-}): RationaleReview[] {
-  const mission = resolveMissionId(ctx, missionId);
+}): Promise<RationaleReview[]> {
+  const mission = await resolveMissionId(ctx, missionId);
   const params: string[] = [mission.id];
   const objectiveFilter = objectiveId ? 'AND objective_id = ?' : '';
   if (objectiveId) params.push(objectiveId);
 
-  const rows = ctx.db
-    .prepare(
-      `SELECT id, file_path, label, summary, why, impact, objective_id, session_id,
+  const rows = (await ctx.db.all(
+    `SELECT id, file_path, label, summary, why, impact, objective_id, session_id,
               delivery_id, is_final, created_at
        FROM change_rationales
        WHERE mission_id = ? AND deleted_at IS NULL ${objectiveFilter}
-       ORDER BY file_path ASC, created_at ASC`
-    )
-    .all(...params) as Array<{
+       ORDER BY file_path ASC, created_at ASC`,
+    params
+  )) as Array<{
     id: string;
     file_path: string;
     label: string;
@@ -216,7 +214,7 @@ export function listRationalesForReview({
   }));
 }
 
-export function readCurrentDiff({
+export async function readCurrentDiff({
   ctx,
   missionId,
   filePath
@@ -224,8 +222,8 @@ export function readCurrentDiff({
   ctx: ServiceContext;
   missionId: string;
   filePath?: string | null;
-}): { workingDirectory: string | null; diff: string; unavailable: boolean } {
-  const workingDirectory = resolveWorkingDirectory({ ctx, missionId });
+}): Promise<{ workingDirectory: string | null; diff: string; unavailable: boolean }> {
+  const workingDirectory = await resolveWorkingDirectory({ ctx, missionId });
   if (!workingDirectory) {
     return { workingDirectory: null, diff: '', unavailable: true };
   }

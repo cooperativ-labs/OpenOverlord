@@ -9,28 +9,24 @@ function deviceFingerprint(): string {
   return createHash('sha256').update(`${hostname()}:${platform()}`).digest('hex').slice(0, 32);
 }
 
-export function getDevice({ ctx }: { ctx: ServiceContext }): {
+export async function getDevice({ ctx }: { ctx: ServiceContext }): Promise<{
   id: string;
   label: string;
   fingerprint: string;
   platform: string | null;
-} {
+}> {
   const fingerprint = deviceFingerprint();
-  const existing = ctx.db
-    .prepare(
-      `SELECT id, label, fingerprint, platform FROM devices
-       WHERE workspace_id = ? AND fingerprint = ? AND deleted_at IS NULL`
-    )
-    .get(ctx.workspace.id, fingerprint) as
-    | { id: string; label: string; fingerprint: string; platform: string | null }
-    | undefined;
+  const existing = (await ctx.db.get(
+    `SELECT id, label, fingerprint, platform FROM devices
+       WHERE workspace_id = ? AND fingerprint = ? AND deleted_at IS NULL`,
+    [ctx.workspace.id, fingerprint]
+  )) as { id: string; label: string; fingerprint: string; platform: string | null } | undefined;
 
   if (existing) {
-    ctx.db
-      .prepare(
-        `UPDATE devices SET last_seen_at = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`
-      )
-      .run(nowIso(), nowIso(), existing.id);
+    await ctx.db.run(
+      `UPDATE devices SET last_seen_at = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`,
+      [nowIso(), nowIso(), existing.id]
+    );
     return existing;
   }
 
@@ -38,16 +34,15 @@ export function getDevice({ ctx }: { ctx: ServiceContext }): {
   const id = newId();
   const label = hostname();
 
-  ctx.db
-    .prepare(
-      `INSERT INTO devices
+  await ctx.db.run(
+    `INSERT INTO devices
          (id, workspace_id, fingerprint, label, platform, status, last_seen_at,
           metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, ?, 'active', ?, '{}', ?, ?, 1)`
-    )
-    .run(id, ctx.workspace.id, fingerprint, label, platform(), now, now, now);
+       VALUES (?, ?, ?, ?, ?, 'active', ?, '{}', ?, ?, 1)`,
+    [id, ctx.workspace.id, fingerprint, label, platform(), now, now, now]
+  );
 
-  recordChange({
+  await recordChange({
     ctx,
     entityType: 'device',
     entityId: id,
@@ -58,7 +53,7 @@ export function getDevice({ ctx }: { ctx: ServiceContext }): {
   return { id, label, fingerprint, platform: platform() };
 }
 
-export function updateDevice({
+export async function updateDevice({
   ctx,
   deviceId,
   label
@@ -66,19 +61,18 @@ export function updateDevice({
   ctx: ServiceContext;
   deviceId: string;
   label: string;
-}): { id: string; label: string } {
+}): Promise<{ id: string; label: string }> {
   const trimmed = label.trim();
   if (!trimmed) {
     throw new Error('Device label is required');
   }
 
   const now = nowIso();
-  ctx.db
-    .prepare(
-      `UPDATE devices SET label = ?, updated_at = ?, revision = revision + 1
-       WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
-    )
-    .run(trimmed, now, deviceId, ctx.workspace.id);
+  await ctx.db.run(
+    `UPDATE devices SET label = ?, updated_at = ?, revision = revision + 1
+       WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+    [trimmed, now, deviceId, ctx.workspace.id]
+  );
 
   return { id: deviceId, label: trimmed };
 }

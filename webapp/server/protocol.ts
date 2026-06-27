@@ -24,7 +24,7 @@ import {
   writeSharedContext
 } from '../../packages/core/service/protocol.ts';
 
-import { ACTOR_WORKSPACE_USER_ID, db, WORKSPACE } from './db.ts';
+import { getActorWorkspaceUserId, serviceDatabaseClient, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';
 import { requirePermission } from './rbac.ts';
 
@@ -52,14 +52,14 @@ export interface ProtocolRequestBody {
 
 /**
  * Build a service context bound to the web server's active workspace. Reads the
- * live `WORKSPACE` / `ACTOR_WORKSPACE_USER_ID` bindings so workspace switching
+ * live `WORKSPACE` / `getActorWorkspaceUserId()` bindings so workspace switching
  * is observed, and tags writes with the `protocol` source for the change feed.
  */
 function buildContext(): ServiceContext {
   return {
-    db,
+    db: serviceDatabaseClient(),
     workspace: { id: WORKSPACE.id, slug: WORKSPACE.slug, name: WORKSPACE.name },
-    actorWorkspaceUserId: ACTOR_WORKSPACE_USER_ID,
+    actorWorkspaceUserId: getActorWorkspaceUserId(),
     source: 'protocol'
   };
 }
@@ -403,8 +403,8 @@ const handlers: Record<string, Handler> = {
     });
   },
 
-  'attachment-list': (ctx, body) =>
-    loadMissionContext({ ctx, missionId: requireFlag(body, '--mission-id') }).attachments,
+  'attachment-list': async (ctx, body) =>
+    (await loadMissionContext({ ctx, missionId: requireFlag(body, '--mission-id') })).attachments,
 
   // Auth and discovery -----------------------------------------------------
   'auth-status': ctx => authStatus({ ctx }),
@@ -456,7 +456,10 @@ const SUBCOMMAND_PERMISSIONS: Record<string, Permission | null> = {
  * layer. Throws `ApiError(404)` for unknown subcommands; service-layer
  * validation surfaces as `ServiceError` (mapped to HTTP status by the caller).
  */
-export function runProtocolSubcommand(subcommand: string, body: ProtocolRequestBody): unknown {
+export async function runProtocolSubcommand(
+  subcommand: string,
+  body: ProtocolRequestBody
+): Promise<unknown> {
   const handler = handlers[subcommand];
   if (!handler) {
     throw new ApiError(
@@ -466,6 +469,6 @@ export function runProtocolSubcommand(subcommand: string, body: ProtocolRequestB
     );
   }
   const requiredPermission = SUBCOMMAND_PERMISSIONS[subcommand];
-  if (requiredPermission) requirePermission(requiredPermission);
+  if (requiredPermission) await requirePermission(requiredPermission);
   return handler(buildContext(), body);
 }

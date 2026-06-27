@@ -1,5 +1,17 @@
-import { fixupLocalStoragePaths, migrateDatabase, resolveAdapter } from '@overlord/database';
+import {
+  createSqliteClient,
+  fixupLocalStoragePaths,
+  migrateDatabase,
+  migratePostgres,
+  openDatabaseClient,
+  resolveAdapter,
+  toPostgresPlaceholders,
+  type DatabaseClient,
+  type SqlDialect
+} from '@overlord/database';
+import type { AuthDomainDatabase, PostgresQueryExecutor } from '@overlord/auth';
 import Database from 'better-sqlite3';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
@@ -28,47 +40,96 @@ export function resolveDatabasePath(): string {
 }
 
 const databasePath = resolveDatabasePath();
+const adapter = resolveAdapter({ databasePath });
 
-// Fail loudly when a Postgres backend is configured. This synchronous REST data
-// layer is still `better-sqlite3`-only; the hosted Postgres runtime runs through
-// the async `DatabaseClient` (`@overlord/database`). Silently opening a default
-// SQLite file when an operator configured `database_url`/`DATABASE_URL` for
-// Postgres would serve an empty/wrong database, so adapter selection is made
-// explicit here instead of implicitly resolving to `better-sqlite3`.
-// `resolveDatabasePath` already bridged `overlord.toml`'s `database_url` into the
-// environment, so `resolveAdapter()` sees the same value the rest of the stack does.
-{
-  const adapter = resolveAdapter();
-  if (adapter.type === 'postgres') {
-    throw new Error(
-      'A Postgres backend is configured (database_url/DATABASE_URL), but the embedded ' +
-        'webapp REST server runs on better-sqlite3 only. The hosted Postgres runtime is ' +
-        'served through the async DatabaseClient; do not point this local server at Postgres. ' +
-        'Run migrations with `yarn db:migrate:postgres` and serve the hosted backend instead.'
-    );
-  }
+type LegacyStatement = {
+  get(...params: unknown[]): unknown;
+  all(...params: unknown[]): unknown[];
+  run(...params: unknown[]): { changes: number; lastInsertRowid?: number | bigint };
+};
+
+function postgresLegacyError(): Error {
+  return new Error(
+    'This server booted with a Postgres database, but this code path still uses the legacy ' +
+      'synchronous better-sqlite3 handle. Port this call site to DatabaseClient before using it.'
+  );
 }
 
-// Open the local Overlord database directly through better-sqlite3, exactly as
-// the objective specifies. WAL mode lets the CLI write concurrently while the
-// web server reads/writes; foreign_keys enforces the referential integrity the
-// schema relies on. We create the parent directory first so a fresh
-// app-data/global location (e.g. the packaged desktop's userData dir) works
-// without any prior setup.
-mkdirSync(path.dirname(databasePath), { recursive: true });
+function createPostgresLegacyDatabase(): Database.Database {
+  const statement: LegacyStatement = {
+    get() {
+      throw postgresLegacyError();
+    },
+    all() {
+      throw postgresLegacyError();
+    },
+    run() {
+      throw postgresLegacyError();
+    }
+  };
+  return {
+    prepare() {
+      return statement as Database.Statement;
+    },
+    pragma() {
+      throw postgresLegacyError();
+    },
+    transaction() {
+      throw postgresLegacyError();
+    },
+    exec() {
+      throw postgresLegacyError();
+    },
+    close() {
+      // The real Postgres pool is closed through DatabaseClient.
+    }
+  } as unknown as Database.Database;
+}
 
-export const db = new Database(databasePath);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-db.pragma('busy_timeout = 5000');
+let sqliteDb: Database.Database | null = null;
 
-// First-run bootstrap: create the schema and seed the first workspace if the
-// database is empty; a no-op once migrated. This is what makes `ovld serve` and
-// the packaged desktop come up on a clean machine without `yarn start:local`.
-// (Idempotent — checksums are verified against schema_migrations.)
-migrateDatabase(db);
+if (adapter.type === 'sqlite') {
+  // Open the local Overlord database directly through better-sqlite3 for the
+  // synchronous call sites that remain until later port stages. WAL mode lets
+  // the CLI write concurrently while the web server reads/writes.
+  mkdirSync(path.dirname(databasePath), { recursive: true });
 
-fixupLocalStoragePaths(db, databasePath);
+  sqliteDb = new Database(databasePath);
+  sqliteDb.pragma('journal_mode = WAL');
+  sqliteDb.pragma('foreign_keys = ON');
+  sqliteDb.pragma('busy_timeout = 5000');
+
+  // First-run bootstrap: create the schema and seed the first workspace if the
+  // database is empty; a no-op once migrated.
+  migrateDatabase(sqliteDb);
+  fixupLocalStoragePaths(sqliteDb, databasePath);
+}
+
+export const db: Database.Database = sqliteDb ?? createPostgresLegacyDatabase();
+export const DATABASE_DIALECT: SqlDialect = adapter.type;
+export let databaseClient: DatabaseClient | null =
+  sqliteDb === null ? null : createSqliteClient(sqliteDb);
+
+let databaseInitPromise: Promise<DatabaseClient> | null = null;
+
+export async function initDatabase(): Promise<DatabaseClient> {
+  if (databaseClient) {
+    await refreshActiveWorkspaceFromClient(databaseClient);
+    return databaseClient;
+  }
+  if (!databaseInitPromise) {
+    databaseInitPromise = (async () => {
+      const client = await openDatabaseClient(adapter);
+      if (client.dialect === 'postgres') {
+        await migratePostgres(client);
+      }
+      databaseClient = client;
+      await refreshActiveWorkspaceFromClient(client);
+      return client;
+    })();
+  }
+  return databaseInitPromise;
+}
 
 export const DATABASE_PATH = databasePath;
 
@@ -99,54 +160,100 @@ export interface WorkspaceRow {
   created_at: string;
 }
 
-function loadWorkspaceRow(id: string): WorkspaceRow | undefined {
-  return db
-    .prepare(
-      `SELECT id, slug, name, kind, created_at FROM workspaces
-         WHERE id = ? AND deleted_at IS NULL`
-    )
-    .get(id) as WorkspaceRow | undefined;
+function loadWorkspaceRowFromClient(
+  client: DatabaseClient,
+  id: string
+): Promise<WorkspaceRow | undefined> {
+  return client.get<WorkspaceRow>(
+    `SELECT id, slug, name, kind, created_at FROM workspaces
+       WHERE id = ? AND deleted_at IS NULL`,
+    [id]
+  );
 }
 
-function oldestWorkspaceRow(): WorkspaceRow | undefined {
-  return db
-    .prepare(
-      `SELECT id, slug, name, kind, created_at FROM workspaces
-         WHERE deleted_at IS NULL ORDER BY created_at ASC LIMIT 1`
-    )
-    .get() as WorkspaceRow | undefined;
+async function oldestWorkspaceRowFromClient(client: DatabaseClient): Promise<WorkspaceRow | undefined> {
+  return client.get<WorkspaceRow>(
+    `SELECT id, slug, name, kind, created_at FROM workspaces
+       WHERE deleted_at IS NULL ORDER BY created_at ASC LIMIT 1`
+  );
 }
 
 /** Resolve the workspace user that changes in `workspaceId` are attributed to. */
-export function resolveActorForWorkspace(workspaceId: string): string | null {
-  const row = db
-    .prepare(
-      `SELECT id FROM workspace_users
-         WHERE workspace_id = ? AND status = 'active' AND deleted_at IS NULL
-         ORDER BY created_at ASC LIMIT 1`
-    )
-    .get(workspaceId) as { id: string } | undefined;
+export async function resolveActorForWorkspace(
+  workspaceId: string,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<string | null> {
+  const row = await client.get<{ id: string }>(
+    `SELECT id FROM workspace_users
+       WHERE workspace_id = ? AND status = 'active' AND deleted_at IS NULL
+       ORDER BY created_at ASC LIMIT 1`,
+    [workspaceId]
+  );
   return row?.id ?? null;
 }
 
-const initialWorkspace = oldestWorkspaceRow();
-
-if (!initialWorkspace) {
-  // Migrations seed the first workspace, so a freshly migrated database always
-  // has one. Reaching here means the database predates the seed migration or
-  // was tampered with — re-run migrations (`ovld serve` / `yarn start:local`).
-  throw new Error('No workspace found in the database. Re-run migrations to seed it.');
-}
+export const resolveActorForWorkspaceAsync = resolveActorForWorkspace;
 
 export let WORKSPACE: { id: string; slug: string; name: string; kind: string } = {
-  id: initialWorkspace.id,
-  slug: initialWorkspace.slug,
-  name: initialWorkspace.name,
-  kind: initialWorkspace.kind
+  id: 'pending-workspace',
+  slug: 'pending',
+  name: 'Pending Workspace',
+  kind: 'user'
 };
 
 /** The workspace user changes are attributed to, once a local account exists. */
-export let ACTOR_WORKSPACE_USER_ID: string | null = resolveActorForWorkspace(initialWorkspace.id);
+export let ACTOR_WORKSPACE_USER_ID: string | null = null;
+
+export interface RequestContext {
+  actorWorkspaceUserId: string | null;
+  activeTokenId: string | null;
+  activeTokenScopes: string[] | null;
+}
+
+function defaultRequestContext(): RequestContext {
+  return {
+    actorWorkspaceUserId: ACTOR_WORKSPACE_USER_ID,
+    activeTokenId: ACTIVE_TOKEN_ID,
+    activeTokenScopes: ACTIVE_TOKEN_SCOPES
+  };
+}
+
+const requestContextStorage = new AsyncLocalStorage<RequestContext>();
+
+export async function withRequestContextAsync<T>(fn: () => Promise<T>): Promise<T> {
+  return requestContextStorage.run(defaultRequestContext(), fn);
+}
+
+function requestContext(): RequestContext {
+  const store = requestContextStorage.getStore();
+  if (store) return store;
+  return defaultRequestContext();
+}
+
+function mutateRequestContext(next: RequestContext): void {
+  const store = requestContextStorage.getStore();
+  if (store) {
+    store.actorWorkspaceUserId = next.actorWorkspaceUserId;
+    store.activeTokenId = next.activeTokenId;
+    store.activeTokenScopes = next.activeTokenScopes;
+    return;
+  }
+  ACTOR_WORKSPACE_USER_ID = next.actorWorkspaceUserId;
+  ACTIVE_TOKEN_ID = next.activeTokenId;
+  ACTIVE_TOKEN_SCOPES = next.activeTokenScopes;
+}
+
+export function getActorWorkspaceUserId(): string | null {
+  return requestContext().actorWorkspaceUserId;
+}
+
+export function getActiveTokenId(): string | null {
+  return requestContext().activeTokenId;
+}
+
+export function getActiveTokenScopes(): string[] | null {
+  return requestContext().activeTokenScopes;
+}
 
 /**
  * Switch the active workspace. Re-points the `WORKSPACE` and
@@ -154,13 +261,33 @@ export let ACTOR_WORKSPACE_USER_ID: string | null = resolveActorForWorkspace(ini
  * the new workspace. Returns the new workspace row, or `null` if `id` does not
  * resolve to an existing (non-deleted) workspace.
  */
-export function setActiveWorkspace(id: string): WorkspaceRow | null {
-  if (id === WORKSPACE.id) return loadWorkspaceRow(id) ?? null;
-  const row = loadWorkspaceRow(id);
+export async function setActiveWorkspace(id: string): Promise<WorkspaceRow | null> {
+  if (id === WORKSPACE.id) return (await loadWorkspaceRowAsync(id)) ?? null;
+  const row = await loadWorkspaceRowAsync(id);
   if (!row) return null;
   WORKSPACE = { id: row.id, slug: row.slug, name: row.name, kind: row.kind };
-  ACTOR_WORKSPACE_USER_ID = resolveActorForWorkspace(row.id);
+  ACTOR_WORKSPACE_USER_ID = await resolveActorForWorkspace(row.id);
   return row;
+}
+
+async function loadWorkspaceRowAsync(
+  id: string,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<WorkspaceRow | undefined> {
+  return client.get<WorkspaceRow>(
+    `SELECT id, slug, name, kind, created_at FROM workspaces
+       WHERE id = ? AND deleted_at IS NULL`,
+    [id]
+  );
+}
+
+async function refreshActiveWorkspaceFromClient(client: DatabaseClient): Promise<void> {
+  const row = await oldestWorkspaceRowFromClient(client);
+  if (!row) {
+    throw new Error('No workspace found in the database. Re-run migrations to seed it.');
+  }
+  WORKSPACE = { id: row.id, slug: row.slug, name: row.name, kind: row.kind };
+  ACTOR_WORKSPACE_USER_ID = await resolveActorForWorkspace(row.id, client);
 }
 
 /**
@@ -181,9 +308,11 @@ export let ACTIVE_TOKEN_ID: string | null = null;
  * no token-level restriction, so token scope/id are cleared.
  */
 export function setActiveWorkspaceUser(workspaceUserId: string | null): void {
-  ACTOR_WORKSPACE_USER_ID = workspaceUserId;
-  ACTIVE_TOKEN_SCOPES = null;
-  ACTIVE_TOKEN_ID = null;
+  mutateRequestContext({
+    actorWorkspaceUserId: workspaceUserId,
+    activeTokenScopes: null,
+    activeTokenId: null
+  });
 }
 
 /**
@@ -200,9 +329,11 @@ export function setActiveTokenAuth({
   tokenId: string | null;
   scopeGrants: string[] | null;
 }): void {
-  ACTOR_WORKSPACE_USER_ID = workspaceUserId;
-  ACTIVE_TOKEN_ID = tokenId;
-  ACTIVE_TOKEN_SCOPES = scopeGrants && scopeGrants.length > 0 ? scopeGrants : null;
+  mutateRequestContext({
+    actorWorkspaceUserId: workspaceUserId,
+    activeTokenId: tokenId,
+    activeTokenScopes: scopeGrants && scopeGrants.length > 0 ? scopeGrants : null
+  });
 }
 
 /**
@@ -210,24 +341,41 @@ export function setActiveTokenAuth({
  * rename) so the `WORKSPACE` live binding — and everything derived from it,
  * like `/api/meta` — reflects the new values.
  */
-export function reloadActiveWorkspace(): void {
-  const row = loadWorkspaceRow(WORKSPACE.id);
+export async function reloadActiveWorkspace(): Promise<void> {
+  const row = await loadWorkspaceRowAsync(WORKSPACE.id);
   if (row) WORKSPACE = { id: row.id, slug: row.slug, name: row.name, kind: row.kind };
 }
 
-// ---- entity_changes writer ----------------------------------------------
+export function requireDatabaseClient(): DatabaseClient {
+  if (!databaseClient) {
+    throw new Error('Database has not been initialized. Call initDatabase() during server startup.');
+  }
+  return databaseClient;
+}
 
-const insertChangeStmt = db.prepare(`
-  INSERT INTO entity_changes (
-    id, workspace_id, project_id, mission_id, objective_id,
-    entity_type, entity_id, operation, entity_revision,
-    changed_fields_json, actor_workspace_user_id, actor_token_id, source, occurred_at
-  ) VALUES (
-    @id, @workspace_id, @project_id, @mission_id, @objective_id,
-    @entity_type, @entity_id, @operation, @entity_revision,
-    @changed_fields_json, @actor_workspace_user_id, @actor_token_id, 'webapp', @occurred_at
-  )
-`);
+function postgresAuthExecutor(client: DatabaseClient): PostgresQueryExecutor {
+  return {
+    query: async <Row>(sql: string, values: readonly unknown[] = []) => {
+      const rows = await client.all<Row>(toPostgresPlaceholders(sql), [...values]);
+      return { rows, rowCount: rows.length };
+    }
+  };
+}
+
+/** Auth token helpers accept either the sqlite handle or a Postgres executor. */
+export function authDomainDatabase(): AuthDomainDatabase {
+  if (DATABASE_DIALECT === 'sqlite') return db;
+  return postgresAuthExecutor(requireDatabaseClient());
+}
+
+export function serviceDatabaseClient(): DatabaseClient {
+  // The service layer is async on both dialects: always hand back the resolved
+  // async DatabaseClient (a SqliteClient wrapping the better-sqlite3 handle on
+  // Local), never the raw synchronous better-sqlite3 handle.
+  return requireDatabaseClient();
+}
+
+// ---- entity_changes writer ----------------------------------------------
 
 export interface RecordChangeInput {
   entityType: string;
@@ -249,35 +397,58 @@ export interface RecordChangeInput {
  * transaction as the domain mutation so the realtime feed never diverges from
  * the data. The realtime poller turns these rows into SSE deltas.
  */
-export function recordChange(input: RecordChangeInput): void {
-  insertChangeStmt.run({
-    id: newId(),
-    workspace_id: input.workspaceId ?? WORKSPACE.id,
-    project_id: input.projectId ?? null,
-    mission_id: input.missionId ?? null,
-    objective_id: input.objectiveId ?? null,
-    entity_type: input.entityType,
-    entity_id: input.entityId,
-    operation: input.operation,
-    entity_revision: input.entityRevision ?? null,
-    changed_fields_json: JSON.stringify(input.changedFields ?? []),
-    actor_workspace_user_id:
-      input.actorWorkspaceUserId !== undefined
-        ? input.actorWorkspaceUserId
-        : ACTOR_WORKSPACE_USER_ID,
-    actor_token_id: ACTIVE_TOKEN_ID,
-    occurred_at: nowIso()
-  });
+export async function recordChange(
+  input: RecordChangeInput,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<void> {
+  await recordChangeAsync(input, client);
 }
 
-export function currentMaxSeq(): number {
-  const row = db.prepare(`SELECT MAX(seq) AS seq FROM entity_changes`).get() as {
-    seq: number | null;
-  };
-  return row.seq ?? 0;
+export async function recordChangeAsync(
+  input: RecordChangeInput,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<void> {
+  await client.run(
+    `INSERT INTO entity_changes (
+      id, workspace_id, project_id, mission_id, objective_id,
+      entity_type, entity_id, operation, entity_revision,
+      changed_fields_json, actor_workspace_user_id, actor_token_id, source, occurred_at
+    ) VALUES (
+      ?, ?, ?, ?, ?,
+      ?, ?, ?, ?,
+      ?, ?, ?, 'webapp', ?
+    )`,
+    [
+      newId(),
+      input.workspaceId ?? WORKSPACE.id,
+      input.projectId ?? null,
+      input.missionId ?? null,
+      input.objectiveId ?? null,
+      input.entityType,
+      input.entityId,
+      input.operation,
+      input.entityRevision ?? null,
+      JSON.stringify(input.changedFields ?? []),
+      input.actorWorkspaceUserId !== undefined ? input.actorWorkspaceUserId : getActorWorkspaceUserId(),
+      getActiveTokenId(),
+      nowIso()
+    ]
+  );
+}
+
+export async function currentMaxSeq(client: DatabaseClient = requireDatabaseClient()): Promise<number> {
+  const row = await client.get<{ seq: number | null }>(`SELECT MAX(seq) AS seq FROM entity_changes`);
+  return row?.seq ?? 0;
+}
+
+export async function currentMaxSeqAsync(client: DatabaseClient = requireDatabaseClient()): Promise<number> {
+  return currentMaxSeq(client);
 }
 
 export function dataVersion(): number {
+  if (DATABASE_DIALECT !== 'sqlite') {
+    throw new Error('dataVersion() is SQLite-only; use currentMaxSeqAsync() on Postgres.');
+  }
   const row = db.pragma('data_version', { simple: true });
   return typeof row === 'number' ? row : Number(row);
 }

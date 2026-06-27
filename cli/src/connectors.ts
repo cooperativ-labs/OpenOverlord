@@ -2,7 +2,6 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   chmodSync,
-  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -15,14 +14,20 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { resolveAgentBinary } from './agent-binaries.js';
+import {
+  managedFileSourceExists,
+  resolveManagedFileContents
+} from './connector-core-render.js';
 import { resolveRepoPath } from './config.js';
 import { CliError } from './errors.js';
 
 /**
  * Connector setup/doctor for the Connector Layer (see CONTRACT.md → Connector
  * Layer). `ovld agent-setup <agent>` materializes a connector adapter's declared
- * `managedFiles` into the agent's native plugin install path and records a
- * local install manifest so `ovld doctor` can detect stale, missing, or
+ * `managedFiles` into the agent's native plugin install path. Adapter skill
+ * templates and reference paths under `skills/overlord-mission/` are rendered from
+ * `connectors/core/overlord-mission/` at install time. Setup records a local
+ * install manifest so `ovld doctor` can detect stale, missing, or
  * modified files. Installs are idempotent and never touch files outside the
  * connector's own install path.
  */
@@ -653,12 +658,19 @@ export function setupConnector({
   const stateFiles: Array<{ path: string; sha256: string }> = [];
 
   for (const relativePath of manifest.connector.managedFiles) {
-    const source = path.join(sourceDir, relativePath);
-    if (!existsSync(source)) {
+    if (!managedFileSourceExists({ sourceDir, relativePath })) {
       warnings.push(`Declared managed file missing from connector source: ${relativePath}`);
       continue;
     }
-    const contents = readFileSync(source);
+
+    let contents: Buffer;
+    try {
+      contents = resolveManagedFileContents({ sourceDir, relativePath });
+    } catch (error) {
+      const message = error instanceof CliError ? error.message : String(error);
+      warnings.push(message);
+      continue;
+    }
     const target = path.join(installPath, relativePath);
     const executable = isExecutableManaged(relativePath);
 
@@ -674,7 +686,7 @@ export function setupConnector({
     } else {
       if (!unchanged) {
         mkdirSync(path.dirname(target), { recursive: true });
-        copyFileSync(source, target);
+        writeFileSync(target, contents);
       }
       if (executable) {
         chmodSync(target, 0o755);

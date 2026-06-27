@@ -1,4 +1,4 @@
-import { openInMemoryDatabase } from '@overlord/database';
+import { createSqliteClient, openInMemoryDatabase } from '@overlord/database';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
@@ -8,33 +8,31 @@ import { createProject } from './projects.js';
 import { seedServiceOperator } from './test-helpers.js';
 import { newId, nowIso } from './util.js';
 
-function setup() {
-  const db = openInMemoryDatabase();
+async function setup() {
+  const db = createSqliteClient(openInMemoryDatabase());
   // The launch preference is keyed by workspace user, so the context needs a real
   // actor for the defaulting to resolve a stored selection.
-  seedServiceOperator({ db });
-  const ctx = createServiceContext({ db, source: 'cli' });
+  await seedServiceOperator({ db });
+  const ctx = await createServiceContext({ db, source: 'cli' });
   return { db, ctx };
 }
 
-function setLaunchPreference(
-  ctx: ReturnType<typeof createServiceContext>,
+async function setLaunchPreference(
+  ctx: Awaited<ReturnType<typeof createServiceContext>>,
   projectId: string,
   preference: {
     selectedAgent: string;
     selectedModel?: string | null;
     selectedReasoningEffort?: string | null;
   }
-): void {
+): Promise<void> {
   const now = nowIso();
-  ctx.db
-    .prepare(
-      `INSERT INTO project_user_preferences
+  await ctx.db.run(
+    `INSERT INTO project_user_preferences
          (id, workspace_id, project_id, workspace_user_id, preferences_json,
           created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1)`
-    )
-    .run(
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+    [
       newId(),
       ctx.workspace.id,
       projectId,
@@ -48,16 +46,22 @@ function setLaunchPreference(
       }),
       now,
       now
-    );
+    ]
+  );
 }
 
-function agentOf(
-  ctx: ReturnType<typeof createServiceContext>,
+async function agentOf(
+  ctx: Awaited<ReturnType<typeof createServiceContext>>,
   objectiveId: string
-): { assigned_agent: string | null; model: string | null; reasoning_effort: string | null } {
-  return ctx.db
-    .prepare(`SELECT assigned_agent, model, reasoning_effort FROM objectives WHERE id = ?`)
-    .get(objectiveId) as {
+): Promise<{
+  assigned_agent: string | null;
+  model: string | null;
+  reasoning_effort: string | null;
+}> {
+  return (await ctx.db.get(
+    `SELECT assigned_agent, model, reasoning_effort FROM objectives WHERE id = ?`,
+    [objectiveId]
+  )) as {
     assigned_agent: string | null;
     model: string | null;
     reasoning_effort: string | null;
@@ -65,16 +69,16 @@ function agentOf(
 }
 
 describe('objective creation agent defaulting', () => {
-  it('stamps draft and future objectives with the project last-used agent', () => {
-    const { db, ctx } = setup();
-    const project = createProject({ ctx, name: 'Default Agent' });
-    setLaunchPreference(ctx, project.id, {
+  it('stamps draft and future objectives with the project last-used agent', async () => {
+    const { db, ctx } = await setup();
+    const project = await createProject({ ctx, name: 'Default Agent' });
+    await setLaunchPreference(ctx, project.id, {
       selectedAgent: 'claude',
       selectedModel: 'claude-opus-4-8',
       selectedReasoningEffort: 'high'
     });
 
-    const { objectives } = createMissionWithObjectives({
+    const { objectives } = await createMissionWithObjectives({
       ctx,
       projectId: project.id,
       objectives: [{ objective: 'Draft step' }, { objective: 'Future step' }]
@@ -83,28 +87,28 @@ describe('objective creation agent defaulting', () => {
     // Both the draft (index 0) and future (index 1) slots record the agent so the
     // launch button and any later auto-advance read a populated db, never null.
     for (const objective of objectives) {
-      const stored = agentOf(ctx, objective.id);
+      const stored = await agentOf(ctx, objective.id);
       assert.equal(stored.assigned_agent, 'claude');
       assert.equal(stored.model, 'claude-opus-4-8');
       assert.equal(stored.reasoning_effort, 'high');
     }
 
-    db.close();
+    await db.close();
   });
 
-  it('leaves the agent unset when the project has no launch preference', () => {
-    const { db, ctx } = setup();
-    const project = createProject({ ctx, name: 'No Preference' });
+  it('leaves the agent unset when the project has no launch preference', async () => {
+    const { db, ctx } = await setup();
+    const project = await createProject({ ctx, name: 'No Preference' });
 
-    const { objectives } = createMissionWithObjectives({
+    const { objectives } = await createMissionWithObjectives({
       ctx,
       projectId: project.id,
       objectives: [{ objective: 'Draft step' }]
     });
 
-    const stored = agentOf(ctx, objectives[0]?.id as string);
+    const stored = await agentOf(ctx, objectives[0]?.id as string);
     assert.equal(stored.assigned_agent, null);
 
-    db.close();
+    await db.close();
   });
 });

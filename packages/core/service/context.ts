@@ -1,4 +1,4 @@
-import { type OverlordDatabase, SEED_WORKSPACE_ID } from '@overlord/database';
+import { type DatabaseClient } from '@overlord/database';
 
 import { ServiceError } from './errors.js';
 
@@ -9,25 +9,23 @@ export type WorkspaceContext = {
 };
 
 export type ServiceContext = {
-  db: OverlordDatabase;
+  db: DatabaseClient;
   workspace: WorkspaceContext;
   actorWorkspaceUserId: string | null;
   source: 'cli' | 'protocol' | 'webapp' | 'runner';
 };
 
-export function createServiceContext({
+export async function createServiceContext({
   db,
   source
 }: {
-  db: OverlordDatabase;
+  db: DatabaseClient;
   source: ServiceContext['source'];
-}): ServiceContext {
-  const workspace = db
-    .prepare(
-      `SELECT id, slug, name FROM workspaces
+}): Promise<ServiceContext> {
+  const workspace = await db.get<WorkspaceContext>(
+    `SELECT id, slug, name FROM workspaces
        WHERE deleted_at IS NULL ORDER BY created_at ASC LIMIT 1`
-    )
-    .get() as WorkspaceContext | undefined;
+  );
 
   if (!workspace) {
     throw new ServiceError(
@@ -37,13 +35,12 @@ export function createServiceContext({
     );
   }
 
-  const actor = db
-    .prepare(
-      `SELECT id FROM workspace_users
+  const actor = await db.get<{ id: string }>(
+    `SELECT id FROM workspace_users
        WHERE workspace_id = ? AND status = 'active' AND deleted_at IS NULL
-       ORDER BY created_at ASC LIMIT 1`
-    )
-    .get(workspace.id) as { id: string } | undefined;
+       ORDER BY created_at ASC LIMIT 1`,
+    [workspace.id]
+  );
 
   return {
     db,
@@ -53,31 +50,25 @@ export function createServiceContext({
   };
 }
 
-export function resolveMissionId(
+export async function resolveMissionId(
   ctx: ServiceContext,
   missionRef: string
-): { id: string; displayId: string; projectId: string } {
-  const byId = ctx.db
-    .prepare(
-      `SELECT id, display_id, project_id FROM missions
-       WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
-    )
-    .get(missionRef, ctx.workspace.id) as
-    | { id: string; display_id: string; project_id: string }
-    | undefined;
+): Promise<{ id: string; displayId: string; projectId: string }> {
+  const byId = await ctx.db.get<{ id: string; display_id: string; project_id: string }>(
+    `SELECT id, display_id, project_id FROM missions
+       WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+    [missionRef, ctx.workspace.id]
+  );
 
   if (byId) {
     return { id: byId.id, displayId: byId.display_id, projectId: byId.project_id };
   }
 
-  const byDisplay = ctx.db
-    .prepare(
-      `SELECT id, display_id, project_id FROM missions
-       WHERE display_id = ? AND workspace_id = ? AND deleted_at IS NULL`
-    )
-    .get(missionRef, ctx.workspace.id) as
-    | { id: string; display_id: string; project_id: string }
-    | undefined;
+  const byDisplay = await ctx.db.get<{ id: string; display_id: string; project_id: string }>(
+    `SELECT id, display_id, project_id FROM missions
+       WHERE display_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+    [missionRef, ctx.workspace.id]
+  );
 
   if (byDisplay) {
     return {
@@ -90,29 +81,26 @@ export function resolveMissionId(
   throw new ServiceError(`Mission not found: ${missionRef}`, 'mission_not_found', 404);
 }
 
-export function resolveProjectId(ctx: ServiceContext, projectRef: string): string {
-  const byId = ctx.db
-    .prepare(
-      `SELECT id FROM projects
-       WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
-    )
-    .get(projectRef, ctx.workspace.id) as { id: string } | undefined;
+export async function resolveProjectId(ctx: ServiceContext, projectRef: string): Promise<string> {
+  const byId = await ctx.db.get<{ id: string }>(
+    `SELECT id FROM projects
+       WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+    [projectRef, ctx.workspace.id]
+  );
   if (byId) return byId.id;
 
-  const bySlug = ctx.db
-    .prepare(
-      `SELECT id FROM projects
-       WHERE slug = ? AND workspace_id = ? AND deleted_at IS NULL`
-    )
-    .get(projectRef, ctx.workspace.id) as { id: string } | undefined;
+  const bySlug = await ctx.db.get<{ id: string }>(
+    `SELECT id FROM projects
+       WHERE slug = ? AND workspace_id = ? AND deleted_at IS NULL`,
+    [projectRef, ctx.workspace.id]
+  );
   if (bySlug) return bySlug.id;
 
-  const byName = ctx.db
-    .prepare(
-      `SELECT id FROM projects
-       WHERE lower(name) = lower(?) AND workspace_id = ? AND deleted_at IS NULL`
-    )
-    .get(projectRef, ctx.workspace.id) as { id: string } | undefined;
+  const byName = await ctx.db.get<{ id: string }>(
+    `SELECT id FROM projects
+       WHERE lower(name) = lower(?) AND workspace_id = ? AND deleted_at IS NULL`,
+    [projectRef, ctx.workspace.id]
+  );
   if (byName) return byName.id;
 
   throw new ServiceError(`Project not found: ${projectRef}`, 'project_not_found', 404);

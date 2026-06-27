@@ -1,4 +1,4 @@
-import { openInMemoryDatabase } from '@overlord/database';
+import { createSqliteClient, openInMemoryDatabase } from '@overlord/database';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
@@ -24,40 +24,40 @@ describe('profile metadata helpers', () => {
 });
 
 describe('promptContext custom agent instructions', () => {
-  it('includes saved user instructions in attach promptContext', () => {
-    const db = openInMemoryDatabase();
-    const workspaceUserId = seedServiceOperator({ db });
-    const ctx = createServiceContext({ db, source: 'protocol' });
+  it('includes saved user instructions in attach promptContext', async () => {
+    const db = createSqliteClient(openInMemoryDatabase());
+    const workspaceUserId = await seedServiceOperator({ db });
+    const ctx = await createServiceContext({ db, source: 'protocol' });
     assert.equal(ctx.actorWorkspaceUserId, workspaceUserId);
 
-    db.prepare(`UPDATE profiles SET metadata_json = ? WHERE id = ?`).run(
+    await db.run(`UPDATE profiles SET metadata_json = ? WHERE id = ?`, [
       mergeProfileMetadataJson({
         metadataJson: '{}',
         agentInstructions: 'Prefer yarn over npm.'
       }),
       'operator-user'
-    );
+    ]);
 
     assert.equal(
-      loadAgentInstructionsForWorkspaceUser({
+      await loadAgentInstructionsForWorkspaceUser({
         db,
         workspaceUserId: ctx.actorWorkspaceUserId
       }),
       'Prefer yarn over npm.'
     );
 
-    const project = createProject({ ctx, name: 'Custom Instructions' });
-    const { mission, objectives } = createMissionWithObjectives({
+    const project = await createProject({ ctx, name: 'Custom Instructions' });
+    const { mission, objectives } = await createMissionWithObjectives({
       ctx,
       projectId: project.id,
       objectives: [{ objective: 'Verify custom instructions' }]
     });
-    ctx.db.prepare(`UPDATE objectives SET state = 'submitted' WHERE id = ?`).run(objectives[0]?.id);
+    await ctx.db.run(`UPDATE objectives SET state = 'submitted' WHERE id = ?`, [objectives[0]?.id]);
 
-    const attached = attachSession({ ctx, missionId: mission.id });
+    const attached = await attachSession({ ctx, missionId: mission.id });
     assert.match(attached.promptContext, /## Additional Instructions/);
     assert.match(attached.promptContext, /Prefer yarn over npm\./);
 
-    db.close();
+    await db.close();
   });
 });

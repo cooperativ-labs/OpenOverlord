@@ -7,26 +7,27 @@ import test from 'node:test';
 const tempDir = mkdtempSync(path.join(tmpdir(), 'overlord-webapp-launch-'));
 process.env.OVERLORD_SQLITE_PATH = path.join(tempDir, 'webapp.sqlite');
 
-const { db } = await import('./db.ts');
+const { db, initDatabase } = await import('./db.ts');
+await initDatabase();
 const { createProject, createProjectResource, createMission, updateObjective } =
   await import('./repository.ts');
 const { launchObjective } = await import('./launch.ts');
 
-test('launching an objective twice while a request is active returns the same request', () => {
-  const project = createProject({ name: 'Idempotent Launch Test' });
-  createProjectResource(project.id, {
+test('launching an objective twice while a request is active returns the same request', async () => {
+  const project = await createProject({ name: 'Idempotent Launch Test' });
+  await createProjectResource(project.id, {
     directoryPath: mkdtempSync(path.join(tmpdir(), 'overlord-launch-resource-')),
     executionTargetId: null,
     isPrimary: true
   });
-  const mission = createMission({
+  const mission = await createMission({
     projectId: project.id,
     firstObjective: 'Do the thing'
   });
   const objectiveId = mission.objectives[0]!.id;
 
-  const first = launchObjective(objectiveId, { agent: 'codex' });
-  const second = launchObjective(objectiveId, { agent: 'codex' });
+  const first = await launchObjective(objectiveId, { agent: 'codex' });
+  const second = await launchObjective(objectiveId, { agent: 'codex' });
 
   assert.equal(second.id, first.id);
   const count = db
@@ -34,7 +35,7 @@ test('launching an objective twice while a request is active returns the same re
     .get(objectiveId) as { n: number };
   assert.equal(count.n, 1);
 
-  updateObjective(objectiveId, { state: 'complete' });
+  await updateObjective(objectiveId, { state: 'complete' });
 
   const cleared = db
     .prepare(`SELECT status FROM execution_requests WHERE id = ?`)

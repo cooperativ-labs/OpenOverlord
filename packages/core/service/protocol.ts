@@ -103,25 +103,24 @@ function resolveActiveObjective(objectives: ObjectiveSummary[]): ObjectiveSummar
   return active;
 }
 
-function getSessionByKeyMaybeEnded(
+async function getSessionByKeyMaybeEnded(
   ctx: ServiceContext,
   sessionKey: string,
   options: { includeEnded?: boolean } = {}
-): SessionRow | undefined {
+): Promise<SessionRow | undefined> {
   const hash = hashSessionKey(sessionKey);
   const endedFilter = options.includeEnded ? '' : 'AND ended_at IS NULL';
-  return ctx.db
-    .prepare(
-      `SELECT id, mission_id, objective_id, phase, delivery_state, ended_at, external_session_id
+  return (await ctx.db.get(
+    `SELECT id, mission_id, objective_id, phase, delivery_state, ended_at, external_session_id
        FROM agent_sessions
        WHERE workspace_id = ? AND session_key_hash = ? AND deleted_at IS NULL ${endedFilter}
-       ORDER BY started_at DESC LIMIT 1`
-    )
-    .get(ctx.workspace.id, hash) as SessionRow | undefined;
+       ORDER BY started_at DESC LIMIT 1`,
+    [ctx.workspace.id, hash]
+  )) as SessionRow | undefined;
 }
 
-function getSessionByKey(ctx: ServiceContext, sessionKey: string): SessionRow {
-  const row = getSessionByKeyMaybeEnded(ctx, sessionKey);
+async function getSessionByKey(ctx: ServiceContext, sessionKey: string): Promise<SessionRow> {
+  const row = await getSessionByKeyMaybeEnded(ctx, sessionKey);
 
   if (!row) {
     throw new ServiceError('Invalid or expired session key', 'invalid_session', 401);
@@ -129,7 +128,7 @@ function getSessionByKey(ctx: ServiceContext, sessionKey: string): SessionRow {
   return row;
 }
 
-function getLatestSessionByExternalId({
+async function getLatestSessionByExternalId({
   ctx,
   missionId,
   externalSessionId
@@ -137,18 +136,17 @@ function getLatestSessionByExternalId({
   ctx: ServiceContext;
   missionId: string;
   externalSessionId: string;
-}): SessionRow | undefined {
-  return ctx.db
-    .prepare(
-      `SELECT id, mission_id, objective_id, phase, delivery_state, ended_at, external_session_id
+}): Promise<SessionRow | undefined> {
+  return (await ctx.db.get(
+    `SELECT id, mission_id, objective_id, phase, delivery_state, ended_at, external_session_id
        FROM agent_sessions
        WHERE workspace_id = ? AND mission_id = ? AND external_session_id = ? AND deleted_at IS NULL
-       ORDER BY started_at DESC LIMIT 1`
-    )
-    .get(ctx.workspace.id, missionId, externalSessionId) as SessionRow | undefined;
+       ORDER BY started_at DESC LIMIT 1`,
+    [ctx.workspace.id, missionId, externalSessionId]
+  )) as SessionRow | undefined;
 }
 
-function getLatestSessionForObjective({
+async function getLatestSessionForObjective({
   ctx,
   objectiveId,
   openOnly = false
@@ -156,19 +154,18 @@ function getLatestSessionForObjective({
   ctx: ServiceContext;
   objectiveId: string;
   openOnly?: boolean;
-}): SessionRow | undefined {
+}): Promise<SessionRow | undefined> {
   const endedFilter = openOnly ? 'AND ended_at IS NULL' : '';
-  return ctx.db
-    .prepare(
-      `SELECT id, mission_id, objective_id, phase, delivery_state, ended_at, external_session_id
+  return (await ctx.db.get(
+    `SELECT id, mission_id, objective_id, phase, delivery_state, ended_at, external_session_id
        FROM agent_sessions
        WHERE workspace_id = ? AND objective_id = ? AND deleted_at IS NULL ${endedFilter}
-       ORDER BY started_at DESC LIMIT 1`
-    )
-    .get(ctx.workspace.id, objectiveId) as SessionRow | undefined;
+       ORDER BY started_at DESC LIMIT 1`,
+    [ctx.workspace.id, objectiveId]
+  )) as SessionRow | undefined;
 }
 
-function persistExternalSessionId({
+async function persistExternalSessionId({
   ctx,
   session,
   externalSessionId,
@@ -178,24 +175,23 @@ function persistExternalSessionId({
   session: SessionRow;
   externalSessionId: string;
   mission: MissionSummary;
-}): void {
+}): Promise<void> {
   if (session.external_session_id === externalSessionId) return;
 
   const now = nowIso();
-  ctx.db
-    .prepare(
-      `UPDATE agent_sessions SET external_session_id = ?, updated_at = ?, revision = revision + 1
-       WHERE id = ?`
-    )
-    .run(externalSessionId, now, session.id);
+  await ctx.db.run(
+    `UPDATE agent_sessions SET external_session_id = ?, updated_at = ?, revision = revision + 1
+       WHERE id = ?`,
+    [externalSessionId, now, session.id]
+  );
 
   const revision = (
-    ctx.db.prepare(`SELECT revision FROM agent_sessions WHERE id = ?`).get(session.id) as
+    (await ctx.db.get(`SELECT revision FROM agent_sessions WHERE id = ?`, [session.id])) as
       | { revision: number }
       | undefined
   )?.revision;
 
-  recordChange({
+  await recordChange({
     ctx,
     entityType: 'agent_session',
     entityId: session.id,
@@ -307,7 +303,7 @@ function assemblePromptContext({
     .join('\n');
 }
 
-function contextForObjective({
+async function contextForObjective({
   ctx,
   mission,
   objective
@@ -315,26 +311,30 @@ function contextForObjective({
   ctx: ServiceContext;
   mission: MissionSummary;
   objective: ObjectiveSummary;
-}): Omit<AttachResponse, 'session'> {
-  const objectives = listObjectives({ ctx, missionId: mission.id });
-  const history = listMissionEvents({ ctx, missionId: mission.id });
-  const artifacts = listArtifacts({ ctx, missionId: mission.id });
-  const attachments = listAttachments({ ctx, missionId: mission.id, objectiveId: objective.id });
-  const sharedState = listSharedContext({ ctx, missionId: mission.id });
+}): Promise<Omit<AttachResponse, 'session'>> {
+  const objectives = await listObjectives({ ctx, missionId: mission.id });
+  const history = await listMissionEvents({ ctx, missionId: mission.id });
+  const artifacts = await listArtifacts({ ctx, missionId: mission.id });
+  const attachments = await listAttachments({
+    ctx,
+    missionId: mission.id,
+    objectiveId: objective.id
+  });
+  const sharedState = await listSharedContext({ ctx, missionId: mission.id });
   const completedObjectives = previousCompletedObjectives({
     objectives,
     currentObjective: objective
   });
   const previousObjectiveIds = new Set(completedObjectives.map(entry => entry.id));
-  const fileChanges = listRationalesForReview({ ctx, missionId: mission.id }).filter(change =>
-    previousObjectiveIds.has(change.objectiveId)
+  const fileChanges = (await listRationalesForReview({ ctx, missionId: mission.id })).filter(
+    change => previousObjectiveIds.has(change.objectiveId)
   );
 
-  const project = ctx.db
-    .prepare(`SELECT name FROM projects WHERE id = ?`)
-    .get(mission.projectId) as { name: string };
+  const project = (await ctx.db.get(`SELECT name FROM projects WHERE id = ?`, [
+    mission.projectId
+  ])) as { name: string };
 
-  const agentInstructions = loadAgentInstructionsForWorkspaceUser({
+  const agentInstructions = await loadAgentInstructionsForWorkspaceUser({
     db: ctx.db,
     workspaceUserId: ctx.actorWorkspaceUserId
   });
@@ -362,20 +362,20 @@ function contextForObjective({
   };
 }
 
-export function loadMissionContext({
+export async function loadMissionContext({
   ctx,
   missionId
 }: {
   ctx: ServiceContext;
   missionId: string;
-}): Omit<AttachResponse, 'session'> {
-  const mission = getMissionSummary({ ctx, missionId });
-  const objectives = listObjectives({ ctx, missionId: mission.id });
+}): Promise<Omit<AttachResponse, 'session'>> {
+  const mission = await getMissionSummary({ ctx, missionId });
+  const objectives = await listObjectives({ ctx, missionId: mission.id });
   const objective = resolveActiveObjective(objectives);
-  return contextForObjective({ ctx, mission, objective });
+  return await contextForObjective({ ctx, mission, objective });
 }
 
-export function attachSession({
+export async function attachSession({
   ctx,
   missionId,
   agentIdentifier = 'unknown',
@@ -393,24 +393,23 @@ export function attachSession({
   existingSessionKey?: string | null;
   externalSessionId?: string | null;
   executionRequestId?: string | null;
-}): AttachResponse & { sessionKey: string } {
-  const context = loadMissionContext({ ctx, missionId });
+}): Promise<AttachResponse & { sessionKey: string }> {
+  const context = await loadMissionContext({ ctx, missionId });
   const objective = context.objective;
 
   if (existingSessionKey) {
-    const existing = getSessionByKey(ctx, existingSessionKey);
+    const existing = await getSessionByKey(ctx, existingSessionKey);
     if (existing.mission_id !== context.mission.id) {
       throw new ServiceError('Session key belongs to a different mission', 'invalid_session', 401);
     }
     if (externalSessionId !== undefined) {
-      ctx.db
-        .prepare(
-          `UPDATE agent_sessions SET external_session_id = ?, updated_at = ?, revision = revision + 1
-           WHERE id = ?`
-        )
-        .run(externalSessionId, nowIso(), existing.id);
+      await ctx.db.run(
+        `UPDATE agent_sessions SET external_session_id = ?, updated_at = ?, revision = revision + 1
+           WHERE id = ?`,
+        [externalSessionId, nowIso(), existing.id]
+      );
     }
-    linkExecutionRequestToSession({
+    await linkExecutionRequestToSession({
       ctx,
       missionId: context.mission.id,
       objectiveId: existing.objective_id,
@@ -435,47 +434,44 @@ export function attachSession({
   const { rawKey, prefix, hash } = generateSessionKey();
   const now = nowIso();
   const sessionId = newId();
-  const currentObjectiveAssignment = ctx.db
-    .prepare(
-      `SELECT assigned_agent
+  const currentObjectiveAssignment = (await ctx.db.get(
+    `SELECT assigned_agent
        FROM objectives
-       WHERE id = ? AND mission_id = ? AND deleted_at IS NULL`
-    )
-    .get(objective.id, context.mission.id) as { assigned_agent: string | null } | undefined;
+       WHERE id = ? AND mission_id = ? AND deleted_at IS NULL`,
+    [objective.id, context.mission.id]
+  )) as { assigned_agent: string | null } | undefined;
   const inheritedDraftAgent = currentObjectiveAssignment?.assigned_agent?.trim() || agentIdentifier;
 
-  const tx = ctx.db.transaction(() => {
-    ctx.db
-      .prepare(
-        `UPDATE objectives
+  await ctx.db.transaction(async tx => {
+    const txCtx = { ...ctx, db: tx };
+    await txCtx.db.run(
+      `UPDATE objectives
          SET state = 'executing',
              assigned_agent = COALESCE(assigned_agent, ?),
              updated_at = ?,
              revision = revision + 1
-         WHERE id = ? AND mission_id = ?`
-      )
-      .run(inheritedDraftAgent || null, now, objective.id, context.mission.id);
+         WHERE id = ? AND mission_id = ?`,
+      [inheritedDraftAgent || null, now, objective.id, context.mission.id]
+    );
 
-    ensureNextDraftObjective({
-      ctx,
+    await ensureNextDraftObjective({
+      ctx: txCtx,
       missionId: context.mission.id,
       projectId: context.mission.projectId,
       assignedAgent: inheritedDraftAgent || null,
       now
     });
 
-    moveMissionToExecute({ ctx, missionId: context.mission.id });
+    await moveMissionToExecute({ ctx: txCtx, missionId: context.mission.id });
 
-    ctx.db
-      .prepare(
-        `INSERT INTO agent_sessions
+    await txCtx.db.run(
+      `INSERT INTO agent_sessions
            (id, workspace_id, project_id, mission_id, objective_id,
             session_key_prefix, session_key_hash, agent_identifier, model_identifier,
             connection_method, external_session_id, phase, delivery_state, started_at, last_heartbeat_at,
             metadata_json, created_by_workspace_user_id, created_at, updated_at, revision)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'execute', 'not_delivered', ?, ?, '{}', ?, ?, ?, 1)`
-      )
-      .run(
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'execute', 'not_delivered', ?, ?, '{}', ?, ?, ?, 1)`,
+      [
         sessionId,
         ctx.workspace.id,
         context.mission.projectId,
@@ -492,10 +488,11 @@ export function attachSession({
         ctx.actorWorkspaceUserId,
         now,
         now
-      );
+      ]
+    );
 
-    recordChange({
-      ctx,
+    await recordChange({
+      ctx: txCtx,
       entityType: 'agent_session',
       entityId: sessionId,
       operation: 'insert',
@@ -505,8 +502,8 @@ export function attachSession({
       objectiveId: objective.id
     });
 
-    linkExecutionRequestToSession({
-      ctx,
+    await linkExecutionRequestToSession({
+      ctx: txCtx,
       missionId: context.mission.id,
       objectiveId: objective.id,
       sessionId,
@@ -514,10 +511,8 @@ export function attachSession({
     });
   });
 
-  tx();
-
-  const refreshedMission = getMissionSummary({ ctx, missionId: context.mission.id });
-  const refreshedObjectives = listObjectives({ ctx, missionId: context.mission.id });
+  const refreshedMission = await getMissionSummary({ ctx, missionId: context.mission.id });
+  const refreshedObjectives = await listObjectives({ ctx, missionId: context.mission.id });
   const refreshedObjective = refreshedObjectives.find(o => o.id === objective.id) ?? {
     ...objective,
     state: 'executing'
@@ -541,7 +536,7 @@ export function attachSession({
   };
 }
 
-export function connectSession({
+export async function connectSession({
   ctx,
   missionId,
   agentIdentifier = 'unknown',
@@ -551,8 +546,8 @@ export function connectSession({
   missionId: string;
   agentIdentifier?: string;
   externalSessionId?: string | null;
-}): { sessionKey: string; missionId: string; objectiveId: string } {
-  const result = attachSession({
+}): Promise<{ sessionKey: string; missionId: string; objectiveId: string }> {
+  const result = await attachSession({
     ctx,
     missionId,
     agentIdentifier,
@@ -582,7 +577,7 @@ function latestCompletedObjective(objectives: ObjectiveSummary[]): ObjectiveSumm
   return [...objectives].reverse().find(objective => objective.state === 'complete');
 }
 
-function resolveFollowUpObjective({
+async function resolveFollowUpObjective({
   ctx,
   mission,
   objectives,
@@ -594,7 +589,7 @@ function resolveFollowUpObjective({
   objectives: ObjectiveSummary[];
   sessionKey?: string | null;
   externalSessionId?: string | null;
-}): { objective: ObjectiveSummary | undefined; session: SessionRow | undefined } {
+}): Promise<{ objective: ObjectiveSummary | undefined; session: SessionRow | undefined }> {
   const active =
     objectives.find(objective =>
       ['executing', 'pending_delivery', 'launching', 'submitted', 'draft'].includes(objective.state)
@@ -602,13 +597,13 @@ function resolveFollowUpObjective({
   if (active) return { objective: active, session: undefined };
 
   const sessionFromKey = sessionKey
-    ? getSessionByKeyMaybeEnded(ctx, sessionKey, { includeEnded: true })
+    ? await getSessionByKeyMaybeEnded(ctx, sessionKey, { includeEnded: true })
     : undefined;
   const objectiveFromKey = objectiveFromSession(objectives, sessionFromKey);
   if (objectiveFromKey) return { objective: objectiveFromKey, session: sessionFromKey };
 
   const sessionFromExternal = externalSessionId
-    ? getLatestSessionByExternalId({ ctx, missionId: mission.id, externalSessionId })
+    ? await getLatestSessionByExternalId({ ctx, missionId: mission.id, externalSessionId })
     : undefined;
   const objectiveFromExternal = objectiveFromSession(objectives, sessionFromExternal);
   if (objectiveFromExternal) {
@@ -618,7 +613,7 @@ function resolveFollowUpObjective({
   return { objective: latestCompletedObjective(objectives), session: undefined };
 }
 
-export function recordHookEvent({
+export async function recordHookEvent({
   ctx,
   missionId,
   hookType,
@@ -634,7 +629,7 @@ export function recordHookEvent({
   sessionKey?: string | null;
   externalSessionId?: string | null;
   turnIndex?: string | null;
-}): { eventId: string; objectiveId: string | null; sessionId: string | null } {
+}): Promise<{ eventId: string; objectiveId: string | null; sessionId: string | null }> {
   if (hookType !== 'UserPromptSubmit') {
     throw new ServiceError(`Unsupported hook type: ${hookType}`, 'validation_error');
   }
@@ -644,9 +639,9 @@ export function recordHookEvent({
     throw new ServiceError('Hook prompt is required', 'validation_error');
   }
 
-  const mission = getMissionSummary({ ctx, missionId });
-  const objectives = listObjectives({ ctx, missionId: mission.id });
-  let { objective, session } = resolveFollowUpObjective({
+  const mission = await getMissionSummary({ ctx, missionId });
+  const objectives = await listObjectives({ ctx, missionId: mission.id });
+  let { objective, session } = await resolveFollowUpObjective({
     ctx,
     mission,
     objectives,
@@ -655,11 +650,15 @@ export function recordHookEvent({
   });
 
   if (!session && sessionKey) {
-    session = getSessionByKeyMaybeEnded(ctx, sessionKey, { includeEnded: true });
+    session = await getSessionByKeyMaybeEnded(ctx, sessionKey, { includeEnded: true });
   }
 
   if (!session && objective && ['executing', 'pending_delivery'].includes(objective.state)) {
-    session = getLatestSessionForObjective({ ctx, objectiveId: objective.id, openOnly: true });
+    session = await getLatestSessionForObjective({
+      ctx,
+      objectiveId: objective.id,
+      openOnly: true
+    });
   }
 
   const hash = promptHash(trimmedPrompt);
@@ -672,15 +671,12 @@ export function recordHookEvent({
   ];
   const idempotencyKey = dedupeParts.join(':');
 
-  const existing = ctx.db
-    .prepare(
-      `SELECT id, objective_id, session_id FROM mission_events
+  const existing = (await ctx.db.get(
+    `SELECT id, objective_id, session_id FROM mission_events
        WHERE workspace_id = ? AND source = ? AND idempotency_key = ?
-       LIMIT 1`
-    )
-    .get(ctx.workspace.id, ctx.source, idempotencyKey) as
-    | { id: string; objective_id: string | null; session_id: string | null }
-    | undefined;
+       LIMIT 1`,
+    [ctx.workspace.id, ctx.source, idempotencyKey]
+  )) as { id: string; objective_id: string | null; session_id: string | null } | undefined;
   if (existing) {
     return {
       eventId: existing.id,
@@ -694,15 +690,13 @@ export function recordHookEvent({
   const phase =
     objective && ['executing', 'pending_delivery'].includes(objective.state) ? 'execute' : 'review';
 
-  ctx.db
-    .prepare(
-      `INSERT INTO mission_events
+  await ctx.db.run(
+    `INSERT INTO mission_events
          (id, workspace_id, project_id, mission_id, objective_id, session_id,
           type, phase, summary, payload_json, source, actor_workspace_user_id,
           idempotency_key, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'user_follow_up', ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
+       VALUES (?, ?, ?, ?, ?, ?, 'user_follow_up', ?, ?, ?, ?, ?, ?, ?)`,
+    [
       eventId,
       ctx.workspace.id,
       mission.projectId,
@@ -721,16 +715,17 @@ export function recordHookEvent({
       ctx.actorWorkspaceUserId,
       idempotencyKey,
       now
-    );
+    ]
+  );
 
   if (externalSessionId && session) {
-    persistExternalSessionId({ ctx, session, externalSessionId, mission });
+    await persistExternalSessionId({ ctx, session, externalSessionId, mission });
   }
 
   return { eventId, objectiveId: objective?.id ?? null, sessionId: session?.id ?? null };
 }
 
-export function resumeFollowUp({
+export async function resumeFollowUp({
   ctx,
   missionId,
   objectiveId,
@@ -748,10 +743,10 @@ export function resumeFollowUp({
   connectionMethod?: string;
   externalSessionId?: string | null;
   summary?: string | null;
-}): AttachResponse & { sessionKey: string } {
+}): Promise<AttachResponse & { sessionKey: string }> {
   const trimmedSummary = summary?.trim() || 'Beginning follow-up work.';
-  const mission = getMissionSummary({ ctx, missionId });
-  const objectives = listObjectives({ ctx, missionId: mission.id });
+  const mission = await getMissionSummary({ ctx, missionId });
+  const objectives = await listObjectives({ ctx, missionId: mission.id });
   const selectedObjective = objectiveId
     ? objectives.find(objective => objective.id === objectiveId)
     : latestCompletedObjective(objectives);
@@ -788,25 +783,23 @@ export function resumeFollowUp({
   const sessionId = newId();
   const eventId = newId();
 
-  const tx = ctx.db.transaction(() => {
-    ctx.db
-      .prepare(
-        `UPDATE objectives
+  await ctx.db.transaction(async tx => {
+    const txCtx = { ...ctx, db: tx };
+    await txCtx.db.run(
+      `UPDATE objectives
          SET state = 'pending_delivery', completed_at = NULL, updated_at = ?, revision = revision + 1
-         WHERE id = ? AND mission_id = ? AND state = 'complete'`
-      )
-      .run(now, selectedObjective.id, mission.id);
+         WHERE id = ? AND mission_id = ? AND state = 'complete'`,
+      [now, selectedObjective.id, mission.id]
+    );
 
-    ctx.db
-      .prepare(
-        `INSERT INTO agent_sessions
+    await txCtx.db.run(
+      `INSERT INTO agent_sessions
            (id, workspace_id, project_id, mission_id, objective_id,
             session_key_prefix, session_key_hash, agent_identifier, model_identifier,
             connection_method, external_session_id, phase, delivery_state, started_at, last_heartbeat_at,
             metadata_json, created_by_workspace_user_id, created_at, updated_at, revision)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'execute', 'pending_redelivery', ?, ?, '{}', ?, ?, ?, 1)`
-      )
-      .run(
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'execute', 'pending_redelivery', ?, ?, '{}', ?, ?, ?, 1)`,
+      [
         sessionId,
         ctx.workspace.id,
         mission.projectId,
@@ -823,16 +816,15 @@ export function resumeFollowUp({
         ctx.actorWorkspaceUserId,
         now,
         now
-      );
+      ]
+    );
 
-    ctx.db
-      .prepare(
-        `INSERT INTO mission_events
+    await txCtx.db.run(
+      `INSERT INTO mission_events
            (id, workspace_id, project_id, mission_id, objective_id, session_id,
             type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'update', 'execute', ?, ?, ?, ?, ?)`
-      )
-      .run(
+         VALUES (?, ?, ?, ?, ?, ?, 'update', 'execute', ?, ?, ?, ?, ?)`,
+      [
         eventId,
         ctx.workspace.id,
         mission.projectId,
@@ -844,12 +836,13 @@ export function resumeFollowUp({
         ctx.source,
         ctx.actorWorkspaceUserId,
         now
-      );
+      ]
+    );
 
-    moveMissionToExecute({ ctx, missionId: mission.id });
+    await moveMissionToExecute({ ctx: txCtx, missionId: mission.id });
 
-    recordChange({
-      ctx,
+    await recordChange({
+      ctx: txCtx,
       entityType: 'objective',
       entityId: selectedObjective.id,
       operation: 'update',
@@ -859,8 +852,8 @@ export function resumeFollowUp({
       changedFields: ['state', 'completed_at']
     });
 
-    recordChange({
-      ctx,
+    await recordChange({
+      ctx: txCtx,
       entityType: 'agent_session',
       entityId: sessionId,
       operation: 'insert',
@@ -871,16 +864,14 @@ export function resumeFollowUp({
     });
   });
 
-  tx();
-
-  const refreshedMission = getMissionSummary({ ctx, missionId: mission.id });
-  const refreshedObjective = listObjectives({ ctx, missionId: mission.id }).find(
+  const refreshedMission = await getMissionSummary({ ctx, missionId: mission.id });
+  const refreshedObjective = (await listObjectives({ ctx, missionId: mission.id })).find(
     objective => objective.id === selectedObjective.id
   ) ?? {
     ...selectedObjective,
     state: 'pending_delivery'
   };
-  const context = contextForObjective({
+  const context = await contextForObjective({
     ctx,
     mission: refreshedMission,
     objective: refreshedObjective
@@ -901,7 +892,7 @@ export function resumeFollowUp({
   };
 }
 
-export function heartbeatSession({
+export async function heartbeatSession({
   ctx,
   missionId,
   sessionKey,
@@ -913,9 +904,9 @@ export function heartbeatSession({
   sessionKey: string;
   phase?: string | null;
   note?: string | null;
-}): { ok: true } {
-  const mission = resolveMissionId(ctx, missionId);
-  const session = getSessionByKey(ctx, sessionKey);
+}): Promise<{ ok: true }> {
+  const mission = await resolveMissionId(ctx, missionId);
+  const session = await getSessionByKey(ctx, sessionKey);
   if (session.mission_id !== mission.id) {
     throw new ServiceError('Session key does not match mission', 'invalid_session', 401);
   }
@@ -939,7 +930,7 @@ export function heartbeatSession({
   }
 
   params.push(session.id);
-  ctx.db.prepare(`UPDATE agent_sessions SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+  await ctx.db.run(`UPDATE agent_sessions SET ${fields.join(', ')} WHERE id = ?`, params);
 
   return { ok: true };
 }
@@ -950,7 +941,7 @@ export function heartbeatSession({
  * metadata (path + status), never diffs or file contents. Must run inside a
  * transaction supplied by the caller.
  */
-function upsertChangedFiles({
+async function upsertChangedFiles({
   ctx,
   mission,
   session,
@@ -965,36 +956,32 @@ function upsertChangedFiles({
   /** Observing event id, or null when no event row exists yet (e.g. deliver). */
   eventId: string | null;
   now: string;
-}): void {
+}): Promise<void> {
   for (const file of files) {
     const normalizedPath = file.filePath.replace(/\\/g, '/');
-    const existing = ctx.db
-      .prepare(
-        `SELECT id FROM changed_files
-         WHERE session_id = ? AND objective_id = ? AND file_path = ? AND deleted_at IS NULL`
-      )
-      .get(session.id, session.objective_id, normalizedPath) as { id: string } | undefined;
+    const existing = (await ctx.db.get(
+      `SELECT id FROM changed_files
+         WHERE session_id = ? AND objective_id = ? AND file_path = ? AND deleted_at IS NULL`,
+      [session.id, session.objective_id, normalizedPath]
+    )) as { id: string } | undefined;
 
     if (existing) {
-      ctx.db
-        .prepare(
-          `UPDATE changed_files
+      await ctx.db.run(
+        `UPDATE changed_files
            SET vcs_status = ?, current_diff_state = 'present', last_observed_at = ?,
                last_observed_event_id = COALESCE(?, last_observed_event_id),
                updated_at = ?, revision = revision + 1
-           WHERE id = ?`
-        )
-        .run(file.vcsStatus ?? null, now, eventId, now, existing.id);
+           WHERE id = ?`,
+        [file.vcsStatus ?? null, now, eventId, now, existing.id]
+      );
     } else {
-      ctx.db
-        .prepare(
-          `INSERT INTO changed_files
+      await ctx.db.run(
+        `INSERT INTO changed_files
              (id, workspace_id, project_id, mission_id, objective_id, session_id,
               file_path, vcs_status, current_diff_state, first_observed_at, last_observed_at,
               last_observed_event_id, observed_metadata_json, created_at, updated_at, revision)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'present', ?, ?, ?, '{}', ?, ?, 1)`
-        )
-        .run(
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'present', ?, ?, ?, '{}', ?, ?, 1)`,
+        [
           newId(),
           ctx.workspace.id,
           mission.projectId,
@@ -1008,12 +995,13 @@ function upsertChangedFiles({
           eventId,
           now,
           now
-        );
+        ]
+      );
     }
   }
 }
 
-export function updateSession({
+export async function updateSession({
   ctx,
   missionId,
   sessionKey,
@@ -1041,14 +1029,14 @@ export function updateSession({
   followUpIntent?: string | null;
   changedFiles?: Array<{ filePath: string; vcsStatus?: string | null }> | null;
   changeRationales?: Array<Record<string, unknown>> | null;
-}): { eventId: string } {
+}): Promise<{ eventId: string }> {
   const trimmedSummary = summary.trim();
   if (!trimmedSummary) {
     throw new ServiceError('Update summary is required', 'validation_error');
   }
 
-  const mission = resolveMissionId(ctx, missionId);
-  const session = getSessionByKey(ctx, sessionKey);
+  const mission = await resolveMissionId(ctx, missionId);
+  const session = await getSessionByKey(ctx, sessionKey);
   if (session.mission_id !== mission.id) {
     throw new ServiceError('Session key does not match mission', 'invalid_session', 401);
   }
@@ -1072,31 +1060,28 @@ export function updateSession({
   const now = nowIso();
   const eventId = newId();
 
-  const tx = ctx.db.transaction(() => {
+  await ctx.db.transaction(async tx => {
+    const txCtx = { ...ctx, db: tx };
     if (beginFollowUpWork) {
-      ctx.db
-        .prepare(
-          `UPDATE objectives SET state = 'pending_delivery', updated_at = ?, revision = revision + 1
-           WHERE id = ?`
-        )
-        .run(now, session.objective_id);
-      ctx.db
-        .prepare(
-          `UPDATE agent_sessions SET delivery_state = 'pending_redelivery', updated_at = ?, revision = revision + 1
-           WHERE id = ?`
-        )
-        .run(now, session.id);
+      await txCtx.db.run(
+        `UPDATE objectives SET state = 'pending_delivery', updated_at = ?, revision = revision + 1
+           WHERE id = ?`,
+        [now, session.objective_id]
+      );
+      await txCtx.db.run(
+        `UPDATE agent_sessions SET delivery_state = 'pending_redelivery', updated_at = ?, revision = revision + 1
+           WHERE id = ?`,
+        [now, session.id]
+      );
     }
 
-    ctx.db
-      .prepare(
-        `INSERT INTO mission_events
+    await txCtx.db.run(
+      `INSERT INTO mission_events
            (id, workspace_id, project_id, mission_id, objective_id, session_id,
             type, phase, summary, payload_json, external_url, source,
             actor_workspace_user_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
         eventId,
         ctx.workspace.id,
         mission.projectId,
@@ -1121,35 +1106,32 @@ export function updateSession({
         ctx.source,
         ctx.actorWorkspaceUserId,
         now
-      );
+      ]
+    );
 
     if (externalSessionId !== undefined) {
-      ctx.db
-        .prepare(
-          `UPDATE agent_sessions SET external_session_id = ?, updated_at = ?, revision = revision + 1
-           WHERE id = ?`
-        )
-        .run(externalSessionId, now, session.id);
+      await txCtx.db.run(
+        `UPDATE agent_sessions SET external_session_id = ?, updated_at = ?, revision = revision + 1
+           WHERE id = ?`,
+        [externalSessionId, now, session.id]
+      );
     }
 
     if (phase) {
-      ctx.db
-        .prepare(
-          `UPDATE agent_sessions SET phase = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`
-        )
-        .run(phase, now, session.id);
+      await txCtx.db.run(
+        `UPDATE agent_sessions SET phase = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`,
+        [phase, now, session.id]
+      );
     }
 
     if (changedFiles && changedFiles.length > 0) {
-      upsertChangedFiles({ ctx, mission, session, files: changedFiles, eventId, now });
+      await upsertChangedFiles({ ctx: txCtx, mission, session, files: changedFiles, eventId, now });
     }
   });
-
-  tx();
   return { eventId };
 }
 
-export function askQuestion({
+export async function askQuestion({
   ctx,
   missionId,
   sessionKey,
@@ -1159,14 +1141,14 @@ export function askQuestion({
   missionId: string;
   sessionKey: string;
   question: string;
-}): { eventId: string } {
+}): Promise<{ eventId: string }> {
   const trimmed = question.trim();
   if (!trimmed) {
     throw new ServiceError('Question is required', 'validation_error');
   }
 
-  const mission = resolveMissionId(ctx, missionId);
-  const session = getSessionByKey(ctx, sessionKey);
+  const mission = await resolveMissionId(ctx, missionId);
+  const session = await getSessionByKey(ctx, sessionKey);
   if (session.mission_id !== mission.id) {
     throw new ServiceError('Session key does not match mission', 'invalid_session', 401);
   }
@@ -1174,14 +1156,12 @@ export function askQuestion({
   const now = nowIso();
   const eventId = newId();
 
-  ctx.db
-    .prepare(
-      `INSERT INTO mission_events
+  await ctx.db.run(
+    `INSERT INTO mission_events
          (id, workspace_id, project_id, mission_id, objective_id, session_id,
           type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'ask', 'blocked', ?, '{}', ?, ?, ?)`
-    )
-    .run(
+       VALUES (?, ?, ?, ?, ?, ?, 'ask', 'blocked', ?, '{}', ?, ?, ?)`,
+    [
       eventId,
       ctx.workspace.id,
       mission.projectId,
@@ -1192,9 +1172,10 @@ export function askQuestion({
       ctx.source,
       ctx.actorWorkspaceUserId,
       now
-    );
+    ]
+  );
 
-  moveMissionToReview({ ctx, missionId: mission.id });
+  await moveMissionToReview({ ctx, missionId: mission.id });
 
   return { eventId };
 }
@@ -1244,7 +1225,7 @@ function normalizeChangeRationales(
   }));
 }
 
-export function deliverSession({
+export async function deliverSession({
   ctx,
   missionId,
   sessionKey,
@@ -1270,14 +1251,14 @@ export function deliverSession({
   payloadJson?: Record<string, unknown> | null;
   verificationSummary?: string | null;
   followUpNotes?: string | null;
-}): { deliveryId: string; eventId: string } {
+}): Promise<{ deliveryId: string; eventId: string }> {
   const trimmedSummary = summary.trim();
   if (!trimmedSummary) {
     throw new ServiceError('Delivery summary is required', 'validation_error');
   }
 
-  const mission = resolveMissionId(ctx, missionId);
-  const session = getSessionByKey(ctx, sessionKey);
+  const mission = await resolveMissionId(ctx, missionId);
+  const session = await getSessionByKey(ctx, sessionKey);
   if (session.mission_id !== mission.id) {
     throw new ServiceError('Session key does not match mission', 'invalid_session', 401);
   }
@@ -1292,24 +1273,31 @@ export function deliverSession({
   // then used to link rationales to their changed-file rows.
   let changedFileIdByPath = new Map<string, string>();
 
-  const tx = ctx.db.transaction(() => {
+  await ctx.db.transaction(async tx => {
+    const txCtx = { ...ctx, db: tx };
     // Record the run's mechanically-observed changed files (client-side VCS
     // delta) so review reflects what actually changed — unless the agent
     // explicitly declared this run made no file changes.
     if (!noFileChanges && changedFiles && changedFiles.length > 0) {
       // The delivery event row is inserted later in this transaction, so there is
       // no observing event to link yet; pass null (COALESCE keeps prior links).
-      upsertChangedFiles({ ctx, mission, session, files: changedFiles, eventId: null, now });
+      await upsertChangedFiles({
+        ctx: txCtx,
+        mission,
+        session,
+        files: changedFiles,
+        eventId: null,
+        now
+      });
     }
 
     // Coverage is objective-scoped: aggregate observed changes across every
     // session for the objective (and no-session record-work records).
-    const objectiveChangedFiles = ctx.db
-      .prepare(
-        `SELECT id, file_path, current_diff_state FROM changed_files
-         WHERE objective_id = ? AND deleted_at IS NULL`
-      )
-      .all(session.objective_id) as Array<{
+    const objectiveChangedFiles = (await txCtx.db.all(
+      `SELECT id, file_path, current_diff_state FROM changed_files
+         WHERE objective_id = ? AND deleted_at IS NULL`,
+      [session.objective_id]
+    )) as Array<{
       id: string;
       file_path: string;
       current_diff_state: string | null;
@@ -1341,15 +1329,13 @@ export function deliverSession({
       }
     }
 
-    ctx.db
-      .prepare(
-        `INSERT INTO deliveries
+    await txCtx.db.run(
+      `INSERT INTO deliveries
            (id, workspace_id, project_id, mission_id, objective_id, session_id,
             summary, payload_json, verification_summary, follow_up_notes,
             delivered_at, delivered_by_workspace_user_id, created_at, updated_at, revision)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
-      )
-      .run(
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      [
         deliveryId,
         ctx.workspace.id,
         mission.projectId,
@@ -1367,17 +1353,16 @@ export function deliverSession({
         ctx.actorWorkspaceUserId,
         now,
         now
-      );
+      ]
+    );
 
     for (const artifact of artifacts) {
-      ctx.db
-        .prepare(
-          `INSERT INTO artifacts
+      await txCtx.db.run(
+        `INSERT INTO artifacts
              (id, workspace_id, project_id, mission_id, objective_id, session_id, delivery_id,
               type, label, content_text, external_url, created_at, updated_at, revision)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
-        )
-        .run(
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        [
           newId(),
           ctx.workspace.id,
           mission.projectId,
@@ -1391,20 +1376,19 @@ export function deliverSession({
           artifact.url ?? null,
           now,
           now
-        );
+        ]
+      );
     }
 
     for (const rationale of normalizedRationales) {
       const changedFileId = changedFileIdByPath.get(rationale.filePath) ?? null;
-      ctx.db
-        .prepare(
-          `INSERT INTO change_rationales
+      await txCtx.db.run(
+        `INSERT INTO change_rationales
              (id, workspace_id, project_id, mission_id, objective_id, session_id, delivery_id,
               changed_file_id, file_path, label, summary, why, impact, hunks_json,
               is_final, created_at, updated_at, revision)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 1)`
-        )
-        .run(
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 1)`,
+        [
           newId(),
           ctx.workspace.id,
           mission.projectId,
@@ -1421,17 +1405,16 @@ export function deliverSession({
           JSON.stringify(rationale.hunks ?? []),
           now,
           now
-        );
+        ]
+      );
     }
 
-    ctx.db
-      .prepare(
-        `INSERT INTO mission_events
+    await txCtx.db.run(
+      `INSERT INTO mission_events
            (id, workspace_id, project_id, mission_id, objective_id, session_id,
             type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'delivery', 'deliver', ?, ?, ?, ?, ?)`
-      )
-      .run(
+         VALUES (?, ?, ?, ?, ?, ?, 'delivery', 'deliver', ?, ?, ?, ?, ?)`,
+      [
         eventId,
         ctx.workspace.id,
         mission.projectId,
@@ -1443,54 +1426,51 @@ export function deliverSession({
         ctx.source,
         ctx.actorWorkspaceUserId,
         now
-      );
+      ]
+    );
 
-    ctx.db
-      .prepare(
-        `UPDATE objectives SET state = 'complete', completed_at = ?, updated_at = ?, revision = revision + 1
-         WHERE id = ?`
-      )
-      .run(now, now, session.objective_id);
+    await txCtx.db.run(
+      `UPDATE objectives SET state = 'complete', completed_at = ?, updated_at = ?, revision = revision + 1
+         WHERE id = ?`,
+      [now, now, session.objective_id]
+    );
 
-    ctx.db
-      .prepare(
-        `UPDATE agent_sessions
+    await txCtx.db.run(
+      `UPDATE agent_sessions
          SET delivery_state = 'delivered', phase = 'review', ended_at = ?, updated_at = ?, revision = revision + 1
-         WHERE id = ?`
-      )
-      .run(now, now, session.id);
+         WHERE id = ?`,
+      [now, now, session.id]
+    );
 
-    moveMissionToReview({ ctx, missionId: mission.id });
+    await moveMissionToReview({ ctx: txCtx, missionId: mission.id });
   });
-
-  tx();
 
   // The objective that just delivered is the agent the user last ran. Auto-advance
   // inherits it when the next objective has not been given its own agent, so the
   // chain never silently falls back to the runner's hardcoded default.
-  const deliveredObjective = ctx.db
-    .prepare(`SELECT assigned_agent, model, reasoning_effort FROM objectives WHERE id = ?`)
-    .get(session.objective_id) as
+  const deliveredObjective = (await ctx.db.get(
+    `SELECT assigned_agent, model, reasoning_effort FROM objectives WHERE id = ?`,
+    [session.objective_id]
+  )) as
     | { assigned_agent: string | null; model: string | null; reasoning_effort: string | null }
     | undefined;
 
-  ensureNextDraftObjective({
-    ctx,
+  await ensureNextDraftObjective({
+    ctx: ctx,
     missionId: mission.id,
     projectId: mission.projectId,
     assignedAgent: deliveredObjective?.assigned_agent ?? null,
     now: nowIso()
   });
 
-  const nextObjective = ctx.db
-    .prepare(
-      `SELECT id, title, auto_advance, assigned_agent, model, reasoning_effort FROM objectives
+  const nextObjective = (await ctx.db.get(
+    `SELECT id, title, auto_advance, assigned_agent, model, reasoning_effort FROM objectives
        WHERE mission_id = ? AND position > (
          SELECT position FROM objectives WHERE id = ?
        ) AND state = 'draft'
-       ORDER BY position ASC LIMIT 1`
-    )
-    .get(mission.id, session.objective_id) as
+       ORDER BY position ASC LIMIT 1`,
+    [mission.id, session.objective_id]
+  )) as
     | {
         id: string;
         title: string;
@@ -1523,17 +1503,16 @@ export function deliverSession({
         );
         changedFields.push('assigned_agent', 'model', 'reasoning_effort');
       }
-      ctx.db
-        .prepare(
-          `UPDATE objectives SET ${objectiveFields.join(', ')}, updated_at = ?, revision = revision + 1
-           WHERE id = ?`
-        )
-        .run(...objectiveParams, eventNow, nextObjective.id);
-      const updatedRevision = ctx.db
-        .prepare(`SELECT revision FROM objectives WHERE id = ?`)
-        .get(nextObjective.id) as { revision: number };
-      recordChange({
-        ctx,
+      await ctx.db.run(
+        `UPDATE objectives SET ${objectiveFields.join(', ')}, updated_at = ?, revision = revision + 1
+           WHERE id = ?`,
+        [...objectiveParams, eventNow, nextObjective.id]
+      );
+      const updatedRevision = (await ctx.db.get(`SELECT revision FROM objectives WHERE id = ?`, [
+        nextObjective.id
+      ])) as { revision: number };
+      await recordChange({
+        ctx: ctx,
         entityType: 'objective',
         entityId: nextObjective.id,
         operation: 'update',
@@ -1544,8 +1523,8 @@ export function deliverSession({
         changedFields
       });
       try {
-        createExecutionRequest({
-          ctx,
+        await createExecutionRequest({
+          ctx: ctx,
           missionId: mission.id,
           objectiveId: nextObjective.id,
           requestedAgent:
@@ -1560,14 +1539,12 @@ export function deliverSession({
           idempotencyKey: `auto_advance:${nextObjective.id}`
         });
       } catch (error) {
-        ctx.db
-          .prepare(
-            `INSERT INTO mission_events
+        await ctx.db.run(
+          `INSERT INTO mission_events
                (id, workspace_id, project_id, mission_id, objective_id,
                 type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
-             VALUES (?, ?, ?, ?, ?, 'alert', 'review', ?, ?, ?, ?, ?)`
-          )
-          .run(
+             VALUES (?, ?, ?, ?, ?, 'alert', 'review', ?, ?, ?, ?, ?)`,
+          [
             eventId,
             ctx.workspace.id,
             mission.projectId,
@@ -1580,17 +1557,16 @@ export function deliverSession({
             ctx.source,
             ctx.actorWorkspaceUserId,
             eventNow
-          );
+          ]
+        );
       }
     } else {
-      ctx.db
-        .prepare(
-          `INSERT INTO mission_events
+      await ctx.db.run(
+        `INSERT INTO mission_events
              (id, workspace_id, project_id, mission_id, objective_id,
               type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
-           VALUES (?, ?, ?, ?, ?, 'awaiting_approval', 'review', ?, '{}', ?, ?, ?)`
-        )
-        .run(
+           VALUES (?, ?, ?, ?, ?, 'awaiting_approval', 'review', ?, '{}', ?, ?, ?)`,
+        [
           eventId,
           ctx.workspace.id,
           mission.projectId,
@@ -1600,14 +1576,15 @@ export function deliverSession({
           ctx.source,
           ctx.actorWorkspaceUserId,
           eventNow
-        );
+        ]
+      );
     }
   }
 
   return { deliveryId, eventId };
 }
 
-export function protocolCreate({
+export async function protocolCreate({
   ctx,
   projectId,
   objectives,
@@ -1617,11 +1594,11 @@ export function protocolCreate({
   projectId?: string | null;
   objectives: Array<{ objective: string; title?: string | null; autoAdvance?: boolean }>;
   title?: string | null;
-}): { mission: MissionSummary; objectives: ObjectiveSummary[] } {
+}): Promise<{ mission: MissionSummary; objectives: ObjectiveSummary[] }> {
   const resolvedProjectId = projectId
-    ? resolveProjectId(ctx, projectId)
-    : discoverProject({ ctx }).projectId;
-  return createMissionWithObjectives({
+    ? await resolveProjectId(ctx, projectId)
+    : (await discoverProject({ ctx })).projectId;
+  return await createMissionWithObjectives({
     ctx,
     projectId: resolvedProjectId,
     objectives,
@@ -1629,7 +1606,7 @@ export function protocolCreate({
   });
 }
 
-export function protocolPrompt({
+export async function protocolPrompt({
   ctx,
   projectId,
   objectives,
@@ -1643,27 +1620,26 @@ export function protocolPrompt({
   title?: string | null;
   agentIdentifier?: string;
   externalSessionId?: string | null;
-}): AttachResponse & { sessionKey: string } {
+}): Promise<AttachResponse & { sessionKey: string }> {
   const discovery = projectId
-    ? { projectId: resolveProjectId(ctx, projectId) }
-    : discoverProject({ ctx });
-  const created = createMissionWithObjectives({
+    ? { projectId: await resolveProjectId(ctx, projectId) }
+    : await discoverProject({ ctx });
+  const created = await createMissionWithObjectives({
     ctx,
     projectId: discovery.projectId,
     objectives,
     ...(title !== undefined ? { title } : {})
   });
 
-  const submitted = ctx.db
-    .prepare(
-      `UPDATE objectives SET state = 'launching', updated_at = ?, revision = revision + 1
-       WHERE id = ?`
-    )
-    .run(nowIso(), created.objectives[0]?.id);
+  const submitted = await ctx.db.run(
+    `UPDATE objectives SET state = 'launching', updated_at = ?, revision = revision + 1
+       WHERE id = ?`,
+    [nowIso(), created.objectives[0]?.id]
+  );
 
   void submitted;
 
-  return attachSession({
+  return await attachSession({
     ctx,
     missionId: created.mission.id,
     agentIdentifier,
@@ -1672,7 +1648,7 @@ export function protocolPrompt({
   });
 }
 
-export function recordWork({
+export async function recordWork({
   ctx,
   projectId,
   summary,
@@ -1688,17 +1664,17 @@ export function recordWork({
   title?: string | null;
   artifacts?: Array<{ type: string; label: string; content?: string | null; url?: string | null }>;
   changeRationales?: ChangeRationaleInput[];
-}): { mission: MissionSummary; deliveryId: string } {
+}): Promise<{ mission: MissionSummary; deliveryId: string }> {
   const trimmedSummary = summary.trim();
   if (!trimmedSummary) {
     throw new ServiceError('Summary is required for record-work', 'validation_error');
   }
 
   const resolvedProjectId = projectId
-    ? resolveProjectId(ctx, projectId)
-    : discoverProject({ ctx }).projectId;
+    ? await resolveProjectId(ctx, projectId)
+    : (await discoverProject({ ctx })).projectId;
 
-  const created = createMissionWithObjectives({
+  const created = await createMissionWithObjectives({
     ctx,
     projectId: resolvedProjectId,
     objectives: [{ objective }],
@@ -1713,16 +1689,15 @@ export function recordWork({
     throw new ServiceError('Failed to create objective for record-work', 'internal_error', 500);
   }
 
-  const tx = ctx.db.transaction(() => {
-    ctx.db
-      .prepare(
-        `INSERT INTO deliveries
+  await ctx.db.transaction(async tx => {
+    const txCtx = { ...ctx, db: tx };
+    await txCtx.db.run(
+      `INSERT INTO deliveries
            (id, workspace_id, project_id, mission_id, objective_id, session_id,
             summary, payload_json, delivered_at, delivered_by_workspace_user_id,
             created_at, updated_at, revision)
-         VALUES (?, ?, ?, ?, ?, NULL, ?, '{}', ?, ?, ?, ?, 1)`
-      )
-      .run(
+         VALUES (?, ?, ?, ?, ?, NULL, ?, '{}', ?, ?, ?, ?, 1)`,
+      [
         deliveryId,
         ctx.workspace.id,
         resolvedProjectId,
@@ -1733,17 +1708,16 @@ export function recordWork({
         ctx.actorWorkspaceUserId,
         now,
         now
-      );
+      ]
+    );
 
     for (const artifact of artifacts) {
-      ctx.db
-        .prepare(
-          `INSERT INTO artifacts
+      await txCtx.db.run(
+        `INSERT INTO artifacts
              (id, workspace_id, project_id, mission_id, objective_id, delivery_id,
               type, label, content_text, external_url, created_at, updated_at, revision)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
-        )
-        .run(
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        [
           newId(),
           ctx.workspace.id,
           resolvedProjectId,
@@ -1756,18 +1730,17 @@ export function recordWork({
           artifact.url ?? null,
           now,
           now
-        );
+        ]
+      );
     }
 
     for (const rationale of normalizeChangeRationales(changeRationales)) {
-      ctx.db
-        .prepare(
-          `INSERT INTO change_rationales
+      await txCtx.db.run(
+        `INSERT INTO change_rationales
              (id, workspace_id, project_id, mission_id, objective_id, delivery_id,
               file_path, label, summary, why, impact, hunks_json, is_final, created_at, updated_at, revision)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 1)`
-        )
-        .run(
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 1)`,
+        [
           newId(),
           ctx.workspace.id,
           resolvedProjectId,
@@ -1782,17 +1755,16 @@ export function recordWork({
           JSON.stringify(rationale.hunks ?? []),
           now,
           now
-        );
+        ]
+      );
     }
 
-    ctx.db
-      .prepare(
-        `INSERT INTO mission_events
+    await txCtx.db.run(
+      `INSERT INTO mission_events
            (id, workspace_id, project_id, mission_id, objective_id,
             type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
-         VALUES (?, ?, ?, ?, ?, 'delivery', 'deliver', ?, ?, ?, ?, ?)`
-      )
-      .run(
+         VALUES (?, ?, ?, ?, ?, 'delivery', 'deliver', ?, ?, ?, ?, ?)`,
+      [
         newId(),
         ctx.workspace.id,
         resolvedProjectId,
@@ -1803,10 +1775,9 @@ export function recordWork({
         ctx.source,
         ctx.actorWorkspaceUserId,
         now
-      );
+      ]
+    );
   });
-
-  tx();
   return { mission: created.mission, deliveryId };
 }
 

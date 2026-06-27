@@ -1,4 +1,4 @@
-import type { OverlordDatabase } from '@overlord/database';
+import type { DatabaseClient } from '@overlord/database';
 
 type ProfileMetadata = {
   avatarUrl?: string;
@@ -52,23 +52,22 @@ export function mergeProfileMetadataJson({
   return JSON.stringify(parsed);
 }
 
-export function loadAgentInstructionsForWorkspaceUser({
+export async function loadAgentInstructionsForWorkspaceUser({
   db,
   workspaceUserId
 }: {
-  db: OverlordDatabase;
+  db: DatabaseClient;
   workspaceUserId: string | null;
-}): string | null {
+}): Promise<string | null> {
   if (!workspaceUserId) return null;
 
-  const row = db
-    .prepare(
-      `SELECT p.metadata_json
+  const row = (await db.get(
+    `SELECT p.metadata_json
          FROM profiles p
          JOIN workspace_users wu ON wu.profile_id = p.id
-        WHERE wu.id = ? AND p.deleted_at IS NULL`
-    )
-    .get(workspaceUserId) as { metadata_json: string } | undefined;
+        WHERE wu.id = ? AND p.deleted_at IS NULL`,
+    [workspaceUserId]
+  )) as { metadata_json: string } | undefined;
 
   if (!row) return null;
   return agentInstructionsFromProfileMetadata(row.metadata_json);

@@ -17,46 +17,46 @@ describe('per-mission worktree preference', () => {
       await import('./repository.ts');
     const { updateWorktreeBranchAutomation } = await import('./launch.ts');
 
-    const project = createProject({ name: 'Worktree Preference Test' });
+    const project = await createProject({ name: 'Worktree Preference Test' });
 
     // Workspace automation OFF (the default) and no per-mission preference: the
     // mission works off its base branch — the header shows "main".
     updateWorktreeBranchAutomation({ enabled: false });
-    const mission = createMission({ projectId: project.id, firstObjective: 'Default off' });
-    let branch = getMissionDetail(mission.id).branch;
+    const mission = await createMission({ projectId: project.id, firstObjective: 'Default off' });
+    let branch = (await getMissionDetail(mission.id)).branch;
     assert.equal(branch?.worktreeAutomationEnabled, false);
     assert.equal(branch?.worktreePreference, null);
     assert.equal(branch?.willPrepareBranch, false);
     assert.equal(branch?.willUseWorktree, false);
 
     // Opt this mission into a branch + worktree while automation stays off.
-    branch = updateMission(mission.id, { worktreePreference: 'worktree' }).branch;
+    branch = (await updateMission(mission.id, { worktreePreference: 'worktree' })).branch;
     assert.equal(branch?.worktreePreference, 'worktree');
     assert.equal(branch?.willPrepareBranch, true);
     assert.equal(branch?.willUseWorktree, true);
 
     // Opt into a branch WITHOUT a worktree (the checkbox unchecked).
-    branch = updateMission(mission.id, { worktreePreference: 'branch' }).branch;
+    branch = (await updateMission(mission.id, { worktreePreference: 'branch' })).branch;
     assert.equal(branch?.worktreePreference, 'branch');
     assert.equal(branch?.willPrepareBranch, true);
     assert.equal(branch?.willUseWorktree, false);
 
     // Clearing the preference reverts to the base branch.
-    branch = updateMission(mission.id, { worktreePreference: null }).branch;
+    branch = (await updateMission(mission.id, { worktreePreference: null })).branch;
     assert.equal(branch?.worktreePreference, null);
     assert.equal(branch?.willPrepareBranch, false);
     assert.equal(branch?.willUseWorktree, false);
 
     // With automation ON, a mission with no preference inherits worktree behavior.
     updateWorktreeBranchAutomation({ enabled: true });
-    branch = getMissionDetail(mission.id).branch;
+    branch = (await getMissionDetail(mission.id)).branch;
     assert.equal(branch?.worktreeAutomationEnabled, true);
     assert.equal(branch?.willPrepareBranch, true);
     assert.equal(branch?.willUseWorktree, true);
 
     // A per-mission 'branch' preference still wins (branch without a worktree)
     // even while automation is globally on.
-    branch = updateMission(mission.id, { worktreePreference: 'branch' }).branch;
+    branch = (await updateMission(mission.id, { worktreePreference: 'branch' })).branch;
     assert.equal(branch?.willPrepareBranch, true);
     assert.equal(branch?.willUseWorktree, false);
   });
@@ -66,11 +66,11 @@ describe('per-mission worktree preference', () => {
     process.env.OVERLORD_SQLITE_PATH = path.join(dir, 'Overlord.sqlite');
 
     const { createProject, createMission, updateMission } = await import('./repository.ts');
-    const project = createProject({ name: 'Worktree Preference Invalid' });
-    const mission = createMission({ projectId: project.id, firstObjective: 'Bad value' });
+    const project = await createProject({ name: 'Worktree Preference Invalid' });
+    const mission = await createMission({ projectId: project.id, firstObjective: 'Bad value' });
 
-    assert.throws(
-      () => updateMission(mission.id, { worktreePreference: 'nope' as never }),
+    await assert.rejects(
+      updateMission(mission.id, { worktreePreference: 'nope' as never }),
       /worktreePreference/
     );
   });

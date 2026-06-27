@@ -16,6 +16,7 @@
  *   config → workspace default → empty) and snapshots it into
  *   `execution_requests.launch_flags_json` for the runner to consume verbatim.
  */
+import type { DatabaseClient } from '@overlord/database';
 import { resolveInstanceAgentCatalog } from '../../cli/src/agent-catalog.ts';
 import { loadConfig } from '../../cli/src/config.ts';
 import type { TerminalProfile } from '../../cli/src/terminal-profile-types.ts';
@@ -47,7 +48,15 @@ import type {
   UpdateWorktreeBranchAutomationBody
 } from '../shared/contract.ts';
 
-import { ACTOR_WORKSPACE_USER_ID, db, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
+import {
+  getActorWorkspaceUserId,
+  newId,
+  nowIso,
+  recordChange,
+  requireDatabaseClient,
+  serviceDatabaseClient,
+  WORKSPACE
+} from './db.ts';
 import { ApiError } from './errors.ts';
 
 // ---- Instance default catalog ----------------------------------------------
@@ -83,10 +92,13 @@ function instanceAgentCatalog(): Record<string, StoredCatalogAgent> {
 
 // ---- Workspace settings helpers --------------------------------------------
 
-function readWorkspaceSettings(): Record<string, unknown> {
-  const row = db
-    .prepare(`SELECT settings_json FROM workspaces WHERE id = ? AND deleted_at IS NULL`)
-    .get(WORKSPACE.id) as { settings_json: string } | undefined;
+async function readWorkspaceSettings(
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<Record<string, unknown>> {
+  const row = await client.get<{ settings_json: string }>(
+    `SELECT settings_json FROM workspaces WHERE id = ? AND deleted_at IS NULL`,
+    [WORKSPACE.id]
+  );
   if (!row) throw new ApiError(500, 'Workspace not found');
   try {
     return JSON.parse(row.settings_json) as Record<string, unknown>;
@@ -95,45 +107,58 @@ function readWorkspaceSettings(): Record<string, unknown> {
   }
 }
 
-function writeWorkspaceSettings(settings: Record<string, unknown>): void {
-  db.prepare(
-    `UPDATE workspaces SET settings_json = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`
-  ).run(JSON.stringify(settings), nowIso(), WORKSPACE.id);
+async function writeWorkspaceSettings(
+  settings: Record<string, unknown>,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<void> {
+  await client.run(
+    `UPDATE workspaces SET settings_json = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`,
+    [JSON.stringify(settings), nowIso(), WORKSPACE.id]
+  );
 }
 
-function readStoredCatalog(): StoredCatalog | null {
-  const settings = readWorkspaceSettings();
+async function readStoredCatalog(
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<StoredCatalog | null> {
+  const settings = await readWorkspaceSettings(client);
   const stored = settings[AGENT_CATALOG_SETTINGS_KEY] as StoredCatalog | undefined;
   if (!stored || typeof stored !== 'object' || typeof stored.agents !== 'object') return null;
   return stored;
 }
 
-function persistCatalog(catalog: StoredCatalog): void {
-  const settings = readWorkspaceSettings();
+async function persistCatalog(
+  catalog: StoredCatalog,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<void> {
+  const settings = await readWorkspaceSettings(client);
   settings[AGENT_CATALOG_SETTINGS_KEY] = { ...catalog, updatedAt: nowIso() };
-  writeWorkspaceSettings(settings);
+  await writeWorkspaceSettings(settings, client);
 }
 
-export function readWorktreeBranchAutomationEnabled(): boolean {
-  const settings = readWorkspaceSettings();
+export async function readWorktreeBranchAutomationEnabled(
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<boolean> {
+  const settings = await readWorkspaceSettings(client);
   return settings[WORKTREE_BRANCH_AUTOMATION_SETTINGS_KEY] === true;
 }
 
-function launchSettingsDto({
+async function launchSettingsDto({
   target,
   agentConfigs = target.agentConfigs,
-  terminalProfile = target.terminalProfile
+  terminalProfile = target.terminalProfile,
+  client = requireDatabaseClient()
 }: {
-  target: ReturnType<typeof ensureLocalLaunchTarget>;
+  target: Awaited<ReturnType<typeof ensureLocalLaunchTarget>>;
   agentConfigs?: Record<string, AgentLaunchConfigDto>;
   terminalProfile?: TerminalProfileDto;
-}): LaunchSettingsDto {
+  client?: DatabaseClient;
+}): Promise<LaunchSettingsDto> {
   return {
     executionTargetId: target.executionTargetId,
     deviceLabel: target.deviceLabel,
     agentConfigs,
     terminalProfile,
-    worktreeBranchAutomationEnabled: readWorktreeBranchAutomationEnabled()
+    worktreeBranchAutomationEnabled: await readWorktreeBranchAutomationEnabled(client)
   };
 }
 
@@ -160,44 +185,48 @@ function toCatalogDto(stored: StoredCatalog): AgentCatalogDto {
 }
 
 /** Read the workspace agent catalog, seeding it from the bundled default on first use. */
-export const getAgentCatalog = db.transaction((): AgentCatalogDto => {
-  let stored = readStoredCatalog();
-  if (!stored) {
-    stored = { agents: instanceAgentCatalog() };
-    persistCatalog(stored);
-  }
-  return toCatalogDto(stored);
-});
+export async function getAgentCatalog(): Promise<AgentCatalogDto> {
+  return requireDatabaseClient().transaction(async tx => {
+    let stored = await readStoredCatalog(tx);
+    if (!stored) {
+      stored = { agents: instanceAgentCatalog() };
+      await persistCatalog(stored, tx);
+    }
+    return toCatalogDto(stored);
+  });
+}
 
 /**
  * Merge the bundled default catalog into the workspace catalog: adds agents
  * and models that have shipped since the catalog was seeded while preserving
  * workspace customisations (labels, defaults, removed availability).
  */
-export const refreshAgentCatalog = db.transaction((): AgentCatalogDto => {
-  const stored = readStoredCatalog() ?? { agents: {} };
-  for (const [key, bundled] of Object.entries(instanceAgentCatalog())) {
-    const existing = stored.agents[key];
-    if (!existing) {
-      stored.agents[key] = structuredClone(bundled);
-      continue;
+export async function refreshAgentCatalog(): Promise<AgentCatalogDto> {
+  return requireDatabaseClient().transaction(async tx => {
+    const stored = (await readStoredCatalog(tx)) ?? { agents: {} };
+    for (const [key, bundled] of Object.entries(instanceAgentCatalog())) {
+      const existing = stored.agents[key];
+      if (!existing) {
+        stored.agents[key] = structuredClone(bundled);
+        continue;
+      }
+      const knownIds = new Set((existing.models ?? []).map(m => m.id));
+      for (const model of bundled.models) {
+        if (!knownIds.has(model.id)) existing.models.push(structuredClone(model));
+      }
     }
-    const knownIds = new Set((existing.models ?? []).map(m => m.id));
-    for (const model of bundled.models) {
-      if (!knownIds.has(model.id)) existing.models.push(structuredClone(model));
-    }
-  }
-  persistCatalog(stored);
-  return toCatalogDto(stored);
-});
+    await persistCatalog(stored, tx);
+    return toCatalogDto(stored);
+  });
+}
 
 // ---- Local device / execution target provisioning -------------------------
 
 function serviceContext() {
   return {
-    db,
+    db: serviceDatabaseClient(),
     workspace: { id: WORKSPACE.id, slug: WORKSPACE.slug, name: WORKSPACE.name },
-    actorWorkspaceUserId: ACTOR_WORKSPACE_USER_ID,
+    actorWorkspaceUserId: getActorWorkspaceUserId(),
     source: 'webapp' as const
   };
 }
@@ -229,15 +258,19 @@ function parseAgentConfigs(json: string): Record<string, AgentLaunchConfigDto> {
   return configs;
 }
 
-function readAgentConfigs(preferenceId: string | null): Record<string, AgentLaunchConfigDto> {
+async function readAgentConfigs(
+  preferenceId: string | null,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<Record<string, AgentLaunchConfigDto>> {
   if (!preferenceId) return {};
-  const row = db
-    .prepare(`SELECT agent_configs_json FROM user_execution_target_preferences WHERE id = ?`)
-    .get(preferenceId) as { agent_configs_json: string } | undefined;
+  const row = await client.get<{ agent_configs_json: string }>(
+    `SELECT agent_configs_json FROM user_execution_target_preferences WHERE id = ?`,
+    [preferenceId]
+  );
   return row ? parseAgentConfigs(row.agent_configs_json) : {};
 }
 
-function ensureLocalLaunchTarget(): {
+async function ensureLocalLaunchTarget(): Promise<{
   deviceId: string;
   deviceLabel: string;
   executionTargetId: string;
@@ -245,30 +278,33 @@ function ensureLocalLaunchTarget(): {
   preferenceId: string | null;
   agentConfigs: Record<string, AgentLaunchConfigDto>;
   terminalProfile: TerminalProfileDto;
-} {
-  const target = ensureLocalExecutionTarget({ ctx: serviceContext() });
+}> {
+  const target = await ensureLocalExecutionTarget({ ctx: serviceContext() });
   return {
     deviceId: target.deviceId,
     deviceLabel: target.deviceLabel,
     executionTargetId: target.executionTargetId,
     userTargetId: target.userTargetId,
     preferenceId: target.preferenceId,
-    agentConfigs: readAgentConfigs(target.preferenceId),
+    agentConfigs: await readAgentConfigs(target.preferenceId),
     terminalProfile: toTerminalProfileDto(target.terminalProfile)
   };
 }
 
-export function getLaunchSettings(): LaunchSettingsDto {
-  const target = ensureLocalLaunchTarget();
+export async function getLaunchSettings(): Promise<LaunchSettingsDto> {
+  const target = await ensureLocalLaunchTarget();
   return launchSettingsDto({ target });
 }
 
 /** Persist the acting user's launch mechanics (pre-command/flags) for one agent. */
-export const updateAgentLaunchConfig = db.transaction(
-  (agentKey: string, body: UpdateAgentLaunchConfigBody): LaunchSettingsDto => {
+export async function updateAgentLaunchConfig(
+  agentKey: string,
+  body: UpdateAgentLaunchConfigBody
+): Promise<LaunchSettingsDto> {
+  return requireDatabaseClient().transaction(async tx => {
     const key = agentKey.trim();
     if (!key) throw new ApiError(400, 'Agent key is required');
-    const target = ensureLocalLaunchTarget();
+    const target = await ensureLocalLaunchTarget();
     if (!target.preferenceId) {
       throw new ApiError(409, 'No active workspace user to store launch configs for');
     }
@@ -285,20 +321,23 @@ export const updateAgentLaunchConfig = db.transaction(
     };
     const configs = { ...target.agentConfigs, [key]: next };
 
-    db.prepare(
+    await tx.run(
       `UPDATE user_execution_target_preferences
           SET agent_configs_json = ?, updated_at = ?, revision = revision + 1
-        WHERE id = ?`
-    ).run(JSON.stringify(configs), nowIso(), target.preferenceId);
+        WHERE id = ?`,
+      [JSON.stringify(configs), nowIso(), target.preferenceId]
+    );
 
-    return launchSettingsDto({ target, agentConfigs: configs });
-  }
-);
+    return launchSettingsDto({ target, agentConfigs: configs, client: tx });
+  });
+}
 
 /** Persist the acting user's terminal profile for the local execution target. */
-export const updateTerminalProfile = db.transaction(
-  (body: UpdateTerminalProfileBody): LaunchSettingsDto => {
-    const saved = persistTerminalProfile({
+export async function updateTerminalProfile(
+  body: UpdateTerminalProfileBody
+): Promise<LaunchSettingsDto> {
+  return requireDatabaseClient().transaction(async tx => {
+    const saved = await persistTerminalProfile({
       ctx: serviceContext(),
       profile: {
         launcher: body.launcher ?? null,
@@ -306,50 +345,55 @@ export const updateTerminalProfile = db.transaction(
         chord: body.placement === 'chord' ? (body.chord ?? null) : null
       }
     });
-    const target = ensureLocalLaunchTarget();
+    const target = await ensureLocalLaunchTarget();
     return launchSettingsDto({
       target: {
         ...target,
         executionTargetId: saved.executionTargetId,
         deviceLabel: saved.deviceLabel
       },
-      terminalProfile: toTerminalProfileDto(saved.terminalProfile)
+      terminalProfile: toTerminalProfileDto(saved.terminalProfile),
+      client: tx
     });
-  }
-);
+  });
+}
 
-export const updateWorktreeBranchAutomation = db.transaction(
-  (body: UpdateWorktreeBranchAutomationBody): LaunchSettingsDto => {
-    const settings = readWorkspaceSettings();
+export async function updateWorktreeBranchAutomation(
+  body: UpdateWorktreeBranchAutomationBody
+): Promise<LaunchSettingsDto> {
+  return requireDatabaseClient().transaction(async tx => {
+    const settings = await readWorkspaceSettings(tx);
     settings[WORKTREE_BRANCH_AUTOMATION_SETTINGS_KEY] = body.enabled === true;
-    writeWorkspaceSettings(settings);
+    await writeWorkspaceSettings(settings, tx);
     return getLaunchSettings();
-  }
-);
+  });
+}
 
 // ---- Project launch preference ---------------------------------------------
 
 const LAUNCH_PREFERENCE_KEY = 'launchPreference';
 
-function requireProject(projectId: string): void {
-  const row = db
-    .prepare(`SELECT id FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`)
-    .get(projectId, WORKSPACE.id);
+async function requireProject(
+  projectId: string,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<void> {
+  const row = await client.get(
+    `SELECT id FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+    [projectId, WORKSPACE.id]
+  );
   if (!row) throw new ApiError(404, 'Project not found');
 }
 
-function readPreferenceRow(
-  projectId: string
-): { id: string; preferences: Record<string, unknown>; revision: number } | null {
-  if (!ACTOR_WORKSPACE_USER_ID) return null;
-  const row = db
-    .prepare(
-      `SELECT id, preferences_json, revision FROM project_user_preferences
-        WHERE workspace_id = ? AND project_id = ? AND workspace_user_id = ? AND deleted_at IS NULL`
-    )
-    .get(WORKSPACE.id, projectId, ACTOR_WORKSPACE_USER_ID) as
-    | { id: string; preferences_json: string; revision: number }
-    | undefined;
+async function readPreferenceRow(
+  projectId: string,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<{ id: string; preferences: Record<string, unknown>; revision: number } | null> {
+  if (!getActorWorkspaceUserId()) return null;
+  const row = await client.get<{ id: string; preferences_json: string; revision: number }>(
+    `SELECT id, preferences_json, revision FROM project_user_preferences
+        WHERE workspace_id = ? AND project_id = ? AND workspace_user_id = ? AND deleted_at IS NULL`,
+    [WORKSPACE.id, projectId, getActorWorkspaceUserId()]
+  );
   if (!row) return null;
   let preferences: Record<string, unknown>;
   try {
@@ -360,9 +404,9 @@ function readPreferenceRow(
   return { id: row.id, preferences, revision: row.revision };
 }
 
-export function getLaunchPreference(projectId: string): LaunchPreferenceDto {
-  requireProject(projectId);
-  const row = readPreferenceRow(projectId);
+export async function getLaunchPreference(projectId: string): Promise<LaunchPreferenceDto> {
+  await requireProject(projectId);
+  const row = await readPreferenceRow(projectId);
   const stored = row?.preferences[LAUNCH_PREFERENCE_KEY] as
     | Partial<LaunchPreferenceDto>
     | undefined;
@@ -373,14 +417,17 @@ export function getLaunchPreference(projectId: string): LaunchPreferenceDto {
   };
 }
 
-export const updateLaunchPreference = db.transaction(
-  (projectId: string, body: UpdateLaunchPreferenceBody): LaunchPreferenceDto => {
-    requireProject(projectId);
-    if (!ACTOR_WORKSPACE_USER_ID) {
+export async function updateLaunchPreference(
+  projectId: string,
+  body: UpdateLaunchPreferenceBody
+): Promise<LaunchPreferenceDto> {
+  return requireDatabaseClient().transaction(async tx => {
+    await requireProject(projectId, tx);
+    if (!getActorWorkspaceUserId()) {
       throw new ApiError(409, 'No active workspace user to store preferences for');
     }
 
-    const row = readPreferenceRow(projectId);
+    const row = await readPreferenceRow(projectId, tx);
     const current = (row?.preferences[LAUNCH_PREFERENCE_KEY] ?? {}) as Partial<LaunchPreferenceDto>;
     const next: LaunchPreferenceDto = {
       selectedAgent:
@@ -396,30 +443,32 @@ export const updateLaunchPreference = db.transaction(
     const now = nowIso();
     if (row) {
       const preferences = { ...row.preferences, [LAUNCH_PREFERENCE_KEY]: next };
-      db.prepare(
+      await tx.run(
         `UPDATE project_user_preferences
             SET preferences_json = ?, updated_at = ?, revision = revision + 1
-          WHERE id = ?`
-      ).run(JSON.stringify(preferences), now, row.id);
+          WHERE id = ?`,
+        [JSON.stringify(preferences), now, row.id]
+      );
     } else {
-      db.prepare(
+      await tx.run(
         `INSERT INTO project_user_preferences
            (id, workspace_id, project_id, workspace_user_id, preferences_json,
             created_at, updated_at, revision)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1)`
-      ).run(
-        newId(),
-        WORKSPACE.id,
-        projectId,
-        ACTOR_WORKSPACE_USER_ID,
-        JSON.stringify({ [LAUNCH_PREFERENCE_KEY]: next }),
-        now,
-        now
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+        [
+          newId(),
+          WORKSPACE.id,
+          projectId,
+          getActorWorkspaceUserId(),
+          JSON.stringify({ [LAUNCH_PREFERENCE_KEY]: next }),
+          now,
+          now
+        ]
       );
     }
     return next;
-  }
-);
+  });
+}
 
 // ---- Execution requests -----------------------------------------------------
 
@@ -505,16 +554,17 @@ const EXECUTION_REQUEST_COLUMNS = `
 `;
 
 /** Active (queued/claimed/launching) requests for a mission, newest first per objective. */
-export function listMissionExecutionRequests(missionId: string): ExecutionRequestDto[] {
-  const rows = db
-    .prepare(
-      `SELECT ${EXECUTION_REQUEST_COLUMNS} FROM execution_requests
+export async function listMissionExecutionRequests(
+  missionId: string
+): Promise<ExecutionRequestDto[]> {
+  const rows = await requireDatabaseClient().all<ExecutionRequestRow>(
+    `SELECT ${EXECUTION_REQUEST_COLUMNS} FROM execution_requests
         WHERE mission_id = ?
           AND status IN (${ACTIVE_EXECUTION_REQUEST_STATUSES.map(() => '?').join(', ')})
           AND deleted_at IS NULL
-        ORDER BY created_at DESC`
-    )
-    .all(missionId, ...ACTIVE_EXECUTION_REQUEST_STATUSES) as ExecutionRequestRow[];
+        ORDER BY created_at DESC`,
+    [missionId, ...ACTIVE_EXECUTION_REQUEST_STATUSES]
+  );
   return rows.map(toExecutionRequestDto);
 }
 
@@ -546,13 +596,14 @@ export const LAUNCHABLE_STATES = ['draft', 'submitted', 'launching'];
  * these queue/session updates land atomically. Returns the counts so callers
  * can decide whether to surface them.
  */
-export function dequeueObjective({
+export async function dequeueObjective({
   objectiveId,
   projectId,
   missionId,
   reason,
   newState,
-  now
+  now,
+  tx = requireDatabaseClient()
 }: {
   objectiveId: string;
   projectId: string;
@@ -562,9 +613,10 @@ export function dequeueObjective({
   /** New objective state, or null when the objective is being deleted. */
   newState: string | null;
   now: string;
-}): { clearedRequests: number; endedSessions: number } {
-  const { cleared } = clearExecutionRequests({
-    ctx: serviceContext(),
+  tx?: DatabaseClient;
+}): Promise<{ clearedRequests: number; endedSessions: number }> {
+  const { cleared } = await clearExecutionRequests({
+    ctx: { ...serviceContext(), db: tx },
     objectiveId,
     now,
     emitEvents: false
@@ -573,55 +625,59 @@ export function dequeueObjective({
   // A completed objective ends its session cleanly; a disconnect/delete leaves
   // it blocked since the agent never reached a delivery.
   const sessionPhase = newState === 'complete' ? 'complete' : 'blocked';
-  const openSessions = db
-    .prepare(
-      `SELECT id, revision FROM agent_sessions
+  const openSessions = await tx.all<{ id: string; revision: number }>(
+    `SELECT id, revision FROM agent_sessions
         WHERE workspace_id = ? AND objective_id = ? AND deleted_at IS NULL
-          AND ended_at IS NULL`
-    )
-    .all(WORKSPACE.id, objectiveId) as Array<{ id: string; revision: number }>;
+          AND ended_at IS NULL`,
+    [WORKSPACE.id, objectiveId]
+  );
 
   for (const session of openSessions) {
     const revision = session.revision + 1;
-    db.prepare(
+    await tx.run(
       `UPDATE agent_sessions
-         SET phase = @phase, ended_at = @now, updated_at = @now, revision = @revision
-       WHERE id = @id AND workspace_id = @workspace_id`
-    ).run({ id: session.id, workspace_id: WORKSPACE.id, phase: sessionPhase, now, revision });
-    recordChange({
-      entityType: 'agent_session',
-      entityId: session.id,
-      operation: 'update',
-      entityRevision: revision,
-      projectId,
-      missionId,
-      objectiveId,
-      changedFields: ['phase', 'ended_at']
-    });
+         SET phase = ?, ended_at = ?, updated_at = ?, revision = ?
+       WHERE id = ? AND workspace_id = ?`,
+      [sessionPhase, now, now, revision, session.id, WORKSPACE.id]
+    );
+    await recordChange(
+      {
+        entityType: 'agent_session',
+        entityId: session.id,
+        operation: 'update',
+        entityRevision: revision,
+        projectId,
+        missionId,
+        objectiveId,
+        changedFields: ['phase', 'ended_at']
+      },
+      tx
+    );
   }
 
   if (cleared > 0 || openSessions.length > 0) {
-    db.prepare(
+    await tx.run(
       `INSERT INTO mission_events
          (id, workspace_id, project_id, mission_id, objective_id, type, phase, summary,
           payload_json, source, actor_workspace_user_id, created_at)
-       VALUES (?, ?, ?, ?, ?, 'status_change', NULL, ?, ?, 'webapp', ?, ?)`
-    ).run(
-      newId(),
-      WORKSPACE.id,
-      projectId,
-      missionId,
-      objectiveId,
-      `Objective ${reason}: cleared ${cleared} queued execution request(s) ` +
-        `and ended ${openSessions.length} active session(s).`,
-      JSON.stringify({
-        reason,
-        newState,
-        clearedRequests: cleared,
-        endedSessions: openSessions.length
-      }),
-      ACTOR_WORKSPACE_USER_ID,
-      now
+       VALUES (?, ?, ?, ?, ?, 'status_change', NULL, ?, ?, 'webapp', ?, ?)`,
+      [
+        newId(),
+        WORKSPACE.id,
+        projectId,
+        missionId,
+        objectiveId,
+        `Objective ${reason}: cleared ${cleared} queued execution request(s) ` +
+          `and ended ${openSessions.length} active session(s).`,
+        JSON.stringify({
+          reason,
+          newState,
+          clearedRequests: cleared,
+          endedSessions: openSessions.length
+        }),
+        getActorWorkspaceUserId(),
+        now
+      ]
     );
   }
 
@@ -637,12 +693,13 @@ export function dequeueObjective({
  * 3. The workspace catalog's launch default for the agent
  * 4. Empty (no pre-command, no flags)
  */
-function resolveLaunchConfig(
+async function resolveLaunchConfig(
   objectiveLaunchConfigJson: string | null,
   executionTargetId: string,
   agentKey: string,
-  userConfigs: Record<string, AgentLaunchConfigDto>
-): { config: AgentLaunchConfigDto; source: 'objective' | 'user_target' | 'workspace' | 'none' } {
+  userConfigs: Record<string, AgentLaunchConfigDto>,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<{ config: AgentLaunchConfigDto; source: 'objective' | 'user_target' | 'workspace' | 'none' }> {
   if (objectiveLaunchConfigJson) {
     try {
       const parsed = JSON.parse(objectiveLaunchConfigJson) as Record<
@@ -669,7 +726,7 @@ function resolveLaunchConfig(
     return { config: userConfigs[agentKey], source: 'user_target' };
   }
 
-  const stored = readStoredCatalog();
+  const stored = await readStoredCatalog(client);
   const workspaceDefault = stored?.agents[agentKey]?.launchDefaults;
   if (workspaceDefault) {
     return {
@@ -691,19 +748,21 @@ function resolveLaunchConfig(
  * `launching`, and writes the `execution_requests` row plus the
  * `mission_events` / `entity_changes` records in one transaction.
  */
-export const launchObjective = db.transaction(
-  (objectiveId: string, body: LaunchObjectiveBody): ExecutionRequestDto => {
+export async function launchObjective(
+  objectiveId: string,
+  body: LaunchObjectiveBody
+): Promise<ExecutionRequestDto> {
+  return requireDatabaseClient().transaction(async tx => {
     const agentKey = (body.agent ?? '').trim();
     if (!agentKey) throw new ApiError(400, 'agent is required');
 
-    const objective = db
-      .prepare(
-        `SELECT id, workspace_id, project_id, mission_id, title, instruction_text, state,
+    const objective = await tx.get<LaunchObjectiveRow>(
+      `SELECT id, workspace_id, project_id, mission_id, title, instruction_text, state,
                 assigned_agent, model, reasoning_effort, launch_config_json, revision
            FROM objectives
-          WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
-      )
-      .get(objectiveId, WORKSPACE.id) as LaunchObjectiveRow | undefined;
+          WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+      [objectiveId, WORKSPACE.id]
+    );
     if (!objective) throw new ApiError(404, 'Objective not found');
     if (!LAUNCHABLE_STATES.includes(objective.state)) {
       throw new ApiError(
@@ -715,10 +774,10 @@ export const launchObjective = db.transaction(
       );
     }
 
-    const target = ensureLocalLaunchTarget();
+    const target = await ensureLocalLaunchTarget();
     const now = nowIso();
 
-    assertPrimaryResourceConnected({
+    await assertPrimaryResourceConnected({
       ctx: serviceContext(),
       projectId: objective.project_id,
       executionTargetId: target.executionTargetId
@@ -729,21 +788,21 @@ export const launchObjective = db.transaction(
     const model = body.model ?? null;
     const reasoningEffort = body.reasoningEffort ?? null;
     const fields: string[] = [];
-    const params: Record<string, unknown> = { id: objective.id };
+    const setParams: unknown[] = [];
     const changed: string[] = [];
     if (objective.assigned_agent !== agentKey) {
-      fields.push('assigned_agent = @assigned_agent');
-      params.assigned_agent = agentKey;
+      fields.push('assigned_agent = ?');
+      setParams.push(agentKey);
       changed.push('assigned_agent');
     }
     if (objective.model !== model) {
-      fields.push('model = @model');
-      params.model = model;
+      fields.push('model = ?');
+      setParams.push(model);
       changed.push('model');
     }
     if (objective.reasoning_effort !== reasoningEffort) {
-      fields.push('reasoning_effort = @reasoning_effort');
-      params.reasoning_effort = reasoningEffort;
+      fields.push('reasoning_effort = ?');
+      setParams.push(reasoningEffort);
       changed.push('reasoning_effort');
     }
     let launchConfigJson = objective.launch_config_json;
@@ -764,8 +823,8 @@ export const launchObjective = db.transaction(
         }
       };
       launchConfigJson = JSON.stringify(parsed);
-      fields.push('launch_config_json = @launch_config_json');
-      params.launch_config_json = launchConfigJson;
+      fields.push('launch_config_json = ?');
+      setParams.push(launchConfigJson);
       changed.push('launch_config_json');
     }
     if (objective.state === 'draft') {
@@ -776,47 +835,51 @@ export const launchObjective = db.transaction(
     let revision = objective.revision;
     if (fields.length > 0) {
       revision += 1;
-      db.prepare(
-        `UPDATE objectives SET ${fields.join(', ')}, updated_at = @now, revision = @revision
-           WHERE id = @id`
-      ).run({ ...params, now, revision });
-      recordChange({
-        entityType: 'objective',
-        entityId: objective.id,
-        operation: 'update',
-        entityRevision: revision,
-        projectId: objective.project_id,
-        missionId: objective.mission_id,
-        objectiveId: objective.id,
-        changedFields: changed
-      });
+      await tx.run(
+        `UPDATE objectives SET ${fields.join(', ')}, updated_at = ?, revision = ?
+           WHERE id = ?`,
+        [...setParams, now, revision, objective.id]
+      );
+      await recordChange(
+        {
+          entityType: 'objective',
+          entityId: objective.id,
+          operation: 'update',
+          entityRevision: revision,
+          projectId: objective.project_id,
+          missionId: objective.mission_id,
+          objectiveId: objective.id,
+          changedFields: changed
+        },
+        tx
+      );
     }
 
-    const resolved = resolveLaunchConfig(
+    const resolved = await resolveLaunchConfig(
       launchConfigJson,
       target.executionTargetId,
       agentKey,
-      target.agentConfigs
+      target.agentConfigs,
+      tx
     );
 
     // An objective stays in `launching` state until the runner claims and
     // launches its request; a second Run click in that window must not queue
     // a duplicate. Once the prior request reaches a terminal status, this
     // check clears and a relaunch is allowed.
-    const activeRequestRow = db
-      .prepare(
-        `SELECT ${EXECUTION_REQUEST_COLUMNS} FROM execution_requests
+    const activeRequestRow = await tx.get<ExecutionRequestRow>(
+      `SELECT ${EXECUTION_REQUEST_COLUMNS} FROM execution_requests
           WHERE objective_id = ? AND deleted_at IS NULL
             AND status IN (${ACTIVE_EXECUTION_REQUEST_STATUSES.map(() => '?').join(', ')})
-          ORDER BY created_at DESC LIMIT 1`
-      )
-      .get(objective.id, ...ACTIVE_EXECUTION_REQUEST_STATUSES) as ExecutionRequestRow | undefined;
+          ORDER BY created_at DESC LIMIT 1`,
+      [objective.id, ...ACTIVE_EXECUTION_REQUEST_STATUSES]
+    );
     if (activeRequestRow) {
       return toExecutionRequestDto(activeRequestRow);
     }
 
-    const request = createExecutionRequest({
-      ctx: serviceContext(),
+    const request = await createExecutionRequest({
+      ctx: { ...serviceContext(), db: tx },
       missionId: objective.mission_id,
       objectiveId: objective.id,
       requestedAgent: agentKey,
@@ -833,8 +896,8 @@ export const launchObjective = db.transaction(
       eventPayload: { agent: agentKey, model, reasoningEffort }
     });
     return executionSummaryToDto(request);
-  }
-);
+  });
+}
 
 // ---- Copyable prompt --------------------------------------------------------
 
@@ -843,25 +906,22 @@ export const launchObjective = db.transaction(
  * Mirrors the shape of the context `ovld launch` hands to agents: the
  * objective, mission identity, and the protocol attach instruction.
  */
-export function getObjectivePrompt(objectiveId: string): ObjectivePromptDto {
-  const row = db
-    .prepare(
-      `SELECT o.id, o.mission_id, o.title, o.instruction_text,
+export async function getObjectivePrompt(objectiveId: string): Promise<ObjectivePromptDto> {
+  const row = await requireDatabaseClient().get<{
+    id: string;
+    mission_id: string;
+    title: string | null;
+    instruction_text: string;
+    display_id: string;
+    mission_title: string;
+  }>(
+    `SELECT o.id, o.mission_id, o.title, o.instruction_text,
               t.display_id, t.title AS mission_title
          FROM objectives o
          JOIN missions t ON t.id = o.mission_id
-        WHERE o.id = ? AND o.workspace_id = ? AND o.deleted_at IS NULL`
-    )
-    .get(objectiveId, WORKSPACE.id) as
-    | {
-        id: string;
-        mission_id: string;
-        title: string | null;
-        instruction_text: string;
-        display_id: string;
-        mission_title: string;
-      }
-    | undefined;
+        WHERE o.id = ? AND o.workspace_id = ? AND o.deleted_at IS NULL`,
+    [objectiveId, WORKSPACE.id]
+  );
   if (!row) throw new ApiError(404, 'Objective not found');
 
   const prompt = [

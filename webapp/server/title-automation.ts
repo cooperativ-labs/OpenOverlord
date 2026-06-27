@@ -4,7 +4,7 @@ import {
   generateObjectiveTitle
 } from '@overlord/automations';
 
-import { db, nowIso, recordChange } from './db.ts';
+import { nowIso, recordChangeAsync, requireDatabaseClient } from './db.ts';
 import { realtime } from './realtime.ts';
 
 type ObjectiveContext = {
@@ -26,21 +26,18 @@ const objectiveTitleStore = {
     objectiveId: string;
     title: string;
   }): Promise<void> => {
-    const existing = db
-      .prepare(
-        `SELECT id, project_id, mission_id, title, revision
-           FROM objectives
-          WHERE id = ? AND deleted_at IS NULL`
-      )
-      .get(objectiveId) as
-      | {
-          id: string;
-          project_id: string;
-          mission_id: string;
-          title: string | null;
-          revision: number;
-        }
-      | undefined;
+    const existing = await requireDatabaseClient().get<{
+      id: string;
+      project_id: string;
+      mission_id: string;
+      title: string | null;
+      revision: number;
+    }>(
+      `SELECT id, project_id, mission_id, title, revision
+         FROM objectives
+        WHERE id = ? AND deleted_at IS NULL`,
+      [objectiveId]
+    );
 
     if (!existing || existing.title === title) {
       return;
@@ -48,11 +45,12 @@ const objectiveTitleStore = {
 
     const now = nowIso();
     const revision = existing.revision + 1;
-    db.prepare(
-      `UPDATE objectives SET title = @title, updated_at = @now, revision = @revision WHERE id = @id`
-    ).run({ id: objectiveId, title, now, revision });
+    await requireDatabaseClient().run(
+      `UPDATE objectives SET title = ?, updated_at = ?, revision = ? WHERE id = ?`,
+      [title, now, revision, objectiveId]
+    );
 
-    recordChange({
+    await recordChangeAsync({
       entityType: 'objective',
       entityId: objectiveId,
       operation: 'update',
@@ -72,15 +70,17 @@ async function updateMissionTitle({
   missionId: string;
   title: string;
 }): Promise<void> {
-  const existing = db
-    .prepare(
-      `SELECT id, project_id, title, revision
-         FROM missions
-        WHERE id = ? AND deleted_at IS NULL`
-    )
-    .get(missionId) as
-    | { id: string; project_id: string; title: string; revision: number }
-    | undefined;
+  const existing = await requireDatabaseClient().get<{
+    id: string;
+    project_id: string;
+    title: string;
+    revision: number;
+  }>(
+    `SELECT id, project_id, title, revision
+       FROM missions
+      WHERE id = ? AND deleted_at IS NULL`,
+    [missionId]
+  );
 
   if (!existing || existing.title === title) {
     return;
@@ -88,11 +88,12 @@ async function updateMissionTitle({
 
   const now = nowIso();
   const revision = existing.revision + 1;
-  db.prepare(
-    `UPDATE missions SET title = @title, updated_at = @now, revision = @revision WHERE id = @id`
-  ).run({ id: missionId, title, now, revision });
+  await requireDatabaseClient().run(
+    `UPDATE missions SET title = ?, updated_at = ?, revision = ? WHERE id = ?`,
+    [title, now, revision, missionId]
+  );
 
-  recordChange({
+  await recordChangeAsync({
     entityType: 'mission',
     entityId: missionId,
     operation: 'update',

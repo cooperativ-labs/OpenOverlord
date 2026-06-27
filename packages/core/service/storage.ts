@@ -80,38 +80,38 @@ type AuthorizationOptions = {
 
 const PUBLIC_ACTOR = makeActor('public', [Role.PUBLIC]);
 
-function loadRoles(ctx: ServiceContext): Role[] {
+async function loadRoles(ctx: ServiceContext): Promise<Role[]> {
   if (!ctx.actorWorkspaceUserId) return [Role.PUBLIC];
-  const rows = ctx.db
-    .prepare(
-      `SELECT role_key FROM role_assignments
-       WHERE workspace_id = ? AND workspace_user_id = ? AND deleted_at IS NULL`
-    )
-    .all(ctx.workspace.id, ctx.actorWorkspaceUserId) as Array<{ role_key: string }>;
+  const rows = (await ctx.db.all(
+    `SELECT role_key FROM role_assignments
+       WHERE workspace_id = ? AND workspace_user_id = ? AND deleted_at IS NULL`,
+    [ctx.workspace.id, ctx.actorWorkspaceUserId]
+  )) as Array<{ role_key: string }>;
   return rows.map(row => row.role_key as Role);
 }
 
-function loadActor(ctx: ServiceContext) {
-  return makeActor(ctx.actorWorkspaceUserId ?? 'public', loadRoles(ctx));
+async function loadActor(ctx: ServiceContext) {
+  return makeActor(ctx.actorWorkspaceUserId ?? 'public', await loadRoles(ctx));
 }
 
-function loadActorUserId(ctx: ServiceContext): string | null {
+async function loadActorUserId(ctx: ServiceContext): Promise<string | null> {
   if (!ctx.actorWorkspaceUserId) return null;
-  const row = ctx.db
-    .prepare(`SELECT profile_id FROM workspace_users WHERE id = ? AND workspace_id = ?`)
-    .get(ctx.actorWorkspaceUserId, ctx.workspace.id) as { profile_id: string } | undefined;
+  const row = (await ctx.db.get(
+    `SELECT profile_id FROM workspace_users WHERE id = ? AND workspace_id = ?`,
+    [ctx.actorWorkspaceUserId, ctx.workspace.id]
+  )) as { profile_id: string } | undefined;
   return row?.profile_id ?? null;
 }
 
-function requirePermission(
+async function requirePermission(
   ctx: ServiceContext,
   permission: string,
   {
     authorization = defaultAuthorizer,
     allowPublic = false
   }: AuthorizationOptions & { allowPublic?: boolean } = {}
-): void {
-  const actor = loadActor(ctx);
+): Promise<void> {
+  const actor = await loadActor(ctx);
   const result = authorization.can(actor, permission);
   if (result.allowed) return;
 
@@ -120,18 +120,18 @@ function requirePermission(
   throw new ServiceError(result.reason, 'forbidden', 403);
 }
 
-function requireUserImagePermission(
+async function requireUserImagePermission(
   ctx: ServiceContext,
   userId: string,
   generalPermission: string,
   selfPermission: string,
   { authorization = defaultAuthorizer }: AuthorizationOptions = {}
-): void {
-  const actor = loadActor(ctx);
+): Promise<void> {
+  const actor = await loadActor(ctx);
   const general = authorization.can(actor, generalPermission);
   if (general.allowed) return;
 
-  const actorUserId = loadActorUserId(ctx);
+  const actorUserId = await loadActorUserId(ctx);
   const self = authorization.can(actor, selfPermission);
   if (actorUserId === userId && self.allowed) return;
 
@@ -169,25 +169,27 @@ function metadataJson(value: unknown): string {
   return JSON.stringify(value ?? {});
 }
 
-function getBucketId(ctx: ServiceContext, bucketKey: string): string {
-  const row = ctx.db
-    .prepare(
-      `SELECT id FROM storage_buckets
-       WHERE workspace_id = ? AND bucket_key = ? AND deleted_at IS NULL`
-    )
-    .get(ctx.workspace.id, bucketKey) as { id: string } | undefined;
+async function getBucketId(ctx: ServiceContext, bucketKey: string): Promise<string> {
+  const row = (await ctx.db.get(
+    `SELECT id FROM storage_buckets
+       WHERE workspace_id = ? AND bucket_key = ? AND deleted_at IS NULL`,
+    [ctx.workspace.id, bucketKey]
+  )) as { id: string } | undefined;
   return assertFound(row, `Storage bucket not configured: ${bucketKey}`).id;
 }
 
-export function listStorageBuckets({ ctx }: { ctx: ServiceContext }): StorageBucketSummary[] {
-  const rows = ctx.db
-    .prepare(
-      `SELECT id, bucket_key, storage_backend, base_url, local_path
+export async function listStorageBuckets({
+  ctx
+}: {
+  ctx: ServiceContext;
+}): Promise<StorageBucketSummary[]> {
+  const rows = (await ctx.db.all(
+    `SELECT id, bucket_key, storage_backend, base_url, local_path
        FROM storage_buckets
        WHERE workspace_id = ? AND deleted_at IS NULL
-       ORDER BY bucket_key ASC`
-    )
-    .all(ctx.workspace.id) as Array<{
+       ORDER BY bucket_key ASC`,
+    [ctx.workspace.id]
+  )) as Array<{
     id: string;
     bucket_key: string;
     storage_backend: string;
@@ -204,28 +206,26 @@ export function listStorageBuckets({ ctx }: { ctx: ServiceContext }): StorageBuc
   }));
 }
 
-export function createWorkspaceImage({
+export async function createWorkspaceImage({
   ctx,
   input,
   authorization
 }: {
   ctx: ServiceContext;
   input: ImageCreateInput;
-} & AuthorizationOptions): ImageSummary {
-  requirePermission(ctx, PERMISSIONS.WORKSPACE_IMAGE_CREATE, { authorization });
+} & AuthorizationOptions): Promise<ImageSummary> {
+  await requirePermission(ctx, PERMISSIONS.WORKSPACE_IMAGE_CREATE, { authorization });
   const now = nowIso();
   const id = newId();
-  const bucketId = getBucketId(ctx, 'workspace-images');
+  const bucketId = await getBucketId(ctx, 'workspace-images');
 
-  ctx.db
-    .prepare(
-      `INSERT INTO workspace_images (
+  await ctx.db.run(
+    `INSERT INTO workspace_images (
          id, workspace_id, storage_bucket_id, storage_key, filename, content_type,
          size_bytes, checksum_sha256, width_px, height_px, alt_text, public_url,
          metadata_json, created_by_workspace_user_id, created_at, updated_at, revision
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
-    )
-    .run(
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+    [
       id,
       ctx.workspace.id,
       bucketId,
@@ -242,8 +242,9 @@ export function createWorkspaceImage({
       ctx.actorWorkspaceUserId,
       now,
       now
-    );
-  recordChange({
+    ]
+  );
+  await recordChange({
     ctx,
     entityType: 'workspace_image',
     entityId: id,
@@ -251,29 +252,31 @@ export function createWorkspaceImage({
     entityRevision: 1
   });
   return assertFound(
-    listWorkspaceImages({ ctx }).find(image => image.id === id),
+    (await listWorkspaceImages({ ctx })).find(image => image.id === id),
     'Workspace image missing'
   );
 }
 
-export function listWorkspaceImages({
+export async function listWorkspaceImages({
   ctx,
   authorization
-}: { ctx: ServiceContext } & AuthorizationOptions): ImageSummary[] {
-  requirePermission(ctx, PERMISSIONS.WORKSPACE_IMAGE_READ, { authorization, allowPublic: true });
-  const rows = ctx.db
-    .prepare(
-      `SELECT id, workspace_id, storage_bucket_id, storage_key, filename, content_type,
+}: { ctx: ServiceContext } & AuthorizationOptions): Promise<ImageSummary[]> {
+  await requirePermission(ctx, PERMISSIONS.WORKSPACE_IMAGE_READ, {
+    authorization,
+    allowPublic: true
+  });
+  const rows = (await ctx.db.all(
+    `SELECT id, workspace_id, storage_bucket_id, storage_key, filename, content_type,
               size_bytes, checksum_sha256, public_url, alt_text, revision
        FROM workspace_images
        WHERE workspace_id = ? AND deleted_at IS NULL
-       ORDER BY created_at ASC`
-    )
-    .all(ctx.workspace.id) as StorageRow[];
+       ORDER BY created_at ASC`,
+    [ctx.workspace.id]
+  )) as StorageRow[];
   return rows.map(imageSummary);
 }
 
-export function updateWorkspaceImage({
+export async function updateWorkspaceImage({
   ctx,
   imageId,
   revision,
@@ -288,16 +291,14 @@ export function updateWorkspaceImage({
   altText?: string | null;
   publicUrl?: string | null;
   metadata?: unknown;
-} & AuthorizationOptions): ImageSummary {
-  requirePermission(ctx, PERMISSIONS.WORKSPACE_IMAGE_UPDATE, { authorization });
+} & AuthorizationOptions): Promise<ImageSummary> {
+  await requirePermission(ctx, PERMISSIONS.WORKSPACE_IMAGE_UPDATE, { authorization });
   const now = nowIso();
-  const result = ctx.db
-    .prepare(
-      `UPDATE workspace_images
+  const result = await ctx.db.run(
+    `UPDATE workspace_images
        SET alt_text = ?, public_url = ?, metadata_json = ?, updated_at = ?, revision = revision + 1
-       WHERE id = ? AND workspace_id = ? AND revision = ? AND deleted_at IS NULL`
-    )
-    .run(
+       WHERE id = ? AND workspace_id = ? AND revision = ? AND deleted_at IS NULL`,
+    [
       altText ?? null,
       publicUrl ?? null,
       metadataJson(metadata),
@@ -305,10 +306,11 @@ export function updateWorkspaceImage({
       imageId,
       ctx.workspace.id,
       revision
-    );
+    ]
+  );
   if (result.changes === 0)
     throw new ServiceError('Workspace image update conflict', 'conflict', 409);
-  recordChange({
+  await recordChange({
     ctx,
     entityType: 'workspace_image',
     entityId: imageId,
@@ -317,12 +319,12 @@ export function updateWorkspaceImage({
     changedFields: ['alt_text', 'public_url', 'metadata_json']
   });
   return assertFound(
-    listWorkspaceImages({ ctx }).find(image => image.id === imageId),
+    (await listWorkspaceImages({ ctx })).find(image => image.id === imageId),
     'Workspace image missing'
   );
 }
 
-export function deleteWorkspaceImage({
+export async function deleteWorkspaceImage({
   ctx,
   imageId,
   revision,
@@ -331,19 +333,18 @@ export function deleteWorkspaceImage({
   ctx: ServiceContext;
   imageId: string;
   revision: number;
-} & AuthorizationOptions): void {
-  requirePermission(ctx, PERMISSIONS.WORKSPACE_IMAGE_DELETE, { authorization });
+} & AuthorizationOptions): Promise<void> {
+  await requirePermission(ctx, PERMISSIONS.WORKSPACE_IMAGE_DELETE, { authorization });
   const now = nowIso();
-  const result = ctx.db
-    .prepare(
-      `UPDATE workspace_images
+  const result = await ctx.db.run(
+    `UPDATE workspace_images
        SET deleted_at = ?, updated_at = ?, revision = revision + 1
-       WHERE id = ? AND workspace_id = ? AND revision = ? AND deleted_at IS NULL`
-    )
-    .run(now, now, imageId, ctx.workspace.id, revision);
+       WHERE id = ? AND workspace_id = ? AND revision = ? AND deleted_at IS NULL`,
+    [now, now, imageId, ctx.workspace.id, revision]
+  );
   if (result.changes === 0)
     throw new ServiceError('Workspace image delete conflict', 'conflict', 409);
-  recordChange({
+  await recordChange({
     ctx,
     entityType: 'workspace_image',
     entityId: imageId,
@@ -352,7 +353,7 @@ export function deleteWorkspaceImage({
   });
 }
 
-export function createUserImage({
+export async function createUserImage({
   ctx,
   userId,
   input,
@@ -361,8 +362,8 @@ export function createUserImage({
   ctx: ServiceContext;
   userId: string;
   input: ImageCreateInput;
-} & AuthorizationOptions): ImageSummary {
-  requireUserImagePermission(
+} & AuthorizationOptions): Promise<ImageSummary> {
+  await requireUserImagePermission(
     ctx,
     userId,
     PERMISSIONS.USER_IMAGE_CREATE,
@@ -371,18 +372,16 @@ export function createUserImage({
   );
   const now = nowIso();
   const id = newId();
-  const bucketId = getBucketId(ctx, 'user-images');
+  const bucketId = await getBucketId(ctx, 'user-images');
 
-  ctx.db
-    .prepare(
-      `INSERT INTO user_images (
+  await ctx.db.run(
+    `INSERT INTO user_images (
          id, workspace_id, profile_id, storage_bucket_id, storage_key,
          filename, content_type, size_bytes, checksum_sha256, width_px, height_px,
          alt_text, public_url, metadata_json, created_by_workspace_user_id,
          created_at, updated_at, revision
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
-    )
-    .run(
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+    [
       id,
       ctx.workspace.id,
       userId,
@@ -400,8 +399,9 @@ export function createUserImage({
       ctx.actorWorkspaceUserId,
       now,
       now
-    );
-  recordChange({
+    ]
+  );
+  await recordChange({
     ctx,
     entityType: 'user_image',
     entityId: id,
@@ -409,20 +409,20 @@ export function createUserImage({
     entityRevision: 1
   });
   return assertFound(
-    listUserImages({ ctx, userId }).find(image => image.id === id),
+    (await listUserImages({ ctx, userId })).find(image => image.id === id),
     'User image missing'
   );
 }
 
-export function listUserImages({
+export async function listUserImages({
   ctx,
   userId,
   authorization
 }: {
   ctx: ServiceContext;
   userId?: string | null;
-} & AuthorizationOptions): ImageSummary[] {
-  requirePermission(ctx, PERMISSIONS.USER_IMAGE_READ, { authorization, allowPublic: true });
+} & AuthorizationOptions): Promise<ImageSummary[]> {
+  await requirePermission(ctx, PERMISSIONS.USER_IMAGE_READ, { authorization, allowPublic: true });
   const params: string[] = [ctx.workspace.id];
   let sql = `SELECT id, workspace_id, profile_id, storage_bucket_id, storage_key,
                     filename, content_type, size_bytes, checksum_sha256, public_url, alt_text, revision
@@ -433,10 +433,10 @@ export function listUserImages({
     params.push(userId);
   }
   sql += ' ORDER BY created_at ASC';
-  return (ctx.db.prepare(sql).all(...params) as StorageRow[]).map(imageSummary);
+  return ((await ctx.db.all(sql, params)) as StorageRow[]).map(imageSummary);
 }
 
-export function updateUserImage({
+export async function updateUserImage({
   ctx,
   imageId,
   revision,
@@ -451,16 +451,15 @@ export function updateUserImage({
   altText?: string | null;
   publicUrl?: string | null;
   metadata?: unknown;
-} & AuthorizationOptions): ImageSummary {
+} & AuthorizationOptions): Promise<ImageSummary> {
   const existing = assertFound(
-    ctx.db
-      .prepare(
-        `SELECT profile_id FROM user_images WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
-      )
-      .get(imageId, ctx.workspace.id) as { profile_id: string } | undefined,
+    (await ctx.db.get(
+      `SELECT profile_id FROM user_images WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+      [imageId, ctx.workspace.id]
+    )) as { profile_id: string } | undefined,
     'User image not found'
   );
-  requireUserImagePermission(
+  await requireUserImagePermission(
     ctx,
     existing.profile_id,
     PERMISSIONS.USER_IMAGE_UPDATE,
@@ -468,13 +467,11 @@ export function updateUserImage({
     { authorization }
   );
   const now = nowIso();
-  const result = ctx.db
-    .prepare(
-      `UPDATE user_images
+  const result = await ctx.db.run(
+    `UPDATE user_images
        SET alt_text = ?, public_url = ?, metadata_json = ?, updated_at = ?, revision = revision + 1
-       WHERE id = ? AND workspace_id = ? AND revision = ? AND deleted_at IS NULL`
-    )
-    .run(
+       WHERE id = ? AND workspace_id = ? AND revision = ? AND deleted_at IS NULL`,
+    [
       altText ?? null,
       publicUrl ?? null,
       metadataJson(metadata),
@@ -482,9 +479,10 @@ export function updateUserImage({
       imageId,
       ctx.workspace.id,
       revision
-    );
+    ]
+  );
   if (result.changes === 0) throw new ServiceError('User image update conflict', 'conflict', 409);
-  recordChange({
+  await recordChange({
     ctx,
     entityType: 'user_image',
     entityId: imageId,
@@ -493,12 +491,14 @@ export function updateUserImage({
     changedFields: ['alt_text', 'public_url', 'metadata_json']
   });
   return assertFound(
-    listUserImages({ ctx, userId: existing.profile_id }).find(image => image.id === imageId),
+    (await listUserImages({ ctx, userId: existing.profile_id })).find(
+      image => image.id === imageId
+    ),
     'User image missing'
   );
 }
 
-export function deleteUserImage({
+export async function deleteUserImage({
   ctx,
   imageId,
   revision,
@@ -507,16 +507,15 @@ export function deleteUserImage({
   ctx: ServiceContext;
   imageId: string;
   revision: number;
-} & AuthorizationOptions): void {
+} & AuthorizationOptions): Promise<void> {
   const existing = assertFound(
-    ctx.db
-      .prepare(
-        `SELECT profile_id FROM user_images WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
-      )
-      .get(imageId, ctx.workspace.id) as { profile_id: string } | undefined,
+    (await ctx.db.get(
+      `SELECT profile_id FROM user_images WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+      [imageId, ctx.workspace.id]
+    )) as { profile_id: string } | undefined,
     'User image not found'
   );
-  requireUserImagePermission(
+  await requireUserImagePermission(
     ctx,
     existing.profile_id,
     PERMISSIONS.USER_IMAGE_DELETE,
@@ -524,15 +523,14 @@ export function deleteUserImage({
     { authorization }
   );
   const now = nowIso();
-  const result = ctx.db
-    .prepare(
-      `UPDATE user_images
+  const result = await ctx.db.run(
+    `UPDATE user_images
        SET deleted_at = ?, updated_at = ?, revision = revision + 1
-       WHERE id = ? AND workspace_id = ? AND revision = ? AND deleted_at IS NULL`
-    )
-    .run(now, now, imageId, ctx.workspace.id, revision);
+       WHERE id = ? AND workspace_id = ? AND revision = ? AND deleted_at IS NULL`,
+    [now, now, imageId, ctx.workspace.id, revision]
+  );
   if (result.changes === 0) throw new ServiceError('User image delete conflict', 'conflict', 409);
-  recordChange({
+  await recordChange({
     ctx,
     entityType: 'user_image',
     entityId: imageId,
@@ -541,7 +539,7 @@ export function deleteUserImage({
   });
 }
 
-export function createAttachment({
+export async function createAttachment({
   ctx,
   input,
   authorization
@@ -559,22 +557,20 @@ export function createAttachment({
     objectiveId?: string | null;
     metadata?: unknown;
   };
-} & AuthorizationOptions): AttachmentSummary {
-  requirePermission(ctx, PERMISSIONS.ATTACHMENT_CREATE, { authorization });
+} & AuthorizationOptions): Promise<AttachmentSummary> {
+  await requirePermission(ctx, PERMISSIONS.ATTACHMENT_CREATE, { authorization });
   const now = nowIso();
   const id = newId();
-  const bucketId = getBucketId(ctx, 'attachments');
+  const bucketId = await getBucketId(ctx, 'attachments');
 
-  ctx.db
-    .prepare(
-      `INSERT INTO attachments (
+  await ctx.db.run(
+    `INSERT INTO attachments (
          id, workspace_id, project_id, mission_id, objective_id, storage_bucket_id,
          storage_key, filename, content_type, size_bytes, checksum_sha256,
          upload_status, metadata_json, created_by_workspace_user_id, created_at,
          updated_at, revision
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
-    )
-    .run(
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+    [
       id,
       ctx.workspace.id,
       input.projectId ?? null,
@@ -591,8 +587,9 @@ export function createAttachment({
       ctx.actorWorkspaceUserId,
       now,
       now
-    );
-  recordChange({
+    ]
+  );
+  await recordChange({
     ctx,
     entityType: 'attachment',
     entityId: id,
@@ -603,12 +600,12 @@ export function createAttachment({
     objectiveId: input.objectiveId ?? null
   });
   return assertFound(
-    listAttachments({ ctx }).find(attachment => attachment.id === id),
+    (await listAttachments({ ctx })).find(attachment => attachment.id === id),
     'Attachment missing'
   );
 }
 
-export function listAttachments({
+export async function listAttachments({
   ctx,
   projectId,
   missionId,
@@ -619,8 +616,8 @@ export function listAttachments({
   projectId?: string | null;
   missionId?: string | null;
   objectiveId?: string | null;
-} & AuthorizationOptions): AttachmentSummary[] {
-  requirePermission(ctx, PERMISSIONS.ATTACHMENT_READ, { authorization });
+} & AuthorizationOptions): Promise<AttachmentSummary[]> {
+  await requirePermission(ctx, PERMISSIONS.ATTACHMENT_READ, { authorization });
   const params: Array<string> = [ctx.workspace.id];
   let sql = `SELECT id, workspace_id, storage_bucket_id, storage_key, filename, content_type,
                     size_bytes, checksum_sha256, upload_status, revision
@@ -639,10 +636,10 @@ export function listAttachments({
     params.push(objectiveId);
   }
   sql += ' ORDER BY created_at ASC';
-  return (ctx.db.prepare(sql).all(...params) as StorageRow[]).map(attachmentSummary);
+  return ((await ctx.db.all(sql, params)) as StorageRow[]).map(attachmentSummary);
 }
 
-export function updateAttachment({
+export async function updateAttachment({
   ctx,
   attachmentId,
   revision,
@@ -657,35 +654,25 @@ export function updateAttachment({
   filename: string;
   uploadStatus: 'prepared' | 'uploaded' | 'available' | 'failed' | 'deleted';
   metadata?: unknown;
-} & AuthorizationOptions): AttachmentSummary {
-  requirePermission(ctx, PERMISSIONS.ATTACHMENT_UPDATE, { authorization });
+} & AuthorizationOptions): Promise<AttachmentSummary> {
+  await requirePermission(ctx, PERMISSIONS.ATTACHMENT_UPDATE, { authorization });
   const existing = assertFound(
-    ctx.db
-      .prepare(
-        `SELECT project_id, mission_id, objective_id
-         FROM attachments WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
-      )
-      .get(attachmentId, ctx.workspace.id) as StorageRow | undefined,
+    (await ctx.db.get(
+      `SELECT project_id, mission_id, objective_id
+         FROM attachments WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+      [attachmentId, ctx.workspace.id]
+    )) as StorageRow | undefined,
     'Attachment not found'
   );
   const now = nowIso();
-  const result = ctx.db
-    .prepare(
-      `UPDATE attachments
+  const result = await ctx.db.run(
+    `UPDATE attachments
        SET filename = ?, upload_status = ?, metadata_json = ?, updated_at = ?, revision = revision + 1
-       WHERE id = ? AND workspace_id = ? AND revision = ? AND deleted_at IS NULL`
-    )
-    .run(
-      filename,
-      uploadStatus,
-      metadataJson(metadata),
-      now,
-      attachmentId,
-      ctx.workspace.id,
-      revision
-    );
+       WHERE id = ? AND workspace_id = ? AND revision = ? AND deleted_at IS NULL`,
+    [filename, uploadStatus, metadataJson(metadata), now, attachmentId, ctx.workspace.id, revision]
+  );
   if (result.changes === 0) throw new ServiceError('Attachment update conflict', 'conflict', 409);
-  recordChange({
+  await recordChange({
     ctx,
     entityType: 'attachment',
     entityId: attachmentId,
@@ -697,12 +684,12 @@ export function updateAttachment({
     changedFields: ['filename', 'upload_status', 'metadata_json']
   });
   return assertFound(
-    listAttachments({ ctx }).find(attachment => attachment.id === attachmentId),
+    (await listAttachments({ ctx })).find(attachment => attachment.id === attachmentId),
     'Attachment missing'
   );
 }
 
-export function deleteAttachment({
+export async function deleteAttachment({
   ctx,
   attachmentId,
   revision,
@@ -711,27 +698,25 @@ export function deleteAttachment({
   ctx: ServiceContext;
   attachmentId: string;
   revision: number;
-} & AuthorizationOptions): void {
-  requirePermission(ctx, PERMISSIONS.ATTACHMENT_DELETE, { authorization });
+} & AuthorizationOptions): Promise<void> {
+  await requirePermission(ctx, PERMISSIONS.ATTACHMENT_DELETE, { authorization });
   const existing = assertFound(
-    ctx.db
-      .prepare(
-        `SELECT project_id, mission_id, objective_id
-         FROM attachments WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
-      )
-      .get(attachmentId, ctx.workspace.id) as StorageRow | undefined,
+    (await ctx.db.get(
+      `SELECT project_id, mission_id, objective_id
+         FROM attachments WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+      [attachmentId, ctx.workspace.id]
+    )) as StorageRow | undefined,
     'Attachment not found'
   );
   const now = nowIso();
-  const result = ctx.db
-    .prepare(
-      `UPDATE attachments
+  const result = await ctx.db.run(
+    `UPDATE attachments
        SET deleted_at = ?, updated_at = ?, revision = revision + 1
-       WHERE id = ? AND workspace_id = ? AND revision = ? AND deleted_at IS NULL`
-    )
-    .run(now, now, attachmentId, ctx.workspace.id, revision);
+       WHERE id = ? AND workspace_id = ? AND revision = ? AND deleted_at IS NULL`,
+    [now, now, attachmentId, ctx.workspace.id, revision]
+  );
   if (result.changes === 0) throw new ServiceError('Attachment delete conflict', 'conflict', 409);
-  recordChange({
+  await recordChange({
     ctx,
     entityType: 'attachment',
     entityId: attachmentId,

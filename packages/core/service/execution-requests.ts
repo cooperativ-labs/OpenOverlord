@@ -122,28 +122,27 @@ type ExecutionRequestStateRow = {
   launched_session_id: string | null;
 };
 
-function getExecutionRequestStateRow({
+async function getExecutionRequestStateRow({
   ctx,
   requestId
 }: {
   ctx: ServiceContext;
   requestId: string;
-}): ExecutionRequestStateRow {
-  const row = ctx.db
-    .prepare(
-      `SELECT id, workspace_id, project_id, mission_id, objective_id, execution_target_id,
+}): Promise<ExecutionRequestStateRow> {
+  const row = (await ctx.db.get(
+    `SELECT id, workspace_id, project_id, mission_id, objective_id, execution_target_id,
               status, revision, launch_flags_json, launched_session_id
          FROM execution_requests
-        WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`
-    )
-    .get(requestId, ctx.workspace.id) as ExecutionRequestStateRow | undefined;
+        WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+    [requestId, ctx.workspace.id]
+  )) as ExecutionRequestStateRow | undefined;
   if (!row) {
     throw new ServiceError('Execution request not found', 'execution_request_not_found', 404);
   }
   return row;
 }
 
-function appendExecutionRequestEvent({
+async function appendExecutionRequestEvent({
   ctx,
   row,
   summary,
@@ -153,15 +152,13 @@ function appendExecutionRequestEvent({
   row: Pick<ExecutionRequestStateRow, 'id' | 'project_id' | 'mission_id' | 'objective_id'>;
   summary: string;
   payload?: Record<string, unknown>;
-}): void {
-  ctx.db
-    .prepare(
-      `INSERT INTO mission_events
+}): Promise<void> {
+  await ctx.db.run(
+    `INSERT INTO mission_events
          (id, workspace_id, project_id, mission_id, objective_id,
           type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
-       VALUES (?, ?, ?, ?, ?, 'status_change', 'execute', ?, ?, ?, ?, ?)`
-    )
-    .run(
+       VALUES (?, ?, ?, ?, ?, 'status_change', 'execute', ?, ?, ?, ?, ?)`,
+    [
       newId(),
       ctx.workspace.id,
       row.project_id,
@@ -172,10 +169,11 @@ function appendExecutionRequestEvent({
       ctx.source,
       ctx.actorWorkspaceUserId,
       nowIso()
-    );
+    ]
+  );
 }
 
-function recordExecutionRequestUpdate({
+async function recordExecutionRequestUpdate({
   ctx,
   row,
   revision,
@@ -185,8 +183,8 @@ function recordExecutionRequestUpdate({
   row: Pick<ExecutionRequestStateRow, 'id' | 'project_id' | 'mission_id' | 'objective_id'>;
   revision: number;
   changedFields: string[];
-}): void {
-  recordChange({
+}): Promise<void> {
+  await recordChange({
     ctx,
     entityType: 'execution_request',
     entityId: row.id,
@@ -217,22 +215,21 @@ function assertTransition({
   }
 }
 
-function getExecutionRequest({
+async function getExecutionRequest({
   ctx,
   id
 }: {
   ctx: ServiceContext;
   id: string;
-}): ExecutionRequestSummary {
-  const row = ctx.db
-    .prepare(
-      `SELECT er.*, t.display_id, o.title, o.state
+}): Promise<ExecutionRequestSummary> {
+  const row = (await ctx.db.get(
+    `SELECT er.*, t.display_id, o.title, o.state
        FROM execution_requests er
        JOIN missions t ON t.id = er.mission_id
        JOIN objectives o ON o.id = er.objective_id
-       WHERE er.id = ? AND er.workspace_id = ? AND er.deleted_at IS NULL`
-    )
-    .get(id, ctx.workspace.id) as Parameters<typeof rowToSummary>[0] | undefined;
+       WHERE er.id = ? AND er.workspace_id = ? AND er.deleted_at IS NULL`,
+    [id, ctx.workspace.id]
+  )) as Parameters<typeof rowToSummary>[0] | undefined;
 
   if (!row) {
     throw new ServiceError('Execution request not found', 'execution_request_not_found', 404);
@@ -240,7 +237,7 @@ function getExecutionRequest({
   return rowToSummary(row);
 }
 
-function resolveWorkingDirectory({
+async function resolveWorkingDirectory({
   ctx,
   projectId,
   explicitWorkingDirectory,
@@ -250,7 +247,7 @@ function resolveWorkingDirectory({
   projectId: string;
   explicitWorkingDirectory?: string | null | undefined;
   executionTargetId?: string | null;
-}): { workingDirectory: string; resourceId: string | null } {
+}): Promise<{ workingDirectory: string; resourceId: string | null }> {
   if (explicitWorkingDirectory?.trim()) {
     const resolved = path.resolve(explicitWorkingDirectory);
     if (!existsSync(resolved)) {
@@ -262,14 +259,14 @@ function resolveWorkingDirectory({
     return { workingDirectory: resolved, resourceId: null };
   }
 
-  const connected = assertPrimaryResourceConnected({ ctx, projectId, executionTargetId });
+  const connected = await assertPrimaryResourceConnected({ ctx, projectId, executionTargetId });
   return {
     workingDirectory: connected.workingDirectory,
     resourceId: connected.resource.id
   };
 }
 
-export function createExecutionRequest({
+export async function createExecutionRequest({
   ctx,
   missionId,
   objectiveId,
@@ -299,8 +296,8 @@ export function createExecutionRequest({
   metadata?: Record<string, unknown>;
   eventSummary?: string | null;
   eventPayload?: Record<string, unknown>;
-}): ExecutionRequestSummary {
-  const mission = resolveMissionId(ctx, missionId);
+}): Promise<ExecutionRequestSummary> {
+  const mission = await resolveMissionId(ctx, missionId);
   type LaunchableObjectiveRow = {
     id: string;
     state: string;
@@ -309,19 +306,17 @@ export function createExecutionRequest({
     reasoning_effort: string | null;
   };
   const objective = objectiveId
-    ? (ctx.db
-        .prepare(
-          `SELECT id, state, assigned_agent, model, reasoning_effort
-             FROM objectives WHERE id = ? AND mission_id = ?`
-        )
-        .get(objectiveId, mission.id) as LaunchableObjectiveRow | undefined)
-    : (ctx.db
-        .prepare(
-          `SELECT id, state, assigned_agent, model, reasoning_effort FROM objectives
+    ? ((await ctx.db.get(
+        `SELECT id, state, assigned_agent, model, reasoning_effort
+             FROM objectives WHERE id = ? AND mission_id = ?`,
+        [objectiveId, mission.id]
+      )) as LaunchableObjectiveRow | undefined)
+    : ((await ctx.db.get(
+        `SELECT id, state, assigned_agent, model, reasoning_effort FROM objectives
            WHERE mission_id = ? AND state IN (${LAUNCHABLE_OBJECTIVE_STATES.map(() => '?').join(', ')})
-           ORDER BY position ASC LIMIT 1`
-        )
-        .get(mission.id, ...LAUNCHABLE_OBJECTIVE_STATES) as LaunchableObjectiveRow | undefined);
+           ORDER BY position ASC LIMIT 1`,
+        [mission.id, ...LAUNCHABLE_OBJECTIVE_STATES]
+      )) as LaunchableObjectiveRow | undefined);
 
   if (!objective) {
     throw new ServiceError(
@@ -343,13 +338,12 @@ export function createExecutionRequest({
   }
 
   if (idempotencyKey) {
-    const existing = ctx.db
-      .prepare(
-        `SELECT id FROM execution_requests
-         WHERE workspace_id = ? AND idempotency_key = ? AND deleted_at IS NULL`
-      )
-      .get(ctx.workspace.id, idempotencyKey) as { id: string } | undefined;
-    if (existing) return getExecutionRequest({ ctx, id: existing.id });
+    const existing = (await ctx.db.get(
+      `SELECT id FROM execution_requests
+         WHERE workspace_id = ? AND idempotency_key = ? AND deleted_at IS NULL`,
+      [ctx.workspace.id, idempotencyKey]
+    )) as { id: string } | undefined;
+    if (existing) return await getExecutionRequest({ ctx, id: existing.id });
   }
 
   // The objective row is the source of truth for the agent/model selection. When
@@ -368,27 +362,26 @@ export function createExecutionRequest({
 
   const now = nowIso();
   const id = newId();
-  const resolvedProjectId = resolveProjectId(ctx, mission.projectId);
-  const { workingDirectory: resolvedDirectory, resourceId } = resolveWorkingDirectory({
+  const resolvedProjectId = await resolveProjectId(ctx, mission.projectId);
+  const { workingDirectory: resolvedDirectory, resourceId } = await resolveWorkingDirectory({
     ctx,
     projectId: resolvedProjectId,
     explicitWorkingDirectory: workingDirectory,
     executionTargetId
   });
 
-  const tx = ctx.db.transaction(() => {
-    ctx.db
-      .prepare(
-        `INSERT INTO execution_requests
+  await ctx.db.transaction(async tx => {
+    const txCtx = { ...ctx, db: tx };
+    await txCtx.db.run(
+      `INSERT INTO execution_requests
            (id, workspace_id, project_id, mission_id, objective_id, execution_target_id,
             requested_agent,
             requested_model, requested_reasoning_effort, launch_mode, launch_flags_json,
             target_kind, requested_source, idempotency_key, status, requested_by_workspace_user_id,
             resolved_resource_id, resolved_working_directory, metadata_json,
             created_at, updated_at, revision)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'run', ?, 'local', ?, ?, 'queued', ?, ?, ?, ?, ?, ?, 1)`
-      )
-      .run(
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'run', ?, 'local', ?, ?, 'queued', ?, ?, ?, ?, ?, ?, 1)`,
+      [
         id,
         ctx.workspace.id,
         resolvedProjectId,
@@ -407,16 +400,15 @@ export function createExecutionRequest({
         JSON.stringify(metadata),
         now,
         now
-      );
+      ]
+    );
 
-    ctx.db
-      .prepare(
-        `INSERT INTO mission_events
+    await txCtx.db.run(
+      `INSERT INTO mission_events
            (id, workspace_id, project_id, mission_id, objective_id,
             type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
-         VALUES (?, ?, ?, ?, ?, 'execution_requested', 'execute', ?, ?, ?, ?, ?)`
-      )
-      .run(
+         VALUES (?, ?, ?, ?, ?, 'execution_requested', 'execute', ?, ?, ?, ?, ?)`,
+      [
         newId(),
         ctx.workspace.id,
         resolvedProjectId,
@@ -427,10 +419,11 @@ export function createExecutionRequest({
         ctx.source,
         ctx.actorWorkspaceUserId,
         now
-      );
+      ]
+    );
 
-    recordChange({
-      ctx,
+    await recordChange({
+      ctx: txCtx,
       entityType: 'execution_request',
       entityId: id,
       operation: 'insert',
@@ -440,12 +433,10 @@ export function createExecutionRequest({
       objectiveId: objective.id
     });
   });
-
-  tx();
-  return getExecutionRequest({ ctx, id });
+  return await getExecutionRequest({ ctx, id });
 }
 
-export function listExecutionRequests({
+export async function listExecutionRequests({
   ctx,
   projectId,
   includeInactive = false,
@@ -455,7 +446,7 @@ export function listExecutionRequests({
   projectId?: string | null;
   includeInactive?: boolean;
   limit?: number;
-}): ExecutionRequestSummary[] {
+}): Promise<ExecutionRequestSummary[]> {
   const conditions = ['er.workspace_id = ?', 'er.deleted_at IS NULL'];
   const params: Array<string | number> = [ctx.workspace.id];
   if (!includeInactive) {
@@ -466,25 +457,24 @@ export function listExecutionRequests({
   }
   if (projectId) {
     conditions.push('er.project_id = ?');
-    params.push(resolveProjectId(ctx, projectId));
+    params.push(await resolveProjectId(ctx, projectId));
   }
   params.push(limit);
 
-  const rows = ctx.db
-    .prepare(
-      `SELECT er.*, t.display_id, o.title, o.state
+  const rows = (await ctx.db.all(
+    `SELECT er.*, t.display_id, o.title, o.state
        FROM execution_requests er
        JOIN missions t ON t.id = er.mission_id
        JOIN objectives o ON o.id = er.objective_id
        WHERE ${conditions.join(' AND ')}
        ORDER BY er.created_at ASC
-       LIMIT ?`
-    )
-    .all(...params) as Array<Parameters<typeof rowToSummary>[0]>;
+       LIMIT ?`,
+    params
+  )) as Array<Parameters<typeof rowToSummary>[0]>;
   return rows.map(rowToSummary);
 }
 
-export function claimNextExecutionRequest({
+export async function claimNextExecutionRequest({
   ctx,
   projectId,
   claimTtlMs = CLAIM_TTL_MS
@@ -492,9 +482,9 @@ export function claimNextExecutionRequest({
   ctx: ServiceContext;
   projectId?: string | null;
   claimTtlMs?: number;
-}): ClaimedExecutionRequest | null {
-  expireStaleExecutionRequests({ ctx });
-  const target = ensureLocalExecutionTarget({ ctx });
+}): Promise<ClaimedExecutionRequest | null> {
+  await expireStaleExecutionRequests({ ctx });
+  const target = await ensureLocalExecutionTarget({ ctx });
   const conditions = [
     'er.workspace_id = ?',
     "er.status = 'queued'",
@@ -510,32 +500,30 @@ export function claimNextExecutionRequest({
   ];
   if (projectId) {
     conditions.push('er.project_id = ?');
-    params.push(resolveProjectId(ctx, projectId));
+    params.push(await resolveProjectId(ctx, projectId));
   }
 
-  const tx = ctx.db.transaction((): ClaimedExecutionRequest | null => {
-    const candidate = ctx.db
-      .prepare(
-        `SELECT er.id, er.workspace_id, er.project_id, er.mission_id, er.objective_id,
+  return await ctx.db.transaction(async (tx): Promise<ClaimedExecutionRequest | null> => {
+    const txCtx = { ...ctx, db: tx };
+    const candidate = (await txCtx.db.get(
+      `SELECT er.id, er.workspace_id, er.project_id, er.mission_id, er.objective_id,
                 er.execution_target_id, er.status, er.revision, er.launch_flags_json,
                 er.launched_session_id, er.resolved_working_directory
            FROM execution_requests er
            JOIN objectives o ON o.id = er.objective_id
           WHERE ${conditions.join(' AND ')}
           ORDER BY er.created_at ASC
-          LIMIT 1`
-      )
-      .get(...params) as
-      | (ExecutionRequestStateRow & { resolved_working_directory: string | null })
-      | undefined;
+          LIMIT 1`,
+      params
+    )) as (ExecutionRequestStateRow & { resolved_working_directory: string | null }) | undefined;
 
     if (!candidate) return null;
 
     let workingDirectory: string;
     let resourceId: string | null;
     try {
-      ({ workingDirectory, resourceId } = resolveWorkingDirectory({
-        ctx,
+      ({ workingDirectory, resourceId } = await resolveWorkingDirectory({
+        ctx: txCtx,
         projectId: candidate.project_id,
         explicitWorkingDirectory: candidate.resolved_working_directory,
         executionTargetId: candidate.execution_target_id ?? target.executionTargetId
@@ -546,7 +534,7 @@ export function claimNextExecutionRequest({
         (error.code === 'primary_resource_not_connected' ||
           error.code === 'working_directory_missing')
       ) {
-        markExecutionFailed({ ctx, requestId: candidate.id, error: error.message });
+        await markExecutionFailed({ ctx: txCtx, requestId: candidate.id, error: error.message });
         return null;
       }
       throw error;
@@ -555,9 +543,8 @@ export function claimNextExecutionRequest({
     const now = nowIso();
     const expires = new Date(Date.now() + claimTtlMs).toISOString();
     const revision = candidate.revision + 1;
-    const updated = ctx.db
-      .prepare(
-        `UPDATE execution_requests
+    const updated = await txCtx.db.run(
+      `UPDATE execution_requests
             SET status = 'claimed',
                 claimed_by_device_id = ?,
                 claimed_by_execution_target_id = ?,
@@ -568,9 +555,8 @@ export function claimNextExecutionRequest({
                 attempt_count = attempt_count + 1,
                 updated_at = ?,
                 revision = ?
-          WHERE id = ? AND status = 'queued' AND revision = ?`
-      )
-      .run(
+          WHERE id = ? AND status = 'queued' AND revision = ?`,
+      [
         target.deviceId,
         target.executionTargetId,
         now,
@@ -581,12 +567,13 @@ export function claimNextExecutionRequest({
         revision,
         candidate.id,
         candidate.revision
-      );
+      ]
+    );
 
     if (updated.changes === 0) return null;
 
-    recordExecutionRequestUpdate({
-      ctx,
+    await recordExecutionRequestUpdate({
+      ctx: txCtx,
       row: candidate,
       revision,
       changedFields: [
@@ -598,41 +585,39 @@ export function claimNextExecutionRequest({
         'resolved_working_directory'
       ]
     });
-    appendExecutionRequestEvent({
-      ctx,
+    await appendExecutionRequestEvent({
+      ctx: txCtx,
       row: candidate,
       summary: 'Runner claimed execution request.'
     });
 
-    const claimed = getExecutionRequest({ ctx, id: candidate.id });
+    const claimed = await getExecutionRequest({ ctx: txCtx, id: candidate.id });
     return { ...claimed, workingDirectory };
   });
-
-  return tx();
 }
 
-export function markExecutionLaunching({
+export async function markExecutionLaunching({
   ctx,
   requestId
 }: {
   ctx: ServiceContext;
   requestId: string;
-}): ExecutionRequestSummary {
-  const tx = ctx.db.transaction(() => {
-    const row = getExecutionRequestStateRow({ ctx, requestId });
+}): Promise<ExecutionRequestSummary> {
+  return await ctx.db.transaction(async tx => {
+    const txCtx = { ...ctx, db: tx };
+    const row = await getExecutionRequestStateRow({ ctx: txCtx, requestId });
     assertTransition({ row, allowedFrom: ['claimed'], to: 'launching' });
     const now = nowIso();
     const revision = row.revision + 1;
-    const updated = ctx.db
-      .prepare(
-        `UPDATE execution_requests
+    const updated = await txCtx.db.run(
+      `UPDATE execution_requests
             SET status = 'launching',
                 launch_started_at = ?,
                 updated_at = ?,
                 revision = ?
-          WHERE id = ? AND status = 'claimed' AND revision = ?`
-      )
-      .run(now, now, revision, requestId, row.revision);
+          WHERE id = ? AND status = 'claimed' AND revision = ?`,
+      [now, now, revision, requestId, row.revision]
+    );
     if (updated.changes === 0) {
       throw new ServiceError(
         'Execution request changed while marking launch started',
@@ -640,45 +625,43 @@ export function markExecutionLaunching({
         409
       );
     }
-    recordExecutionRequestUpdate({
-      ctx,
+    await recordExecutionRequestUpdate({
+      ctx: txCtx,
       row,
       revision,
       changedFields: ['status', 'launch_started_at']
     });
-    appendExecutionRequestEvent({
-      ctx,
+    await appendExecutionRequestEvent({
+      ctx: txCtx,
       row,
       summary: 'Runner started launching execution request.'
     });
-    return getExecutionRequest({ ctx, id: requestId });
+    return await getExecutionRequest({ ctx: txCtx, id: requestId });
   });
-
-  return tx();
 }
 
-export function markExecutionLaunched({
+export async function markExecutionLaunched({
   ctx,
   requestId
 }: {
   ctx: ServiceContext;
   requestId: string;
-}): ExecutionRequestSummary {
-  const tx = ctx.db.transaction(() => {
-    const row = getExecutionRequestStateRow({ ctx, requestId });
+}): Promise<ExecutionRequestSummary> {
+  return await ctx.db.transaction(async tx => {
+    const txCtx = { ...ctx, db: tx };
+    const row = await getExecutionRequestStateRow({ ctx: txCtx, requestId });
     assertTransition({ row, allowedFrom: ['launching'], to: 'launched' });
     const now = nowIso();
     const revision = row.revision + 1;
-    const updated = ctx.db
-      .prepare(
-        `UPDATE execution_requests
+    const updated = await txCtx.db.run(
+      `UPDATE execution_requests
             SET status = 'launched',
                 launch_completed_at = ?,
                 updated_at = ?,
                 revision = ?
-          WHERE id = ? AND status = 'launching' AND revision = ?`
-      )
-      .run(now, now, revision, requestId, row.revision);
+          WHERE id = ? AND status = 'launching' AND revision = ?`,
+      [now, now, revision, requestId, row.revision]
+    );
     if (updated.changes === 0) {
       throw new ServiceError(
         'Execution request changed while marking launch complete',
@@ -686,24 +669,22 @@ export function markExecutionLaunched({
         409
       );
     }
-    recordExecutionRequestUpdate({
-      ctx,
+    await recordExecutionRequestUpdate({
+      ctx: txCtx,
       row,
       revision,
       changedFields: ['status', 'launch_completed_at']
     });
-    appendExecutionRequestEvent({
-      ctx,
+    await appendExecutionRequestEvent({
+      ctx: txCtx,
       row,
       summary: 'Runner opened the agent launch command.'
     });
-    return getExecutionRequest({ ctx, id: requestId });
+    return await getExecutionRequest({ ctx: txCtx, id: requestId });
   });
-
-  return tx();
 }
 
-export function markExecutionFailed({
+export async function markExecutionFailed({
   ctx,
   requestId,
   error
@@ -711,23 +692,23 @@ export function markExecutionFailed({
   ctx: ServiceContext;
   requestId: string;
   error: string;
-}): ExecutionRequestSummary {
-  const tx = ctx.db.transaction(() => {
-    const row = getExecutionRequestStateRow({ ctx, requestId });
+}): Promise<ExecutionRequestSummary> {
+  return await ctx.db.transaction(async tx => {
+    const txCtx = { ...ctx, db: tx };
+    const row = await getExecutionRequestStateRow({ ctx: txCtx, requestId });
     assertTransition({ row, allowedFrom: ['queued', 'claimed', 'launching'], to: 'failed' });
     const now = nowIso();
     const revision = row.revision + 1;
-    const updated = ctx.db
-      .prepare(
-        `UPDATE execution_requests
+    const updated = await txCtx.db.run(
+      `UPDATE execution_requests
             SET status = 'failed',
                 last_error = ?,
                 launch_completed_at = ?,
                 updated_at = ?,
                 revision = ?
-          WHERE id = ? AND status = ? AND revision = ?`
-      )
-      .run(error, now, now, revision, requestId, row.status, row.revision);
+          WHERE id = ? AND status = ? AND revision = ?`,
+      [error, now, now, revision, requestId, row.status, row.revision]
+    );
     if (updated.changes === 0) {
       throw new ServiceError(
         'Execution request changed while marking launch failed',
@@ -735,25 +716,23 @@ export function markExecutionFailed({
         409
       );
     }
-    recordExecutionRequestUpdate({
-      ctx,
+    await recordExecutionRequestUpdate({
+      ctx: txCtx,
       row,
       revision,
       changedFields: ['status', 'last_error', 'launch_completed_at']
     });
-    appendExecutionRequestEvent({
-      ctx,
+    await appendExecutionRequestEvent({
+      ctx: txCtx,
       row,
       summary: `Agent run failed: ${error}`,
       payload: { error }
     });
-    return getExecutionRequest({ ctx, id: requestId });
+    return await getExecutionRequest({ ctx: txCtx, id: requestId });
   });
-
-  return tx();
 }
 
-export function clearExecutionRequests({
+export async function clearExecutionRequests({
   ctx,
   objectiveId,
   projectId,
@@ -767,8 +746,9 @@ export function clearExecutionRequests({
   now?: string;
   emitEvents?: boolean;
   eventSummary?: string;
-}): { cleared: number } {
-  const tx = ctx.db.transaction(() => {
+}): Promise<{ cleared: number }> {
+  return await ctx.db.transaction(async tx => {
+    const txCtx = { ...ctx, db: tx };
     const conditions = [
       `workspace_id = ?`,
       `deleted_at IS NULL`,
@@ -781,36 +761,34 @@ export function clearExecutionRequests({
     }
     if (projectId) {
       conditions.push('project_id = ?');
-      params.push(resolveProjectId(ctx, projectId));
+      params.push(await resolveProjectId(txCtx, projectId));
     }
-    const rows = ctx.db
-      .prepare(
-        `SELECT id, workspace_id, project_id, mission_id, objective_id, execution_target_id,
+    const rows = (await txCtx.db.all(
+      `SELECT id, workspace_id, project_id, mission_id, objective_id, execution_target_id,
                 status, revision, launch_flags_json, launched_session_id
            FROM execution_requests
-          WHERE ${conditions.join(' AND ')}`
-      )
-      .all(...params) as ExecutionRequestStateRow[];
+          WHERE ${conditions.join(' AND ')}`,
+      params
+    )) as ExecutionRequestStateRow[];
     for (const row of rows) {
       const revision = row.revision + 1;
-      ctx.db
-        .prepare(
-          `UPDATE execution_requests
+      await txCtx.db.run(
+        `UPDATE execution_requests
               SET status = 'cleared',
                   updated_at = ?,
                   revision = ?
-            WHERE id = ? AND status = ? AND revision = ?`
-        )
-        .run(now, revision, row.id, row.status, row.revision);
-      recordExecutionRequestUpdate({
-        ctx,
+            WHERE id = ? AND status = ? AND revision = ?`,
+        [now, revision, row.id, row.status, row.revision]
+      );
+      await recordExecutionRequestUpdate({
+        ctx: txCtx,
         row,
         revision,
         changedFields: ['status']
       });
       if (emitEvents) {
-        appendExecutionRequestEvent({
-          ctx,
+        await appendExecutionRequestEvent({
+          ctx: txCtx,
           row,
           summary: eventSummary
         });
@@ -818,11 +796,9 @@ export function clearExecutionRequests({
     }
     return { cleared: rows.length };
   });
-
-  return tx();
 }
 
-export function expireStaleExecutionRequests({
+export async function expireStaleExecutionRequests({
   ctx,
   now = nowIso(),
   launchAttachTtlMs = LAUNCH_ATTACH_TTL_MS
@@ -830,12 +806,12 @@ export function expireStaleExecutionRequests({
   ctx: ServiceContext;
   now?: string;
   launchAttachTtlMs?: number;
-}): { expired: number } {
-  const tx = ctx.db.transaction(() => {
+}): Promise<{ expired: number }> {
+  return await ctx.db.transaction(async tx => {
+    const txCtx = { ...ctx, db: tx };
     const attachCutoff = new Date(Date.now() - launchAttachTtlMs).toISOString();
-    const rows = ctx.db
-      .prepare(
-        `SELECT er.id, er.workspace_id, er.project_id, er.mission_id, er.objective_id,
+    const rows = (await txCtx.db.all(
+      `SELECT er.id, er.workspace_id, er.project_id, er.mission_id, er.objective_id,
                 er.execution_target_id, er.status, er.revision, er.launch_flags_json,
                 er.launched_session_id
            FROM execution_requests er
@@ -848,14 +824,9 @@ export function expireStaleExecutionRequests({
               (er.status = 'launched' AND er.launched_session_id IS NULL
                 AND er.launch_completed_at IS NOT NULL AND er.launch_completed_at < ?
                 AND o.state IN (${LAUNCHABLE_OBJECTIVE_STATES.map(() => '?').join(', ')}))
-            )`
-      )
-      .all(
-        ctx.workspace.id,
-        now,
-        attachCutoff,
-        ...LAUNCHABLE_OBJECTIVE_STATES
-      ) as ExecutionRequestStateRow[];
+            )`,
+      [ctx.workspace.id, now, attachCutoff, ...LAUNCHABLE_OBJECTIVE_STATES]
+    )) as ExecutionRequestStateRow[];
 
     for (const row of rows) {
       const revision = row.revision + 1;
@@ -863,24 +834,23 @@ export function expireStaleExecutionRequests({
         row.status === 'claimed'
           ? 'Execution request expired before launch started.'
           : 'Execution request expired before the launched agent attached.';
-      ctx.db
-        .prepare(
-          `UPDATE execution_requests
+      await txCtx.db.run(
+        `UPDATE execution_requests
               SET status = 'expired',
                   last_error = ?,
                   updated_at = ?,
                   revision = ?
-            WHERE id = ? AND status = ? AND revision = ?`
-        )
-        .run(message, now, revision, row.id, row.status, row.revision);
-      recordExecutionRequestUpdate({
-        ctx,
+            WHERE id = ? AND status = ? AND revision = ?`,
+        [message, now, revision, row.id, row.status, row.revision]
+      );
+      await recordExecutionRequestUpdate({
+        ctx: txCtx,
         row,
         revision,
         changedFields: ['status', 'last_error']
       });
-      appendExecutionRequestEvent({
-        ctx,
+      await appendExecutionRequestEvent({
+        ctx: txCtx,
         row,
         summary: message
       });
@@ -888,11 +858,9 @@ export function expireStaleExecutionRequests({
 
     return { expired: rows.length };
   });
-
-  return tx();
 }
 
-export function linkExecutionRequestToSession({
+export async function linkExecutionRequestToSession({
   ctx,
   missionId,
   objectiveId,
@@ -904,26 +872,23 @@ export function linkExecutionRequestToSession({
   objectiveId: string;
   sessionId: string;
   executionRequestId?: string | null;
-}): ExecutionRequestSummary | null {
-  const tx = ctx.db.transaction(() => {
+}): Promise<ExecutionRequestSummary | null> {
+  return await ctx.db.transaction(async tx => {
+    const txCtx = { ...ctx, db: tx };
     const row = executionRequestId
-      ? (ctx.db
-          .prepare(
-            `SELECT id, workspace_id, project_id, mission_id, objective_id, execution_target_id,
+      ? ((await txCtx.db.get(
+          `SELECT id, workspace_id, project_id, mission_id, objective_id, execution_target_id,
                     status, revision, launch_flags_json, launched_session_id
                FROM execution_requests
               WHERE id = ?
                 AND workspace_id = ?
                 AND mission_id = ?
                 AND objective_id = ?
-                AND deleted_at IS NULL`
-          )
-          .get(executionRequestId, ctx.workspace.id, missionId, objectiveId) as
-          | ExecutionRequestStateRow
-          | undefined)
-      : (ctx.db
-          .prepare(
-            `SELECT id, workspace_id, project_id, mission_id, objective_id, execution_target_id,
+                AND deleted_at IS NULL`,
+          [executionRequestId, ctx.workspace.id, missionId, objectiveId]
+        )) as ExecutionRequestStateRow | undefined)
+      : ((await txCtx.db.get(
+          `SELECT id, workspace_id, project_id, mission_id, objective_id, execution_target_id,
                     status, revision, launch_flags_json, launched_session_id
                FROM execution_requests
               WHERE workspace_id = ?
@@ -933,9 +898,9 @@ export function linkExecutionRequestToSession({
                 AND launched_session_id IS NULL
                 AND deleted_at IS NULL
               ORDER BY updated_at DESC, created_at DESC
-              LIMIT 1`
-          )
-          .get(ctx.workspace.id, missionId, objectiveId) as ExecutionRequestStateRow | undefined);
+              LIMIT 1`,
+          [ctx.workspace.id, missionId, objectiveId]
+        )) as ExecutionRequestStateRow | undefined);
 
     if (!row) {
       if (executionRequestId) {
@@ -963,21 +928,21 @@ export function linkExecutionRequestToSession({
         409
       );
     }
-    if (row.launched_session_id === sessionId) return getExecutionRequest({ ctx, id: row.id });
+    if (row.launched_session_id === sessionId)
+      return await getExecutionRequest({ ctx: txCtx, id: row.id });
 
     const now = nowIso();
     const revision = row.revision + 1;
-    const updated = ctx.db
-      .prepare(
-        `UPDATE execution_requests
+    const updated = await txCtx.db.run(
+      `UPDATE execution_requests
             SET launched_session_id = ?,
                 updated_at = ?,
                 revision = ?
           WHERE id = ?
             AND revision = ?
-            AND (launched_session_id IS NULL OR launched_session_id = ?)`
-      )
-      .run(sessionId, now, revision, row.id, row.revision, sessionId);
+            AND (launched_session_id IS NULL OR launched_session_id = ?)`,
+      [sessionId, now, revision, row.id, row.revision, sessionId]
+    );
     if (updated.changes === 0) {
       throw new ServiceError(
         'Execution request changed while linking session',
@@ -985,14 +950,12 @@ export function linkExecutionRequestToSession({
         409
       );
     }
-    recordExecutionRequestUpdate({
-      ctx,
+    await recordExecutionRequestUpdate({
+      ctx: txCtx,
       row,
       revision,
       changedFields: ['launched_session_id']
     });
-    return getExecutionRequest({ ctx, id: row.id });
+    return await getExecutionRequest({ ctx: txCtx, id: row.id });
   });
-
-  return tx();
 }

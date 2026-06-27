@@ -41,11 +41,11 @@ describe('branch status derivation', () => {
     const { recordBranchPrepared } = await import('./runner.ts');
 
     const repo = initRepo();
-    const project = createProject({ name: 'Branch Status Test' });
-    createProjectResource(project.id, { directoryPath: repo, isPrimary: true });
+    const project = await createProject({ name: 'Branch Status Test' });
+    await createProjectResource(project.id, { directoryPath: repo, isPrimary: true });
 
-    const prepare = (missionDisplayId: string, branchName: string): void => {
-      recordBranchPrepared({
+    const prepare = async (missionDisplayId: string, branchName: string): Promise<void> => {
+      await recordBranchPrepared({
         missionId: missionDisplayId,
         payload: {
           branchName,
@@ -58,14 +58,14 @@ describe('branch status derivation', () => {
     };
 
     // 1. Freshly created branch (tip identical to main, zero unique commits) → created.
-    const createdMission = createMission({ projectId: project.id, firstObjective: 'Fresh branch' });
+    const createdMission = await createMission({ projectId: project.id, firstObjective: 'Fresh branch' });
     const createdBranch = 'overlord/fresh-1';
     git(repo, ['branch', createdBranch, 'main']);
-    prepare(createdMission.displayId, createdBranch);
-    assert.equal(getMissionDetail(createdMission.id).branch?.status, 'created');
+    await prepare(createdMission.displayId, createdBranch);
+    assert.equal((await getMissionDetail(createdMission.id)).branch?.status, 'created');
 
     // 2. Branch with its own commit, pushed to origin (remote ref present) → published.
-    const publishedMission = createMission({
+    const publishedMission = await createMission({
       projectId: project.id,
       firstObjective: 'Published branch'
     });
@@ -76,25 +76,25 @@ describe('branch status derivation', () => {
     const publishedSha = git(repo, ['rev-parse', publishedBranch]);
     git(repo, ['checkout', '-q', 'main']);
     git(repo, ['update-ref', `refs/remotes/origin/${publishedBranch}`, publishedSha]);
-    prepare(publishedMission.displayId, publishedBranch);
-    assert.equal(getMissionDetail(publishedMission.id).branch?.status, 'published');
+    await prepare(publishedMission.displayId, publishedBranch);
+    assert.equal((await getMissionDetail(publishedMission.id)).branch?.status, 'published');
 
     // 3. Branch merged into LOCAL main via a (non-ff) merge, but origin/main not
     //    updated → merged_unpushed (the gap between merge Action A and push B).
-    const mergedMission = createMission({ projectId: project.id, firstObjective: 'Merged branch' });
+    const mergedMission = await createMission({ projectId: project.id, firstObjective: 'Merged branch' });
     const mergedBranch = 'overlord/merged-1';
     git(repo, ['branch', mergedBranch, 'main']);
     git(repo, ['checkout', '-q', mergedBranch]);
     git(repo, ['commit', '-q', '--allow-empty', '-m', 'work on merged']);
     git(repo, ['checkout', '-q', 'main']);
     git(repo, ['merge', '-q', '--no-ff', '-m', 'merge', mergedBranch]);
-    prepare(mergedMission.displayId, mergedBranch);
-    assert.equal(getMissionDetail(mergedMission.id).branch?.status, 'merged_unpushed');
+    await prepare(mergedMission.displayId, mergedBranch);
+    assert.equal((await getMissionDetail(mergedMission.id)).branch?.status, 'merged_unpushed');
 
     // 4. After the merged parent is pushed (origin/main now contains the branch),
     //    the same branch reads merged.
     git(repo, ['update-ref', 'refs/remotes/origin/main', git(repo, ['rev-parse', 'main'])]);
-    assert.equal(getMissionDetail(mergedMission.id).branch?.status, 'merged');
+    assert.equal((await getMissionDetail(mergedMission.id)).branch?.status, 'merged');
 
     // 5. An EMPTY branch the base merely advanced PAST is NOT merged. `empty-1`
     //    is cut from the ORIGINAL base commit with no commits of its own; main has
@@ -102,12 +102,12 @@ describe('branch status derivation', () => {
     //    now *contains* empty-1's tip. Containment alone used to misreport this as
     //    "merged" — but the branch never landed via a merge, so its tip stays on
     //    main's first-parent trunk and it must read "created".
-    const emptyMission = createMission({ projectId: project.id, firstObjective: 'Empty branch' });
+    const emptyMission = await createMission({ projectId: project.id, firstObjective: 'Empty branch' });
     const emptyBranch = 'overlord/empty-1';
     const rootCommit = git(repo, ['rev-list', '--max-parents=0', 'main']);
     git(repo, ['branch', emptyBranch, rootCommit]);
-    prepare(emptyMission.displayId, emptyBranch);
-    assert.equal(getMissionDetail(emptyMission.id).branch?.status, 'created');
+    await prepare(emptyMission.displayId, emptyBranch);
+    assert.equal((await getMissionDetail(emptyMission.id)).branch?.status, 'created');
   });
 
   it('uses the primary checkout branch as the fallback mission base/parent', async () => {
@@ -127,27 +127,27 @@ describe('branch status derivation', () => {
     git(repo, ['checkout', '-q', '-b', 'release/current']);
     git(repo, ['commit', '-q', '--allow-empty', '-m', 'release base']);
 
-    const project = createProject({ name: 'Default Branch Test' });
-    createProjectResource(project.id, { directoryPath: repo, isPrimary: true });
+    const project = await createProject({ name: 'Default Branch Test' });
+    await createProjectResource(project.id, { directoryPath: repo, isPrimary: true });
     // Unconfigured: falls back to the branch the user has checked out in the
     // primary worktree.
-    assert.equal(getProject(project.id).defaultBranch, null);
-    const beforeMission = createMission({ projectId: project.id, firstObjective: 'Before config' });
-    assert.equal(getMissionDetail(beforeMission.id).branch?.baseBranch, 'release/current');
+    assert.equal((await getProject(project.id)).defaultBranch, null);
+    const beforeMission = await createMission({ projectId: project.id, firstObjective: 'Before config' });
+    assert.equal((await getMissionDetail(beforeMission.id)).branch?.baseBranch, 'release/current');
 
     // Configure a project default branch; it still wins when explicitly set.
-    const updated = updateProject(project.id, { defaultBranch: 'develop' });
+    const updated = await updateProject(project.id, { defaultBranch: 'develop' });
     assert.equal(updated.defaultBranch, 'develop');
-    const afterMission = createMission({ projectId: project.id, firstObjective: 'After config' });
-    assert.equal(getMissionDetail(afterMission.id).branch?.baseBranch, 'develop');
+    const afterMission = await createMission({ projectId: project.id, firstObjective: 'After config' });
+    assert.equal((await getMissionDetail(afterMission.id)).branch?.baseBranch, 'develop');
 
     // Invalid branch names are rejected at the REST boundary.
-    assert.throws(() => updateProject(project.id, { defaultBranch: 'bad branch name' }));
+    await assert.rejects(updateProject(project.id, { defaultBranch: 'bad branch name' }));
 
     // Clearing falls back to the primary checkout again.
-    assert.equal(updateProject(project.id, { defaultBranch: null }).defaultBranch, null);
-    const clearedMission = createMission({ projectId: project.id, firstObjective: 'Cleared' });
-    assert.equal(getMissionDetail(clearedMission.id).branch?.baseBranch, 'release/current');
+    assert.equal((await updateProject(project.id, { defaultBranch: null })).defaultBranch, null);
+    const clearedMission = await createMission({ projectId: project.id, firstObjective: 'Cleared' });
+    assert.equal((await getMissionDetail(clearedMission.id)).branch?.baseBranch, 'release/current');
   });
 
   it('keeps a prepared mission tied to the base branch recorded by the runner', async () => {
@@ -162,15 +162,15 @@ describe('branch status derivation', () => {
     git(repo, ['checkout', '-q', '-b', 'release/prepared']);
     git(repo, ['commit', '-q', '--allow-empty', '-m', 'release base']);
 
-    const project = createProject({ name: 'Prepared Base Test' });
-    createProjectResource(project.id, { directoryPath: repo, isPrimary: true });
-    const mission = createMission({ projectId: project.id, firstObjective: 'Prepared work' });
+    const project = await createProject({ name: 'Prepared Base Test' });
+    await createProjectResource(project.id, { directoryPath: repo, isPrimary: true });
+    const mission = await createMission({ projectId: project.id, firstObjective: 'Prepared work' });
 
     const branchName = 'overlord/prepared-base-1';
     const worktreePath = path.join(dir, 'prepared-base-worktree');
     git(repo, ['worktree', 'add', '-q', '-b', branchName, worktreePath, 'release/prepared']);
     git(worktreePath, ['commit', '-q', '--allow-empty', '-m', 'branch work']);
-    recordBranchPrepared({
+    await recordBranchPrepared({
       missionId: mission.displayId,
       payload: {
         branchName,
@@ -182,13 +182,13 @@ describe('branch status derivation', () => {
     });
 
     git(repo, ['merge', '-q', '--no-ff', '-m', 'merge prepared base', branchName]);
-    assert.equal(getMissionDetail(mission.id).branch?.baseBranch, 'release/prepared');
-    assert.equal(getMissionDetail(mission.id).branch?.status, 'merged_unpushed');
+    assert.equal((await getMissionDetail(mission.id)).branch?.baseBranch, 'release/prepared');
+    assert.equal((await getMissionDetail(mission.id)).branch?.status, 'merged_unpushed');
 
     // If the user later checks out another branch in the primary repo, this
     // mission still reports and acts against the parent it was prepared from.
     git(repo, ['checkout', '-q', 'main']);
-    assert.equal(getMissionDetail(mission.id).branch?.baseBranch, 'release/prepared');
-    assert.equal(getMissionDetail(mission.id).branch?.status, 'merged_unpushed');
+    assert.equal((await getMissionDetail(mission.id)).branch?.baseBranch, 'release/prepared');
+    assert.equal((await getMissionDetail(mission.id)).branch?.status, 'merged_unpushed');
   });
 });

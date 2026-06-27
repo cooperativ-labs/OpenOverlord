@@ -83,11 +83,11 @@ This connector is intentionally reviewable against the four connector layers in 
 
 ### What ships
 
-- `skills/overlord-mission/SKILL.md` — Claude-specific overlay that points to the shared Connector Core.
+- `skills/overlord-mission/SKILL.md` — Claude adapter template with a `<!-- @connector-core -->` marker; setup interpolates shared core content at install time.
 - `commands/*.md` — slash commands for session routing, objective discussion, mission creation, and work recording.
 - `hooks/hooks.json` + `scripts/*.sh` — hook-driven follow-up, permission, and stop-event capture.
 - `userConfig` for `overlord_url` and `user_token`; the hook scripts use the `ovld protocol` CLI and pass the plugin's USER_TOKEN to that CLI as `Overlord_USER_TOKEN`.
 - `conformance-manifest.yaml` — connector conformance declaration for the Overlord contract.
 - `prompt-wrapper.md` — Claude launch context-file guidance.
 
-The shared Connector Core source is outside this adapter at `connectors/core/overlord-mission`. A setup/build step that installs the plugin into Claude must materialize that core into the installed plugin bundle so the runtime package is self-contained.
+The shared Connector Core source lives at `connectors/core/overlord-mission`. `ovld agent-setup claude` interpolates that core into the adapter skill template and installs core reference files so the runtime package is self-contained.

@@ -73,7 +73,7 @@ This connector is intentionally reviewable against the four connector layers in 
 
 ### What ships
 
-- `skills/overlord-mission/SKILL.md` — Cursor-specific overlay bundled with the shared core reference files.
+- `skills/overlord-mission/SKILL.md` — Cursor adapter template with a `<!-- @connector-core -->` marker; setup interpolates shared core content at install time.
 - `commands/*.md` — slash commands for session routing, objective discussion, mission creation, and work recording.
 - `hooks/overlord-user-prompt-submit.sh` — `beforeSubmitPrompt` follow-up capture through `ovld protocol hook-event`.
 - `rules/overlord-local.mdc` — always-on workflow rules for Cursor sessions.
@@ -81,4 +81,4 @@ This connector is intentionally reviewable against the four connector layers in 
 - `conformance-manifest.yaml` — connector conformance declaration for the Overlord contract.
 - `prompt-wrapper.md` — Cursor launch guidance.
 
-The shared Connector Core source is outside this adapter at `connectors/core/overlord-mission`. Setup copies the bundled skill and reference files into the installed plugin so the runtime package is self-contained.
+The shared Connector Core source lives at `connectors/core/overlord-mission`. `ovld agent-setup cursor` interpolates that core into the adapter skill template and installs core reference files so the runtime package is self-contained.

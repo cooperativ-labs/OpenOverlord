@@ -11,3 +11,4 @@ alwaysApply: true
 
 Always include `changeRationales` on delivery for meaningful behavioral file changes.
 Oversized inline `--change-rationales-json` is rejected — pipe rationales with `--change-rationales-file -` and keep `--summary` inline.
+**Never revert, restore, or delete file changes from other agents or missions** to make delivery succeed. Leave unrelated dirty files intact and use `ovld protocol ask` when attribution blocks delivery.

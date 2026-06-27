@@ -2,7 +2,12 @@ import type { Response } from 'express';
 
 import type { EntityChangeDto } from '../shared/contract.ts';
 
-import { currentMaxSeq, dataVersion, db } from './db.ts';
+import {
+  currentMaxSeqAsync,
+  dataVersion,
+  DATABASE_DIALECT,
+  requireDatabaseClient
+} from './db.ts';
 
 interface ChangeRow {
   seq: number;
@@ -15,13 +20,13 @@ interface ChangeRow {
   occurred_at: string;
 }
 
-const selectChangesStmt = db.prepare(`
+const SELECT_CHANGES_SQL = `
   SELECT seq, entity_type, entity_id, operation, project_id, mission_id, objective_id, occurred_at
     FROM entity_changes
    WHERE seq > ?
    ORDER BY seq ASC
    LIMIT 500
-`);
+`;
 
 /**
  * Tracks SSE subscribers and turns `entity_changes` rows into realtime deltas.
@@ -35,14 +40,15 @@ const selectChangesStmt = db.prepare(`
  */
 class RealtimeHub {
   private readonly clients = new Set<Response>();
-  private cursor = currentMaxSeq();
-  private lastDataVersion = dataVersion();
+  private cursor = 0;
+  private lastDataVersion: number | null = null;
   private pollTimer: NodeJS.Timeout | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
 
   start(): void {
     if (this.pollTimer) return;
-    this.pollTimer = setInterval(() => this.poll(), 500);
+    void this.initializeCursor();
+    this.pollTimer = setInterval(() => void this.poll(), 500);
     this.heartbeatTimer = setInterval(() => this.heartbeat(), 25_000);
   }
 
@@ -64,7 +70,7 @@ class RealtimeHub {
 
   /** Run a poll immediately — used right after a local mutation for snappy echoes. */
   pollNow(): void {
-    this.poll();
+    void this.poll();
   }
 
   /**
@@ -76,16 +82,22 @@ class RealtimeHub {
     this.broadcast('refresh', { type: 'refresh' });
   }
 
-  private poll(): void {
+  private async initializeCursor(): Promise<void> {
+    this.cursor = await currentMaxSeqAsync(requireDatabaseClient());
+    this.lastDataVersion = DATABASE_DIALECT === 'sqlite' ? dataVersion() : null;
+  }
+
+  private async poll(): Promise<void> {
+    const client = requireDatabaseClient();
     if (this.clients.size === 0) {
       // Keep the cursor moving even with no subscribers so a later client does
       // not get flooded with backlog it does not need.
-      this.cursor = currentMaxSeq();
-      this.lastDataVersion = dataVersion();
+      this.cursor = await currentMaxSeqAsync(client);
+      this.lastDataVersion = DATABASE_DIALECT === 'sqlite' ? dataVersion() : null;
       return;
     }
 
-    const rows = selectChangesStmt.all(this.cursor) as ChangeRow[];
+    const rows = await client.all<ChangeRow>(SELECT_CHANGES_SQL, [this.cursor]);
     if (rows.length > 0) {
       const changes: EntityChangeDto[] = rows.map(r => ({
         seq: r.seq,
@@ -100,6 +112,8 @@ class RealtimeHub {
       this.cursor = rows[rows.length - 1]!.seq;
       this.broadcast('change', { type: 'change', changes, cursor: this.cursor });
     }
+
+    if (DATABASE_DIALECT !== 'sqlite') return;
 
     const version = dataVersion();
     if (version !== this.lastDataVersion) {

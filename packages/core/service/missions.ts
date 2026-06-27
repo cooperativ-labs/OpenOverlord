@@ -62,35 +62,35 @@ export type AttachmentSummary = {
   status: string;
 };
 
-function nextMissionSequence(ctx: ServiceContext): number {
-  const row = ctx.db
-    .prepare(
-      `SELECT id, next_value FROM mission_sequences
-       WHERE workspace_id = ? AND scope_type = 'workspace' AND counter_name = 'mission'`
-    )
-    .get(ctx.workspace.id) as { id: string; next_value: number } | undefined;
+async function nextMissionSequence(ctx: ServiceContext): Promise<number> {
+  const row = (await ctx.db.get(
+    `SELECT id, next_value FROM mission_sequences
+       WHERE workspace_id = ? AND scope_type = 'workspace' AND counter_name = 'mission'`,
+    [ctx.workspace.id]
+  )) as { id: string; next_value: number } | undefined;
 
   if (!row) {
     throw new ServiceError('Mission sequence not initialized', 'internal_error', 500);
   }
 
   const seq = row.next_value;
-  ctx.db
-    .prepare(`UPDATE mission_sequences SET next_value = ?, updated_at = ? WHERE id = ?`)
-    .run(seq + 1, nowIso(), row.id);
+  await ctx.db.run(`UPDATE mission_sequences SET next_value = ?, updated_at = ? WHERE id = ?`, [
+    seq + 1,
+    nowIso(),
+    row.id
+  ]);
   return seq;
 }
 
-function getDefaultStatusId(ctx: ServiceContext): {
+async function getDefaultStatusId(ctx: ServiceContext): Promise<{
   id: string;
   type: string;
-} {
-  const row = ctx.db
-    .prepare(
-      `SELECT id, type FROM workspace_statuses
-       WHERE workspace_id = ? AND is_default = 1 AND deleted_at IS NULL LIMIT 1`
-    )
-    .get(ctx.workspace.id) as { id: string; type: string } | undefined;
+}> {
+  const row = (await ctx.db.get(
+    `SELECT id, type FROM workspace_statuses
+       WHERE workspace_id = ? AND is_default = 1 AND deleted_at IS NULL LIMIT 1`,
+    [ctx.workspace.id]
+  )) as { id: string; type: string } | undefined;
 
   if (!row) {
     throw new ServiceError('Workspace has no default status', 'validation_error', 409);
@@ -98,16 +98,15 @@ function getDefaultStatusId(ctx: ServiceContext): {
   return row;
 }
 
-function getReviewStatusId(ctx: ServiceContext): {
+async function getReviewStatusId(ctx: ServiceContext): Promise<{
   id: string;
   type: string;
-} {
-  const row = ctx.db
-    .prepare(
-      `SELECT id, type FROM workspace_statuses
-       WHERE workspace_id = ? AND type = 'review' AND deleted_at IS NULL LIMIT 1`
-    )
-    .get(ctx.workspace.id) as { id: string; type: string } | undefined;
+}> {
+  const row = (await ctx.db.get(
+    `SELECT id, type FROM workspace_statuses
+       WHERE workspace_id = ? AND type = 'review' AND deleted_at IS NULL LIMIT 1`,
+    [ctx.workspace.id]
+  )) as { id: string; type: string } | undefined;
 
   if (!row) {
     throw new ServiceError('Workspace has no review status', 'validation_error', 409);
@@ -115,16 +114,15 @@ function getReviewStatusId(ctx: ServiceContext): {
   return row;
 }
 
-function getExecuteStatusId(ctx: ServiceContext): {
+async function getExecuteStatusId(ctx: ServiceContext): Promise<{
   id: string;
   type: string;
-} {
-  const row = ctx.db
-    .prepare(
-      `SELECT id, type FROM workspace_statuses
-       WHERE workspace_id = ? AND type = 'execute' AND deleted_at IS NULL LIMIT 1`
-    )
-    .get(ctx.workspace.id) as { id: string; type: string } | undefined;
+}> {
+  const row = (await ctx.db.get(
+    `SELECT id, type FROM workspace_statuses
+       WHERE workspace_id = ? AND type = 'execute' AND deleted_at IS NULL LIMIT 1`,
+    [ctx.workspace.id]
+  )) as { id: string; type: string } | undefined;
 
   if (!row) {
     throw new ServiceError('Workspace has no execute status', 'validation_error', 409);
@@ -132,31 +130,33 @@ function getExecuteStatusId(ctx: ServiceContext): {
   return row;
 }
 
-function topBoardPosition(ctx: ServiceContext, projectId: string, statusId: string): number {
-  const row = ctx.db
-    .prepare(
-      `SELECT MIN(board_position) AS min_pos FROM missions
-       WHERE project_id = ? AND status_id = ? AND deleted_at IS NULL`
-    )
-    .get(projectId, statusId) as { min_pos: number | null };
+async function topBoardPosition(
+  ctx: ServiceContext,
+  projectId: string,
+  statusId: string
+): Promise<number> {
+  const row = (await ctx.db.get(
+    `SELECT MIN(board_position) AS min_pos FROM missions
+       WHERE project_id = ? AND status_id = ? AND deleted_at IS NULL`,
+    [projectId, statusId]
+  )) as { min_pos: number | null };
   const minPos = row.min_pos;
   return minPos === null ? 100 : minPos - 100;
 }
 
-export function listObjectives({
+export async function listObjectives({
   ctx,
   missionId
 }: {
   ctx: ServiceContext;
   missionId: string;
-}): ObjectiveSummary[] {
-  const resolved = resolveMissionId(ctx, missionId);
-  const rows = ctx.db
-    .prepare(
-      `SELECT id, mission_id, project_id, position, title, instruction_text, state, auto_advance
-       FROM objectives WHERE mission_id = ? AND deleted_at IS NULL ORDER BY position ASC`
-    )
-    .all(resolved.id) as Array<{
+}): Promise<ObjectiveSummary[]> {
+  const resolved = await resolveMissionId(ctx, missionId);
+  const rows = (await ctx.db.all(
+    `SELECT id, mission_id, project_id, position, title, instruction_text, state, auto_advance
+       FROM objectives WHERE mission_id = ? AND deleted_at IS NULL ORDER BY position ASC`,
+    [resolved.id]
+  )) as Array<{
     id: string;
     mission_id: string;
     project_id: string;
@@ -199,20 +199,17 @@ function toObjectiveSummary(row: {
  * reads it) matches what the user last chose, rather than leaving the agent unset
  * and letting execution fall back to a hardcoded default.
  */
-function readProjectLaunchSelection(
+async function readProjectLaunchSelection(
   ctx: ServiceContext,
   projectId: string
-): { agent: string | null; model: string | null; reasoningEffort: string | null } {
+): Promise<{ agent: string | null; model: string | null; reasoningEffort: string | null }> {
   const empty = { agent: null, model: null, reasoningEffort: null };
   if (!ctx.actorWorkspaceUserId) return empty;
-  const row = ctx.db
-    .prepare(
-      `SELECT preferences_json FROM project_user_preferences
-        WHERE workspace_id = ? AND project_id = ? AND workspace_user_id = ? AND deleted_at IS NULL`
-    )
-    .get(ctx.workspace.id, projectId, ctx.actorWorkspaceUserId) as
-    | { preferences_json: string }
-    | undefined;
+  const row = (await ctx.db.get(
+    `SELECT preferences_json FROM project_user_preferences
+        WHERE workspace_id = ? AND project_id = ? AND workspace_user_id = ? AND deleted_at IS NULL`,
+    [ctx.workspace.id, projectId, ctx.actorWorkspaceUserId]
+  )) as { preferences_json: string } | undefined;
   if (!row) return empty;
   try {
     const prefs = JSON.parse(row.preferences_json) as {
@@ -233,7 +230,7 @@ function readProjectLaunchSelection(
   }
 }
 
-export function insertObjective({
+export async function insertObjective({
   ctx,
   missionId,
   instructionText,
@@ -249,33 +246,31 @@ export function insertObjective({
   state?: string;
   autoAdvance?: boolean;
   assignedAgent?: string | null;
-}): ObjectiveSummary {
+}): Promise<ObjectiveSummary> {
   const instruction = instructionText.trim();
 
-  const mission = resolveMissionId(ctx, missionId);
+  const mission = await resolveMissionId(ctx, missionId);
   const requestedState = state ?? 'draft';
   if (!OBJECTIVE_STATES.includes(requestedState as (typeof OBJECTIVE_STATES)[number])) {
     throw new ServiceError(`Invalid objective state: ${requestedState}`, 'validation_error');
   }
 
-  const draftRow = ctx.db
-    .prepare(
-      `SELECT id FROM objectives
+  const draftRow = (await ctx.db.get(
+    `SELECT id FROM objectives
        WHERE mission_id = ? AND state = 'draft' AND deleted_at IS NULL
-       LIMIT 1`
-    )
-    .get(mission.id) as { id: string } | undefined;
+       LIMIT 1`,
+    [mission.id]
+  )) as { id: string } | undefined;
   const resolvedState = requestedState === 'draft' && draftRow ? 'future' : requestedState;
   const allowsBlankInstruction = resolvedState === 'draft' || resolvedState === 'future';
   if (!instruction && !allowsBlankInstruction) {
     throw new ServiceError('Objective instruction is required', 'validation_error');
   }
 
-  const maxRow = ctx.db
-    .prepare(
-      `SELECT MAX(position) AS max_pos FROM objectives WHERE mission_id = ? AND deleted_at IS NULL`
-    )
-    .get(mission.id) as { max_pos: number | null };
+  const maxRow = (await ctx.db.get(
+    `SELECT MAX(position) AS max_pos FROM objectives WHERE mission_id = ? AND deleted_at IS NULL`,
+    [mission.id]
+  )) as { max_pos: number | null };
   const position = (maxRow.max_pos ?? -1) + 1;
   const now = nowIso();
   const id = newId();
@@ -287,21 +282,19 @@ export function insertObjective({
   const explicitAgent = assignedAgent?.trim() || null;
   const launchSelection =
     !explicitAgent && (resolvedState === 'draft' || resolvedState === 'future')
-      ? readProjectLaunchSelection(ctx, mission.projectId)
+      ? await readProjectLaunchSelection(ctx, mission.projectId)
       : { agent: null, model: null, reasoningEffort: null };
   const resolvedAssignedAgent = explicitAgent ?? launchSelection.agent;
   const resolvedModel = explicitAgent ? null : launchSelection.model;
   const resolvedReasoningEffort = explicitAgent ? null : launchSelection.reasoningEffort;
 
-  ctx.db
-    .prepare(
-      `INSERT INTO objectives
+  await ctx.db.run(
+    `INSERT INTO objectives
          (id, workspace_id, project_id, mission_id, position, title, instruction_text, state,
           assigned_agent, model, reasoning_effort, agent_flags_json, auto_advance,
           execution_metadata_json, created_by_workspace_user_id, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, '{}', ?, ?, ?, 1)`
-    )
-    .run(
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, '{}', ?, ?, ?, 1)`,
+    [
       id,
       ctx.workspace.id,
       mission.projectId,
@@ -317,9 +310,10 @@ export function insertObjective({
       ctx.actorWorkspaceUserId,
       now,
       now
-    );
+    ]
+  );
 
-  recordChange({
+  await recordChange({
     ctx,
     entityType: 'objective',
     entityId: id,
@@ -342,7 +336,7 @@ export function insertObjective({
   });
 }
 
-export function ensureNextDraftObjective({
+export async function ensureNextDraftObjective({
   ctx,
   missionId,
   projectId,
@@ -354,35 +348,32 @@ export function ensureNextDraftObjective({
   projectId: string;
   assignedAgent: string | null;
   now: string;
-}): void {
-  const drafts = ctx.db
-    .prepare(
-      `SELECT id, instruction_text, revision FROM objectives
+}): Promise<void> {
+  const drafts = (await ctx.db.all(
+    `SELECT id, instruction_text, revision FROM objectives
        WHERE mission_id = ? AND state = 'draft' AND deleted_at IS NULL
-       ORDER BY position ASC, created_at ASC`
-    )
-    .all(missionId) as Array<{ id: string; instruction_text: string; revision: number }>;
+       ORDER BY position ASC, created_at ASC`,
+    [missionId]
+  )) as Array<{ id: string; instruction_text: string; revision: number }>;
 
   if (drafts.some(draft => draft.instruction_text.trim())) return;
 
-  const nextFuture = ctx.db
-    .prepare(
-      `SELECT id, revision FROM objectives
+  const nextFuture = (await ctx.db.get(
+    `SELECT id, revision FROM objectives
        WHERE mission_id = ? AND state = 'future' AND deleted_at IS NULL
-       ORDER BY position ASC, created_at ASC LIMIT 1`
-    )
-    .get(missionId) as { id: string; revision: number } | undefined;
+       ORDER BY position ASC, created_at ASC LIMIT 1`,
+    [missionId]
+  )) as { id: string; revision: number } | undefined;
 
   if (nextFuture) {
     for (const draft of drafts) {
       const revision = draft.revision + 1;
-      ctx.db
-        .prepare(
-          `UPDATE objectives SET deleted_at = ?, updated_at = ?, revision = ?
-           WHERE id = ? AND mission_id = ?`
-        )
-        .run(now, now, revision, draft.id, missionId);
-      recordChange({
+      await ctx.db.run(
+        `UPDATE objectives SET deleted_at = ?, updated_at = ?, revision = ?
+           WHERE id = ? AND mission_id = ?`,
+        [now, now, revision, draft.id, missionId]
+      );
+      await recordChange({
         ctx,
         entityType: 'objective',
         entityId: draft.id,
@@ -395,14 +386,13 @@ export function ensureNextDraftObjective({
     }
 
     const revision = nextFuture.revision + 1;
-    ctx.db
-      .prepare(
-        `UPDATE objectives SET state = 'draft', updated_at = ?, revision = ?
-         WHERE id = ? AND mission_id = ?`
-      )
-      .run(now, revision, nextFuture.id, missionId);
+    await ctx.db.run(
+      `UPDATE objectives SET state = 'draft', updated_at = ?, revision = ?
+         WHERE id = ? AND mission_id = ?`,
+      [now, revision, nextFuture.id, missionId]
+    );
 
-    recordChange({
+    await recordChange({
       ctx,
       entityType: 'objective',
       entityId: nextFuture.id,
@@ -417,7 +407,7 @@ export function ensureNextDraftObjective({
   }
 
   if (drafts.length === 0) {
-    insertObjective({
+    await insertObjective({
       ctx,
       missionId,
       instructionText: '',
@@ -427,7 +417,7 @@ export function ensureNextDraftObjective({
   }
 }
 
-export function createMissionWithObjectives({
+export async function createMissionWithObjectives({
   ctx,
   projectId,
   objectives,
@@ -439,38 +429,38 @@ export function createMissionWithObjectives({
   objectives: Array<{ objective: string; title?: string | null; autoAdvance?: boolean }>;
   title?: string | null;
   statusType?: 'draft' | 'review';
-}): { mission: MissionSummary; objectives: ObjectiveSummary[] } {
+}): Promise<{ mission: MissionSummary; objectives: ObjectiveSummary[] }> {
   if (objectives.length === 0) {
     throw new ServiceError('At least one objective is required', 'validation_error');
   }
 
-  const resolvedProjectId = resolveProjectId(ctx, projectId);
+  const resolvedProjectId = await resolveProjectId(ctx, projectId);
   const firstInstruction = objectives[0]?.objective.trim() ?? '';
   if (!firstInstruction) {
     throw new ServiceError('First objective instruction is required', 'validation_error');
   }
 
   const missionTitle = title?.trim() || initialTitleFromInstruction(firstInstruction);
-  const status = statusType === 'review' ? getReviewStatusId(ctx) : getDefaultStatusId(ctx);
+  const status =
+    statusType === 'review' ? await getReviewStatusId(ctx) : await getDefaultStatusId(ctx);
 
   const now = nowIso();
   const missionId = newId();
-  const sequence = nextMissionSequence(ctx);
+  const sequence = await nextMissionSequence(ctx);
   const displayId = `${ctx.workspace.slug}:${sequence}`;
 
   const createdObjectives: ObjectiveSummary[] = [];
 
-  const tx = ctx.db.transaction(() => {
-    ctx.db
-      .prepare(
-        `INSERT INTO missions
+  await ctx.db.transaction(async tx => {
+    const txCtx = { ...ctx, db: tx };
+    await txCtx.db.run(
+      `INSERT INTO missions
            (id, workspace_id, project_id, display_id, sequence_number, title,
             status_id, status_type, board_position, priority, available_tools_json,
             execution_target_intent_json, metadata_json, created_by_workspace_user_id,
             created_at, updated_at, revision)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal', '[]', '{}', '{}', ?, ?, ?, 1)`
-      )
-      .run(
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal', '[]', '{}', '{}', ?, ?, ?, 1)`,
+      [
         missionId,
         ctx.workspace.id,
         resolvedProjectId,
@@ -479,14 +469,15 @@ export function createMissionWithObjectives({
         missionTitle,
         status.id,
         status.type,
-        topBoardPosition(ctx, resolvedProjectId, status.id),
+        await topBoardPosition(txCtx, resolvedProjectId, status.id),
         ctx.actorWorkspaceUserId,
         now,
         now
-      );
+      ]
+    );
 
-    recordChange({
-      ctx,
+    await recordChange({
+      ctx: txCtx,
       entityType: 'mission',
       entityId: missionId,
       operation: 'insert',
@@ -495,7 +486,8 @@ export function createMissionWithObjectives({
       missionId
     });
 
-    objectives.forEach((item, index) => {
+    for (let index = 0; index < objectives.length; index++) {
+      const item = objectives[index]!;
       const instruction = item.objective.trim();
       if (!instruction) {
         throw new ServiceError(
@@ -506,8 +498,8 @@ export function createMissionWithObjectives({
       const objectiveState =
         statusType === 'review' ? 'complete' : index === 0 ? 'draft' : 'future';
       createdObjectives.push(
-        insertObjective({
-          ctx,
+        await insertObjective({
+          ctx: txCtx,
           missionId,
           instructionText: instruction,
           ...(item.title !== undefined ? { title: item.title } : {}),
@@ -515,34 +507,31 @@ export function createMissionWithObjectives({
           autoAdvance: item.autoAdvance ?? false
         })
       );
-    });
+    }
   });
 
-  tx();
-
   return {
-    mission: getMissionSummary({ ctx, missionId }),
+    mission: await getMissionSummary({ ctx, missionId }),
     objectives: createdObjectives
   };
 }
 
-export function getMissionSummary({
+export async function getMissionSummary({
   ctx,
   missionId
 }: {
   ctx: ServiceContext;
   missionId: string;
-}): MissionSummary {
-  const resolved = resolveMissionId(ctx, missionId);
-  const row = ctx.db
-    .prepare(
-      `SELECT t.id, t.display_id, t.project_id, t.title, t.status_type, t.status_id,
+}): Promise<MissionSummary> {
+  const resolved = await resolveMissionId(ctx, missionId);
+  const row = (await ctx.db.get(
+    `SELECT t.id, t.display_id, t.project_id, t.title, t.status_type, t.status_id,
               t.priority, t.created_at, t.updated_at,
               (SELECT COUNT(*) FROM objectives o WHERE o.mission_id = t.id AND o.deleted_at IS NULL) AS objective_count
        FROM missions t
-       WHERE t.id = ? AND t.workspace_id = ? AND t.deleted_at IS NULL`
-    )
-    .get(resolved.id, ctx.workspace.id) as {
+       WHERE t.id = ? AND t.workspace_id = ? AND t.deleted_at IS NULL`,
+    [resolved.id, ctx.workspace.id]
+  )) as {
     id: string;
     display_id: string;
     project_id: string;
@@ -573,7 +562,7 @@ export function getMissionSummary({
   };
 }
 
-export function listMissions({
+export async function listMissions({
   ctx,
   projectId,
   statusTypes,
@@ -583,7 +572,7 @@ export function listMissions({
   projectId?: string | null;
   statusTypes?: string[] | null;
   limit?: number;
-}): MissionSummary[] {
+}): Promise<MissionSummary[]> {
   const params: Array<string | number> = [ctx.workspace.id];
   let sql = `SELECT t.id, t.display_id, t.project_id, t.title, t.status_type, t.status_id,
                     t.priority, t.created_at, t.updated_at,
@@ -593,7 +582,7 @@ export function listMissions({
 
   if (projectId) {
     sql += ' AND t.project_id = ?';
-    params.push(resolveProjectId(ctx, projectId));
+    params.push(await resolveProjectId(ctx, projectId));
   }
 
   if (statusTypes && statusTypes.length > 0) {
@@ -605,7 +594,7 @@ export function listMissions({
   sql += ' ORDER BY t.updated_at DESC LIMIT ?';
   params.push(limit);
 
-  const rows = ctx.db.prepare(sql).all(...params) as Array<{
+  const rows = (await ctx.db.all(sql, params)) as Array<{
     id: string;
     display_id: string;
     project_id: string;
@@ -648,7 +637,7 @@ function buildFtsMatch(query: string): string | null {
   return terms.map(term => `${term}*`).join(' OR ');
 }
 
-export function searchMissions({
+export async function searchMissions({
   ctx,
   query,
   statusTypes,
@@ -660,14 +649,14 @@ export function searchMissions({
   statusTypes?: string[] | null;
   projectId?: string | null;
   limit?: number;
-}): MissionSummary[] {
+}): Promise<MissionSummary[]> {
   const trimmed = query?.trim();
   const match = trimmed ? buildFtsMatch(trimmed) : null;
 
   // No usable search terms → fall back to a recency-ordered browse of the same
   // filtered set rather than running an empty full-text query.
   if (!match) {
-    return listMissions({
+    return await listMissions({
       ctx,
       projectId: projectId ?? null,
       statusTypes: statusTypes ?? null,
@@ -696,7 +685,7 @@ export function searchMissions({
 
   if (projectId) {
     sql += ' AND t.project_id = ?';
-    params.push(resolveProjectId(ctx, projectId));
+    params.push(await resolveProjectId(ctx, projectId));
   }
 
   if (statusTypes && statusTypes.length > 0) {
@@ -705,7 +694,7 @@ export function searchMissions({
     params.push(...statusTypes);
   }
 
-  const rows = ctx.db.prepare(sql).all(...params) as Array<{
+  const rows = (await ctx.db.all(sql, params)) as Array<{
     id: string;
     display_id: string;
     project_id: string;
@@ -754,7 +743,7 @@ export function searchMissions({
     .map(entry => entry.mission);
 }
 
-export function addObjectivesToMission({
+export async function addObjectivesToMission({
   ctx,
   missionId,
   objectives
@@ -762,19 +751,20 @@ export function addObjectivesToMission({
   ctx: ServiceContext;
   missionId: string;
   objectives: Array<{ objective: string; title?: string | null }>;
-}): ObjectiveSummary[] {
+}): Promise<ObjectiveSummary[]> {
   if (objectives.length === 0) {
     throw new ServiceError('At least one objective is required', 'validation_error');
   }
 
-  const resolved = resolveMissionId(ctx, missionId);
+  const resolved = await resolveMissionId(ctx, missionId);
   const created: ObjectiveSummary[] = [];
 
-  const tx = ctx.db.transaction(() => {
+  await ctx.db.transaction(async tx => {
+    const txCtx = { ...ctx, db: tx };
     for (const item of objectives) {
       created.push(
-        insertObjective({
-          ctx,
+        await insertObjective({
+          ctx: txCtx,
           missionId: resolved.id,
           instructionText: item.objective,
           ...(item.title !== undefined ? { title: item.title } : {}),
@@ -783,33 +773,30 @@ export function addObjectivesToMission({
       );
     }
   });
-
-  tx();
   return created;
 }
 
-export function discussObjective({
+export async function discussObjective({
   ctx,
   missionId
 }: {
   ctx: ServiceContext;
   missionId: string;
-}): ObjectiveSummary {
-  const objectives = listObjectives({ ctx, missionId });
+}): Promise<ObjectiveSummary> {
+  const objectives = await listObjectives({ ctx, missionId });
   const draft = objectives.find(o => o.state === 'draft');
   if (!draft) {
     throw new ServiceError('No draft objective found on mission', 'validation_error');
   }
 
   const now = nowIso();
-  ctx.db
-    .prepare(
-      `UPDATE objectives SET state = 'launching', updated_at = ?, revision = revision + 1
-       WHERE id = ? AND mission_id = ?`
-    )
-    .run(now, draft.id, draft.missionId);
+  await ctx.db.run(
+    `UPDATE objectives SET state = 'launching', updated_at = ?, revision = revision + 1
+       WHERE id = ? AND mission_id = ?`,
+    [now, draft.id, draft.missionId]
+  );
 
-  recordChange({
+  await recordChange({
     ctx,
     entityType: 'objective',
     entityId: draft.id,
@@ -823,7 +810,7 @@ export function discussObjective({
   return { ...draft, state: 'launching' };
 }
 
-export function listMissionEvents({
+export async function listMissionEvents({
   ctx,
   missionId,
   limit = 100
@@ -831,14 +818,13 @@ export function listMissionEvents({
   ctx: ServiceContext;
   missionId: string;
   limit?: number;
-}): MissionEventSummary[] {
-  const resolved = resolveMissionId(ctx, missionId);
-  const rows = ctx.db
-    .prepare(
-      `SELECT id, type, phase, summary, created_at, objective_id
-       FROM mission_events WHERE mission_id = ? ORDER BY created_at ASC LIMIT ?`
-    )
-    .all(resolved.id, limit) as Array<{
+}): Promise<MissionEventSummary[]> {
+  const resolved = await resolveMissionId(ctx, missionId);
+  const rows = (await ctx.db.all(
+    `SELECT id, type, phase, summary, created_at, objective_id
+       FROM mission_events WHERE mission_id = ? ORDER BY created_at ASC LIMIT ?`,
+    [resolved.id, limit]
+  )) as Array<{
     id: string;
     type: string;
     phase: string | null;
@@ -857,7 +843,7 @@ export function listMissionEvents({
   }));
 }
 
-export function listSharedContext({
+export async function listSharedContext({
   ctx,
   missionId,
   keySubstring,
@@ -867,8 +853,8 @@ export function listSharedContext({
   missionId: string;
   keySubstring?: string | null;
   limit?: number;
-}): SharedContextEntry[] {
-  const resolved = resolveMissionId(ctx, missionId);
+}): Promise<SharedContextEntry[]> {
+  const resolved = await resolveMissionId(ctx, missionId);
   const params: Array<string | number> = [resolved.id];
   let sql = `SELECT key, value_kind, value_text, value_json, updated_at
              FROM shared_context_entries
@@ -882,7 +868,7 @@ export function listSharedContext({
   sql += ' ORDER BY updated_at DESC LIMIT ?';
   params.push(limit);
 
-  const rows = ctx.db.prepare(sql).all(...params) as Array<{
+  const rows = (await ctx.db.all(sql, params)) as Array<{
     key: string;
     value_kind: string;
     value_text: string | null;
@@ -901,7 +887,7 @@ export function listSharedContext({
   }));
 }
 
-export function writeSharedContext({
+export async function writeSharedContext({
   ctx,
   missionId,
   key,
@@ -912,20 +898,19 @@ export function writeSharedContext({
   key: string;
   value: unknown;
   tags?: string[];
-}): SharedContextEntry {
+}): Promise<SharedContextEntry> {
   const trimmedKey = key.trim();
   if (!trimmedKey) {
     throw new ServiceError('Shared context key is required', 'validation_error');
   }
 
-  const resolved = resolveMissionId(ctx, missionId);
+  const resolved = await resolveMissionId(ctx, missionId);
   const now = nowIso();
-  const existing = ctx.db
-    .prepare(
-      `SELECT id FROM shared_context_entries
-       WHERE mission_id = ? AND key = ? AND deleted_at IS NULL`
-    )
-    .get(resolved.id, trimmedKey) as { id: string } | undefined;
+  const existing = (await ctx.db.get(
+    `SELECT id FROM shared_context_entries
+       WHERE mission_id = ? AND key = ? AND deleted_at IS NULL`,
+    [resolved.id, trimmedKey]
+  )) as { id: string } | undefined;
 
   const isJson = typeof value === 'object' && value !== null;
   const valueKind = isJson ? 'json' : 'string';
@@ -933,22 +918,19 @@ export function writeSharedContext({
   const valueJson = isJson ? JSON.stringify(value) : null;
 
   if (existing) {
-    ctx.db
-      .prepare(
-        `UPDATE shared_context_entries
+    await ctx.db.run(
+      `UPDATE shared_context_entries
          SET value_kind = ?, value_text = ?, value_json = ?, updated_at = ?, revision = revision + 1
-         WHERE id = ?`
-      )
-      .run(valueKind, valueText, valueJson, now, existing.id);
+         WHERE id = ?`,
+      [valueKind, valueText, valueJson, now, existing.id]
+    );
   } else {
-    ctx.db
-      .prepare(
-        `INSERT INTO shared_context_entries
+    await ctx.db.run(
+      `INSERT INTO shared_context_entries
            (id, workspace_id, mission_id, key, value_kind, value_text, value_json,
             created_by_workspace_user_id, created_at, updated_at, revision)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
-      )
-      .run(
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      [
         newId(),
         ctx.workspace.id,
         resolved.id,
@@ -959,26 +941,26 @@ export function writeSharedContext({
         ctx.actorWorkspaceUserId,
         now,
         now
-      );
+      ]
+    );
   }
 
   return { key: trimmedKey, value, tags: [], updatedAt: now };
 }
 
-export function listArtifacts({
+export async function listArtifacts({
   ctx,
   missionId
 }: {
   ctx: ServiceContext;
   missionId: string;
-}): ArtifactSummary[] {
-  const resolved = resolveMissionId(ctx, missionId);
-  const rows = ctx.db
-    .prepare(
-      `SELECT id, type, label, content_text, external_url
-       FROM artifacts WHERE mission_id = ? AND deleted_at IS NULL ORDER BY created_at ASC`
-    )
-    .all(resolved.id) as Array<{
+}): Promise<ArtifactSummary[]> {
+  const resolved = await resolveMissionId(ctx, missionId);
+  const rows = (await ctx.db.all(
+    `SELECT id, type, label, content_text, external_url
+       FROM artifacts WHERE mission_id = ? AND deleted_at IS NULL ORDER BY created_at ASC`,
+    [resolved.id]
+  )) as Array<{
     id: string;
     type: string;
     label: string;
@@ -995,7 +977,7 @@ export function listArtifacts({
   }));
 }
 
-export function listAttachments({
+export async function listAttachments({
   ctx,
   missionId,
   objectiveId
@@ -1003,8 +985,8 @@ export function listAttachments({
   ctx: ServiceContext;
   missionId: string;
   objectiveId?: string | null;
-}): AttachmentSummary[] {
-  const resolved = resolveMissionId(ctx, missionId);
+}): Promise<AttachmentSummary[]> {
+  const resolved = await resolveMissionId(ctx, missionId);
   const params: string[] = [resolved.id];
   let sql = `SELECT id, filename, content_type, size_bytes, upload_status
              FROM objective_attachments
@@ -1016,7 +998,7 @@ export function listAttachments({
   }
 
   sql += ' ORDER BY created_at ASC';
-  const rows = ctx.db.prepare(sql).all(...params) as Array<{
+  const rows = (await ctx.db.all(sql, params)) as Array<{
     id: string;
     filename: string;
     content_type: string | null;
@@ -1033,26 +1015,25 @@ export function listAttachments({
   }));
 }
 
-export function moveMissionToReview({
+export async function moveMissionToReview({
   ctx,
   missionId
 }: {
   ctx: ServiceContext;
   missionId: string;
-}): void {
-  const mission = getMissionSummary({ ctx, missionId });
-  const reviewStatus = getReviewStatusId(ctx);
+}): Promise<void> {
+  const mission = await getMissionSummary({ ctx, missionId });
+  const reviewStatus = await getReviewStatusId(ctx);
   const now = nowIso();
-  const boardPosition = topBoardPosition(ctx, mission.projectId, reviewStatus.id);
+  const boardPosition = await topBoardPosition(ctx, mission.projectId, reviewStatus.id);
 
-  ctx.db
-    .prepare(
-      `UPDATE missions SET status_id = ?, status_type = ?, board_position = ?, updated_at = ?, revision = revision + 1
-       WHERE id = ?`
-    )
-    .run(reviewStatus.id, reviewStatus.type, boardPosition, now, mission.id);
+  await ctx.db.run(
+    `UPDATE missions SET status_id = ?, status_type = ?, board_position = ?, updated_at = ?, revision = revision + 1
+       WHERE id = ?`,
+    [reviewStatus.id, reviewStatus.type, boardPosition, now, mission.id]
+  );
 
-  recordChange({
+  await recordChange({
     ctx,
     entityType: 'mission',
     entityId: mission.id,
@@ -1063,31 +1044,30 @@ export function moveMissionToReview({
   });
 }
 
-export function moveMissionToExecute({
+export async function moveMissionToExecute({
   ctx,
   missionId
 }: {
   ctx: ServiceContext;
   missionId: string;
-}): void {
-  const mission = getMissionSummary({ ctx, missionId });
-  const executeStatus = getExecuteStatusId(ctx);
+}): Promise<void> {
+  const mission = await getMissionSummary({ ctx, missionId });
+  const executeStatus = await getExecuteStatusId(ctx);
   if (mission.statusId === executeStatus.id && mission.statusType === executeStatus.type) {
     return;
   }
 
   const now = nowIso();
-  const boardPosition = topBoardPosition(ctx, mission.projectId, executeStatus.id);
+  const boardPosition = await topBoardPosition(ctx, mission.projectId, executeStatus.id);
 
-  ctx.db
-    .prepare(
-      `UPDATE missions
+  await ctx.db.run(
+    `UPDATE missions
        SET status_id = ?, status_type = ?, board_position = ?, updated_at = ?, revision = revision + 1
-       WHERE id = ?`
-    )
-    .run(executeStatus.id, executeStatus.type, boardPosition, now, mission.id);
+       WHERE id = ?`,
+    [executeStatus.id, executeStatus.type, boardPosition, now, mission.id]
+  );
 
-  recordChange({
+  await recordChange({
     ctx,
     entityType: 'mission',
     entityId: mission.id,

@@ -1,4 +1,8 @@
-import { LOCAL_STORAGE_BUCKET_PATHS, openInMemoryDatabase } from '@overlord/database';
+import {
+  createSqliteClient,
+  LOCAL_STORAGE_BUCKET_PATHS,
+  openInMemoryDatabase
+} from '@overlord/database';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
@@ -17,56 +21,52 @@ import {
 } from './storage.js';
 import { seedServiceOperator } from './test-helpers.js';
 
-function createMemberContext(adminCtx: ServiceContext): ServiceContext {
+async function createMemberContext(adminCtx: ServiceContext): Promise<ServiceContext> {
   const now = '2026-01-01T00:00:01.000Z';
-  adminCtx.db
-    .prepare(
-      `INSERT INTO "user" (
+  await adminCtx.db.run(
+    `INSERT INTO "user" (
          "id", "name", "email", "emailVerified", "image", "createdAt", "updatedAt"
-       ) VALUES (?, ?, ?, 1, NULL, ?, ?)`
-    )
-    .run('member-user', 'Member User', 'member@example.test', now, now);
-  adminCtx.db
-    .prepare(
-      `UPDATE profiles
+       ) VALUES (?, ?, ?, 1, NULL, ?, ?)`,
+    ['member-user', 'Member User', 'member@example.test', now, now]
+  );
+  await adminCtx.db.run(
+    `UPDATE profiles
           SET handle = ?, updated_at = ?, revision = revision + 1
-        WHERE id = ?`
-    )
-    .run('member', now, 'member-user');
-  adminCtx.db
-    .prepare(
-      `INSERT INTO workspace_users (
+        WHERE id = ?`,
+    ['member', now, 'member-user']
+  );
+  await adminCtx.db.run(
+    `INSERT INTO workspace_users (
          id, workspace_id, profile_id, member_key, status, metadata_json,
          created_at, updated_at, revision
-       ) VALUES (?, ?, ?, ?, 'active', '{}', ?, ?, 1)`
-    )
-    .run('member-workspace-user', adminCtx.workspace.id, 'member-user', 'local:member', now, now);
-  adminCtx.db
-    .prepare(
-      `INSERT INTO role_assignments (
+       ) VALUES (?, ?, ?, ?, 'active', '{}', ?, ?, 1)`,
+    ['member-workspace-user', adminCtx.workspace.id, 'member-user', 'local:member', now, now]
+  );
+  await adminCtx.db.run(
+    `INSERT INTO role_assignments (
          id, workspace_id, workspace_user_id, role_key, resource_type, resource_id,
          assigned_by_workspace_user_id, created_at, updated_at, revision
-       ) VALUES (?, ?, ?, 'MEMBER', '', '', ?, ?, ?, 1)`
-    )
-    .run(
+       ) VALUES (?, ?, ?, 'MEMBER', '', '', ?, ?, ?, 1)`,
+    [
       'member-role',
       adminCtx.workspace.id,
       'member-workspace-user',
       adminCtx.actorWorkspaceUserId,
       now,
       now
-    );
+    ]
+  );
 
   return { ...adminCtx, actorWorkspaceUserId: 'member-workspace-user' };
 }
 
 describe('storage service', () => {
-  it('seeds local storage buckets', () => {
-    const db = openInMemoryDatabase();
+  it('seeds local storage buckets', async () => {
+    const db = createSqliteClient(openInMemoryDatabase());
     try {
-      seedServiceOperator({ db });
-      const ctx = createServiceContext({ db, source: 'cli' });
-      const buckets = listStorageBuckets({ ctx });
+      await seedServiceOperator({ db });
+      const ctx = await createServiceContext({ db, source: 'cli' });
+      const buckets = await listStorageBuckets({ ctx });
       assert.deepEqual(
         buckets.map(bucket => [bucket.key, bucket.backend, bucket.localPath]),
         [
@@ -76,16 +76,16 @@ describe('storage service', () => {
         ]
       );
     } finally {
-      db.close();
+      await db.close();
     }
   });
 
-  it('allows public image reads but not workspace image writes', () => {
-    const db = openInMemoryDatabase();
+  it('allows public image reads but not workspace image writes', async () => {
+    const db = createSqliteClient(openInMemoryDatabase());
     try {
-      seedServiceOperator({ db });
-      const adminCtx = createServiceContext({ db, source: 'cli' });
-      const image = createWorkspaceImage({
+      await seedServiceOperator({ db });
+      const adminCtx = await createServiceContext({ db, source: 'cli' });
+      const image = await createWorkspaceImage({
         ctx: adminCtx,
         input: {
           storageKey: 'hero.png',
@@ -96,27 +96,27 @@ describe('storage service', () => {
       });
       const publicCtx = { ...adminCtx, actorWorkspaceUserId: null };
 
-      assert.equal(listWorkspaceImages({ ctx: publicCtx })[0]?.id, image.id);
-      assert.throws(
-        () =>
-          createWorkspaceImage({
+      assert.equal((await listWorkspaceImages({ ctx: publicCtx }))[0]?.id, image.id);
+      await assert.rejects(
+        async () =>
+          await createWorkspaceImage({
             ctx: publicCtx,
             input: { storageKey: 'nope.png', filename: 'nope.png', contentType: 'image/png' }
           }),
         ServiceError
       );
     } finally {
-      db.close();
+      await db.close();
     }
   });
 
-  it('allows members to manage attachments', () => {
-    const db = openInMemoryDatabase();
+  it('allows members to manage attachments', async () => {
+    const db = createSqliteClient(openInMemoryDatabase());
     try {
-      seedServiceOperator({ db });
-      const adminCtx = createServiceContext({ db, source: 'cli' });
-      const memberCtx = createMemberContext(adminCtx);
-      const attachment = createAttachment({
+      await seedServiceOperator({ db });
+      const adminCtx = await createServiceContext({ db, source: 'cli' });
+      const memberCtx = await createMemberContext(adminCtx);
+      const attachment = await createAttachment({
         ctx: memberCtx,
         input: {
           storageKey: 'notes.txt',
@@ -126,7 +126,7 @@ describe('storage service', () => {
         }
       });
 
-      const updated = updateAttachment({
+      const updated = await updateAttachment({
         ctx: memberCtx,
         attachmentId: attachment.id,
         revision: attachment.revision,
@@ -134,35 +134,39 @@ describe('storage service', () => {
         uploadStatus: 'available'
       });
       assert.equal(updated.filename, 'notes-renamed.txt');
-      assert.equal(listAttachments({ ctx: memberCtx }).length, 1);
+      assert.equal((await listAttachments({ ctx: memberCtx })).length, 1);
 
-      deleteAttachment({ ctx: memberCtx, attachmentId: updated.id, revision: updated.revision });
-      assert.equal(listAttachments({ ctx: memberCtx }).length, 0);
+      await deleteAttachment({
+        ctx: memberCtx,
+        attachmentId: updated.id,
+        revision: updated.revision
+      });
+      assert.equal((await listAttachments({ ctx: memberCtx })).length, 0);
     } finally {
-      db.close();
+      await db.close();
     }
   });
 
-  it('allows members to manage their own user images only', () => {
-    const db = openInMemoryDatabase();
+  it('allows members to manage their own user images only', async () => {
+    const db = createSqliteClient(openInMemoryDatabase());
     try {
-      seedServiceOperator({ db });
-      const adminCtx = createServiceContext({ db, source: 'cli' });
-      const memberCtx = createMemberContext(adminCtx);
+      await seedServiceOperator({ db });
+      const adminCtx = await createServiceContext({ db, source: 'cli' });
+      const memberCtx = await createMemberContext(adminCtx);
 
-      const ownImage = createUserImage({
+      const ownImage = await createUserImage({
         ctx: memberCtx,
         userId: 'member-user',
         input: { storageKey: 'avatar.png', filename: 'avatar.png', contentType: 'image/png' }
       });
       assert.equal(
-        listUserImages({ ctx: { ...memberCtx, actorWorkspaceUserId: null } })[0]?.id,
+        (await listUserImages({ ctx: { ...memberCtx, actorWorkspaceUserId: null } }))[0]?.id,
         ownImage.id
       );
 
-      assert.throws(
-        () =>
-          createUserImage({
+      await assert.rejects(
+        async () =>
+          await createUserImage({
             ctx: memberCtx,
             userId: 'local-user',
             input: { storageKey: 'other.png', filename: 'other.png', contentType: 'image/png' }
@@ -170,7 +174,7 @@ describe('storage service', () => {
         ServiceError
       );
     } finally {
-      db.close();
+      await db.close();
     }
   });
 });

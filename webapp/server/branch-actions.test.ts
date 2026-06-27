@@ -60,9 +60,9 @@ describe('branch actions', () => {
 
   it('integrate advances the parent locally then push publishes it (merged_unpushed → merged)', async () => {
     const { worktreeRoot, api, runner, primary } = await setup();
-    const project = api.createProject({ name: 'Branch Actions Test' });
-    api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
-    const mission = api.createMission({ projectId: project.id, firstObjective: 'Work' });
+    const project = await api.createProject({ name: 'Branch Actions Test' });
+    await api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
+    const mission = await api.createMission({ projectId: project.id, firstObjective: 'Work' });
 
     // Branch cut from main with its own commit, in its own worktree.
     const branchName = 'overlord/feat-1';
@@ -77,29 +77,29 @@ describe('branch actions', () => {
     git(primary, ['add', '.']);
     git(primary, ['commit', '-q', '-m', 'parent advances']);
 
-    runner.recordBranchPrepared({
+    await runner.recordBranchPrepared({
       missionId: mission.displayId,
       payload: { branchName, baseBranch: 'main', worktreePath, action: 'create', cycle: 1 }
     });
-    assert.equal(api.getMissionDetail(mission.id).branch?.status, 'created');
+    assert.equal((await api.getMissionDetail(mission.id)).branch?.status, 'created');
 
     // Action A: integrate → local main contains the branch, not pushed.
-    const afterIntegrate = api.performBranchAction(mission.id, { action: 'integrate' });
+    const afterIntegrate = await api.performBranchAction(mission.id, { action: 'integrate' });
     assert.equal(afterIntegrate.branch?.status, 'merged_unpushed');
     // Local main now contains the branch's file, via a merge commit (parent diverged).
     assert.equal(git(primary, ['rev-list', '--count', `origin/main..main`]) !== '0', true);
 
     // Action B: push parent → origin/main contains the branch ⇒ merged.
-    const afterPush = api.performBranchAction(mission.id, { action: 'push_parent' });
+    const afterPush = await api.performBranchAction(mission.id, { action: 'push_parent' });
     assert.equal(afterPush.branch?.status, 'merged');
     assert.equal(git(primary, ['rev-list', '--count', `origin/main..main`]), '0');
   });
 
   it('surfaces a merge conflict and leaves it in the branch worktree', async () => {
     const { worktreeRoot, api, runner, primary } = await setup();
-    const project = api.createProject({ name: 'Conflict Test' });
-    api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
-    const mission = api.createMission({ projectId: project.id, firstObjective: 'Work' });
+    const project = await api.createProject({ name: 'Conflict Test' });
+    await api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
+    const mission = await api.createMission({ projectId: project.id, firstObjective: 'Work' });
 
     const branchName = 'overlord/conflict-1';
     const worktreePath = path.join(worktreeRoot, project.slug, branchLeaf(branchName));
@@ -112,13 +112,13 @@ describe('branch actions', () => {
     git(primary, ['add', '.']);
     git(primary, ['commit', '-q', '-m', 'parent edit']);
 
-    runner.recordBranchPrepared({
+    await runner.recordBranchPrepared({
       missionId: mission.displayId,
       payload: { branchName, baseBranch: 'main', worktreePath, action: 'create', cycle: 1 }
     });
 
-    assert.throws(
-      () => api.performBranchAction(mission.id, { action: 'integrate' }),
+    await assert.rejects(
+      api.performBranchAction(mission.id, { action: 'integrate' }),
       (err: unknown) => (err as { code?: string }).code === 'BRANCH_MERGE_CONFLICT'
     );
     // The conflicted merge is left in place for IDE resolution.
@@ -128,9 +128,9 @@ describe('branch actions', () => {
 
   it('commit stages and commits a dirty worktree, clearing the dirty flag', async () => {
     const { worktreeRoot, api, runner, primary } = await setup();
-    const project = api.createProject({ name: 'Commit Test' });
-    api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
-    const mission = api.createMission({ projectId: project.id, firstObjective: 'Work' });
+    const project = await api.createProject({ name: 'Commit Test' });
+    await api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
+    const mission = await api.createMission({ projectId: project.id, firstObjective: 'Work' });
 
     const branchName = 'feat-commit-1';
     const worktreePath = path.join(worktreeRoot, project.slug, branchLeaf(branchName));
@@ -138,13 +138,13 @@ describe('branch actions', () => {
     // Uncommitted work in the branch worktree.
     writeFileSync(path.join(worktreePath, 'b.txt'), 'b\n');
 
-    runner.recordBranchPrepared({
+    await runner.recordBranchPrepared({
       missionId: mission.displayId,
       payload: { branchName, baseBranch: 'main', worktreePath, action: 'create', cycle: 1 }
     });
-    assert.equal(api.getMissionDetail(mission.id).branch?.dirty, true);
+    assert.equal((await api.getMissionDetail(mission.id)).branch?.dirty, true);
 
-    const after = api.performBranchAction(mission.id, {
+    const after = await api.performBranchAction(mission.id, {
       action: 'commit',
       message: 'Add b.txt'
     });
@@ -156,37 +156,37 @@ describe('branch actions', () => {
 
   it('commit rejects an empty message and a clean worktree', async () => {
     const { worktreeRoot, api, runner, primary } = await setup();
-    const project = api.createProject({ name: 'Commit Guard Test' });
-    api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
-    const mission = api.createMission({ projectId: project.id, firstObjective: 'Work' });
+    const project = await api.createProject({ name: 'Commit Guard Test' });
+    await api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
+    const mission = await api.createMission({ projectId: project.id, firstObjective: 'Work' });
 
     const branchName = 'feat-commit-2';
     const worktreePath = path.join(worktreeRoot, project.slug, branchLeaf(branchName));
     git(primary, ['worktree', 'add', '-q', '-b', branchName, worktreePath, 'main']);
     writeFileSync(path.join(worktreePath, 'b.txt'), 'b\n');
-    runner.recordBranchPrepared({
+    await runner.recordBranchPrepared({
       missionId: mission.displayId,
       payload: { branchName, baseBranch: 'main', worktreePath, action: 'create', cycle: 1 }
     });
 
-    assert.throws(
-      () => api.performBranchAction(mission.id, { action: 'commit', message: '   ' }),
+    await assert.rejects(
+      api.performBranchAction(mission.id, { action: 'commit', message: '   ' }),
       (err: unknown) => (err as { code?: string }).code === 'BRANCH_COMMIT_MESSAGE_REQUIRED'
     );
 
     // Commit it, then a second commit attempt finds nothing to commit.
-    api.performBranchAction(mission.id, { action: 'commit', message: 'Add b.txt' });
-    assert.throws(
-      () => api.performBranchAction(mission.id, { action: 'commit', message: 'again' }),
+    await api.performBranchAction(mission.id, { action: 'commit', message: 'Add b.txt' });
+    await assert.rejects(
+      api.performBranchAction(mission.id, { action: 'commit', message: 'again' }),
       (err: unknown) => (err as { code?: string }).code === 'BRANCH_NOTHING_TO_COMMIT'
     );
   });
 
   it('publish pushes the branch itself (created → published)', async () => {
     const { worktreeRoot, api, runner, primary } = await setup();
-    const project = api.createProject({ name: 'Publish Test' });
-    api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
-    const mission = api.createMission({ projectId: project.id, firstObjective: 'Work' });
+    const project = await api.createProject({ name: 'Publish Test' });
+    await api.createProjectResource(project.id, { directoryPath: primary, isPrimary: true });
+    const mission = await api.createMission({ projectId: project.id, firstObjective: 'Work' });
 
     const branchName = 'overlord/publish-1';
     const worktreePath = path.join(worktreeRoot, project.slug, branchLeaf(branchName));
@@ -195,13 +195,13 @@ describe('branch actions', () => {
     git(worktreePath, ['add', '.']);
     git(worktreePath, ['commit', '-q', '-m', 'work']);
 
-    runner.recordBranchPrepared({
+    await runner.recordBranchPrepared({
       missionId: mission.displayId,
       payload: { branchName, baseBranch: 'main', worktreePath, action: 'create', cycle: 1 }
     });
-    assert.equal(api.getMissionDetail(mission.id).branch?.status, 'created');
+    assert.equal((await api.getMissionDetail(mission.id)).branch?.status, 'created');
 
-    const afterPublish = api.performBranchAction(mission.id, { action: 'publish' });
+    const afterPublish = await api.performBranchAction(mission.id, { action: 'publish' });
     assert.equal(afterPublish.branch?.status, 'published');
   });
 });

@@ -1,6 +1,6 @@
 import { loadConfig } from '../../cli/src/config.ts';
 
-import { db, WORKSPACE } from './db.ts';
+import { nowIso, requireDatabaseClient, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';
 
 export const SQL_STUDIO_SETTINGS_KEY = 'sqlStudioEnabled';
@@ -15,23 +15,24 @@ function parseSettings(raw: string): Record<string, unknown> {
   }
 }
 
-function readWorkspaceSettingsRow(workspaceId: string): {
+async function readWorkspaceSettingsRow(workspaceId: string): Promise<{
   settings_json: string;
   revision: number;
-} {
-  const row = db
-    .prepare(`SELECT settings_json, revision FROM workspaces WHERE id = ? AND deleted_at IS NULL`)
-    .get(workspaceId) as { settings_json: string; revision: number } | undefined;
+}> {
+  const row = await requireDatabaseClient().get<{ settings_json: string; revision: number }>(
+    `SELECT settings_json, revision FROM workspaces WHERE id = ? AND deleted_at IS NULL`,
+    [workspaceId]
+  );
   if (!row) throw new ApiError(404, 'Workspace not found');
   return row;
 }
 
-export function readSqlStudioEnabled({
+export async function readSqlStudioEnabled({
   workspaceId = WORKSPACE.id
 }: {
   workspaceId?: string;
-} = {}): boolean {
-  const row = readWorkspaceSettingsRow(workspaceId);
+} = {}): Promise<boolean> {
+  const row = await readWorkspaceSettingsRow(workspaceId);
   const settings = parseSettings(row.settings_json);
   if (typeof settings[SQL_STUDIO_SETTINGS_KEY] === 'boolean') {
     return settings[SQL_STUDIO_SETTINGS_KEY];
@@ -39,27 +40,24 @@ export function readSqlStudioEnabled({
   return loadConfig().sqlStudioEnabled;
 }
 
-export function writeSqlStudioEnabled({
+export async function writeSqlStudioEnabled({
   workspaceId,
   enabled
 }: {
   workspaceId: string;
   enabled: boolean;
-}): void {
-  const row = readWorkspaceSettingsRow(workspaceId);
+}): Promise<void> {
+  const row = await readWorkspaceSettingsRow(workspaceId);
   const settings = parseSettings(row.settings_json);
   settings[SQL_STUDIO_SETTINGS_KEY] = enabled;
   const revision = row.revision + 1;
-  db.prepare(
+  const now = nowIso();
+  await requireDatabaseClient().run(
     `UPDATE workspaces
-        SET settings_json = @settings_json, updated_at = @now, revision = @revision
-      WHERE id = @id`
-  ).run({
-    id: workspaceId,
-    settings_json: JSON.stringify(settings),
-    now: new Date().toISOString(),
-    revision
-  });
+        SET settings_json = ?, updated_at = ?, revision = ?
+      WHERE id = ?`,
+    [JSON.stringify(settings), now, revision, workspaceId]
+  );
 }
 
 /**
@@ -67,26 +65,26 @@ export function writeSqlStudioEnabled({
  * server-side only and never returned to the client — the REST API Layer proxies
  * every Everhour call so the browser never sees it.
  */
-export function readEverhourApiKey({
+export async function readEverhourApiKey({
   workspaceId = WORKSPACE.id
 }: {
   workspaceId?: string;
-} = {}): string | null {
-  const row = readWorkspaceSettingsRow(workspaceId);
+} = {}): Promise<string | null> {
+  const row = await readWorkspaceSettingsRow(workspaceId);
   const settings = parseSettings(row.settings_json);
   const value = settings[EVERHOUR_API_KEY_SETTINGS_KEY];
   return typeof value === 'string' && value.trim() ? value : null;
 }
 
 /** Set or clear (pass `null`/empty) the workspace Everhour API key. */
-export function writeEverhourApiKey({
+export async function writeEverhourApiKey({
   workspaceId = WORKSPACE.id,
   apiKey
 }: {
   workspaceId?: string;
   apiKey: string | null;
-}): void {
-  const row = readWorkspaceSettingsRow(workspaceId);
+}): Promise<void> {
+  const row = await readWorkspaceSettingsRow(workspaceId);
   const settings = parseSettings(row.settings_json);
   const trimmed = apiKey?.trim();
   if (trimmed) {
@@ -95,14 +93,11 @@ export function writeEverhourApiKey({
     delete settings[EVERHOUR_API_KEY_SETTINGS_KEY];
   }
   const revision = row.revision + 1;
-  db.prepare(
+  const now = nowIso();
+  await requireDatabaseClient().run(
     `UPDATE workspaces
-        SET settings_json = @settings_json, updated_at = @now, revision = @revision
-      WHERE id = @id`
-  ).run({
-    id: workspaceId,
-    settings_json: JSON.stringify(settings),
-    now: new Date().toISOString(),
-    revision
-  });
+        SET settings_json = ?, updated_at = ?, revision = ?
+      WHERE id = ?`,
+    [JSON.stringify(settings), now, revision, workspaceId]
+  );
 }

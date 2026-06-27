@@ -28,7 +28,7 @@ Source location:
 - `connectors/core/overlord-mission/SKILL.md`
 - `connectors/core/overlord-mission/reference/`
 
-This is the single source of truth for durable Overlord workflow behavior. Connector adapters may include a thin harness-specific skill or command wrapper, but should not duplicate the core lifecycle rules. Packaging/setup can copy or render the core into an installable plugin bundle when the target harness needs a self-contained directory.
+This is the single source of truth for durable Overlord workflow behavior. Connector adapters ship a thin harness-specific skill template with a `<!-- @connector-core -->` marker; `ovld agent-setup` interpolates this core into the installed plugin. Adapters must not duplicate the core lifecycle rules.
 
 Required content:
 
@@ -39,6 +39,7 @@ Required content:
 - Use heartbeat during long mechanical work with no meaningful update.
 - Ask exactly one blocking question and stop when blocked.
 - Deliver last with summary, artifacts, and change rationales.
+- Never revert, restore, or delete concurrent work from other agents or missions to deliver; ask instead.
 - Record all meaningful file changes as structured rationales.
 - Use stdin/file flags for shell-special content.
 - Use stdin/file flags for oversized JSON payloads (`--*-json` values above ~8 KB are rejected; use `--*-file -`).

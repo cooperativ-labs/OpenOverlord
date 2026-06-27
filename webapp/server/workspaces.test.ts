@@ -8,7 +8,9 @@ const tempDir = mkdtempSync(path.join(tmpdir(), 'overlord-webapp-workspaces-'));
 process.env.OVERLORD_SQLITE_PATH = path.join(tempDir, 'webapp.sqlite');
 
 const dbModule = await import('./db.ts');
-const { db, resolveActorForWorkspace, setActiveWorkspace, setActiveWorkspaceUser } = dbModule;
+const { db, initDatabase, resolveActorForWorkspace, setActiveWorkspace, setActiveWorkspaceUser } =
+  dbModule;
+await initDatabase();
 const { actorCan, loadActorRoles } = await import('./rbac.ts');
 const { createMission, createObjective, createProject } = await import('./repository.ts');
 const { seedAuthenticatedOperator } = await import('./test-helpers.ts');
@@ -18,39 +20,39 @@ const { completeInitialSetup, createWorkspace, exportWorkspaceObjectivesCsv, nee
 const operatorWorkspaceUserId = seedAuthenticatedOperator({ db });
 setActiveWorkspaceUser(operatorWorkspaceUserId);
 
-test('createWorkspace grants ADMIN to the creator so switching workspaces keeps permissions', () => {
-  const created = createWorkspace({ name: 'Second Workspace' });
-  const workspaceUserId = resolveActorForWorkspace(created.id);
+test('createWorkspace grants ADMIN to the creator so switching workspaces keeps permissions', async () => {
+  const created = await createWorkspace({ name: 'Second Workspace' });
+  const workspaceUserId = await resolveActorForWorkspace(created.id);
   assert.ok(workspaceUserId, 'expected a workspace user for the new workspace');
 
-  assert.deepEqual(loadActorRoles({ workspaceId: created.id, workspaceUserId }), ['ADMIN']);
+  assert.deepEqual(await loadActorRoles({ workspaceId: created.id, workspaceUserId }), ['ADMIN']);
 
   setActiveWorkspaceUser(workspaceUserId);
-  assert.equal(actorCan('project:read'), true);
-  assert.equal(actorCan('workspace:update'), true);
+  assert.equal(await actorCan('project:read'), true);
+  assert.equal(await actorCan('workspace:update'), true);
 });
 
-test('createWorkspace accepts a custom workspace ID and rejects collisions', () => {
-  const created = createWorkspace({ id: 'engineering-hq', name: 'Engineering HQ' });
+test('createWorkspace accepts a custom workspace ID and rejects collisions', async () => {
+  const created = await createWorkspace({ id: 'engineering-hq', name: 'Engineering HQ' });
   assert.equal(created.id, 'engineering-hq');
 
-  assert.throws(
-    () => createWorkspace({ id: 'engineering-hq', name: 'Duplicate HQ' }),
+  await assert.rejects(
+    createWorkspace({ id: 'engineering-hq', name: 'Duplicate HQ' }),
     /already exists/
   );
 });
 
-test('createWorkspace defaults the workspace ID from the full name', () => {
-  const created = createWorkspace({ name: 'Client Success West' });
+test('createWorkspace defaults the workspace ID from the full name', async () => {
+  const created = await createWorkspace({ name: 'Client Success West' });
   assert.equal(created.id, 'client-success-west');
 });
 
-test('completeInitialSetup can re-key the seeded first workspace', () => {
-  setActiveWorkspace('local-workspace');
+test('completeInitialSetup can re-key the seeded first workspace', async () => {
+  await setActiveWorkspace('local-workspace');
   setActiveWorkspaceUser(operatorWorkspaceUserId);
-  assert.equal(needsInitialSetup(), true);
+  assert.equal(await needsInitialSetup(), true);
 
-  const updated = completeInitialSetup({
+  const updated = await completeInitialSetup({
     id: 'acme-operations',
     name: 'Acme Operations',
     slug: 'aco'
@@ -59,8 +61,8 @@ test('completeInitialSetup can re-key the seeded first workspace', () => {
   assert.equal(updated.id, 'acme-operations');
   assert.equal(dbModule.WORKSPACE.id, 'acme-operations');
   assert.equal(dbModule.WORKSPACE.slug, 'aco');
-  assert.equal(needsInitialSetup(), false);
-  assert.equal(resolveActorForWorkspace('acme-operations'), operatorWorkspaceUserId);
+  assert.equal(await needsInitialSetup(), false);
+  assert.equal(await resolveActorForWorkspace('acme-operations'), operatorWorkspaceUserId);
 
   const missionSequence = db
     .prepare(`SELECT workspace_id, scope_id FROM mission_sequences WHERE id = ?`)
@@ -71,24 +73,24 @@ test('completeInitialSetup can re-key the seeded first workspace', () => {
   });
 });
 
-test('exportWorkspaceObjectivesCsv exports the requested workspace objectives as CSV', () => {
-  const workspace = createWorkspace({ name: 'Export Target Workspace' });
-  const workspaceUserId = resolveActorForWorkspace(workspace.id);
+test('exportWorkspaceObjectivesCsv exports the requested workspace objectives as CSV', async () => {
+  const workspace = await createWorkspace({ name: 'Export Target Workspace' });
+  const workspaceUserId = await resolveActorForWorkspace(workspace.id);
   assert.ok(workspaceUserId, 'expected operator membership in the export workspace');
   setActiveWorkspaceUser(workspaceUserId);
 
-  const project = createProject({ name: 'Operations' });
-  const mission = createMission({
+  const project = await createProject({ name: 'Operations' });
+  const mission = await createMission({
     projectId: project.id,
     title: 'Quarterly Review',
     objectives: [{ objective: 'Prepare agenda' }]
   });
-  createObjective({
+  await createObjective({
     missionId: mission.id,
     instructionText: 'Line 1,\n"quoted" value'
   });
 
-  const exported = exportWorkspaceObjectivesCsv(workspace.id);
+  const exported = await exportWorkspaceObjectivesCsv(workspace.id);
 
   assert.match(exported.filename, /^exp-objectives-\d{4}-\d{2}-\d{2}\.csv$/);
   assert.match(
@@ -100,18 +102,18 @@ test('exportWorkspaceObjectivesCsv exports the requested workspace objectives as
   assert.match(exported.content, /,"Operations","Backlog"/);
 });
 
-test('exportWorkspaceObjectivesCsv checks admin access on the requested workspace', () => {
-  const target = createWorkspace({ name: 'Export Access Target' });
-  const targetWorkspaceUserId = resolveActorForWorkspace(target.id);
+test('exportWorkspaceObjectivesCsv checks admin access on the requested workspace', async () => {
+  const target = await createWorkspace({ name: 'Export Access Target' });
+  const targetWorkspaceUserId = await resolveActorForWorkspace(target.id);
   assert.ok(targetWorkspaceUserId, 'expected operator membership in the target workspace');
   setActiveWorkspaceUser(targetWorkspaceUserId);
 
-  const second = createWorkspace({ name: 'Second Workspace Export Test' });
-  const secondWorkspaceUserId = resolveActorForWorkspace(second.id);
+  const second = await createWorkspace({ name: 'Second Workspace Export Test' });
+  const secondWorkspaceUserId = await resolveActorForWorkspace(second.id);
   assert.ok(secondWorkspaceUserId, 'expected operator membership in the second workspace');
   setActiveWorkspaceUser(secondWorkspaceUserId);
 
-  assert.doesNotThrow(() => exportWorkspaceObjectivesCsv(target.id));
+  await exportWorkspaceObjectivesCsv(target.id);
 
   const now = new Date().toISOString();
   db.prepare(
@@ -125,13 +127,13 @@ test('exportWorkspaceObjectivesCsv checks admin access on the requested workspac
      VALUES (?, ?, ?, ?, 'active', '{}', ?, ?, 1)`
   ).run('viewer-workspace-user', target.id, 'viewer-user', 'auth:viewer-user', now, now);
 
-  setActiveWorkspace(target.id);
+  await setActiveWorkspace(target.id);
   setActiveWorkspaceUser('viewer-workspace-user');
-  assert.throws(() => exportWorkspaceObjectivesCsv(target.id), /Admin role required/);
+  await assert.rejects(exportWorkspaceObjectivesCsv(target.id), /Admin role required/);
 });
 
-test.after(() => {
+test.after(async () => {
   rmSync(tempDir, { recursive: true, force: true });
-  setActiveWorkspace('local-workspace');
+  await setActiveWorkspace('local-workspace');
   setActiveWorkspaceUser(operatorWorkspaceUserId);
 });

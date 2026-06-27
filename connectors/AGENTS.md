@@ -36,7 +36,7 @@ A new connector is the primary sanctioned extension point for this module. It re
 
 1. **Create the connector directory**: `connectors/adapters/<agent-name>/`.
 
-2. **Write the connector plugin** — a Markdown (or native plugin format) file that extends the connector core. Required canonical instructions (from the core):
+2. **Write the connector plugin** — a Markdown (or native plugin format) file that extends the connector core. Adapter `skills/overlord-mission/SKILL.md` templates must include `<!-- @connector-core -->`; `ovld agent-setup` interpolates `connectors/core/overlord-mission/SKILL.md` at that marker. Required canonical instructions (from the core):
    - Attach first (`ovld protocol attach`)
    - Treat the mission prompt as authoritative
    - Post meaningful progress updates
