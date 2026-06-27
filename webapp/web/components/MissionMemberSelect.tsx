@@ -35,6 +35,28 @@ function MemberAvatar({ member }: { member: WorkspaceMemberDto }) {
   );
 }
 
+function MemberOptionLabel({
+  member,
+  includeHandle = true
+}: {
+  member: WorkspaceMemberDto | null;
+  includeHandle?: boolean;
+}) {
+  if (!member) {
+    return <span>Unassigned</span>;
+  }
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      <MemberAvatar member={member} />
+      <span>{memberLabel(member)}</span>
+      {includeHandle && member.handle ? (
+        <span className="text-muted-foreground">@{member.handle}</span>
+      ) : null}
+    </span>
+  );
+}
+
 export function MissionMemberSelect({
   missionId,
   workspaceId,
@@ -59,30 +81,33 @@ export function MissionMemberSelect({
         id="mission-member-select"
         aria-label="Select assignee"
         size="sm"
-        className="h-[22px] w-auto max-w-[9rem] rounded-full border-border/50 bg-transparent px-2 text-[11px] font-normal text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
+        className="h-[22px] w-auto rounded-full border-border/50 bg-transparent px-2 text-[11px] font-normal text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground [&_[data-slot=select-value]]:line-clamp-none"
       >
-        <SelectValue placeholder="Unassigned">
-          {currentMember ? (
-            <span className="inline-flex min-w-0 items-center gap-1.5">
-              <MemberAvatar member={currentMember} />
-              <span className="truncate">{memberLabel(currentMember)}</span>
+        <span className="inline-grid [&>*]:col-start-1 [&>*]:row-start-1">
+          <span className="invisible whitespace-nowrap" aria-hidden>
+            <MemberOptionLabel member={null} />
+          </span>
+          {members.map(member => (
+            <span key={member.workspaceUserId} className="invisible whitespace-nowrap" aria-hidden>
+              <MemberOptionLabel member={member} />
             </span>
-          ) : (
-            <span className="text-muted-foreground">Unassigned</span>
-          )}
-        </SelectValue>
+          ))}
+          <SelectValue placeholder="Unassigned" className="col-start-1 row-start-1">
+            {currentMember ? (
+              <MemberOptionLabel member={currentMember} includeHandle={false} />
+            ) : (
+              <span className="text-muted-foreground">Unassigned</span>
+            )}
+          </SelectValue>
+        </span>
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={UNASSIGNED_VALUE}>Unassigned</SelectItem>
+        <SelectItem value={UNASSIGNED_VALUE}>
+          <MemberOptionLabel member={null} />
+        </SelectItem>
         {members.map(member => (
           <SelectItem key={member.workspaceUserId} value={member.workspaceUserId}>
-            <span className="inline-flex min-w-0 items-center gap-2">
-              <MemberAvatar member={member} />
-              <span className="truncate">{memberLabel(member)}</span>
-              {member.handle ? (
-                <span className="text-muted-foreground">@{member.handle}</span>
-              ) : null}
-            </span>
+            <MemberOptionLabel member={member} />
           </SelectItem>
         ))}
       </SelectContent>
