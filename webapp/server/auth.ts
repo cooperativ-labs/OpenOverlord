@@ -1,5 +1,5 @@
-import { resolveAdapter } from '@overlord/database';
 import { verifyUserToken } from '@overlord/auth';
+import { resolveAdapter } from '@overlord/database';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
 import type { NextFunction, Request, Response } from 'express';
 
@@ -11,8 +11,8 @@ import {
   newId,
   nowIso,
   recordChange,
-  resolveActorForWorkspace,
   requireDatabaseClient,
+  resolveActorForWorkspace,
   setActiveTokenAuth,
   setActiveWorkspaceUser,
   withRequestContextAsync,

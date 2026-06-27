@@ -10,6 +10,7 @@
 export { type AdapterConfig, resolveAdapter } from './adapter.js';
 export {
   createPostgresClient,
+  createPostgresSessionClient,
   createSqliteClient,
   type DatabaseClient,
   openDatabaseClient,

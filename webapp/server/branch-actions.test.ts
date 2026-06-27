@@ -49,9 +49,10 @@ describe('branch actions', () => {
     primary: string;
   }> {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-ba-db-'));
-    process.env.OVERLORD_SQLITE_PATH = path.join(dir, 'Overlord.sqlite');
     const worktreeRoot = mkdtempSync(path.join('/tmp', 'ovld-ba-wt-'));
     process.env.OVERLORD_WORKTREE_ROOT = worktreeRoot;
+    const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
+    await bootstrapIntegrationTestDb({ sqlitePath: path.join(dir, 'Overlord.sqlite') });
     const api = await import('./repository.ts');
     const runner = await import('./runner.ts');
     const primary = initPrimaryWithRemote();

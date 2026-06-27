@@ -1,4 +1,5 @@
 import type { DatabaseClient } from '@overlord/database';
+
 import type { ServiceContext } from '../../packages/core/service/context.ts';
 import {
   claimNextExecutionRequest,
@@ -113,7 +114,9 @@ export async function runnerStatus(projectId?: string | null): Promise<Record<st
   };
 }
 
-export async function claimRunnerRequest({ projectId }: { projectId?: string | null } = {}): Promise<{
+export async function claimRunnerRequest({
+  projectId
+}: { projectId?: string | null } = {}): Promise<{
   request: Record<string, unknown> | null;
 }> {
   const request = await claimNextExecutionRequest({ ctx: serviceContext(), projectId });

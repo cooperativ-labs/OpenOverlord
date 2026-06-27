@@ -34,7 +34,8 @@ describe('branch status derivation', () => {
 
   it('reports created / published / merged_unpushed / merged from real git state', async () => {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-branch-status-'));
-    process.env.OVERLORD_SQLITE_PATH = path.join(dir, 'Overlord.sqlite');
+    const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
+    await bootstrapIntegrationTestDb({ sqlitePath: path.join(dir, 'Overlord.sqlite') });
 
     const { createProject, createMission, getMissionDetail, createProjectResource } =
       await import('./repository.ts');
@@ -58,7 +59,10 @@ describe('branch status derivation', () => {
     };
 
     // 1. Freshly created branch (tip identical to main, zero unique commits) → created.
-    const createdMission = await createMission({ projectId: project.id, firstObjective: 'Fresh branch' });
+    const createdMission = await createMission({
+      projectId: project.id,
+      firstObjective: 'Fresh branch'
+    });
     const createdBranch = 'overlord/fresh-1';
     git(repo, ['branch', createdBranch, 'main']);
     await prepare(createdMission.displayId, createdBranch);
@@ -81,7 +85,10 @@ describe('branch status derivation', () => {
 
     // 3. Branch merged into LOCAL main via a (non-ff) merge, but origin/main not
     //    updated → merged_unpushed (the gap between merge Action A and push B).
-    const mergedMission = await createMission({ projectId: project.id, firstObjective: 'Merged branch' });
+    const mergedMission = await createMission({
+      projectId: project.id,
+      firstObjective: 'Merged branch'
+    });
     const mergedBranch = 'overlord/merged-1';
     git(repo, ['branch', mergedBranch, 'main']);
     git(repo, ['checkout', '-q', mergedBranch]);
@@ -102,7 +109,10 @@ describe('branch status derivation', () => {
     //    now *contains* empty-1's tip. Containment alone used to misreport this as
     //    "merged" — but the branch never landed via a merge, so its tip stays on
     //    main's first-parent trunk and it must read "created".
-    const emptyMission = await createMission({ projectId: project.id, firstObjective: 'Empty branch' });
+    const emptyMission = await createMission({
+      projectId: project.id,
+      firstObjective: 'Empty branch'
+    });
     const emptyBranch = 'overlord/empty-1';
     const rootCommit = git(repo, ['rev-list', '--max-parents=0', 'main']);
     git(repo, ['branch', emptyBranch, rootCommit]);
@@ -112,7 +122,8 @@ describe('branch status derivation', () => {
 
   it('uses the primary checkout branch as the fallback mission base/parent', async () => {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-default-branch-'));
-    process.env.OVERLORD_SQLITE_PATH = path.join(dir, 'Overlord.sqlite');
+    const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
+    await bootstrapIntegrationTestDb({ sqlitePath: path.join(dir, 'Overlord.sqlite') });
 
     const {
       createProject,
@@ -132,13 +143,19 @@ describe('branch status derivation', () => {
     // Unconfigured: falls back to the branch the user has checked out in the
     // primary worktree.
     assert.equal((await getProject(project.id)).defaultBranch, null);
-    const beforeMission = await createMission({ projectId: project.id, firstObjective: 'Before config' });
+    const beforeMission = await createMission({
+      projectId: project.id,
+      firstObjective: 'Before config'
+    });
     assert.equal((await getMissionDetail(beforeMission.id)).branch?.baseBranch, 'release/current');
 
     // Configure a project default branch; it still wins when explicitly set.
     const updated = await updateProject(project.id, { defaultBranch: 'develop' });
     assert.equal(updated.defaultBranch, 'develop');
-    const afterMission = await createMission({ projectId: project.id, firstObjective: 'After config' });
+    const afterMission = await createMission({
+      projectId: project.id,
+      firstObjective: 'After config'
+    });
     assert.equal((await getMissionDetail(afterMission.id)).branch?.baseBranch, 'develop');
 
     // Invalid branch names are rejected at the REST boundary.
@@ -146,13 +163,17 @@ describe('branch status derivation', () => {
 
     // Clearing falls back to the primary checkout again.
     assert.equal((await updateProject(project.id, { defaultBranch: null })).defaultBranch, null);
-    const clearedMission = await createMission({ projectId: project.id, firstObjective: 'Cleared' });
+    const clearedMission = await createMission({
+      projectId: project.id,
+      firstObjective: 'Cleared'
+    });
     assert.equal((await getMissionDetail(clearedMission.id)).branch?.baseBranch, 'release/current');
   });
 
   it('keeps a prepared mission tied to the base branch recorded by the runner', async () => {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-prepared-base-'));
-    process.env.OVERLORD_SQLITE_PATH = path.join(dir, 'Overlord.sqlite');
+    const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
+    await bootstrapIntegrationTestDb({ sqlitePath: path.join(dir, 'Overlord.sqlite') });
 
     const { createProject, createMission, createProjectResource, getMissionDetail } =
       await import('./repository.ts');

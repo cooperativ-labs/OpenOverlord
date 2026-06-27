@@ -14,11 +14,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { resolveAgentBinary } from './agent-binaries.js';
-import {
-  managedFileSourceExists,
-  resolveManagedFileContents
-} from './connector-core-render.js';
 import { resolveRepoPath } from './config.js';
+import { managedFileSourceExists, resolveManagedFileContents } from './connector-core-render.js';
 import { CliError } from './errors.js';
 
 /**

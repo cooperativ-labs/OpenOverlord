@@ -54,9 +54,10 @@ describe('branch selection and worktree management', () => {
     primary: string;
   }> {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-bsw-db-'));
-    process.env.OVERLORD_SQLITE_PATH = path.join(dir, 'Overlord.sqlite');
     const worktreeRoot = mkdtempSync(path.join('/tmp', 'ovld-bsw-wt-'));
     process.env.OVERLORD_WORKTREE_ROOT = worktreeRoot;
+    const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
+    await bootstrapIntegrationTestDb({ sqlitePath: path.join(dir, 'Overlord.sqlite') });
     const api = await import('./repository.ts');
     const launch = await import('./launch.ts');
     const runner = await import('./runner.ts');
@@ -153,7 +154,9 @@ describe('branch selection and worktree management', () => {
       }
     });
 
-    const objective = (await api.getMissionDetail(mission.id)).objectives.find(o => o.id === objectiveId);
+    const objective = (await api.getMissionDetail(mission.id)).objectives.find(
+      o => o.id === objectiveId
+    );
     assert.equal(objective?.branch, 'overlord/per-objective-1');
   });
 

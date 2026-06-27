@@ -35,3 +35,23 @@ export function seedAuthenticatedOperator({
 
   return workspaceUserId;
 }
+
+/** Bootstrap a fresh SQLite integration DB with migrations and an ADMIN operator. */
+export async function bootstrapIntegrationTestDb({ sqlitePath }: { sqlitePath: string }): Promise<{
+  db: Database.Database;
+  operatorWorkspaceUserId: string;
+  setActiveWorkspaceUser: (workspaceUserId: string) => void;
+  WORKSPACE: { id: string; slug: string; name: string; kind: string };
+}> {
+  process.env.OVERLORD_SQLITE_PATH = sqlitePath;
+  const dbModule = await import('./db.ts');
+  await dbModule.initDatabase();
+  const operatorWorkspaceUserId = seedAuthenticatedOperator({ db: dbModule.db });
+  dbModule.setActiveWorkspaceUser(operatorWorkspaceUserId);
+  return {
+    db: dbModule.db,
+    operatorWorkspaceUserId,
+    setActiveWorkspaceUser: dbModule.setActiveWorkspaceUser,
+    WORKSPACE: dbModule.WORKSPACE
+  };
+}

@@ -11,7 +11,8 @@ import { describe, it } from 'node:test';
 describe('per-mission worktree preference', () => {
   it('resolves willPrepareBranch / willUseWorktree from the setting and per-mission preference', async () => {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-wt-pref-'));
-    process.env.OVERLORD_SQLITE_PATH = path.join(dir, 'Overlord.sqlite');
+    const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
+    await bootstrapIntegrationTestDb({ sqlitePath: path.join(dir, 'Overlord.sqlite') });
 
     const { createProject, createMission, getMissionDetail, updateMission } =
       await import('./repository.ts');
@@ -63,7 +64,8 @@ describe('per-mission worktree preference', () => {
 
   it('rejects an invalid worktreePreference value', async () => {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-wt-pref-invalid-'));
-    process.env.OVERLORD_SQLITE_PATH = path.join(dir, 'Overlord.sqlite');
+    const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
+    await bootstrapIntegrationTestDb({ sqlitePath: path.join(dir, 'Overlord.sqlite') });
 
     const { createProject, createMission, updateMission } = await import('./repository.ts');
     const project = await createProject({ name: 'Worktree Preference Invalid' });

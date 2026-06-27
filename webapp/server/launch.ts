@@ -17,6 +17,7 @@
  *   `execution_requests.launch_flags_json` for the runner to consume verbatim.
  */
 import type { DatabaseClient } from '@overlord/database';
+
 import { resolveInstanceAgentCatalog } from '../../cli/src/agent-catalog.ts';
 import { loadConfig } from '../../cli/src/config.ts';
 import type { TerminalProfile } from '../../cli/src/terminal-profile-types.ts';
@@ -699,7 +700,10 @@ async function resolveLaunchConfig(
   agentKey: string,
   userConfigs: Record<string, AgentLaunchConfigDto>,
   client: DatabaseClient = requireDatabaseClient()
-): Promise<{ config: AgentLaunchConfigDto; source: 'objective' | 'user_target' | 'workspace' | 'none' }> {
+): Promise<{
+  config: AgentLaunchConfigDto;
+  source: 'objective' | 'user_target' | 'workspace' | 'none';
+}> {
   if (objectiveLaunchConfigJson) {
     try {
       const parsed = JSON.parse(objectiveLaunchConfigJson) as Record<

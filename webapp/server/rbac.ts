@@ -7,7 +7,12 @@ import {
   tokenScopeAllows
 } from '@overlord/auth';
 
-import { getActiveTokenScopes, getActorWorkspaceUserId, requireDatabaseClient, WORKSPACE } from './db.ts';
+import {
+  getActiveTokenScopes,
+  getActorWorkspaceUserId,
+  requireDatabaseClient,
+  WORKSPACE
+} from './db.ts';
 import { ApiError } from './errors.ts';
 
 export async function loadActorRoles({

@@ -2,12 +2,7 @@ import type { Response } from 'express';
 
 import type { EntityChangeDto } from '../shared/contract.ts';
 
-import {
-  currentMaxSeqAsync,
-  dataVersion,
-  DATABASE_DIALECT,
-  requireDatabaseClient
-} from './db.ts';
+import { currentMaxSeqAsync, DATABASE_DIALECT, dataVersion, requireDatabaseClient } from './db.ts';
 
 interface ChangeRow {
   seq: number;

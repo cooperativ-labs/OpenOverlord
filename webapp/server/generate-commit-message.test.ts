@@ -44,11 +44,12 @@ describe('generate commit message', () => {
     primary: string;
   }> {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-gcm-db-'));
-    process.env.OVERLORD_SQLITE_PATH = path.join(dir, 'Overlord.sqlite');
     const worktreeRoot = mkdtempSync(path.join('/tmp', 'ovld-gcm-wt-'));
     process.env.OVERLORD_WORKTREE_ROOT = worktreeRoot;
     // Ensure the summarizer reads as unconfigured for the failure-path test.
     delete process.env.GEMINI_API_KEY;
+    const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
+    await bootstrapIntegrationTestDb({ sqlitePath: path.join(dir, 'Overlord.sqlite') });
     const api = await import('./repository.ts');
     const runner = await import('./runner.ts');
     return { worktreeRoot, api, runner, primary: initPrimary() };

@@ -1,15 +1,15 @@
+import type { AuthDomainDatabase, PostgresQueryExecutor } from '@overlord/auth';
 import {
   createSqliteClient,
+  type DatabaseClient,
   fixupLocalStoragePaths,
   migrateDatabase,
   migratePostgres,
   openDatabaseClient,
   resolveAdapter,
-  toPostgresPlaceholders,
-  type DatabaseClient,
-  type SqlDialect
+  type SqlDialect,
+  toPostgresPlaceholders
 } from '@overlord/database';
-import type { AuthDomainDatabase, PostgresQueryExecutor } from '@overlord/auth';
 import Database from 'better-sqlite3';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
@@ -171,7 +171,9 @@ function loadWorkspaceRowFromClient(
   );
 }
 
-async function oldestWorkspaceRowFromClient(client: DatabaseClient): Promise<WorkspaceRow | undefined> {
+async function oldestWorkspaceRowFromClient(
+  client: DatabaseClient
+): Promise<WorkspaceRow | undefined> {
   return client.get<WorkspaceRow>(
     `SELECT id, slug, name, kind, created_at FROM workspaces
        WHERE deleted_at IS NULL ORDER BY created_at ASC LIMIT 1`
@@ -348,7 +350,9 @@ export async function reloadActiveWorkspace(): Promise<void> {
 
 export function requireDatabaseClient(): DatabaseClient {
   if (!databaseClient) {
-    throw new Error('Database has not been initialized. Call initDatabase() during server startup.');
+    throw new Error(
+      'Database has not been initialized. Call initDatabase() during server startup.'
+    );
   }
   return databaseClient;
 }
@@ -429,19 +433,27 @@ export async function recordChangeAsync(
       input.operation,
       input.entityRevision ?? null,
       JSON.stringify(input.changedFields ?? []),
-      input.actorWorkspaceUserId !== undefined ? input.actorWorkspaceUserId : getActorWorkspaceUserId(),
+      input.actorWorkspaceUserId !== undefined
+        ? input.actorWorkspaceUserId
+        : getActorWorkspaceUserId(),
       getActiveTokenId(),
       nowIso()
     ]
   );
 }
 
-export async function currentMaxSeq(client: DatabaseClient = requireDatabaseClient()): Promise<number> {
-  const row = await client.get<{ seq: number | null }>(`SELECT MAX(seq) AS seq FROM entity_changes`);
+export async function currentMaxSeq(
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<number> {
+  const row = await client.get<{ seq: number | null }>(
+    `SELECT MAX(seq) AS seq FROM entity_changes`
+  );
   return row?.seq ?? 0;
 }
 
-export async function currentMaxSeqAsync(client: DatabaseClient = requireDatabaseClient()): Promise<number> {
+export async function currentMaxSeqAsync(
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<number> {
   return currentMaxSeq(client);
 }
 

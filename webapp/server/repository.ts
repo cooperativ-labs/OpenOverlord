@@ -1,4 +1,5 @@
 import { scopeGrantsForPreset } from '@overlord/auth';
+import type { DatabaseClient } from '@overlord/database';
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, readdirSync, statSync } from 'node:fs';
@@ -67,11 +68,10 @@ import {
   nowIso,
   recordChange,
   recordChangeAsync,
+  type RecordChangeInput,
   requireDatabaseClient,
-  WORKSPACE,
-  type RecordChangeInput
+  WORKSPACE
 } from './db.ts';
-import type { DatabaseClient } from '@overlord/database';
 import { ApiError } from './errors.ts';
 import {
   dequeueObjective,
@@ -225,10 +225,7 @@ function isTerminalStatusType(type: StatusType): boolean {
   return type === 'complete' || type === 'cancelled';
 }
 
-async function uniqueStatusKey(
-  db: DatabaseClient,
-  { name }: { name: string }
-): Promise<string> {
+async function uniqueStatusKey(db: DatabaseClient, { name }: { name: string }): Promise<string> {
   const base = slugify(name).replace(/-/g, '_');
   let key = base;
   let suffix = 2;
@@ -749,10 +746,7 @@ async function resolveProjectBaseBranch(projectId: string): Promise<string> {
   );
 }
 
-async function preparedBaseBranch(
-  missionId: string,
-  branchName: string
-): Promise<string | null> {
+async function preparedBaseBranch(missionId: string, branchName: string): Promise<string | null> {
   const rows = (await requireDatabaseClient().all(
     `SELECT payload_json FROM mission_events
         WHERE workspace_id = ? AND mission_id = ?
@@ -787,8 +781,7 @@ async function resolveMissionBaseBranch(
   branchName: string
 ): Promise<string> {
   return (
-    (await preparedBaseBranch(missionId, branchName)) ||
-    (await resolveProjectBaseBranch(projectId))
+    (await preparedBaseBranch(missionId, branchName)) || (await resolveProjectBaseBranch(projectId))
   );
 }
 
@@ -1393,9 +1386,7 @@ function normalizeBranchRef(ref: string): string {
 // Returns the de-duplicated, sorted set of local + remote branch names in the
 // mission project's primary repository, plus the branch the mission is (or will
 // be) operating on. Returns an empty list when no inspectable checkout exists.
-export async function listMissionBranches(
-  missionRef: string
-): Promise<MissionBranchListDto> {
+export async function listMissionBranches(missionRef: string): Promise<MissionBranchListDto> {
   const row = await getMissionRow(missionRef);
   const current = row.active_branch?.trim() || row.branch_override?.trim() || null;
   const repoPath = await primaryResourcePath(row.project_id);
@@ -1573,9 +1564,7 @@ export async function listWorktrees(): Promise<WorktreeDto[]> {
 
 // Removes a single worktree by path. Refuses a dirty worktree unless `force`,
 // returning a typed error so the UI can warn before destroying uncommitted work.
-export async function removeWorktree(
-  body: RemoveWorktreeBody
-): Promise<PurgeWorktreesResultDto> {
+export async function removeWorktree(body: RemoveWorktreeBody): Promise<PurgeWorktreesResultDto> {
   const target = typeof body.path === 'string' ? path.resolve(body.path.trim()) : '';
   if (!target) throw new ApiError(400, 'A worktree path is required.');
   const entry = (await collectWorktreeEntries()).find(e => e.path === target);
@@ -1664,9 +1653,7 @@ async function getMissionTags(missionId: string): Promise<ProjectTagDto[]> {
  * Batch-resolve tags for many missions in one query, returning a map keyed by
  * mission id so board/list reads avoid an N+1 of per-mission tag lookups.
  */
-async function getTagsByMission(
-  missionIds: string[]
-): Promise<Map<string, ProjectTagDto[]>> {
+async function getTagsByMission(missionIds: string[]): Promise<Map<string, ProjectTagDto[]>> {
   const byMission = new Map<string, ProjectTagDto[]>();
   if (missionIds.length === 0) return byMission;
   const placeholders = missionIds.map(() => '?').join(', ');
@@ -2259,10 +2246,7 @@ export async function updateProjectResource(
   });
 }
 
-export async function deleteProjectResource(
-  projectId: string,
-  resourceId: string
-): Promise<void> {
+export async function deleteProjectResource(projectId: string, resourceId: string): Promise<void> {
   await requireDatabaseClient().transaction(async tx => {
     const existing = await getProjectResourceRow(tx, projectId, resourceId);
     const now = nowIso();
@@ -2848,10 +2832,9 @@ async function getMissionRow(
   missionRef: string,
   db: DatabaseClient = requireDatabaseClient()
 ): Promise<MissionRow> {
-  const byId = (await db.get(`${selectMissionsSql} AND t.id = ?`, [
-    WORKSPACE.id,
-    missionRef
-  ])) as MissionRow | undefined;
+  const byId = (await db.get(`${selectMissionsSql} AND t.id = ?`, [WORKSPACE.id, missionRef])) as
+    | MissionRow
+    | undefined;
   if (byId) return byId;
 
   const byDisplayId = (await db.get(`${selectMissionsSql} AND t.display_id = ?`, [
@@ -3018,10 +3001,7 @@ interface ArtifactRow {
   updated_at: string;
 }
 
-export async function listArtifacts(
-  missionRef: string,
-  limit = 200
-): Promise<ArtifactDto[]> {
+export async function listArtifacts(missionRef: string, limit = 200): Promise<ArtifactDto[]> {
   const mission = await getMissionRow(missionRef);
   const rows = (await requireDatabaseClient().all(
     `SELECT id, workspace_id, project_id, mission_id, objective_id, session_id, delivery_id,
@@ -3423,12 +3403,7 @@ async function moveMissionProjectTx({
       await tx.exec('SET CONSTRAINTS ALL DEFERRED');
     }
 
-    const fields = [
-      'project_id = ?',
-      'status_id = ?',
-      'status_type = ?',
-      'board_position = ?'
-    ];
+    const fields = ['project_id = ?', 'status_id = ?', 'status_type = ?', 'board_position = ?'];
     const setParams: unknown[] = [
       targetProjectId,
       statusRow.id,
@@ -4483,9 +4458,7 @@ interface UserRow {
  * workspace's actor; falls back to the oldest active human user so a freshly
  * switched workspace without a recorded actor still resolves an identity.
  */
-async function loadOperatorUserRow(
-  db: DatabaseClient = requireDatabaseClient()
-): Promise<UserRow> {
+async function loadOperatorUserRow(db: DatabaseClient = requireDatabaseClient()): Promise<UserRow> {
   const actor = getActorWorkspaceUserId();
   if (actor) {
     const row = (await db.get(
@@ -4823,9 +4796,7 @@ export async function createUserToken(
     // forgotten leaked token stops working on its own (security audit 2026-06-18).
     let expiresAt: string | null = null;
     if (body.expiresAt === undefined) {
-      expiresAt = new Date(
-        Date.now() + DEFAULT_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000
-      ).toISOString();
+      expiresAt = new Date(Date.now() + DEFAULT_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
     } else if (body.expiresAt !== null && String(body.expiresAt).trim()) {
       const parsed = new Date(body.expiresAt);
       if (Number.isNaN(parsed.getTime())) throw new ApiError(400, 'Expiry must be a valid date');
@@ -4902,7 +4873,10 @@ export async function createUserToken(
       tx
     );
 
-    return { token: await toUserTokenDto(tx, await reloadUserToken(tx, id)), secret: generated.secret };
+    return {
+      token: await toUserTokenDto(tx, await reloadUserToken(tx, id)),
+      secret: generated.secret
+    };
   });
 }
 

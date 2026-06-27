@@ -1,4 +1,4 @@
-import { DEFAULT_STATUSES, type DatabaseClient } from '@overlord/database';
+import { type DatabaseClient, DEFAULT_STATUSES } from '@overlord/database';
 
 import type {
   CompleteInitialSetupBody,
@@ -481,7 +481,11 @@ export async function completeInitialSetup(body: CompleteInitialSetupBody): Prom
     // Default the slug to the first three letters of the name, mirroring the
     // suggestion the setup UI shows.
     const desiredSlug = body.slug?.trim() ? slugify(body.slug) : suggestSlugFromName(name);
-    const slug = await uniqueWorkspaceSlug({ desired: desiredSlug, excludeWorkspaceId: existing.id, client: tx });
+    const slug = await uniqueWorkspaceSlug({
+      desired: desiredSlug,
+      excludeWorkspaceId: existing.id,
+      client: tx
+    });
 
     const settings = parseSettings(existing.settings_json);
     settings[SETUP_COMPLETED_KEY] = nowIso();
@@ -498,15 +502,7 @@ export async function completeInitialSetup(body: CompleteInitialSetupBody): Prom
           SET id = ?, name = ?, slug = ?, settings_json = ?,
               updated_at = ?, revision = ?
         WHERE id = ?`,
-      [
-        nextWorkspaceId,
-        name,
-        slug,
-        JSON.stringify(settings),
-        nowIso(),
-        revision,
-        existing.id
-      ]
+      [nextWorkspaceId, name, slug, JSON.stringify(settings), nowIso(), revision, existing.id]
     );
 
     await recordChange(
@@ -541,7 +537,10 @@ interface WorkspaceRevisionRow {
 }
 
 /** Update a workspace (rename) and return its refreshed DTO. */
-export async function updateWorkspace(id: string, body: UpdateWorkspaceBody): Promise<WorkspaceDto> {
+export async function updateWorkspace(
+  id: string,
+  body: UpdateWorkspaceBody
+): Promise<WorkspaceDto> {
   await requireDatabaseClient().transaction(async tx => {
     const existing = await tx.get<WorkspaceRevisionRow>(
       `SELECT id, name, revision FROM workspaces WHERE id = ? AND deleted_at IS NULL`,

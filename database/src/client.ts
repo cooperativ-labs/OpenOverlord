@@ -222,6 +222,13 @@ interface PgPoolClient extends PgQueryable {
 }
 
 let pgTypeParsersConfigured = false;
+let pgTypeParsersReady: Promise<void> | null = null;
+
+function ensurePgTypeParsers(): Promise<void> {
+  if (pgTypeParsersConfigured) return Promise.resolve();
+  pgTypeParsersReady ??= configurePgTypeParsers();
+  return pgTypeParsersReady;
+}
 
 /**
  * Make `pg` return values shaped like `better-sqlite3` so the shared SQL and the
@@ -253,17 +260,22 @@ class PostgresClient implements DatabaseClient {
   readonly #pool: PgPool | null;
   readonly #conn: PgQueryable;
   readonly #ownsPool: boolean;
+  readonly #inTransaction: boolean;
   #savepointDepth = 0;
 
-  constructor(options: { pool: PgPool; ownsPool?: boolean } | { client: PgQueryable }) {
+  constructor(
+    options: { pool: PgPool; ownsPool?: boolean } | { client: PgQueryable; inTransaction?: boolean }
+  ) {
     if ('pool' in options) {
       this.#pool = options.pool;
       this.#conn = options.pool;
       this.#ownsPool = options.ownsPool ?? true;
+      this.#inTransaction = false;
     } else {
       this.#pool = null;
       this.#conn = options.client;
       this.#ownsPool = false;
+      this.#inTransaction = options.inTransaction ?? false;
     }
   }
 
@@ -271,6 +283,7 @@ class PostgresClient implements DatabaseClient {
     sql: string,
     params: ReadonlyArray<unknown> = []
   ): Promise<T | undefined> {
+    await ensurePgTypeParsers();
     const result = await this.#conn.query(toPostgresPlaceholders(sql), params as unknown[]);
     return result.rows[0] as T | undefined;
   }
@@ -279,26 +292,40 @@ class PostgresClient implements DatabaseClient {
     sql: string,
     params: ReadonlyArray<unknown> = []
   ): Promise<T[]> {
+    await ensurePgTypeParsers();
     const result = await this.#conn.query(toPostgresPlaceholders(sql), params as unknown[]);
     return result.rows as T[];
   }
 
   async run(sql: string, params: ReadonlyArray<unknown> = []): Promise<RunResult> {
+    await ensurePgTypeParsers();
     const result = await this.#conn.query(toPostgresPlaceholders(sql), params as unknown[]);
     return { changes: result.rowCount ?? 0 };
   }
 
   async exec(sql: string): Promise<void> {
+    await ensurePgTypeParsers();
     await this.#conn.query(sql);
   }
 
   async transaction<T>(fn: (tx: DatabaseClient) => Promise<T>): Promise<T> {
-    // Already on a dedicated connection → nest with a SAVEPOINT.
     if (!this.#pool) {
+      if (!this.#inTransaction) {
+        await this.#conn.query('BEGIN');
+        try {
+          const out = await fn(new PostgresClient({ client: this.#conn, inTransaction: true }));
+          await this.#conn.query('COMMIT');
+          return out;
+        } catch (error) {
+          await this.#conn.query('ROLLBACK');
+          throw error;
+        }
+      }
+
       const name = `ovld_sp_${this.#savepointDepth++}`;
       await this.#conn.query(`SAVEPOINT ${name}`);
       try {
-        const out = await fn(this);
+        const out = await fn(new PostgresClient({ client: this.#conn, inTransaction: true }));
         await this.#conn.query(`RELEASE SAVEPOINT ${name}`);
         return out;
       } catch (error) {
@@ -312,7 +339,7 @@ class PostgresClient implements DatabaseClient {
     const client = await this.#pool.connect();
     try {
       await client.query('BEGIN');
-      const out = await fn(new PostgresClient({ client }));
+      const out = await fn(new PostgresClient({ client, inTransaction: true }));
       await client.query('COMMIT');
       return out;
     } catch (error) {
@@ -334,6 +361,11 @@ export function createPostgresClient(
   options: { ownsPool?: boolean } = {}
 ): DatabaseClient {
   return new PostgresClient({ pool, ownsPool: options.ownsPool ?? false });
+}
+
+/** Wrap one checked-out `pg` connection so every query shares the same session state. */
+export function createPostgresSessionClient(client: PgQueryable): DatabaseClient {
+  return new PostgresClient({ client });
 }
 
 // ---- Adapter-driven factory ---------------------------------------------

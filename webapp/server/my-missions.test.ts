@@ -5,7 +5,8 @@ import path from 'node:path';
 import test from 'node:test';
 
 const tempDir = mkdtempSync(path.join(tmpdir(), 'overlord-webapp-my-missions-'));
-process.env.OVERLORD_SQLITE_PATH = path.join(tempDir, 'webapp.sqlite');
+const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
+await bootstrapIntegrationTestDb({ sqlitePath: path.join(tempDir, 'webapp.sqlite') });
 
 const { db, WORKSPACE, setActiveWorkspaceUser, nowIso, newId } = await import('./db.ts');
 const {
@@ -20,22 +21,8 @@ const {
 } = await import('./repository.ts');
 const { ApiError } = await import('./errors.ts');
 
-// A fresh local DB no longer seeds a persistent operator (contract 0.21), so
-// create one and make it the active actor that assigned-mission queries scope to.
-const operatorId = newId(); // workspace_users.id — the active actor
-{
-  const userId = newId(); // Better Auth user id; the trigger creates profiles.id = userId
-  const now = nowIso();
-  db.prepare(
-    `INSERT INTO "user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt")
-       VALUES (?, 'Test Operator', 'test-op@overlord.local', 0, ?, ?)`
-  ).run(userId, now, now);
-  db.prepare(
-    `INSERT INTO workspace_users (id, workspace_id, profile_id, member_key, status, metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, 'test:op', 'active', '{}', ?, ?, 1)`
-  ).run(operatorId, WORKSPACE.id, userId, now, now);
-  setActiveWorkspaceUser(operatorId);
-}
+// Operator is seeded by bootstrapIntegrationTestDb.
+const operatorId = 'operator-workspace-user';
 
 const statuses = await listWorkspaceStatuses();
 const backlog = statuses.find(s => s.key === 'backlog')!;
@@ -90,7 +77,10 @@ test('within-column reorder writes personal position and leaves board_position u
 test('cross-column drag changes the mission status, type, and board_position', async () => {
   const project = await createProject({ name: 'MT CrossCol' });
   const mission = await createMission({ projectId: project.id, firstObjective: 'x' });
-  assert.equal((await listMissions(project.id)).find(t => t.id === mission.id)!.statusId, backlog.id);
+  assert.equal(
+    (await listMissions(project.id)).find(t => t.id === mission.id)!.statusId,
+    backlog.id
+  );
 
   await reorderWorkspaceMyMissions({ statusId: inProgress.id, orderedMissionIds: [mission.id] });
 

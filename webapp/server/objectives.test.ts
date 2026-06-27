@@ -5,7 +5,8 @@ import path from 'node:path';
 import test from 'node:test';
 
 const tempDir = mkdtempSync(path.join(tmpdir(), 'overlord-webapp-objectives-'));
-process.env.OVERLORD_SQLITE_PATH = path.join(tempDir, 'webapp.sqlite');
+const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
+await bootstrapIntegrationTestDb({ sqlitePath: path.join(tempDir, 'webapp.sqlite') });
 
 const { db, WORKSPACE, setActiveWorkspaceUser, nowIso, newId } = await import('./db.ts');
 const { createMission, createProject, createObjective, reorderFutureObjectives, updateObjective } =
@@ -13,22 +14,7 @@ const { createMission, createProject, createObjective, reorderFutureObjectives, 
 const { updateLaunchPreference } = await import('./launch.ts');
 const { ApiError } = await import('./errors.ts');
 
-// A fresh local DB no longer seeds a persistent operator (contract 0.21), so the
-// launch-preference owner must be created and made the active actor.
-{
-  const userId = newId();
-  const operatorId = newId();
-  const now = nowIso();
-  db.prepare(
-    `INSERT INTO "user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt")
-       VALUES (?, 'Test Operator', 'objectives-op@overlord.local', 0, ?, ?)`
-  ).run(userId, now, now);
-  db.prepare(
-    `INSERT INTO workspace_users (id, workspace_id, profile_id, member_key, status, metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, 'test:op', 'active', '{}', ?, ?, 1)`
-  ).run(operatorId, WORKSPACE.id, userId, now, now);
-  setActiveWorkspaceUser(operatorId);
-}
+// Operator is seeded by bootstrapIntegrationTestDb.
 
 test('clearing a draft objective instruction to empty leaves it blank instead of erroring', async () => {
   const project = await createProject({ name: 'Clear Instruction Test' });

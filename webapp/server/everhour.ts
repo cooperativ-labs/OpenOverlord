@@ -372,7 +372,11 @@ async function getProjectEverhour(projectId: string): Promise<{
   };
 }
 
-async function writeMissionTaskId(missionId: string, taskId: string, revision: number): Promise<void> {
+async function writeMissionTaskId(
+  missionId: string,
+  taskId: string,
+  revision: number
+): Promise<void> {
   const next = revision + 1;
   await requireDatabaseClient().run(
     `UPDATE missions SET everhour_task_id = ?, updated_at = ?, revision = ?

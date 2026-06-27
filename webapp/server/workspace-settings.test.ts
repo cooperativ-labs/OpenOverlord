@@ -17,7 +17,10 @@ test('loadActorRoles returns ADMIN for the authenticated workspace operator', as
   });
   assert.deepEqual(roles, ['ADMIN']);
   assert.equal(
-    await actorIsAdmin({ workspaceId: 'local-workspace', workspaceUserId: operatorWorkspaceUserId }),
+    await actorIsAdmin({
+      workspaceId: 'local-workspace',
+      workspaceUserId: operatorWorkspaceUserId
+    }),
     true
   );
 });

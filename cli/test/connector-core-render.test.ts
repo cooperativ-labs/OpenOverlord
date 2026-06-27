@@ -11,7 +11,7 @@ import {
   renderConnectorSkill,
   resolveManagedFileContents
 } from '../dist/connector-core-render.js';
-import { setupConnector, readConnectorManifest } from '../dist/connectors.js';
+import { readConnectorManifest, setupConnector } from '../dist/connectors.js';
 
 const repoRoot = path.resolve(import.meta.dirname, '..', '..');
 
@@ -42,10 +42,7 @@ test('resolveManagedFileContents reads core reference files from connector core'
     relativePath: 'skills/overlord-mission/reference/cli.md'
   }).toString('utf8');
 
-  const coreReference = readFileSync(
-    path.join(connectorCoreRoot(), 'reference', 'cli.md'),
-    'utf8'
-  );
+  const coreReference = readFileSync(path.join(connectorCoreRoot(), 'reference', 'cli.md'), 'utf8');
   assert.equal(contents, coreReference);
 });
 

@@ -1,5 +1,5 @@
 import {
-  createPostgresClient,
+  createPostgresSessionClient,
   createSqliteClient,
   type DatabaseClient,
   migratePostgres,
@@ -59,19 +59,21 @@ function postgresFactory(connectionString: string): AdapterFactory {
       const admin = new Pool({ connectionString });
       await admin.query(`CREATE SCHEMA ${schema}`);
 
-      // Every pooled connection starts with the test schema first on its
-      // search_path, so the unqualified DDL/DML lands there.
-      const scoped = new Pool({
-        connectionString,
-        options: `-c search_path=${schema},public`
-      });
-      const client = createPostgresClient(scoped as never, { ownsPool: true });
+      // A single checked-out connection keeps search_path pinned for migrations
+      // and DML. Pool round-robin ignores per-connection SET on Neon poolers.
+      const scoped = new Pool({ connectionString });
+      const session = await scoped.connect();
+      // Isolate fully from the shared public schema — including to_regclass()
+      // lookups inside migratePostgres.
+      await session.query(`SET search_path TO ${schema}`);
+      const client = createPostgresSessionClient(session);
       await migratePostgres(client);
 
       return {
         client,
         teardown: async () => {
-          await client.close();
+          session.release();
+          await scoped.end();
           await admin.query(`DROP SCHEMA ${schema} CASCADE`);
           await admin.end();
         }
@@ -105,6 +107,12 @@ async function seedGraph(client: DatabaseClient): Promise<{
   const objectiveId = `obj_${randomUUID()}`;
   const deviceId = `dev_${randomUUID()}`;
   const executionTargetId = `tgt_${randomUUID()}`;
+  const sequenceRow = await client.get<{ next_value: number }>(
+    `SELECT next_value FROM mission_sequences
+       WHERE workspace_id = ? AND counter_name = 'mission'`,
+    [WORKSPACE_ID]
+  );
+  const sequenceNumber = sequenceRow?.next_value ?? 1;
 
   await client.run(
     `INSERT INTO projects (id, workspace_id, slug, name, status, created_at, updated_at)
@@ -121,7 +129,7 @@ async function seedGraph(client: DatabaseClient): Promise<{
       WORKSPACE_ID,
       projectId,
       `coo:test-${missionId.slice(-6)}`,
-      1,
+      sequenceNumber,
       'Conformance Mission',
       now,
       now

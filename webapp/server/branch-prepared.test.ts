@@ -10,7 +10,8 @@ import { describe, it } from 'node:test';
 describe('branch preparation recording', () => {
   it('persists the active branch and surfaces it on the mission detail DTO', async () => {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-branch-prepared-'));
-    process.env.OVERLORD_SQLITE_PATH = path.join(dir, 'Overlord.sqlite');
+    const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
+    await bootstrapIntegrationTestDb({ sqlitePath: path.join(dir, 'Overlord.sqlite') });
 
     const { createProject, createMission, getMissionDetail, listMissionEvents } =
       await import('./repository.ts');
