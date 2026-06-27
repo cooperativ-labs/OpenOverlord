@@ -202,6 +202,8 @@ These are structured protocol payloads that Overlord stores as first-class rows 
 
 **Required fields per entry:** `file_path`, `label`, `summary`, `why`, `impact` (all strings). `filePath` (camelCase) is accepted as an alias for `file_path` and normalized to the canonical form, so matching the changed-files casing no longer fails validation. Do not wrap the entry under a `rationale` key — that is a different internal shape and will fail CLI validation.
 
+**Never revert, restore, or delete file changes from other agents or missions** to make delivery succeed. Leave unrelated dirty files intact and use `ovld protocol ask` when attribution blocks delivery.
+
 ```bash
 ovld protocol record-change-rationales --session-key <sessionKey> --mission-id $MISSION_ID \
   --summary "Recorded rationale details for the latest code changes." --phase execute \
