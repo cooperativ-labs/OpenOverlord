@@ -1,4 +1,4 @@
-import { OBJECTIVE_STATES } from '@overlord/database';
+import { bindBool, OBJECTIVE_STATES } from '@overlord/database';
 
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
@@ -88,8 +88,8 @@ async function getDefaultStatusId(ctx: ServiceContext): Promise<{
 }> {
   const row = (await ctx.db.get(
     `SELECT id, type FROM workspace_statuses
-       WHERE workspace_id = ? AND is_default = 1 AND deleted_at IS NULL LIMIT 1`,
-    [ctx.workspace.id]
+       WHERE workspace_id = ? AND is_default = ? AND deleted_at IS NULL LIMIT 1`,
+    [ctx.workspace.id, bindBool(ctx.db.dialect, true)]
   )) as { id: string; type: string } | undefined;
 
   if (!row) {
@@ -306,7 +306,7 @@ export async function insertObjective({
       resolvedAssignedAgent,
       resolvedModel,
       resolvedReasoningEffort,
-      autoAdvance ? 1 : 0,
+      bindBool(ctx.db.dialect, autoAdvance),
       ctx.actorWorkspaceUserId,
       now,
       now

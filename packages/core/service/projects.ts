@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { bindBool } from '@overlord/database';
 import path from 'node:path';
 
 import { recordChange } from './change-feed.js';
@@ -193,9 +193,9 @@ export async function addProjectResource({
 
   if (isPrimary) {
     await ctx.db.run(
-      `UPDATE project_resources SET is_primary = 0, updated_at = ?, revision = revision + 1
-         WHERE project_id = ? AND deleted_at IS NULL AND is_primary = 1 AND execution_target_id = ?`,
-      [now, resolvedProjectId, executionTargetId]
+      `UPDATE project_resources SET is_primary = ?, updated_at = ?, revision = revision + 1
+         WHERE project_id = ? AND deleted_at IS NULL AND is_primary = ? AND execution_target_id = ?`,
+      [bindBool(ctx.db.dialect, false), now, resolvedProjectId, bindBool(ctx.db.dialect, true), executionTargetId]
     );
   }
 
@@ -211,7 +211,7 @@ export async function addProjectResource({
       executionTargetId,
       label?.trim() || path.basename(resolvedPath),
       resolvedPath,
-      isPrimary ? 1 : 0,
+      bindBool(ctx.db.dialect, isPrimary),
       now,
       now
     ]
@@ -301,13 +301,19 @@ export async function findPrimaryProjectResource({
        FROM project_resources
        WHERE project_id = @project_id
          AND deleted_at IS NULL
-         AND is_primary = 1
+         AND is_primary = @is_primary
          ${targetPredicate}
        ORDER BY
          CASE WHEN execution_target_id = @execution_target_id THEN 0 ELSE 1 END,
          created_at ASC
        LIMIT 1`,
-    [{ project_id: resolvedProjectId, execution_target_id: executionTargetId }]
+    [
+      {
+        project_id: resolvedProjectId,
+        execution_target_id: executionTargetId,
+        is_primary: bindBool(ctx.db.dialect, true)
+      }
+    ]
   )) as
     | {
         id: string;

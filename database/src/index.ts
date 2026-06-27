@@ -9,6 +9,7 @@
  */
 export { type AdapterConfig, resolveAdapter } from './adapter.js';
 export {
+  bindBool,
   createPostgresClient,
   createPostgresSessionClient,
   createSqliteClient,
@@ -16,6 +17,7 @@ export {
   openDatabaseClient,
   type RunResult,
   type SqlDialect,
+  sqlBoolLiteral,
   toPostgresPlaceholders
 } from './client.js';
 export {

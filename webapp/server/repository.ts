@@ -1,5 +1,5 @@
 import { scopeGrantsForPreset } from '@overlord/auth';
-import type { DatabaseClient } from '@overlord/database';
+import { bindBool, type DatabaseClient } from '@overlord/database';
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, readdirSync, statSync } from 'node:fs';
@@ -64,6 +64,7 @@ import { missionWorktreePath, previewMissionBranch } from './branch-planning.ts'
 import { generateCommitMessageFromDiff } from './commit-message-automation.ts';
 import {
   getActorWorkspaceUserId,
+  DATABASE_DIALECT,
   newId,
   nowIso,
   recordChange,
@@ -300,9 +301,9 @@ async function clearWorkspaceDefaultStatuses(
 ): Promise<void> {
   await db.run(
     `UPDATE workspace_statuses
-        SET is_default = 0, updated_at = ?, revision = revision + 1
-      WHERE workspace_id = ? AND is_default = 1 AND deleted_at IS NULL`,
-    [now, WORKSPACE.id]
+        SET is_default = ?, updated_at = ?, revision = revision + 1
+      WHERE workspace_id = ? AND is_default = ? AND deleted_at IS NULL`,
+    [bindBool(DATABASE_DIALECT, false), now, WORKSPACE.id, bindBool(DATABASE_DIALECT, true)]
   );
 }
 
@@ -369,6 +370,10 @@ interface ObjectiveRow {
 }
 
 // ---- serializers ---------------------------------------------------------
+
+function orderByLabelAsc(column: string): string {
+  return DATABASE_DIALECT === 'sqlite' ? `${column} COLLATE NOCASE ASC` : `LOWER(${column}) ASC`;
+}
 
 function toProjectDto(r: ProjectRow): ProjectDto {
   return {
@@ -495,22 +500,22 @@ async function clearPrimaryResourcesForTarget(
   if (executionTargetId === null) {
     await db.run(
       `UPDATE project_resources
-        SET is_primary = 0, updated_at = ?, revision = revision + 1
+        SET is_primary = ?, updated_at = ?, revision = revision + 1
       WHERE project_id = ?
         AND deleted_at IS NULL
-        AND is_primary = 1
+        AND is_primary = ?
         AND execution_target_id IS NULL`,
-      [now, projectId]
+      [bindBool(DATABASE_DIALECT, false), now, projectId, bindBool(DATABASE_DIALECT, true)]
     );
   } else {
     await db.run(
       `UPDATE project_resources
-        SET is_primary = 0, updated_at = ?, revision = revision + 1
+        SET is_primary = ?, updated_at = ?, revision = revision + 1
       WHERE project_id = ?
         AND deleted_at IS NULL
-        AND is_primary = 1
+        AND is_primary = ?
         AND execution_target_id = ?`,
-      [now, projectId, executionTargetId]
+      [bindBool(DATABASE_DIALECT, false), now, projectId, bindBool(DATABASE_DIALECT, true), executionTargetId]
     );
   }
 }
@@ -532,19 +537,19 @@ async function promoteFallbackPrimary(
         `SELECT id FROM project_resources
         WHERE project_id = ?
           AND deleted_at IS NULL
-          AND is_primary = 1
+          AND is_primary = ?
           AND execution_target_id IS NULL
         LIMIT 1`,
-        [projectId]
+        [projectId, bindBool(DATABASE_DIALECT, true)]
       )
     : db.get(
         `SELECT id FROM project_resources
         WHERE project_id = ?
           AND deleted_at IS NULL
-          AND is_primary = 1
+          AND is_primary = ?
           AND execution_target_id = ?
         LIMIT 1`,
-        [projectId, executionTargetId]
+        [projectId, bindBool(DATABASE_DIALECT, true), executionTargetId]
       ))) as { id: string } | undefined;
   if (primary) return;
 
@@ -571,9 +576,9 @@ async function promoteFallbackPrimary(
 
   await db.run(
     `UPDATE project_resources
-        SET is_primary = 1, updated_at = ?, revision = revision + 1
+        SET is_primary = ?, updated_at = ?, revision = revision + 1
       WHERE id = ?`,
-    [now, fallback.id]
+    [bindBool(DATABASE_DIALECT, true), now, fallback.id]
   );
 }
 
@@ -695,11 +700,11 @@ async function deriveBranchStatus({
 }): Promise<'created' | 'published' | 'merged_unpushed' | 'merged'> {
   const resource = (await requireDatabaseClient().get(
     `SELECT path FROM project_resources
-        WHERE project_id = ? AND workspace_id = ? AND is_primary = 1
+        WHERE project_id = ? AND workspace_id = ? AND is_primary = ?
           AND status = 'active' AND deleted_at IS NULL
         ORDER BY created_at ASC
         LIMIT 1`,
-    [projectId, WORKSPACE.id]
+    [projectId, WORKSPACE.id, bindBool(DATABASE_DIALECT, true)]
   )) as { path: string } | undefined;
   // Without an inspectable checkout we can only trust that the branch was created.
   if (!resource || !existsSync(resource.path)) return 'created';
@@ -955,11 +960,11 @@ interface BranchActionContext {
 async function primaryResourcePath(projectId: string): Promise<string | null> {
   const resource = (await requireDatabaseClient().get(
     `SELECT path FROM project_resources
-        WHERE project_id = ? AND workspace_id = ? AND is_primary = 1
+        WHERE project_id = ? AND workspace_id = ? AND is_primary = ?
           AND status = 'active' AND deleted_at IS NULL
         ORDER BY created_at ASC
         LIMIT 1`,
-    [projectId, WORKSPACE.id]
+    [projectId, WORKSPACE.id, bindBool(DATABASE_DIALECT, true)]
   )) as { path: string } | undefined;
   return resource?.path ?? null;
 }
@@ -1668,7 +1673,7 @@ async function getMissionTags(missionId: string): Promise<ProjectTagDto[]> {
          FROM mission_tags tt
          JOIN project_tags pt ON pt.id = tt.tag_id AND pt.deleted_at IS NULL
         WHERE tt.mission_id = ?
-        ORDER BY pt.label COLLATE NOCASE ASC`,
+        ORDER BY ${orderByLabelAsc('pt.label')}`,
     [missionId]
   )) as ProjectTagRow[];
   return rows.map(toProjectTagDto);
@@ -1687,7 +1692,7 @@ async function getTagsByMission(missionIds: string[]): Promise<Map<string, Proje
          FROM mission_tags tt
          JOIN project_tags pt ON pt.id = tt.tag_id AND pt.deleted_at IS NULL
         WHERE tt.mission_id IN (${placeholders})
-        ORDER BY pt.label COLLATE NOCASE ASC`,
+        ORDER BY ${orderByLabelAsc('pt.label')}`,
     missionIds
   )) as Array<ProjectTagRow & { mission_id: string }>;
   for (const row of rows) {
@@ -1818,8 +1823,8 @@ export async function createWorkspaceStatus(
         name,
         type,
         position,
-        isDefault ? 1 : 0,
-        isTerminalStatusType(type) ? 1 : 0,
+        bindBool(DATABASE_DIALECT, isDefault),
+        bindBool(DATABASE_DIALECT, isTerminalStatusType(type)),
         now,
         now
       ]
@@ -1866,7 +1871,8 @@ export async function updateWorkspaceStatus(
           throw new ApiError(400, 'Only draft-type statuses can be the default');
         }
         await clearWorkspaceDefaultStatuses(tx, { now });
-        fields.push('is_default = 1');
+        fields.push('is_default = ?');
+        setParams.push(bindBool(DATABASE_DIALECT, true));
         changed.push('is_default');
       } else if (existing.is_default === 1) {
         throw new ApiError(409, 'Choose another status as the default before clearing this one');
@@ -2009,7 +2015,7 @@ export async function listProjectTags(projectId: string): Promise<ProjectTagDto[
   const rows = (await requireDatabaseClient().all(
     `SELECT ${selectProjectTagColumns} FROM project_tags
         WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL
-        ORDER BY label COLLATE NOCASE ASC`,
+        ORDER BY ${orderByLabelAsc('label')}`,
     [projectId, WORKSPACE.id]
   )) as ProjectTagRow[];
   return rows.map(toProjectTagDto);
@@ -2090,7 +2096,7 @@ export async function updateProjectTag(
     }
     if (body.active !== undefined) {
       fields.push('active = ?');
-      setParams.push(body.active ? 1 : 0);
+      setParams.push(bindBool(DATABASE_DIALECT, body.active));
     }
     if (fields.length === 0) return toProjectTagDto(existing);
 
@@ -2250,9 +2256,9 @@ export async function updateProjectResource(
       });
       await tx.run(
         `UPDATE project_resources
-            SET is_primary = 1, updated_at = ?, revision = revision + 1
+            SET is_primary = ?, updated_at = ?, revision = revision + 1
           WHERE id = ?`,
-        [now, resourceId]
+        [bindBool(DATABASE_DIALECT, true), now, resourceId]
       );
       await recordChangeAsync(
         {
@@ -2769,15 +2775,18 @@ async function topBoardPosition(
   statusId: string,
   excludeMissionId?: string
 ): Promise<number> {
-  const exclude = excludeMissionId ?? null;
-  const row = (await db.get(
-    `SELECT MIN(board_position) AS min_pos FROM missions
+  const row = excludeMissionId
+    ? ((await db.get(
+        `SELECT MIN(board_position) AS min_pos FROM missions
          WHERE project_id = ? AND status_id = ?
-           AND deleted_at IS NULL AND (? IS NULL OR id != ?)`,
-    [projectId, statusId, exclude, exclude]
-  )) as {
-    min_pos: number | null;
-  };
+           AND deleted_at IS NULL AND id != ?`,
+        [projectId, statusId, excludeMissionId]
+      )) as { min_pos: number | null })
+    : ((await db.get(
+        `SELECT MIN(board_position) AS min_pos FROM missions
+         WHERE project_id = ? AND status_id = ? AND deleted_at IS NULL`,
+        [projectId, statusId]
+      )) as { min_pos: number | null });
   return row.min_pos === null ? 100 : row.min_pos - 100;
 }
 
@@ -3126,8 +3135,8 @@ async function createMissionTx(body: CreateMissionBody): Promise<CreateMissionRe
     } else {
       statusRow = (await tx.get(
         `SELECT * FROM workspace_statuses
-           WHERE workspace_id = ? AND is_default = 1 AND deleted_at IS NULL LIMIT 1`,
-        [WORKSPACE.id]
+           WHERE workspace_id = ? AND is_default = ? AND deleted_at IS NULL LIMIT 1`,
+        [WORKSPACE.id, bindBool(DATABASE_DIALECT, true)]
       )) as WorkspaceStatusRow | undefined;
       if (!statusRow) throw new ApiError(409, 'Workspace has no default status');
     }
@@ -4094,7 +4103,7 @@ async function insertObjective(
       explicitAgent ?? launchSelection.selectedAgent,
       explicitAgent ? null : launchSelection.selectedModel,
       explicitAgent ? null : launchSelection.selectedReasoningEffort,
-      body.autoAdvance ? 1 : 0,
+      bindBool(DATABASE_DIALECT, body.autoAdvance ?? false),
       getActorWorkspaceUserId(),
       now,
       now
@@ -4274,7 +4283,7 @@ async function updateObjectiveTx(
     }
     if (body.autoAdvance !== undefined) {
       fields.push('auto_advance = ?');
-      setParams.push(body.autoAdvance ? 1 : 0);
+      setParams.push(bindBool(DATABASE_DIALECT, body.autoAdvance));
       changed.push('auto_advance');
     }
     if (body.position !== undefined) {

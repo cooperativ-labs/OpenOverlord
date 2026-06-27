@@ -58,10 +58,11 @@ ENV NODE_ENV=production \
     OVERLORD_SQL_STUDIO_ENABLED=false \
     OVERLORD_IN_POD=1
 
-# The bundle plus the external runtime deps and the staged migrations the bundle
-# resolves relative to its own location (webapp/sqlite/migrations).
+# The bundle plus external runtime deps and staged migrations the bundle resolves
+# relative to its own location (webapp/sqlite/migrations, webapp/postgres/migrations).
 COPY --from=builder /app/webapp/dist-server ./webapp/dist-server
 COPY --from=builder /app/webapp/sqlite ./webapp/sqlite
+COPY --from=builder /app/webapp/postgres ./webapp/postgres
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 

@@ -26,6 +26,17 @@ import { openDatabase } from './connection.js';
  */
 export type SqlDialect = 'sqlite' | 'postgres';
 
+/** Bind a boolean for a `?` placeholder — Postgres expects `boolean`, SQLite `0|1`. */
+export function bindBool(dialect: SqlDialect, value: boolean): boolean | number {
+  return dialect === 'postgres' ? value : value ? 1 : 0;
+}
+
+/** Inline SQL boolean literal when a `?` placeholder is awkward (e.g. inside `CASE`). */
+export function sqlBoolLiteral(dialect: SqlDialect, value: boolean): string {
+  if (dialect === 'postgres') return value ? 'true' : 'false';
+  return value ? '1' : '0';
+}
+
 export interface RunResult {
   /** Rows affected (`better-sqlite3` `changes` / `pg` `rowCount`). */
   changes: number;

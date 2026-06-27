@@ -56,13 +56,22 @@ await build({
 });
 
 // Stage the migrations one directory up from the bundle so the bundled
-// @overlord/database (which resolves `import.meta.url/../sqlite/migrations`)
-// finds them at runtime.
-const migrationsDest = path.join(webappRoot, 'sqlite', 'migrations');
+// @overlord/database (which resolves `import.meta.url/../sqlite/migrations` and
+// `../postgres/migrations`) finds them at runtime.
+const sqliteMigrationsDest = path.join(webappRoot, 'sqlite', 'migrations');
 rmSync(path.join(webappRoot, 'sqlite'), { recursive: true, force: true });
-mkdirSync(path.dirname(migrationsDest), { recursive: true });
-cpSync(path.join(repoRoot, 'database', 'sqlite', 'migrations'), migrationsDest, {
+mkdirSync(path.dirname(sqliteMigrationsDest), { recursive: true });
+cpSync(path.join(repoRoot, 'database', 'sqlite', 'migrations'), sqliteMigrationsDest, {
   recursive: true
 });
 
-console.log('Built webapp/dist-server/index.cjs (+ staged sqlite/migrations)');
+const postgresMigrationsDest = path.join(webappRoot, 'postgres', 'migrations');
+rmSync(path.join(webappRoot, 'postgres'), { recursive: true, force: true });
+mkdirSync(path.dirname(postgresMigrationsDest), { recursive: true });
+cpSync(path.join(repoRoot, 'database', 'postgres', 'migrations'), postgresMigrationsDest, {
+  recursive: true
+});
+
+console.log(
+  'Built webapp/dist-server/index.cjs (+ staged sqlite/migrations and postgres/migrations)'
+);
