@@ -175,11 +175,18 @@ If `deliver` fails with `missing_rationale` for a file you did not change, or `g
 
 1. **Do not** touch those files — leave concurrent work intact.
 2. **Do not** fabricate rationales for work you did not do.
-3. Post a progress update explaining the attribution mismatch, then call `ovld protocol ask` with the conflicting paths and stop until a human resolves it.
+3. Re-deliver with `--skip-rationale-for-json` (or `--skip-rationale-for-file -`) listing each unrelated path and a truthful `reason`. Use `ovld protocol ask` only when you cannot tell whether a dirty file belongs to this mission.
+
+```bash
+ovld protocol deliver --session-key <sessionKey> --mission-id $MISSION_ID \
+  --summary "Implemented X." \
+  --change-rationales-json '[{"file_path":"src/feature.ts","label":"Feature","summary":"...","why":"...","impact":"..."}]' \
+  --skip-rationale-for-json '[{"file_path":"webapp/package.json","reason":"Concurrent host-side edit; not made by this mission."}]'
+```
 
 Report only **your** mission's changes in the delivery payload and `changeRationales`. Excluding unrelated files from the delivery report is correct; **removing them from disk is not**.
 
-Changed files are captured for you: the CLI records a VCS baseline at attach and, at deliver, reports the run-attributable delta (current `git status` minus baseline) automatically — you do not pass `--changed-files-json`. Include `changeRationales` only for meaningful file changes made as part of this mission. Do not include other tracked worktree changes in the delivery report, payload, artifacts, or `changeRationales`, even to label them as pre-existing, concurrent, or unrelated. If `deliver` rejects with a `missing_rationale` error for a file you did not change for this mission, do not add a rationale for that file and **do not revert the file**; follow **Shared worktree safety** above. Coverage is aggregated per objective. If the run changed no files, declare it explicitly:
+Changed files are captured for you: the CLI records a VCS baseline at attach and, at deliver, reports the run-attributable delta (current `git status` minus baseline) automatically — you do not pass `--changed-files-json`. Include `changeRationales` only for meaningful file changes made as part of this mission. Do not include other tracked worktree changes in the delivery report, payload, artifacts, or `changeRationales`, even to label them as pre-existing, concurrent, or unrelated. If `deliver` rejects with a `missing_rationale` error for a file you did not change for this mission, do not add a rationale for that file and **do not revert the file**; skip rationale coverage for that path with `--skip-rationale-for-*` (see **Shared worktree safety** above). Coverage is aggregated per objective. If the run changed no files, declare it explicitly:
 
 ```bash
 ovld protocol deliver --session-key <sessionKey> --mission-id $MISSION_ID \
@@ -202,7 +209,7 @@ These are structured protocol payloads that Overlord stores as first-class rows 
 
 **Required fields per entry:** `file_path`, `label`, `summary`, `why`, `impact` (all strings). `filePath` (camelCase) is accepted as an alias for `file_path` and normalized to the canonical form, so matching the changed-files casing no longer fails validation. Do not wrap the entry under a `rationale` key — that is a different internal shape and will fail CLI validation.
 
-**Never revert, restore, or delete file changes from other agents or missions** to make delivery succeed. Leave unrelated dirty files intact and use `ovld protocol ask` when attribution blocks delivery.
+**Never revert, restore, or delete file changes from other agents or missions** to make delivery succeed. Leave unrelated dirty files intact and use `--skip-rationale-for-*` (or `ovld protocol ask` when attribution is unclear).
 
 ```bash
 ovld protocol record-change-rationales --session-key <sessionKey> --mission-id $MISSION_ID \
@@ -323,8 +330,8 @@ Always include `changeRationales` when delivering; optionally on updates during 
 
 - Rationales only for meaningful behavioral changes you made for this mission; skip formatting-only noise. Do not send `file_changes` as an artifact.
 - Do not include unrelated worktree changes in the delivery report, payload, artifacts, or rationales — even to label them pre-existing.
-- **Never revert, restore, or delete file changes from other agents or missions** to satisfy delivery. Ask instead (see **Shared worktree safety** under **Deliver**).
-- If `deliver` rejects with `missing_rationale` for a file you did not change, do not invent a rationale and do not revert the file; ask and stop.
+- **Never revert, restore, or delete file changes from other agents or missions** to satisfy delivery. Use `--skip-rationale-for-*` for paths you did not change (see **Shared worktree safety** under **Deliver**).
+- If `deliver` rejects with `missing_rationale` for a file you did not change, do not invent a rationale and do not revert the file; re-deliver with `--skip-rationale-for-*` and a truthful reason.
 - Read-only runs: `--no-file-changes` (see **Deliver** above).
 
 Field shape, inline vs stdin piping, and `record-change-rationales` syntax are in **Deliver** and **Record Change Rationales** in **CLI Command Reference** above.
@@ -346,7 +353,7 @@ Field shape, inline vs stdin piping, and `record-change-rationales` syntax are i
 - If a protocol or MCP call fails with auth/session errors, run `ovld auth repair` yourself before asking the user to log in again or proceed without Overlord updates.
 - If you must run `ovld auth login`, `--organization-id <id>` is optional — it validates/scopes that login or command but does not create a stored default organization.
 - Do not add or commit changes unless the user explicitly asks you to commit.
-- **Never revert, restore, or delete concurrent work from other agents or missions** to deliver your own changes. Leave unrelated dirty files intact and use `ovld protocol ask` when attribution blocks delivery.
+- **Never revert, restore, or delete concurrent work from other agents or missions** to deliver your own changes. Leave unrelated dirty files intact and use `--skip-rationale-for-*` when you know a dirty path is not yours.
 - Delivery is the concluding step. After delivering, stop implementation work unless the user explicitly asks for follow-up execution; once follow-up execution is complete, deliver again.
 
 ## Reference

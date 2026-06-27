@@ -282,6 +282,12 @@ const handlers: Record<string, Handler> = {
         '--changed-files-file'
       ),
       noFileChanges: boolFlag(body, '--no-file-changes'),
+      skipRationaleFor:
+        parseJsonInput<Array<{ filePath?: string; file_path?: string; reason: string }>>(
+          body,
+          '--skip-rationale-for-json',
+          '--skip-rationale-for-file'
+        ) ?? [],
       payloadJson: parseJsonInput<Record<string, unknown>>(
         body,
         '--payload-json',

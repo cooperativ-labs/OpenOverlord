@@ -1225,6 +1225,27 @@ function normalizeChangeRationales(
   }));
 }
 
+export type SkipRationaleForInput = {
+  filePath?: string;
+  /** @deprecated alias for {@link SkipRationaleForInput.filePath}. */
+  file_path?: string;
+  reason: string;
+};
+
+type NormalizedSkipRationaleFor = {
+  filePath: string;
+  reason: string;
+};
+
+function normalizeSkipRationaleFor(
+  input: ReadonlyArray<SkipRationaleForInput>
+): NormalizedSkipRationaleFor[] {
+  return input.map(entry => ({
+    filePath: (entry.filePath ?? entry.file_path ?? '').replace(/\\/g, '/'),
+    reason: entry.reason
+  }));
+}
+
 export async function deliverSession({
   ctx,
   missionId,
@@ -1234,6 +1255,7 @@ export async function deliverSession({
   changeRationales = [],
   changedFiles,
   noFileChanges = false,
+  skipRationaleFor = [],
   payloadJson,
   verificationSummary,
   followUpNotes
@@ -1248,6 +1270,8 @@ export async function deliverSession({
   changedFiles?: Array<{ filePath: string; vcsStatus?: string | null }> | null;
   /** Agent's explicit assertion that this run changed no files. */
   noFileChanges?: boolean;
+  /** Per-file rationale overrides for changes the agent did not make. */
+  skipRationaleFor?: SkipRationaleForInput[];
   payloadJson?: Record<string, unknown> | null;
   verificationSummary?: string | null;
   followUpNotes?: string | null;
@@ -1264,6 +1288,35 @@ export async function deliverSession({
   }
 
   const normalizedRationales = normalizeChangeRationales(changeRationales);
+  const normalizedSkips = normalizeSkipRationaleFor(skipRationaleFor);
+  const skipPathSet = new Set(normalizedSkips.map(entry => entry.filePath));
+
+  for (const skip of normalizedSkips) {
+    if (!skip.filePath.trim()) {
+      throw new ServiceError(
+        'Each skip-rationale-for entry requires a non-empty file_path.',
+        'invalid_rationale_skip',
+        400
+      );
+    }
+    if (!skip.reason.trim()) {
+      throw new ServiceError(
+        `Change rationale skip for ${skip.filePath} is missing required field: reason`,
+        'invalid_rationale_skip',
+        400
+      );
+    }
+  }
+
+  for (const rationale of normalizedRationales) {
+    if (skipPathSet.has(rationale.filePath)) {
+      throw new ServiceError(
+        `Cannot skip and provide a rationale for the same file: ${rationale.filePath}`,
+        'invalid_rationale_skip',
+        400
+      );
+    }
+  }
 
   const now = nowIso();
   const deliveryId = newId();
@@ -1309,6 +1362,9 @@ export async function deliverSession({
         file => file.current_diff_state === 'present' && !file.file_path.includes('package-lock')
       );
       for (const file of meaningfulFiles) {
+        if (skipPathSet.has(file.file_path)) {
+          continue;
+        }
         const rationale = normalizedRationales.find(r => r.filePath === file.file_path);
         if (!rationale) {
           throw new ServiceError(
@@ -1345,7 +1401,15 @@ export async function deliverSession({
         trimmedSummary,
         JSON.stringify({
           ...(payloadJson ?? {}),
-          ...(noFileChanges ? { noFileChanges: true } : {})
+          ...(noFileChanges ? { noFileChanges: true } : {}),
+          ...(normalizedSkips.length > 0
+            ? {
+                rationaleSkips: normalizedSkips.map(entry => ({
+                  filePath: entry.filePath,
+                  reason: entry.reason
+                }))
+              }
+            : {})
         }),
         verificationSummary ?? null,
         followUpNotes ?? null,
@@ -1405,6 +1469,25 @@ export async function deliverSession({
           JSON.stringify(rationale.hunks ?? []),
           now,
           now
+        ]
+      );
+    }
+
+    for (const skip of normalizedSkips) {
+      const changedFileId = changedFileIdByPath.get(skip.filePath);
+      if (!changedFileId) continue;
+      await txCtx.db.run(
+        `UPDATE changed_files
+           SET observed_metadata_json = ?, updated_at = ?, revision = revision + 1
+           WHERE id = ?`,
+        [
+          JSON.stringify({
+            rationaleSkipped: true,
+            skipReason: skip.reason,
+            skippedAtDeliveryId: deliveryId
+          }),
+          now,
+          changedFileId
         ]
       );
     }

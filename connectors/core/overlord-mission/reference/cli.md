@@ -95,11 +95,18 @@ If `deliver` fails with `missing_rationale` for a file you did not change, or `g
 
 1. **Do not** touch those files — leave concurrent work intact.
 2. **Do not** fabricate rationales for work you did not do.
-3. Post a progress update explaining the attribution mismatch, then call `ovld protocol ask` with the conflicting paths and stop until a human resolves it.
+3. Re-deliver with `--skip-rationale-for-json` (or `--skip-rationale-for-file -`) listing each unrelated path and a truthful `reason`. Use `ovld protocol ask` only when you cannot tell whether a dirty file belongs to this mission.
+
+```bash
+ovld protocol deliver --session-key <sessionKey> --mission-id $MISSION_ID \
+  --summary "Implemented X." \
+  --change-rationales-json '[{"file_path":"src/feature.ts","label":"Feature","summary":"...","why":"...","impact":"..."}]' \
+  --skip-rationale-for-json '[{"file_path":"webapp/package.json","reason":"Concurrent host-side edit; not made by this mission."}]'
+```
 
 Report only **your** mission's changes in the delivery payload and `changeRationales`. Excluding unrelated files from the delivery report is correct; **removing them from disk is not**.
 
-Changed files are captured for you: the CLI records a VCS baseline at attach and, at deliver, reports the run-attributable delta (current `git status` minus baseline) automatically — you do not pass `--changed-files-json`. Include `changeRationales` only for meaningful file changes made as part of this mission. Do not include other tracked worktree changes in the delivery report, payload, artifacts, or `changeRationales`, even to label them as pre-existing, concurrent, or unrelated. If `deliver` rejects with a `missing_rationale` error for a file you did not change for this mission, do not add a rationale for that file and **do not revert the file**; follow **Shared worktree safety** above. Coverage is aggregated per objective. If the run changed no files, declare it explicitly:
+Changed files are captured for you: the CLI records a VCS baseline at attach and, at deliver, reports the run-attributable delta (current `git status` minus baseline) automatically — you do not pass `--changed-files-json`. Include `changeRationales` only for meaningful file changes made as part of this mission. Do not include other tracked worktree changes in the delivery report, payload, artifacts, or `changeRationales`, even to label them as pre-existing, concurrent, or unrelated. If `deliver` rejects with a `missing_rationale` error for a file you did not change for this mission, do not add a rationale for that file and **do not revert the file**; skip rationale coverage for that path with `--skip-rationale-for-*` (see **Shared worktree safety** above). Coverage is aggregated per objective. If the run changed no files, declare it explicitly:
 
 ```bash
 ovld protocol deliver --session-key <sessionKey> --mission-id $MISSION_ID \

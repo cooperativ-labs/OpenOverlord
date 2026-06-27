@@ -197,6 +197,84 @@ describe('deliverSession mechanical change capture', () => {
     await db.close();
   });
 
+  it('allows per-file rationale skips for changes the agent did not make', async () => {
+    const { db, ctx } = await setup();
+    const { mission } = await submittedMission(ctx, 'Skip Rationale');
+    const attached = await attachSession({ ctx, missionId: mission.displayId });
+
+    await deliverSession({
+      ctx,
+      missionId: mission.displayId,
+      sessionKey: attached.sessionKey,
+      summary: 'Deliver with skip override',
+      changedFiles: [
+        { filePath: 'src/mine.ts', vcsStatus: 'M' },
+        { filePath: 'webapp/package.json', vcsStatus: 'M' }
+      ],
+      changeRationales: [
+        {
+          file_path: 'src/mine.ts',
+          label: 'Mine',
+          summary: 'My change.',
+          why: 'Required.',
+          impact: 'Ships.'
+        }
+      ],
+      skipRationaleFor: [
+        {
+          file_path: 'webapp/package.json',
+          reason: 'Concurrent host-side edit; not made by this mission.'
+        }
+      ]
+    });
+
+    const files = await listChangedFilesForReview({
+      ctx,
+      missionId: mission.displayId,
+      includeCurrent: false
+    });
+    assert.equal(
+      files.find(file => file.filePath === 'src/mine.ts')?.coverage,
+      'covered'
+    );
+    assert.equal(
+      files.find(file => file.filePath === 'webapp/package.json')?.coverage,
+      'skipped'
+    );
+
+    await db.close();
+  });
+
+  it('rejects skip and rationale for the same file', async () => {
+    const { db, ctx } = await setup();
+    const { mission } = await submittedMission(ctx, 'Skip Conflict');
+    const attached = await attachSession({ ctx, missionId: mission.displayId });
+
+    await assert.rejects(
+      async () =>
+        await deliverSession({
+          ctx,
+          missionId: mission.displayId,
+          sessionKey: attached.sessionKey,
+          summary: 'Conflicting skip and rationale',
+          changedFiles: [{ filePath: 'src/conflict.ts', vcsStatus: 'M' }],
+          changeRationales: [
+            {
+              file_path: 'src/conflict.ts',
+              label: 'Conflict',
+              summary: 'Changed.',
+              why: 'Needed.',
+              impact: 'Ships.'
+            }
+          ],
+          skipRationaleFor: [{ file_path: 'src/conflict.ts', reason: 'Not mine.' }]
+        }),
+      /Cannot skip and provide a rationale for the same file/
+    );
+
+    await db.close();
+  });
+
   it('enforces coverage objective-scoped across no-session records', async () => {
     const { db, ctx } = await setup();
     const { project, mission, objectiveId } = await submittedMission(ctx, 'Objective Scope');

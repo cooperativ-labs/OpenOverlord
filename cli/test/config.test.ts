@@ -161,6 +161,24 @@ test('an explicit runtime OVERLORD_BACKEND_URL beats overlord.toml', () => {
   }
 });
 
+test('resolveBackendUrl adds http:// when OVERLORD_BACKEND_URL omits the scheme', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
+  const configPath = path.join(dir, 'overlord.toml');
+  writeFileSync(configPath, `backend_url = "http://127.0.0.1:4310"\n`);
+
+  const previousBackendUrl = process.env.OVERLORD_BACKEND_URL;
+  process.env.OVERLORD_BACKEND_URL = 'host.docker.internal:4310';
+  resetExplicitRuntimeEnvForTests();
+  try {
+    const config = loadConfig(configPath);
+    assert.equal(resolveBackendUrl(config), 'http://host.docker.internal:4310');
+  } finally {
+    if (previousBackendUrl === undefined) delete process.env.OVERLORD_BACKEND_URL;
+    else process.env.OVERLORD_BACKEND_URL = previousBackendUrl;
+    resetExplicitRuntimeEnvForTests();
+  }
+});
+
 test('a production .env.prod-backfilled OVERLORD_BACKEND_URL does not beat overlord.toml', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'overlord-config-'));
   const configPath = path.join(dir, 'overlord.toml');

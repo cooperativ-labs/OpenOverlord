@@ -196,6 +196,7 @@ Supported event types:
 - `changeRationales`
 - `changed-files-json` / `changed-files-file` (normally auto-injected by the CLI from the run-attributable VCS delta)
 - `no-file-changes` (assert this run changed no files; skips rationale-coverage enforcement)
+- `skip-rationale-for-json` / `skip-rationale-for-file` (per-file rationale overrides for changes the agent did not make)
 - `payload-json`
 - `payload-file`
 - optional file-change coverage checks
@@ -204,7 +205,7 @@ Delivery rules:
 
 - Every meaningful tracked file change should have a rationale.
 - Do not store generic `file_changes` artifacts as a substitute for structured rationales.
-- Delivery validates rationale coverage against the changed-file records for the objective (aggregated across all sessions and no-session `record-work` records). The client supplies the current run's changed files from local VCS; the agent can pass `--no-file-changes` to declare the run made no file changes.
+- Delivery validates rationale coverage against the changed-file records for the objective (aggregated across all sessions and no-session `record-work` records). The client supplies the current run's changed files from local VCS; the agent can pass `--no-file-changes` to declare the run made no file changes, or `--skip-rationale-for-json` / `--skip-rationale-for-file` to override rationale requirements for specific paths the agent did not change (each entry requires `file_path` and `reason`).
 - Delivery is the final review boundary, but it should not be the first time Overlord learns which files changed during the session.
 - Delivery moves the active objective to `complete`.
 - Delivery moves the mission to review unless another explicit status is requested later.

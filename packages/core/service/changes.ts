@@ -16,7 +16,7 @@ export type ChangedFileReview = {
   rationaleCount: number;
   finalRationaleCount: number;
   rationaleLabels: string[];
-  coverage: 'covered' | 'missing_rationale' | 'unassigned';
+  coverage: 'covered' | 'missing_rationale' | 'skipped' | 'unassigned';
 };
 
 export type RationaleReview = {
@@ -35,6 +35,18 @@ export type RationaleReview = {
 
 function normalizePath(filePath: string): string {
   return filePath.replace(/\\/g, '/');
+}
+
+function parseObservedMetadata(raw: string | null | undefined): {
+  rationaleSkipped?: boolean;
+} {
+  if (!raw?.trim()) return {};
+  try {
+    const parsed = JSON.parse(raw) as { rationaleSkipped?: boolean };
+    return typeof parsed === 'object' && parsed !== null ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 function currentGitStatus(
@@ -93,7 +105,7 @@ export async function listChangedFilesForReview({
 
   const rows = (await ctx.db.all(
     `SELECT cf.file_path, cf.vcs_status, cf.current_diff_state, cf.objective_id, cf.session_id,
-              cf.first_observed_at, cf.last_observed_at,
+              cf.first_observed_at, cf.last_observed_at, cf.observed_metadata_json,
               COUNT(cr.id) AS rationale_count,
               SUM(CASE WHEN cr.is_final = 1 THEN 1 ELSE 0 END) AS final_rationale_count,
               GROUP_CONCAT(cr.label, char(10)) AS rationale_labels
@@ -115,6 +127,7 @@ export async function listChangedFilesForReview({
     session_id: string | null;
     first_observed_at: string | null;
     last_observed_at: string | null;
+    observed_metadata_json: string | null;
     rationale_count: number;
     final_rationale_count: number | null;
     rationale_labels: string | null;
@@ -124,6 +137,13 @@ export async function listChangedFilesForReview({
   for (const row of rows) {
     const rationaleCount = Number(row.rationale_count ?? 0);
     const finalRationaleCount = Number(row.final_rationale_count ?? 0);
+    const metadata = parseObservedMetadata(row.observed_metadata_json);
+    const coverage =
+      metadata.rationaleSkipped === true
+        ? 'skipped'
+        : finalRationaleCount > 0 || rationaleCount > 0
+          ? 'covered'
+          : 'missing_rationale';
     byPath.set(row.file_path, {
       filePath: row.file_path,
       vcsStatus: row.vcs_status,
@@ -135,7 +155,7 @@ export async function listChangedFilesForReview({
       rationaleCount,
       finalRationaleCount,
       rationaleLabels: row.rationale_labels?.split('\n').filter(Boolean) ?? [],
-      coverage: finalRationaleCount > 0 || rationaleCount > 0 ? 'covered' : 'missing_rationale'
+      coverage
     });
   }
 

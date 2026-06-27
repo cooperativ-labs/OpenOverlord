@@ -27,6 +27,15 @@ export const DEFAULT_LOCAL_BACKEND_DIR = '~/.ovld';
 export const DEFAULT_LOCAL_BACKEND_DATABASE_PATH = '~/.ovld/Overlord.sqlite';
 export const DEFAULT_LOCAL_BACKEND_URL = 'http://127.0.0.1:4310';
 
+/** Ensure backend URLs are fetch-ready; agent pods often inject host:port without a scheme. */
+export function normalizeBackendUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, '');
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `http://${trimmed}`;
+}
+
 export type BackendMode = 'local' | 'cloud';
 
 export type OverlordConfig = {
@@ -325,7 +334,9 @@ export function resolveBackendUrl(
   // outranks it, so `ovld config set` / `ovld init` take effect as expected. Only a
   // deliberate shell export of the channel variable outranks the toml.
   const override = process.env.OVERLORD_BACKEND_URL?.trim();
-  if (override && isExplicitRuntimeEnv('OVERLORD_BACKEND_URL')) return override;
+  if (override && isExplicitRuntimeEnv('OVERLORD_BACKEND_URL')) {
+    return normalizeBackendUrl(override);
+  }
 
   const devOverride = process.env.OVERLORD_BACKEND_URL_DEV?.trim();
   if (
@@ -333,13 +344,15 @@ export function resolveBackendUrl(
     devOverride &&
     isExplicitRuntimeEnv('OVERLORD_BACKEND_URL_DEV')
   ) {
-    return devOverride;
+    return normalizeBackendUrl(devOverride);
   }
 
-  if (config.backendUrl?.trim()) return config.backendUrl.trim();
+  if (config.backendUrl?.trim()) return normalizeBackendUrl(config.backendUrl.trim());
 
-  if (envProfile === 'development') return devOverride || DEFAULT_LOCAL_BACKEND_URL;
-  return override || DEFAULT_LOCAL_BACKEND_URL;
+  if (envProfile === 'development') {
+    return normalizeBackendUrl(devOverride || DEFAULT_LOCAL_BACKEND_URL);
+  }
+  return normalizeBackendUrl(override || DEFAULT_LOCAL_BACKEND_URL);
 }
 
 /**

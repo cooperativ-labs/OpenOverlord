@@ -98,6 +98,7 @@ changed. The client CLI captures changes from VCS automatically:
 - **`.overlordignore`**: a repo may carry an optional `.overlordignore` file at its git root listing gitignore-style patterns for paths Overlord should never report as run-attributable changes (e.g. generated artifacts like `install-state.gz`). Blank lines and `#` comments are skipped; patterns support `!` negation (last match wins), leading-`/` anchoring to the repo root, trailing-`/` directory matches, and `*`/`**`/`?` globs. Matching paths are dropped at `deliver`/`update` after the baseline-delta and touched-files intersection, so ignored files never reach the changed-file payload.
 - VCS is read **on the client only**; the CLI persists only metadata (normalized path and status), never full diffs, patch bodies, or file contents. The touched-files log likewise stores only normalized absolute paths.
 - An agent that genuinely changed no files passes `--no-file-changes` at deliver to skip rationale-coverage enforcement. If the CLI still observes a non-empty delta, it warns.
+- An agent that did change files but sees unrelated dirty paths in the run delta passes `--skip-rationale-for-json` / `--skip-rationale-for-file` with one `{ file_path, reason }` entry per path it did not change.
 
 ## Update-Time Changed File Tracking
 

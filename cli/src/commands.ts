@@ -44,6 +44,12 @@ type ChangeRationaleEntry = {
   impact?: string;
   [key: string]: unknown;
 };
+type SkipRationaleEntry = {
+  file_path?: string;
+  filePath?: string;
+  reason?: string;
+  [key: string]: unknown;
+};
 
 /** Parse an inline `--changed-files-json` value into entries (best-effort). */
 function parseChangedFilesJson(value: unknown): ChangedFileEntry[] {
@@ -175,6 +181,27 @@ function rationalePath(rationale: ChangeRationaleEntry): string {
   return (rationale.file_path ?? rationale.filePath ?? '').replace(/\\/g, '/').trim();
 }
 
+function readSkipRationaleForFromFlags({
+  flags,
+  fileInputs
+}: {
+  flags: Record<string, string | true>;
+  fileInputs: Record<string, string>;
+}): SkipRationaleEntry[] {
+  return parseJsonArray(
+    readJsonFlagContent({
+      flags,
+      fileInputs,
+      jsonFlag: '--skip-rationale-for-json',
+      fileFlag: '--skip-rationale-for-file'
+    })
+  ).filter((entry): entry is SkipRationaleEntry => typeof entry === 'object' && entry !== null);
+}
+
+function skipRationalePath(entry: SkipRationaleEntry): string {
+  return (entry.file_path ?? entry.filePath ?? '').replace(/\\/g, '/').trim();
+}
+
 /**
  * Filter protocol changed-file payloads so only run-attributable paths (not in
  * the session baseline) are sent. At deliver, merge explicit payloads with the
@@ -186,13 +213,15 @@ function applySessionChangedFiles({
   workingDirectory,
   missionId,
   subcommand,
-  stdin
+  stdin,
+  fileInputs = {}
 }: {
   flags: Record<string, string | true>;
   workingDirectory: string;
   missionId: string;
   subcommand: string;
   stdin?: string;
+  fileInputs?: Record<string, string>;
 }): void {
   const noFileChanges =
     subcommand === 'deliver' &&
@@ -234,7 +263,20 @@ function applySessionChangedFiles({
     vcsStatus: entry.vcsStatus
   }));
 
-  writeFilteredChangedFilesToFlags({ flags, files: attributable });
+  const skipPaths =
+    subcommand === 'deliver'
+      ? new Set(
+          readSkipRationaleForFromFlags({ flags, fileInputs })
+            .map(skipRationalePath)
+            .filter(Boolean)
+        )
+      : new Set<string>();
+  const filtered =
+    skipPaths.size > 0
+      ? attributable.filter(entry => !skipPaths.has(entry.filePath))
+      : attributable;
+
+  writeFilteredChangedFilesToFlags({ flags, files: filtered });
 }
 
 function applyDraftChangeRationales({
@@ -392,6 +434,7 @@ const PROTOCOL_FILE_FLAGS = [
   '--payload-file',
   '--artifacts-file',
   '--change-rationales-file',
+  '--skip-rationale-for-file',
   '--objectives-file',
   '--changed-files-file',
   '--value-file',
@@ -537,7 +580,8 @@ export async function runProtocolCommand({
       workingDirectory,
       missionId,
       subcommand,
-      stdin: fileInputs['--changed-files-file'] ?? protocolStdin
+      stdin: fileInputs['--changed-files-file'] ?? protocolStdin,
+      fileInputs
     });
   }
 

@@ -275,6 +275,7 @@ deliver:
     --change-rationales-json / --change-rationales-file <path|->
     --changed-files-json / --changed-files-file <path|->
     --no-file-changes             Assert this run changed no files
+    --skip-rationale-for-json / --skip-rationale-for-file <path|->
     --verification-summary <text>
     --follow-up-notes <text>
   Change-rationale entry shape (each item in --change-rationales-json / -file):
@@ -288,10 +289,18 @@ deliver:
     }
     Pass an array of these. Do NOT wrap entries under a "rationale" key and do not send a
     top-level "file_changes" artifact. label/summary/why/impact must be non-empty strings.
+  Skip-rationale-for entry shape (each item in --skip-rationale-for-json / -file):
+    {
+      "file_path": "webapp/package.json",  // required. repo-relative path. "filePath" also accepted.
+      "reason":    "Concurrent host-side edit; not made by this mission."
+    }
+    Use when deliver would fail missing_rationale for a file you did not change. Do not
+    fabricate a change rationale and do not revert the file.
   Notes:
     Changed files are captured mechanically: the CLI records a VCS baseline at attach
     and injects the run-attributable delta at deliver. Meaningful tracked changes
-    require rationales unless --no-file-changes is passed. Do not continue
+    require rationales unless --no-file-changes is passed or the file is listed in
+    --skip-rationale-for-*. Do not continue
     implementation after delivery without explicit follow-up.
     Inline --*-json values larger than ~8 KB are rejected; use --change-rationales-file -
     (or --payload-file -) and stream JSON on stdin. Keep --summary inline.
