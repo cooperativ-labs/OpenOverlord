@@ -25,6 +25,7 @@ Each type has a different procedure below.
 2. Read [`connectors/docs/05-connectors-and-agent-plugins.md`](docs/05-connectors-and-agent-plugins.md) for the four-layer model: connector core, plugins, adapters, and prompt wrappers.
 3. Read [`connectors/docs/agent-harness-configuration-architecture.md`](docs/agent-harness-configuration-architecture.md) for ownership boundaries.
 4. Check `contract/extension-points.yaml` for approved capability flags and hook types before adding new ones.
+5. After connector edits, follow the [connector-versions skill](../.claude/skills/connector-versions/SKILL.md) and run `yarn connectors:version:bump`.
 
 ---
 

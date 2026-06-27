@@ -69,7 +69,7 @@ process.stdin.on('data', async chunk => {
         result: {
           protocolVersion: PROTOCOL_VERSION,
           capabilities: { tools: { listChanged: false } },
-          serverInfo: { name: 'overlord-cursor', version: '0.2.0' }
+          serverInfo: { name: 'overlord-cursor', version: '0.2.4' }
         }
       });
       continue;

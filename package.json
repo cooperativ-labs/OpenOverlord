@@ -83,7 +83,10 @@
     "build:prod": "yarn db:build:prod && yarn auth:build:prod && yarn automations:build:prod && yarn core:build:prod && yarn cli:build:prod && yarn webapp:build:prod",
     "ovld:dev": "node scripts/with-dev-env.mjs yarn cli:build:prod && node scripts/with-dev-env.mjs node cli/bin/ovld.mjs",
     "generate": "yarn db:codegen",
-    "version:update:minor": "node scripts/version-update.mjs"
+    "version:update:minor": "node scripts/version-update.mjs",
+    "connectors:version:bump": "node scripts/sync-connector-versions.mjs --bump patch",
+    "connectors:version:sync": "node scripts/sync-connector-versions.mjs --sync",
+    "connectors:version:check": "node scripts/sync-connector-versions.mjs --check"
   },
   "dependencies": {
     "@overlord/auth": "workspace:*",
