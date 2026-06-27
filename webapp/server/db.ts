@@ -5,15 +5,15 @@ import {
   fixupLocalStoragePaths,
   migrateDatabase,
   migratePostgres,
+  openDatabase,
   openDatabaseClient,
   resolveAdapter,
   type SqlDialect,
   toPostgresPlaceholders
 } from '@overlord/database';
-import Database from 'better-sqlite3';
+import type Database from 'better-sqlite3';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 import {
@@ -89,15 +89,9 @@ function createPostgresLegacyDatabase(): Database.Database {
 let sqliteDb: Database.Database | null = null;
 
 if (adapter.type === 'sqlite') {
-  // Open the local Overlord database directly through better-sqlite3 for the
-  // synchronous call sites that remain until later port stages. WAL mode lets
-  // the CLI write concurrently while the web server reads/writes.
-  mkdirSync(path.dirname(databasePath), { recursive: true });
-
-  sqliteDb = new Database(databasePath);
-  sqliteDb.pragma('journal_mode = WAL');
-  sqliteDb.pragma('foreign_keys = ON');
-  sqliteDb.pragma('busy_timeout = 5000');
+  // Open the local Overlord database through the database package so SQLite
+  // connection pragmas stay centralized with the adapter runtime.
+  sqliteDb = openDatabase({ databasePath });
 
   // First-run bootstrap: create the schema and seed the first workspace if the
   // database is empty; a no-op once migrated.

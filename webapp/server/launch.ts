@@ -223,9 +223,9 @@ export async function refreshAgentCatalog(): Promise<AgentCatalogDto> {
 
 // ---- Local device / execution target provisioning -------------------------
 
-function serviceContext() {
+function serviceContext(client: DatabaseClient = serviceDatabaseClient()) {
   return {
-    db: serviceDatabaseClient(),
+    db: client,
     workspace: { id: WORKSPACE.id, slug: WORKSPACE.slug, name: WORKSPACE.name },
     actorWorkspaceUserId: getActorWorkspaceUserId(),
     source: 'webapp' as const
@@ -271,7 +271,7 @@ async function readAgentConfigs(
   return row ? parseAgentConfigs(row.agent_configs_json) : {};
 }
 
-async function ensureLocalLaunchTarget(): Promise<{
+async function ensureLocalLaunchTarget(client: DatabaseClient = requireDatabaseClient()): Promise<{
   deviceId: string;
   deviceLabel: string;
   executionTargetId: string;
@@ -280,14 +280,14 @@ async function ensureLocalLaunchTarget(): Promise<{
   agentConfigs: Record<string, AgentLaunchConfigDto>;
   terminalProfile: TerminalProfileDto;
 }> {
-  const target = await ensureLocalExecutionTarget({ ctx: serviceContext() });
+  const target = await ensureLocalExecutionTarget({ ctx: serviceContext(client) });
   return {
     deviceId: target.deviceId,
     deviceLabel: target.deviceLabel,
     executionTargetId: target.executionTargetId,
     userTargetId: target.userTargetId,
     preferenceId: target.preferenceId,
-    agentConfigs: await readAgentConfigs(target.preferenceId),
+    agentConfigs: await readAgentConfigs(target.preferenceId, client),
     terminalProfile: toTerminalProfileDto(target.terminalProfile)
   };
 }
@@ -305,7 +305,7 @@ export async function updateAgentLaunchConfig(
   return requireDatabaseClient().transaction(async tx => {
     const key = agentKey.trim();
     if (!key) throw new ApiError(400, 'Agent key is required');
-    const target = await ensureLocalLaunchTarget();
+    const target = await ensureLocalLaunchTarget(tx);
     if (!target.preferenceId) {
       throw new ApiError(409, 'No active workspace user to store launch configs for');
     }
@@ -339,14 +339,14 @@ export async function updateTerminalProfile(
 ): Promise<LaunchSettingsDto> {
   return requireDatabaseClient().transaction(async tx => {
     const saved = await persistTerminalProfile({
-      ctx: serviceContext(),
+      ctx: serviceContext(tx),
       profile: {
         launcher: body.launcher ?? null,
         placement: body.placement ?? 'window',
         chord: body.placement === 'chord' ? (body.chord ?? null) : null
       }
     });
-    const target = await ensureLocalLaunchTarget();
+    const target = await ensureLocalLaunchTarget(tx);
     return launchSettingsDto({
       target: {
         ...target,
@@ -366,7 +366,8 @@ export async function updateWorktreeBranchAutomation(
     const settings = await readWorkspaceSettings(tx);
     settings[WORKTREE_BRANCH_AUTOMATION_SETTINGS_KEY] = body.enabled === true;
     await writeWorkspaceSettings(settings, tx);
-    return getLaunchSettings();
+    const target = await ensureLocalLaunchTarget(tx);
+    return launchSettingsDto({ target, client: tx });
   });
 }
 
@@ -405,9 +406,12 @@ async function readPreferenceRow(
   return { id: row.id, preferences, revision: row.revision };
 }
 
-export async function getLaunchPreference(projectId: string): Promise<LaunchPreferenceDto> {
-  await requireProject(projectId);
-  const row = await readPreferenceRow(projectId);
+export async function getLaunchPreference(
+  projectId: string,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<LaunchPreferenceDto> {
+  await requireProject(projectId, client);
+  const row = await readPreferenceRow(projectId, client);
   const stored = row?.preferences[LAUNCH_PREFERENCE_KEY] as
     | Partial<LaunchPreferenceDto>
     | undefined;
@@ -778,11 +782,11 @@ export async function launchObjective(
       );
     }
 
-    const target = await ensureLocalLaunchTarget();
+    const target = await ensureLocalLaunchTarget(tx);
     const now = nowIso();
 
     await assertPrimaryResourceConnected({
-      ctx: serviceContext(),
+      ctx: serviceContext(tx),
       projectId: objective.project_id,
       executionTargetId: target.executionTargetId
     });
@@ -883,7 +887,7 @@ export async function launchObjective(
     }
 
     const request = await createExecutionRequest({
-      ctx: { ...serviceContext(), db: tx },
+      ctx: serviceContext(tx),
       missionId: objective.mission_id,
       objectiveId: objective.id,
       requestedAgent: agentKey,

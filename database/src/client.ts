@@ -239,6 +239,8 @@ function ensurePgTypeParsers(): Promise<void> {
  * - `bigint` (`int8`, e.g. `entity_changes.seq`) → `number`, instead of strings;
  * - `json`/`jsonb` → the raw text, since call sites `JSON.parse(...)` these
  *   columns exactly as SQLite hands them back as text.
+ * - `boolean` → `0 | 1`, since the shared row-mapping code was written against
+ *   SQLite integer booleans and compares flags numerically.
  */
 async function configurePgTypeParsers(): Promise<void> {
   if (pgTypeParsersConfigured) return;
@@ -250,6 +252,9 @@ async function configurePgTypeParsers(): Promise<void> {
   types.setTypeParser(1114, toIso); // timestamp
   types.setTypeParser(1184, toIso); // timestamptz
   types.setTypeParser(20, (value: string | null) => (value === null ? null : Number(value))); // int8
+  types.setTypeParser(16, (value: string | null) =>
+    value === null ? null : value === 't' ? 1 : 0
+  ); // bool
   const identity = (value: string | null): string | null => value;
   types.setTypeParser(114, identity); // json
   types.setTypeParser(3802, identity); // jsonb

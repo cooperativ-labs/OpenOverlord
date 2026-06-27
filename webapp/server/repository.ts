@@ -402,6 +402,10 @@ function toStatusDto(r: WorkspaceStatusRow): WorkspaceStatusDto {
   };
 }
 
+function isTruthyFlag(value: unknown): boolean {
+  return value === true || value === 1;
+}
+
 function toProjectResourceDto(r: ProjectResourceRow): ProjectResourceDto {
   const status = r.status === 'archived' ? 'archived' : existsSync(r.path) ? 'active' : 'missing';
   return {
@@ -412,7 +416,7 @@ function toProjectResourceDto(r: ProjectResourceRow): ProjectResourceDto {
     type: r.type as ProjectResourceDto['type'],
     label: r.label,
     path: r.path,
-    isPrimary: r.is_primary === 1,
+    isPrimary: isTruthyFlag(r.is_primary),
     status,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -523,6 +527,27 @@ async function promoteFallbackPrimary(
     now: string;
   }
 ): Promise<void> {
+  const primary = (await (executionTargetId === null
+    ? db.get(
+        `SELECT id FROM project_resources
+        WHERE project_id = ?
+          AND deleted_at IS NULL
+          AND is_primary = 1
+          AND execution_target_id IS NULL
+        LIMIT 1`,
+        [projectId]
+      )
+    : db.get(
+        `SELECT id FROM project_resources
+        WHERE project_id = ?
+          AND deleted_at IS NULL
+          AND is_primary = 1
+          AND execution_target_id = ?
+        LIMIT 1`,
+        [projectId, executionTargetId]
+      ))) as { id: string } | undefined;
+  if (primary) return;
+
   const fallback = (await (executionTargetId === null
     ? db.get(
         `SELECT id FROM project_resources
@@ -548,7 +573,7 @@ async function promoteFallbackPrimary(
     `UPDATE project_resources
         SET is_primary = 1, updated_at = ?, revision = revision + 1
       WHERE id = ?`,
-    [fallback.id, now]
+    [now, fallback.id]
   );
 }
 
@@ -2217,7 +2242,7 @@ export async function updateProjectResource(
     const existing = await getProjectResourceRow(tx, projectId, resourceId);
     const now = nowIso();
 
-    if (body.isPrimary === true && existing.is_primary !== 1) {
+    if (body.isPrimary === true && !isTruthyFlag(existing.is_primary)) {
       await clearPrimaryResourcesForTarget(tx, {
         projectId,
         executionTargetId: existing.execution_target_id,
@@ -2259,13 +2284,15 @@ export async function deleteProjectResource(projectId: string, resourceId: strin
       [now, now, revision, resourceId]
     );
 
-    if (existing.is_primary === 1) {
-      await promoteFallbackPrimary(tx, {
-        projectId,
-        executionTargetId: existing.execution_target_id,
-        now
-      });
-    }
+    const deleted = await tx.get<{ execution_target_id: string | null }>(
+      `SELECT execution_target_id FROM project_resources WHERE id = ?`,
+      [resourceId]
+    );
+    await promoteFallbackPrimary(tx, {
+      projectId,
+      executionTargetId: deleted?.execution_target_id ?? null,
+      now
+    });
 
     await recordChangeAsync(
       {
@@ -3063,6 +3090,7 @@ type CreateMissionResult = {
   missionId: string;
   objectiveIds: string[];
   instruction: string;
+  shouldGenerateMissionTitle: boolean;
 };
 
 async function createMissionTx(body: CreateMissionBody): Promise<CreateMissionResult> {
@@ -3078,7 +3106,8 @@ async function createMissionTx(body: CreateMissionBody): Promise<CreateMissionRe
       throw new ApiError(400, 'Describe the work to be done (title or first objective)');
     }
 
-    const title = (body.title ?? '').trim() || initialTitleFromInstruction(instruction);
+    const explicitTitle = (body.title ?? '').trim();
+    const title = explicitTitle || initialTitleFromInstruction(instruction);
 
     const project = (await tx.get(
       `SELECT id FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
@@ -3175,7 +3204,7 @@ async function createMissionTx(body: CreateMissionBody): Promise<CreateMissionRe
       now
     });
 
-    return { missionId: id, objectiveIds, instruction };
+    return { missionId: id, objectiveIds, instruction, shouldGenerateMissionTitle: !explicitTitle };
   });
 }
 
@@ -3220,14 +3249,17 @@ async function assignMissionTags(
 }
 
 export async function createMission(body: CreateMissionBody): Promise<MissionDetailDto> {
-  const { missionId, objectiveIds, instruction } = await createMissionTx(body);
+  const { missionId, objectiveIds, instruction, shouldGenerateMissionTitle } =
+    await createMissionTx(body);
   const detail = await getMissionDetail(missionId);
 
-  scheduleMissionTitleGeneration({
-    missionId: detail.id,
-    projectId: detail.projectId,
-    instructionText: instruction
-  });
+  if (shouldGenerateMissionTitle) {
+    scheduleMissionTitleGeneration({
+      missionId: detail.id,
+      projectId: detail.projectId,
+      instructionText: instruction
+    });
+  }
 
   const firstObjectiveId = objectiveIds[0];
   if (firstObjectiveId) {
@@ -4038,7 +4070,7 @@ async function insertObjective(
   const explicitAgent = body.assignedAgent?.trim() || null;
   const launchSelection =
     !explicitAgent && (state === 'draft' || state === 'future')
-      ? await getLaunchPreference(mission.project_id)
+      ? await getLaunchPreference(mission.project_id, db)
       : { selectedAgent: null, selectedModel: null, selectedReasoningEffort: null };
 
   const now = nowIso();

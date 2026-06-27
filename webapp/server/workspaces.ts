@@ -418,9 +418,11 @@ const SETUP_COMPLETED_KEY = 'initialSetupCompletedAt';
  * only while it keeps the exact seed identity and setup was never completed,
  * so existing instances that already renamed their workspace are never gated.
  */
-export async function needsInitialSetup(): Promise<boolean> {
+export async function needsInitialSetup(
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<boolean> {
   if (WORKSPACE.id !== SEED_WORKSPACE_ID) return false;
-  const row = await requireDatabaseClient().get<{
+  const row = await client.get<{
     name: string;
     slug: string;
     settings_json: string;
@@ -460,7 +462,9 @@ export async function completeInitialSetup(body: CompleteInitialSetupBody): Prom
     // Setup only ever names the untouched seeded workspace; once done (or after
     // the operator has renamed/created workspaces) this endpoint must not rename
     // whatever workspace happens to be active.
-    if (!(await needsInitialSetup())) throw new ApiError(409, 'Initial setup is already complete');
+    if (!(await needsInitialSetup(tx))) {
+      throw new ApiError(409, 'Initial setup is already complete');
+    }
 
     const name = (body.name ?? '').trim();
     if (!name) throw new ApiError(400, 'Workspace name is required');
