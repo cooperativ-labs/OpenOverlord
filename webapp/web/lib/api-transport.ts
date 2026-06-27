@@ -1,10 +1,10 @@
-import { apiFetchCredentials, getBearerAuthorizationHeader, resolveApiUrl } from './api-base.ts';
+import { apiFetchCredentials, getAuthorizationHeader, resolveApiUrl } from './api-base.ts';
 
 export async function fetchApi(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
-  const bearer = getBearerAuthorizationHeader();
-  if (bearer) {
-    for (const [key, value] of Object.entries(bearer)) {
+  const authHeader = getAuthorizationHeader();
+  if (authHeader) {
+    for (const [key, value] of Object.entries(authHeader)) {
       headers.set(key, value);
     }
   }

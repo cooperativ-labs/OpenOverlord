@@ -15,7 +15,14 @@ import {
   setActiveBackendProfileId,
   toPublicProfile
 } from './backend-profiles.js';
-import { clearBearerToken, getBearerToken, setBearerToken } from './backend-token-store.js';
+import {
+  clearBearerToken,
+  clearSessionToken,
+  getBearerToken,
+  getSessionToken,
+  setBearerToken,
+  setSessionToken
+} from './backend-token-store.js';
 import {
   findFreePort,
   startServer,
@@ -124,6 +131,24 @@ export function switchActiveBackend({
   controller: BackendRuntimeController;
 }): Promise<void> {
   return controller.reloadForProfile(id);
+}
+
+export function readSessionTokenForProfile(profileId: string): string | null {
+  return getSessionToken(profileId);
+}
+
+export function writeSessionTokenForProfile({
+  profileId,
+  token
+}: {
+  profileId: string;
+  token: string;
+}): void {
+  setSessionToken({ profileId, token });
+}
+
+export function clearSessionTokenForProfile(profileId: string): void {
+  clearSessionToken(profileId);
 }
 
 export function readBearerTokenForProfile(profileId: string): string | null {

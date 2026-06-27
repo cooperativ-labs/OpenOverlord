@@ -3,7 +3,7 @@ import { createContext, type ReactNode, useContext, useEffect, useState } from '
 
 import type { EntityChangeDto } from '../../shared/contract.ts';
 
-import { getBearerAuthorizationHeader, isRemoteBackend } from './api-base.ts';
+import { getAuthorizationHeader, isRemoteBackend } from './api-base.ts';
 import { resolveEventSourceUrl } from './api-transport.ts';
 import { connectEventStream } from './fetch-sse.ts';
 
@@ -34,7 +34,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     if (isRemoteBackend()) {
       const close = connectEventStream({
         url: resolveEventSourceUrl('/api/stream'),
-        headers: getBearerAuthorizationHeader(),
+        headers: getAuthorizationHeader(),
         handlers: {
           onOpen: onLive,
           onHello: cursor => setLastSeq(cursor ?? 0),

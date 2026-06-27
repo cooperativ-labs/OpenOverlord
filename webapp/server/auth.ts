@@ -5,6 +5,7 @@ import type { NextFunction, Request, Response } from 'express';
 
 import { createAuth } from '../../auth/src/auth/config.ts';
 
+import { resolveAllowedBrowserOrigins } from './browser-origins.ts';
 import {
   authDomainDatabase,
   DATABASE_PATH,
@@ -28,24 +29,11 @@ const authBasePort = process.env.OVERLORD_WEB_PORT ?? '4310';
 const authBaseUrl = process.env.BETTER_AUTH_URL ?? `http://${authBaseHost}:${authBasePort}`;
 process.env.BETTER_AUTH_URL ??= authBaseUrl;
 
-function resolveAuthTrustedOrigins({
-  baseUrl,
-  devPort
-}: {
-  baseUrl: string;
-  devPort: string | undefined;
-}): string[] {
-  const origins = new Set<string>([baseUrl]);
-  const vitePort = devPort ?? '5173';
-  // Vite dev server runs on a separate port; localhost and 127.0.0.1 are distinct origins.
-  origins.add(`http://localhost:${vitePort}`);
-  origins.add(`http://127.0.0.1:${vitePort}`);
-  // Electron desktop remote mode serves the bundled SPA from an ephemeral loopback port.
-  for (let port = 4310; port <= 4360; port += 1) {
-    origins.add(`http://127.0.0.1:${port}`);
-    origins.add(`http://localhost:${port}`);
-  }
-  return [...origins];
+export function getAllowedBrowserOrigins(): string[] {
+  return resolveAllowedBrowserOrigins({
+    baseUrl: authBaseUrl,
+    devPort: process.env.OVERLORD_WEB_DEV_PORT
+  });
 }
 
 const authAdapter = resolveAdapter({ databasePath: DATABASE_PATH });
@@ -60,10 +48,7 @@ export const auth = createAuth({
             schema: authAdapter.schema
           }
         : { type: 'postgres', connectionString: authAdapter.connectionString },
-  trustedOrigins: resolveAuthTrustedOrigins({
-    baseUrl: authBaseUrl,
-    devPort: process.env.OVERLORD_WEB_DEV_PORT
-  })
+  trustedOrigins: getAllowedBrowserOrigins()
 });
 export const authNodeHandler = toNodeHandler(auth);
 

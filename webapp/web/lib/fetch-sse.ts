@@ -23,7 +23,7 @@ export function connectEventStream({
       const response = await fetch(url, {
         method: 'GET',
         headers,
-        credentials: 'include',
+        credentials: headers?.Authorization ? 'omit' : 'include',
         signal: controller.signal
       });
       if (!response.ok || !response.body) {

@@ -4,12 +4,15 @@ import {
   addRemoteBackend,
   type BackendRuntimeController,
   clearBearerTokenForProfile,
+  clearSessionTokenForProfile,
   getPublicActiveBackend,
   listPublicBackends,
   readBearerTokenForProfile,
+  readSessionTokenForProfile,
   removeRemoteBackend,
   switchActiveBackend,
-  writeBearerTokenForProfile
+  writeBearerTokenForProfile,
+  writeSessionTokenForProfile
 } from './backend-runtime.js';
 import type { CliUpdater } from './cli-updater.js';
 import { isNativeThemeSource, setNativeThemeSource } from './native-theme.js';
@@ -166,6 +169,28 @@ export function registerIpc({
   ipcMain.handle('overlord:backend:clear-bearer-token', (_event, profileId: unknown) => {
     if (typeof profileId !== 'string' || profileId.length === 0) return false;
     clearBearerTokenForProfile(profileId);
+    return true;
+  });
+
+  ipcMain.handle('overlord:backend:get-session-token', (_event, profileId: unknown) => {
+    if (typeof profileId !== 'string' || profileId.length === 0) return null;
+    return readSessionTokenForProfile(profileId);
+  });
+
+  ipcMain.handle(
+    'overlord:backend:set-session-token',
+    (_event, payload: { profileId?: unknown; token?: unknown }) => {
+      if (typeof payload?.profileId !== 'string' || typeof payload?.token !== 'string') {
+        throw new Error('Profile id and token are required.');
+      }
+      writeSessionTokenForProfile({ profileId: payload.profileId, token: payload.token });
+      return true;
+    }
+  );
+
+  ipcMain.handle('overlord:backend:clear-session-token', (_event, profileId: unknown) => {
+    if (typeof profileId !== 'string' || profileId.length === 0) return false;
+    clearSessionTokenForProfile(profileId);
     return true;
   });
 

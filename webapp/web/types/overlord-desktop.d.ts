@@ -97,6 +97,9 @@ declare global {
     getBearerToken?: (profileId: string) => Promise<string | null>;
     setBearerToken?: (payload: { profileId: string; token: string }) => Promise<boolean>;
     clearBearerToken?: (profileId: string) => Promise<boolean>;
+    getSessionToken?: (profileId: string) => Promise<string | null>;
+    setSessionToken?: (payload: { profileId: string; token: string }) => Promise<boolean>;
+    clearSessionToken?: (profileId: string) => Promise<boolean>;
   };
 
   interface Window {

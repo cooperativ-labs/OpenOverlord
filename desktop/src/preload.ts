@@ -143,7 +143,13 @@ const api = {
   setBearerToken: (payload: { profileId: string; token: string }): Promise<boolean> =>
     ipcRenderer.invoke('overlord:backend:set-bearer-token', payload),
   clearBearerToken: (profileId: string): Promise<boolean> =>
-    ipcRenderer.invoke('overlord:backend:clear-bearer-token', profileId)
+    ipcRenderer.invoke('overlord:backend:clear-bearer-token', profileId),
+  getSessionToken: (profileId: string): Promise<string | null> =>
+    ipcRenderer.invoke('overlord:backend:get-session-token', profileId),
+  setSessionToken: (payload: { profileId: string; token: string }): Promise<boolean> =>
+    ipcRenderer.invoke('overlord:backend:set-session-token', payload),
+  clearSessionToken: (profileId: string): Promise<boolean> =>
+    ipcRenderer.invoke('overlord:backend:clear-session-token', profileId)
 };
 
 export type OverlordBridge = typeof api;

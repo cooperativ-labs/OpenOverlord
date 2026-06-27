@@ -10,7 +10,8 @@ export type DesktopBackendInfo = {
 };
 
 let activeBackend: DesktopBackendInfo | null = null;
-let bearerToken: string | null = null;
+let userToken: string | null = null;
+let sessionToken: string | null = null;
 
 function trimTrailingSlash(url: string): string {
   return url.replace(/\/+$/, '');
@@ -41,35 +42,72 @@ export function getAuthBaseUrl(): string {
   return base || (typeof window !== 'undefined' ? window.location.origin : '');
 }
 
+async function loadStoredTokensForActiveBackend(): Promise<void> {
+  const bridge = window.overlord;
+  if (!activeBackend || !bridge) return;
+
+  if (bridge.getSessionToken) {
+    sessionToken = await bridge.getSessionToken(activeBackend.id);
+  }
+  if (bridge.getBearerToken) {
+    userToken = await bridge.getBearerToken(activeBackend.id);
+  }
+}
+
 export async function initDesktopApiConfig(): Promise<void> {
   const bridge = typeof window === 'undefined' ? undefined : window.overlord;
   if (!bridge?.getActiveBackend) return;
 
   activeBackend = await bridge.getActiveBackend();
-  if (activeBackend.mode === 'remote' && bridge.getBearerToken) {
-    bearerToken = await bridge.getBearerToken(activeBackend.id);
+  if (activeBackend.mode === 'remote') {
+    await loadStoredTokensForActiveBackend();
   }
 }
 
+function resolveAuthorizationToken(): string | null {
+  return userToken ?? sessionToken;
+}
+
+export function getAuthorizationHeader(): Record<string, string> | undefined {
+  const token = resolveAuthorizationToken();
+  if (!token) return undefined;
+  return { Authorization: `Bearer ${token}` };
+}
+
+/** @deprecated Use getAuthorizationHeader */
 export function getBearerAuthorizationHeader(): Record<string, string> | undefined {
-  if (!bearerToken) return undefined;
-  return { Authorization: `Bearer ${bearerToken}` };
+  return getAuthorizationHeader();
+}
+
+export async function persistDesktopSessionToken(token: string): Promise<void> {
+  sessionToken = token.trim();
+  const bridge = window.overlord;
+  if (!activeBackend || !bridge?.setSessionToken) return;
+  await bridge.setSessionToken({ profileId: activeBackend.id, token: sessionToken });
 }
 
 export async function persistDesktopBearerToken(token: string): Promise<void> {
-  bearerToken = token.trim();
+  userToken = token.trim();
   const bridge = window.overlord;
   if (!activeBackend || !bridge?.setBearerToken) return;
-  await bridge.setBearerToken({ profileId: activeBackend.id, token: bearerToken });
+  await bridge.setBearerToken({ profileId: activeBackend.id, token: userToken });
 }
 
-export async function clearDesktopBearerToken(): Promise<void> {
-  bearerToken = null;
+export async function clearDesktopAuthTokens(): Promise<void> {
+  userToken = null;
+  sessionToken = null;
   const bridge = window.overlord;
-  if (!activeBackend || !bridge?.clearBearerToken) return;
-  await bridge.clearBearerToken(activeBackend.id);
+  if (!activeBackend) return;
+  if (bridge?.clearBearerToken) await bridge.clearBearerToken(activeBackend.id);
+  if (bridge?.clearSessionToken) await bridge.clearSessionToken(activeBackend.id);
 }
 
 export function apiFetchCredentials(): RequestCredentials {
-  return isRemoteBackend() ? 'include' : 'same-origin';
+  return isRemoteBackend() && !resolveAuthorizationToken() ? 'include' : 'omit';
+}
+
+export function captureAuthTokenFromResponse(response: Response): void {
+  const token = response.headers.get('set-auth-token');
+  if (!token) return;
+  void persistDesktopSessionToken(token);
 }

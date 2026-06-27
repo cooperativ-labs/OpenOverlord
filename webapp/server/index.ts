@@ -11,7 +11,7 @@ import { isExplicitRuntimeEnv, resolveLayeredEnv } from '../../cli/src/env.ts';
 import { ServiceError } from '../../packages/core/service/errors.ts';
 import { loadRepoEnvForProfile } from '../load-repo-env.ts';
 
-import { authNodeHandler, requireAuthenticatedSession } from './auth.ts';
+import { authNodeHandler, getAllowedBrowserOrigins, requireAuthenticatedSession } from './auth.ts';
 import { DATABASE_DIALECT, DATABASE_PATH, initDatabase, WORKSPACE } from './db.ts';
 import { ENV_PROFILE, REPO_ROOT } from './env-profile.ts';
 import { apiErrorFromDatabaseError } from './errors.ts';
@@ -183,7 +183,20 @@ function parsePort(value: string, name: string): number {
 }
 
 const app = express();
-app.use(cors());
+const allowedBrowserOrigins = new Set(getAllowedBrowserOrigins());
+app.use(
+  cors({
+    origin(origin, callback) {
+      // Non-browser clients and same-origin requests omit Origin.
+      if (!origin || allowedBrowserOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`Origin ${origin} is not allowed by CORS`));
+    },
+    credentials: true
+  })
+);
 app.all('/api/auth/*', authNodeHandler);
 
 const jsonBody = express.json();

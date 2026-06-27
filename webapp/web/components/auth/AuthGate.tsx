@@ -31,7 +31,7 @@ export function AuthGate({ children }: AuthGateProps) {
   useEffect(() => {
     if (!session.data) return;
     void ensureRemoteDesktopBearerToken().catch(() => {
-      /* bearer minting is best-effort; session cookies may still work for REST */
+      /* USER_TOKEN minting is best-effort once the session bearer is active */
     });
   }, [session.data]);
 
