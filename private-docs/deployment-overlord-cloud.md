@@ -67,12 +67,26 @@ Provision a PostgreSQL database service in the existing Railway project:
 ```text
 Railway project: overlord-cloud
 ├── Service: overlord-backend
-└── Service: postgres
+└── Service: Postgres
 ```
 
 Set `overlord-backend.DATABASE_URL` from the Railway Postgres private connection
 string/reference variable, not a public database URL. Keep all DB credentials
 server-side on the backend service.
+
+Current state, provisioned 2026-06-27:
+
+- Railway Postgres service: **`Postgres`**
+  (`4b1dc026-76bd-46d8-a723-bf9026df5aa6`).
+- Region: **EU West** (`europe-west4-drams3a`), 1 configured/running replica.
+- Volume: **`postgres-volume`**
+  (`5a76ff88-93b3-4f24-a9e4-a7d68dd9acdc`), mounted at
+  `/var/lib/postgresql/data`, 5 GB, ready.
+- Backend variable: `overlord-backend.DATABASE_URL =
+  ${{Postgres.DATABASE_URL}}` (Railway private hostname
+  `postgres.railway.internal`, not the public TCP proxy).
+- Backend statement timeout: `overlord-backend.PGOPTIONS =
+  -c statement_timeout=30000`.
 
 Apply the same Postgres migrations used for Neon:
 
@@ -84,6 +98,28 @@ DATABASE_URL='postgresql://…@…railway.internal:5432/railway' \
   tsx scripts/migrate-postgres.ts
 ```
 
+For a local operator running migrations before the backend is deployed, use the
+Railway Postgres **public proxy URL only for the migration command** because the
+private hostname resolves inside Railway's network:
+
+```bash
+railway run --project 16825060-9441-490c-ab61-fc4e50ed9686 \
+  --environment 156c6901-3134-4ecf-ba24-b10fe0d256f3 \
+  --service 4b1dc026-76bd-46d8-a723-bf9026df5aa6 \
+  --no-local -- sh -c \
+  'DATABASE_URL="$DATABASE_PUBLIC_URL" yarn db:migrate:postgres'
+```
+
+Verification from the 2026-06-27 bootstrap:
+
+- `yarn db:migrate:postgres` completed against Railway Postgres.
+- `information_schema.tables` reports **41** public base tables.
+- `schema_migrations` reports **12** applied migrations.
+- `SHOW max_connections` reports **100**.
+- With backend `PGOPTIONS`, `SHOW statement_timeout` reports **30s**.
+- The app uses `pg`'s default pool max of **10** connections, so one backend
+  replica leaves headroom under Railway Postgres' 100-connection setting.
+
 Before live use, document and test:
 
 - backup schedule and restore procedure;
@@ -91,6 +127,48 @@ Before live use, document and test:
   database;
 - connection pool size relative to Railway Postgres connection limits;
 - `statement_timeout` and any app-level retry/reconnect behavior.
+
+#### Railway Postgres backup and restore procedure
+
+Use two layers:
+
+1. **Railway native backups:** in the Railway dashboard, open
+   `overlord-cloud` -> `Postgres` -> **Backups**, enable a daily backup schedule,
+   and retain at least 7 daily backups before live use. Railway documents
+   Postgres as unmanaged and recommends native volume backups for database
+   services, with backup/restore managed from the service Backups tab.
+2. **Logical operator backup:** take an on-demand `pg_dump --format=custom`
+   before risky migrations or manual data operations. Store the artifact outside
+   the Railway volume.
+
+Operator commands, using the public proxy only from the operator machine:
+
+```bash
+# Dump
+railway run --service Postgres --no-local -- sh -c \
+  'docker run --rm -e DATABASE_URL="$DATABASE_PUBLIC_URL" \
+    -v "$PWD/.overlord/tmp:/backup" postgres:18-alpine \
+    pg_dump "$DATABASE_URL" --format=custom --file=/backup/overlord.dump'
+
+# Restore into a disposable rehearsal DB
+railway run --service Postgres --no-local -- sh -c \
+  'docker run --rm -e DATABASE_URL="$DATABASE_PUBLIC_URL" \
+    -v "$PWD/.overlord/tmp:/backup" postgres:18-alpine sh -ceu '\''
+      restore_url="${DATABASE_URL%/*}/ovld_restore_rehearsal"
+      psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+        -c "DROP DATABASE IF EXISTS ovld_restore_rehearsal"
+      psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+        -c "CREATE DATABASE ovld_restore_rehearsal"
+      pg_restore --dbname "$restore_url" --exit-on-error /backup/overlord.dump
+      psql "$restore_url" -At -c "select count(*) from schema_migrations"
+      psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+        -c "DROP DATABASE ovld_restore_rehearsal"
+    '\'''
+```
+
+Rehearsal result on 2026-06-27: dumped the freshly migrated Railway database,
+restored it into `ovld_restore_rehearsal`, verified
+`schema_migrations = 12`, and dropped the rehearsal database.
 
 ### Phase 2: Neon — managed Postgres migration target
 
@@ -242,23 +320,15 @@ Keep the backend off Vercel functions (no persistent SSE / long-poll / workers
 there). Full web wiring (runtime-injected API base URL, env vars) is a later
 objective; this runbook covers the backend control plane.
 
-## ⚠️ Prerequisite before a live cutover: the data-layer Postgres port
+## Postgres data-layer status
 
-The hosted backend is **not yet runnable against Postgres** (Railway Postgres or
-Neon). The live server (`webapp/server` + `packages/core/service`) is still
-synchronous
-`better-sqlite3`: `webapp/server/db.ts` throws on boot when `DATABASE_URL` is a
-`postgres://` URL ("the embedded webapp REST server runs on better-sqlite3
-only"). Objective 3 delivered the async `DatabaseClient`, the Postgres migration
-runner, async queue primitives (`packages/core/service/queue-runtime.ts`), and
-Postgres conformance tests — but **the running server was not ported** (364
-`db.prepare()` call sites across 25 files, ~17k LOC). Better Auth is already
-Postgres-capable; the app data layer is not.
+The data-layer Postgres port and two-adapter verification are complete. The
+bundled backend now boots against a `postgres://`/`postgresql://` `DATABASE_URL`
+with the async `DatabaseClient`; the previous better-sqlite3 boot throw is gone.
 
-Until that port lands, a Railway container started against any Postgres
-`DATABASE_URL` exits on boot.
-**Do not announce a working hosted endpoint before the port + the verification
-checklist below pass.**
+Do not announce a working hosted endpoint until the backend deploy objective
+connects the GitHub source and the runtime verification checklist below passes
+against the Railway service domain.
 
 ## Verification checklist (run after the data-layer port)
 
@@ -276,8 +346,8 @@ checklist below pass.**
 
 | Concern | Provider | Identifier |
 | --- | --- | --- |
-| Database phase 1 | Railway Postgres | to provision in Railway project `overlord-cloud`, EU West |
+| Database phase 1 | Railway Postgres | service `Postgres` (`4b1dc026-76bd-46d8-a723-bf9026df5aa6`), volume `postgres-volume` (`5a76ff88-93b3-4f24-a9e4-a7d68dd9acdc`), EU West |
 | Database phase 2 | Neon | project `little-term-34261138` (`Overlord Cloud (EU)`), `aws-eu-central-1` |
-| Backend  | Railway | project `overlord-cloud` (`16825060-9441-490c-ab61-fc4e50ed9686`); service `overlord-backend` (`71f225e9-8dff-4348-95d5-f3d7f2f02e2b`); domain `overlord-backend-production.up.railway.app`; region EU West *(to set)* |
+| Backend  | Railway | project `overlord-cloud` (`16825060-9441-490c-ab61-fc4e50ed9686`); service `overlord-backend` (`71f225e9-8dff-4348-95d5-f3d7f2f02e2b`); domain `overlord-backend-production.up.railway.app`; `DATABASE_URL=${{Postgres.DATABASE_URL}}`; region EU West *(to set before deploy)* |
 | Web      | Vercel | (to configure) |
 | Source   | GitHub | `cooperativ-labs/OpenOverlord` |

@@ -13,11 +13,7 @@
 #   - @google/genai — CommonJS with dynamic require()s esbuild cannot inline.
 # `nodeLinker: node-modules` (see .yarnrc.yml) makes both available at runtime.
 #
-# NOTE: the live data layer (webapp/server + packages/core/service) is still
-# synchronous better-sqlite3 and throws on a Postgres DATABASE_URL today, so a
-# container started against Neon exits on boot until the async-DatabaseClient
-# port lands. The build itself is correct; see the operator runbook at
-# private-docs/deployment-overlord-cloud.md (git-ignored).
+# See private-docs/deployment-overlord-cloud.md for the operator runbook.
 
 # ---- Builder -------------------------------------------------------------
 FROM node:20-bookworm-slim AS builder
@@ -42,7 +38,8 @@ COPY cli/package.json cli/
 COPY webapp/package.json webapp/
 COPY desktop/package.json desktop/
 COPY packages/core/package.json packages/core/
-RUN yarn install --immutable
+# Source is copied after install; skip workspace builds until COPY . . below.
+RUN yarn install --immutable --mode=skip-build
 
 # Build the workspace packages that resolve to dist/ (database, auth,
 # automations), then bundle the server. @overlord/core resolves to source and is

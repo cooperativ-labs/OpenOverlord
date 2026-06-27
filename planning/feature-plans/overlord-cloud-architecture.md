@@ -25,7 +25,7 @@ desktop app and CLI are the same binaries in either mode — only the configured
 | Concern | Choice | One-line reason |
 | --- | --- | --- |
 | Backend / API service | **Railway** | Always-on container host; good at long-lived services, queues, and streams. |
-| Database (system of record) | **Neon** | Managed serverless Postgres: HA, PITR, branching, pooling — the things you don't want to hand-operate. |
+| Database (system of record) | **Railway Postgres first; Neon later** | Start with one-provider EU deployment and private networking; keep Neon as the managed Postgres migration target when HA/PITR/branching justify it. |
 | Web frontend | **Vercel** | Global edge delivery, instant deploys, preview-per-PR. |
 | Desktop frontend | **Electron + bundled webapp** | Offline-capable, instant launch, safe native bridge, version-coherent with the local CLI. |
 
@@ -34,20 +34,20 @@ desktop app and CLI are the same binaries in either mode — only the configured
 ```text
                          ┌─────────────────────────────┐
   Web users  ───────────▶│  Vercel  (web frontend)     │
-                         │  SSR/edge, region: iad1      │
+                         │  SSR/edge, region: fra1      │
                          └──────────────┬──────────────┘
                                         │ HTTPS REST + SSE/realtime
                                         ▼
   Desktop users ──────────────▶┌──────────────────────────────┐
   (Electron, bundled webapp)    │  Railway backend service      │
   HTTPS REST + SSE/realtime     │  REST + protocol + /realtime  │
-                                │  + runner queue, region: VA   │
+                                │  + runner queue, EU West      │
                                 └───────────────┬──────────────┘
                                                 │ service-layer transactions
                                                 ▼
                                 ┌──────────────────────────────┐
-                                │  Neon Postgres                │
-                                │  us-east-1 (N. Virginia)      │
+                                │  Railway Postgres (phase 1)   │
+                                │  EU West / private network    │
                                 └──────────────────────────────┘
 
   Execution targets (laptop, home server, cloud runner)
@@ -81,22 +81,47 @@ Railway is the right fit specifically because the backend needs to hold
 claim/long-poll loop — and run background workers. That is always-on-service
 territory, not serverless-function territory (see the Vercel section).
 
-Pin the Railway service to the **US East (Virginia)** region to co-locate with
-the database (see Region & Latency).
+Pin the Railway service to **EU West (Amsterdam)** to co-locate with the phase-1
+Railway Postgres database and stay close to the phase-2 Neon EU target (see
+Region & Latency).
 
-### Database → Neon
+### Database → Railway Postgres first, Neon later
 
-Use Neon as the hosted Postgres system of record. It is managed serverless
-Postgres with autoscaling, scale-to-zero, branching, instant/point-in-time
-restore, and PgBouncer-based connection pooling.
+The first production deployment uses Railway Postgres in the same Railway
+project and EU West region as the backend. This keeps the initial hosted control
+plane operationally simple: one provider, private networking for the backend DB
+URL, co-located compute/database, and no Neon scale-to-zero behavior on the hot
+path.
 
-**Why Neon and not Railway Postgres** (even though we're already on Railway):
-the two are different categories of product. Railway Postgres is explicitly
-*unmanaged* — per Railway's docs, a Postgres container from the official image
-where "you have total control over their configuration and maintenance." You own
-tuning, monitoring, and backups; HA, PITR, autoscaling, pooling, and read
-replicas are not provided. The database is the one component we least want to
-hand-operate, because:
+Provisioned phase-1 state:
+
+- Project: `overlord-cloud` (`16825060-9441-490c-ab61-fc4e50ed9686`)
+- Backend service: `overlord-backend`
+  (`71f225e9-8dff-4348-95d5-f3d7f2f02e2b`)
+- Postgres service: `Postgres` (`4b1dc026-76bd-46d8-a723-bf9026df5aa6`)
+- Region: EU West (`europe-west4-drams3a`)
+- Backend DB variable: `DATABASE_URL=${{Postgres.DATABASE_URL}}`
+  (private Railway hostname, not the public TCP proxy)
+
+Accept the tradeoff explicitly: Railway Postgres is a Postgres service on a
+Railway volume, not a managed HA database product. Before live use, native
+Railway backups must be scheduled from the service Backups tab and the logical
+`pg_dump`/`pg_restore` restore procedure must stay rehearsed. The 2026-06-27
+bootstrap applied 12 migrations, produced 41 public base tables, verified
+`max_connections=100`, set backend `statement_timeout=30s`, and restored a
+custom-format dump into a temporary rehearsal database.
+
+### Database → Neon migration target
+
+Use Neon as the later managed Postgres system-of-record target. It is managed
+serverless Postgres with autoscaling, scale-to-zero, branching,
+instant/point-in-time restore, and PgBouncer-based connection pooling.
+
+Neon remains the phase-2 target when managed database features outweigh the
+single-provider simplicity. Railway Postgres and Neon are different categories of
+product. Railway Postgres is an unmanaged Postgres container on a volume; with
+Neon, HA, PITR, autoscaling, pooling, and branching are provider features. The
+database is the one component we least want to hand-operate long term, because:
 
 1. **It is the system of record.** Every client, runner, and protocol event
    depends on it. A single-container Postgres on a volume is a single point of
@@ -113,15 +138,12 @@ hand-operate, because:
    connection string regardless of provider, so two providers means one extra
    account and one extra secret — not added architectural complexity.
 
-Production guidance: the backend owns DB credentials; clients never connect to
-Neon directly. **Disable Neon autosuspend (scale-to-zero) on the production
-database** so the hot path never pays a cold-start; reserve scale-to-zero for
-dev/preview branches. Do not couple realtime to Postgres `LISTEN/NOTIFY` on the
-pooled path — keep the portable `entity_changes` feed canonical.
-
-If single-provider consolidation ever becomes a hard requirement (cost or
-procurement), Railway Postgres remains a viable fallback — but it is not the
-production default.
+Production guidance for a Neon cutover: the backend owns DB credentials; clients
+never connect to Neon directly. **Disable Neon autosuspend (scale-to-zero) on the
+production database** so the hot path never pays a cold-start; reserve
+scale-to-zero for dev/preview branches. Do not couple realtime to Postgres
+`LISTEN/NOTIFY` on the pooled path — keep the portable `entity_changes` feed
+canonical.
 
 ### Web frontend → Vercel
 
@@ -143,12 +165,12 @@ So Vercel is **additive** (a better way to deliver the web UI), not a
 replacement for the always-on Railway backend — which the desktop app and
 CLI/runners need to exist regardless.
 
-Going serverless on the frontend makes **Neon more favorable, not less**: Neon's
-pooler + serverless driver (`@neondatabase/serverless`) are built for the
-"many short-lived function instances" pattern that would exhaust a single
-Railway Postgres container, and Vercel has a first-class Neon integration. If
-any DB-touching SSR/route handlers run on Vercel, pin them to `iad1` and use the
-Node runtime (not Edge) so queries don't cross continents.
+If any DB-touching SSR/route handlers run on Vercel during phase 1, pin them to
+`fra1`, use the Node runtime (not Edge), and keep them behind the backend/service
+contract rather than opening client-direct database surfaces. A later Neon
+cutover can revisit Neon's pooler/serverless driver for many short-lived
+function instances, but the first deployment keeps the database behind the
+Railway backend.
 
 ### Desktop frontend → Electron with the bundled webapp
 
@@ -331,8 +353,8 @@ one genuinely nice feature — auth state that branches alongside Neon DB branch
 
 ## Region & Latency
 
-The Neon/Railway split adds latency only on the **backend↔DB** leg, not the
-user↔UI leg. Co-location is the dominant lever:
+The database provider choice adds latency only on the **backend↔DB** leg, not
+the user↔UI leg. Co-location is the dominant lever:
 
 | Pairing | Backend↔DB RTT | 3 sequential queries |
 | --- | --- | --- |
@@ -340,14 +362,15 @@ user↔UI leg. Co-location is the dominant lever:
 | Cross-region, same continent | ~25–70 ms | ~75–210 ms (noticeable) |
 | Cross-continent | ~100–250 ms | sluggish |
 
-Recommended pairing: **Railway US East (Virginia) + Neon `us-east-1`
-(N. Virginia)** — same metro, ~1–5 ms. Singapore↔Singapore
-(`ap-southeast-1`) is the equivalent APAC pairing. Avoid Railway US West
-(California): Neon's nearest is `us-west-2` (Oregon), ~25 ms away.
+Phase-1 pairing: **Railway EU West (Amsterdam) + Railway Postgres EU West** in
+the same project over private networking. Phase-2 Neon pairing: Railway EU West
++ Neon `aws-eu-central-1` (Frankfurt), both in the EU. Avoid cross-continent
+pairings.
 
 What actually makes the UI feel slow (none are the provider split itself):
 
-- **Not co-locating** — pin both to Virginia.
+- **Not co-locating** — keep backend and database in the same Railway EU West
+  project for phase 1, or the closest EU pairing for phase 2.
 - **Cold connections** — a cross-DC TLS+auth handshake costs 50–100 ms+. Use a
   warm pooled connection and reuse it.
 - **Neon scale-to-zero cold starts** — disable autosuspend on the prod DB.
@@ -485,19 +508,18 @@ The highest-risk stable surface is queue claiming: it must remain centralized in
 service-layer transactions and must not let provider adapters claim work
 directly from database internals.
 
-One known implementation caveat: the contract names PostgreSQL as the
-shared-deployment target and Postgres migrations exist, but the live backend
-path still opens `better-sqlite3` directly in places. Overlord Cloud requires
-the backend runtime to finish adapter selection and service-layer execution
-against PostgreSQL (verify `entity_changes`, queue-claim atomicity, and
-idempotency) before it is production-ready for distributed runners.
+Implementation caveat resolved: the live backend data layer has been ported to
+the async `DatabaseClient`, and the backend now boots against Postgres. Continue
+to verify `entity_changes`, queue-claim atomicity, and protocol idempotency in
+the deployed Railway runtime before announcing the hosted endpoint.
 
 ## Phased Plan
 
-1. **Hosted control plane.** Deploy the Railway backend against Neon
-   (co-located in Virginia). Verify Postgres adapter conformance
-   (`entity_changes`, claim atomicity, idempotency). Keep local/home-server
-   runners as the execution targets. Vercel web connects to the hosted backend.
+1. **Hosted control plane.** Deploy the Railway backend against Railway Postgres
+   in EU West. Verify Postgres adapter conformance (`entity_changes`, claim
+   atomicity, idempotency), protocol writeback, runner queue claim, and
+   realtime. Keep local/home-server runners as the execution targets. Vercel web
+   connects to the hosted backend.
 1b. **Desktop multi-backend mode.** Implement backend profiles, origin/API
    decoupling, per-profile session partitions, bearer-token auth, and the
    reload-and-login switch flow so the desktop app can point at Local or
@@ -558,13 +580,15 @@ Costs:
 - Railway: regions (US West/California, US East/Virginia, EU West/Amsterdam, SE
   Asia/Singapore — bare-metal); Postgres templates are unmanaged ("you have
   total control over their configuration and maintenance"); volumes are
-  single-instance per service.
+  single-instance per service. Phase 1 uses EU West for both backend and
+  Railway Postgres.
 - Neon: AWS regions (`us-east-1`, `us-east-2`, `us-west-2`, `eu-central-1`,
   `eu-west-2`, `ap-southeast-1`, `ap-southeast-2`, `sa-east-1`); managed
   serverless Postgres with autoscaling, scale-to-zero, branching, instant/PITR
   restore, PgBouncer pooling; Azure regions deprecated; no GCP.
 - Vercel: serverless functions are short-lived (WebSockets unsupported, SSE
-  duration-capped); pin DB-touching server code to `iad1` (Virginia) on the Node
-  runtime; first-class Neon integration.
+  duration-capped); pin any DB-touching server code to `fra1` on the Node
+  runtime for the EU deployment; first-class Neon integration remains relevant
+  for the later Neon phase.
 - Electron: do not load remote content into a renderer with a preload/IPC
   bridge; bundle local assets for privileged renderers.
