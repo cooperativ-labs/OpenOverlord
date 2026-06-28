@@ -58,6 +58,7 @@
     "desktop:package:prod": "tsx scripts/build-desktop.ts",
     "desktop:publish": "node --import tsx scripts/publish-desktop-release.ts",
     "server:build:prod": "yarn workspace @overlord/webapp build:server",
+    "server:build:cloud": "yarn workspace @overlord/webapp build:server:cloud",
     "server:dev": "node scripts/with-dev-env.mjs yarn workspace @overlord/webapp server:dev",
     "webapp:build:prod": "yarn workspace @overlord/webapp build",
     "webapp:dev": "node scripts/with-dev-env.mjs yarn workspace @overlord/webapp dev",

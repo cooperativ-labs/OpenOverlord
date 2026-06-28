@@ -1,15 +1,15 @@
-import Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { type BetterSqlite3Database, loadBetterSqlite3 } from './better-sqlite3-loader.js';
 import { CONTRACT_VERSION } from './constants.js';
 import { resolveGlobalDatabasePath } from './local-paths.js';
 
 const MIGRATION_FILE_PATTERN = /^\d+_[a-z0-9_]+\.sql$/;
 
-export type OverlordDatabase = Database.Database;
+export type OverlordDatabase = BetterSqlite3Database;
 
 /**
  * The SQLite migrations ship inside this package (`@overlord/database`) and are
@@ -68,6 +68,7 @@ function applyMigration(
 
 export function openDatabase({ databasePath }: { databasePath: string }): OverlordDatabase {
   mkdirSync(path.dirname(databasePath), { recursive: true });
+  const Database = loadBetterSqlite3();
   const db = new Database(databasePath);
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
@@ -109,6 +110,7 @@ export function migrateDatabase(db: OverlordDatabase): void {
 }
 
 export function openInMemoryDatabase(): OverlordDatabase {
+  const Database = loadBetterSqlite3();
   const db = new Database(':memory:');
   db.pragma('foreign_keys = ON');
   migrateDatabase(db);

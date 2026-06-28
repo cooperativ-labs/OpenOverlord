@@ -8,6 +8,7 @@
  * reaching across folder boundaries with relative imports.
  */
 export { type AdapterConfig, resolveAdapter } from './adapter.js';
+export { loadBetterSqlite3 } from './better-sqlite3-loader.js';
 export {
   bindBool,
   createPostgresClient,
