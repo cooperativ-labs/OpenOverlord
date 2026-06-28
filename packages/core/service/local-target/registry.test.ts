@@ -165,9 +165,8 @@ describe('createDefaultLocalTargetRegistry', () => {
     reachable: false
   };
 
-  it('uses in-process for the caller target even when the backend is not co-located', () => {
+  it('uses in-process for the caller target', () => {
     const registry = createDefaultLocalTargetRegistry({
-      coLocatedWithCheckout: false,
       callerExecutionTargetId: 'laptop-1'
     });
     const provider = registry.resolve({
@@ -178,9 +177,8 @@ describe('createDefaultLocalTargetRegistry', () => {
     assert.ok(provider instanceof InProcessProvider);
   });
 
-  it('uses runner queue for a reachable remote local target', () => {
+  it('uses runner queue for a reachable local target that is not the caller device', () => {
     const registry = createDefaultLocalTargetRegistry({
-      coLocatedWithCheckout: false,
       callerExecutionTargetId: 'laptop-1'
     });
     const provider = registry.resolve(remoteLocal);
@@ -189,7 +187,6 @@ describe('createDefaultLocalTargetRegistry', () => {
 
   it('marks offline remote targets unreachable', async () => {
     const registry = createDefaultLocalTargetRegistry({
-      coLocatedWithCheckout: false,
       callerExecutionTargetId: 'laptop-1'
     });
     const provider = registry.resolveOrUnavailable(offlineLocal);

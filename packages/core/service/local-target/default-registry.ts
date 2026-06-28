@@ -1,6 +1,6 @@
 // Default provider registration for the local-target capability resolver (WS-A/C).
-// Callers pass runtime context (co-location, caller target id); the registry
-// picks in-process vs runner-queue vs unavailable from the target ref alone.
+// Callers pass the caller's execution target id; the registry picks in-process vs
+// runner-queue vs unavailable from the target ref alone.
 
 import { InProcessProvider } from './in-process-provider.ts';
 import {
@@ -12,21 +12,18 @@ import {
 import { RunnerQueueProvider } from './runner-queue-provider.ts';
 
 export type DefaultLocalTargetRegistryOptions = {
-  /** True when the backend process can touch checkout paths directly (Local SQLite). */
-  coLocatedWithCheckout: boolean;
   /** The execution target id for the device running this service-layer call, if known. */
   callerExecutionTargetId?: string | null;
 };
 
 /**
  * Build a registry with the standard transport priority:
- * 1. In-process for the caller's co-located local target, or any local target
- *    when the backend is co-located with checkouts.
- * 2. Runner queue for other reachable local targets (remote Desktop / Cloud).
+ * 1. In-process only when the target is the caller device's execution target.
+ * 2. Runner queue for other reachable local targets (including a co-located
+ *    backend driving a different device's checkout — queue-here / run-there).
  * 3. Unavailable for everything else (unreachable targets, unsupported types).
  */
 export function createDefaultLocalTargetRegistry({
-  coLocatedWithCheckout,
   callerExecutionTargetId = null
 }: DefaultLocalTargetRegistryOptions): LocalTargetProviderRegistry {
   const registry = new LocalTargetProviderRegistry();
@@ -35,10 +32,8 @@ export function createDefaultLocalTargetRegistry({
     if (target.type !== 'local' || !target.executionTargetId) return null;
     const isCallerTarget =
       callerExecutionTargetId !== null && target.executionTargetId === callerExecutionTargetId;
-    if (coLocatedWithCheckout || isCallerTarget) {
-      return new InProcessProvider(
-        targetMetadata(target, isCallerTarget ? 'in_process' : 'in_process')
-      );
+    if (isCallerTarget) {
+      return new InProcessProvider(targetMetadata(target, 'in_process'));
     }
     if (target.reachable === false) {
       return new UnavailableProvider(

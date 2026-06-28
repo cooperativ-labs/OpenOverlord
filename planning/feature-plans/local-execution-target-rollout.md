@@ -1,6 +1,6 @@
 # Local Execution Target — Rollout & Legacy Removal Plan
 
-**Status:** In progress (WS-E complete; WS-B/C behavioral gaps; R3 UI missing; WS-A provider bodies remain partial)
+**Status:** In progress (WS-E complete; WS-A registry routing fixed; WS-B/C behavioral gaps; R3 UI missing; WS-A provider bodies remain partial)
 **Date:** 2026-06-28
 **Contract baseline:** `0.59-draft`
 **Design doc:** [`local-execution-target-capabilities.md`](local-execution-target-capabilities.md)
@@ -21,7 +21,7 @@ Legend: ✅ done · 🔲 not started · 🔄 partial.
 | **WS-A** | Capability interface + provider registry + fake | ✅ | `packages/core/service/local-target/` (interface, `CapabilityResult`, error codes incl. `LOCAL_TARGET_REQUIRED`, §5 observation states, registry + `UnavailableProvider`, fake). Merged (PR #8). |
 | WS-A | `InProcessProvider` bodies | 🔄 | Class exists; bodies land per-capability with each WS-D step (see below) rather than as a throwaway verbatim wrapper. |
 | WS-A | `DesktopBridgeProvider`, `RunnerQueueProvider` | 🔄 | `RunnerQueueProvider` stub + default registry landed in WS-C; desktop bridge deferred to WS-D remote UI paths. |
-| WS-A | `createDefaultLocalTargetRegistry` co-location routing | 🔲 | `coLocatedWithCheckout: true` returns `InProcessProvider` for **any** local target, even when `callerExecutionTargetId` differs — contradicts contract (reachable non-co-located locals → `RunnerQueueProvider`). Add test: co-located backend, different target id → `RunnerQueueProvider`. |
+| WS-A | `createDefaultLocalTargetRegistry` co-location routing | ✅ | In-process only when `target.executionTargetId === callerExecutionTargetId`; co-located backend + different target id → `RunnerQueueProvider`. |
 | **WS-B** | Split target identity (claim vs. create) | 🔄 | `ensureCallerDeviceTarget` + claim path landed (PR #8), but **`launch.ts:820` still falls back** to `localTarget.executionTargetId` when `resolveProjectExecutionTargetForLaunch` returns `null` (ambiguous multi-target). Violates contract `0.59-draft` (`NULL` required). |
 | WS-B | Launch must not override null selector | 🔲 | Remove `?? localTarget.executionTargetId` in `launchObjective`; stamp `execution_target_id = NULL` and resolve agent configs without the caller-device target. Centralize into one service helper `{ executionTargetId, agentConfigs }` so launch cannot reintroduce backend-device stamping. |
 | **WS-D(1)** | `observeResource` + resource status | ✅ | All three status-derivation sites routed through the capability; hosted backend never infers `missing` from its own fs; fixed the old `repository.ts` status type error. Branch `local-execution-target-wsd1`. |
