@@ -233,30 +233,3 @@ export async function listRationalesForReview({
     createdAt: row.created_at
   }));
 }
-
-export async function readCurrentDiff({
-  ctx,
-  missionId,
-  filePath
-}: {
-  ctx: ServiceContext;
-  missionId: string;
-  filePath?: string | null;
-}): Promise<{ workingDirectory: string | null; diff: string; unavailable: boolean }> {
-  if (ctx.db.dialect !== 'sqlite') {
-    return { workingDirectory: null, diff: '', unavailable: true };
-  }
-  const workingDirectory = await resolveWorkingDirectory({ ctx, missionId });
-  if (!workingDirectory) {
-    return { workingDirectory: null, diff: '', unavailable: true };
-  }
-
-  try {
-    const args = ['diff', '--'];
-    if (filePath) args.push(filePath);
-    const diff = execFileSync('git', args, { cwd: workingDirectory, encoding: 'utf8' });
-    return { workingDirectory, diff, unavailable: false };
-  } catch {
-    return { workingDirectory, diff: '', unavailable: true };
-  }
-}
