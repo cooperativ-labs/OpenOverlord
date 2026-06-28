@@ -4,6 +4,8 @@ import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 
+import { resolveRealPath } from '../../packages/core/service/local-target/worktree-git.ts';
+
 // Exercises objective-3 features end to end against real git repos:
 //  - branch override: stored on the mission, surfaced on MissionBranchDto, cleared
 //    when the runner records a prepared branch;
@@ -170,13 +172,13 @@ describe('branch selection and worktree management', () => {
 
     const list = await api.listWorktrees();
     const paths = list.map(w => w.path);
-    assert.ok(paths.includes(path.resolve(wtA)));
+    assert.ok(paths.includes(resolveRealPath(wtA)));
     assert.equal(list.length, 2);
     // The primary repo itself is never listed as a managed worktree.
     assert.ok(!paths.includes(path.resolve(primary)));
 
     const result = await api.removeWorktree({ path: wtA });
-    assert.deepEqual(result.removed, [path.resolve(wtA)]);
+    assert.deepEqual(result.removed, [resolveRealPath(wtA)]);
     assert.equal(existsSync(wtA), false);
     assert.equal(result.worktrees.length, 1);
   });
@@ -195,7 +197,7 @@ describe('branch selection and worktree management', () => {
     assert.equal(existsSync(wt), true);
     // Force removes it.
     const forced = await api.removeWorktree({ path: wt, force: true });
-    assert.deepEqual(forced.removed, [path.resolve(wt)]);
+    assert.deepEqual(forced.removed, [resolveRealPath(wt)]);
   });
 
   it('purge-merged removes only merged, clean worktrees', async () => {
@@ -225,8 +227,10 @@ describe('branch selection and worktree management', () => {
       }
     });
 
+    const mergedCanonical = resolveRealPath(merged);
+
     const result = await api.purgeMergedWorktrees();
-    assert.deepEqual(result.removed, [path.resolve(merged)]);
+    assert.deepEqual(result.removed, [mergedCanonical]);
     assert.equal(existsSync(merged), false);
     assert.equal(existsSync(active), true);
   });

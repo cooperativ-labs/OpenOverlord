@@ -11,6 +11,9 @@ import {
   deriveResourceStatus,
   resolveBackendResourceProvider
 } from '../../packages/core/service/local-target/index.ts';
+import { resolveRealPath, worktreeIsDirty, worktreePathForBranch } from '../../packages/core/service/local-target/worktree-git.ts';
+import { runGitResult } from '../../packages/core/service/local-target/git-run.ts';
+import type { CapabilityResult } from '../../packages/core/service/local-target/types.ts';
 import type {
   ArtifactDto,
   CreateMissionBody,
@@ -422,6 +425,47 @@ function assertServerCanAccessLinkedFilesystem(action: string): void {
     'The hosted Overlord backend stores metadata and queues work, but it cannot inspect or mutate your local filesystem.',
     'LOCAL_FILESYSTEM_UNAVAILABLE'
   );
+}
+
+function localMutationProvider() {
+  return resolveBackendResourceProvider(serverCanAccessLinkedFilesystem(), {
+    executionTargetId: null,
+    deviceLabel: null,
+    transport: 'in_process'
+  });
+}
+
+function branchActionHttpStatus(code: string): number {
+  if (code === 'BRANCH_COMMIT_MESSAGE_REQUIRED') return 400;
+  if (code === 'BRANCH_PUSH_FAILED' || code === 'BRANCH_MERGE_FAILED') return code === 'BRANCH_PUSH_FAILED' ? 502 : 500;
+  return 409;
+}
+
+function assertCapabilitySuccess<T>(result: CapabilityResult<T>): T {
+  if (result.ok) return result.value;
+  if (result.code === 'LOCAL_TARGET_REQUIRED' || result.code === 'CAPABILITY_NOT_IMPLEMENTED') {
+    throw new ApiError(
+      409,
+      result.message,
+      'The hosted Overlord backend stores metadata and queues work, but it cannot inspect or mutate your local filesystem.',
+      'LOCAL_FILESYSTEM_UNAVAILABLE'
+    );
+  }
+  const details = result.details as
+    | { branchActionCode?: string; detail?: string }
+    | undefined;
+  if (details?.branchActionCode === 'WORKTREE_DIRTY') {
+    throw new ApiError(409, result.message, details.detail, 'WORKTREE_DIRTY');
+  }
+  if (details?.branchActionCode) {
+    throw new ApiError(
+      branchActionHttpStatus(details.branchActionCode),
+      result.message,
+      details.detail,
+      details.branchActionCode
+    );
+  }
+  throw new ApiError(409, result.message, undefined, result.code);
 }
 
 async function toProjectResourceDto(r: ProjectResourceRow): Promise<ProjectResourceDto> {
@@ -962,33 +1006,9 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
 
 // ---- Branch actions (merge with parent / push / publish) -----------------
 //
-// On-demand git mutations the mission panel triggers in local-backend mode. They
-// run host-side against the project's worktrees (under ~/.ovld/worktrees) and
-// primary repo only when the webapp server is co-located with those paths. Hosted
-// backends reject these calls; local execution targets own checkout mutation.
-
-type GitRun = { ok: boolean; stdout: string; stderr: string };
-
-// Like `runGit` above, but surfaces failure (exit code + stderr) instead of
-// swallowing it — required for merge/push, where the outcome drives typed errors.
-function runGitResult(cwd: string, args: string[]): GitRun {
-  try {
-    const stdout = execFileSync('git', args, {
-      cwd,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      maxBuffer: 16 * 1024 * 1024
-    });
-    return { ok: true, stdout: stdout.trim(), stderr: '' };
-  } catch (error) {
-    const e = error as { stdout?: string | Buffer; stderr?: string | Buffer };
-    return {
-      ok: false,
-      stdout: (e.stdout ? String(e.stdout) : '').trim(),
-      stderr: (e.stderr ? String(e.stderr) : '').trim()
-    };
-  }
-}
+// Git mutations route through the local-target capability provider (WS-D 4).
+// The REST layer resolves mission/project paths, then calls
+// `performBranchAction` on an in-process provider when co-located.
 
 export type BranchActionName = 'integrate' | 'commit' | 'push_parent' | 'publish';
 
@@ -1068,237 +1088,6 @@ async function missionHasActiveExecution(missionId: string): Promise<boolean> {
   );
 }
 
-// Locates the worktree that currently has `branch` checked out, so the parent can
-// be advanced where it lives (git refuses to update a checked-out branch's ref
-// from elsewhere). Returns null when the branch is not checked out anywhere.
-function worktreePathForBranch(repoPath: string, branch: string): string | null {
-  const out = runGitResult(repoPath, ['worktree', 'list', '--porcelain']);
-  if (!out.ok) return null;
-  let currentPath: string | null = null;
-  for (const line of out.stdout.split('\n')) {
-    if (line.startsWith('worktree ')) {
-      currentPath = line.slice('worktree '.length).trim();
-    } else if (line.startsWith('branch ')) {
-      const ref = line
-        .slice('branch '.length)
-        .trim()
-        .replace(/^refs\/heads\//, '');
-      if (ref === branch && currentPath) return currentPath;
-    }
-  }
-  return null;
-}
-
-function worktreeIsDirty(worktreePath: string): boolean {
-  const status = runGitResult(worktreePath, ['status', '--porcelain']);
-  return status.ok && status.stdout.length > 0;
-}
-
-// Removes a worktree's git registration and on-disk directory, then prunes stale
-// administrative entries. `git worktree remove` refuses a dirty worktree without
-// `--force`; callers guard on dirtiness first when they want that protection.
-// Best-effort: returns whether the directory is gone afterwards.
-function removeGitWorktree(repoPath: string, worktreePath: string, force: boolean): boolean {
-  const args = ['worktree', 'remove'];
-  if (force) args.push('--force');
-  args.push(worktreePath);
-  runGitResult(repoPath, args);
-  // Prune so a removed (or externally-deleted) directory leaves no stale entry
-  // that would later block `git worktree add` on the same path.
-  runGitResult(repoPath, ['worktree', 'prune']);
-  return !existsSync(worktreePath);
-}
-
-// Action A — bring the branch up to date with its parent inside the branch's own
-// worktree (the only step that can conflict; left in place for IDE resolution),
-// then advance the parent to the branch with a --no-ff merge commit so the parent
-// tip diverges from the branch tip (keeps `deriveBranchStatus` unambiguous).
-function integrateBranch(ctx: BranchActionContext): string {
-  const { branchName, baseBranch, worktreePath, primaryRepoPath } = ctx;
-  if (!existsSync(worktreePath)) {
-    throw new ApiError(
-      409,
-      `The branch's worktree is not present at ${worktreePath}.`,
-      undefined,
-      'BRANCH_NO_WORKTREE'
-    );
-  }
-  const wtBranch = runGitResult(worktreePath, ['branch', '--show-current']);
-  if (!wtBranch.ok || wtBranch.stdout !== branchName) {
-    throw new ApiError(
-      409,
-      `The worktree at ${worktreePath} is not checked out on ${branchName}.`,
-      undefined,
-      'BRANCH_WORKTREE_MISMATCH'
-    );
-  }
-  if (worktreeIsDirty(worktreePath)) {
-    throw new ApiError(
-      409,
-      `The branch worktree has uncommitted changes — resolve/commit them first: ${worktreePath}`,
-      worktreePath,
-      'BRANCH_DIRTY'
-    );
-  }
-
-  // 1. Merge the parent into the branch, in the branch's worktree.
-  const merge = runGitResult(worktreePath, ['merge', '--no-edit', baseBranch]);
-  if (!merge.ok) {
-    const conflicted = runGitResult(worktreePath, ['diff', '--name-only', '--diff-filter=U']);
-    const files = conflicted.ok && conflicted.stdout ? conflicted.stdout.split('\n') : [];
-    // Keep `detail` to the factual specifics (worktree path + conflicting files);
-    // the client renders the "what to do" steps for the BRANCH_MERGE_CONFLICT code.
-    const detail =
-      `Worktree: ${worktreePath}.` +
-      (files.length ? ` Conflicting files: ${files.join(', ')}.` : '');
-    throw new ApiError(
-      409,
-      `Merging ${baseBranch} into ${branchName} hit conflicts.`,
-      detail,
-      'BRANCH_MERGE_CONFLICT'
-    );
-  }
-
-  // 2. Advance the parent to the branch (clean by construction).
-  const parentWorktree = worktreePathForBranch(primaryRepoPath, baseBranch);
-  if (!parentWorktree) {
-    throw new ApiError(
-      409,
-      `Cannot advance ${baseBranch}: it is not checked out in any worktree. Check out ${baseBranch} in the primary repository and re-run.`,
-      undefined,
-      'BRANCH_PARENT_NOT_CHECKED_OUT'
-    );
-  }
-  if (worktreeIsDirty(parentWorktree)) {
-    throw new ApiError(
-      409,
-      `The ${baseBranch} checkout has uncommitted changes — commit or stash them first: ${parentWorktree}`,
-      parentWorktree,
-      'BRANCH_DIRTY'
-    );
-  }
-  const advance = runGitResult(parentWorktree, [
-    'merge',
-    '--no-ff',
-    '--no-edit',
-    '-m',
-    `Merge ${branchName} into ${baseBranch}`,
-    branchName
-  ]);
-  if (!advance.ok) {
-    throw new ApiError(
-      500,
-      `Failed to advance ${baseBranch} to ${branchName}.`,
-      advance.stderr || advance.stdout,
-      'BRANCH_MERGE_FAILED'
-    );
-  }
-  return `Merged ${baseBranch} into ${branchName} and advanced ${baseBranch} locally.`;
-}
-
-// Commit — stage and commit all changes in the branch's own worktree. This is the
-// "commit changes first" step the merge flow requires: the integrate action refuses
-// a dirty worktree, so the panel offers this commit affordance while the branch has
-// uncommitted work. Runs entirely in the branch's worktree (never the parent).
-function commitBranch(ctx: BranchActionContext, message: string): string {
-  const { branchName, worktreePath } = ctx;
-  const trimmed = message.trim();
-  if (!trimmed) {
-    throw new ApiError(
-      400,
-      'A commit message is required.',
-      undefined,
-      'BRANCH_COMMIT_MESSAGE_REQUIRED'
-    );
-  }
-  if (!existsSync(worktreePath)) {
-    throw new ApiError(
-      409,
-      `The branch's worktree is not present at ${worktreePath}.`,
-      undefined,
-      'BRANCH_NO_WORKTREE'
-    );
-  }
-  const wtBranch = runGitResult(worktreePath, ['branch', '--show-current']);
-  if (!wtBranch.ok || wtBranch.stdout !== branchName) {
-    throw new ApiError(
-      409,
-      `The worktree at ${worktreePath} is not checked out on ${branchName}.`,
-      undefined,
-      'BRANCH_WORKTREE_MISMATCH'
-    );
-  }
-  if (!worktreeIsDirty(worktreePath)) {
-    throw new ApiError(
-      409,
-      'There are no uncommitted changes in the branch worktree to commit.',
-      worktreePath,
-      'BRANCH_NOTHING_TO_COMMIT'
-    );
-  }
-
-  const staged = runGitResult(worktreePath, ['add', '-A']);
-  if (!staged.ok) {
-    throw new ApiError(
-      500,
-      `Failed to stage changes in ${worktreePath}.`,
-      staged.stderr || staged.stdout,
-      'BRANCH_COMMIT_FAILED'
-    );
-  }
-  const commit = runGitResult(worktreePath, ['commit', '-m', trimmed]);
-  if (!commit.ok) {
-    throw new ApiError(
-      500,
-      `Failed to commit changes on ${branchName}.`,
-      commit.stderr || commit.stdout,
-      'BRANCH_COMMIT_FAILED'
-    );
-  }
-  return `Committed changes on ${branchName}.`;
-}
-
-// Action B — publish the merged parent to origin. Once pushed, the branch has
-// truly landed (status → merged), so its worktree is no longer needed; we remove
-// it automatically (best-effort, only when clean) to keep the worktree list tidy
-// per the "auto-on-merge" purge policy. A dirty branch worktree is left alone.
-function pushParent(ctx: BranchActionContext): string {
-  const { branchName, baseBranch, worktreePath, primaryRepoPath } = ctx;
-  const repo = worktreePathForBranch(primaryRepoPath, baseBranch) ?? primaryRepoPath;
-  const push = runGitResult(repo, ['push', 'origin', baseBranch]);
-  if (!push.ok) {
-    throw new ApiError(
-      502,
-      `Failed to push ${baseBranch} to origin.`,
-      push.stderr || push.stdout,
-      'BRANCH_PUSH_FAILED'
-    );
-  }
-  let summary = `Pushed ${baseBranch} to origin.`;
-  if (existsSync(worktreePath) && !worktreeIsDirty(worktreePath)) {
-    if (removeGitWorktree(primaryRepoPath, worktreePath, false)) {
-      summary += ` Removed the merged worktree for ${branchName}.`;
-    }
-  }
-  return summary;
-}
-
-// Publish — push the branch itself to origin (created → published), enabling PRs.
-function publishBranch(ctx: BranchActionContext): string {
-  const { branchName, worktreePath, primaryRepoPath } = ctx;
-  const repo = existsSync(worktreePath) ? worktreePath : primaryRepoPath;
-  const push = runGitResult(repo, ['push', '-u', 'origin', branchName]);
-  if (!push.ok) {
-    throw new ApiError(
-      502,
-      `Failed to publish ${branchName} to origin.`,
-      push.stderr || push.stdout,
-      'BRANCH_PUSH_FAILED'
-    );
-  }
-  return `Published ${branchName} to origin.`;
-}
-
 async function recordBranchActionActivity(
   ctx: BranchActionContext,
   summary: string
@@ -1356,7 +1145,7 @@ export async function performBranchAction(
   body: { action?: unknown; message?: unknown; confirmBusy?: unknown }
 ): Promise<MissionDetailDto> {
   assertServerCanAccessLinkedFilesystem('Branch actions');
-  const action = String(body.action ?? '');
+  const action = String(body.action ?? '') as BranchActionName;
   if (
     action !== 'integrate' &&
     action !== 'commit' &&
@@ -1375,14 +1164,16 @@ export async function performBranchAction(
     );
   }
 
-  const summary =
-    action === 'integrate'
-      ? integrateBranch(ctx)
-      : action === 'commit'
-        ? commitBranch(ctx, typeof body.message === 'string' ? body.message : '')
-        : action === 'push_parent'
-          ? pushParent(ctx)
-          : publishBranch(ctx);
+  const summary = assertCapabilitySuccess(
+    await localMutationProvider().performBranchAction({
+      action,
+      branchName: ctx.branchName,
+      baseBranch: ctx.baseBranch,
+      worktreePath: ctx.worktreePath,
+      primaryRepoPath: ctx.primaryRepoPath,
+      message: typeof body.message === 'string' ? body.message : undefined
+    })
+  ).summary;
 
   await recordBranchActionActivity(ctx, summary);
   return getMissionDetail(ctx.missionId);
@@ -1538,49 +1329,38 @@ async function collectWorktreeEntries(): Promise<WorktreeListEntry[]> {
     [WORKSPACE.id]
   )) as Array<{ id: string; name: string }>;
 
-  const entries: WorktreeListEntry[] = [];
-  const seen = new Set<string>();
+  const projectInputs: Array<{
+    projectId: string;
+    projectName: string;
+    primaryRepoPath: string;
+  }> = [];
   for (const project of projects) {
     const repoPath = await primaryResourcePath(project.id);
     if (!repoPath || !existsSync(repoPath)) continue;
-    const out = runGitResult(repoPath, ['worktree', 'list', '--porcelain']);
-    if (!out.ok) continue;
-    let currentPath: string | null = null;
-    let currentBranch: string | null = null;
-    const flush = (): void => {
-      if (!currentPath) return;
-      const resolved = path.resolve(currentPath);
-      // Only Overlord-managed worktrees (under the root); never the primary repo.
-      const underRoot = resolved === worktreeRoot || resolved.startsWith(worktreeRoot + path.sep);
-      if (underRoot && !seen.has(resolved)) {
-        seen.add(resolved);
-        entries.push({
-          path: resolved,
-          branch: currentBranch,
-          projectId: project.id,
-          projectName: project.name,
-          primaryRepoPath: repoPath
-        });
-      }
-      currentPath = null;
-      currentBranch = null;
-    };
-    for (const line of out.stdout.split('\n')) {
-      if (line.startsWith('worktree ')) {
-        flush();
-        currentPath = line.slice('worktree '.length).trim();
-      } else if (line.startsWith('branch ')) {
-        currentBranch = line
-          .slice('branch '.length)
-          .trim()
-          .replace(/^refs\/heads\//, '');
-      } else if (line.trim() === '') {
-        flush();
-      }
-    }
-    flush();
+    projectInputs.push({
+      projectId: project.id,
+      projectName: project.name,
+      primaryRepoPath: repoPath
+    });
   }
-  return entries;
+
+  const listed = await localMutationProvider().listWorktrees({
+    worktreeRoot,
+    projects: projectInputs.map(p => ({ primaryRepoPath: p.primaryRepoPath }))
+  });
+  if (!listed.ok) return [];
+
+  return listed.value.worktrees.map(worktree => {
+    const project =
+      projectInputs.find(p => p.primaryRepoPath === worktree.primaryRepoPath) ?? projectInputs[0]!;
+    return {
+      path: worktree.path,
+      branch: worktree.branch,
+      projectId: project.projectId,
+      projectName: project.projectName,
+      primaryRepoPath: worktree.primaryRepoPath
+    };
+  });
 }
 
 async function toWorktreeDto(entry: WorktreeListEntry): Promise<WorktreeDto> {
@@ -1644,7 +1424,9 @@ export async function removeWorktree(body: RemoveWorktreeBody): Promise<PurgeWor
   assertServerCanAccessLinkedFilesystem('Worktree removal');
   const target = typeof body.path === 'string' ? path.resolve(body.path.trim()) : '';
   if (!target) throw new ApiError(400, 'A worktree path is required.');
-  const entry = (await collectWorktreeEntries()).find(e => e.path === target);
+  const entry = (await collectWorktreeEntries()).find(
+    e => resolveRealPath(e.path) === resolveRealPath(target)
+  );
   if (!entry) {
     throw new ApiError(
       404,
@@ -1654,18 +1436,16 @@ export async function removeWorktree(body: RemoveWorktreeBody): Promise<PurgeWor
     );
   }
   const force = body.force === true;
-  if (!force && worktreeIsDirty(entry.path)) {
-    throw new ApiError(
-      409,
-      `The worktree has uncommitted changes — removing it would lose work: ${entry.path}`,
-      'Re-run with force to remove it anyway.',
-      'WORKTREE_DIRTY'
-    );
-  }
-  const removed = removeGitWorktree(entry.primaryRepoPath, entry.path, force);
+  const result = assertCapabilitySuccess(
+    await localMutationProvider().removeWorktree({
+      path: entry.path,
+      primaryRepoPath: entry.primaryRepoPath,
+      force
+    })
+  );
   return {
-    removed: removed ? [entry.path] : [],
-    skipped: removed ? [] : [{ path: entry.path, reason: 'git refused to remove the worktree' }],
+    removed: result.removed,
+    skipped: result.skipped,
     worktrees: await listWorktrees()
   };
 }
@@ -1674,24 +1454,25 @@ export async function removeWorktree(body: RemoveWorktreeBody): Promise<PurgeWor
 // worktrees are skipped (never force-removed) so in-progress work is preserved.
 export async function purgeMergedWorktrees(): Promise<PurgeWorktreesResultDto> {
   assertServerCanAccessLinkedFilesystem('Worktree purge');
-  const removed: string[] = [];
-  const skipped: Array<{ path: string; reason: string }> = [];
   const entries = await collectWorktreeEntries();
-  for (const dto of await listWorktrees()) {
-    if (!dto.merged) continue;
-    if (dto.dirty) {
-      skipped.push({ path: dto.path, reason: 'uncommitted changes' });
-      continue;
-    }
-    const entry = entries.find(e => e.path === dto.path);
-    if (!entry) continue;
-    if (removeGitWorktree(entry.primaryRepoPath, entry.path, false)) {
-      removed.push(dto.path);
-    } else {
-      skipped.push({ path: dto.path, reason: 'git refused to remove the worktree' });
-    }
-  }
-  return { removed, skipped, worktrees: await listWorktrees() };
+  const merged = (await Promise.all(entries.map(toWorktreeDto))).filter(
+    dto => dto.merged && !dto.dirty
+  );
+  const purgeTargets = merged
+    .map(dto => {
+      const entry = entries.find(e => e.path === dto.path);
+      return entry ? { path: entry.path, primaryRepoPath: entry.primaryRepoPath } : null;
+    })
+    .filter((entry): entry is { path: string; primaryRepoPath: string } => entry !== null);
+
+  const result = assertCapabilitySuccess(
+    await localMutationProvider().purgeMergedWorktrees({ entries: purgeTargets })
+  );
+  return {
+    removed: result.removed,
+    skipped: result.skipped,
+    worktrees: await listWorktrees()
+  };
 }
 
 interface ProjectTagRow {

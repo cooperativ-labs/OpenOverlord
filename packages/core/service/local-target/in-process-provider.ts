@@ -7,13 +7,18 @@
 // CAPABILITY_NOT_IMPLEMENTED failure (never throw), so a partially-migrated
 // provider is still safe to hand to any caller.
 
-import { existsSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { performBranchActionGit } from './branch-actions-git.ts';
+import { runGit } from './git-run.ts';
 
 import {
   readRepositoryTree as readGitRepositoryTree,
   RepositoryReadError
 } from '../../repository/git-tree.ts';
+import {
+  collectManagedWorktrees,
+  purgeManagedWorktrees,
+  removeManagedWorktree
+} from './worktree-git.ts';
 import { writeProjectJson } from './project-metadata.ts';
 import { fail, ok } from './result.ts';
 import type {
@@ -22,9 +27,12 @@ import type {
   GenerateCommitMessageInput,
   LaunchAgentInput,
   ListBranchesInput,
+  ListWorktreesInput,
   LocalTargetCapabilities,
   ObserveResourceInput,
+  PerformBranchActionInput,
   PrepareBranchInput,
+  PurgeMergedWorktreesInput,
   ReadCurrentDiffInput,
   ReadRepositoryTreeInput,
   RemoveWorktreeInput,
@@ -33,15 +41,7 @@ import type {
   WriteProjectMetadataInput,
   WriteProjectMetadataResult
 } from './types.ts';
-
-function runGit(cwd: string, args: string[]): string {
-  return execFileSync('git', args, {
-    cwd,
-    encoding: 'utf8',
-    maxBuffer: 10 * 1024 * 1024,
-    stdio: ['ignore', 'pipe', 'pipe']
-  }).trim();
-}
+import { existsSync } from 'node:fs';
 
 function normalizeBranchRef(ref: string): string {
   return ref
@@ -148,6 +148,63 @@ export class InProcessProvider implements LocalTargetCapabilities {
     }
   }
 
+  // ---- routed (WS-D 4) -------------------------------------------------
+
+  async listWorktrees(input: ListWorktreesInput) {
+    try {
+      const worktrees = collectManagedWorktrees(input);
+      return ok(this.target, { worktrees });
+    } catch (error) {
+      return fail(
+        this.target,
+        'GIT_COMMAND_FAILED',
+        error instanceof Error ? error.message : 'Could not list worktrees.'
+      );
+    }
+  }
+
+  async removeWorktree(input: RemoveWorktreeInput) {
+    try {
+      const result = removeManagedWorktree(input);
+      if (!input.force && result.skipped.some(s => s.reason === 'uncommitted changes')) {
+        return fail(
+          this.target,
+          'GIT_COMMAND_FAILED',
+          `The worktree has uncommitted changes — removing it would lose work: ${input.path}`,
+          { branchActionCode: 'WORKTREE_DIRTY', detail: 'Re-run with force to remove it anyway.' }
+        );
+      }
+      return ok(this.target, result);
+    } catch (error) {
+      return fail(
+        this.target,
+        'GIT_COMMAND_FAILED',
+        error instanceof Error ? error.message : 'Could not remove worktree.'
+      );
+    }
+  }
+
+  async purgeMergedWorktrees(input: PurgeMergedWorktreesInput) {
+    try {
+      return ok(this.target, purgeManagedWorktrees(input));
+    } catch (error) {
+      return fail(
+        this.target,
+        'GIT_COMMAND_FAILED',
+        error instanceof Error ? error.message : 'Could not purge worktrees.'
+      );
+    }
+  }
+
+  async performBranchAction(input: PerformBranchActionInput) {
+    const result = performBranchActionGit(input);
+    if (result.ok) return ok(this.target, { summary: result.summary });
+    return fail(this.target, 'GIT_COMMAND_FAILED', result.message, {
+      branchActionCode: result.code,
+      detail: result.detail
+    });
+  }
+
   // ---- not yet routed (filled in by later WS-D steps) ------------------
 
   #notImplemented(): Promise<CapabilityFailure> {
@@ -161,15 +218,6 @@ export class InProcessProvider implements LocalTargetCapabilities {
   }
 
   prepareBranch(_input: PrepareBranchInput) {
-    return this.#notImplemented();
-  }
-  listWorktrees() {
-    return this.#notImplemented();
-  }
-  removeWorktree(_input: RemoveWorktreeInput) {
-    return this.#notImplemented();
-  }
-  purgeMergedWorktrees() {
     return this.#notImplemented();
   }
   readCurrentDiff(_input: ReadCurrentDiffInput) {

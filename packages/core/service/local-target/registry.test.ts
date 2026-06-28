@@ -182,8 +182,16 @@ describe('UnavailableProvider', () => {
     const provider = new UnavailableProvider(META, 'LOCAL_TARGET_UNREACHABLE', 'offline');
     for (const call of [
       provider.observeResource({ resourceId: 'r', path: '/p' }),
+      provider.listWorktrees({ worktreeRoot: '/wt', projects: [] }),
+      provider.performBranchAction({
+        action: 'integrate',
+        branchName: 'feat',
+        baseBranch: 'main',
+        worktreePath: '/wt/feat',
+        primaryRepoPath: '/repo'
+      }),
       provider.readCurrentDiff({ missionId: 'm' }),
-      provider.purgeMergedWorktrees(),
+      provider.purgeMergedWorktrees({ entries: [] }),
       provider.doctor()
     ]) {
       const r = await call;

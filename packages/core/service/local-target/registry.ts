@@ -124,13 +124,16 @@ export class UnavailableProvider implements LocalTargetCapabilities {
   prepareBranch(_input: PrepareBranchInput) {
     return this.#fail();
   }
-  listWorktrees() {
+  listWorktrees(_input: ListWorktreesInput) {
     return this.#fail();
   }
   removeWorktree(_input: RemoveWorktreeInput) {
     return this.#fail();
   }
-  purgeMergedWorktrees() {
+  purgeMergedWorktrees(_input: PurgeMergedWorktreesInput) {
+    return this.#fail();
+  }
+  performBranchAction(_input: PerformBranchActionInput) {
     return this.#fail();
   }
   readCurrentDiff(_input: ReadCurrentDiffInput) {

@@ -15,10 +15,13 @@ import type {
   LaunchAgentInput,
   LaunchAgentResult,
   ListBranchesInput,
+  ListWorktreesInput,
   LocalTargetCapabilities,
   ObserveResourceInput,
+  PerformBranchActionInput,
   PrepareBranchInput,
   PrepareBranchResult,
+  PurgeMergedWorktreesInput,
   PurgeWorktreesResult,
   ReadCurrentDiffInput,
   ReadRepositoryTreeInput,
@@ -28,7 +31,8 @@ import type {
   TargetMetadata,
   WriteProjectMetadataInput,
   WriteProjectMetadataResult,
-  ListWorktreesResult
+  ListWorktreesResult,
+  PerformBranchActionResult
 } from './types.ts';
 
 /** Partial override map: any capability not provided uses the default. */
@@ -109,9 +113,9 @@ export class FakeLocalTargetProvider implements LocalTargetCapabilities {
     });
   }
 
-  async listWorktrees(): Promise<CapabilityResult<ListWorktreesResult>> {
-    this.#record('listWorktrees', []);
-    if (this.#handlers.listWorktrees) return this.#handlers.listWorktrees();
+  async listWorktrees(input: ListWorktreesInput): Promise<CapabilityResult<ListWorktreesResult>> {
+    this.#record('listWorktrees', [input]);
+    if (this.#handlers.listWorktrees) return this.#handlers.listWorktrees(input);
     return ok(this.target, { worktrees: [] });
   }
 
@@ -123,10 +127,20 @@ export class FakeLocalTargetProvider implements LocalTargetCapabilities {
     return ok(this.target, { removed: [input.path], skipped: [] });
   }
 
-  async purgeMergedWorktrees(): Promise<CapabilityResult<PurgeWorktreesResult>> {
-    this.#record('purgeMergedWorktrees', []);
-    if (this.#handlers.purgeMergedWorktrees) return this.#handlers.purgeMergedWorktrees();
+  async purgeMergedWorktrees(
+    input: PurgeMergedWorktreesInput
+  ): Promise<CapabilityResult<PurgeWorktreesResult>> {
+    this.#record('purgeMergedWorktrees', [input]);
+    if (this.#handlers.purgeMergedWorktrees) return this.#handlers.purgeMergedWorktrees(input);
     return ok(this.target, { removed: [], skipped: [] });
+  }
+
+  async performBranchAction(
+    input: PerformBranchActionInput
+  ): Promise<CapabilityResult<PerformBranchActionResult>> {
+    this.#record('performBranchAction', [input]);
+    if (this.#handlers.performBranchAction) return this.#handlers.performBranchAction(input);
+    return ok(this.target, { summary: `Performed ${input.action}` });
   }
 
   async readCurrentDiff(input: ReadCurrentDiffInput): Promise<CapabilityResult<CurrentDiffResult>> {
