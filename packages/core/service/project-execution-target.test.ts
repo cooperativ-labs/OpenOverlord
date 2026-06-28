@@ -9,6 +9,7 @@ import { createServiceContext } from './context.js';
 import { ensureCallerDeviceTarget } from './execution-targets.js';
 import {
   getProjectExecutionTargetSelection,
+  listEligibleProjectExecutionTargets,
   PROJECT_EXECUTION_TARGET_PREFERENCE_KEY,
   resolveLaunchExecutionTarget,
   resolveProjectExecutionTargetForLaunch,
@@ -78,6 +79,23 @@ async function seedSecondTarget(
 }
 
 describe('project execution target selection', () => {
+  it('listing eligible targets does not provision the caller device target', async () => {
+    const { ctx, db } = await setup();
+    const project = await createProject({ ctx, name: 'Read-only list' });
+    const before = (await db.get(
+      `SELECT COUNT(*) AS n FROM execution_targets WHERE workspace_id = ? AND deleted_at IS NULL`,
+      [ctx.workspace.id]
+    )) as { n: number };
+
+    await listEligibleProjectExecutionTargets({ ctx, projectId: project.id });
+
+    const after = (await db.get(
+      `SELECT COUNT(*) AS n FROM execution_targets WHERE workspace_id = ? AND deleted_at IS NULL`,
+      [ctx.workspace.id]
+    )) as { n: number };
+    assert.equal(after.n, before.n);
+  });
+
   it('lists eligible targets that have a primary resource on the target', async () => {
     const { ctx } = await setup();
     const project = await createProject({ ctx, name: 'Target Select' });

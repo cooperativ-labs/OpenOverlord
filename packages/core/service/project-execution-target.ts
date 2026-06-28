@@ -1,6 +1,6 @@
 import type { ServiceContext } from './context.js';
 import { ServiceError } from './errors.js';
-import { ensureCallerDeviceTarget } from './execution-targets.js';
+import { findCallerDeviceExecutionTargetId } from './execution-targets.js';
 import { findPrimaryProjectResource } from './projects.js';
 import { newId, nowIso } from './util.js';
 
@@ -113,7 +113,7 @@ export async function listEligibleProjectExecutionTargets({
   const resolvedProjectId = await resolveProjectId(ctx, projectId);
   if (!ctx.actorWorkspaceUserId) return [];
 
-  const callerTarget = await ensureCallerDeviceTarget({ ctx });
+  const callerExecutionTargetId = await findCallerDeviceExecutionTargetId({ ctx });
   const rows = (await ctx.db.all(
     `SELECT et.id AS execution_target_id, et.type, et.label AS target_label,
               et.device_id, d.label AS device_label, d.last_seen_at
@@ -151,7 +151,9 @@ export async function listEligibleProjectExecutionTargets({
     });
     if (!primary) continue;
 
-    const isCallerDevice = row.execution_target_id === callerTarget.executionTargetId;
+    const isCallerDevice =
+      callerExecutionTargetId !== null &&
+      row.execution_target_id === callerExecutionTargetId;
     const primaryResourceConnected = primary.status !== 'missing';
     eligible.push({
       executionTargetId: row.execution_target_id,

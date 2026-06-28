@@ -1,6 +1,6 @@
 # Local Execution Target — Rollout & Legacy Removal Plan
 
-**Status:** In progress (WS-E complete; WS-B complete; WS-A registry routing fixed; WS-C behavioral gaps; R3 UI missing; WS-A provider bodies remain partial)
+**Status:** Complete (WS-A–E rollout items in §0 progress table done; provider bodies / DesktopBridge remain follow-on)
 **Date:** 2026-06-28
 **Contract baseline:** `0.59-draft`
 **Design doc:** [`local-execution-target-capabilities.md`](local-execution-target-capabilities.md)
@@ -27,9 +27,9 @@ Legend: ✅ done · 🔲 not started · 🔄 partial.
 | **WS-D(1)** | `observeResource` + resource status | ✅ | All three status-derivation sites routed through the capability; hosted backend never infers `missing` from its own fs; fixed the old `repository.ts` status type error. Branch `local-execution-target-wsd1`. |
 | **WS-D(2)** | `writeProjectMetadata` | ✅ | `writeProjectJson` moved into the local-target module; core/webapp resource creation writes via `provider.writeProjectMetadata` (co-located writes, hosted no-ops). Branch `local-execution-target-wsd1`. |
 | **WS-D(3)** | `readRepositoryTree`, `listBranches`, `readCurrentDiff` | ✅ | `getProjectRepository` and `listMissionBranches` now route through `LocalTargetCapabilities`; dead service-layer `readCurrentDiff` export removed (provider capability remains for future callers). |
-| **WS-C** | Execution-target selector | 🔄 | REST + preference + `ProjectRepositoryContext` plumbing landed; `RunnerQueueProvider` + default registry stub. **R3 UI not wired** (`setSelectedExecutionTargetId` unused; `ResourcesPage` still says selection surface needed). |
-| WS-C | Selector listing must not provision backend target | 🔲 | `listEligibleProjectExecutionTargets` calls `ensureCallerDeviceTarget` — a Cloud `GET /api/projects/:id/execution-target` can create/mark-reachable a Railway host target. List/read paths must not side-effect provision the service caller's device. |
-| WS-C | Visible target selector UI (R3 acceptance) | 🔲 | Wire `eligibleTargets` + `setSelectedExecutionTargetId` into project settings (replace `ResourcesPage` placeholder copy). Desktop/CLI should read/write the same preference. Exit: select CLI-only VM, Run from Desktop → agent runs on VM. |
+| **WS-C** | Execution-target selector | ✅ | REST + preference + `ProjectRepositoryContext` + ResourcesPage selector wired. |
+| WS-C | Selector listing must not provision backend target | ✅ | `listEligibleProjectExecutionTargets` uses read-only `findCallerDeviceExecutionTargetId` (no `ensureCallerDeviceTarget`). |
+| WS-C | Visible target selector UI (R3 acceptance) | ✅ | ResourcesPage: `eligibleTargets` + `useUpdateProjectExecutionTarget`; "Any eligible target" when ambiguous. |
 | **WS-D(4)** | `prepareBranch`, `listWorktrees`, `removeWorktree`, `purgeMergedWorktrees`, branch actions | ✅ | Git mutations in `repository.ts` route through `LocalTargetCapabilities` via shared `git-run.ts`, `worktree-git.ts`, and `branch-actions-git.ts`; `prepareBranch` remains CLI-owned (`CAPABILITY_NOT_IMPLEMENTED` in `InProcessProvider`). macOS `/tmp` ↔ `/private/tmp` normalized with `resolveRealPath`. Branch `local-execution-target-wsd1`. |
 | **WS-D(5)** | `generateCommitMessageFromLocalDiff` | ✅ | Local diff gathering moved to `commit-message-diff-git.ts` + `InProcessProvider`; backend still calls `generateCommitMessageFromDiff` (Gemini). Branch `local-execution-target-wsd1`. |
 | **WS-D(6)** | `launchAgent` + `doctor` | ✅ | `doctor` runs portable git/node checks via `doctor-checks.ts`; `launchAgent` remains CLI-owned (`CAPABILITY_NOT_IMPLEMENTED`). Branch `local-execution-target-wsd1`. |
@@ -37,8 +37,8 @@ Legend: ✅ done · 🔲 not started · 🔄 partial.
 | **WS-E3** | Drop `better-sqlite3` from the cloud image | ✅ | Lazy-load `better-sqlite3` in `@overlord/database` + auth; `build:server --cloud` stages Postgres migrations only; Dockerfile drops native toolchain + prunes the addon from runtime `node_modules`. |
 | **WS-E4** | Decide SPA serving (Open Q#7) | ✅ | **Decision:** Vercel serves the Cloud SPA (contract `0.55-draft`). `resolveServeSpa` gates `express.static` to SQLite/Local; Dockerfile sets `OVERLORD_SERVE_SPA=false` and never ships `webapp/dist`. |
 | **WS-E5** | Remove the stale root `src/` | ✅ | Stale untracked root `src/` removed; only ignored `.DS_Store` remained locally. |
-| **WS-E6** | Untrack generated `.overlord/project.json` | 🔲 | Contract `0.31-draft`: per-instance, not committed. `.gitignore` covers the path but `cli/.overlord/project.json` and `packages/core/.overlord/project.json` remain tracked — `git rm --cached` both. |
-| WS-D (cleanup) | Local-only git/status helpers behind providers | 🔲 | Remaining local-only helpers in `changes.ts` and `repository.ts` should move behind provider methods or small shared provider helpers (consolidation; not blocking R3). |
+| **WS-E6** | Untrack generated `.overlord/project.json` | ✅ | `git rm --cached` on `cli/.overlord/project.json` and `packages/core/.overlord/project.json`; `.gitignore` already covers the path. |
+| WS-D (cleanup) | Local-only git/status helpers behind providers | ✅ | `git-status.ts`, `branch-status-git.ts`; `changes.ts` + `repository.ts` import shared helpers (duplicate `runGit`/branch derivation removed). |
 
 **Architecture note for WS-D(3)+:** keep the in-process provider DB-free —
 make git-capability inputs path-based (resolved `repoPath`/`workingDirectory`).
