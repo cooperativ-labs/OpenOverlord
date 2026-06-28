@@ -1,6 +1,6 @@
 # Local Execution Target — Rollout & Legacy Removal Plan
 
-**Status:** Complete (WS-A–E rollout items in §0 progress table done; provider bodies / DesktopBridge remain follow-on)
+**Status:** Complete (WS-A–E rollout items in §0 progress table done; provider bodies / DesktopBridge remain follow-on). Post-merge a typecheck gap was found and closed: the WS-D/E work passed runtime tests (`tsx` strips types) but regressed `tsc` in `@overlord/core` + `@overlord/webapp`; those regressions are fixed and a follow-up DRY pass consolidated the co-location policy (`isCoLocatedBackend`), `parseAgentConfigs`, the `project_user_preferences` reader, and `TargetMetadata` construction.
 **Date:** 2026-06-28
 **Contract baseline:** `0.59-draft`
 **Design doc:** [`local-execution-target-capabilities.md`](local-execution-target-capabilities.md)
@@ -46,6 +46,13 @@ The backend resolves id→path (DB), calls the provider, then maps the native
 payload → DTO. The `git` bodies can live in `@overlord/core` (it already runs
 `execFileSync('git', …)` in `changes.ts`), so one core provider serves every
 transport without pulling webapp deps into core.
+
+**Typecheck gap (found and closed):** the WS-D/E work was green at runtime
+(40/40, because `tsx` strips types) but red under `tsc` — new `typecheck:core`
+and `typecheck:webapp` regressions (e.g. `BackendLoginPanel`, the `ResourcesPage`
+selector callback, a `repository.ts` status type). All were fixed, and a
+follow-up DRY pass removed the duplicated co-location checks, `parseAgentConfigs`,
+`readPreferenceRow`, and inline `TargetMetadata` literals that the gap exposed.
 
 **Pre-existing issues (not introduced by this work, surfaced while executing):**
 `webapp/web/components/ui/dialog.tsx:60` fails `typecheck:webapp` (Radix

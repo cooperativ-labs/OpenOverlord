@@ -8,13 +8,17 @@ import path from 'node:path';
 import { ensureCallerDeviceTarget } from '../../packages/core/service/execution-targets.ts';
 import {
   deriveResourceStatus,
+  isCoLocatedBackend,
   resolveBackendResourceProvider
 } from '../../packages/core/service/local-target/index.ts';
 import {
   deriveBranchPublicationStatus,
   readPrimaryCheckoutBranch
 } from '../../packages/core/service/local-target/branch-status-git.ts';
-import type { CapabilityResult } from '../../packages/core/service/local-target/types.ts';
+import type {
+  CapabilityResult,
+  TargetMetadata
+} from '../../packages/core/service/local-target/types.ts';
 import {
   resolveRealPath,
   worktreeIsDirty,
@@ -82,9 +86,6 @@ import {
   WORKSPACE
 } from './db.ts';
 import { ApiError } from './errors.ts';
-
-/** True when this backend process is co-located with linked checkouts (Local SQLite). */
-const BACKEND_CO_LOCATED_WITH_CHECKOUT = DATABASE_DIALECT === 'sqlite';
 import {
   dequeueObjective,
   getLaunchPreference,
@@ -101,6 +102,14 @@ import {
 } from './title-automation.ts';
 
 export { ApiError };
+
+/** True when this backend process is co-located with linked checkouts (Local SQLite). */
+const BACKEND_CO_LOCATED_WITH_CHECKOUT = isCoLocatedBackend(DATABASE_DIALECT);
+
+/** Metadata for an in-process capability call served by the co-located backend. */
+function backendTargetMetadata(executionTargetId: string | null): TargetMetadata {
+  return { executionTargetId, deviceLabel: null, transport: 'in_process' };
+}
 
 // The default workflow seeded for every new project. The schema enforces (via
 // partial unique indexes) at most one default, one `execute`, and one `review`
@@ -423,11 +432,7 @@ function isTruthyFlag(value: unknown): boolean {
 }
 
 function localMutationProvider() {
-  return resolveBackendResourceProvider(BACKEND_CO_LOCATED_WITH_CHECKOUT, {
-    executionTargetId: null,
-    deviceLabel: null,
-    transport: 'in_process'
-  });
+  return resolveBackendResourceProvider(BACKEND_CO_LOCATED_WITH_CHECKOUT, backendTargetMetadata(null));
 }
 
 function branchActionHttpStatus(code: string): number {
@@ -468,11 +473,10 @@ async function toProjectResourceDto(r: ProjectResourceRow): Promise<ProjectResou
   // provider when this backend is co-located with the checkout (Local SQLite),
   // otherwise lifecycle-only — the hosted backend never derives `missing` from
   // its own filesystem (WS-D 1; design §5/§6).
-  const provider = resolveBackendResourceProvider(BACKEND_CO_LOCATED_WITH_CHECKOUT, {
-    executionTargetId: r.execution_target_id,
-    deviceLabel: null,
-    transport: 'in_process'
-  });
+  const provider = resolveBackendResourceProvider(
+    BACKEND_CO_LOCATED_WITH_CHECKOUT,
+    backendTargetMetadata(r.execution_target_id)
+  );
   const status = (await deriveResourceStatus(provider, {
     resourceId: r.id,
     status: r.status,
@@ -1089,10 +1093,6 @@ export async function performBranchAction(
   return getMissionDetail(ctx.missionId);
 }
 
-// Captures the uncommitted work in a worktree as text for the commit-message
-// summarizer: the porcelain status (so the model sees every changed path,
-// including untracked ones) followed by the tracked diff against HEAD. Read-only
-// — never stages or mutates the index.
 /**
  * Drafts a commit message for the uncommitted changes in a mission branch's
  * worktree via the Automations Layer (Gemini). Gathers the diff through the
@@ -1140,11 +1140,7 @@ export async function listMissionBranches(missionRef: string): Promise<MissionBr
   if (!resource) {
     return { branches: current ? [current] : [], current };
   }
-  const provider = resolveBackendResourceProvider(BACKEND_CO_LOCATED_WITH_CHECKOUT, {
-    executionTargetId: null,
-    deviceLabel: null,
-    transport: 'in_process'
-  });
+  const provider = localMutationProvider();
   const result = await provider.listBranches({ resourceId: resource.id, repoPath: resource.path });
   if (!result.ok) {
     return { branches: current ? [current] : [], current };
@@ -1911,11 +1907,10 @@ async function insertProjectResource(
   // WS-D 2: write .overlord/project.json through the capability — an in-process
   // provider when co-located (Local SQLite), otherwise nothing (the hosted
   // backend never writes to its own filesystem; the client owns the write).
-  await resolveBackendResourceProvider(BACKEND_CO_LOCATED_WITH_CHECKOUT, {
-    executionTargetId,
-    deviceLabel: null,
-    transport: 'in_process'
-  }).writeProjectMetadata({
+  await resolveBackendResourceProvider(
+    BACKEND_CO_LOCATED_WITH_CHECKOUT,
+    backendTargetMetadata(executionTargetId)
+  ).writeProjectMetadata({
     directoryPath: resourcePath,
     projectId: project.id,
     resourceId,
@@ -2106,11 +2101,10 @@ export async function getProjectRepository(
     };
   }
 
-  const provider = resolveBackendResourceProvider(BACKEND_CO_LOCATED_WITH_CHECKOUT, {
-    executionTargetId,
-    deviceLabel: null,
-    transport: 'in_process'
-  });
+  const provider = resolveBackendResourceProvider(
+    BACKEND_CO_LOCATED_WITH_CHECKOUT,
+    backendTargetMetadata(executionTargetId)
+  );
   const tree = await provider.readRepositoryTree({
     resourceId: resource.id,
     repoPath: resource.path

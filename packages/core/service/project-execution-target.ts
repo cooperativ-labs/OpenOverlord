@@ -1,3 +1,5 @@
+import type { DatabaseClient } from '@overlord/database';
+
 import type { ServiceContext } from './context.js';
 import { ServiceError } from './errors.js';
 import { findCallerDeviceExecutionTargetId } from './execution-targets.js';
@@ -48,16 +50,36 @@ function requireActor(ctx: ServiceContext): string {
   return ctx.actorWorkspaceUserId;
 }
 
-async function readPreferenceRow(
-  ctx: ServiceContext,
-  projectId: string
-): Promise<{ id: string; preferences: Record<string, unknown>; revision: number } | null> {
-  if (!ctx.actorWorkspaceUserId) return null;
-  const row = (await ctx.db.get(
+export type ProjectUserPreferenceRow = {
+  id: string;
+  preferences: Record<string, unknown>;
+  revision: number;
+};
+
+/**
+ * Shared accessor for a `(workspace_user, project)` row in
+ * `project_user_preferences`. Returns null when there is no acting user or no
+ * stored row, and tolerates malformed `preferences_json` by falling back to an
+ * empty object. Both the core ServiceContext callers and the webapp's
+ * module-global plumbing route through this single reader.
+ */
+export async function readProjectUserPreferenceRow({
+  db,
+  workspaceId,
+  workspaceUserId,
+  projectId
+}: {
+  db: DatabaseClient;
+  workspaceId: string;
+  workspaceUserId: string | null;
+  projectId: string;
+}): Promise<ProjectUserPreferenceRow | null> {
+  if (!workspaceUserId) return null;
+  const row = await db.get<{ id: string; preferences_json: string; revision: number }>(
     `SELECT id, preferences_json, revision FROM project_user_preferences
         WHERE workspace_id = ? AND project_id = ? AND workspace_user_id = ? AND deleted_at IS NULL`,
-    [ctx.workspace.id, projectId, ctx.actorWorkspaceUserId]
-  )) as { id: string; preferences_json: string; revision: number } | undefined;
+    [workspaceId, projectId, workspaceUserId]
+  );
   if (!row) return null;
   let preferences: Record<string, unknown>;
   try {
@@ -66,6 +88,18 @@ async function readPreferenceRow(
     preferences = {};
   }
   return { id: row.id, preferences, revision: row.revision };
+}
+
+function readPreferenceRow(
+  ctx: ServiceContext,
+  projectId: string
+): Promise<ProjectUserPreferenceRow | null> {
+  return readProjectUserPreferenceRow({
+    db: ctx.db,
+    workspaceId: ctx.workspace.id,
+    workspaceUserId: ctx.actorWorkspaceUserId,
+    projectId
+  });
 }
 
 function readStoredExecutionTargetId(preferences: Record<string, unknown>): string | null {
@@ -273,7 +307,12 @@ export async function resolveProjectExecutionTargetForLaunch({
   return null;
 }
 
-function parseAgentConfigs(json: string): Record<string, AgentLaunchConfig> {
+/**
+ * Coerce a stored `agent_configs_json` blob into a map of per-agent launch
+ * mechanics, dropping anything malformed. Shared by the core launch resolver
+ * and the webapp launch surface so both decode the blob identically.
+ */
+export function parseAgentConfigs(json: string): Record<string, AgentLaunchConfig> {
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(json) as Record<string, unknown>;

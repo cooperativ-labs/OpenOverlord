@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { ServiceContext } from './context.js';
 import { resolveMissionId } from './context.js';
 import { readGitStatusPorcelain } from './local-target/git-status.ts';
+import { isCoLocatedBackend } from './local-target/index.ts';
 import { discoverProject } from './projects.js';
 
 export type ChangedFileReview = {
@@ -133,7 +134,11 @@ export async function listChangedFilesForReview({
     });
   }
 
-  if (includeCurrent && ctx.db.dialect === 'sqlite') {
+  // Co-located (Local SQLite) backend only: the porcelain status is read
+  // directly here because no provider capability lists current changes yet —
+  // `readCurrentDiff` is still `CAPABILITY_NOT_IMPLEMENTED`. Routing this read
+  // through the seam waits on that capability landing across all transports.
+  if (includeCurrent && isCoLocatedBackend(ctx.db)) {
     const workingDirectory = await resolveWorkingDirectory({ ctx, missionId: mission.id });
     if (workingDirectory) {
       for (const current of readGitStatusPorcelain(workingDirectory)) {

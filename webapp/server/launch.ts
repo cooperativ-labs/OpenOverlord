@@ -31,7 +31,11 @@ import {
   ensureCallerDeviceTarget,
   updateTerminalProfile as persistTerminalProfile
 } from '../../packages/core/service/execution-targets.ts';
-import { resolveLaunchExecutionTarget } from '../../packages/core/service/project-execution-target.ts';
+import {
+  parseAgentConfigs,
+  readProjectUserPreferenceRow,
+  resolveLaunchExecutionTarget
+} from '../../packages/core/service/project-execution-target.ts';
 import { assertPrimaryResourceConnected } from '../../packages/core/service/projects.ts';
 import type {
   AgentCatalogAgentDto,
@@ -241,25 +245,6 @@ function toTerminalProfileDto(profile: TerminalProfile): TerminalProfileDto {
   };
 }
 
-function parseAgentConfigs(json: string): Record<string, AgentLaunchConfigDto> {
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(json) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-  const configs: Record<string, AgentLaunchConfigDto> = {};
-  for (const [key, value] of Object.entries(parsed)) {
-    if (!value || typeof value !== 'object') continue;
-    const config = value as { preCommand?: unknown; flags?: unknown };
-    configs[key] = {
-      preCommand: typeof config.preCommand === 'string' ? config.preCommand : '',
-      flags: Array.isArray(config.flags) ? config.flags.filter(f => typeof f === 'string') : []
-    };
-  }
-  return configs;
-}
-
 async function readAgentConfigs(
   preferenceId: string | null,
   client: DatabaseClient = requireDatabaseClient()
@@ -387,24 +372,16 @@ async function requireProject(
   if (!row) throw new ApiError(404, 'Project not found');
 }
 
-async function readPreferenceRow(
+function readPreferenceRow(
   projectId: string,
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<{ id: string; preferences: Record<string, unknown>; revision: number } | null> {
-  if (!getActorWorkspaceUserId()) return null;
-  const row = await client.get<{ id: string; preferences_json: string; revision: number }>(
-    `SELECT id, preferences_json, revision FROM project_user_preferences
-        WHERE workspace_id = ? AND project_id = ? AND workspace_user_id = ? AND deleted_at IS NULL`,
-    [WORKSPACE.id, projectId, getActorWorkspaceUserId()]
-  );
-  if (!row) return null;
-  let preferences: Record<string, unknown>;
-  try {
-    preferences = JSON.parse(row.preferences_json) as Record<string, unknown>;
-  } catch {
-    preferences = {};
-  }
-  return { id: row.id, preferences, revision: row.revision };
+  return readProjectUserPreferenceRow({
+    db: client,
+    workspaceId: WORKSPACE.id,
+    workspaceUserId: getActorWorkspaceUserId(),
+    projectId
+  });
 }
 
 export async function getLaunchPreference(

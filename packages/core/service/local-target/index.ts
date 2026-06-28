@@ -28,7 +28,11 @@ export {
 export { InProcessProvider } from './in-process-provider.ts';
 export { PROJECT_JSON_VERSION, writeProjectJson } from './project-metadata.ts';
 export * from './registry.ts';
-export { deriveResourceStatus, resolveBackendResourceProvider } from './resource-status.ts';
+export {
+  deriveResourceStatus,
+  isCoLocatedBackend,
+  resolveBackendResourceProvider
+} from './resource-status.ts';
 export * from './result.ts';
 export { RunnerQueueProvider } from './runner-queue-provider.ts';
 export * from './types.ts';

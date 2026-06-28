@@ -2,7 +2,11 @@ import { bindBool } from '@overlord/database';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { deriveResourceStatus, resolveBackendResourceProvider } from './local-target/index.ts';
+import {
+  deriveResourceStatus,
+  isCoLocatedBackend,
+  resolveBackendResourceProvider
+} from './local-target/index.ts';
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import { resolveProjectId } from './context.js';
@@ -45,7 +49,7 @@ export type PrimaryResourceConnection = {
  * otherwise an unavailable provider so status falls back to recorded lifecycle.
  */
 function backendResourceProvider(ctx: ServiceContext, executionTargetId: string | null) {
-  return resolveBackendResourceProvider(ctx.db.dialect === 'sqlite', {
+  return resolveBackendResourceProvider(isCoLocatedBackend(ctx.db), {
     executionTargetId,
     deviceLabel: null,
     transport: 'in_process'
