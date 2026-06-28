@@ -1,12 +1,51 @@
 # Local Execution Target — Rollout & Legacy Removal Plan
 
-**Status:** Proposal (planning only)
+**Status:** In progress (foundation + first read capabilities landed)
 **Date:** 2026-06-28
 **Contract baseline:** `0.58-draft`
 **Design doc:** [`local-execution-target-capabilities.md`](local-execution-target-capabilities.md)
 **Related plans:**
 [`overlord-cloud-architecture.md`](overlord-cloud-architecture.md),
 [`runner-background-daemon.md`](runner-background-daemon.md)
+
+---
+
+## 0. Progress
+
+Legend: ✅ done · 🔲 not started · 🔄 partial.
+
+| Step | Scope | Status | Notes |
+| --- | --- | --- | --- |
+| **WS-E1** | Stop committing generated migration trees | ✅ | `webapp/.gitignore` ignores `postgres/` like `sqlite/`; staged copies `git rm --cached`. Merged (PR #8). |
+| **WS-E2** | Don't ship SQLite migrations to the Postgres image | ✅ | Dropped `COPY webapp/sqlite` from the Dockerfile runtime stage (the Postgres path never runs the sqlite migrator). Merged (PR #8). |
+| **WS-A** | Capability interface + provider registry + fake | ✅ | `packages/core/service/local-target/` (interface, `CapabilityResult`, error codes incl. `LOCAL_TARGET_REQUIRED`, §5 observation states, registry + `UnavailableProvider`, fake). Merged (PR #8). |
+| WS-A | `InProcessProvider` bodies | 🔄 | Class exists; bodies land per-capability with each WS-D step (see below) rather than as a throwaway verbatim wrapper. |
+| WS-A | `DesktopBridgeProvider`, `RunnerQueueProvider` | 🔲 | Deferred to where their callers move (DesktopBridge ≈ WS-D, RunnerQueue = WS-C). |
+| **WS-B** | Split target identity (claim vs. create) | ✅ | `ensureLocalExecutionTarget` → `ensureCallerDeviceTarget`; request creation stamps `execution_target_id = NULL` (was the backend device). Merged (PR #8). |
+| **WS-D(1)** | `observeResource` + resource status | ✅ | All three status-derivation sites routed through the capability; hosted backend never infers `missing` from its own fs; fixed the old `repository.ts` status type error. Branch `local-execution-target-wsd1`. |
+| **WS-D(2)** | `writeProjectMetadata` | ✅ | `writeProjectJson` moved into the local-target module; core/webapp resource creation writes via `provider.writeProjectMetadata` (co-located writes, hosted no-ops). Branch `local-execution-target-wsd1`. |
+| **WS-D(3)** | `readRepositoryTree`, `listBranches`, `readCurrentDiff` | 🔲 | `readCurrentDiff` in `changes.ts` is **dead code** (no caller repo-wide) → that sub-step is moot/deletable. Live targets: `getProjectRepository`, `listMissionBranches` (webapp `repository.ts`, return REST DTOs). |
+| **WS-C** | Execution-target selector | 🔲 | `GET/PUT /api/projects/:id/execution-target`, persisted selection (new column — DB reset OK, no compat needed), `RunnerQueueProvider`. Request creation stamps the *selected* target. |
+| **WS-D(4)** | `prepareBranch`, `listWorktrees`, `removeWorktree`, `purgeMergedWorktrees`, branch actions | 🔲 | The `runGit`/`execFileSync` mutations in `repository.ts`. |
+| **WS-D(5)** | `generateCommitMessageFromLocalDiff` | 🔲 | Local gathers diff; backend may still call the AI summarizer. |
+| **WS-D(6)** | `launchAgent` + `doctor` | 🔲 | |
+| **WS-D (final)** | Delete `serverCanAccessLinkedFilesystem()` | 🔲 | Only once **every** capability routes through a provider. |
+| **WS-E3** | Drop `better-sqlite3` from the cloud image | 🔲 | Needs the `0.55-draft` adapter-selection finish so the production path never imports `better-sqlite3`; then remove it + `python3/make/g++` from the runtime stage. |
+| **WS-E4** | Decide SPA serving (Open Q#7) | 🔲 | If Vercel serves the SPA, drop the `dist`/`express.static` mount from the cloud path. |
+| **WS-E5** | Remove the stale root `src/` | 🔲 | Untracked duplicate of `packages/core` (contract `0.53-draft`). |
+
+**Architecture note for WS-D(3)+:** keep the in-process provider DB-free —
+make git-capability inputs path-based (resolved `repoPath`/`workingDirectory`).
+The backend resolves id→path (DB), calls the provider, then maps the native
+payload → DTO. The `git` bodies can live in `@overlord/core` (it already runs
+`execFileSync('git', …)` in `changes.ts`), so one core provider serves every
+transport without pulling webapp deps into core.
+
+**Pre-existing issues (not introduced by this work, surfaced while executing):**
+`webapp/web/components/ui/dialog.tsx:60` fails `typecheck:webapp` (Radix
+`asChild`); `cli/test/runner-and-changes.test.ts` and
+`cli/test/protocol-lifecycle.test.ts` are red on `main` (they use the old
+synchronous `ctx.db` API, never migrated to the async `DatabaseClient`).
 
 ---
 
