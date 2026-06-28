@@ -32,7 +32,7 @@ Legend: ✅ done · 🔲 not started · 🔄 partial.
 | **WS-D (final)** | Delete `serverCanAccessLinkedFilesystem()` | 🔲 | Only once **every** capability routes through a provider. |
 | **WS-E3** | Drop `better-sqlite3` from the cloud image | 🔲 | Needs the `0.55-draft` adapter-selection finish so the production path never imports `better-sqlite3`; then remove it + `python3/make/g++` from the runtime stage. |
 | **WS-E4** | Decide SPA serving (Open Q#7) | 🔲 | If Vercel serves the SPA, drop the `dist`/`express.static` mount from the cloud path. |
-| **WS-E5** | Remove the stale root `src/` | 🔲 | Untracked duplicate of `packages/core` (contract `0.53-draft`). |
+| **WS-E5** | Remove the stale root `src/` | ✅ | Stale untracked root `src/` removed; only ignored `.DS_Store` remained locally. |
 
 **Architecture note for WS-D(3)+:** keep the in-process provider DB-free —
 make git-capability inputs path-based (resolved `repoPath`/`workingDirectory`).
