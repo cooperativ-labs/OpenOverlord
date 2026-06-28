@@ -9,7 +9,14 @@ test('buildExecutionTargetMigrationDoctorCheck skips loopback backends', () => {
       diagnostics: {
         hostedBackend: false,
         backendHostFingerprint: 'abc',
-        staleBackendHostTargets: [{ executionTargetId: 'et-1', label: 'Railway', deviceLabel: 'railway', deviceFingerprint: 'abc' }],
+        staleBackendHostTargets: [
+          {
+            executionTargetId: 'et-1',
+            label: 'Railway',
+            deviceLabel: 'railway',
+            deviceFingerprint: 'abc'
+          }
+        ],
         staleQueuedExecutionRequestCount: 2
       }
     }),

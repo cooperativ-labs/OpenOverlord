@@ -28,13 +28,13 @@ import {
   type ExecutionRequestSummary
 } from '../../packages/core/service/execution-requests.ts';
 import {
-  LOCAL_TARGET_MUTATION_REQUESTED_SOURCE,
-  parseLocalTargetMutation
-} from '../../packages/core/service/local-target-mutations.ts';
-import {
   ensureActingDeviceTarget,
   updateTerminalProfile as persistTerminalProfile
 } from '../../packages/core/service/execution-targets.ts';
+import {
+  LOCAL_TARGET_MUTATION_REQUESTED_SOURCE,
+  parseLocalTargetMutation
+} from '../../packages/core/service/local-target-mutations.ts';
 import {
   parseAgentConfigs,
   readProjectUserPreferenceRow,

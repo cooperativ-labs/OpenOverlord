@@ -1,8 +1,8 @@
+import type { CapabilityFailure, CapabilitySuccess } from './local-target/types.ts';
 import { recordChange } from './change-feed.ts';
 import type { ServiceContext } from './context.ts';
 import { resolveMissionId, resolveProjectId } from './context.ts';
 import { ServiceError } from './errors.ts';
-import type { CapabilityFailure, CapabilitySuccess } from './local-target/types.ts';
 import { newId, nowIso } from './util.ts';
 
 export const LOCAL_TARGET_MUTATION_METADATA_KEY = 'overlord.localTargetMutation';
@@ -24,9 +24,7 @@ export type LocalTargetMutationPayload = {
     | { ok: false; code: string; message: string; details?: unknown };
 };
 
-export type LocalTargetMutationResult =
-  | CapabilitySuccess<unknown>
-  | CapabilityFailure;
+export type LocalTargetMutationResult = CapabilitySuccess<unknown> | CapabilityFailure;
 
 function parseMetadataObject(raw: string): Record<string, unknown> {
   try {

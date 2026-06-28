@@ -1,22 +1,29 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { flagBoolean, flagValue, parseArgs, rejectOversizedInlineJson, requireFlag } from './args.js';
-import { type BranchAutomationPayload, prepareMissionBranch } from './branch-preparation.js';
-import { isLoopbackBackendUrl, loadConfig } from './config.js';
-import { discoverProjectOnClient } from './discover-project-local.js';
 import {
   executeLocalTargetMutation,
   parseMutationFromMetadata
 } from '../../packages/core/service/local-target-mutation-runner.ts';
-import { CliError } from './errors.js';
+
+import {
+  flagBoolean,
+  flagValue,
+  parseArgs,
+  rejectOversizedInlineJson,
+  requireFlag
+} from './args.js';
+import { type BranchAutomationPayload, prepareMissionBranch } from './branch-preparation.js';
+import { isLoopbackBackendUrl, loadConfig } from './config.js';
 import { clientDeviceIdentity } from './device-identity.js';
-import { reportRunnerResourceObservations } from './resource-observations.js';
+import { discoverProjectOnClient } from './discover-project-local.js';
+import { CliError } from './errors.js';
 import { launchAgent } from './launch.js';
 import { resolveNativeSessionId } from './native-session.js';
 import { printJson, printKeyValue } from './output.js';
 import { pruneStaleProjectTmp } from './project-tmp.js';
 import { printProtocolHelp } from './protocol-help.js';
+import { reportRunnerResourceObservations } from './resource-observations.js';
 import type { CliRuntime } from './runtime.js';
 import { promptForProject } from './select-prompt.js';
 import {

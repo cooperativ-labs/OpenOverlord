@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { LocalTargetBridgeCall } from '../../packages/core/service/local-target/desktop-bridge.ts';
-import type { CapabilityResult, RepositoryTreeResult } from '../../packages/core/service/local-target/types.ts';
+import type {
+  CapabilityResult,
+  RepositoryTreeResult
+} from '../../packages/core/service/local-target/types.ts';
 
 const bridgeCall: LocalTargetBridgeCall = {
   capability: 'readRepositoryTree',
@@ -64,7 +67,8 @@ test('hasDesktopLocalTargetBridge is true when invokeLocalTarget is exposed', as
     }
   } as Window;
 
-  const { hasDesktopLocalTargetBridge, invokeLocalTarget } = await import('./local-target-client.ts');
+  const { hasDesktopLocalTargetBridge, invokeLocalTarget } =
+    await import('./local-target-client.ts');
   assert.equal(hasDesktopLocalTargetBridge(), true);
 
   const result = await invokeLocalTarget<RepositoryTreeResult>(bridgeCall);

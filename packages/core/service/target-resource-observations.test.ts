@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 
+import { mapObservationToResourceStatus } from './local-target/resource-status.ts';
 import { createServiceContext } from './context.ts';
 import { ensureCallerDeviceTarget } from './execution-targets.ts';
-import { mapObservationToResourceStatus } from './local-target/resource-status.ts';
 import { createProject } from './projects.ts';
 import {
   loadTargetResourceObservations,
@@ -38,15 +38,7 @@ describe('target resource observations', () => {
          (id, workspace_id, project_id, execution_target_id, type, label, path,
           is_primary, status, metadata_json, created_at, updated_at, revision)
        VALUES (?, ?, ?, ?, 'local_directory', NULL, ?, 1, 'active', '{}', ?, ?, 1)`,
-      [
-        resourceId,
-        ctx.workspace.id,
-        project.id,
-        target.executionTargetId,
-        resourceDir,
-        now,
-        now
-      ]
+      [resourceId, ctx.workspace.id, project.id, target.executionTargetId, resourceDir, now, now]
     );
 
     const missingId = 'resource-obs-missing';

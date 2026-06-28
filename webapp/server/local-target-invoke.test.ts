@@ -117,7 +117,9 @@ describe('local-target invoke dev proxy', () => {
     if (worktrees.ok) {
       assert.equal(worktrees.value.worktrees.length, 1);
       assert.ok(
-        worktrees.value.worktrees.some(w => w.path === resolveRealPath(path.join(worktreeRoot, 'demo', 'overlord-wt-a')))
+        worktrees.value.worktrees.some(
+          w => w.path === resolveRealPath(path.join(worktreeRoot, 'demo', 'overlord-wt-a'))
+        )
       );
     }
   });

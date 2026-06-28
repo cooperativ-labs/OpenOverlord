@@ -34,7 +34,9 @@ function registerRoot(rootPath: string): void {
 
 function assertPathUnderSomeRoot(filePath: string, roots: string[]): string {
   const normalized = normalizeAbsolutePath(filePath);
-  const searchRoots = [...new Set([...roots.map(root => normalizeAbsolutePath(root)), ...allowedRoots])];
+  const searchRoots = [
+    ...new Set([...roots.map(root => normalizeAbsolutePath(root)), ...allowedRoots])
+  ];
   for (const root of searchRoots) {
     if (isPathUnderRoot({ filePath: normalized, rootPath: root })) {
       return normalized;

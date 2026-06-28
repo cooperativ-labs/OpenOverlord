@@ -4,11 +4,11 @@ import { randomUUID } from 'node:crypto';
 import { describe, it } from 'node:test';
 
 import { createServiceContext } from './context.ts';
-import { backendHostFingerprint, ensureCallerDeviceTarget } from './execution-targets.ts';
 import {
   isStaleBackendHostDeviceFingerprint,
   loadExecutionTargetMigrationDiagnostics
 } from './execution-target-migration.ts';
+import { backendHostFingerprint, ensureCallerDeviceTarget } from './execution-targets.ts';
 import { createMissionWithObjectives } from './missions.ts';
 import { createProject } from './projects.ts';
 import { nowIso } from './util.ts';

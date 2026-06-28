@@ -29,7 +29,12 @@ export async function postMissionBranchObservations({
   } catch (error) {
     if (error && typeof error === 'object' && 'code' in error) {
       const serviceError = error as { message: string; code: string; status?: number };
-      throw new ApiError(serviceError.status ?? 409, serviceError.message, undefined, serviceError.code);
+      throw new ApiError(
+        serviceError.status ?? 409,
+        serviceError.message,
+        undefined,
+        serviceError.code
+      );
     }
     throw error;
   }

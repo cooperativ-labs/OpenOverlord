@@ -1,3 +1,5 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+
 import type { BranchObservationResult } from '../../packages/core/service/local-target/branch-observe-git.ts';
 import type { BranchListResult } from '../../packages/core/service/local-target/types.ts';
 import type {
@@ -12,7 +14,6 @@ import type {
   RemoveWorktreeBody,
   WorktreeDto
 } from '../../shared/contract.ts';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ApiRequestError } from './api.ts';
 import {
@@ -23,7 +24,10 @@ import {
 } from './local-target-client.ts';
 import { reportMissionBranchObservation } from './mission-branch-observations.ts';
 
-export { useLocalTargetCapabilityAvailable, useLocalTargetUnavailable } from './local-target-client.ts';
+export {
+  useLocalTargetCapabilityAvailable,
+  useLocalTargetUnavailable
+} from './local-target-client.ts';
 
 type CapabilityFailureDetails = {
   branchActionCode?: string;
@@ -329,9 +333,7 @@ export async function purgeMergedWorktreesOnLocalTarget({
     .map(worktree => {
       const resources = projectResources.get(worktree.projectId) ?? [];
       const primary = resolvePrimaryResourceForTarget({ resources, executionTargetId: null });
-      return primary?.path
-        ? { path: worktree.path, primaryRepoPath: primary.path }
-        : null;
+      return primary?.path ? { path: worktree.path, primaryRepoPath: primary.path } : null;
     })
     .filter((entry): entry is { path: string; primaryRepoPath: string } => entry !== null);
 

@@ -3,6 +3,7 @@ import type {
   MissionBranchObservationInput,
   MissionBranchStatus
 } from '../../shared/contract.ts';
+
 import { api } from './api.ts';
 
 function isRecordedMissionBranchStatus(

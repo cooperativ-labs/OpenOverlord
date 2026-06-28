@@ -10,19 +10,16 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, describe, it } from 'node:test';
 
-import { claimNextQueuedRequest, recoverStaleExecutionRequests } from './queue-runtime.js';
 import { createServiceContext } from './context.js';
+import { ServiceError } from './errors.js';
 import { claimNextExecutionRequest } from './execution-requests.js';
-import {
-  backendHostFingerprint,
-  ensureCallerDeviceTarget
-} from './execution-targets.js';
+import { backendHostFingerprint, ensureCallerDeviceTarget } from './execution-targets.js';
 import {
   getProjectExecutionTargetSelection,
   listEligibleProjectExecutionTargets
 } from './project-execution-target.js';
 import { findPrimaryProjectResource } from './projects.js';
-import { ServiceError } from './errors.js';
+import { claimNextQueuedRequest, recoverStaleExecutionRequests } from './queue-runtime.js';
 
 /**
  * Adapter conformance for the hosted-backend runtime path (mission `coo:5`,
@@ -400,10 +397,9 @@ for (const adapter of adapters) {
                    'active', ?, ?)`,
           [randomUUID(), WORKSPACE_ID, graph.projectId, graph.executionTargetId, now, now]
         );
-        await client.run(
-          `UPDATE objectives SET state = 'launching' WHERE id = ?`,
-          [graph.objectiveId]
-        );
+        await client.run(`UPDATE objectives SET state = 'launching' WHERE id = ?`, [
+          graph.objectiveId
+        ]);
         await insertQueuedRequest(client, graph);
         await client.run(
           `UPDATE execution_requests

@@ -4,12 +4,12 @@ import { describe, it } from 'node:test';
 
 import { createServiceContext } from './context.ts';
 import { ensureCallerDeviceTarget } from './execution-targets.ts';
-import { createMissionWithObjectives } from './missions.ts';
 import {
   loadMissionBranchObservationsForMissions,
   mergeMissionBranchObservation,
   recordMissionBranchObservations
 } from './mission-branch-observations.ts';
+import { createMissionWithObjectives } from './missions.ts';
 import { createProject } from './projects.ts';
 import { seedServiceOperator } from './test-helpers.ts';
 

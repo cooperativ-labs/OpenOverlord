@@ -28,6 +28,8 @@ export function hasPendingLocalTargetMutation(
   return executionRequests.some(
     request =>
       request.localTargetMutationKind &&
-      (request.status === 'queued' || request.status === 'claimed' || request.status === 'launching')
+      (request.status === 'queued' ||
+        request.status === 'claimed' ||
+        request.status === 'launching')
   );
 }

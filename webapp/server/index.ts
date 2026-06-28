@@ -9,14 +9,12 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../../cli/src/config.ts';
 import { isExplicitRuntimeEnv, resolveLayeredEnv } from '../../cli/src/env.ts';
 import { ServiceError } from '../../packages/core/service/errors.ts';
+import type { LocalTargetBridgeCall } from '../../packages/core/service/local-target/desktop-bridge.ts';
 import { loadRepoEnvForProfile } from '../load-repo-env.ts';
 
 import { authNodeHandler, getAllowedBrowserOrigins, requireAuthenticatedSession } from './auth.ts';
 import { DATABASE_DIALECT, DATABASE_PATH, initDatabase, WORKSPACE } from './db.ts';
 import { ENV_PROFILE, REPO_ROOT } from './env-profile.ts';
-import { resolveLocalTargetServerCapability } from './local-target-capability.ts';
-import { invokeLocalTargetOnServer } from './local-target-invoke.ts';
-import type { LocalTargetBridgeCall } from '../../packages/core/service/local-target/desktop-bridge.ts';
 import { apiErrorFromDatabaseError } from './errors.ts';
 import {
   addMissionTime,
@@ -30,6 +28,7 @@ import {
   stopMissionTimer,
   updateMissionTime
 } from './everhour.ts';
+import { getExecutionTargetMigrationDiagnostics } from './execution-target-migration.ts';
 import {
   getAgentCatalog,
   getLaunchPreference,
@@ -42,13 +41,13 @@ import {
   updateTerminalProfile,
   updateWorktreeBranchAutomation
 } from './launch.ts';
+import { resolveLocalTargetServerCapability } from './local-target-capability.ts';
+import { invokeLocalTargetOnServer } from './local-target-invoke.ts';
+import { postMissionBranchObservations } from './mission-branch-observations.ts';
 import {
   getProjectExecutionTarget,
   updateProjectExecutionTarget
 } from './project-execution-target.ts';
-import { postMissionBranchObservations } from './mission-branch-observations.ts';
-import { getExecutionTargetMigrationDiagnostics } from './execution-target-migration.ts';
-import { postExecutionTargetObservations } from './target-resource-observations.ts';
 import { runProtocolSubcommand } from './protocol.ts';
 import { requirePermission } from './rbac.ts';
 import { realtime } from './realtime.ts';
@@ -127,6 +126,7 @@ import {
   uploadObjectiveAttachment,
   uploadUserImage
 } from './storage.ts';
+import { postExecutionTargetObservations } from './target-resource-observations.ts';
 import { readSqlStudioEnabled } from './workspace-settings.ts';
 import {
   activateWorkspace,

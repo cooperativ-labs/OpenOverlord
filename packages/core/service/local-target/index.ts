@@ -3,6 +3,11 @@
 export type { BranchActionErrorCode, BranchActionGitResult } from './branch-actions-git.ts';
 export { performBranchActionGit } from './branch-actions-git.ts';
 export {
+  type BranchObservationInput,
+  type BranchObservationResult,
+  observeMissionBranchGit
+} from './branch-observe-git.ts';
+export {
   branchMergedIntoBase,
   type BranchPublicationStatus,
   deriveBranchPublicationStatus,
@@ -10,11 +15,6 @@ export {
   readPrimaryCheckoutBranch,
   resolveRef
 } from './branch-status-git.ts';
-export {
-  observeMissionBranchGit,
-  type BranchObservationInput,
-  type BranchObservationResult
-} from './branch-observe-git.ts';
 export type {
   CommitMessageGatherErrorCode,
   CommitMessageGatherResult

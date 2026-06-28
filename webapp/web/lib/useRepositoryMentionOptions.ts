@@ -7,6 +7,7 @@ import type {
   ProjectMentionOption
 } from '../components/MentionableTextarea.tsx';
 
+import { hasDesktopLocalTargetBridge, invokeLocalTarget } from './local-target-client.ts';
 import {
   useMissions,
   useProjectExecutionTarget,
@@ -14,7 +15,6 @@ import {
   useProjectResources,
   useProjects
 } from './queries.ts';
-import { hasDesktopLocalTargetBridge, invokeLocalTarget } from './local-target-client.ts';
 
 function resolvePrimaryResource({
   resources,
@@ -82,9 +82,7 @@ export function useRepositoryMentionOptions(projectId: string) {
         }
       });
       if (!result.ok) return [];
-      return result.value.entries
-        .filter(entry => entry.type === 'file')
-        .map(entry => entry.path);
+      return result.value.entries.filter(entry => entry.type === 'file').map(entry => entry.path);
     },
     enabled: useBridgePaths,
     staleTime: 60_000

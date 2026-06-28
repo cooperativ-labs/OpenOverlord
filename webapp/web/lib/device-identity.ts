@@ -41,9 +41,7 @@ export async function resolveClientDeviceIdentity(): Promise<ClientDeviceIdentit
   return loadPromise;
 }
 
-export function clientDeviceHeaders(
-  identity: ClientDeviceIdentity
-): Record<string, string> {
+export function clientDeviceHeaders(identity: ClientDeviceIdentity): Record<string, string> {
   return {
     [DEVICE_FINGERPRINT_HEADER]: identity.deviceFingerprint,
     ...(identity.deviceLabel ? { [DEVICE_LABEL_HEADER]: identity.deviceLabel } : {}),

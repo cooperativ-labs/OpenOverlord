@@ -34,8 +34,8 @@ import {
 import { UserProfilePage } from '@/components/settings/UserProfilePage';
 import { UserTokensPage } from '@/components/settings/UserTokensPage';
 import { WorktreesPage } from '@/components/settings/WorktreesPage';
-import { useMeta } from '@/lib/queries';
 import { useLocalTargetUnavailable } from '@/lib/local-target-client.ts';
+import { useMeta } from '@/lib/queries';
 
 type SettingsModalProps = {
   open: boolean;
@@ -81,9 +81,7 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
   const isDesktop = typeof window !== 'undefined' && window.overlord?.isDesktop === true;
   const navItems = useMemo<SettingsNavItem[]>(
     () => [
-      ...workflowNavItems.filter(
-        item => !(localTargetUnavailable && item.name === 'Worktrees')
-      ),
+      ...workflowNavItems.filter(item => !(localTargetUnavailable && item.name === 'Worktrees')),
       ...userNavItems,
       ...appNavItems,
       ...(isDesktop ? desktopNavItems : [])

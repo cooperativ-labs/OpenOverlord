@@ -432,14 +432,13 @@ export async function runLocalCommand({
       if (health.ok) {
         const { isLoopbackBackendUrl } = await import('./config.js');
         const { readStoredAuthCredentials } = await import('./auth-credentials.js');
-        const { buildExecutionTargetMigrationDoctorCheck } = await import(
-          './execution-target-migration-doctor.js'
-        );
+        const { buildExecutionTargetMigrationDoctorCheck } =
+          await import('./execution-target-migration-doctor.js');
         const hasAuth =
           Boolean(
             process.env.OVERLORD_USER_TOKEN?.trim() ||
-              process.env.OVLD_USER_TOKEN?.trim() ||
-              process.env.USER_TOKEN?.trim()
+            process.env.OVLD_USER_TOKEN?.trim() ||
+            process.env.USER_TOKEN?.trim()
           ) || readStoredAuthCredentials() !== null;
         if (hasAuth && !isLoopbackBackendUrl(backend.baseUrl)) {
           try {

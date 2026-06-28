@@ -26,11 +26,7 @@ function readProjectJsonFile(projectJsonPath: string): {
   };
 }
 
-function discoverProjectJsonFromFilesystem({
-  workingDirectory
-}: {
-  workingDirectory: string;
-}): {
+function discoverProjectJsonFromFilesystem({ workingDirectory }: { workingDirectory: string }): {
   projectId: string;
   resourceId: string;
   resourcePath: string;

@@ -21,17 +21,16 @@ import type {
   MissionBranchStatus,
   MissionDetailDto
 } from '../../shared/contract.ts';
-import { LocalTargetRequiredNotice } from './LocalTargetRequiredNotice.tsx';
 import { ApiRequestError } from '../lib/api.ts';
 import {
   resolvePrimaryResourceForTarget,
   useObservedMissionBranch
 } from '../lib/local-target-branch.ts';
+import { useLocalTargetUnavailable } from '../lib/local-target-client.ts';
 import {
   hasPendingLocalTargetMutation,
   useIsRemoteExecutionTargetForProject
 } from '../lib/local-target-remote.ts';
-import { useLocalTargetUnavailable } from '../lib/local-target-client.ts';
 import {
   useBranchAction,
   useGenerateCommitMessage,
@@ -54,6 +53,7 @@ import { LoadingButton } from './ui/loading-button.tsx';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover.tsx';
 import { Switch } from './ui/switch.tsx';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip.tsx';
+import { LocalTargetRequiredNotice } from './LocalTargetRequiredNotice.tsx';
 import { Button } from './ui.tsx';
 
 type BranchActionName = 'integrate' | 'commit' | 'push_parent' | 'publish';
@@ -516,8 +516,8 @@ function BranchPanel({ mission }: { mission: MissionDetailDto }) {
         )}
         {isRemoteTarget && !localTargetUnavailable && branch.status !== 'pending' && (
           <p className="rounded-md border border-border/60 bg-muted/30 p-2.5 text-xs text-muted-foreground">
-            Branch actions queue on the selected remote execution target and run when its runner
-            is online.
+            Branch actions queue on the selected remote execution target and run when its runner is
+            online.
           </p>
         )}
         {localTargetUnavailable && !isRemoteTarget && branch.status !== 'pending' && (
@@ -783,10 +783,7 @@ export function MissionBranchControl({ mission }: { mission: MissionDetailDto })
     enabled: true
   });
   const displayMission = useMemo<MissionDetailDto>(
-    () =>
-      observedBranch.data
-        ? { ...mission, branch: observedBranch.data }
-        : mission,
+    () => (observedBranch.data ? { ...mission, branch: observedBranch.data } : mission),
     [mission, observedBranch.data]
   );
   const branch = displayMission.branch;

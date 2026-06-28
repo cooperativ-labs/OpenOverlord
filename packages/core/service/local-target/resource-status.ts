@@ -64,10 +64,14 @@ export function deriveResourceStatus(
   resource: { resourceId: string; status: string; path: string }
 ): Promise<string> {
   if (resource.status === 'archived') return Promise.resolve('archived');
-  return provider.observeResource({
-    resourceId: resource.resourceId,
-    path: resource.path
-  }).then(observation => mapObservationToResourceStatus(resource.status, observation.ok ? observation.value : null));
+  return provider
+    .observeResource({
+      resourceId: resource.resourceId,
+      path: resource.path
+    })
+    .then(observation =>
+      mapObservationToResourceStatus(resource.status, observation.ok ? observation.value : null)
+    );
 }
 
 /** Map a stored or live target observation onto the REST resource status vocabulary. */

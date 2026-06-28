@@ -21,10 +21,7 @@ export function computeDeviceFingerprint({
   deviceLabel: string;
   devicePlatform: string;
 }): string {
-  return createHash('sha256')
-    .update(`${deviceLabel}:${devicePlatform}`)
-    .digest('hex')
-    .slice(0, 32);
+  return createHash('sha256').update(`${deviceLabel}:${devicePlatform}`).digest('hex').slice(0, 32);
 }
 
 export function deviceIdentityFromParts({

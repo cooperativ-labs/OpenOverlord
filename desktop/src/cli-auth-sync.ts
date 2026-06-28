@@ -2,8 +2,8 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSy
 import os from 'node:os';
 import path from 'node:path';
 
-import { getSessionToken, setSessionToken } from './backend-token-store.js';
 import { LOCAL_BACKEND_PROFILE_ID } from './backend-profiles.js';
+import { getSessionToken, setSessionToken } from './backend-token-store.js';
 
 type CliAuthCredentialType = 'session_bearer' | 'user_token';
 

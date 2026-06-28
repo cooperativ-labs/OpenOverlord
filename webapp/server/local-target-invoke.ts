@@ -1,7 +1,6 @@
-import path from 'node:path';
-import os from 'node:os';
-
 import type { SqlDialect } from '@overlord/database';
+import os from 'node:os';
+import path from 'node:path';
 
 import {
   invokeLocalTargetCapability,
@@ -9,9 +8,10 @@ import {
 } from '../../packages/core/service/local-target/desktop-bridge.ts';
 import { InProcessProvider } from '../../packages/core/service/local-target/in-process-provider.ts';
 import { isCoLocatedBackend } from '../../packages/core/service/local-target/resource-status.ts';
-import { isDevInProcessLocalTargetEnabled } from './local-target-capability.ts';
 import { fail } from '../../packages/core/service/local-target/result.ts';
 import type { CapabilityResult } from '../../packages/core/service/local-target/types.ts';
+
+import { isDevInProcessLocalTargetEnabled } from './local-target-capability.ts';
 
 function resolveServerWorktreeRoot(): string {
   const override = process.env.OVERLORD_WORKTREE_ROOT?.trim();

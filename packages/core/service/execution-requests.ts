@@ -5,10 +5,7 @@ import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import { resolveMissionId, resolveProjectId } from './context.js';
 import { ServiceError } from './errors.js';
-import {
-  type ClientDeviceIdentity,
-  resolveClaimingDeviceTarget
-} from './execution-targets.js';
+import { type ClientDeviceIdentity, resolveClaimingDeviceTarget } from './execution-targets.js';
 import { LOCAL_TARGET_MUTATION_REQUESTED_SOURCE } from './local-target-mutations.ts';
 import { assertPrimaryResourceConnected } from './projects.js';
 import { newId, nowIso } from './util.js';

@@ -15,11 +15,10 @@ function normalizeBaseUrl(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
-function resolveAuthHeaders({
-  baseUrl
-}: {
-  baseUrl: string;
-}): { headers: Record<string, string>; fromStored: boolean } {
+function resolveAuthHeaders({ baseUrl }: { baseUrl: string }): {
+  headers: Record<string, string>;
+  fromStored: boolean;
+} {
   const fromEnv =
     process.env.OVERLORD_USER_TOKEN?.trim() ||
     process.env.OVLD_USER_TOKEN?.trim() ||

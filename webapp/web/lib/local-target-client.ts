@@ -1,6 +1,7 @@
+import { useQuery } from '@tanstack/react-query';
+
 import type { LocalTargetBridgeCall } from '../../packages/core/service/local-target/desktop-bridge.ts';
 import type { CapabilityResult } from '../../packages/core/service/local-target/types.ts';
-import { useQuery } from '@tanstack/react-query';
 
 import type { LocalTargetServerCapability } from './api.ts';
 import { api } from './api.ts';
@@ -24,9 +25,7 @@ async function resolveServerLocalTarget(): Promise<LocalTargetServerCapability> 
 
 /** True when the desktop shell exposes the unified local-target IPC bridge. */
 export function hasDesktopLocalTargetBridge(): boolean {
-  return (
-    typeof window !== 'undefined' && typeof window.overlord?.invokeLocalTarget === 'function'
-  );
+  return typeof window !== 'undefined' && typeof window.overlord?.invokeLocalTarget === 'function';
 }
 
 /**

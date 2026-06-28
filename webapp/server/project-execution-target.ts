@@ -10,11 +10,7 @@ import type {
   UpdateProjectExecutionTargetBody
 } from '../shared/contract.ts';
 
-import {
-  buildWebappServiceContext,
-  requireDatabaseClient,
-  serviceDatabaseClient
-} from './db.ts';
+import { buildWebappServiceContext, requireDatabaseClient, serviceDatabaseClient } from './db.ts';
 import { ApiError } from './errors.ts';
 
 function serviceContext(client: DatabaseClient = serviceDatabaseClient()) {

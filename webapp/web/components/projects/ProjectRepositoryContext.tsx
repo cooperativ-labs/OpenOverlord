@@ -1,23 +1,23 @@
-import { createContext, type ReactNode, useCallback, useContext, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { createContext, type ReactNode, useCallback, useContext, useMemo } from 'react';
 
+import type {
+  CapabilityResult,
+  RepositoryTreeResult
+} from '../../../../packages/core/service/local-target/types.ts';
 import type {
   EligibleExecutionTargetDto,
   ProjectRepositoryDto,
   ProjectResourceDto
 } from '../../../shared/contract.ts';
-import type {
-  CapabilityResult,
-  RepositoryTreeResult
-} from '../../../../packages/core/service/local-target/types.ts';
+import { hasDesktopLocalTargetBridge, invokeLocalTarget } from '../../lib/local-target-client.ts';
 import {
+  useLaunchSettings,
   useProjectExecutionTarget,
   useProjectRepository,
   useProjectResources,
-  useUpdateProjectExecutionTarget,
-  useLaunchSettings
+  useUpdateProjectExecutionTarget
 } from '../../lib/queries.ts';
-import { hasDesktopLocalTargetBridge, invokeLocalTarget } from '../../lib/local-target-client.ts';
 import { useResourceObservationReporter } from '../../lib/resource-observations.ts';
 
 interface ProjectRepositoryContextValue {
@@ -106,7 +106,10 @@ export function ProjectRepositoryProvider({
   const repository = useMemo(() => {
     if (!restRepository.data) return null;
     if (!bridgeEnabled || !bridgeTree.data) return restRepository.data;
-    return mergeRepositoryWithBridge({ restRepository: restRepository.data, bridgeTree: bridgeTree.data });
+    return mergeRepositoryWithBridge({
+      restRepository: restRepository.data,
+      bridgeTree: bridgeTree.data
+    });
   }, [bridgeEnabled, bridgeTree.data, restRepository.data]);
 
   const setSelectedExecutionTargetId = useCallback(

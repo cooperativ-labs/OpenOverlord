@@ -55,8 +55,14 @@ import {
   resolvePrimaryResourceForTarget,
   runBranchActionOnLocalTarget
 } from './local-target-branch.ts';
-import { isLocalTargetCapabilityAvailable, useLocalTargetCapabilityAvailable } from './local-target-client.ts';
-import { useIsRemoteExecutionTargetForProject, isRemoteExecutionTargetSelected } from './local-target-remote.ts';
+import {
+  isLocalTargetCapabilityAvailable,
+  useLocalTargetCapabilityAvailable
+} from './local-target-client.ts';
+import {
+  isRemoteExecutionTargetSelected,
+  useIsRemoteExecutionTargetForProject
+} from './local-target-remote.ts';
 
 export const keys = {
   meta: ['meta'] as const,
@@ -206,7 +212,9 @@ export const useWorktrees = () => {
       if (localTargetAvailable) {
         const projectList = projects.data ?? [];
         const resourceEntries = await Promise.all(
-          projectList.map(async project => [project.id, await api.listProjectResources(project.id)] as const)
+          projectList.map(
+            async project => [project.id, await api.listProjectResources(project.id)] as const
+          )
         );
         return fetchWorktreesFromLocalTarget({
           projects: projectList,
@@ -629,7 +637,9 @@ export function useRemoveWorktree() {
     mutationFn: async (body: RemoveWorktreeBody) => {
       const projectList = projects.data ?? [];
       const resourceEntries = await Promise.all(
-        projectList.map(async project => [project.id, await api.listProjectResources(project.id)] as const)
+        projectList.map(
+          async project => [project.id, await api.listProjectResources(project.id)] as const
+        )
       );
       const worktrees = localTargetAvailable
         ? await fetchWorktreesFromLocalTarget({
@@ -642,9 +652,8 @@ export function useRemoveWorktree() {
       const isRemoteTarget = projectId
         ? isRemoteExecutionTargetSelected({
             localExecutionTargetId: (await api.getLaunchSettings()).executionTargetId,
-            selectedExecutionTargetId: (
-              await api.getProjectExecutionTarget(projectId)
-            ).selectedExecutionTargetId
+            selectedExecutionTargetId: (await api.getProjectExecutionTarget(projectId))
+              .selectedExecutionTargetId
           })
         : false;
 
@@ -726,7 +735,9 @@ export function usePurgeMergedWorktrees() {
 
       if (localTargetAvailable) {
         const resourceEntries = await Promise.all(
-          projectList.map(async project => [project.id, await api.listProjectResources(project.id)] as const)
+          projectList.map(
+            async project => [project.id, await api.listProjectResources(project.id)] as const
+          )
         );
         return purgeMergedWorktreesOnLocalTarget({
           projects: projectList,

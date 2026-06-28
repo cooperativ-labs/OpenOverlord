@@ -2,6 +2,8 @@ import { BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
+import type { LocalTargetBridgeCall } from '../../packages/core/service/local-target/desktop-bridge.ts';
+
 import {
   addRemoteBackend,
   type BackendRuntimeController,
@@ -16,10 +18,9 @@ import {
   writeBearerTokenForProfile,
   writeSessionTokenForProfile
 } from './backend-runtime.js';
-import type { CliUpdater } from './cli-updater.js';
 import { syncSessionTokenToCliAuth } from './cli-auth-sync.js';
+import type { CliUpdater } from './cli-updater.js';
 import { readDesktopDeviceIdentity } from './device-identity.js';
-import type { LocalTargetBridgeCall } from '../../packages/core/service/local-target/desktop-bridge.ts';
 import { invokeDesktopLocalTarget } from './local-target-bridge.js';
 import { isNativeThemeSource, setNativeThemeSource } from './native-theme.js';
 import {

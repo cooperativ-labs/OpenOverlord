@@ -7,12 +7,12 @@ import {
   type TerminalProfile
 } from '../../../cli/src/terminal-profile-types.ts';
 
+import { isCoLocatedBackend } from './local-target/index.js';
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import type { ClientDeviceIdentity } from './device-identity.js';
 import { callerDeviceFingerprint } from './devices.js';
 import { ServiceError } from './errors.js';
-import { isCoLocatedBackend } from './local-target/index.js';
 import { newId, nowIso } from './util.js';
 
 export type { ClientDeviceIdentity } from './device-identity.js';

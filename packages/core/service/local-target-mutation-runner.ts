@@ -6,11 +6,11 @@ import type {
   PurgeMergedWorktreesInput,
   RemoveWorktreeInput
 } from './local-target/types.ts';
-import {
-  parseLocalTargetMutation,
-  type LocalTargetMutationPayload
-} from './local-target-mutations.ts';
 import type { CapabilityResult } from './local-target/types.ts';
+import {
+  type LocalTargetMutationPayload,
+  parseLocalTargetMutation
+} from './local-target-mutations.ts';
 
 function inProcessProvider(): LocalTargetCapabilities {
   return new InProcessProvider(

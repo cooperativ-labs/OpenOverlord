@@ -1,12 +1,12 @@
+import type { ServiceContext } from '../../packages/core/service/context.ts';
+import { findActingDeviceExecutionTargetId } from '../../packages/core/service/execution-targets.ts';
 import {
   createLocalTargetMutationRequest,
-  parseLocalTargetMutation,
   type LocalTargetMutationCapability,
-  type LocalTargetMutationKind
+  type LocalTargetMutationKind,
+  parseLocalTargetMutation
 } from '../../packages/core/service/local-target-mutations.ts';
-import { findActingDeviceExecutionTargetId } from '../../packages/core/service/execution-targets.ts';
 import { resolveProjectExecutionTargetForLaunch } from '../../packages/core/service/project-execution-target.ts';
-import type { ServiceContext } from '../../packages/core/service/context.ts';
 
 import { buildWebappServiceContext, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';
@@ -22,8 +22,7 @@ export async function resolveRemoteMutationTarget({
 }): Promise<{ queue: true; executionTargetId: string } | { queue: false }> {
   const actingTargetId = await findActingDeviceExecutionTargetId({ ctx });
   const selectedTargetId =
-    executionTargetId?.trim() ||
-    (await resolveProjectExecutionTargetForLaunch({ ctx, projectId }));
+    executionTargetId?.trim() || (await resolveProjectExecutionTargetForLaunch({ ctx, projectId }));
   if (!selectedTargetId) return { queue: false };
   if (actingTargetId === null || selectedTargetId !== actingTargetId) {
     return { queue: true, executionTargetId: selectedTargetId };

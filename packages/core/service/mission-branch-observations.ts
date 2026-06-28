@@ -1,8 +1,8 @@
 import { bindBool } from '@overlord/database';
 
 import type { ServiceContext } from './context.js';
-import { ensureActingDeviceTarget } from './execution-targets.js';
 import { ServiceError } from './errors.js';
+import { ensureActingDeviceTarget } from './execution-targets.js';
 import { newId, nowIso } from './util.js';
 
 export type ObservedMissionBranchStatus = 'created' | 'published' | 'merged_unpushed' | 'merged';
@@ -59,14 +59,26 @@ function parseObservationInput(value: unknown): MissionBranchObservationInput {
   const row = value as Record<string, unknown>;
   const missionId = typeof row.missionId === 'string' ? row.missionId.trim() : '';
   if (!missionId) {
-    throw new ServiceError('missionId is required for each branch observation', 'validation_error', 400);
+    throw new ServiceError(
+      'missionId is required for each branch observation',
+      'validation_error',
+      400
+    );
   }
   const observedAt = typeof row.observedAt === 'string' ? row.observedAt.trim() : '';
   if (!observedAt) {
-    throw new ServiceError('observedAt is required for each branch observation', 'validation_error', 400);
+    throw new ServiceError(
+      'observedAt is required for each branch observation',
+      'validation_error',
+      400
+    );
   }
   if (typeof row.dirty !== 'boolean') {
-    throw new ServiceError('dirty is required for each branch observation', 'validation_error', 400);
+    throw new ServiceError(
+      'dirty is required for each branch observation',
+      'validation_error',
+      400
+    );
   }
   return {
     missionId,

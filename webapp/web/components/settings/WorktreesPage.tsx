@@ -177,44 +177,44 @@ export function WorktreesPage() {
           <LocalTargetRequiredNotice className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground" />
         ) : (
           <>
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h3 className="text-sm font-medium">Existing worktrees</h3>
-            <p className="text-xs text-muted-foreground">
-              Worktrees Overlord created under its home folder. Deleting one removes its checkout;
-              merged branches are safe to purge.
-            </p>
-          </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={mergedCount === 0 || purgeMerged.isPending}
-            onClick={() => purgeMerged.mutate()}
-          >
-            Purge all merged{mergedCount > 0 ? ` (${mergedCount})` : ''}
-          </Button>
-        </div>
-        {purgeMerged.isError && (
-          <p className="text-xs text-red-400">{(purgeMerged.error as Error).message}</p>
-        )}
-        {purgeMerged.data && purgeMerged.data.skipped.length > 0 && (
-          <p className="text-xs text-amber-600 dark:text-amber-400">
-            Skipped {purgeMerged.data.skipped.length} worktree
-            {purgeMerged.data.skipped.length === 1 ? '' : 's'} with uncommitted changes.
-          </p>
-        )}
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-medium">Existing worktrees</h3>
+                <p className="text-xs text-muted-foreground">
+                  Worktrees Overlord created under its home folder. Deleting one removes its
+                  checkout; merged branches are safe to purge.
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={mergedCount === 0 || purgeMerged.isPending}
+                onClick={() => purgeMerged.mutate()}
+              >
+                Purge all merged{mergedCount > 0 ? ` (${mergedCount})` : ''}
+              </Button>
+            </div>
+            {purgeMerged.isError && (
+              <p className="text-xs text-red-400">{(purgeMerged.error as Error).message}</p>
+            )}
+            {purgeMerged.data && purgeMerged.data.skipped.length > 0 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Skipped {purgeMerged.data.skipped.length} worktree
+                {purgeMerged.data.skipped.length === 1 ? '' : 's'} with uncommitted changes.
+              </p>
+            )}
 
-        {worktrees.isLoading ? (
-          <p className="text-xs text-muted-foreground">Loading worktrees…</p>
-        ) : list.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No worktrees yet.</p>
-        ) : (
-          <div className="space-y-2">
-            {list.map(worktree => (
-              <WorktreeRow key={worktree.path} worktree={worktree} />
-            ))}
-          </div>
-        )}
+            {worktrees.isLoading ? (
+              <p className="text-xs text-muted-foreground">Loading worktrees…</p>
+            ) : list.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No worktrees yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {list.map(worktree => (
+                  <WorktreeRow key={worktree.path} worktree={worktree} />
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>

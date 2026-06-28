@@ -2,8 +2,8 @@
 // Shared by the Desktop Shell, web SPA transport helper, and optional dev REST
 // proxy so every surface dispatches the same capability names and payloads.
 
-import { observeMissionBranchGit } from './branch-observe-git.ts';
 import type { BranchObservationResult } from './branch-observe-git.ts';
+import { observeMissionBranchGit } from './branch-observe-git.ts';
 import { fail, ok } from './result.ts';
 import type {
   CapabilityResult,
@@ -72,6 +72,10 @@ export async function invokeLocalTargetCapability({
     case 'writeProjectMetadata':
       return provider.writeProjectMetadata(call.input);
     default:
-      return fail(provider.target, 'CAPABILITY_NOT_IMPLEMENTED', 'Unknown local-target capability.');
+      return fail(
+        provider.target,
+        'CAPABILITY_NOT_IMPLEMENTED',
+        'Unknown local-target capability.'
+      );
   }
 }

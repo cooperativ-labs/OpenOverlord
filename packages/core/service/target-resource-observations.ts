@@ -1,8 +1,8 @@
+import { mapObservationToResourceStatus } from './local-target/resource-status.ts';
 import type { TargetObservationState } from './local-target/types.ts';
 import type { ServiceContext } from './context.js';
-import { ensureActingDeviceTarget } from './execution-targets.js';
-import { mapObservationToResourceStatus } from './local-target/resource-status.ts';
 import { ServiceError } from './errors.js';
+import { ensureActingDeviceTarget } from './execution-targets.js';
 import { newId, nowIso } from './util.js';
 
 export type TargetResourceObservationInput = {
@@ -37,7 +37,11 @@ const OBSERVATION_STATES = new Set<TargetObservationState>([
 function parseObservationState(value: unknown): TargetObservationState {
   const state = typeof value === 'string' ? value.trim() : '';
   if (!OBSERVATION_STATES.has(state as TargetObservationState)) {
-    throw new ServiceError(`Invalid observation state: ${state || '(empty)'}`, 'validation_error', 400);
+    throw new ServiceError(
+      `Invalid observation state: ${state || '(empty)'}`,
+      'validation_error',
+      400
+    );
   }
   return state as TargetObservationState;
 }

@@ -1,4 +1,4 @@
-import { hostname, homedir } from 'node:os';
+import { homedir, hostname } from 'node:os';
 import path from 'node:path';
 
 import {
@@ -9,10 +9,7 @@ import { InProcessProvider } from '../../packages/core/service/local-target/in-p
 import { fail } from '../../packages/core/service/local-target/result.ts';
 import type { CapabilityResult } from '../../packages/core/service/local-target/types.ts';
 
-import {
-  PathAllowlistError,
-  validateLocalTargetCallPaths
-} from './local-target-path-allowlist.ts';
+import { PathAllowlistError, validateLocalTargetCallPaths } from './local-target-path-allowlist.ts';
 
 function resolveDesktopWorktreeRoot(): string {
   const override = process.env.OVERLORD_WORKTREE_ROOT?.trim();
@@ -46,11 +43,12 @@ export async function invokeDesktopLocalTarget(
     validateLocalTargetCallPaths(call);
   } catch (error) {
     const message =
-      error instanceof PathAllowlistError
-        ? error.message
-        : 'The requested path is not allowed.';
+      error instanceof PathAllowlistError ? error.message : 'The requested path is not allowed.';
     return fail(desktopProvider.target, 'PERMISSION_DENIED', message);
   }
 
-  return invokeLocalTargetCapability({ provider: desktopProvider, call: withDesktopDefaults(call) });
+  return invokeLocalTargetCapability({
+    provider: desktopProvider,
+    call: withDesktopDefaults(call)
+  });
 }

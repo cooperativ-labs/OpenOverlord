@@ -1,9 +1,12 @@
 import type { DatabaseClient } from '@overlord/database';
 
+import { isCoLocatedBackend } from './local-target/index.js';
 import type { ServiceContext } from './context.js';
 import { ServiceError } from './errors.js';
-import { findActingDeviceExecutionTargetId, isBackendHostFingerprint } from './execution-targets.js';
-import { isCoLocatedBackend } from './local-target/index.js';
+import {
+  findActingDeviceExecutionTargetId,
+  isBackendHostFingerprint
+} from './execution-targets.js';
 import { findPrimaryProjectResource } from './projects.js';
 import { newId, nowIso } from './util.js';
 

@@ -1,6 +1,6 @@
-import { backendHostFingerprint, isBackendHostFingerprint } from './execution-targets.js';
-import type { ServiceContext } from './context.js';
 import { isCoLocatedBackend } from './local-target/index.js';
+import type { ServiceContext } from './context.js';
+import { backendHostFingerprint, isBackendHostFingerprint } from './execution-targets.js';
 
 export type StaleBackendHostExecutionTarget = {
   executionTargetId: string;

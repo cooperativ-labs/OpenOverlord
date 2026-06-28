@@ -5,20 +5,18 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { ensureActingDeviceTarget } from '../../packages/core/service/execution-targets.ts';
-import { resolveProjectExecutionTargetForLaunch } from '../../packages/core/service/project-execution-target.ts';
+import { resolveBackendResourceProvider } from '../../packages/core/service/local-target/index.ts';
+import type { TargetMetadata } from '../../packages/core/service/local-target/types.ts';
 import {
-  resolveBackendResourceProvider
-} from '../../packages/core/service/local-target/index.ts';
+  loadMissionBranchObservationsForMissions,
+  mergeMissionBranchObservation
+} from '../../packages/core/service/mission-branch-observations.ts';
+import { resolveProjectExecutionTargetForLaunch } from '../../packages/core/service/project-execution-target.ts';
 import {
   loadTargetResourceObservations,
   mergeResourceStatusWithObservation,
   type TargetResourceObservationRow
 } from '../../packages/core/service/target-resource-observations.ts';
-import {
-  loadMissionBranchObservationsForMissions,
-  mergeMissionBranchObservation
-} from '../../packages/core/service/mission-branch-observations.ts';
-import type { TargetMetadata } from '../../packages/core/service/local-target/types.ts';
 import type {
   ArtifactDto,
   CreateMissionBody,
@@ -69,8 +67,8 @@ import type {
 import { missionWorktreePath, previewMissionBranch } from './branch-planning.ts';
 import { generateCommitMessageFromDiff } from './commit-message-automation.ts';
 import {
-  DATABASE_DIALECT,
   buildWebappServiceContext,
+  DATABASE_DIALECT,
   getActorWorkspaceUserId,
   newId,
   nowIso,
@@ -82,17 +80,17 @@ import {
 } from './db.ts';
 import { ApiError } from './errors.ts';
 import {
-  queueLocalTargetMutation,
-  resolveMutationAnchorMissionId,
-  resolveRemoteMutationTarget
-} from './local-target-mutation-queue.ts';
-import {
   dequeueObjective,
   getLaunchPreference,
   LAUNCHABLE_STATES,
   listMissionExecutionRequests,
   readWorktreeBranchAutomationEnabled
 } from './launch.ts';
+import {
+  queueLocalTargetMutation,
+  resolveMutationAnchorMissionId,
+  resolveRemoteMutationTarget
+} from './local-target-mutation-queue.ts';
 import { loadActorRoles } from './rbac.ts';
 import {
   generateMissionTitleNow,

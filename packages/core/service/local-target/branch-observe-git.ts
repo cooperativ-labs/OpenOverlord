@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 
 import {
-  deriveBranchPublicationStatus,
-  type BranchPublicationStatus
+  type BranchPublicationStatus,
+  deriveBranchPublicationStatus
 } from './branch-status-git.ts';
 import { worktreeIsDirty, worktreePathForBranch } from './worktree-git.ts';
 
