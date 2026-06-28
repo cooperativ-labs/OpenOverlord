@@ -1,6 +1,6 @@
 # Local Execution Target — Rollout & Legacy Removal Plan
 
-**Status:** In progress (WS-E complete; WS-A registry routing fixed; WS-B/C behavioral gaps; R3 UI missing; WS-A provider bodies remain partial)
+**Status:** In progress (WS-E complete; WS-B complete; WS-A registry routing fixed; WS-C behavioral gaps; R3 UI missing; WS-A provider bodies remain partial)
 **Date:** 2026-06-28
 **Contract baseline:** `0.59-draft`
 **Design doc:** [`local-execution-target-capabilities.md`](local-execution-target-capabilities.md)
@@ -22,8 +22,8 @@ Legend: ✅ done · 🔲 not started · 🔄 partial.
 | WS-A | `InProcessProvider` bodies | 🔄 | Class exists; bodies land per-capability with each WS-D step (see below) rather than as a throwaway verbatim wrapper. |
 | WS-A | `DesktopBridgeProvider`, `RunnerQueueProvider` | 🔄 | `RunnerQueueProvider` stub + default registry landed in WS-C; desktop bridge deferred to WS-D remote UI paths. |
 | WS-A | `createDefaultLocalTargetRegistry` co-location routing | ✅ | In-process only when `target.executionTargetId === callerExecutionTargetId`; co-located backend + different target id → `RunnerQueueProvider`. |
-| **WS-B** | Split target identity (claim vs. create) | 🔄 | `ensureCallerDeviceTarget` + claim path landed (PR #8), but **`launch.ts:820` still falls back** to `localTarget.executionTargetId` when `resolveProjectExecutionTargetForLaunch` returns `null` (ambiguous multi-target). Violates contract `0.59-draft` (`NULL` required). |
-| WS-B | Launch must not override null selector | 🔲 | Remove `?? localTarget.executionTargetId` in `launchObjective`; stamp `execution_target_id = NULL` and resolve agent configs without the caller-device target. Centralize into one service helper `{ executionTargetId, agentConfigs }` so launch cannot reintroduce backend-device stamping. |
+| **WS-B** | Split target identity (claim vs. create) | ✅ | `ensureCallerDeviceTarget` for claim; launch stamps via `resolveLaunchExecutionTarget` with no caller-device fallback. |
+| WS-B | Launch must not override null selector | ✅ | `resolveLaunchExecutionTarget` in `project-execution-target.ts` returns `{ executionTargetId, agentConfigs }`; ambiguous multi-target → `NULL` + empty configs (no `?? localTarget.executionTargetId`). |
 | **WS-D(1)** | `observeResource` + resource status | ✅ | All three status-derivation sites routed through the capability; hosted backend never infers `missing` from its own fs; fixed the old `repository.ts` status type error. Branch `local-execution-target-wsd1`. |
 | **WS-D(2)** | `writeProjectMetadata` | ✅ | `writeProjectJson` moved into the local-target module; core/webapp resource creation writes via `provider.writeProjectMetadata` (co-located writes, hosted no-ops). Branch `local-execution-target-wsd1`. |
 | **WS-D(3)** | `readRepositoryTree`, `listBranches`, `readCurrentDiff` | ✅ | `getProjectRepository` and `listMissionBranches` now route through `LocalTargetCapabilities`; dead service-layer `readCurrentDiff` export removed (provider capability remains for future callers). |
