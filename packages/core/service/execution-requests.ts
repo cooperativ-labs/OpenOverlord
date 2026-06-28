@@ -5,7 +5,10 @@ import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import { resolveMissionId, resolveProjectId } from './context.js';
 import { ServiceError } from './errors.js';
-import { ensureCallerDeviceTarget } from './execution-targets.js';
+import {
+  type ClientDeviceIdentity,
+  resolveClaimingDeviceTarget
+} from './execution-targets.js';
 import { assertPrimaryResourceConnected } from './projects.js';
 import { newId, nowIso } from './util.js';
 
@@ -477,14 +480,16 @@ export async function listExecutionRequests({
 export async function claimNextExecutionRequest({
   ctx,
   projectId,
-  claimTtlMs = CLAIM_TTL_MS
+  claimTtlMs = CLAIM_TTL_MS,
+  clientDevice
 }: {
   ctx: ServiceContext;
   projectId?: string | null;
   claimTtlMs?: number;
+  clientDevice?: ClientDeviceIdentity | null;
 }): Promise<ClaimedExecutionRequest | null> {
   await expireStaleExecutionRequests({ ctx });
-  const target = await ensureCallerDeviceTarget({ ctx });
+  const target = await resolveClaimingDeviceTarget({ ctx, clientDevice });
   const conditions = [
     'er.workspace_id = ?',
     "er.status = 'queued'",

@@ -58,6 +58,39 @@ test('runner fails an execution request that has no agent instead of defaulting'
   assert.ok(!posts.some(post => post.path === '/api/runner/requests/req-1/launched'));
 });
 
+test('runner claim includes the local device fingerprint for hosted backends', async () => {
+  const posts: Post[] = [];
+  const runtime = {
+    backend: {
+      baseUrl: 'http://example.test',
+      health: async () => ({ ok: true }),
+      get: async () => ({}),
+      post: async ({ path, body }: { path: string; body?: unknown }) => {
+        posts.push({ path, body });
+        if (path === '/api/runner/claim') return { request: null };
+        return {};
+      },
+      patch: async () => ({}),
+      delete: async () => ({})
+    },
+    close: () => {}
+  } satisfies CliRuntime;
+
+  await silenceLog(() => runManagementCommand({ runtime, command: 'runner', rest: ['once'] }));
+
+  const claim = posts.find(post => post.path === '/api/runner/claim');
+  assert.ok(claim, 'runner once should call /api/runner/claim');
+  const body = claim!.body as {
+    deviceFingerprint?: string;
+    deviceLabel?: string;
+    devicePlatform?: string;
+  };
+  assert.equal(typeof body.deviceFingerprint, 'string');
+  assert.ok(body.deviceFingerprint && body.deviceFingerprint.length > 0);
+  assert.equal(typeof body.deviceLabel, 'string');
+  assert.equal(typeof body.devicePlatform, 'string');
+});
+
 test('attach reuses the agent already stored on the objective', async () => {
   const posts: Post[] = [];
   const runtime = {

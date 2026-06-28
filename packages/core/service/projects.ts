@@ -320,28 +320,29 @@ export async function findPrimaryProjectResource({
   executionTargetId?: string | null;
 }): Promise<ProjectResourceSummary | null> {
   const resolvedProjectId = await resolveProjectId(ctx, projectId);
-  const targetPredicate =
-    executionTargetId === null
-      ? ''
-      : 'AND (execution_target_id = @execution_target_id OR execution_target_id IS NULL)';
+  const isPrimary = bindBool(ctx.db.dialect, true);
   const row = (await ctx.db.get(
-    `SELECT id, project_id, execution_target_id, type, label, path, is_primary, status
-       FROM project_resources
-       WHERE project_id = @project_id
-         AND deleted_at IS NULL
-         AND is_primary = @is_primary
-         ${targetPredicate}
-       ORDER BY
-         CASE WHEN execution_target_id = @execution_target_id THEN 0 ELSE 1 END,
-         created_at ASC
-       LIMIT 1`,
-    [
-      {
-        project_id: resolvedProjectId,
-        execution_target_id: executionTargetId,
-        is_primary: bindBool(ctx.db.dialect, true)
-      }
-    ]
+    executionTargetId === null
+      ? `SELECT id, project_id, execution_target_id, type, label, path, is_primary, status
+           FROM project_resources
+          WHERE project_id = ?
+            AND deleted_at IS NULL
+            AND is_primary = ?
+          ORDER BY created_at ASC
+          LIMIT 1`
+      : `SELECT id, project_id, execution_target_id, type, label, path, is_primary, status
+           FROM project_resources
+          WHERE project_id = ?
+            AND deleted_at IS NULL
+            AND is_primary = ?
+            AND (execution_target_id = ? OR execution_target_id IS NULL)
+          ORDER BY
+            CASE WHEN execution_target_id = ? THEN 0 ELSE 1 END,
+            created_at ASC
+          LIMIT 1`,
+    executionTargetId === null
+      ? [resolvedProjectId, isPrimary]
+      : [resolvedProjectId, isPrimary, executionTargetId, executionTargetId]
   )) as
     | {
         id: string;

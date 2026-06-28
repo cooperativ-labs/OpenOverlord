@@ -11,6 +11,7 @@ import {
 import { type BranchAutomationPayload, prepareMissionBranch } from './branch-preparation.js';
 import { loadConfig } from './config.js';
 import { CliError } from './errors.js';
+import { clientDeviceIdentity } from './device-identity.js';
 import { launchAgent } from './launch.js';
 import { resolveNativeSessionId } from './native-session.js';
 import { printJson, printKeyValue } from './output.js';
@@ -1040,7 +1041,10 @@ async function runRunnerCommand({
   const runOnce = async (): Promise<boolean> => {
     const claim = await runtime.backend.post<unknown>({
       path: '/api/runner/claim',
-      body: { projectId: flagValue(parsed.flags, '--project-id') }
+      body: {
+        projectId: flagValue(parsed.flags, '--project-id'),
+        ...clientDeviceIdentity()
+      }
     });
     const request = asRecord(claim).request;
     if (!request) return false;

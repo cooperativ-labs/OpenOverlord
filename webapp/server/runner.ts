@@ -115,11 +115,23 @@ export async function runnerStatus(projectId?: string | null): Promise<Record<st
 }
 
 export async function claimRunnerRequest({
-  projectId
-}: { projectId?: string | null } = {}): Promise<{
+  projectId,
+  clientDevice
+}: {
+  projectId?: string | null;
+  clientDevice?: {
+    deviceFingerprint?: string | null;
+    deviceLabel?: string | null;
+    devicePlatform?: string | null;
+  } | null;
+} = {}): Promise<{
   request: Record<string, unknown> | null;
 }> {
-  const request = await claimNextExecutionRequest({ ctx: serviceContext(), projectId });
+  const request = await claimNextExecutionRequest({
+    ctx: serviceContext(),
+    projectId,
+    clientDevice
+  });
   return { request: request ? serviceSummaryToDto(request) : null };
 }
 

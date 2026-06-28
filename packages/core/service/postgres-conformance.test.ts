@@ -11,6 +11,10 @@ import { randomUUID } from 'node:crypto';
 import { after, describe, it } from 'node:test';
 
 import { claimNextQueuedRequest, recoverStaleExecutionRequests } from './queue-runtime.js';
+import { createServiceContext } from './context.js';
+import { claimNextExecutionRequest } from './execution-requests.js';
+import { getProjectExecutionTargetSelection } from './project-execution-target.js';
+import { findPrimaryProjectResource } from './projects.js';
 
 /**
  * Adapter conformance for the hosted-backend runtime path (mission `coo:5`,
@@ -341,6 +345,137 @@ for (const adapter of adapters) {
           );
           assert.equal(row!.status, 'expired');
         }
+      } finally {
+        await teardown();
+      }
+    });
+
+    it('claims a queued request stamped for a client device fingerprint (remote runner)', async () => {
+      if (adapter.label !== 'postgres') return;
+      const { client, teardown } = await adapter.create();
+      try {
+        const graph = await seedGraph(client);
+        const now = ISO();
+        const workspaceUserId = `wu_${randomUUID()}`;
+        const profileId = `profile_${randomUUID()}`;
+        const clientFingerprint = `fp_client_${randomUUID().slice(0, 8)}`;
+
+        await client.run(
+          `INSERT INTO "user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt")
+           VALUES (?, ?, ?, true, ?, ?)`,
+          [profileId, 'Conformance User', `${profileId}@example.test`, now, now]
+        );
+        await client.run(
+          `INSERT INTO workspace_users
+             (id, workspace_id, profile_id, member_key, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'active', ?, ?)`,
+          [workspaceUserId, WORKSPACE_ID, profileId, `auth:${profileId}`, now, now]
+        );
+        await client.run(
+          `UPDATE devices SET fingerprint = ? WHERE id = (
+             SELECT device_id FROM execution_targets WHERE id = ?
+           )`,
+          [clientFingerprint, graph.executionTargetId]
+        );
+        await client.run(
+          `INSERT INTO workspace_user_execution_targets
+             (id, workspace_id, workspace_user_id, execution_target_id, access_status,
+              created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'active', ?, ?)`,
+          [randomUUID(), WORKSPACE_ID, workspaceUserId, graph.executionTargetId, now, now]
+        );
+        await client.run(
+          `INSERT INTO project_resources
+             (id, workspace_id, project_id, execution_target_id, type, label, path,
+              is_primary, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'local_directory', 'Primary', '/tmp/conformance-primary', true,
+                   'active', ?, ?)`,
+          [randomUUID(), WORKSPACE_ID, graph.projectId, graph.executionTargetId, now, now]
+        );
+        await client.run(
+          `UPDATE objectives SET state = 'launching' WHERE id = ?`,
+          [graph.objectiveId]
+        );
+        await insertQueuedRequest(client, graph);
+        await client.run(
+          `UPDATE execution_requests
+              SET execution_target_id = ?
+            WHERE objective_id = ?`,
+          [graph.executionTargetId, graph.objectiveId]
+        );
+
+        const ctx = await createServiceContext({ db: client, source: 'runner' });
+        ctx.actorWorkspaceUserId = workspaceUserId;
+
+        const claimed = await claimNextExecutionRequest({
+          ctx,
+          clientDevice: {
+            deviceFingerprint: clientFingerprint,
+            deviceLabel: 'conformance-client',
+            devicePlatform: 'darwin'
+          }
+        });
+
+        assert.ok(claimed, 'runner should claim request stamped for its device fingerprint');
+        assert.equal(claimed.executionTargetId, graph.executionTargetId);
+        assert.equal(claimed.status, 'claimed');
+      } finally {
+        await teardown();
+      }
+    });
+
+    it('resolves primary project resources and execution-target selection (launch path)', async () => {
+      const { client, teardown } = await adapter.create();
+      try {
+        const graph = await seedGraph(client);
+        const now = ISO();
+        const workspaceUserId = `wu_${randomUUID()}`;
+        const profileId = `profile_${randomUUID()}`;
+
+        await client.run(
+          `INSERT INTO "user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt")
+           VALUES (?, ?, ?, true, ?, ?)`,
+          [profileId, 'Conformance User', `${profileId}@example.test`, now, now]
+        );
+        await client.run(
+          `INSERT INTO workspace_users
+             (id, workspace_id, profile_id, member_key, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'active', ?, ?)`,
+          [workspaceUserId, WORKSPACE_ID, profileId, `auth:${profileId}`, now, now]
+        );
+        await client.run(
+          `INSERT INTO workspace_user_execution_targets
+             (id, workspace_id, workspace_user_id, execution_target_id, access_status,
+              created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'active', ?, ?)`,
+          [randomUUID(), WORKSPACE_ID, workspaceUserId, graph.executionTargetId, now, now]
+        );
+        await client.run(
+          `INSERT INTO project_resources
+             (id, workspace_id, project_id, execution_target_id, type, label, path,
+              is_primary, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'local_directory', 'Primary', '/tmp/conformance-primary', true,
+                   'active', ?, ?)`,
+          [randomUUID(), WORKSPACE_ID, graph.projectId, graph.executionTargetId, now, now]
+        );
+
+        const ctx = await createServiceContext({ db: client, source: 'webapp' });
+        ctx.actorWorkspaceUserId = workspaceUserId;
+
+        const primary = await findPrimaryProjectResource({
+          ctx,
+          projectId: graph.projectId,
+          executionTargetId: graph.executionTargetId
+        });
+        assert.ok(primary);
+        assert.equal(primary.executionTargetId, graph.executionTargetId);
+
+        const selection = await getProjectExecutionTargetSelection({
+          ctx,
+          projectId: graph.projectId
+        });
+        assert.equal(selection.eligibleTargets.length, 1);
+        assert.equal(selection.eligibleTargets[0]!.executionTargetId, graph.executionTargetId);
       } finally {
         await teardown();
       }

@@ -964,7 +964,14 @@ app.post(
   handle(
     req =>
       claimRunnerRequest({
-        projectId: typeof req.body?.projectId === 'string' ? req.body.projectId : null
+        projectId: typeof req.body?.projectId === 'string' ? req.body.projectId : null,
+        clientDevice: {
+          deviceFingerprint:
+            typeof req.body?.deviceFingerprint === 'string' ? req.body.deviceFingerprint : null,
+          deviceLabel: typeof req.body?.deviceLabel === 'string' ? req.body.deviceLabel : null,
+          devicePlatform:
+            typeof req.body?.devicePlatform === 'string' ? req.body.devicePlatform : null
+        }
       }),
     { mutates: true, requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM }
   )

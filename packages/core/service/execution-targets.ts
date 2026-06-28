@@ -1,4 +1,4 @@
-import { hostname } from 'node:os';
+import { hostname, platform } from 'node:os';
 
 import {
   DEFAULT_TERMINAL_PROFILE,
@@ -9,9 +9,16 @@ import {
 
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
-import { callerDeviceFingerprint, getDevice } from './devices.js';
+import { callerDeviceFingerprint } from './devices.js';
 import { ServiceError } from './errors.js';
+import { isCoLocatedBackend } from './local-target/index.js';
 import { newId, nowIso } from './util.js';
+
+export type ClientDeviceIdentity = {
+  deviceFingerprint: string;
+  deviceLabel?: string | null;
+  devicePlatform?: string | null;
+};
 
 export type LocalExecutionTarget = {
   deviceId: string;
@@ -140,13 +147,48 @@ export async function findCallerDeviceExecutionTargetId({
  * creation stamps the *selected* execution target instead (WS-C), or NULL =
  * "any eligible target may claim."
  */
-export async function ensureCallerDeviceTarget({
-  ctx
+async function ensureDeviceTargetForFingerprint({
+  ctx,
+  fingerprint,
+  label,
+  platformName
 }: {
   ctx: ServiceContext;
+  fingerprint: string;
+  label: string;
+  platformName: string | null;
 }): Promise<LocalExecutionTarget> {
-  const device = await getDevice({ ctx });
   const now = nowIso();
+
+  let device = (await ctx.db.get(
+    `SELECT id, label, fingerprint FROM devices
+        WHERE workspace_id = ? AND fingerprint = ? AND deleted_at IS NULL`,
+    [ctx.workspace.id, fingerprint]
+  )) as { id: string; label: string; fingerprint: string } | undefined;
+
+  if (device) {
+    await ctx.db.run(
+      `UPDATE devices SET last_seen_at = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`,
+      [now, now, device.id]
+    );
+  } else {
+    const id = newId();
+    await ctx.db.run(
+      `INSERT INTO devices
+           (id, workspace_id, fingerprint, label, platform, status, last_seen_at,
+            metadata_json, created_at, updated_at, revision)
+         VALUES (?, ?, ?, ?, ?, 'active', ?, '{}', ?, ?, 1)`,
+      [id, ctx.workspace.id, fingerprint, label, platformName, now, now, now]
+    );
+    await recordChange({
+      ctx,
+      entityType: 'device',
+      entityId: id,
+      operation: 'insert',
+      entityRevision: 1
+    });
+    device = { id, label, fingerprint };
+  }
 
   let target = (await ctx.db.get(
     `SELECT id FROM execution_targets
@@ -235,6 +277,78 @@ export async function ensureCallerDeviceTarget({
     preferenceId,
     terminalProfile
   };
+}
+
+export async function ensureClientDeviceTarget({
+  ctx,
+  deviceFingerprint,
+  deviceLabel,
+  devicePlatform
+}: {
+  ctx: ServiceContext;
+  deviceFingerprint: string;
+  deviceLabel?: string | null;
+  devicePlatform?: string | null;
+}): Promise<LocalExecutionTarget> {
+  const fingerprint = deviceFingerprint.trim();
+  if (!fingerprint) {
+    throw new ServiceError('deviceFingerprint is required', 'validation_error', 400);
+  }
+  return ensureDeviceTargetForFingerprint({
+    ctx,
+    fingerprint,
+    label: deviceLabel?.trim() || hostname(),
+    platformName: devicePlatform?.trim() || platform()
+  });
+}
+
+/**
+ * Resolve the execution target a runner claim should use. On the co-located Local
+ * backend the service process host is the runner; on the hosted backend the CLI
+ * must supply its machine fingerprint so claims match WS-C stamped targets.
+ */
+export async function resolveClaimingDeviceTarget({
+  ctx,
+  clientDevice
+}: {
+  ctx: ServiceContext;
+  clientDevice?: ClientDeviceIdentity | null;
+}): Promise<LocalExecutionTarget> {
+  if (isCoLocatedBackend(ctx.db)) {
+    return ensureDeviceTargetForFingerprint({
+      ctx,
+      fingerprint: callerDeviceFingerprint(),
+      label: hostname(),
+      platformName: platform()
+    });
+  }
+  const fingerprint = clientDevice?.deviceFingerprint?.trim();
+  if (!fingerprint) {
+    throw new ServiceError(
+      'deviceFingerprint is required when claiming from a hosted backend',
+      'device_fingerprint_required',
+      400
+    );
+  }
+  return ensureClientDeviceTarget({
+    ctx,
+    deviceFingerprint: fingerprint,
+    deviceLabel: clientDevice?.deviceLabel,
+    devicePlatform: clientDevice?.devicePlatform
+  });
+}
+
+export async function ensureCallerDeviceTarget({
+  ctx
+}: {
+  ctx: ServiceContext;
+}): Promise<LocalExecutionTarget> {
+  return ensureDeviceTargetForFingerprint({
+    ctx,
+    fingerprint: callerDeviceFingerprint(),
+    label: hostname(),
+    platformName: platform()
+  });
 }
 
 export async function updateTerminalProfile({

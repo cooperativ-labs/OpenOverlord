@@ -346,7 +346,7 @@ export async function readAgentConfigsForExecutionTarget({
         AND d.workspace_id = et.workspace_id
         AND d.deleted_at IS NULL
        JOIN workspace_users wu
-         ON wu.id = @workspace_user_id
+         ON wu.id = ?
         AND wu.workspace_id = et.workspace_id
         AND wu.deleted_at IS NULL
        LEFT JOIN user_execution_target_preferences uetp
@@ -354,16 +354,10 @@ export async function readAgentConfigsForExecutionTarget({
         AND uetp.target_type = et.type
         AND uetp.target_fingerprint = d.fingerprint
         AND uetp.deleted_at IS NULL
-      WHERE et.id = @execution_target_id
-        AND et.workspace_id = @workspace_id
+      WHERE et.id = ?
+        AND et.workspace_id = ?
         AND et.deleted_at IS NULL`,
-    [
-      {
-        workspace_user_id: ctx.actorWorkspaceUserId,
-        execution_target_id: executionTargetId,
-        workspace_id: ctx.workspace.id
-      }
-    ]
+    [ctx.actorWorkspaceUserId, executionTargetId, ctx.workspace.id]
   )) as { preference_id: string | null } | undefined;
   if (!row?.preference_id) return {};
   const pref = (await ctx.db.get(
