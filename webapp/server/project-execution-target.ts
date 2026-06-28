@@ -1,5 +1,6 @@
 import type { DatabaseClient } from '@overlord/database';
 
+import { ServiceError } from '../../packages/core/service/errors.ts';
 import {
   getProjectExecutionTargetSelection,
   updateProjectExecutionTargetSelection
@@ -9,9 +10,13 @@ import type {
   UpdateProjectExecutionTargetBody
 } from '../shared/contract.ts';
 
-import { getActorWorkspaceUserId, requireDatabaseClient, serviceDatabaseClient, WORKSPACE } from './db.ts';
+import {
+  getActorWorkspaceUserId,
+  requireDatabaseClient,
+  serviceDatabaseClient,
+  WORKSPACE
+} from './db.ts';
 import { ApiError } from './errors.ts';
-import { ServiceError } from '../../packages/core/service/errors.ts';
 
 function serviceContext(client: DatabaseClient = serviceDatabaseClient()) {
   return {

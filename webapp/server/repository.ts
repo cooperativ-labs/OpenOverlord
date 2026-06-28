@@ -11,8 +11,12 @@ import {
   deriveResourceStatus,
   resolveBackendResourceProvider
 } from '../../packages/core/service/local-target/index.ts';
-import { resolveRealPath, worktreeIsDirty, worktreePathForBranch } from '../../packages/core/service/local-target/worktree-git.ts';
 import type { CapabilityResult } from '../../packages/core/service/local-target/types.ts';
+import {
+  resolveRealPath,
+  worktreeIsDirty,
+  worktreePathForBranch
+} from '../../packages/core/service/local-target/worktree-git.ts';
 import type {
   ArtifactDto,
   CreateMissionBody,
@@ -425,7 +429,8 @@ function localMutationProvider() {
 
 function branchActionHttpStatus(code: string): number {
   if (code === 'BRANCH_COMMIT_MESSAGE_REQUIRED') return 400;
-  if (code === 'BRANCH_PUSH_FAILED' || code === 'BRANCH_MERGE_FAILED') return code === 'BRANCH_PUSH_FAILED' ? 502 : 500;
+  if (code === 'BRANCH_PUSH_FAILED' || code === 'BRANCH_MERGE_FAILED')
+    return code === 'BRANCH_PUSH_FAILED' ? 502 : 500;
   if (code === 'BRANCH_NO_WORKTREE' || code === 'BRANCH_NOTHING_TO_COMMIT') return 409;
   return 409;
 }
@@ -440,9 +445,7 @@ function assertCapabilitySuccess<T>(result: CapabilityResult<T>): T {
       'LOCAL_FILESYSTEM_UNAVAILABLE'
     );
   }
-  const details = result.details as
-    | { branchActionCode?: string; detail?: string }
-    | undefined;
+  const details = result.details as { branchActionCode?: string; detail?: string } | undefined;
   if (details?.branchActionCode === 'WORKTREE_DIRTY') {
     throw new ApiError(409, result.message, details.detail, 'WORKTREE_DIRTY');
   }

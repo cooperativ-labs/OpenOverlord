@@ -27,11 +27,11 @@ import type {
   UpdateAgentLaunchConfigBody,
   UpdateEverhourTimeBody,
   UpdateLaunchPreferenceBody,
-  UpdateProjectExecutionTargetBody,
   UpdateMissionBody,
   UpdateObjectiveBody,
   UpdateProfileBody,
   UpdateProjectBody,
+  UpdateProjectExecutionTargetBody,
   UpdateProjectResourceBody,
   UpdateProjectTagBody,
   UpdateTerminalProfileBody,
@@ -793,7 +793,9 @@ export function useUpdateProjectExecutionTarget(projectId: string) {
       api.updateProjectExecutionTarget(projectId, body),
     onSuccess: data => {
       qc.setQueryData(keys.projectExecutionTarget(projectId), data);
-      void qc.invalidateQueries({ queryKey: keys.projectRepository(projectId, data.selectedExecutionTargetId) });
+      void qc.invalidateQueries({
+        queryKey: keys.projectRepository(projectId, data.selectedExecutionTargetId)
+      });
     }
   });
 }

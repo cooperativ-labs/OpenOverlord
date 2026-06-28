@@ -1,6 +1,6 @@
-import { ensureCallerDeviceTarget } from './execution-targets.js';
-import { ServiceError } from './errors.js';
 import type { ServiceContext } from './context.js';
+import { ServiceError } from './errors.js';
+import { ensureCallerDeviceTarget } from './execution-targets.js';
 import { findPrimaryProjectResource } from './projects.js';
 import { newId, nowIso } from './util.js';
 
@@ -169,8 +169,7 @@ export async function getProjectExecutionTargetSelection({
   const row = await readPreferenceRow(ctx, projectId);
   const storedId = row ? readStoredExecutionTargetId(row.preferences) : null;
   const eligibleIds = new Set(eligibleTargets.map(t => t.executionTargetId));
-  const storedSelection =
-    storedId && eligibleIds.has(storedId) ? storedId : null;
+  const storedSelection = storedId && eligibleIds.has(storedId) ? storedId : null;
   const selectedExecutionTargetId =
     storedSelection ??
     (eligibleTargets.length === 1 ? eligibleTargets[0]!.executionTargetId : null);

@@ -7,20 +7,17 @@
 // CAPABILITY_NOT_IMPLEMENTED failure (never throw), so a partially-migrated
 // provider is still safe to hand to any caller.
 
-import { performBranchActionGit } from './branch-actions-git.ts';
-import { gatherCommitMessageDiff } from './commit-message-diff-git.ts';
-import { runLocalTargetDoctorChecks } from './doctor-checks.ts';
-import { runGit } from './git-run.ts';
+import { existsSync } from 'node:fs';
 
 import {
   readRepositoryTree as readGitRepositoryTree,
   RepositoryReadError
 } from '../../repository/git-tree.ts';
-import {
-  collectManagedWorktrees,
-  purgeManagedWorktrees,
-  removeManagedWorktree
-} from './worktree-git.ts';
+
+import { performBranchActionGit } from './branch-actions-git.ts';
+import { gatherCommitMessageDiff } from './commit-message-diff-git.ts';
+import { runLocalTargetDoctorChecks } from './doctor-checks.ts';
+import { runGit } from './git-run.ts';
 import { writeProjectJson } from './project-metadata.ts';
 import { fail, ok } from './result.ts';
 import type {
@@ -43,7 +40,11 @@ import type {
   WriteProjectMetadataInput,
   WriteProjectMetadataResult
 } from './types.ts';
-import { existsSync } from 'node:fs';
+import {
+  collectManagedWorktrees,
+  purgeManagedWorktrees,
+  removeManagedWorktree
+} from './worktree-git.ts';
 
 function normalizeBranchRef(ref: string): string {
   return ref
@@ -108,12 +109,9 @@ export class InProcessProvider implements LocalTargetCapabilities {
       });
     } catch (error) {
       if (error instanceof RepositoryReadError && error.code === 'not_git_repository') {
-        return fail(
-          this.target,
-          'NOT_GIT_REPOSITORY',
-          error.message,
-          { resourceId: input.resourceId }
-        );
+        return fail(this.target, 'NOT_GIT_REPOSITORY', error.message, {
+          resourceId: input.resourceId
+        });
       }
       return fail(
         this.target,

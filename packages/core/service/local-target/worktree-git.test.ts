@@ -23,7 +23,15 @@ function makeRepo(): string {
   git(dir, ['checkout', '-b', 'main']);
   writeFileSync(path.join(dir, 'README.md'), '# Test\n');
   git(dir, ['add', 'README.md']);
-  git(dir, ['-c', 'user.email=test@example.com', '-c', 'user.name=Test User', 'commit', '-m', 'init']);
+  git(dir, [
+    '-c',
+    'user.email=test@example.com',
+    '-c',
+    'user.name=Test User',
+    'commit',
+    '-m',
+    'init'
+  ]);
   return dir;
 }
 

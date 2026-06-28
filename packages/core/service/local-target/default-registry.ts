@@ -3,13 +3,13 @@
 // picks in-process vs runner-queue vs unavailable from the target ref alone.
 
 import { InProcessProvider } from './in-process-provider.ts';
-import { RunnerQueueProvider } from './runner-queue-provider.ts';
 import {
   type ExecutionTargetRef,
   LocalTargetProviderRegistry,
   targetMetadata,
   UnavailableProvider
 } from './registry.ts';
+import { RunnerQueueProvider } from './runner-queue-provider.ts';
 
 export type DefaultLocalTargetRegistryOptions = {
   /** True when the backend process can touch checkout paths directly (Local SQLite). */

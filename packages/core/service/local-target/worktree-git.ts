@@ -142,7 +142,13 @@ export function purgeManagedWorktrees({
       skipped.push({ path: target, reason: 'uncommitted changes' });
       continue;
     }
-    if (removeGitWorktree({ primaryRepoPath: entry.primaryRepoPath, worktreePath: target, force: false })) {
+    if (
+      removeGitWorktree({
+        primaryRepoPath: entry.primaryRepoPath,
+        worktreePath: target,
+        force: false
+      })
+    ) {
       removed.push(target);
     } else {
       skipped.push({ path: target, reason: 'git refused to remove the worktree' });

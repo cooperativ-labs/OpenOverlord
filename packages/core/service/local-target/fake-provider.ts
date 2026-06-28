@@ -16,9 +16,11 @@ import type {
   LaunchAgentResult,
   ListBranchesInput,
   ListWorktreesInput,
+  ListWorktreesResult,
   LocalTargetCapabilities,
   ObserveResourceInput,
   PerformBranchActionInput,
+  PerformBranchActionResult,
   PrepareBranchInput,
   PrepareBranchResult,
   PurgeMergedWorktreesInput,
@@ -30,9 +32,7 @@ import type {
   ResourceObservation,
   TargetMetadata,
   WriteProjectMetadataInput,
-  WriteProjectMetadataResult,
-  ListWorktreesResult,
-  PerformBranchActionResult
+  WriteProjectMetadataResult
 } from './types.ts';
 
 /** Partial override map: any capability not provided uses the default. */
@@ -71,7 +71,10 @@ export class FakeLocalTargetProvider implements LocalTargetCapabilities {
   ): Promise<CapabilityResult<WriteProjectMetadataResult>> {
     this.#record('writeProjectMetadata', [input]);
     if (this.#handlers.writeProjectMetadata) return this.#handlers.writeProjectMetadata(input);
-    return ok(this.target, { path: `${input.directoryPath}/.overlord/project.json`, written: true });
+    return ok(this.target, {
+      path: `${input.directoryPath}/.overlord/project.json`,
+      written: true
+    });
   }
 
   async observeResource(

@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 
 import { runGitResult } from './git-run.ts';
-import { removeGitWorktree, worktreeIsDirty, worktreePathForBranch } from './worktree-git.ts';
 import type { BranchActionKind, PerformBranchActionInput } from './types.ts';
+import { removeGitWorktree, worktreeIsDirty, worktreePathForBranch } from './worktree-git.ts';
 
 export type BranchActionErrorCode =
   | 'BRANCH_NO_WORKTREE'
@@ -51,7 +51,8 @@ function integrateBranch(input: PerformBranchActionInput): BranchActionGitResult
     const conflicted = runGitResult(worktreePath, ['diff', '--name-only', '--diff-filter=U']);
     const files = conflicted.ok && conflicted.stdout ? conflicted.stdout.split('\n') : [];
     const detail =
-      `Worktree: ${worktreePath}.` + (files.length ? ` Conflicting files: ${files.join(', ')}.` : '');
+      `Worktree: ${worktreePath}.` +
+      (files.length ? ` Conflicting files: ${files.join(', ')}.` : '');
     return {
       ok: false,
       code: 'BRANCH_MERGE_CONFLICT',

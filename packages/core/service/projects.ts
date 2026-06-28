@@ -2,15 +2,12 @@ import { bindBool } from '@overlord/database';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
+import { deriveResourceStatus, resolveBackendResourceProvider } from './local-target/index.ts';
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import { resolveProjectId } from './context.js';
 import { ServiceError } from './errors.js';
 import { ensureCallerDeviceTarget } from './execution-targets.js';
-import {
-  deriveResourceStatus,
-  resolveBackendResourceProvider
-} from './local-target/index.ts';
 import { initialTitleFromInstruction, newId, nowIso, slugify } from './util.js';
 
 export type ProjectSummary = {
@@ -490,7 +487,6 @@ function readProjectJsonFile(projectJsonPath: string): {
     isPrimary: parsed.isPrimary ?? false
   };
 }
-
 
 export function listOrganizations({ ctx }: { ctx: ServiceContext }): Array<{
   id: string;

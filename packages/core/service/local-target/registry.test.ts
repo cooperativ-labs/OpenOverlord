@@ -8,7 +8,6 @@ import { describe, it } from 'node:test';
 import { createDefaultLocalTargetRegistry } from './default-registry.ts';
 import { FakeLocalTargetProvider } from './fake-provider.ts';
 import { InProcessProvider } from './in-process-provider.ts';
-import { RunnerQueueProvider } from './runner-queue-provider.ts';
 import {
   type ExecutionTargetRef,
   LocalTargetProviderRegistry,
@@ -16,6 +15,7 @@ import {
   UnavailableProvider
 } from './registry.ts';
 import { fail, isFailure, isOk, ok } from './result.ts';
+import { RunnerQueueProvider } from './runner-queue-provider.ts';
 import type { TargetMetadata } from './types.ts';
 
 const META: TargetMetadata = {
@@ -47,7 +47,11 @@ describe('result constructors', () => {
 });
 
 describe('LocalTargetProviderRegistry', () => {
-  const localTarget: ExecutionTargetRef = { executionTargetId: 't1', type: 'local', reachable: true };
+  const localTarget: ExecutionTargetRef = {
+    executionTargetId: 't1',
+    type: 'local',
+    reachable: true
+  };
   const cloudTarget: ExecutionTargetRef = { executionTargetId: 't2', type: 'cloud_sandbox' };
 
   it('resolves the first factory that serves the target; order is priority', () => {
@@ -81,8 +85,15 @@ describe('LocalTargetProviderRegistry', () => {
 
 describe('targetMetadata', () => {
   it('derives metadata for a ref under a transport', () => {
-    const meta = targetMetadata({ executionTargetId: 't9', type: 'local', deviceLabel: 'VM' }, 'runner_queue');
-    assert.deepEqual(meta, { executionTargetId: 't9', deviceLabel: 'VM', transport: 'runner_queue' });
+    const meta = targetMetadata(
+      { executionTargetId: 't9', type: 'local', deviceLabel: 'VM' },
+      'runner_queue'
+    );
+    assert.deepEqual(meta, {
+      executionTargetId: 't9',
+      deviceLabel: 'VM',
+      transport: 'runner_queue'
+    });
   });
 
   it('defaults a missing deviceLabel to null', () => {
@@ -102,7 +113,15 @@ describe('InProcessProvider repository reads', () => {
     git(dir, ['checkout', '-b', 'main']);
     writeFileSync(path.join(dir, 'README.md'), '# Test\n');
     git(dir, ['add', 'README.md']);
-    git(dir, ['-c', 'user.email=test@example.com', '-c', 'user.name=Test User', 'commit', '-m', 'init']);
+    git(dir, [
+      '-c',
+      'user.email=test@example.com',
+      '-c',
+      'user.name=Test User',
+      'commit',
+      '-m',
+      'init'
+    ]);
     git(dir, ['branch', 'feature/demo']);
     return dir;
   }
@@ -115,7 +134,10 @@ describe('InProcessProvider repository reads', () => {
     assert.ok(isOk(result));
     assert.equal(result.value.rootPath, repoPath);
     assert.equal(result.value.branch, 'main');
-    assert.equal(result.value.entries.some(entry => entry.path === 'README.md'), true);
+    assert.equal(
+      result.value.entries.some(entry => entry.path === 'README.md'),
+      true
+    );
   });
 
   it('lists local branches through the capability boundary', async () => {

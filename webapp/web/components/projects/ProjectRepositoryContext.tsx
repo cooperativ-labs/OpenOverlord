@@ -1,6 +1,10 @@
 import { createContext, type ReactNode, useCallback, useContext, useMemo } from 'react';
 
-import type { EligibleExecutionTargetDto, ProjectRepositoryDto, ProjectResourceDto } from '../../../shared/contract.ts';
+import type {
+  EligibleExecutionTargetDto,
+  ProjectRepositoryDto,
+  ProjectResourceDto
+} from '../../../shared/contract.ts';
 import {
   useProjectExecutionTarget,
   useProjectRepository,

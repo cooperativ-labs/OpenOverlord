@@ -4,10 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 
-import {
-  collectWorktreeChanges,
-  gatherCommitMessageDiff
-} from './commit-message-diff-git.ts';
+import { collectWorktreeChanges, gatherCommitMessageDiff } from './commit-message-diff-git.ts';
 
 describe('commit-message-diff-git', () => {
   function git(cwd: string, args: string[]): string {

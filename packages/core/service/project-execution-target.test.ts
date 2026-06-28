@@ -7,13 +7,13 @@ import { describe, it } from 'node:test';
 
 import { createServiceContext } from './context.js';
 import { ensureCallerDeviceTarget } from './execution-targets.js';
-import { addProjectResource, createProject } from './projects.js';
 import {
   getProjectExecutionTargetSelection,
   PROJECT_EXECUTION_TARGET_PREFERENCE_KEY,
   resolveProjectExecutionTargetForLaunch,
   updateProjectExecutionTargetSelection
 } from './project-execution-target.js';
+import { addProjectResource, createProject } from './projects.js';
 import { seedServiceOperator } from './test-helpers.js';
 import { newId, nowIso } from './util.js';
 
@@ -64,15 +64,7 @@ async function seedSecondTarget(
          (id, workspace_id, device_id, owner_workspace_user_id, type, label, status,
           connection_json, created_at, updated_at, revision)
        VALUES (?, ?, ?, ?, 'local', ?, 'active', '{}', ?, ?, 1)`,
-    [
-      targetId,
-      ctx.workspace.id,
-      deviceId,
-      ctx.actorWorkspaceUserId,
-      label,
-      now,
-      now
-    ]
+    [targetId, ctx.workspace.id, deviceId, ctx.actorWorkspaceUserId, label, now, now]
   );
   await ctx.db.run(
     `INSERT INTO workspace_user_execution_targets

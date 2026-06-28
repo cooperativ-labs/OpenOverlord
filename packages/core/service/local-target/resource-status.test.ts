@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url';
 
 import { FakeLocalTargetProvider } from './fake-provider.ts';
 import { InProcessProvider } from './in-process-provider.ts';
-import { isOk } from './result.ts';
 import { deriveResourceStatus, resolveBackendResourceProvider } from './resource-status.ts';
+import { isOk } from './result.ts';
 import type { TargetMetadata } from './types.ts';
 
 const META: TargetMetadata = {
@@ -52,20 +52,32 @@ describe('InProcessProvider.observeResource', () => {
 describe('deriveResourceStatus', () => {
   it('returns archived for archived lifecycle without observing', async () => {
     const fake = new FakeLocalTargetProvider();
-    const status = await deriveResourceStatus(fake, { resourceId: 'r', status: 'archived', path: MISSING });
+    const status = await deriveResourceStatus(fake, {
+      resourceId: 'r',
+      status: 'archived',
+      path: MISSING
+    });
     assert.equal(status, 'archived');
     assert.equal(fake.calls.length, 0, 'archived must not trigger an observation');
   });
 
   it('co-located: maps an existing checkout to active', async () => {
     const provider = resolveBackendResourceProvider(true, META);
-    const status = await deriveResourceStatus(provider, { resourceId: 'r', status: 'active', path: HERE });
+    const status = await deriveResourceStatus(provider, {
+      resourceId: 'r',
+      status: 'active',
+      path: HERE
+    });
     assert.equal(status, 'active');
   });
 
   it('co-located: maps a missing checkout to missing', async () => {
     const provider = resolveBackendResourceProvider(true, META);
-    const status = await deriveResourceStatus(provider, { resourceId: 'r', status: 'active', path: MISSING });
+    const status = await deriveResourceStatus(provider, {
+      resourceId: 'r',
+      status: 'active',
+      path: MISSING
+    });
     assert.equal(status, 'missing');
   });
 
@@ -73,7 +85,11 @@ describe('deriveResourceStatus', () => {
     const provider = resolveBackendResourceProvider(false, META);
     // Even with a path that does not exist on this (backend) host, status stays
     // the recorded lifecycle — the hosted backend must not infer `missing`.
-    const status = await deriveResourceStatus(provider, { resourceId: 'r', status: 'active', path: MISSING });
+    const status = await deriveResourceStatus(provider, {
+      resourceId: 'r',
+      status: 'active',
+      path: MISSING
+    });
     assert.equal(status, 'active');
   });
 
@@ -87,7 +103,11 @@ describe('deriveResourceStatus', () => {
         })
       }
     });
-    const status = await deriveResourceStatus(fake, { resourceId: 'r', status: 'active', path: HERE });
+    const status = await deriveResourceStatus(fake, {
+      resourceId: 'r',
+      status: 'active',
+      path: HERE
+    });
     assert.equal(status, 'active');
   });
 });

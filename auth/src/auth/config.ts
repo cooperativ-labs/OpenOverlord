@@ -1,4 +1,4 @@
-import { loadBetterSqlite3, type AdapterConfig, resolveAdapter } from '@overlord/database';
+import { type AdapterConfig, loadBetterSqlite3, resolveAdapter } from '@overlord/database';
 import { betterAuth } from 'better-auth';
 import { bearer } from 'better-auth/plugins';
 import { Kysely, PostgresDialect } from 'kysely';

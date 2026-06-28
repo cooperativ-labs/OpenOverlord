@@ -1,6 +1,5 @@
-import { createRequire } from 'node:module';
-
 import type BetterSqlite3 from 'better-sqlite3';
+import { createRequire } from 'node:module';
 
 type BetterSqlite3Constructor = typeof BetterSqlite3;
 
