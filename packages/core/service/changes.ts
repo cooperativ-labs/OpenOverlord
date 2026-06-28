@@ -1,9 +1,9 @@
 import path from 'node:path';
 
-import type { ServiceContext } from './context.js';
-import { resolveMissionId } from './context.js';
 import { readGitStatusPorcelain } from './local-target/git-status.ts';
 import { isCoLocatedBackend } from './local-target/index.ts';
+import type { ServiceContext } from './context.js';
+import { resolveMissionId } from './context.js';
 import { discoverProject } from './projects.js';
 
 export type ChangedFileReview = {

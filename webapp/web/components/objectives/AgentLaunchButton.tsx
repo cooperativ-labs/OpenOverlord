@@ -176,8 +176,8 @@ export function AgentLaunchButton({
       <PopoverTrigger render={<span className="inline-flex">{runButton}</span>} />
       <PopoverContent side="top" className="w-80 p-3 text-sm">
         <p className="mb-3 text-foreground">
-          An agent appears to be working this mission already. Enable auto-advance so this
-          objective launches automatically after the current one completes?
+          An agent appears to be working this mission already. Enable auto-advance so this objective
+          launches automatically after the current one completes?
         </p>
         <div className="flex justify-end gap-2">
           <button

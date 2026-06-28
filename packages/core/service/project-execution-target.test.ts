@@ -184,7 +184,10 @@ describe('project execution target selection', () => {
       `UPDATE user_execution_target_preferences
           SET agent_configs_json = ?
         WHERE id = ?`,
-      [JSON.stringify({ codex: { preCommand: 'caller-only', flags: ['--x'] } }), caller.preferenceId]
+      [
+        JSON.stringify({ codex: { preCommand: 'caller-only', flags: ['--x'] } }),
+        caller.preferenceId
+      ]
     );
     await addProjectResource({
       ctx,

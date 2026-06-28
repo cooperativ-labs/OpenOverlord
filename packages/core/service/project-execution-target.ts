@@ -186,8 +186,7 @@ export async function listEligibleProjectExecutionTargets({
     if (!primary) continue;
 
     const isCallerDevice =
-      callerExecutionTargetId !== null &&
-      row.execution_target_id === callerExecutionTargetId;
+      callerExecutionTargetId !== null && row.execution_target_id === callerExecutionTargetId;
     const primaryResourceConnected = primary.status !== 'missing';
     eligible.push({
       executionTargetId: row.execution_target_id,

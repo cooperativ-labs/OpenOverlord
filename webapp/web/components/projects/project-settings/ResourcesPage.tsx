@@ -65,10 +65,7 @@ function targetOptionLabel(target: EligibleExecutionTargetDto): string {
 }
 
 export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
-  const {
-    eligibleTargets,
-    selectedExecutionTargetId
-  } = useProjectRepositoryContext();
+  const { eligibleTargets, selectedExecutionTargetId } = useProjectRepositoryContext();
   const updateExecutionTarget = useUpdateProjectExecutionTarget(projectId);
   const resourcesQ = useProjectResources(projectId);
   const launchSettingsQ = useLaunchSettings();
@@ -159,7 +156,7 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
 
   const selectorValue =
     selectedExecutionTargetId ??
-    (eligibleTargets.length > 1 ? ANY_TARGET_VALUE : eligibleTargets[0]?.executionTargetId ?? '');
+    (eligibleTargets.length > 1 ? ANY_TARGET_VALUE : (eligibleTargets[0]?.executionTargetId ?? ''));
   async function handleBrowseDirectory() {
     const chooseDirectory = window.overlord?.chooseDirectory;
     if (!chooseDirectory) return;

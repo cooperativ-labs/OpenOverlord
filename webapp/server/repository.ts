@@ -7,14 +7,14 @@ import path from 'node:path';
 
 import { ensureCallerDeviceTarget } from '../../packages/core/service/execution-targets.ts';
 import {
+  deriveBranchPublicationStatus,
+  readPrimaryCheckoutBranch
+} from '../../packages/core/service/local-target/branch-status-git.ts';
+import {
   deriveResourceStatus,
   isCoLocatedBackend,
   resolveBackendResourceProvider
 } from '../../packages/core/service/local-target/index.ts';
-import {
-  deriveBranchPublicationStatus,
-  readPrimaryCheckoutBranch
-} from '../../packages/core/service/local-target/branch-status-git.ts';
 import type {
   CapabilityResult,
   TargetMetadata
@@ -432,7 +432,10 @@ function isTruthyFlag(value: unknown): boolean {
 }
 
 function localMutationProvider() {
-  return resolveBackendResourceProvider(BACKEND_CO_LOCATED_WITH_CHECKOUT, backendTargetMetadata(null));
+  return resolveBackendResourceProvider(
+    BACKEND_CO_LOCATED_WITH_CHECKOUT,
+    backendTargetMetadata(null)
+  );
 }
 
 function branchActionHttpStatus(code: string): number {

@@ -46,7 +46,6 @@ import {
 import { runProtocolSubcommand } from './protocol.ts';
 import { requirePermission } from './rbac.ts';
 import { realtime } from './realtime.ts';
-import { resolveServeSpa } from './serve-spa.ts';
 import {
   ApiError,
   createMission,
@@ -106,6 +105,7 @@ import {
   runnerStatus,
   updateRunnerRequestStatus
 } from './runner.ts';
+import { resolveServeSpa } from './serve-spa.ts';
 import {
   getSqlStudioState,
   initSqlStudioManager,

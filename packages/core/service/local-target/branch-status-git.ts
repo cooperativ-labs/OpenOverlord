@@ -16,11 +16,7 @@ export function isOnFirstParentTrunk(repoPath: string, base: string, sha: string
 }
 
 /** True when the branch tip is contained in the base via a non-ff merge (not merely reachable). */
-export function branchMergedIntoBase(
-  repoPath: string,
-  branchSha: string,
-  base: string
-): boolean {
+export function branchMergedIntoBase(repoPath: string, branchSha: string, base: string): boolean {
   const baseSha = resolveRef(repoPath, base);
   if (!baseSha) return false;
   if (baseSha === branchSha) return false;
