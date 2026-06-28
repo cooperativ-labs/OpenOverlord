@@ -155,7 +155,7 @@ export class FakeLocalTargetProvider implements LocalTargetCapabilities {
     this.#record('generateCommitMessageFromLocalDiff', [input]);
     if (this.#handlers.generateCommitMessageFromLocalDiff)
       return this.#handlers.generateCommitMessageFromLocalDiff(input);
-    return ok(this.target, { message: 'fake commit message' });
+    return ok(this.target, { diff: 'fake diff' });
   }
 
   async launchAgent(input: LaunchAgentInput): Promise<CapabilityResult<LaunchAgentResult>> {

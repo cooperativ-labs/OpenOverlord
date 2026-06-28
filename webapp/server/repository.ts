@@ -12,7 +12,6 @@ import {
   resolveBackendResourceProvider
 } from '../../packages/core/service/local-target/index.ts';
 import { resolveRealPath, worktreeIsDirty, worktreePathForBranch } from '../../packages/core/service/local-target/worktree-git.ts';
-import { runGitResult } from '../../packages/core/service/local-target/git-run.ts';
 import type { CapabilityResult } from '../../packages/core/service/local-target/types.ts';
 import type {
   ArtifactDto,
@@ -438,6 +437,7 @@ function localMutationProvider() {
 function branchActionHttpStatus(code: string): number {
   if (code === 'BRANCH_COMMIT_MESSAGE_REQUIRED') return 400;
   if (code === 'BRANCH_PUSH_FAILED' || code === 'BRANCH_MERGE_FAILED') return code === 'BRANCH_PUSH_FAILED' ? 502 : 500;
+  if (code === 'BRANCH_NO_WORKTREE' || code === 'BRANCH_NOTHING_TO_COMMIT') return 409;
   return 409;
 }
 
@@ -1183,50 +1183,24 @@ export async function performBranchAction(
 // summarizer: the porcelain status (so the model sees every changed path,
 // including untracked ones) followed by the tracked diff against HEAD. Read-only
 // — never stages or mutates the index.
-function collectWorktreeChanges(worktreePath: string): string {
-  const status = runGitResult(worktreePath, ['status', '--porcelain']);
-  const diff = runGitResult(worktreePath, ['diff', 'HEAD']);
-  const sections: string[] = [];
-  if (status.ok && status.stdout) {
-    sections.push(`Changed files (git status --porcelain):\n${status.stdout}`);
-  }
-  if (diff.ok && diff.stdout) {
-    sections.push(`Diff against HEAD:\n${diff.stdout}`);
-  }
-  return sections.join('\n\n');
-}
-
 /**
  * Drafts a commit message for the uncommitted changes in a mission branch's
- * worktree via the Automations Layer (Gemini). Gathers the diff host-side (the
- * same host-side git ownership as the branch actions), then summarizes it. Does
- * not persist anything — the client drops the draft into the editable commit
- * field. Throws typed errors when no work exists or the summarizer is
- * unavailable so the UI can explain why no draft appeared.
+ * worktree via the Automations Layer (Gemini). Gathers the diff through the
+ * local-target provider, then summarizes it on the backend. Does not persist
+ * anything — the client drops the draft into the editable commit field. Throws
+ * typed errors when no work exists or the summarizer is unavailable so the UI
+ * can explain why no draft appeared.
  */
 export async function generateCommitMessage(
   missionRef: string
 ): Promise<GenerateCommitMessageResultDto> {
-  assertServerCanAccessLinkedFilesystem('Commit-message drafting from worktree changes');
   const ctx = await loadBranchActionContext(missionRef);
-  if (!existsSync(ctx.worktreePath)) {
-    throw new ApiError(
-      409,
-      `The branch's worktree is not present at ${ctx.worktreePath}.`,
-      undefined,
-      'BRANCH_NO_WORKTREE'
-    );
-  }
-  if (!worktreeIsDirty(ctx.worktreePath)) {
-    throw new ApiError(
-      409,
-      'There are no uncommitted changes to draft a commit message from.',
-      ctx.worktreePath,
-      'BRANCH_NOTHING_TO_COMMIT'
-    );
-  }
+  const { diff } = assertCapabilitySuccess(
+    await localMutationProvider().generateCommitMessageFromLocalDiff({
+      worktreePath: ctx.worktreePath
+    })
+  );
 
-  const diff = collectWorktreeChanges(ctx.worktreePath);
   const message = await generateCommitMessageFromDiff({ diff, env: process.env });
   if (!message) {
     throw new ApiError(

@@ -228,10 +228,12 @@ export interface CurrentDiffResult {
 }
 
 export interface GenerateCommitMessageInput {
-  missionId: string;
+  /** Absolute worktree path resolved by the backend before crossing this boundary. */
+  worktreePath: string;
 }
 export interface GenerateCommitMessageResult {
-  message: string;
+  /** Local diff text for the backend summarizer (Automations Layer). */
+  diff: string;
 }
 
 export interface LaunchAgentInput {

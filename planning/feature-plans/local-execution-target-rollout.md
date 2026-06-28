@@ -1,6 +1,6 @@
 # Local Execution Target — Rollout & Legacy Removal Plan
 
-**Status:** In progress (WS-C execution-target selector landed; next: WS-D(4))
+**Status:** In progress (WS-D(5) landed; next: WS-D(6))
 **Date:** 2026-06-28
 **Contract baseline:** `0.59-draft`
 **Design doc:** [`local-execution-target-capabilities.md`](local-execution-target-capabilities.md)
@@ -26,8 +26,8 @@ Legend: ✅ done · 🔲 not started · 🔄 partial.
 | **WS-D(2)** | `writeProjectMetadata` | ✅ | `writeProjectJson` moved into the local-target module; core/webapp resource creation writes via `provider.writeProjectMetadata` (co-located writes, hosted no-ops). Branch `local-execution-target-wsd1`. |
 | **WS-D(3)** | `readRepositoryTree`, `listBranches`, `readCurrentDiff` | ✅ | `getProjectRepository` and `listMissionBranches` now route through `LocalTargetCapabilities`; dead service-layer `readCurrentDiff` export removed (provider capability remains for future callers). |
 | **WS-C** | Execution-target selector | ✅ | `GET/PUT /api/projects/:id/execution-target`, preference in `project_user_preferences.preferences_json`, launch stamps selected/sole target, `RunnerQueueProvider` + default registry stub. |
-| **WS-D(4)** | `prepareBranch`, `listWorktrees`, `removeWorktree`, `purgeMergedWorktrees`, branch actions | 🔲 | The `runGit`/`execFileSync` mutations in `repository.ts`. |
-| **WS-D(5)** | `generateCommitMessageFromLocalDiff` | 🔲 | Local gathers diff; backend may still call the AI summarizer. |
+| **WS-D(4)** | `prepareBranch`, `listWorktrees`, `removeWorktree`, `purgeMergedWorktrees`, branch actions | ✅ | Git mutations in `repository.ts` route through `LocalTargetCapabilities` via shared `git-run.ts`, `worktree-git.ts`, and `branch-actions-git.ts`; `prepareBranch` remains CLI-owned (`CAPABILITY_NOT_IMPLEMENTED` in `InProcessProvider`). macOS `/tmp` ↔ `/private/tmp` normalized with `resolveRealPath`. Branch `local-execution-target-wsd1`. |
+| **WS-D(5)** | `generateCommitMessageFromLocalDiff` | ✅ | Local diff gathering moved to `commit-message-diff-git.ts` + `InProcessProvider`; backend still calls `generateCommitMessageFromDiff` (Gemini). Branch `local-execution-target-wsd1`. |
 | **WS-D(6)** | `launchAgent` + `doctor` | 🔲 | |
 | **WS-D (final)** | Delete `serverCanAccessLinkedFilesystem()` | 🔲 | Only once **every** capability routes through a provider. |
 | **WS-E3** | Drop `better-sqlite3` from the cloud image | 🔲 | Needs the `0.55-draft` adapter-selection finish so the production path never imports `better-sqlite3`; then remove it + `python3/make/g++` from the runtime stage. |

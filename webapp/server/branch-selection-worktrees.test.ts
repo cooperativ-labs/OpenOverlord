@@ -177,8 +177,9 @@ describe('branch selection and worktree management', () => {
     // The primary repo itself is never listed as a managed worktree.
     assert.ok(!paths.includes(path.resolve(primary)));
 
+    const wtACanonical = resolveRealPath(wtA);
     const result = await api.removeWorktree({ path: wtA });
-    assert.deepEqual(result.removed, [resolveRealPath(wtA)]);
+    assert.deepEqual(result.removed, [wtACanonical]);
     assert.equal(existsSync(wtA), false);
     assert.equal(result.worktrees.length, 1);
   });
@@ -196,8 +197,9 @@ describe('branch selection and worktree management', () => {
     );
     assert.equal(existsSync(wt), true);
     // Force removes it.
+    const wtCanonical = resolveRealPath(wt);
     const forced = await api.removeWorktree({ path: wt, force: true });
-    assert.deepEqual(forced.removed, [resolveRealPath(wt)]);
+    assert.deepEqual(forced.removed, [wtCanonical]);
   });
 
   it('purge-merged removes only merged, clean worktrees', async () => {

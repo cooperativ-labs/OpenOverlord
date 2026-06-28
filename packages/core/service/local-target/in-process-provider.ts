@@ -8,6 +8,7 @@
 // provider is still safe to hand to any caller.
 
 import { performBranchActionGit } from './branch-actions-git.ts';
+import { gatherCommitMessageDiff } from './commit-message-diff-git.ts';
 import { runGit } from './git-run.ts';
 
 import {
@@ -205,6 +206,19 @@ export class InProcessProvider implements LocalTargetCapabilities {
     });
   }
 
+  // ---- routed (WS-D 5) -------------------------------------------------
+
+  async generateCommitMessageFromLocalDiff(input: GenerateCommitMessageInput) {
+    const result = gatherCommitMessageDiff(input.worktreePath);
+    if (!result.ok) {
+      return fail(this.target, 'GIT_COMMAND_FAILED', result.message, {
+        branchActionCode: result.code,
+        detail: result.detail
+      });
+    }
+    return ok(this.target, { diff: result.diff });
+  }
+
   // ---- not yet routed (filled in by later WS-D steps) ------------------
 
   #notImplemented(): Promise<CapabilityFailure> {
@@ -221,9 +235,6 @@ export class InProcessProvider implements LocalTargetCapabilities {
     return this.#notImplemented();
   }
   readCurrentDiff(_input: ReadCurrentDiffInput) {
-    return this.#notImplemented();
-  }
-  generateCommitMessageFromLocalDiff(_input: GenerateCommitMessageInput) {
     return this.#notImplemented();
   }
   launchAgent(_input: LaunchAgentInput) {
