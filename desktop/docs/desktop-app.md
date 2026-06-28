@@ -121,6 +121,23 @@ A minimal, audited surface the SPA **feature-detects** (`if (window.overlord)`):
 
 No tokens, Node access, or product logic cross this boundary.
 
+### Backend profiles and CLI auth
+
+The shell can switch between a **local** embedded backend and one or more
+**remote** cloud backends (Settings → Backend). Switching reloads the app and
+uses a separate Electron session partition per profile.
+
+- **Local profile:** signing in mirrors the session bearer into
+  `~/.ovld/auth.json` so the CLI can reuse the same credentials. On startup (or
+  when switching back to Local), the shell imports a matching `auth.json` session
+  if the desktop profile has no saved token yet.
+- **Remote profiles:** tokens stay in the desktop shell's encrypted store only.
+  The CLI must authenticate separately with `ovld auth login` or a USER_TOKEN
+  after `ovld config set cloud <url>`.
+- **Config sync:** switching backends updates `~/.ovld/overlord.toml`
+  (`backend_url`, `backend_mode`). That does not change CLI auth — run
+  `ovld auth status` after a backend switch to verify URL and login state.
+
 ## 6.1 Quick task window
 
 The desktop shell registers a global shortcut (default **Cmd+Shift+O** on macOS,

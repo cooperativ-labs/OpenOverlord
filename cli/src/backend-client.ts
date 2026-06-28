@@ -1,4 +1,4 @@
-import { resolveAuthBearerToken } from './auth-credentials.js';
+import { clearStoredAuthCredentials, readStoredAuthCredentials } from './auth-credentials.js';
 import { loadConfig, resolveBackendUrl } from './config.js';
 import { CliError } from './errors.js';
 
@@ -15,9 +15,29 @@ function normalizeBaseUrl(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
-function authHeaders({ baseUrl }: { baseUrl: string }): Record<string, string> {
-  const token = resolveAuthBearerToken({ backendUrl: baseUrl });
-  return token ? { Authorization: `Bearer ${token}` } : {};
+function resolveAuthHeaders({
+  baseUrl
+}: {
+  baseUrl: string;
+}): { headers: Record<string, string>; fromStored: boolean } {
+  const fromEnv =
+    process.env.OVERLORD_USER_TOKEN?.trim() ||
+    process.env.OVLD_USER_TOKEN?.trim() ||
+    process.env.USER_TOKEN?.trim();
+  if (fromEnv) {
+    return { headers: { Authorization: `Bearer ${fromEnv}` }, fromStored: false };
+  }
+
+  const stored = readStoredAuthCredentials();
+  if (!stored) return { headers: {}, fromStored: false };
+  if (normalizeBaseUrl(stored.backendUrl) !== normalizeBaseUrl(baseUrl)) {
+    return { headers: {}, fromStored: false };
+  }
+
+  return {
+    headers: { Authorization: `Bearer ${stored.token}` },
+    fromStored: true
+  };
 }
 
 async function readResponseJson(response: Response): Promise<unknown> {
@@ -62,6 +82,7 @@ export function createBackendClient(): BackendClient {
     body?: unknown;
   }): Promise<T> {
     const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+    const auth = resolveAuthHeaders({ baseUrl });
     let response: Response;
     try {
       response = await fetch(url, {
@@ -69,7 +90,7 @@ export function createBackendClient(): BackendClient {
         headers: {
           Accept: 'application/json',
           ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-          ...authHeaders({ baseUrl })
+          ...auth.headers
         },
         body: body === undefined ? undefined : JSON.stringify(body)
       });
@@ -84,6 +105,20 @@ export function createBackendClient(): BackendClient {
 
     const payload = await readResponseJson(response);
     if (!response.ok) {
+      if (response.status === 401 && auth.headers.Authorization) {
+        if (auth.fromStored) clearStoredAuthCredentials();
+        const detail =
+          errorMessageFromJson(payload) ??
+          `Backend request failed: ${method} ${path} (${response.status})`;
+        throw new CliError({
+          message:
+            `${detail}\n` +
+            (auth.fromStored
+              ? 'Saved credentials were cleared. Run `ovld auth login` to sign in again.'
+              : 'Run `ovld auth login` or refresh your USER_TOKEN environment variable.')
+        });
+      }
+
       throw new CliError({
         message:
           errorMessageFromJson(payload) ??

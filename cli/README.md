@@ -120,6 +120,34 @@ even inside a dev checkout.
 The local backend/Desktop package owns SQLite and migrations. The published npm
 CLI only stores the backend URL and sends HTTP requests.
 
+### Desktop and CLI authentication
+
+Both the desktop app and the CLI authenticate to `/api/*` with a bearer token:
+
+- **Session bearer** — from `ovld auth login` (username/password) or a desktop
+  sign-in on the **local** backend. Stored in `~/.ovld/auth.json` for the CLI
+  and in the desktop shell's encrypted settings for each backend profile.
+- **USER_TOKEN** (`out_…`) — long-lived token from Settings → Tokens. Works for
+  headless/CI use via `OVERLORD_USER_TOKEN` or `ovld auth login --token`.
+
+For the **local** backend, desktop and CLI share `~/.ovld/auth.json`:
+
+- Signing in through the desktop app writes the session bearer to `auth.json`, so
+  `ovld` can use the same credentials without a second login.
+- Running `ovld auth login` for the local backend writes `auth.json`; the desktop
+  app imports that token on the next launch (or when switching back to Local) if
+  it has no saved session for that profile.
+
+**Cloud backends are separate.** Adding or switching to a cloud backend in the
+desktop app updates `~/.ovld/overlord.toml` with the new `backend_url`, but it
+does **not** update CLI auth. After switching backends in either surface, run
+`ovld auth status` to confirm the CLI is pointed at the same URL and still
+logged in. If `credentialSource` is `stored_mismatch` or `loggedIn` is false, run
+`ovld config set cloud <url>` (if needed) and `ovld auth login`.
+
+When a stored CLI credential is rejected with HTTP 401, `ovld` clears
+`auth.json` and tells you to run `ovld auth login` again.
+
 ### Headless / container setup
 
 In a container, CI job, or any non-TTY environment, configure `ovld` entirely

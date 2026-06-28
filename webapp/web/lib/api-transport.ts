@@ -1,6 +1,6 @@
 import {
   apiFetchCredentials,
-  clearDesktopBearerToken,
+  clearInMemoryAuthTokens,
   getAuthorizationHeader,
   resolveApiUrl
 } from './api-base.ts';
@@ -27,12 +27,11 @@ export async function fetchApi(path: string, init: RequestInit = {}): Promise<Re
 
   if (response.status !== 401 || !sentAuthorization) return response;
 
-  await clearDesktopBearerToken();
+  clearInMemoryAuthTokens();
   const retryHeaders = new Headers(init.headers);
-  applyAuthorizationHeader(retryHeaders);
   return fetch(url, {
     ...init,
-    credentials: init.credentials ?? apiFetchCredentials(),
+    credentials: 'include',
     headers: retryHeaders
   });
 }

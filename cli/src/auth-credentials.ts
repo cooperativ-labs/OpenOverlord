@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { resolveGlobalDataDir } from './config.js';
@@ -57,6 +57,12 @@ export function writeStoredAuthCredentials({
 
 function normalizeBaseUrl(value: string): string {
   return value.replace(/\/+$/, '');
+}
+
+export function clearStoredAuthCredentials(): void {
+  const filePath = authCredentialsPath();
+  if (!existsSync(filePath)) return;
+  unlinkSync(filePath);
 }
 
 export function resolveAuthBearerToken({

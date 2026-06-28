@@ -59,9 +59,7 @@ export async function initDesktopApiConfig(): Promise<void> {
   if (!bridge?.getActiveBackend) return;
 
   activeBackend = await bridge.getActiveBackend();
-  if (activeBackend.mode === 'remote') {
-    await loadStoredTokensForActiveBackend();
-  }
+  await loadStoredTokensForActiveBackend();
 }
 
 function resolveAuthorizationToken(): string | null {
@@ -119,7 +117,12 @@ export async function clearDesktopAuthTokens(): Promise<void> {
 }
 
 export function apiFetchCredentials(): RequestCredentials {
-  return isRemoteBackend() && !resolveAuthorizationToken() ? 'include' : 'omit';
+  return resolveAuthorizationToken() ? 'omit' : 'include';
+}
+
+export function clearInMemoryAuthTokens(): void {
+  userToken = null;
+  sessionToken = null;
 }
 
 export function captureAuthTokenFromResponse(response: Response): void {

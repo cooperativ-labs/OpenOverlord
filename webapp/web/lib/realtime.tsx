@@ -31,10 +31,11 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     const invalidateAll = () => queryClient.invalidateQueries();
     const onLive = () => setState('live');
 
-    if (isRemoteBackend()) {
+    const authHeaders = getAuthorizationHeader();
+    if (isRemoteBackend() || authHeaders) {
       const close = connectEventStream({
         url: resolveEventSourceUrl('/api/stream'),
-        headers: getAuthorizationHeader(),
+        headers: authHeaders,
         handlers: {
           onOpen: onLive,
           onHello: cursor => setLastSeq(cursor ?? 0),

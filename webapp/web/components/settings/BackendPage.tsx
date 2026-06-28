@@ -89,6 +89,9 @@ export function BackendPage() {
         <p className="text-sm text-muted-foreground">
           Choose whether this desktop app uses your local SQLite database or a hosted Postgres
           backend. Switching reloads the app and requires signing in again for that backend.
+          The CLI backend URL in <code className="text-xs">~/.ovld/overlord.toml</code> updates
+          with this switch, but CLI auth does not — run <code className="text-xs">ovld auth status</code>{' '}
+          after changing backends.
         </p>
       </div>
 

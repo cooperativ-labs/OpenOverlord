@@ -23,6 +23,7 @@ import {
   setBearerToken,
   setSessionToken
 } from './backend-token-store.js';
+import { hydrateLocalDesktopSessionFromCliAuth } from './cli-auth-sync.js';
 import {
   findFreePort,
   startServer,
@@ -93,6 +94,9 @@ export function createBackendRuntimeController({
       const healthy = await bootServersForActiveProfile();
       if (!healthy) {
         throw new Error(`Could not reach backend for profile ${profileId}`);
+      }
+      if (active.mode === 'local') {
+        hydrateLocalDesktopSessionFromCliAuth({ backendUrl: active.apiBaseUrl });
       }
       await recreateWindow({ shellOrigin, active });
     }

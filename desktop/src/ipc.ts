@@ -17,6 +17,7 @@ import {
   writeSessionTokenForProfile
 } from './backend-runtime.js';
 import type { CliUpdater } from './cli-updater.js';
+import { syncSessionTokenToCliAuth } from './cli-auth-sync.js';
 import { isNativeThemeSource, setNativeThemeSource } from './native-theme.js';
 import {
   DEFAULT_QUICK_TASK_HOTKEY,
@@ -231,13 +232,25 @@ export function registerIpc({
         throw new Error('Profile id and token are required.');
       }
       writeSessionTokenForProfile({ profileId: payload.profileId, token: payload.token });
+      const active = getPublicActiveBackend({ shellOrigin: getShellOrigin() });
+      if (active.id === payload.profileId) {
+        syncSessionTokenToCliAuth({
+          profileId: payload.profileId,
+          token: payload.token,
+          backendUrl: active.apiBaseUrl
+        });
+      }
       return true;
     }
   );
 
   ipcMain.handle('overlord:backend:clear-session-token', (_event, profileId: unknown) => {
     if (typeof profileId !== 'string' || profileId.length === 0) return false;
+    const active = getPublicActiveBackend({ shellOrigin: getShellOrigin() });
     clearSessionTokenForProfile(profileId);
+    if (active.id === profileId) {
+      syncSessionTokenToCliAuth({ profileId, token: '', backendUrl: active.apiBaseUrl });
+    }
     return true;
   });
 

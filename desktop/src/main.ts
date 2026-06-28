@@ -18,6 +18,7 @@ import {
   resolveInitialShellOrigin,
   stopAllBackendServers
 } from './backend-runtime.js';
+import { hydrateLocalDesktopSessionFromCliAuth } from './cli-auth-sync.js';
 import { CliUpdater } from './cli-updater.js';
 import { registerIpc } from './ipc.js';
 import {
@@ -109,6 +110,9 @@ async function boot(): Promise<void> {
     devConnect: DEV_CONNECT
   });
   configureSessionPolicy(active);
+  if (active.mode === 'local') {
+    hydrateLocalDesktopSessionFromCliAuth({ backendUrl: active.apiBaseUrl });
+  }
 
   if (!healthy) {
     const { response } = await dialog.showMessageBox({
