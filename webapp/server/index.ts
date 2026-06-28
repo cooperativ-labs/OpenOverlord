@@ -46,6 +46,7 @@ import {
 import { runProtocolSubcommand } from './protocol.ts';
 import { requirePermission } from './rbac.ts';
 import { realtime } from './realtime.ts';
+import { resolveServeSpa } from './serve-spa.ts';
 import {
   ApiError,
   createMission,
@@ -1056,9 +1057,10 @@ app.post(
   })
 );
 
-// ---- Static SPA (production: `yarn build:prod` then `yarn start`) ------------
+// ---- Static SPA (Local/desktop only: `yarn build` then `yarn start`) -------
+// Cloud/Postgres backends are API-only; Vercel serves the SPA (contract 0.55-draft).
 
-if (existsSync(distDir)) {
+if (resolveServeSpa({ dialect: DATABASE_DIALECT }) && existsSync(distDir)) {
   app.use(express.static(distDir));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) return next();

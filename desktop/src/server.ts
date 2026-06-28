@@ -35,6 +35,7 @@ export function startServer({ host, port }: ServerOptions): void {
       OVERLORD_WEB_HOST: host,
       OVERLORD_WEB_PORT: String(port),
       OVERLORD_WEBAPP_DIST: webappDistPath(),
+      OVERLORD_SERVE_SPA: 'true',
       // The desktop never auto-launches the optional SQL Studio process.
       OVERLORD_SQL_STUDIO_ENABLED: 'false'
     }

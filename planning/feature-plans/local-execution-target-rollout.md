@@ -1,6 +1,6 @@
 # Local Execution Target — Rollout & Legacy Removal Plan
 
-**Status:** In progress (WS-E3 complete; WS-E4 remains)
+**Status:** In progress (WS-E complete; WS-A provider bodies remain partial)
 **Date:** 2026-06-28
 **Contract baseline:** `0.59-draft`
 **Design doc:** [`local-execution-target-capabilities.md`](local-execution-target-capabilities.md)
@@ -31,7 +31,7 @@ Legend: ✅ done · 🔲 not started · 🔄 partial.
 | **WS-D(6)** | `launchAgent` + `doctor` | ✅ | `doctor` runs portable git/node checks via `doctor-checks.ts`; `launchAgent` remains CLI-owned (`CAPABILITY_NOT_IMPLEMENTED`). Branch `local-execution-target-wsd1`. |
 | **WS-D (final)** | Delete `serverCanAccessLinkedFilesystem()` | ✅ | Removed from `repository.ts`; co-location now flows through `BACKEND_CO_LOCATED_WITH_CHECKOUT` + `resolveBackendResourceProvider`. Mutation guards rely on `assertCapabilitySuccess`. |
 | **WS-E3** | Drop `better-sqlite3` from the cloud image | ✅ | Lazy-load `better-sqlite3` in `@overlord/database` + auth; `build:server --cloud` stages Postgres migrations only; Dockerfile drops native toolchain + prunes the addon from runtime `node_modules`. |
-| **WS-E4** | Decide SPA serving (Open Q#7) | 🔲 | If Vercel serves the SPA, drop the `dist`/`express.static` mount from the cloud path. |
+| **WS-E4** | Decide SPA serving (Open Q#7) | ✅ | **Decision:** Vercel serves the Cloud SPA (contract `0.55-draft`). `resolveServeSpa` gates `express.static` to SQLite/Local; Dockerfile sets `OVERLORD_SERVE_SPA=false` and never ships `webapp/dist`. |
 | **WS-E5** | Remove the stale root `src/` | ✅ | Stale untracked root `src/` removed; only ignored `.DS_Store` remained locally. |
 
 **Architecture note for WS-D(3)+:** keep the in-process provider DB-free —

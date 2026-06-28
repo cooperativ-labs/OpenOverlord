@@ -9,8 +9,9 @@
 #
 # The cloud server bundle keeps `@google/genai` external (see build-server.mjs).
 # `better-sqlite3` is lazy-loaded only on the Local SQLite path and is not
-# installed in this image. `nodeLinker: node-modules` (see .yarnrc.yml) makes
-# the externals available at runtime.
+# installed in this image. The SPA is served from Vercel, not this container
+# (`OVERLORD_SERVE_SPA=false`). `nodeLinker: node-modules` (see .yarnrc.yml)
+# makes the externals available at runtime.
 #
 # See private-docs/deployment-overlord-cloud.md for the operator runbook.
 
@@ -51,6 +52,7 @@ WORKDIR /app
 ENV NODE_ENV=production \
     OVERLORD_WEB_HOST=0.0.0.0 \
     OVERLORD_SQL_STUDIO_ENABLED=false \
+    OVERLORD_SERVE_SPA=false \
     OVERLORD_IN_POD=1
 
 # The bundle plus external runtime deps and the staged Postgres migrations the
