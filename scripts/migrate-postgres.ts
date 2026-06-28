@@ -25,6 +25,7 @@ async function main(): Promise<void> {
 
   const redacted = adapter.connectionString.replace(/:\/\/[^@]*@/, '://***@');
   console.error(`migrate-postgres: applying migrations to ${redacted}`);
+  warnIfRailwayPrivateUrl(adapter.connectionString);
 
   const client = await openDatabaseClient(adapter);
   try {
@@ -33,6 +34,30 @@ async function main(): Promise<void> {
   } finally {
     await client.close();
   }
+}
+
+function warnIfRailwayPrivateUrl(connectionString: string): void {
+  let host: string;
+  try {
+    host = new URL(connectionString).hostname;
+  } catch {
+    return;
+  }
+
+  if (!host.endsWith('.railway.internal')) return;
+
+  console.error(
+    [
+      'migrate-postgres: Railway private database hosts (*.railway.internal) only resolve inside Railway.',
+      'Run this command inside Railway with DATABASE_PUBLIC_URL, or override DATABASE_URL locally with',
+      'the Railway Postgres public proxy URL just for the migration command.',
+      '',
+      'Example:',
+      '  railway run --service <postgres-service-id> --no-local -- sh -c',
+      '    \'DATABASE_URL="$DATABASE_PUBLIC_URL" yarn db:migrate:postgres\''
+    ].join('\n')
+  );
+  process.exit(1);
 }
 
 main().catch(error => {

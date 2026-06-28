@@ -194,7 +194,12 @@ app.use(
       }
       callback(new Error(`Origin ${origin} is not allowed by CORS`));
     },
-    credentials: true
+    credentials: true,
+    allowedHeaders: ['Authorization', 'Content-Type'],
+    // Better Auth bearer plugin returns the session token here for cross-origin
+    // clients (desktop remote mode, CLI). Without this, the renderer cannot read
+    // the header after sign-in and loops back to the login screen.
+    exposedHeaders: ['set-auth-token']
   })
 );
 app.all('/api/auth/*', authNodeHandler);
@@ -1100,11 +1105,11 @@ async function start(): Promise<void> {
   realtime.start();
 
   const server = app.listen(bindPort, bindHost, () => {
-    console.log(
-      `[webapp] Overlord web server listening on http://${bindHost === '0.0.0.0' ? '127.0.0.1' : bindHost}:${bindPort}`
-    );
+    const databaseLabel =
+      DATABASE_DIALECT === 'postgres' ? 'postgres (DATABASE_URL)' : DATABASE_PATH;
+    console.log(`[webapp] Overlord web server listening on ${bindHost}:${bindPort}`);
     console.log(`[webapp] workspace: ${WORKSPACE.name} (${WORKSPACE.slug})`);
-    console.log(`[webapp] database: ${DATABASE_PATH}`);
+    console.log(`[webapp] database: ${databaseLabel} (${DATABASE_DIALECT})`);
   });
 
   server.on('error', (error: NodeJS.ErrnoException) => {

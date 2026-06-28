@@ -351,6 +351,12 @@ export function requireDatabaseClient(): DatabaseClient {
   return databaseClient;
 }
 
+/** Test harness: point server modules at an already-migrated client. */
+export async function bindDatabaseClient(client: DatabaseClient): Promise<void> {
+  databaseClient = client;
+  await refreshActiveWorkspaceFromClient(client);
+}
+
 function postgresAuthExecutor(client: DatabaseClient): PostgresQueryExecutor {
   return {
     query: async <Row>(sql: string, values: readonly unknown[] = []) => {

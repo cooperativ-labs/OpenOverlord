@@ -93,8 +93,8 @@ Apply the same Postgres migrations used for Neon:
 ```bash
 # Uses .env.prod's DATABASE_URL via with-prod-env:
 yarn db:migrate:postgres
-# or explicitly against Railway Postgres:
-DATABASE_URL='postgresql://…@…railway.internal:5432/railway' \
+# or explicitly from a local machine with the Railway Postgres public proxy URL:
+DATABASE_URL='postgresql://…@…proxy.rlwy.net:12345/railway' \
   tsx scripts/migrate-postgres.ts
 ```
 

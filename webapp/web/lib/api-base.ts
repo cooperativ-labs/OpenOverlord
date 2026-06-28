@@ -79,6 +79,10 @@ export function getBearerAuthorizationHeader(): Record<string, string> | undefin
   return getAuthorizationHeader();
 }
 
+export function getDesktopSessionToken(): string {
+  return sessionToken ?? '';
+}
+
 export async function persistDesktopSessionToken(token: string): Promise<void> {
   sessionToken = token.trim();
   const bridge = window.overlord;
@@ -110,4 +114,12 @@ export function captureAuthTokenFromResponse(response: Response): void {
   const token = response.headers.get('set-auth-token');
   if (!token) return;
   void persistDesktopSessionToken(token);
+}
+
+/** Better Auth returns the session token in sign-in/sign-up JSON for bearer clients. */
+export async function persistAuthSessionFromSignInResult(data: unknown): Promise<void> {
+  if (!data || typeof data !== 'object' || !('token' in data)) return;
+  const token = (data as { token?: unknown }).token;
+  if (typeof token !== 'string' || token.trim().length === 0) return;
+  await persistDesktopSessionToken(token);
 }

@@ -77,14 +77,19 @@ async function ensureWorkspaceIdAvailable({
   excludeWorkspaceId?: string;
   client?: DatabaseClient;
 }): Promise<void> {
-  const exclude = excludeWorkspaceId ?? null;
-  const existing = await client.get<{ id: string }>(
-    `SELECT id FROM workspaces
-       WHERE id = ? AND deleted_at IS NULL
-         AND (? IS NULL OR id <> ?)
-       LIMIT 1`,
-    [workspaceId, exclude, exclude]
-  );
+  const existing = excludeWorkspaceId
+    ? await client.get<{ id: string }>(
+        `SELECT id FROM workspaces
+           WHERE id = ? AND deleted_at IS NULL AND id <> ?
+           LIMIT 1`,
+        [workspaceId, excludeWorkspaceId]
+      )
+    : await client.get<{ id: string }>(
+        `SELECT id FROM workspaces
+           WHERE id = ? AND deleted_at IS NULL
+           LIMIT 1`,
+        [workspaceId]
+      );
   if (existing) throw new ApiError(409, 'A workspace with this ID already exists');
 }
 
@@ -103,7 +108,7 @@ async function workspaceScopedTables(
     );
     const tables: string[] = [];
     for (const row of rows) {
-      if (row.name === 'workspaces') continue;
+      if (row.name === 'workspaces' || row.name === 'search_documents') continue;
       const columns = await client.all<{ name: string }>(
         `PRAGMA table_info(${quoteIdentifier(row.name)})`
       );
@@ -122,7 +127,7 @@ async function workspaceScopedTables(
       WHERE c.table_schema = current_schema()
         AND t.table_type = 'BASE TABLE'
         AND c.column_name = 'workspace_id'
-        AND c.table_name <> 'workspaces'
+        AND c.table_name NOT IN ('workspaces', 'search_documents')
       ORDER BY c.table_name ASC`
   );
   return rows.map(row => row.table_name);
@@ -143,6 +148,7 @@ async function rekeyWorkspaceReferences({
   } else {
     await client.exec('SET CONSTRAINTS ALL DEFERRED');
   }
+  await client.run(`DELETE FROM search_documents WHERE workspace_id = ?`, [oldWorkspaceId]);
   for (const table of await workspaceScopedTables(client)) {
     await client.run(
       `UPDATE ${quoteIdentifier(table)}
@@ -172,9 +178,11 @@ async function uniqueWorkspaceSlug({
   client?: DatabaseClient;
 }): Promise<string> {
   const taken = (
-    await client.all<{ slug: string }>(`SELECT slug FROM workspaces WHERE id IS NOT ?`, [
-      excludeWorkspaceId ?? null
-    ])
+    excludeWorkspaceId
+      ? await client.all<{ slug: string }>(`SELECT slug FROM workspaces WHERE id <> ?`, [
+          excludeWorkspaceId
+        ])
+      : await client.all<{ slug: string }>(`SELECT slug FROM workspaces`)
   ).map(r => r.slug);
   const set = new Set(taken);
   if (!set.has(desired)) return desired;

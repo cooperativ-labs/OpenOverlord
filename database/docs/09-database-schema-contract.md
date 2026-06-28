@@ -100,6 +100,12 @@ In index notes, "active" means `deleted_at IS NULL`. SQLite and Postgres adapter
 
 Adapter conformance tests must cover required tables, columns, indexes, foreign keys, active unique constraints, optimistic concurrency, soft delete visibility, queue claiming, and change-feed behavior.
 
+Postgres foreign keys on workspace-scoped tables, including composite foreign
+keys whose child columns include `workspace_id`, must be `DEFERRABLE INITIALLY
+IMMEDIATE`. Services may temporarily defer them inside a transaction when moving
+an entire workspace graph, such as re-keying the seeded first workspace during
+initial setup. Constraints still validate at commit.
+
 Adapters should express conditional requirements with CHECK constraints where possible, including:
 
 - `shared_context_entries`: `value_text` is required when `value_kind = 'string'`; `value_json` is required when `value_kind = 'json'`.

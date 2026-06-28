@@ -3,19 +3,27 @@ import { createAuthClient } from 'better-auth/react';
 import {
   captureAuthTokenFromResponse,
   getAuthBaseUrl,
-  getAuthorizationHeader,
+  getDesktopSessionToken,
   isRemoteBackend
 } from './api-base.ts';
+
+const remoteFetchOptions = isRemoteBackend()
+  ? {
+      auth: {
+        type: 'Bearer' as const,
+        token: () => getDesktopSessionToken()
+      }
+    }
+  : {};
 
 export const authClient = createAuthClient({
   baseURL: getAuthBaseUrl(),
   basePath: '/api/auth',
   fetchOptions: {
     credentials: isRemoteBackend() ? 'omit' : 'include',
-    onRequest(context) {
-      const authHeader = getAuthorizationHeader();
-      if (!authHeader?.Authorization) return;
-      context.headers.set('Authorization', authHeader.Authorization);
+    ...remoteFetchOptions,
+    onSuccess(context) {
+      captureAuthTokenFromResponse(context.response);
     },
     onResponse(context) {
       captureAuthTokenFromResponse(context.response);
