@@ -9,6 +9,7 @@
 
 import { existsSync } from 'node:fs';
 
+import { writeProjectJson } from './project-metadata.ts';
 import { fail, ok } from './result.ts';
 import type {
   CapabilityFailure,
@@ -24,7 +25,8 @@ import type {
   RemoveWorktreeInput,
   ResourceObservation,
   TargetMetadata,
-  WriteProjectMetadataInput
+  WriteProjectMetadataInput,
+  WriteProjectMetadataResult
 } from './types.ts';
 
 export class InProcessProvider implements LocalTargetCapabilities {
@@ -46,6 +48,27 @@ export class InProcessProvider implements LocalTargetCapabilities {
     return ok(this.target, { state, observedAt });
   }
 
+  /**
+   * Write the linked checkout's `.overlord/project.json` on this machine (WS-D 2).
+   * Only reachable when this provider was resolved (co-located backend / local
+   * runner); a hosted backend resolves an unavailable provider instead and never
+   * writes to its own filesystem.
+   */
+  async writeProjectMetadata(
+    input: WriteProjectMetadataInput
+  ): Promise<CapabilityResult<WriteProjectMetadataResult>> {
+    try {
+      const metadataPath = writeProjectJson(input);
+      return ok(this.target, { path: metadataPath, written: true });
+    } catch (error) {
+      return fail(
+        this.target,
+        'TARGET_OPERATION_FAILED',
+        `Failed to write project metadata: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
   // ---- not yet routed (filled in by later WS-D steps) ------------------
 
   #notImplemented(): Promise<CapabilityFailure> {
@@ -58,9 +81,6 @@ export class InProcessProvider implements LocalTargetCapabilities {
     );
   }
 
-  writeProjectMetadata(_input: WriteProjectMetadataInput) {
-    return this.#notImplemented();
-  }
   readRepositoryTree(_input: ReadRepositoryTreeInput) {
     return this.#notImplemented();
   }

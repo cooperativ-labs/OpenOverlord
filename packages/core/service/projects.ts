@@ -1,5 +1,5 @@
 import { bindBool } from '@overlord/database';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { recordChange } from './change-feed.js';
@@ -62,8 +62,6 @@ export type ProjectDiscovery = {
   resourcePath: string | null;
   isPrimary: boolean;
 };
-
-const PROJECT_JSON_VERSION = 1;
 
 export async function createProject({
   ctx,
@@ -236,7 +234,11 @@ export async function addProjectResource({
     ]
   );
 
-  writeProjectJson({
+  // WS-D 2: write .overlord/project.json through the capability. A co-located
+  // backend resolves an in-process provider and writes; a hosted backend resolves
+  // an unavailable provider and writes nothing (the CLI/Desktop client owns the
+  // write on its own machine — contract 0.57-draft).
+  await backendResourceProvider(ctx, executionTargetId).writeProjectMetadata({
     directoryPath: resolvedPath,
     projectId: resolvedProjectId,
     resourceId: id,
@@ -489,37 +491,6 @@ function readProjectJsonFile(projectJsonPath: string): {
   };
 }
 
-export function writeProjectJson({
-  directoryPath,
-  projectId,
-  resourceId,
-  isPrimary
-}: {
-  directoryPath: string;
-  projectId: string;
-  resourceId: string;
-  isPrimary: boolean;
-}): void {
-  const overlordDir = path.join(directoryPath, '.overlord');
-  mkdirSync(overlordDir, { recursive: true });
-  mkdirSync(path.join(overlordDir, 'tmp'), { recursive: true });
-  mkdirSync(path.join(overlordDir, 'logs'), { recursive: true });
-
-  writeFileSync(
-    path.join(overlordDir, 'project.json'),
-    `${JSON.stringify(
-      {
-        version: PROJECT_JSON_VERSION,
-        projectId,
-        resourceId,
-        isPrimary,
-        linkedAt: nowIso()
-      },
-      null,
-      2
-    )}\n`
-  );
-}
 
 export function listOrganizations({ ctx }: { ctx: ServiceContext }): Array<{
   id: string;

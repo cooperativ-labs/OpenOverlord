@@ -15,7 +15,6 @@ import {
   deriveResourceStatus,
   resolveBackendResourceProvider
 } from '../../packages/core/service/local-target/index.ts';
-import { writeProjectJson } from '../../packages/core/service/projects.ts';
 import type {
   ArtifactDto,
   CreateMissionBody,
@@ -2247,14 +2246,19 @@ async function insertProjectResource(
     ]
   );
 
-  if (DATABASE_DIALECT === 'sqlite') {
-    writeProjectJson({
-      directoryPath: resourcePath,
-      projectId: project.id,
-      resourceId,
-      isPrimary: body.isPrimary !== false
-    });
-  }
+  // WS-D 2: write .overlord/project.json through the capability — an in-process
+  // provider when co-located (Local SQLite), otherwise nothing (the hosted
+  // backend never writes to its own filesystem; the client owns the write).
+  await resolveBackendResourceProvider(serverCanAccessLinkedFilesystem(), {
+    executionTargetId,
+    deviceLabel: null,
+    transport: 'in_process'
+  }).writeProjectMetadata({
+    directoryPath: resourcePath,
+    projectId: project.id,
+    resourceId,
+    isPrimary: body.isPrimary !== false
+  });
 
   await recordChangeAsync(
     {
