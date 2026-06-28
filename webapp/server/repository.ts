@@ -1,6 +1,5 @@
 import { scopeGrantsForPreset } from '@overlord/auth';
 import { bindBool, type DatabaseClient } from '@overlord/database';
-import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import os from 'node:os';
@@ -8,10 +7,18 @@ import path from 'node:path';
 
 import { ensureCallerDeviceTarget } from '../../packages/core/service/execution-targets.ts';
 import {
+  deriveBranchPublicationStatus,
+  readPrimaryCheckoutBranch
+} from '../../packages/core/service/local-target/branch-status-git.ts';
+import {
   deriveResourceStatus,
+  isCoLocatedBackend,
   resolveBackendResourceProvider
 } from '../../packages/core/service/local-target/index.ts';
-import type { CapabilityResult } from '../../packages/core/service/local-target/types.ts';
+import type {
+  CapabilityResult,
+  TargetMetadata
+} from '../../packages/core/service/local-target/types.ts';
 import {
   resolveRealPath,
   worktreeIsDirty,
@@ -79,9 +86,6 @@ import {
   WORKSPACE
 } from './db.ts';
 import { ApiError } from './errors.ts';
-
-/** True when this backend process is co-located with linked checkouts (Local SQLite). */
-const BACKEND_CO_LOCATED_WITH_CHECKOUT = DATABASE_DIALECT === 'sqlite';
 import {
   dequeueObjective,
   getLaunchPreference,
@@ -98,6 +102,14 @@ import {
 } from './title-automation.ts';
 
 export { ApiError };
+
+/** True when this backend process is co-located with linked checkouts (Local SQLite). */
+const BACKEND_CO_LOCATED_WITH_CHECKOUT = isCoLocatedBackend(DATABASE_DIALECT);
+
+/** Metadata for an in-process capability call served by the co-located backend. */
+function backendTargetMetadata(executionTargetId: string | null): TargetMetadata {
+  return { executionTargetId, deviceLabel: null, transport: 'in_process' };
+}
 
 // The default workflow seeded for every new project. The schema enforces (via
 // partial unique indexes) at most one default, one `execute`, and one `review`
@@ -420,11 +432,10 @@ function isTruthyFlag(value: unknown): boolean {
 }
 
 function localMutationProvider() {
-  return resolveBackendResourceProvider(BACKEND_CO_LOCATED_WITH_CHECKOUT, {
-    executionTargetId: null,
-    deviceLabel: null,
-    transport: 'in_process'
-  });
+  return resolveBackendResourceProvider(
+    BACKEND_CO_LOCATED_WITH_CHECKOUT,
+    backendTargetMetadata(null)
+  );
 }
 
 function branchActionHttpStatus(code: string): number {
@@ -465,11 +476,10 @@ async function toProjectResourceDto(r: ProjectResourceRow): Promise<ProjectResou
   // provider when this backend is co-located with the checkout (Local SQLite),
   // otherwise lifecycle-only — the hosted backend never derives `missing` from
   // its own filesystem (WS-D 1; design §5/§6).
-  const provider = resolveBackendResourceProvider(BACKEND_CO_LOCATED_WITH_CHECKOUT, {
-    executionTargetId: r.execution_target_id,
-    deviceLabel: null,
-    transport: 'in_process'
-  });
+  const provider = resolveBackendResourceProvider(
+    BACKEND_CO_LOCATED_WITH_CHECKOUT,
+    backendTargetMetadata(r.execution_target_id)
+  );
   const status = (await deriveResourceStatus(provider, {
     resourceId: r.id,
     status: r.status,
@@ -696,54 +706,6 @@ function resolveWorktreeRoot(): string {
   return path.join(home ? path.resolve(home) : path.join(os.homedir(), '.ovld'), 'worktrees');
 }
 
-function runGit(cwd: string, args: string[]): string {
-  try {
-    return execFileSync('git', args, {
-      cwd,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      maxBuffer: 2 * 1024 * 1024
-    }).trim();
-  } catch {
-    return '';
-  }
-}
-
-// Resolves the absolute SHA a ref points at, or null when the ref does not exist.
-function resolveRef(repoPath: string, ref: string): string | null {
-  const sha = runGit(repoPath, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
-  return sha || null;
-}
-
-// True when `sha` sits on the base's first-parent trunk — the linear backbone you
-// walk by always taking the first parent. Overlord's merge-with-parent flow brings
-// a branch in with a `--no-ff` merge commit whose SECOND parent is the branch tip,
-// so a genuinely merged branch tip is NOT on this trunk. A branch the base merely
-// advanced past linearly (e.g. an empty mission branch whose parent moved forward)
-// stays on it. This is what distinguishes "landed via merge" from "merely reachable".
-function isOnFirstParentTrunk(repoPath: string, base: string, sha: string): boolean {
-  const trunk = runGit(repoPath, ['rev-list', '--first-parent', base]);
-  if (!trunk) return false;
-  return trunk.split('\n').some(line => line.trim() === sha);
-}
-
-// True only when the branch has actually been merged into the base via the
-// merge-with-parent flow: its tip must be fully contained in the base (no commits
-// of its own absent from the base) AND off the base's first-parent trunk, meaning
-// it entered through a `--no-ff` merge commit rather than being a plain ancestor.
-// A branch freshly cut from the base shares the base's tip, and an empty branch the
-// base later advanced past is still a first-parent ancestor — neither is "merged",
-// fixing the bug where such branches reported as merged because they were merely
-// reachable from the base (`git branch --merged <base>` / containment alone).
-function branchMergedIntoBase(repoPath: string, branchSha: string, base: string): boolean {
-  const baseSha = resolveRef(repoPath, base);
-  if (!baseSha) return false;
-  if (baseSha === branchSha) return false;
-  const ahead = runGit(repoPath, ['rev-list', '--count', `${baseSha}..${branchSha}`]).trim();
-  if (ahead !== '0') return false;
-  return !isOnFirstParentTrunk(repoPath, base, branchSha);
-}
-
 // Derives the mission-panel branch status from the real git state in the project's
 // primary worktree. `active_branch` being set means a branch was prepared, so the
 // floor is `created`; we upgrade to `published` once a remote ref exists, to
@@ -777,24 +739,11 @@ async function deriveBranchStatus({
   )) as { path: string } | undefined;
   // Without an inspectable checkout we can only trust that the branch was created.
   if (!resource || !existsSync(resource.path)) return 'created';
-  const repoPath = resource.path;
-
-  const branchSha =
-    resolveRef(repoPath, `refs/heads/${branchName}`) ??
-    resolveRef(repoPath, `refs/remotes/origin/${branchName}`);
-  const remoteExists = resolveRef(repoPath, `refs/remotes/origin/${branchName}`) !== null;
-  // No local or remote ref found: the branch is recorded but not present here.
-  if (!branchSha) return 'created';
-
-  if (baseBranch) {
-    // Remote base contains the branch ⇒ the work has truly landed and been
-    // published. Check this first: it supersedes the local-only intermediate.
-    if (branchMergedIntoBase(repoPath, branchSha, `origin/${baseBranch}`)) return 'merged';
-    // Only the local base contains the branch ⇒ merged but not yet pushed.
-    if (branchMergedIntoBase(repoPath, branchSha, baseBranch)) return 'merged_unpushed';
-  }
-
-  return remoteExists ? 'published' : 'created';
+  return deriveBranchPublicationStatus({
+    repoPath: resource.path,
+    branchName,
+    baseBranch
+  });
 }
 
 async function getProjectSlug(projectId: string): Promise<string> {
@@ -809,34 +758,11 @@ async function getProjectSlug(projectId: string): Promise<string> {
 // inspectable primary checkout can provide one.
 const FALLBACK_BASE_BRANCH = 'main';
 
-function normalizeBranchRef(ref: string): string {
-  return ref
-    .replace(/^origin\//, '')
-    .replace(/^refs\/heads\//, '')
-    .replace(/^refs\/remotes\/origin\//, '')
-    .trim();
-}
-
 async function primaryCheckoutBranch(projectId: string): Promise<string | null> {
   if (!BACKEND_CO_LOCATED_WITH_CHECKOUT) return null;
   const repoPath = await primaryResourcePath(projectId);
   if (!repoPath || !existsSync(repoPath)) return null;
-
-  const worktrees = runGit(repoPath, ['worktree', 'list', '--porcelain']);
-  let inMainWorktree = false;
-  for (const line of worktrees.split('\n')) {
-    if (line.startsWith('worktree ')) {
-      if (inMainWorktree) break;
-      inMainWorktree = true;
-      continue;
-    }
-    if (!inMainWorktree || !line.startsWith('branch ')) continue;
-    const branch = normalizeBranchRef(line.slice('branch '.length));
-    return branch || null;
-  }
-
-  const current = runGit(repoPath, ['branch', '--show-current']);
-  return current || null;
+  return readPrimaryCheckoutBranch(repoPath);
 }
 
 // Resolves the base/parent branch for new mission branches: the project-
@@ -1170,10 +1096,6 @@ export async function performBranchAction(
   return getMissionDetail(ctx.missionId);
 }
 
-// Captures the uncommitted work in a worktree as text for the commit-message
-// summarizer: the porcelain status (so the model sees every changed path,
-// including untracked ones) followed by the tracked diff against HEAD. Read-only
-// — never stages or mutates the index.
 /**
  * Drafts a commit message for the uncommitted changes in a mission branch's
  * worktree via the Automations Layer (Gemini). Gathers the diff through the
@@ -1221,11 +1143,7 @@ export async function listMissionBranches(missionRef: string): Promise<MissionBr
   if (!resource) {
     return { branches: current ? [current] : [], current };
   }
-  const provider = resolveBackendResourceProvider(BACKEND_CO_LOCATED_WITH_CHECKOUT, {
-    executionTargetId: null,
-    deviceLabel: null,
-    transport: 'in_process'
-  });
+  const provider = localMutationProvider();
   const result = await provider.listBranches({ resourceId: resource.id, repoPath: resource.path });
   if (!result.ok) {
     return { branches: current ? [current] : [], current };
@@ -1992,11 +1910,10 @@ async function insertProjectResource(
   // WS-D 2: write .overlord/project.json through the capability — an in-process
   // provider when co-located (Local SQLite), otherwise nothing (the hosted
   // backend never writes to its own filesystem; the client owns the write).
-  await resolveBackendResourceProvider(BACKEND_CO_LOCATED_WITH_CHECKOUT, {
-    executionTargetId,
-    deviceLabel: null,
-    transport: 'in_process'
-  }).writeProjectMetadata({
+  await resolveBackendResourceProvider(
+    BACKEND_CO_LOCATED_WITH_CHECKOUT,
+    backendTargetMetadata(executionTargetId)
+  ).writeProjectMetadata({
     directoryPath: resourcePath,
     projectId: project.id,
     resourceId,
@@ -2187,11 +2104,10 @@ export async function getProjectRepository(
     };
   }
 
-  const provider = resolveBackendResourceProvider(BACKEND_CO_LOCATED_WITH_CHECKOUT, {
-    executionTargetId,
-    deviceLabel: null,
-    transport: 'in_process'
-  });
+  const provider = resolveBackendResourceProvider(
+    BACKEND_CO_LOCATED_WITH_CHECKOUT,
+    backendTargetMetadata(executionTargetId)
+  );
   const tree = await provider.readRepositoryTree({
     resourceId: resource.id,
     repoPath: resource.path

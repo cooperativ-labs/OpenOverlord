@@ -1,6 +1,7 @@
 import { AlertTriangle, FolderOpen, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { useProjectRepositoryContext } from '@/components/projects/ProjectRepositoryContext.tsx';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,6 +14,13 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
 import { writeLocalProjectMetadata } from '@/lib/project-metadata';
 import {
   useCreateProjectResource,
@@ -21,10 +29,14 @@ import {
   useProject,
   useProjectResources,
   useUpdateProject,
+  useUpdateProjectExecutionTarget,
   useUpdateProjectResource
 } from '@/lib/queries';
 
-import type { ProjectResourceDto } from '../../../../shared/contract.ts';
+import type {
+  EligibleExecutionTargetDto,
+  ProjectResourceDto
+} from '../../../../shared/contract.ts';
 
 type ResourcesPageProps = {
   open: boolean;
@@ -44,7 +56,17 @@ function resourceStatusLabel(status: string): string {
   }
 }
 
+const ANY_TARGET_VALUE = '__any_target__';
+
+function targetOptionLabel(target: EligibleExecutionTargetDto): string {
+  const device = target.deviceLabel?.trim();
+  const base = target.label.trim() || target.executionTargetId;
+  return device && device !== base ? `${base} (${device})` : base;
+}
+
 export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
+  const { eligibleTargets, selectedExecutionTargetId } = useProjectRepositoryContext();
+  const updateExecutionTarget = useUpdateProjectExecutionTarget(projectId);
   const resourcesQ = useProjectResources(projectId);
   const launchSettingsQ = useLaunchSettings();
   const projectQ = useProject(projectId);
@@ -56,15 +78,21 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
   const rows = open ? (resourcesQ.data ?? []) : [];
   const localExecutionTargetId = launchSettingsQ.data?.executionTargetId ?? null;
   const deviceLabel = launchSettingsQ.data?.deviceLabel ?? 'This device';
+  const activeExecutionTargetId = selectedExecutionTargetId ?? localExecutionTargetId;
+  const activeTarget = eligibleTargets.find(
+    target => target.executionTargetId === activeExecutionTargetId
+  );
+  const addTargetLabel = activeTarget ? targetOptionLabel(activeTarget) : deviceLabel;
   const hasMissingPrimary = rows.some(
     resource => resource.isPrimary && resource.status === 'missing'
   );
   const hasLocalPrimary =
-    localExecutionTargetId !== null &&
+    activeExecutionTargetId !== null &&
     rows.some(
-      resource => resource.executionTargetId === localExecutionTargetId && resource.isPrimary
+      resource => resource.executionTargetId === activeExecutionTargetId && resource.isPrimary
     );
 
+  const [targetError, setTargetError] = useState<string | null>(null);
   const canBrowseDirectories =
     typeof window !== 'undefined' && typeof window.overlord?.chooseDirectory === 'function';
 
@@ -102,11 +130,33 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
 
   function targetLabel(resource: ProjectResourceDto): string {
     if (resource.executionTargetId === null) return 'Any target';
-    if (resource.executionTargetId === localExecutionTargetId)
+    const match = eligibleTargets.find(
+      target => target.executionTargetId === resource.executionTargetId
+    );
+    if (match) return targetOptionLabel(match);
+    if (resource.executionTargetId === localExecutionTargetId) {
       return `${deviceLabel} (this device)`;
+    }
     return resource.executionTargetId;
   }
 
+  function handleExecutionTargetChange(value: string | null) {
+    setTargetError(null);
+    updateExecutionTarget.mutate(
+      { executionTargetId: !value || value === ANY_TARGET_VALUE ? null : value },
+      {
+        onError: error => {
+          setTargetError(
+            error instanceof Error ? error.message : 'Failed to update execution target.'
+          );
+        }
+      }
+    );
+  }
+
+  const selectorValue =
+    selectedExecutionTargetId ??
+    (eligibleTargets.length > 1 ? ANY_TARGET_VALUE : (eligibleTargets[0]?.executionTargetId ?? ''));
   async function handleBrowseDirectory() {
     const chooseDirectory = window.overlord?.chooseDirectory;
     if (!chooseDirectory) return;
@@ -134,7 +184,7 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
     try {
       const resource = await createResource.mutateAsync({
         directoryPath: trimmed,
-        executionTargetId: localExecutionTargetId,
+        executionTargetId: activeExecutionTargetId,
         isPrimary: !hasLocalPrimary
       });
       await writeLocalProjectMetadata({ directoryPath: trimmed, projectId, resource });
@@ -170,10 +220,45 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
       <div>
         <h2 className="text-base font-medium">Resource directories</h2>
         <p className="text-sm text-muted-foreground">
-          Add, remove, and set the primary working directory for this device. Existing project-wide
-          fallback resources remain visible here too.
+          Choose where agents run for this project, then manage working directories per execution
+          target.
         </p>
       </div>
+
+      {eligibleTargets.length > 0 ? (
+        <div className="rounded-lg border p-4">
+          <h3 className="text-sm font-medium">Execution target</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Runs queue on the selected device. When several targets are eligible and none is chosen,
+            any online target with a connected primary may claim the work.
+          </p>
+          <div className="mt-3 grid max-w-md gap-1.5">
+            <Label htmlFor="project-execution-target">Run agents on</Label>
+            <Select value={selectorValue} onValueChange={handleExecutionTargetChange}>
+              <SelectTrigger id="project-execution-target" className="h-8">
+                <SelectValue placeholder="Select execution target" />
+              </SelectTrigger>
+              <SelectContent>
+                {eligibleTargets.length > 1 ? (
+                  <SelectItem value={ANY_TARGET_VALUE}>Any eligible target</SelectItem>
+                ) : null}
+                {eligibleTargets.map(target => (
+                  <SelectItem
+                    key={target.executionTargetId}
+                    value={target.executionTargetId}
+                    disabled={!target.reachable || !target.primaryResourceConnected}
+                  >
+                    {targetOptionLabel(target)}
+                    {!target.reachable ? ' (offline)' : ''}
+                    {target.reachable && !target.primaryResourceConnected ? ' (no primary)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {targetError ? <p className="text-xs text-destructive">{targetError}</p> : null}
+          </div>
+        </div>
+      ) : null}
 
       <div className="rounded-lg border p-4">
         <h3 className="text-sm font-medium">Default branch</h3>
@@ -231,7 +316,7 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
       <div className="rounded-lg border p-4">
         <h3 className="text-sm font-medium">Add directory</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          New directories are linked to <span className="font-medium">{deviceLabel}</span>.
+          New directories are linked to <span className="font-medium">{addTargetLabel}</span>.
         </p>
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="grid min-w-0 flex-1 gap-1.5">
@@ -348,11 +433,6 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
       )}
 
       {rowError ? <p className="text-xs text-destructive">{rowError}</p> : null}
-
-      <p className="text-xs text-muted-foreground">
-        This browser currently manages resources for the local execution target only. Resources for
-        other devices still need a surface that exposes target selection.
-      </p>
 
       <Dialog
         open={deleteTarget !== null}

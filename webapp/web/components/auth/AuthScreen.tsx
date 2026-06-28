@@ -1,6 +1,7 @@
 import { Loader2, LockKeyhole } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 
+import { BackendLoginPanel } from '@/components/auth/BackendLoginPanel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -76,7 +77,7 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
 
   return (
     <main className="grid min-h-dvh place-items-center bg-background px-4 py-8 text-foreground">
-      <section className="w-full max-w-[360px]">
+      <section className="w-full max-w-[400px]">
         <div className="mb-5 flex items-center gap-3">
           <div className="grid size-10 place-items-center rounded-lg border bg-card">
             <LockKeyhole className="size-5" />
@@ -86,6 +87,8 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
             <p className="text-sm text-muted-foreground">Sign in to continue.</p>
           </div>
         </div>
+
+        <BackendLoginPanel />
 
         <div className="mb-4 grid grid-cols-2 rounded-lg border bg-muted p-1">
           <Button

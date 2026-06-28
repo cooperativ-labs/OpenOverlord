@@ -1,6 +1,6 @@
 # Local Execution Target — Rollout & Legacy Removal Plan
 
-**Status:** In progress (WS-E complete; WS-A provider bodies remain partial)
+**Status:** Complete (WS-A–E rollout items in §0 progress table done; provider bodies / DesktopBridge remain follow-on). Post-merge a typecheck gap was found and closed: the WS-D/E work passed runtime tests (`tsx` strips types) but regressed `tsc` in `@overlord/core` + `@overlord/webapp`; those regressions are fixed and a follow-up DRY pass consolidated the co-location policy (`isCoLocatedBackend`), `parseAgentConfigs`, the `project_user_preferences` reader, and `TargetMetadata` construction.
 **Date:** 2026-06-28
 **Contract baseline:** `0.59-draft`
 **Design doc:** [`local-execution-target-capabilities.md`](local-execution-target-capabilities.md)
@@ -21,11 +21,15 @@ Legend: ✅ done · 🔲 not started · 🔄 partial.
 | **WS-A** | Capability interface + provider registry + fake | ✅ | `packages/core/service/local-target/` (interface, `CapabilityResult`, error codes incl. `LOCAL_TARGET_REQUIRED`, §5 observation states, registry + `UnavailableProvider`, fake). Merged (PR #8). |
 | WS-A | `InProcessProvider` bodies | 🔄 | Class exists; bodies land per-capability with each WS-D step (see below) rather than as a throwaway verbatim wrapper. |
 | WS-A | `DesktopBridgeProvider`, `RunnerQueueProvider` | 🔄 | `RunnerQueueProvider` stub + default registry landed in WS-C; desktop bridge deferred to WS-D remote UI paths. |
-| **WS-B** | Split target identity (claim vs. create) | ✅ | `ensureLocalExecutionTarget` → `ensureCallerDeviceTarget`; request creation stamps `execution_target_id = NULL` (was the backend device). Merged (PR #8). |
+| WS-A | `createDefaultLocalTargetRegistry` co-location routing | ✅ | In-process only when `target.executionTargetId === callerExecutionTargetId`; co-located backend + different target id → `RunnerQueueProvider`. |
+| **WS-B** | Split target identity (claim vs. create) | ✅ | `ensureCallerDeviceTarget` for claim; launch stamps via `resolveLaunchExecutionTarget` with no caller-device fallback. |
+| WS-B | Launch must not override null selector | ✅ | `resolveLaunchExecutionTarget` in `project-execution-target.ts` returns `{ executionTargetId, agentConfigs }`; ambiguous multi-target → `NULL` + empty configs (no `?? localTarget.executionTargetId`). |
 | **WS-D(1)** | `observeResource` + resource status | ✅ | All three status-derivation sites routed through the capability; hosted backend never infers `missing` from its own fs; fixed the old `repository.ts` status type error. Branch `local-execution-target-wsd1`. |
 | **WS-D(2)** | `writeProjectMetadata` | ✅ | `writeProjectJson` moved into the local-target module; core/webapp resource creation writes via `provider.writeProjectMetadata` (co-located writes, hosted no-ops). Branch `local-execution-target-wsd1`. |
 | **WS-D(3)** | `readRepositoryTree`, `listBranches`, `readCurrentDiff` | ✅ | `getProjectRepository` and `listMissionBranches` now route through `LocalTargetCapabilities`; dead service-layer `readCurrentDiff` export removed (provider capability remains for future callers). |
-| **WS-C** | Execution-target selector | ✅ | `GET/PUT /api/projects/:id/execution-target`, preference in `project_user_preferences.preferences_json`, launch stamps selected/sole target, `RunnerQueueProvider` + default registry stub. |
+| **WS-C** | Execution-target selector | ✅ | REST + preference + `ProjectRepositoryContext` + ResourcesPage selector wired. |
+| WS-C | Selector listing must not provision backend target | ✅ | `listEligibleProjectExecutionTargets` uses read-only `findCallerDeviceExecutionTargetId` (no `ensureCallerDeviceTarget`). |
+| WS-C | Visible target selector UI (R3 acceptance) | ✅ | ResourcesPage: `eligibleTargets` + `useUpdateProjectExecutionTarget`; "Any eligible target" when ambiguous. |
 | **WS-D(4)** | `prepareBranch`, `listWorktrees`, `removeWorktree`, `purgeMergedWorktrees`, branch actions | ✅ | Git mutations in `repository.ts` route through `LocalTargetCapabilities` via shared `git-run.ts`, `worktree-git.ts`, and `branch-actions-git.ts`; `prepareBranch` remains CLI-owned (`CAPABILITY_NOT_IMPLEMENTED` in `InProcessProvider`). macOS `/tmp` ↔ `/private/tmp` normalized with `resolveRealPath`. Branch `local-execution-target-wsd1`. |
 | **WS-D(5)** | `generateCommitMessageFromLocalDiff` | ✅ | Local diff gathering moved to `commit-message-diff-git.ts` + `InProcessProvider`; backend still calls `generateCommitMessageFromDiff` (Gemini). Branch `local-execution-target-wsd1`. |
 | **WS-D(6)** | `launchAgent` + `doctor` | ✅ | `doctor` runs portable git/node checks via `doctor-checks.ts`; `launchAgent` remains CLI-owned (`CAPABILITY_NOT_IMPLEMENTED`). Branch `local-execution-target-wsd1`. |
@@ -33,6 +37,8 @@ Legend: ✅ done · 🔲 not started · 🔄 partial.
 | **WS-E3** | Drop `better-sqlite3` from the cloud image | ✅ | Lazy-load `better-sqlite3` in `@overlord/database` + auth; `build:server --cloud` stages Postgres migrations only; Dockerfile drops native toolchain + prunes the addon from runtime `node_modules`. |
 | **WS-E4** | Decide SPA serving (Open Q#7) | ✅ | **Decision:** Vercel serves the Cloud SPA (contract `0.55-draft`). `resolveServeSpa` gates `express.static` to SQLite/Local; Dockerfile sets `OVERLORD_SERVE_SPA=false` and never ships `webapp/dist`. |
 | **WS-E5** | Remove the stale root `src/` | ✅ | Stale untracked root `src/` removed; only ignored `.DS_Store` remained locally. |
+| **WS-E6** | Untrack generated `.overlord/project.json` | ✅ | `git rm --cached` on `cli/.overlord/project.json` and `packages/core/.overlord/project.json`; `.gitignore` already covers the path. |
+| WS-D (cleanup) | Local-only git/status helpers behind providers | ✅ | `git-status.ts`, `branch-status-git.ts`; `changes.ts` + `repository.ts` import shared helpers (duplicate `runGit`/branch derivation removed). |
 
 **Architecture note for WS-D(3)+:** keep the in-process provider DB-free —
 make git-capability inputs path-based (resolved `repoPath`/`workingDirectory`).
@@ -40,6 +46,13 @@ The backend resolves id→path (DB), calls the provider, then maps the native
 payload → DTO. The `git` bodies can live in `@overlord/core` (it already runs
 `execFileSync('git', …)` in `changes.ts`), so one core provider serves every
 transport without pulling webapp deps into core.
+
+**Typecheck gap (found and closed):** the WS-D/E work was green at runtime
+(40/40, because `tsx` strips types) but red under `tsc` — new `typecheck:core`
+and `typecheck:webapp` regressions (e.g. `BackendLoginPanel`, the `ResourcesPage`
+selector callback, a `repository.ts` status type). All were fixed, and a
+follow-up DRY pass removed the duplicated co-location checks, `parseAgentConfigs`,
+`readPreferenceRow`, and inline `TargetMetadata` literals that the gap exposed.
 
 **Pre-existing issues (not introduced by this work, surfaced while executing):**
 `webapp/web/components/ui/dialog.tsx:60` fails `typecheck:webapp` (Radix

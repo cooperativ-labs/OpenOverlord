@@ -1,6 +1,7 @@
-import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
+import { readGitStatusPorcelain } from './local-target/git-status.ts';
+import { isCoLocatedBackend } from './local-target/index.ts';
 import type { ServiceContext } from './context.js';
 import { resolveMissionId } from './context.js';
 import { discoverProject } from './projects.js';
@@ -33,10 +34,6 @@ export type RationaleReview = {
   createdAt: string;
 };
 
-function normalizePath(filePath: string): string {
-  return filePath.replace(/\\/g, '/');
-}
-
 function parseObservedMetadata(raw: string | null | undefined): {
   rationaleSkipped?: boolean;
 } {
@@ -46,28 +43,6 @@ function parseObservedMetadata(raw: string | null | undefined): {
     return typeof parsed === 'object' && parsed !== null ? parsed : {};
   } catch {
     return {};
-  }
-}
-
-function currentGitStatus(
-  workingDirectory: string
-): Array<{ filePath: string; vcsStatus: string }> {
-  try {
-    const output = execFileSync('git', ['status', '--short'], {
-      cwd: workingDirectory,
-      encoding: 'utf8'
-    });
-    return output
-      .split('\n')
-      .map(line => line.trimEnd())
-      .filter(Boolean)
-      .map(line => ({
-        vcsStatus: line.slice(0, 2).trim() || 'changed',
-        filePath: normalizePath(line.slice(3).trim())
-      }))
-      .filter(entry => entry.filePath.length > 0);
-  } catch {
-    return [];
   }
 }
 
@@ -159,10 +134,14 @@ export async function listChangedFilesForReview({
     });
   }
 
-  if (includeCurrent && ctx.db.dialect === 'sqlite') {
+  // Co-located (Local SQLite) backend only: the porcelain status is read
+  // directly here because no provider capability lists current changes yet —
+  // `readCurrentDiff` is still `CAPABILITY_NOT_IMPLEMENTED`. Routing this read
+  // through the seam waits on that capability landing across all transports.
+  if (includeCurrent && isCoLocatedBackend(ctx.db)) {
     const workingDirectory = await resolveWorkingDirectory({ ctx, missionId: mission.id });
     if (workingDirectory) {
-      for (const current of currentGitStatus(workingDirectory)) {
+      for (const current of readGitStatusPorcelain(workingDirectory)) {
         if (byPath.has(current.filePath)) continue;
         byPath.set(current.filePath, {
           filePath: current.filePath,

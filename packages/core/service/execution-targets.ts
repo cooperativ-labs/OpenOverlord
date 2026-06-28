@@ -9,7 +9,7 @@ import {
 
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
-import { getDevice } from './devices.js';
+import { callerDeviceFingerprint, getDevice } from './devices.js';
 import { ServiceError } from './errors.js';
 import { newId, nowIso } from './util.js';
 
@@ -96,6 +96,32 @@ async function ensureUserExecutionTargetPreference({
   });
 
   return { id, terminalProfile };
+}
+
+/**
+ * Read-only lookup of the local execution target for the process host fingerprint.
+ * Does not provision devices, targets, or preferences — safe for list/read API paths.
+ */
+export async function findCallerDeviceExecutionTargetId({
+  ctx
+}: {
+  ctx: ServiceContext;
+}): Promise<string | null> {
+  const fingerprint = callerDeviceFingerprint();
+  const row = (await ctx.db.get(
+    `SELECT et.id AS execution_target_id
+       FROM devices d
+       JOIN execution_targets et
+         ON et.device_id = d.id
+        AND et.workspace_id = d.workspace_id
+        AND et.type = 'local'
+        AND et.deleted_at IS NULL
+      WHERE d.workspace_id = ?
+        AND d.fingerprint = ?
+        AND d.deleted_at IS NULL`,
+    [ctx.workspace.id, fingerprint]
+  )) as { execution_target_id: string } | undefined;
+  return row?.execution_target_id ?? null;
 }
 
 /**

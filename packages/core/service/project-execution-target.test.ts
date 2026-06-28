@@ -9,7 +9,9 @@ import { createServiceContext } from './context.js';
 import { ensureCallerDeviceTarget } from './execution-targets.js';
 import {
   getProjectExecutionTargetSelection,
+  listEligibleProjectExecutionTargets,
   PROJECT_EXECUTION_TARGET_PREFERENCE_KEY,
+  resolveLaunchExecutionTarget,
   resolveProjectExecutionTargetForLaunch,
   updateProjectExecutionTargetSelection
 } from './project-execution-target.js';
@@ -77,6 +79,23 @@ async function seedSecondTarget(
 }
 
 describe('project execution target selection', () => {
+  it('listing eligible targets does not provision the caller device target', async () => {
+    const { ctx, db } = await setup();
+    const project = await createProject({ ctx, name: 'Read-only list' });
+    const before = (await db.get(
+      `SELECT COUNT(*) AS n FROM execution_targets WHERE workspace_id = ? AND deleted_at IS NULL`,
+      [ctx.workspace.id]
+    )) as { n: number };
+
+    await listEligibleProjectExecutionTargets({ ctx, projectId: project.id });
+
+    const after = (await db.get(
+      `SELECT COUNT(*) AS n FROM execution_targets WHERE workspace_id = ? AND deleted_at IS NULL`,
+      [ctx.workspace.id]
+    )) as { n: number };
+    assert.equal(after.n, before.n);
+  });
+
   it('lists eligible targets that have a primary resource on the target', async () => {
     const { ctx } = await setup();
     const project = await createProject({ ctx, name: 'Target Select' });
@@ -155,6 +174,60 @@ describe('project execution target selection', () => {
     const caller = await ensureCallerDeviceTarget({ ctx });
     const stamped = await resolveProjectExecutionTargetForLaunch({ ctx, projectId: project.id });
     assert.equal(stamped, caller.executionTargetId);
+  });
+
+  it('resolveLaunchExecutionTarget does not fall back to caller device configs when ambiguous', async () => {
+    const { ctx } = await setup();
+    const project = await createProject({ ctx, name: 'Ambiguous Launch' });
+    const caller = await ensureCallerDeviceTarget({ ctx });
+    await ctx.db.run(
+      `UPDATE user_execution_target_preferences
+          SET agent_configs_json = ?
+        WHERE id = ?`,
+      [
+        JSON.stringify({ codex: { preCommand: 'caller-only', flags: ['--x'] } }),
+        caller.preferenceId
+      ]
+    );
+    await addProjectResource({
+      ctx,
+      projectId: project.id,
+      directoryPath: mkdtempSync(path.join(tmpdir(), 'ovld-ambiguous-launch-')),
+      isPrimary: true
+    });
+    const vmTargetId = await seedSecondTarget(ctx, 'Other VM');
+    await insertPrimaryResource({
+      ctx,
+      projectId: project.id,
+      executionTargetId: vmTargetId,
+      resourcePath: mkdtempSync(path.join(tmpdir(), 'ovld-ambiguous-launch-vm-'))
+    });
+
+    const launch = await resolveLaunchExecutionTarget({ ctx, projectId: project.id });
+    assert.equal(launch.executionTargetId, null);
+    assert.deepEqual(launch.agentConfigs, {});
+  });
+
+  it('resolveLaunchExecutionTarget loads configs for the stamped target', async () => {
+    const { ctx } = await setup();
+    const project = await createProject({ ctx, name: 'Stamped Configs' });
+    await addProjectResource({
+      ctx,
+      projectId: project.id,
+      directoryPath: mkdtempSync(path.join(tmpdir(), 'ovld-stamped-configs-')),
+      isPrimary: true
+    });
+    const caller = await ensureCallerDeviceTarget({ ctx });
+    await ctx.db.run(
+      `UPDATE user_execution_target_preferences
+          SET agent_configs_json = ?
+        WHERE id = ?`,
+      [JSON.stringify({ codex: { preCommand: 'run-it', flags: [] } }), caller.preferenceId]
+    );
+
+    const launch = await resolveLaunchExecutionTarget({ ctx, projectId: project.id });
+    assert.equal(launch.executionTargetId, caller.executionTargetId);
+    assert.deepEqual(launch.agentConfigs.codex, { preCommand: 'run-it', flags: [] });
   });
 
   it('rejects selecting a target that cannot reach a primary resource', async () => {

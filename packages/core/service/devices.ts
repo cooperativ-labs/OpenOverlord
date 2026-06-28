@@ -9,6 +9,11 @@ function deviceFingerprint(): string {
   return createHash('sha256').update(`${hostname()}:${platform()}`).digest('hex').slice(0, 32);
 }
 
+/** Stable fingerprint for the process host (read-only; does not touch the database). */
+export function callerDeviceFingerprint(): string {
+  return deviceFingerprint();
+}
+
 export async function getDevice({ ctx }: { ctx: ServiceContext }): Promise<{
   id: string;
   label: string;

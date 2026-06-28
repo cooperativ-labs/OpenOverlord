@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import type { ExecutionRequestDto, ObjectiveDto } from '../../../shared/contract.ts';
 import { api } from '../../lib/api.ts';
 import { primaryResourceConnection } from '../../lib/project-resources.ts';
-import { useLaunchObjective, useProjectResources } from '../../lib/queries.ts';
+import { useLaunchObjective, useProjectResources, useUpdateObjective } from '../../lib/queries.ts';
 import { cn } from '../../lib/utils.ts';
 import {
   DropdownMenu,
@@ -55,8 +55,9 @@ const sizeStyles: Record<
  * Split run button for an objective: the primary action queues an execution
  * request for the selected agent/model; the caret offers Run and a copyable
  * prompt for driving an agent manually. Mirrors the legacy AgentSplitButton:
- * confirm-before-queue when an agent is already working the mission, and a
- * disabled-state tooltip explaining what is missing.
+ * confirm-before-queue when an agent is already working the mission (enabling
+ * auto-advance instead of sending to the runner), and a disabled-state tooltip
+ * explaining what is missing.
  */
 export function AgentLaunchButton({
   objective,
@@ -67,6 +68,7 @@ export function AgentLaunchButton({
   size = 'sm'
 }: AgentLaunchButtonProps) {
   const launch = useLaunchObjective();
+  const updateObjective = useUpdateObjective();
   const resourcesQ = useProjectResources(objective.projectId);
   const [showActiveConfirm, setShowActiveConfirm] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -75,7 +77,7 @@ export function AgentLaunchButton({
 
   const primaryConnection = primaryResourceConnection(resourcesQ.data ?? []);
   const isQueued = Boolean(activeRequest);
-  const isLaunching = launch.isPending;
+  const isLaunching = launch.isPending || updateObjective.isPending;
   // Blank draft slots can exist for inline authoring — they must not be launched
   // until an instruction has been written.
   const hasInstruction = objective.instructionText.trim().length > 0;
@@ -102,6 +104,17 @@ export function AgentLaunchButton({
         }
       },
       { onError: err => setError(err instanceof Error ? err.message : 'Failed to queue execution') }
+    );
+  }
+
+  function enableAutoAdvance() {
+    setError(null);
+    updateObjective.mutate(
+      { id: objective.id, body: { autoAdvance: true } },
+      {
+        onError: err =>
+          setError(err instanceof Error ? err.message : 'Failed to enable auto-advance')
+      }
     );
   }
 
@@ -163,8 +176,8 @@ export function AgentLaunchButton({
       <PopoverTrigger render={<span className="inline-flex">{runButton}</span>} />
       <PopoverContent side="top" className="w-80 p-3 text-sm">
         <p className="mb-3 text-foreground">
-          An agent appears to be working this mission already. Queue this objective so a runner
-          launches it after the current one completes?
+          An agent appears to be working this mission already. Enable auto-advance so this objective
+          launches automatically after the current one completes?
         </p>
         <div className="flex justify-end gap-2">
           <button
@@ -179,10 +192,10 @@ export function AgentLaunchButton({
             className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90"
             onClick={() => {
               setShowActiveConfirm(false);
-              queueLaunch();
+              enableAutoAdvance();
             }}
           >
-            Queue
+            Enable auto-advance
           </button>
         </div>
       </PopoverContent>
