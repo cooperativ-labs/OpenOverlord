@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, it } from 'node:test';
 
+import { createDefaultLocalTargetRegistry } from './default-registry.ts';
 import { FakeLocalTargetProvider } from './fake-provider.ts';
+import { InProcessProvider } from './in-process-provider.ts';
 import {
   type ExecutionTargetRef,
   LocalTargetProviderRegistry,
@@ -9,6 +15,7 @@ import {
   UnavailableProvider
 } from './registry.ts';
 import { fail, isFailure, isOk, ok } from './result.ts';
+import { RunnerQueueProvider } from './runner-queue-provider.ts';
 import type { TargetMetadata } from './types.ts';
 
 const META: TargetMetadata = {
@@ -40,7 +47,11 @@ describe('result constructors', () => {
 });
 
 describe('LocalTargetProviderRegistry', () => {
-  const localTarget: ExecutionTargetRef = { executionTargetId: 't1', type: 'local', reachable: true };
+  const localTarget: ExecutionTargetRef = {
+    executionTargetId: 't1',
+    type: 'local',
+    reachable: true
+  };
   const cloudTarget: ExecutionTargetRef = { executionTargetId: 't2', type: 'cloud_sandbox' };
 
   it('resolves the first factory that serves the target; order is priority', () => {
@@ -64,7 +75,7 @@ describe('LocalTargetProviderRegistry', () => {
     const registry = new LocalTargetProviderRegistry();
     const provider = registry.resolveOrUnavailable(cloudTarget);
     assert.ok(provider instanceof UnavailableProvider);
-    const r = await provider.listBranches({ resourceId: 'r1' });
+    const r = await provider.listBranches({ resourceId: 'r1', repoPath: '/repo' });
     assert.ok(isFailure(r));
     assert.equal(r.code, 'LOCAL_TARGET_REQUIRED');
     assert.equal(r.target.executionTargetId, 't2');
@@ -74,8 +85,15 @@ describe('LocalTargetProviderRegistry', () => {
 
 describe('targetMetadata', () => {
   it('derives metadata for a ref under a transport', () => {
-    const meta = targetMetadata({ executionTargetId: 't9', type: 'local', deviceLabel: 'VM' }, 'runner_queue');
-    assert.deepEqual(meta, { executionTargetId: 't9', deviceLabel: 'VM', transport: 'runner_queue' });
+    const meta = targetMetadata(
+      { executionTargetId: 't9', type: 'local', deviceLabel: 'VM' },
+      'runner_queue'
+    );
+    assert.deepEqual(meta, {
+      executionTargetId: 't9',
+      deviceLabel: 'VM',
+      transport: 'runner_queue'
+    });
   });
 
   it('defaults a missing deviceLabel to null', () => {
@@ -84,13 +102,118 @@ describe('targetMetadata', () => {
   });
 });
 
+describe('InProcessProvider repository reads', () => {
+  function git(cwd: string, args: string[]): void {
+    execFileSync('git', args, { cwd, stdio: 'ignore' });
+  }
+
+  function makeRepo(): string {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'ovld-provider-repo-'));
+    git(dir, ['init']);
+    git(dir, ['checkout', '-b', 'main']);
+    writeFileSync(path.join(dir, 'README.md'), '# Test\n');
+    git(dir, ['add', 'README.md']);
+    git(dir, [
+      '-c',
+      'user.email=test@example.com',
+      '-c',
+      'user.name=Test User',
+      'commit',
+      '-m',
+      'init'
+    ]);
+    git(dir, ['branch', 'feature/demo']);
+    return dir;
+  }
+
+  it('reads repository trees through the capability boundary', async () => {
+    const repoPath = makeRepo();
+    const provider = new InProcessProvider(META);
+    const result = await provider.readRepositoryTree({ resourceId: 'r1', repoPath });
+
+    assert.ok(isOk(result));
+    assert.equal(result.value.rootPath, repoPath);
+    assert.equal(result.value.branch, 'main');
+    assert.equal(
+      result.value.entries.some(entry => entry.path === 'README.md'),
+      true
+    );
+  });
+
+  it('lists local branches through the capability boundary', async () => {
+    const repoPath = makeRepo();
+    const provider = new InProcessProvider(META);
+    const result = await provider.listBranches({ resourceId: 'r1', repoPath });
+
+    assert.ok(isOk(result));
+    assert.deepEqual(result.value.local.sort(), ['feature/demo', 'main']);
+    assert.equal(result.value.current, 'main');
+  });
+});
+
+describe('createDefaultLocalTargetRegistry', () => {
+  const remoteLocal: ExecutionTargetRef = {
+    executionTargetId: 'vm-1',
+    type: 'local',
+    deviceLabel: 'CI VM',
+    reachable: true
+  };
+  const offlineLocal: ExecutionTargetRef = {
+    executionTargetId: 'vm-off',
+    type: 'local',
+    deviceLabel: 'Offline VM',
+    reachable: false
+  };
+
+  it('uses in-process for the caller target even when the backend is not co-located', () => {
+    const registry = createDefaultLocalTargetRegistry({
+      coLocatedWithCheckout: false,
+      callerExecutionTargetId: 'laptop-1'
+    });
+    const provider = registry.resolve({
+      executionTargetId: 'laptop-1',
+      type: 'local',
+      reachable: true
+    });
+    assert.ok(provider instanceof InProcessProvider);
+  });
+
+  it('uses runner queue for a reachable remote local target', () => {
+    const registry = createDefaultLocalTargetRegistry({
+      coLocatedWithCheckout: false,
+      callerExecutionTargetId: 'laptop-1'
+    });
+    const provider = registry.resolve(remoteLocal);
+    assert.ok(provider instanceof RunnerQueueProvider);
+  });
+
+  it('marks offline remote targets unreachable', async () => {
+    const registry = createDefaultLocalTargetRegistry({
+      coLocatedWithCheckout: false,
+      callerExecutionTargetId: 'laptop-1'
+    });
+    const provider = registry.resolveOrUnavailable(offlineLocal);
+    const result = await provider.listBranches({ resourceId: 'r1', repoPath: '/repo' });
+    assert.ok(isFailure(result));
+    assert.equal(result.code, 'LOCAL_TARGET_UNREACHABLE');
+  });
+});
+
 describe('UnavailableProvider', () => {
   it('fails every capability with the configured code', async () => {
     const provider = new UnavailableProvider(META, 'LOCAL_TARGET_UNREACHABLE', 'offline');
     for (const call of [
       provider.observeResource({ resourceId: 'r', path: '/p' }),
+      provider.listWorktrees({ worktreeRoot: '/wt', projects: [] }),
+      provider.performBranchAction({
+        action: 'integrate',
+        branchName: 'feat',
+        baseBranch: 'main',
+        worktreePath: '/wt/feat',
+        primaryRepoPath: '/repo'
+      }),
       provider.readCurrentDiff({ missionId: 'm' }),
-      provider.purgeMergedWorktrees(),
+      provider.purgeMergedWorktrees({ entries: [] }),
       provider.doctor()
     ]) {
       const r = await call;
@@ -130,7 +253,7 @@ describe('FakeLocalTargetProvider', () => {
     assert.equal(r.code, 'RESOURCE_MISSING');
     assert.equal(r.message, 'no checkout at /gone');
     // Unoverridden capabilities still use the default success.
-    const branches = await fake.listBranches({ resourceId: 'r1' });
+    const branches = await fake.listBranches({ resourceId: 'r1', repoPath: '/repo' });
     assert.ok(isOk(branches));
     assert.deepEqual(branches.value, { local: ['main'], remote: [], current: 'main' });
   });

@@ -1,7 +1,6 @@
-import { type AdapterConfig, resolveAdapter } from '@overlord/database';
+import { type AdapterConfig, loadBetterSqlite3, resolveAdapter } from '@overlord/database';
 import { betterAuth } from 'better-auth';
 import { bearer } from 'better-auth/plugins';
-import Database from 'better-sqlite3';
 import { Kysely, PostgresDialect } from 'kysely';
 import { Pool } from 'pg';
 
@@ -40,6 +39,7 @@ function postgresSearchPath(schema: string | undefined): string | undefined {
 
 function createBetterAuthDatabase(config: AuthDatabaseConfig) {
   if (config.type === 'sqlite') {
+    const Database = loadBetterSqlite3();
     // better-sqlite3 satisfies the runtime SqliteDatabase contract; the "as any"
     // works around a TypeScript structural mismatch on Statement.all signatures.
     return new Database(config.path) as any;

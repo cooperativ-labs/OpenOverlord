@@ -8,12 +8,11 @@
 // Two packages stay external:
 //   - `better-sqlite3` is a native addon that must load the build matching the
 //     runtime ABI (Node for `ovld serve`, Electron for the desktop utilityProcess).
+//     The cloud image omits the package from `node_modules`; Postgres boot never
+//     calls the lazy loader, so the external `require` is never reached there.
 //   - `@google/genai` pulls `google-auth-library`, a CommonJS package that does
 //     dynamic `require()`s esbuild cannot resolve in an ESM bundle.
-// Both are ordinary npm packages (not workspace symlinks), so electron-builder
-// packs them without issue. Everything else — express, the @overlord/* workspace
-// packages, etc. — is bundled in, so the packaged app has no workspace symlinks
-// for electron-builder's asar packer to trip on.
+// The cloud build (`--cloud`) additionally skips staging the SQLite migration tree.
 //
 // `@overlord/database` resolves its SQL migrations relative to its own module
 // location (`<dir>/../sqlite/migrations`). Once bundled, that base becomes this
@@ -27,6 +26,10 @@ import { fileURLToPath } from 'node:url';
 const webappRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(webappRoot, '..');
 const outdir = path.join(webappRoot, 'dist-server');
+const cloudBuild =
+  process.argv.includes('--cloud') || process.env.OVERLORD_SERVER_BUILD_TARGET === 'cloud';
+
+const externals = ['better-sqlite3', '@google/genai'];
 
 // CommonJS output: native `require` for the CJS dependency graph (dotenv,
 // express, the google-auth chain), and esbuild shims `import.meta.url` against
@@ -39,7 +42,7 @@ await build({
   platform: 'node',
   target: 'node20',
   format: 'cjs',
-  external: ['better-sqlite3', '@google/genai'],
+  external: externals,
   sourcemap: true,
   logLevel: 'info',
   // esbuild does not shim `import.meta.url` in CJS output, so map it to a const
@@ -58,13 +61,6 @@ await build({
 // Stage the migrations one directory up from the bundle so the bundled
 // @overlord/database (which resolves `import.meta.url/../sqlite/migrations` and
 // `../postgres/migrations`) finds them at runtime.
-const sqliteMigrationsDest = path.join(webappRoot, 'sqlite', 'migrations');
-rmSync(path.join(webappRoot, 'sqlite'), { recursive: true, force: true });
-mkdirSync(path.dirname(sqliteMigrationsDest), { recursive: true });
-cpSync(path.join(repoRoot, 'database', 'sqlite', 'migrations'), sqliteMigrationsDest, {
-  recursive: true
-});
-
 const postgresMigrationsDest = path.join(webappRoot, 'postgres', 'migrations');
 rmSync(path.join(webappRoot, 'postgres'), { recursive: true, force: true });
 mkdirSync(path.dirname(postgresMigrationsDest), { recursive: true });
@@ -72,6 +68,17 @@ cpSync(path.join(repoRoot, 'database', 'postgres', 'migrations'), postgresMigrat
   recursive: true
 });
 
-console.log(
-  'Built webapp/dist-server/index.cjs (+ staged sqlite/migrations and postgres/migrations)'
-);
+if (cloudBuild) {
+  rmSync(path.join(webappRoot, 'sqlite'), { recursive: true, force: true });
+  console.log('Built webapp/dist-server/index.cjs (cloud: postgres migrations only)');
+} else {
+  const sqliteMigrationsDest = path.join(webappRoot, 'sqlite', 'migrations');
+  rmSync(path.join(webappRoot, 'sqlite'), { recursive: true, force: true });
+  mkdirSync(path.dirname(sqliteMigrationsDest), { recursive: true });
+  cpSync(path.join(repoRoot, 'database', 'sqlite', 'migrations'), sqliteMigrationsDest, {
+    recursive: true
+  });
+  console.log(
+    'Built webapp/dist-server/index.cjs (+ staged sqlite/migrations and postgres/migrations)'
+  );
+}

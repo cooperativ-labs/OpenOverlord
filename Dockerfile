@@ -1,27 +1,22 @@
 # Overlord Cloud backend image (Railway).
 #
 # Builds the bundled web/REST/protocol/runner/realtime server
-# (`webapp/dist-server/index.cjs`, produced by `webapp/scripts/build-server.mjs`)
-# and runs it on plain Node. This is the always-on control-plane service from
-# `planning/feature-plans/overlord-cloud-architecture.md`: it owns auth, the
-# execution-request queue, protocol writeback, and the realtime feed, and it
-# reaches Neon Postgres over the injected `DATABASE_URL`.
+# (`webapp/dist-server/index.cjs`, produced by `webapp/scripts/build-server.mjs
+# --cloud`) and runs it on plain Node. This is the always-on control-plane
+# service from `planning/feature-plans/overlord-cloud-architecture.md`: it owns
+# auth, the execution-request queue, protocol writeback, and the realtime feed,
+# and it reaches Neon Postgres over the injected `DATABASE_URL`.
 #
-# The server bundle keeps two packages external (see build-server.mjs):
-#   - better-sqlite3 — a native addon still imported by the data layer/auth
-#     (Local edition); it must be present in the runtime node_modules.
-#   - @google/genai — CommonJS with dynamic require()s esbuild cannot inline.
-# `nodeLinker: node-modules` (see .yarnrc.yml) makes both available at runtime.
+# The cloud server bundle keeps `@google/genai` external (see build-server.mjs).
+# `better-sqlite3` is lazy-loaded only on the Local SQLite path and is not
+# installed in this image. The SPA is served from Vercel, not this container
+# (`OVERLORD_SERVE_SPA=false`). `nodeLinker: node-modules` (see .yarnrc.yml)
+# makes the externals available at runtime.
 #
 # See private-docs/deployment-overlord-cloud.md for the operator runbook.
 
 # ---- Builder -------------------------------------------------------------
 FROM node:20-bookworm-slim AS builder
-
-# Toolchain for the better-sqlite3 native build.
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 ENV YARN_ENABLE_SCRIPTS=1
@@ -42,13 +37,14 @@ COPY packages/core/package.json packages/core/
 RUN yarn install --immutable --mode=skip-build
 
 # Build the workspace packages that resolve to dist/ (database, auth,
-# automations), then bundle the server. @overlord/core resolves to source and is
-# bundled directly by esbuild.
+# automations), then bundle the Postgres-only server. @overlord/core resolves
+# to source and is bundled directly by esbuild.
 COPY . .
 RUN yarn db:build:prod \
   && yarn auth:build:prod \
   && yarn automations:build:prod \
-  && yarn workspace @overlord/webapp build:server
+  && yarn workspace @overlord/webapp build:server -- --cloud \
+  && rm -rf node_modules/better-sqlite3
 
 # ---- Runtime -------------------------------------------------------------
 FROM node:20-bookworm-slim AS runtime
@@ -56,6 +52,7 @@ WORKDIR /app
 ENV NODE_ENV=production \
     OVERLORD_WEB_HOST=0.0.0.0 \
     OVERLORD_SQL_STUDIO_ENABLED=false \
+    OVERLORD_SERVE_SPA=false \
     OVERLORD_IN_POD=1
 
 # The bundle plus external runtime deps and the staged Postgres migrations the

@@ -116,6 +116,8 @@ export interface ResourceObservation {
 
 export interface ReadRepositoryTreeInput {
   resourceId: string;
+  /** Absolute checkout path resolved by the backend before crossing this boundary. */
+  repoPath: string;
   /** Repo-relative subdirectory to list; null/empty lists the root. */
   subPath?: string | null;
 }
@@ -124,14 +126,22 @@ export interface RepositoryTreeEntry {
   /** Repo-relative path. */
   path: string;
   type: 'file' | 'directory';
+  parentPath: string | null;
+  depth: number;
 }
 export interface RepositoryTreeResult {
-  root: string;
+  rootPath: string;
+  gitRoot: string;
+  branch: string | null;
+  commit: string | null;
   entries: RepositoryTreeEntry[];
+  truncated: boolean;
 }
 
 export interface ListBranchesInput {
   resourceId: string;
+  /** Absolute checkout path resolved by the backend before crossing this boundary. */
+  repoPath: string;
 }
 export interface BranchListResult {
   local: string[];
@@ -159,18 +169,53 @@ export interface WorktreeInfo {
   dirty: boolean;
   merged: boolean;
 }
+
+/** Raw worktree row returned by the local target before REST enrichment. */
+export interface ManagedWorktreeEntry {
+  path: string;
+  branch: string | null;
+  primaryRepoPath: string;
+  dirty: boolean;
+}
+
+export interface ListWorktreesInput {
+  worktreeRoot: string;
+  projects: Array<{ primaryRepoPath: string }>;
+}
+
 export interface ListWorktreesResult {
-  worktrees: WorktreeInfo[];
+  worktrees: ManagedWorktreeEntry[];
 }
 
 export interface RemoveWorktreeInput {
   path: string;
+  primaryRepoPath: string;
   /** Remove even when the worktree is dirty (dirty-protection override). */
   force?: boolean;
 }
+
+export interface PurgeMergedWorktreesInput {
+  entries: Array<{ path: string; primaryRepoPath: string }>;
+}
+
 export interface PurgeWorktreesResult {
   removed: string[];
-  skipped: string[];
+  skipped: Array<{ path: string; reason: string }>;
+}
+
+export type BranchActionKind = 'integrate' | 'commit' | 'push_parent' | 'publish';
+
+export interface PerformBranchActionInput {
+  action: BranchActionKind;
+  branchName: string;
+  baseBranch: string;
+  worktreePath: string;
+  primaryRepoPath: string;
+  message?: string;
+}
+
+export interface PerformBranchActionResult {
+  summary: string;
 }
 
 export interface ReadCurrentDiffInput {
@@ -183,10 +228,12 @@ export interface CurrentDiffResult {
 }
 
 export interface GenerateCommitMessageInput {
-  missionId: string;
+  /** Absolute worktree path resolved by the backend before crossing this boundary. */
+  worktreePath: string;
 }
 export interface GenerateCommitMessageResult {
-  message: string;
+  /** Local diff text for the backend summarizer (Automations Layer). */
+  diff: string;
 }
 
 export interface LaunchAgentInput {
@@ -223,9 +270,14 @@ export interface LocalTargetCapabilities {
   ): Promise<CapabilityResult<RepositoryTreeResult>>;
   listBranches(input: ListBranchesInput): Promise<CapabilityResult<BranchListResult>>;
   prepareBranch(input: PrepareBranchInput): Promise<CapabilityResult<PrepareBranchResult>>;
-  listWorktrees(): Promise<CapabilityResult<ListWorktreesResult>>;
+  listWorktrees(input: ListWorktreesInput): Promise<CapabilityResult<ListWorktreesResult>>;
   removeWorktree(input: RemoveWorktreeInput): Promise<CapabilityResult<PurgeWorktreesResult>>;
-  purgeMergedWorktrees(): Promise<CapabilityResult<PurgeWorktreesResult>>;
+  purgeMergedWorktrees(
+    input: PurgeMergedWorktreesInput
+  ): Promise<CapabilityResult<PurgeWorktreesResult>>;
+  performBranchAction(
+    input: PerformBranchActionInput
+  ): Promise<CapabilityResult<PerformBranchActionResult>>;
   readCurrentDiff(input: ReadCurrentDiffInput): Promise<CapabilityResult<CurrentDiffResult>>;
   generateCommitMessageFromLocalDiff(
     input: GenerateCommitMessageInput

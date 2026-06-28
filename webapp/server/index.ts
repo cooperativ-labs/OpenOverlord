@@ -39,9 +39,14 @@ import {
   updateTerminalProfile,
   updateWorktreeBranchAutomation
 } from './launch.ts';
+import {
+  getProjectExecutionTarget,
+  updateProjectExecutionTarget
+} from './project-execution-target.ts';
 import { runProtocolSubcommand } from './protocol.ts';
 import { requirePermission } from './rbac.ts';
 import { realtime } from './realtime.ts';
+import { resolveServeSpa } from './serve-spa.ts';
 import {
   ApiError,
   createMission,
@@ -922,6 +927,17 @@ app.put(
     requires: PERMISSIONS.LAUNCH_CONFIGURE
   })
 );
+app.get(
+  '/api/projects/:id/execution-target',
+  handle(req => getProjectExecutionTarget(req.params.id), { requires: PERMISSIONS.LAUNCH_READ })
+);
+app.put(
+  '/api/projects/:id/execution-target',
+  handle(req => updateProjectExecutionTarget(req.params.id, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.LAUNCH_CONFIGURE
+  })
+);
 
 // ---- CLI protocol / runner ------------------------------------------------
 
@@ -1041,9 +1057,10 @@ app.post(
   })
 );
 
-// ---- Static SPA (production: `yarn build:prod` then `yarn start`) ------------
+// ---- Static SPA (Local/desktop only: `yarn build` then `yarn start`) -------
+// Cloud/Postgres backends are API-only; Vercel serves the SPA (contract 0.55-draft).
 
-if (existsSync(distDir)) {
+if (resolveServeSpa({ dialect: DATABASE_DIALECT }) && existsSync(distDir)) {
   app.use(express.static(distDir));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) return next();

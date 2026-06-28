@@ -15,10 +15,15 @@ import type {
   LaunchAgentInput,
   LaunchAgentResult,
   ListBranchesInput,
+  ListWorktreesInput,
+  ListWorktreesResult,
   LocalTargetCapabilities,
   ObserveResourceInput,
+  PerformBranchActionInput,
+  PerformBranchActionResult,
   PrepareBranchInput,
   PrepareBranchResult,
+  PurgeMergedWorktreesInput,
   PurgeWorktreesResult,
   ReadCurrentDiffInput,
   ReadRepositoryTreeInput,
@@ -27,8 +32,7 @@ import type {
   ResourceObservation,
   TargetMetadata,
   WriteProjectMetadataInput,
-  WriteProjectMetadataResult,
-  ListWorktreesResult
+  WriteProjectMetadataResult
 } from './types.ts';
 
 /** Partial override map: any capability not provided uses the default. */
@@ -67,7 +71,10 @@ export class FakeLocalTargetProvider implements LocalTargetCapabilities {
   ): Promise<CapabilityResult<WriteProjectMetadataResult>> {
     this.#record('writeProjectMetadata', [input]);
     if (this.#handlers.writeProjectMetadata) return this.#handlers.writeProjectMetadata(input);
-    return ok(this.target, { path: `${input.directoryPath}/.overlord/project.json`, written: true });
+    return ok(this.target, {
+      path: `${input.directoryPath}/.overlord/project.json`,
+      written: true
+    });
   }
 
   async observeResource(
@@ -83,7 +90,14 @@ export class FakeLocalTargetProvider implements LocalTargetCapabilities {
   ): Promise<CapabilityResult<RepositoryTreeResult>> {
     this.#record('readRepositoryTree', [input]);
     if (this.#handlers.readRepositoryTree) return this.#handlers.readRepositoryTree(input);
-    return ok(this.target, { root: '/fake/repo', entries: [] });
+    return ok(this.target, {
+      rootPath: input.repoPath,
+      gitRoot: input.repoPath,
+      branch: 'main',
+      commit: '0000000',
+      entries: [],
+      truncated: false
+    });
   }
 
   async listBranches(input: ListBranchesInput): Promise<CapabilityResult<BranchListResult>> {
@@ -102,9 +116,9 @@ export class FakeLocalTargetProvider implements LocalTargetCapabilities {
     });
   }
 
-  async listWorktrees(): Promise<CapabilityResult<ListWorktreesResult>> {
-    this.#record('listWorktrees', []);
-    if (this.#handlers.listWorktrees) return this.#handlers.listWorktrees();
+  async listWorktrees(input: ListWorktreesInput): Promise<CapabilityResult<ListWorktreesResult>> {
+    this.#record('listWorktrees', [input]);
+    if (this.#handlers.listWorktrees) return this.#handlers.listWorktrees(input);
     return ok(this.target, { worktrees: [] });
   }
 
@@ -116,10 +130,20 @@ export class FakeLocalTargetProvider implements LocalTargetCapabilities {
     return ok(this.target, { removed: [input.path], skipped: [] });
   }
 
-  async purgeMergedWorktrees(): Promise<CapabilityResult<PurgeWorktreesResult>> {
-    this.#record('purgeMergedWorktrees', []);
-    if (this.#handlers.purgeMergedWorktrees) return this.#handlers.purgeMergedWorktrees();
+  async purgeMergedWorktrees(
+    input: PurgeMergedWorktreesInput
+  ): Promise<CapabilityResult<PurgeWorktreesResult>> {
+    this.#record('purgeMergedWorktrees', [input]);
+    if (this.#handlers.purgeMergedWorktrees) return this.#handlers.purgeMergedWorktrees(input);
     return ok(this.target, { removed: [], skipped: [] });
+  }
+
+  async performBranchAction(
+    input: PerformBranchActionInput
+  ): Promise<CapabilityResult<PerformBranchActionResult>> {
+    this.#record('performBranchAction', [input]);
+    if (this.#handlers.performBranchAction) return this.#handlers.performBranchAction(input);
+    return ok(this.target, { summary: `Performed ${input.action}` });
   }
 
   async readCurrentDiff(input: ReadCurrentDiffInput): Promise<CapabilityResult<CurrentDiffResult>> {
@@ -134,7 +158,7 @@ export class FakeLocalTargetProvider implements LocalTargetCapabilities {
     this.#record('generateCommitMessageFromLocalDiff', [input]);
     if (this.#handlers.generateCommitMessageFromLocalDiff)
       return this.#handlers.generateCommitMessageFromLocalDiff(input);
-    return ok(this.target, { message: 'fake commit message' });
+    return ok(this.target, { diff: 'fake diff' });
   }
 
   async launchAgent(input: LaunchAgentInput): Promise<CapabilityResult<LaunchAgentResult>> {

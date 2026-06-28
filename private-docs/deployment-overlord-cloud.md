@@ -321,6 +321,11 @@ Keep the backend off Vercel functions (no persistent SSE / long-poll / workers
 there). Full web wiring (runtime-injected API base URL, env vars) is a later
 objective; this runbook covers the backend control plane.
 
+The Railway image is **API-only**: it does not build or ship `webapp/dist`, and
+`OVERLORD_SERVE_SPA=false` keeps the bundled server from mounting
+`express.static`. Local/desktop editions still serve the SPA from the embedded
+server when `OVERLORD_SERVE_SPA` is unset and the adapter is SQLite.
+
 ## Postgres data-layer status
 
 The data-layer Postgres port and two-adapter verification are complete. The

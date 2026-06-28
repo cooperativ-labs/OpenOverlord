@@ -60,8 +60,32 @@ export function createWindow({
   });
 
   registerNativeContextMenu(window);
+  window.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    const message = [
+      '<!doctype html>',
+      '<html><body style="margin:0;background:#0b0b0f;color:#f4f4f5;font:14px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;display:grid;min-height:100vh;place-items:center;">',
+      '<main style="max-width:560px;padding:24px;">',
+      '<h1 style="font-size:18px;margin:0 0 8px;">Overlord could not load</h1>',
+      `<p style="color:#a1a1aa;line-height:1.5;margin:0 0 12px;">${escapeHtml(errorDescription)} (${errorCode})</p>`,
+      `<p style="color:#71717a;line-height:1.5;margin:0;">${escapeHtml(validatedURL)}</p>`,
+      '</main></body></html>'
+    ].join('');
+    window.webContents.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(message)}`);
+  });
   window.once('ready-to-show', () => window.show());
+  setTimeout(() => {
+    if (!window.isDestroyed() && !window.isVisible()) window.show();
+  }, 3000);
   return window;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /**

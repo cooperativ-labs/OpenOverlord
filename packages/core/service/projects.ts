@@ -1,7 +1,8 @@
 import { bindBool } from '@overlord/database';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
+import { deriveResourceStatus, resolveBackendResourceProvider } from './local-target/index.ts';
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import { resolveProjectId } from './context.js';
@@ -38,13 +39,17 @@ export type PrimaryResourceConnection = {
   workingDirectory: string;
 };
 
-function effectiveResourceStatus(
-  resource: { status: string; path: string },
-  canAccessLinkedFilesystem = true
-): string {
-  if (resource.status === 'archived') return 'archived';
-  if (!canAccessLinkedFilesystem) return resource.status;
-  return existsSync(resource.path) ? 'active' : 'missing';
+/**
+ * Resolve the provider that observes resource availability for the backend:
+ * in-process when the backend is co-located with the checkout (Local SQLite),
+ * otherwise an unavailable provider so status falls back to recorded lifecycle.
+ */
+function backendResourceProvider(ctx: ServiceContext, executionTargetId: string | null) {
+  return resolveBackendResourceProvider(ctx.db.dialect === 'sqlite', {
+    executionTargetId,
+    deviceLabel: null,
+    transport: 'in_process'
+  });
 }
 
 export type ProjectDiscovery = {
@@ -54,8 +59,6 @@ export type ProjectDiscovery = {
   resourcePath: string | null;
   isPrimary: boolean;
 };
-
-const PROJECT_JSON_VERSION = 1;
 
 export async function createProject({
   ctx,
@@ -228,7 +231,11 @@ export async function addProjectResource({
     ]
   );
 
-  writeProjectJson({
+  // WS-D 2: write .overlord/project.json through the capability. A co-located
+  // backend resolves an in-process provider and writes; a hosted backend resolves
+  // an unavailable provider and writes nothing (the CLI/Desktop client owns the
+  // write on its own machine — contract 0.57-draft).
+  await backendResourceProvider(ctx, executionTargetId).writeProjectMetadata({
     directoryPath: resolvedPath,
     projectId: resolvedProjectId,
     resourceId: id,
@@ -281,16 +288,22 @@ export async function listProjectResources({
     status: string;
   }>;
 
-  return rows.map(row => ({
-    id: row.id,
-    projectId: row.project_id,
-    executionTargetId: row.execution_target_id,
-    type: row.type,
-    label: row.label,
-    path: row.path,
-    isPrimary: row.is_primary === 1,
-    status: effectiveResourceStatus(row, ctx.db.dialect === 'sqlite')
-  }));
+  return await Promise.all(
+    rows.map(async row => ({
+      id: row.id,
+      projectId: row.project_id,
+      executionTargetId: row.execution_target_id,
+      type: row.type,
+      label: row.label,
+      path: row.path,
+      isPrimary: row.is_primary === 1,
+      status: await deriveResourceStatus(backendResourceProvider(ctx, row.execution_target_id), {
+        resourceId: row.id,
+        status: row.status,
+        path: row.path
+      })
+    }))
+  );
 }
 
 export async function findPrimaryProjectResource({
@@ -348,7 +361,11 @@ export async function findPrimaryProjectResource({
     label: row.label,
     path: row.path,
     isPrimary: true,
-    status: effectiveResourceStatus(row, ctx.db.dialect === 'sqlite')
+    status: await deriveResourceStatus(backendResourceProvider(ctx, row.execution_target_id), {
+      resourceId: row.id,
+      status: row.status,
+      path: row.path
+    })
   };
 }
 
@@ -469,38 +486,6 @@ function readProjectJsonFile(projectJsonPath: string): {
     resourceId: parsed.resourceId,
     isPrimary: parsed.isPrimary ?? false
   };
-}
-
-export function writeProjectJson({
-  directoryPath,
-  projectId,
-  resourceId,
-  isPrimary
-}: {
-  directoryPath: string;
-  projectId: string;
-  resourceId: string;
-  isPrimary: boolean;
-}): void {
-  const overlordDir = path.join(directoryPath, '.overlord');
-  mkdirSync(overlordDir, { recursive: true });
-  mkdirSync(path.join(overlordDir, 'tmp'), { recursive: true });
-  mkdirSync(path.join(overlordDir, 'logs'), { recursive: true });
-
-  writeFileSync(
-    path.join(overlordDir, 'project.json'),
-    `${JSON.stringify(
-      {
-        version: PROJECT_JSON_VERSION,
-        projectId,
-        resourceId,
-        isPrimary,
-        linkedAt: nowIso()
-      },
-      null,
-      2
-    )}\n`
-  );
 }
 
 export function listOrganizations({ ctx }: { ctx: ServiceContext }): Array<{

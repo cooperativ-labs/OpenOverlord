@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 
 import { AuthScreen } from '@/components/auth/AuthScreen';
 import { api } from '@/lib/api';
@@ -27,6 +27,7 @@ async function ensureRemoteDesktopBearerToken(): Promise<void> {
 
 export function AuthGate({ children }: AuthGateProps) {
   const session = authClient.useSession();
+  const [authPendingTimedOut, setAuthPendingTimedOut] = useState(false);
 
   useEffect(() => {
     if (!session.data) return;
@@ -35,11 +36,25 @@ export function AuthGate({ children }: AuthGateProps) {
     });
   }, [session.data]);
 
-  if (session.isPending) {
-    return <div className="min-h-dvh bg-background" />;
+  useEffect(() => {
+    if (!session.isPending) {
+      setAuthPendingTimedOut(false);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setAuthPendingTimedOut(true), 2500);
+    return () => window.clearTimeout(timeout);
+  }, [session.isPending]);
+
+  if (session.isPending && !authPendingTimedOut) {
+    return (
+      <main className="grid min-h-dvh place-items-center bg-background px-4 text-sm text-muted-foreground">
+        Loading account…
+      </main>
+    );
   }
 
-  if (!session.data) {
+  if (!session.data || authPendingTimedOut) {
     return (
       <AuthScreen
         onAuthenticated={async () => {
