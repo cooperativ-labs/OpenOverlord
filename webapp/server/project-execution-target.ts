@@ -11,20 +11,14 @@ import type {
 } from '../shared/contract.ts';
 
 import {
-  getActorWorkspaceUserId,
+  buildWebappServiceContext,
   requireDatabaseClient,
-  serviceDatabaseClient,
-  WORKSPACE
+  serviceDatabaseClient
 } from './db.ts';
 import { ApiError } from './errors.ts';
 
 function serviceContext(client: DatabaseClient = serviceDatabaseClient()) {
-  return {
-    db: client,
-    workspace: { id: WORKSPACE.id, slug: WORKSPACE.slug, name: WORKSPACE.name },
-    actorWorkspaceUserId: getActorWorkspaceUserId(),
-    source: 'webapp' as const
-  };
+  return buildWebappServiceContext(client);
 }
 
 function toDto(

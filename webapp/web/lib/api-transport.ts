@@ -4,6 +4,7 @@ import {
   getAuthorizationHeader,
   resolveApiUrl
 } from './api-base.ts';
+import { remoteBackendDeviceHeaders } from './device-identity.ts';
 
 function applyAuthorizationHeader(headers: Headers): boolean {
   const authHeader = getAuthorizationHeader();
@@ -17,6 +18,9 @@ function applyAuthorizationHeader(headers: Headers): boolean {
 export async function fetchApi(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   const sentAuthorization = applyAuthorizationHeader(headers);
+  for (const [key, value] of Object.entries(await remoteBackendDeviceHeaders())) {
+    headers.set(key, value);
+  }
 
   const url = resolveApiUrl(path);
   const response = await fetch(url, {

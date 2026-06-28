@@ -59,17 +59,25 @@ export function resolveBackendResourceProvider(
  * `active`/`missing`, and anything else (no provider, unreachable, …) preserves
  * the recorded lifecycle status.
  */
-export async function deriveResourceStatus(
+export function deriveResourceStatus(
   provider: LocalTargetCapabilities,
   resource: { resourceId: string; status: string; path: string }
 ): Promise<string> {
-  if (resource.status === 'archived') return 'archived';
-  const observation = await provider.observeResource({
+  if (resource.status === 'archived') return Promise.resolve('archived');
+  return provider.observeResource({
     resourceId: resource.resourceId,
     path: resource.path
-  });
-  if (!observation.ok) return resource.status;
-  if (observation.value.state === 'available') return 'active';
-  if (observation.value.state === 'missing') return 'missing';
-  return resource.status;
+  }).then(observation => mapObservationToResourceStatus(resource.status, observation.ok ? observation.value : null));
+}
+
+/** Map a stored or live target observation onto the REST resource status vocabulary. */
+export function mapObservationToResourceStatus(
+  lifecycleStatus: string,
+  observation: { state: string } | null | undefined
+): string {
+  if (lifecycleStatus === 'archived') return 'archived';
+  if (!observation) return lifecycleStatus;
+  if (observation.state === 'available') return 'active';
+  if (observation.state === 'missing') return 'missing';
+  return lifecycleStatus;
 }

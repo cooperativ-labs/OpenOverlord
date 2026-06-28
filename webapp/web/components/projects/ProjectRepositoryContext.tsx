@@ -1,16 +1,24 @@
 import { createContext, type ReactNode, useCallback, useContext, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 import type {
   EligibleExecutionTargetDto,
   ProjectRepositoryDto,
   ProjectResourceDto
 } from '../../../shared/contract.ts';
+import type {
+  CapabilityResult,
+  RepositoryTreeResult
+} from '../../../../packages/core/service/local-target/types.ts';
 import {
   useProjectExecutionTarget,
   useProjectRepository,
   useProjectResources,
-  useUpdateProjectExecutionTarget
+  useUpdateProjectExecutionTarget,
+  useLaunchSettings
 } from '../../lib/queries.ts';
+import { hasDesktopLocalTargetBridge, invokeLocalTarget } from '../../lib/local-target-client.ts';
+import { useResourceObservationReporter } from '../../lib/resource-observations.ts';
 
 interface ProjectRepositoryContextValue {
   projectId: string;
@@ -26,6 +34,28 @@ interface ProjectRepositoryContextValue {
 
 const ProjectRepositoryContext = createContext<ProjectRepositoryContextValue | null>(null);
 
+function mergeRepositoryWithBridge({
+  restRepository,
+  bridgeTree
+}: {
+  restRepository: ProjectRepositoryDto;
+  bridgeTree: CapabilityResult<RepositoryTreeResult>;
+}): ProjectRepositoryDto {
+  if (!bridgeTree.ok) return restRepository;
+
+  return {
+    ...restRepository,
+    status: 'ready',
+    rootPath: bridgeTree.value.rootPath,
+    gitRoot: bridgeTree.value.gitRoot,
+    branch: bridgeTree.value.branch,
+    commit: bridgeTree.value.commit,
+    entries: bridgeTree.value.entries,
+    truncated: bridgeTree.value.truncated,
+    message: null
+  };
+}
+
 export function ProjectRepositoryProvider({
   projectId,
   children
@@ -37,7 +67,47 @@ export function ProjectRepositoryProvider({
   const updateExecutionTarget = useUpdateProjectExecutionTarget(projectId);
   const selectedExecutionTargetId = executionTarget.data?.selectedExecutionTargetId ?? null;
   const resources = useProjectResources(projectId);
-  const repository = useProjectRepository(projectId, selectedExecutionTargetId);
+  const launchSettings = useLaunchSettings();
+  const localExecutionTargetId = launchSettings.data?.executionTargetId ?? null;
+  const restRepository = useProjectRepository(projectId, selectedExecutionTargetId);
+
+  useResourceObservationReporter({
+    projectId,
+    executionTargetId: localExecutionTargetId,
+    resources: resources.data ?? [],
+    enabled: Boolean(localExecutionTargetId)
+  });
+
+  const bridgeEnabled =
+    hasDesktopLocalTargetBridge() &&
+    restRepository.data?.resource?.type === 'local_directory' &&
+    Boolean(restRepository.data.resource.path);
+
+  const bridgeTree = useQuery({
+    queryKey: [
+      'local-target-repository-tree',
+      projectId,
+      selectedExecutionTargetId,
+      restRepository.data?.resource?.id,
+      restRepository.data?.resource?.path
+    ],
+    queryFn: () =>
+      invokeLocalTarget({
+        capability: 'readRepositoryTree',
+        input: {
+          resourceId: restRepository.data!.resource!.id,
+          repoPath: restRepository.data!.resource!.path
+        }
+      }),
+    enabled: bridgeEnabled,
+    staleTime: 60_000
+  });
+
+  const repository = useMemo(() => {
+    if (!restRepository.data) return null;
+    if (!bridgeEnabled || !bridgeTree.data) return restRepository.data;
+    return mergeRepositoryWithBridge({ restRepository: restRepository.data, bridgeTree: bridgeTree.data });
+  }, [bridgeEnabled, bridgeTree.data, restRepository.data]);
 
   const setSelectedExecutionTargetId = useCallback(
     (executionTargetId: string | null) => {
@@ -53,20 +123,27 @@ export function ProjectRepositoryProvider({
       setSelectedExecutionTargetId,
       eligibleTargets: executionTarget.data?.eligibleTargets ?? [],
       resources: resources.data ?? [],
-      repository: repository.data ?? null,
-      isLoading: executionTarget.isLoading || resources.isLoading || repository.isLoading,
+      repository,
+      isLoading:
+        executionTarget.isLoading ||
+        resources.isLoading ||
+        restRepository.isLoading ||
+        (bridgeEnabled && bridgeTree.isLoading),
       error:
         executionTarget.error instanceof Error
           ? executionTarget.error
           : resources.error instanceof Error
             ? resources.error
-            : repository.error instanceof Error
-              ? repository.error
-              : null,
+            : restRepository.error instanceof Error
+              ? restRepository.error
+              : bridgeTree.error instanceof Error
+                ? bridgeTree.error
+                : null,
       refetch: () => {
         void executionTarget.refetch();
         void resources.refetch();
-        void repository.refetch();
+        void restRepository.refetch();
+        if (bridgeEnabled) void bridgeTree.refetch();
       }
     }),
     [
@@ -75,7 +152,10 @@ export function ProjectRepositoryProvider({
       repository,
       resources,
       selectedExecutionTargetId,
-      setSelectedExecutionTargetId
+      setSelectedExecutionTargetId,
+      restRepository,
+      bridgeEnabled,
+      bridgeTree
     ]
   );
 

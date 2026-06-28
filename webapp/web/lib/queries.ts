@@ -45,6 +45,18 @@ import type {
 import { api } from './api.ts';
 import { clearDesktopBearerToken, isCurrentDesktopBearerTokenPrefix } from './api-base.ts';
 import { authClient, normalizeLocalUsername, usernameToLocalEmail } from './auth-client.ts';
+import {
+  fetchMissionBranchesFromLocalTarget,
+  fetchWorktreesFromLocalTarget,
+  gatherCommitDiffOnLocalTarget,
+  purgeMergedWorktreesOnLocalTarget,
+  removeWorktreeOnLocalTarget,
+  resolveClientBranchActionContext,
+  resolvePrimaryResourceForTarget,
+  runBranchActionOnLocalTarget
+} from './local-target-branch.ts';
+import { isLocalTargetCapabilityAvailable, useLocalTargetCapabilityAvailable } from './local-target-client.ts';
+import { useIsRemoteExecutionTargetForProject, isRemoteExecutionTargetSelected } from './local-target-remote.ts';
 
 export const keys = {
   meta: ['meta'] as const,
@@ -151,16 +163,62 @@ export const useMission = (id: string, options: { refetchBranchState?: boolean }
 // Available branches for the mission's branch selector. Only fetched when the
 // selector is opened (callers pass `enabled`) so we don't shell git on every
 // mission open.
-export const useMissionBranches = (id: string, enabled: boolean) =>
-  useQuery({
-    queryKey: keys.missionBranches(id),
-    queryFn: () => api.listMissionBranches(id),
-    enabled,
-    staleTime: 30_000
+export const useMissionBranches = ({
+  missionId,
+  projectId,
+  current,
+  enabled
+}: {
+  missionId: string;
+  projectId: string;
+  current: string | null;
+  enabled: boolean;
+}) => {
+  const localTargetAvailable = useLocalTargetCapabilityAvailable();
+  const executionTarget = useProjectExecutionTarget(projectId);
+  const resources = useProjectResources(projectId);
+  const selectedExecutionTargetId = executionTarget.data?.selectedExecutionTargetId ?? null;
+  const primaryResource = resolvePrimaryResourceForTarget({
+    resources: resources.data ?? [],
+    executionTargetId: selectedExecutionTargetId
   });
 
-export const useWorktrees = () =>
-  useQuery({ queryKey: keys.worktrees, queryFn: () => api.listWorktrees() });
+  return useQuery({
+    queryKey: keys.missionBranches(missionId),
+    queryFn: async () => {
+      if (localTargetAvailable && primaryResource) {
+        return fetchMissionBranchesFromLocalTarget({ resource: primaryResource, current });
+      }
+      return api.listMissionBranches(missionId);
+    },
+    enabled: enabled && (!localTargetAvailable || Boolean(primaryResource)),
+    staleTime: 30_000
+  });
+};
+
+export const useWorktrees = () => {
+  const localTargetAvailable = useLocalTargetCapabilityAvailable();
+  const projects = useProjects();
+
+  return useQuery({
+    queryKey: keys.worktrees,
+    queryFn: async () => {
+      if (localTargetAvailable) {
+        const projectList = projects.data ?? [];
+        const resourceEntries = await Promise.all(
+          projectList.map(async project => [project.id, await api.listProjectResources(project.id)] as const)
+        );
+        return fetchWorktreesFromLocalTarget({
+          projects: projectList,
+          projectResources: new Map(resourceEntries)
+        });
+      }
+      return api.listWorktrees();
+    },
+    enabled: !localTargetAvailable || Boolean(projects.data),
+    staleTime: 30_000
+  });
+};
 
 // The global realtime SSE feed invalidates this query whenever the database
 // changes — including mission_events written by the CLI/agent in another process
@@ -506,26 +564,119 @@ export function useGenerateMissionTitle(id: string) {
   });
 }
 
-export function useGenerateCommitMessage(id: string) {
-  // Drafts a commit message from the worktree diff. Persists nothing, so there
-  // is no cache to invalidate — the caller drops the result into the field.
+export function useGenerateCommitMessage(mission: MissionDetailDto) {
   return useMutation({
-    mutationFn: () => api.generateCommitMessage(id)
+    mutationFn: async () => {
+      if (await isLocalTargetCapabilityAvailable()) {
+        const resources = await api.listProjectResources(mission.projectId);
+        const executionTarget = await api.getProjectExecutionTarget(mission.projectId);
+        const context = await resolveClientBranchActionContext({
+          mission,
+          resources,
+          executionTargetId: executionTarget.selectedExecutionTargetId
+        });
+        if (!context) {
+          throw new Error('This mission has no prepared branch worktree on this device.');
+        }
+        const diff = await gatherCommitDiffOnLocalTarget({ worktreePath: context.worktreePath });
+        return api.generateCommitMessage(mission.id, { diff });
+      }
+      return api.generateCommitMessage(mission.id);
+    }
   });
 }
 
-export function useBranchAction(id: string) {
+export function useBranchAction(mission: MissionDetailDto) {
   const qc = useQueryClient();
+  const isRemoteTarget = useIsRemoteExecutionTargetForProject(mission.projectId);
   return useMutation({
-    mutationFn: (body: BranchActionBody) => api.branchAction(id, body),
+    mutationFn: async (body: BranchActionBody) => {
+      if (isRemoteTarget) {
+        return api.branchAction(mission.id, body);
+      }
+      if (await isLocalTargetCapabilityAvailable()) {
+        const resources = await api.listProjectResources(mission.projectId);
+        const executionTarget = await api.getProjectExecutionTarget(mission.projectId);
+        const context = await resolveClientBranchActionContext({
+          mission,
+          resources,
+          executionTargetId: executionTarget.selectedExecutionTargetId
+        });
+        if (!context) {
+          throw new Error('This mission has no prepared branch worktree on this device.');
+        }
+        const summary = await runBranchActionOnLocalTarget({ context, body });
+        return api.branchAction(mission.id, {
+          action: body.action,
+          confirmBusy: body.confirmBusy,
+          message: body.message,
+          clientExecuted: true,
+          summary
+        });
+      }
+      return api.branchAction(mission.id, body);
+    },
     onSuccess: () => invalidateAll(qc)
   });
 }
 
 export function useRemoveWorktree() {
   const qc = useQueryClient();
+  const localTargetAvailable = useLocalTargetCapabilityAvailable();
+  const projects = useProjects();
+
   return useMutation({
-    mutationFn: (body: RemoveWorktreeBody) => api.removeWorktree(body),
+    mutationFn: async (body: RemoveWorktreeBody) => {
+      const projectList = projects.data ?? [];
+      const resourceEntries = await Promise.all(
+        projectList.map(async project => [project.id, await api.listProjectResources(project.id)] as const)
+      );
+      const worktrees = localTargetAvailable
+        ? await fetchWorktreesFromLocalTarget({
+            projects: projectList,
+            projectResources: new Map(resourceEntries)
+          })
+        : [];
+      const match = worktrees.find(worktree => worktree.path === body.path);
+      const projectId = body.projectId ?? match?.projectId;
+      const isRemoteTarget = projectId
+        ? isRemoteExecutionTargetSelected({
+            localExecutionTargetId: (await api.getLaunchSettings()).executionTargetId,
+            selectedExecutionTargetId: (
+              await api.getProjectExecutionTarget(projectId)
+            ).selectedExecutionTargetId
+          })
+        : false;
+
+      if (isRemoteTarget && projectId) {
+        const resources = await api.listProjectResources(projectId);
+        const executionTarget = await api.getProjectExecutionTarget(projectId);
+        const primary = resolvePrimaryResourceForTarget({
+          resources,
+          executionTargetId: executionTarget.selectedExecutionTargetId
+        });
+        return api.removeWorktree({
+          ...body,
+          projectId,
+          executionTargetId: executionTarget.selectedExecutionTargetId,
+          primaryRepoPath: primary?.path ?? body.primaryRepoPath
+        });
+      }
+
+      if (localTargetAvailable) {
+        const resources = match ? await api.listProjectResources(match.projectId) : [];
+        const primary = resolvePrimaryResourceForTarget({
+          resources,
+          executionTargetId: null
+        });
+        return removeWorktreeOnLocalTarget({
+          body: { ...body, primaryRepoPath: primary?.path ?? body.primaryRepoPath },
+          projects: projectList,
+          projectResources: new Map(resourceEntries)
+        });
+      }
+      return api.removeWorktree(body);
+    },
     onSuccess: result => {
       qc.setQueryData(keys.worktrees, result.worktrees);
       void qc.invalidateQueries({ queryKey: keys.worktrees });
@@ -535,8 +686,55 @@ export function useRemoveWorktree() {
 
 export function usePurgeMergedWorktrees() {
   const qc = useQueryClient();
+  const localTargetAvailable = useLocalTargetCapabilityAvailable();
+  const projects = useProjects();
+
   return useMutation({
-    mutationFn: () => api.purgeMergedWorktrees(),
+    mutationFn: async () => {
+      const projectList = projects.data ?? [];
+      const launchSettings = await api.getLaunchSettings();
+      const remoteProjects = (
+        await Promise.all(
+          projectList.map(async project => {
+            const executionTarget = await api.getProjectExecutionTarget(project.id);
+            const isRemote = isRemoteExecutionTargetSelected({
+              localExecutionTargetId: launchSettings.executionTargetId,
+              selectedExecutionTargetId: executionTarget.selectedExecutionTargetId
+            });
+            if (!isRemote) return null;
+            const resources = await api.listProjectResources(project.id);
+            const primary = resolvePrimaryResourceForTarget({
+              resources,
+              executionTargetId: executionTarget.selectedExecutionTargetId
+            });
+            if (!primary?.path) return null;
+            return {
+              projectId: project.id,
+              executionTargetId: executionTarget.selectedExecutionTargetId,
+              primaryRepoPath: primary.path
+            };
+          })
+        )
+      ).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+      if (remoteProjects.length > 0) {
+        for (const project of remoteProjects) {
+          await api.purgeMergedWorktrees(project);
+        }
+        return { removed: [], skipped: [], worktrees: [] };
+      }
+
+      if (localTargetAvailable) {
+        const resourceEntries = await Promise.all(
+          projectList.map(async project => [project.id, await api.listProjectResources(project.id)] as const)
+        );
+        return purgeMergedWorktreesOnLocalTarget({
+          projects: projectList,
+          projectResources: new Map(resourceEntries)
+        });
+      }
+      return api.purgeMergedWorktrees();
+    },
     onSuccess: result => {
       qc.setQueryData(keys.worktrees, result.worktrees);
       void qc.invalidateQueries({ queryKey: keys.worktrees });

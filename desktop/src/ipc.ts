@@ -18,6 +18,9 @@ import {
 } from './backend-runtime.js';
 import type { CliUpdater } from './cli-updater.js';
 import { syncSessionTokenToCliAuth } from './cli-auth-sync.js';
+import { readDesktopDeviceIdentity } from './device-identity.js';
+import type { LocalTargetBridgeCall } from '../../packages/core/service/local-target/desktop-bridge.ts';
+import { invokeDesktopLocalTarget } from './local-target-bridge.js';
 import { isNativeThemeSource, setNativeThemeSource } from './native-theme.js';
 import {
   DEFAULT_QUICK_TASK_HOTKEY,
@@ -52,7 +55,6 @@ export function registerIpc({
   getShellOrigin: () => string;
   getBackendController: () => BackendRuntimeController | null;
 }): void {
-  // Pick a local directory (e.g. to link a project to a checkout).
   ipcMain.handle('overlord:choose-directory', async () => {
     const window = getWindow();
     const properties: Array<'openDirectory' | 'createDirectory'> = [
@@ -65,6 +67,15 @@ export function registerIpc({
       : await dialog.showOpenDialog(options);
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
+  });
+
+  ipcMain.handle('overlord:device-identity', () => readDesktopDeviceIdentity());
+
+  ipcMain.handle('overlord:invoke-local-target', (_event, call: unknown) => {
+    if (!call || typeof call !== 'object' || !('capability' in call) || !('input' in call)) {
+      throw new Error('A local-target capability call is required.');
+    }
+    return invokeDesktopLocalTarget(call as LocalTargetBridgeCall);
   });
 
   ipcMain.handle('overlord:write-project-metadata', (_event, payload: unknown) => {

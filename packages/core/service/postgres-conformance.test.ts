@@ -13,8 +13,16 @@ import { after, describe, it } from 'node:test';
 import { claimNextQueuedRequest, recoverStaleExecutionRequests } from './queue-runtime.js';
 import { createServiceContext } from './context.js';
 import { claimNextExecutionRequest } from './execution-requests.js';
-import { getProjectExecutionTargetSelection } from './project-execution-target.js';
+import {
+  backendHostFingerprint,
+  ensureCallerDeviceTarget
+} from './execution-targets.js';
+import {
+  getProjectExecutionTargetSelection,
+  listEligibleProjectExecutionTargets
+} from './project-execution-target.js';
 import { findPrimaryProjectResource } from './projects.js';
+import { ServiceError } from './errors.js';
 
 /**
  * Adapter conformance for the hosted-backend runtime path (mission `coo:5`,
@@ -476,6 +484,76 @@ for (const adapter of adapters) {
         });
         assert.equal(selection.eligibleTargets.length, 1);
         assert.equal(selection.eligibleTargets[0]!.executionTargetId, graph.executionTargetId);
+      } finally {
+        await teardown();
+      }
+    });
+
+    it('rejects provisioning the backend host as an execution target on Postgres', async () => {
+      if (adapter.label !== 'postgres') return;
+      const { client, teardown } = await adapter.create();
+      try {
+        const ctx = await createServiceContext({ db: client, source: 'webapp' });
+        await assert.rejects(
+          () => ensureCallerDeviceTarget({ ctx }),
+          (error: unknown) =>
+            error instanceof ServiceError && error.code === 'backend_not_execution_target'
+        );
+      } finally {
+        await teardown();
+      }
+    });
+
+    it('excludes the backend host target from eligible project targets', async () => {
+      if (adapter.label !== 'postgres') return;
+      const { client, teardown } = await adapter.create();
+      try {
+        const graph = await seedGraph(client);
+        const now = ISO();
+        const workspaceUserId = `wu_${randomUUID()}`;
+        const profileId = `profile_${randomUUID()}`;
+
+        await client.run(
+          `INSERT INTO "user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt")
+           VALUES (?, ?, ?, true, ?, ?)`,
+          [profileId, 'Conformance User', `${profileId}@example.test`, now, now]
+        );
+        await client.run(
+          `INSERT INTO workspace_users
+             (id, workspace_id, profile_id, member_key, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'active', ?, ?)`,
+          [workspaceUserId, WORKSPACE_ID, profileId, `auth:${profileId}`, now, now]
+        );
+        await client.run(
+          `UPDATE devices SET fingerprint = ? WHERE id = (
+             SELECT device_id FROM execution_targets WHERE id = ?
+           )`,
+          [backendHostFingerprint(), graph.executionTargetId]
+        );
+        await client.run(
+          `INSERT INTO workspace_user_execution_targets
+             (id, workspace_id, workspace_user_id, execution_target_id, access_status,
+              created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'active', ?, ?)`,
+          [randomUUID(), WORKSPACE_ID, workspaceUserId, graph.executionTargetId, now, now]
+        );
+        await client.run(
+          `INSERT INTO project_resources
+             (id, workspace_id, project_id, execution_target_id, type, label, path,
+              is_primary, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'local_directory', 'Primary', '/tmp/conformance-primary', true,
+                   'active', ?, ?)`,
+          [randomUUID(), WORKSPACE_ID, graph.projectId, graph.executionTargetId, now, now]
+        );
+
+        const ctx = await createServiceContext({ db: client, source: 'webapp' });
+        ctx.actorWorkspaceUserId = workspaceUserId;
+
+        const eligible = await listEligibleProjectExecutionTargets({
+          ctx,
+          projectId: graph.projectId
+        });
+        assert.equal(eligible.length, 0);
       } finally {
         await teardown();
       }

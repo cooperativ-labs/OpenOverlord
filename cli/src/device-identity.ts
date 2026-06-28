@@ -1,5 +1,6 @@
-import { createHash } from 'node:crypto';
 import { hostname, platform } from 'node:os';
+
+import { deviceIdentityFromParts } from '../../packages/core/service/device-identity.ts';
 
 /** Stable device identity for the machine running the CLI (matches core `devices.ts`). */
 export function clientDeviceIdentity(): {
@@ -7,11 +8,8 @@ export function clientDeviceIdentity(): {
   deviceLabel: string;
   devicePlatform: string;
 } {
-  const devicePlatform = platform();
-  const deviceLabel = hostname();
-  const deviceFingerprint = createHash('sha256')
-    .update(`${deviceLabel}:${devicePlatform}`)
-    .digest('hex')
-    .slice(0, 32);
-  return { deviceFingerprint, deviceLabel, devicePlatform };
+  return deviceIdentityFromParts({
+    deviceLabel: hostname(),
+    devicePlatform: platform()
+  });
 }

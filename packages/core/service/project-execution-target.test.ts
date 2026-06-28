@@ -6,7 +6,9 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 
 import { createServiceContext } from './context.js';
-import { ensureCallerDeviceTarget } from './execution-targets.js';
+import {
+  ensureCallerDeviceTarget
+} from './execution-targets.js';
 import {
   getProjectExecutionTargetSelection,
   listEligibleProjectExecutionTargets,

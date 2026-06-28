@@ -14,6 +14,9 @@ import { loadRepoEnvForProfile } from '../load-repo-env.ts';
 import { authNodeHandler, getAllowedBrowserOrigins, requireAuthenticatedSession } from './auth.ts';
 import { DATABASE_DIALECT, DATABASE_PATH, initDatabase, WORKSPACE } from './db.ts';
 import { ENV_PROFILE, REPO_ROOT } from './env-profile.ts';
+import { resolveLocalTargetServerCapability } from './local-target-capability.ts';
+import { invokeLocalTargetOnServer } from './local-target-invoke.ts';
+import type { LocalTargetBridgeCall } from '../../packages/core/service/local-target/desktop-bridge.ts';
 import { apiErrorFromDatabaseError } from './errors.ts';
 import {
   addMissionTime,
@@ -43,6 +46,7 @@ import {
   getProjectExecutionTarget,
   updateProjectExecutionTarget
 } from './project-execution-target.ts';
+import { postExecutionTargetObservations } from './target-resource-observations.ts';
 import { runProtocolSubcommand } from './protocol.ts';
 import { requirePermission } from './rbac.ts';
 import { realtime } from './realtime.ts';
@@ -101,6 +105,7 @@ import {
 import {
   claimRunnerRequest,
   clearRunnerRequests,
+  completeRunnerMutationRequest,
   recordBranchPrepared,
   runnerStatus,
   updateRunnerRequestStatus
@@ -200,7 +205,13 @@ app.use(
       callback(new Error(`Origin ${origin} is not allowed by CORS`));
     },
     credentials: true,
-    allowedHeaders: ['Authorization', 'Content-Type'],
+    allowedHeaders: [
+      'Authorization',
+      'Content-Type',
+      'X-Overlord-Device-Fingerprint',
+      'X-Overlord-Device-Label',
+      'X-Overlord-Device-Platform'
+    ],
     // Better Auth bearer plugin returns the session token here for cross-origin
     // clients (desktop remote mode, CLI). Without this, the renderer cannot read
     // the header after sign-in and loops back to the login screen.
@@ -275,7 +286,8 @@ app.get(
         realtime: true,
         sqlStudio: getSqlStudioState().enabled,
         launchAgents: true,
-        executionTargets: false
+        executionTargets: false,
+        localTarget: resolveLocalTargetServerCapability({ dialect: DATABASE_DIALECT })
       }
     }),
     { requires: PERMISSIONS.WORKSPACE_READ }
@@ -646,6 +658,22 @@ app.get(
     { requires: PERMISSIONS.PROJECT_READ }
   )
 );
+app.post(
+  '/api/local-target/invoke',
+  handle(
+    req => {
+      const call = req.body as { capability?: unknown; input?: unknown };
+      if (!call?.capability || !call?.input) {
+        throw new ApiError(400, 'A local-target capability call is required.');
+      }
+      return invokeLocalTargetOnServer({
+        dialect: DATABASE_DIALECT,
+        call: call as LocalTargetBridgeCall
+      });
+    },
+    { requires: PERMISSIONS.PROJECT_READ }
+  )
+);
 app.get(
   '/api/projects/:id/missions',
   handle(req => listMissions(req.params.id), { requires: PERMISSIONS.MISSION_READ })
@@ -781,7 +809,7 @@ app.post(
 );
 app.post(
   '/api/missions/:id/generate-commit-message',
-  handle(req => generateCommitMessage(req.params.id), {
+  handle(req => generateCommitMessage(req.params.id, req.body ?? {}), {
     requires: PERMISSIONS.MISSION_UPDATE
   })
 );
@@ -938,6 +966,17 @@ app.put(
     requires: PERMISSIONS.LAUNCH_CONFIGURE
   })
 );
+app.post(
+  '/api/execution-targets/:id/observations',
+  handle(
+    req =>
+      postExecutionTargetObservations({
+        executionTargetId: req.params.id,
+        body: req.body
+      }),
+    { mutates: true }
+  )
+);
 
 // ---- CLI protocol / runner ------------------------------------------------
 
@@ -1014,6 +1053,17 @@ app.post(
   )
 );
 app.post(
+  '/api/runner/requests/:id/completed',
+  handle(
+    req =>
+      completeRunnerMutationRequest({
+        requestId: req.params.id,
+        mutationResult: req.body?.mutationResult
+      }),
+    { mutates: true, requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM }
+  )
+);
+app.post(
   '/api/missions/:id/branch-prepared',
   handle(
     req =>
@@ -1058,7 +1108,7 @@ app.post(
 );
 app.post(
   '/api/worktrees/purge-merged',
-  handle(() => purgeMergedWorktrees(), {
+  handle(req => purgeMergedWorktrees(req.body ?? {}), {
     mutates: true,
     requires: PERMISSIONS.PROJECT_UPDATE
   })

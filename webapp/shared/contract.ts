@@ -194,9 +194,38 @@ export interface ProjectResourceDto {
   path: string;
   isPrimary: boolean;
   status: ProjectResourceStatus;
+  /** When the linked target last reported availability for this resource. */
+  observedAt?: string | null;
+  /** Present when `observedAt` came from a client writeback. */
+  observationSource?: 'client' | null;
   createdAt: string;
   updatedAt: string;
   revision: number;
+}
+
+export type TargetObservationState =
+  | 'available'
+  | 'missing'
+  | 'unreachable'
+  | 'permission_denied'
+  | 'not_git_repository'
+  | 'unknown';
+
+export interface TargetResourceObservationInput {
+  resourceId: string;
+  state: TargetObservationState;
+  gitRoot?: string | null;
+  branch?: string | null;
+  commit?: string | null;
+  observedAt: string;
+}
+
+export interface RecordTargetResourceObservationsBody {
+  observations: TargetResourceObservationInput[];
+}
+
+export interface RecordTargetResourceObservationsResult {
+  recorded: number;
 }
 
 export type RepositoryEntryType = 'file' | 'directory';
@@ -405,6 +434,13 @@ export interface MissionBranchDto {
    * `willPrepareBranch` is true.
    */
   willUseWorktree: boolean;
+  /**
+   * When the branch metadata was last observed from a local execution target.
+   * Populated by the web client when git state is read through the desktop bridge.
+   */
+  observedAt?: string | null;
+  /** Whether `observedAt` came from the desktop bridge (`client`) or the REST server (`server`). */
+  observationSource?: 'client' | 'server' | null;
 }
 
 /**
@@ -607,6 +643,8 @@ export type ExecutionRequestStatus =
   | 'cancelled'
   | 'expired';
 
+export type LocalTargetMutationKindDto = 'branch_action' | 'worktree_purge';
+
 export interface ExecutionRequestDto {
   id: string;
   workspaceId: string;
@@ -621,6 +659,8 @@ export interface ExecutionRequestDto {
   launchConfig: AgentLaunchConfigDto;
   status: ExecutionRequestStatus;
   requestedSource: string;
+  /** Present when `requestedSource` is `local_target_mutation`. */
+  localTargetMutationKind?: LocalTargetMutationKindDto | null;
   lastError: string | null;
   createdAt: string;
   updatedAt: string;
@@ -822,6 +862,16 @@ export interface BranchActionBody {
   message?: string;
   /** Proceed even if an objective is executing on the branch (re-checked server-side). */
   confirmBusy?: boolean;
+  /** When true, git already ran on the client; the server records `summary` only. */
+  clientExecuted?: boolean;
+  /** Activity summary to record when `clientExecuted` is true. */
+  summary?: string;
+}
+
+/** Optional body for `POST /api/missions/:id/generate-commit-message`. */
+export interface GenerateCommitMessageBody {
+  /** Pre-gathered diff text from the client local-target bridge. */
+  diff?: string;
 }
 
 /**
@@ -874,6 +924,22 @@ export interface RemoveWorktreeBody {
   path: string;
   /** Remove even if the worktree has uncommitted changes (re-checked server-side). */
   force?: boolean;
+  /** Absolute primary repository path — required when `clientExecuted` is true on hosted backends. */
+  primaryRepoPath?: string;
+  /** When true, git removal already ran on the client; the server refreshes its response only. */
+  clientExecuted?: boolean;
+  /** Project that owns the worktree — required to queue removal on a remote execution target. */
+  projectId?: string;
+  /** Optional explicit execution target when queueing on a remote device. */
+  executionTargetId?: string | null;
+}
+
+/** Optional body for `POST /api/worktrees/purge` when queueing on a remote target. */
+export interface PurgeMergedWorktreesBody {
+  projectId?: string;
+  executionTargetId?: string | null;
+  primaryRepoPath?: string;
+  worktreeRoot?: string;
 }
 
 /**

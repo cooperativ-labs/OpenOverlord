@@ -1,4 +1,5 @@
-import { useMissionFileChanges, useProfile, useProjectRepository } from '@/lib/queries';
+import { useProjectRepositoryContext } from '@/components/projects/ProjectRepositoryContext.tsx';
+import { useMissionFileChanges, useProfile } from '@/lib/queries';
 
 import { LiveFileChangeCard } from './LiveFileChangeCard.tsx';
 import { Spinner } from './ui.tsx';
@@ -20,7 +21,7 @@ export function LiveFileChanges({
 }) {
   const fileChangesQ = useMissionFileChanges(missionId);
   const profileQ = useProfile();
-  const repositoryQ = useProjectRepository(projectId, null);
+  const { repository } = useProjectRepositoryContext();
 
   if (fileChangesQ.isLoading) {
     return (
@@ -39,7 +40,7 @@ export function LiveFileChanges({
   }
 
   const fileChanges = fileChangesQ.data ?? [];
-  const rootPath = repositoryQ.data?.rootPath ?? null;
+  const rootPath = repository?.rootPath ?? null;
   const editorScheme = profileQ.data?.editorScheme ?? null;
   if (fileChanges.length === 0) {
     return <p className="text-sm italic text-[var(--color-ink-dim)]">No file changes yet.</p>;

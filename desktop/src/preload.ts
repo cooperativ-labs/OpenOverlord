@@ -1,5 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+import type { LocalTargetBridgeCall } from '../../packages/core/service/local-target/desktop-bridge.ts';
+import type { CapabilityResult } from '../../packages/core/service/local-target/types.ts';
+
 export type DesktopUpdateState =
   | 'idle'
   | 'checking'
@@ -66,6 +69,15 @@ const api = {
   version: process.env.OVERLORD_DESKTOP_VERSION ?? null,
   /** Open the native directory picker; resolves to an absolute path or null. */
   chooseDirectory: (): Promise<string | null> => ipcRenderer.invoke('overlord:choose-directory'),
+  /** Stable device fingerprint for this machine (matches the CLI runner). */
+  getDeviceIdentity: (): Promise<{
+    deviceFingerprint: string;
+    deviceLabel: string;
+    devicePlatform: string;
+  }> => ipcRenderer.invoke('overlord:device-identity'),
+  /** Unified local-target capability bridge for checkout-local git/fs work. */
+  invokeLocalTarget: (call: LocalTargetBridgeCall): Promise<CapabilityResult<unknown>> =>
+    ipcRenderer.invoke('overlord:invoke-local-target', call),
   /** Write local `.overlord/project.json` metadata for a linked checkout. */
   writeProjectMetadata: (payload: {
     directoryPath: string;

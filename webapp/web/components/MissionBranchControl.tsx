@@ -14,18 +14,30 @@ import {
   Sparkles,
   Terminal
 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import type {
   MissionBranchDto,
   MissionBranchStatus,
   MissionDetailDto
 } from '../../shared/contract.ts';
+import { LocalTargetRequiredNotice } from './LocalTargetRequiredNotice.tsx';
 import { ApiRequestError } from '../lib/api.ts';
+import {
+  resolvePrimaryResourceForTarget,
+  useObservedMissionBranch
+} from '../lib/local-target-branch.ts';
+import {
+  hasPendingLocalTargetMutation,
+  useIsRemoteExecutionTargetForProject
+} from '../lib/local-target-remote.ts';
+import { useLocalTargetUnavailable } from '../lib/local-target-client.ts';
 import {
   useBranchAction,
   useGenerateCommitMessage,
   useMissionBranches,
+  useProjectExecutionTarget,
+  useProjectResources,
   useUpdateMission
 } from '../lib/queries.ts';
 import { cn } from '../lib/utils.ts';
@@ -187,7 +199,13 @@ function BranchCopyMenu({ branch }: { branch: MissionBranchDto }) {
  */
 function BranchSelector({ mission }: { mission: MissionDetailDto }) {
   const [open, setOpen] = useState(false);
-  const branches = useMissionBranches(mission.id, open);
+  const localTargetUnavailable = useLocalTargetUnavailable();
+  const branches = useMissionBranches({
+    missionId: mission.id,
+    projectId: mission.projectId,
+    current: mission.branch?.overrideBranch ?? mission.branch?.name ?? null,
+    enabled: open
+  });
   const update = useUpdateMission(mission.id);
   const override = mission.branch?.overrideBranch ?? null;
   const branchName = mission.branch?.name ?? '';
@@ -223,6 +241,11 @@ function BranchSelector({ mission }: { mission: MissionDetailDto }) {
               Automatic (system default)
             </DropdownMenuItem>
             {branches.isLoading && <DropdownMenuItem disabled>Loading branches…</DropdownMenuItem>}
+            {localTargetUnavailable && options.length === 0 && !branches.isLoading && (
+              <DropdownMenuItem disabled>
+                <LocalTargetRequiredNotice />
+              </DropdownMenuItem>
+            )}
             {options.map(name => (
               <DropdownMenuItem key={name} onClick={() => handleChange(name)}>
                 <Check className={cn('h-3 w-3', selected === name ? 'opacity-100' : 'opacity-0')} />
@@ -371,6 +394,13 @@ function describeBranchError(err: unknown, parent: string): BranchErrorView {
           'Connect a primary working directory for this project on this device, then try again.',
         detail: err.detail
       };
+    case 'LOCAL_TARGET_REQUIRED':
+      return {
+        title: 'Desktop required',
+        instruction:
+          'Open Overlord Desktop on this machine to run git branch actions against linked checkouts.',
+        detail: err.detail
+      };
     default:
       // Unrecognized: the merged server message is the best we have.
       return { title: 'Branch action failed', instruction: err.message };
@@ -385,8 +415,11 @@ function describeBranchError(err: unknown, parent: string): BranchErrorView {
  */
 function BranchPanel({ mission }: { mission: MissionDetailDto }) {
   const branch = mission.branch;
-  const branchAction = useBranchAction(mission.id);
-  const generateCommitMessage = useGenerateCommitMessage(mission.id);
+  const localTargetUnavailable = useLocalTargetUnavailable();
+  const isRemoteTarget = useIsRemoteExecutionTargetForProject(mission.projectId);
+  const pendingMutation = hasPendingLocalTargetMutation(mission.executionRequests);
+  const branchAction = useBranchAction(mission);
+  const generateCommitMessage = useGenerateCommitMessage(mission);
   const update = useUpdateMission(mission.id);
   const [actionError, setActionError] = useState<BranchErrorView | null>(null);
   // When an action needs confirmation (an objective is executing on the branch),
@@ -468,11 +501,28 @@ function BranchPanel({ mission }: { mission: MissionDetailDto }) {
   const showPublish = branch.status === 'created';
   const showCreatePr = branch.status === 'published';
   const commitMessageValid = commitMessage.trim().length > 0;
-  const hasActions = showIntegrate || showPushParent || showPublish;
+  const gitUnavailable =
+    (localTargetUnavailable && !isRemoteTarget && branch.status !== 'pending') || pendingMutation;
+  const hasActions = (showIntegrate || showPushParent || showPublish) && !gitUnavailable;
 
   return (
     <TooltipProvider>
       <div className="space-y-3 text-sm">
+        {pendingMutation && (
+          <p className="rounded-md border border-border/60 bg-muted/30 p-2.5 text-xs text-muted-foreground">
+            A branch action is queued on the selected execution target. It will finish when that
+            device&apos;s runner claims the job.
+          </p>
+        )}
+        {isRemoteTarget && !localTargetUnavailable && branch.status !== 'pending' && (
+          <p className="rounded-md border border-border/60 bg-muted/30 p-2.5 text-xs text-muted-foreground">
+            Branch actions queue on the selected remote execution target and run when its runner
+            is online.
+          </p>
+        )}
+        {localTargetUnavailable && !isRemoteTarget && branch.status !== 'pending' && (
+          <LocalTargetRequiredNotice className="rounded-md border border-border/60 bg-muted/30 p-2.5 text-xs text-muted-foreground" />
+        )}
         {/* Status indicator + the single copy affordance. */}
         <div className="flex items-center justify-between gap-2">
           <span
@@ -517,7 +567,7 @@ function BranchPanel({ mission }: { mission: MissionDetailDto }) {
           </button>
         )}
 
-        {showCommit && (
+        {showCommit && !gitUnavailable && (
           <div className="space-y-2.5 rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5">
             <p className="text-xs text-amber-800 dark:text-amber-200">
               Uncommitted changes on this branch. Commit them before updating from {parent}.
@@ -715,7 +765,30 @@ function BranchPanel({ mission }: { mission: MissionDetailDto }) {
  * the mission body. Renders nothing until the mission has a branch.
  */
 export function MissionBranchControl({ mission }: { mission: MissionDetailDto }) {
-  const branch = mission.branch;
+  const executionTarget = useProjectExecutionTarget(mission.projectId);
+  const resources = useProjectResources(mission.projectId);
+  const selectedExecutionTargetId = executionTarget.data?.selectedExecutionTargetId ?? null;
+  const primaryResource = useMemo(
+    () =>
+      resolvePrimaryResourceForTarget({
+        resources: resources.data ?? [],
+        executionTargetId: selectedExecutionTargetId
+      }),
+    [resources.data, selectedExecutionTargetId]
+  );
+  const observedBranch = useObservedMissionBranch({
+    mission,
+    resource: primaryResource,
+    enabled: true
+  });
+  const displayMission = useMemo<MissionDetailDto>(
+    () =>
+      observedBranch.data
+        ? { ...mission, branch: observedBranch.data }
+        : mission,
+    [mission, observedBranch.data]
+  );
+  const branch = displayMission.branch;
   if (!branch) return null;
 
   // When the mission will run off its base branch (worktree automation off and no
@@ -753,7 +826,7 @@ export function MissionBranchControl({ mission }: { mission: MissionDetailDto })
         <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={6} className="w-80 p-3">
-        <BranchPanel mission={mission} />
+        <BranchPanel mission={displayMission} />
       </PopoverContent>
     </Popover>
   );

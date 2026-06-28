@@ -554,6 +554,20 @@ export interface StorageBuckets {
   workspace_id: string;
 }
 
+export interface TargetResourceObservations {
+  branch: string | null;
+  created_at: string;
+  execution_target_id: string;
+  git_commit: string | null;
+  git_root: string | null;
+  id: string | null;
+  observed_at: string;
+  resource_id: string;
+  state: string;
+  updated_at: string;
+  workspace_id: string;
+}
+
 export interface User {
   createdAt: string;
   email: string;
@@ -756,6 +770,7 @@ export interface DB {
   session: Session;
   shared_context_entries: SharedContextEntries;
   storage_buckets: StorageBuckets;
+  target_resource_observations: TargetResourceObservations;
   user: User;
   user_execution_target_preferences: UserExecutionTargetPreferences;
   user_images: UserImages;

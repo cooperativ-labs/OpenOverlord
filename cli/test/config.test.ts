@@ -8,6 +8,7 @@ import { parseAgentCatalogFromToml, resolveInstanceAgentCatalog } from '../src/a
 import { BUNDLED_AGENT_CATALOG } from '../src/agent-catalog-defaults.ts';
 import {
   DEFAULT_LOCAL_BACKEND_URL,
+  isLoopbackBackendUrl,
   loadConfig,
   resolveBackendUrl,
   resolveDatabasePath,
@@ -113,6 +114,12 @@ test('expands a leading ~ in database_path to the home directory', () => {
     if (previousSqlite === undefined) delete process.env.OVERLORD_SQLITE_PATH;
     else process.env.OVERLORD_SQLITE_PATH = previousSqlite;
   }
+});
+
+test('isLoopbackBackendUrl recognizes local control-plane hosts', () => {
+  assert.equal(isLoopbackBackendUrl('http://127.0.0.1:4310'), true);
+  assert.equal(isLoopbackBackendUrl('http://localhost:4310'), true);
+  assert.equal(isLoopbackBackendUrl('https://overlord.example.com'), false);
 });
 
 test('backend_url selects the configured backend target', () => {

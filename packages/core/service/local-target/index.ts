@@ -10,6 +10,11 @@ export {
   readPrimaryCheckoutBranch,
   resolveRef
 } from './branch-status-git.ts';
+export {
+  observeMissionBranchGit,
+  type BranchObservationInput,
+  type BranchObservationResult
+} from './branch-observe-git.ts';
 export type {
   CommitMessageGatherErrorCode,
   CommitMessageGatherResult
@@ -20,6 +25,12 @@ export {
   type DefaultLocalTargetRegistryOptions,
   resolveDefaultLocalTargetProvider
 } from './default-registry.ts';
+export {
+  type BranchStatusInput,
+  invokeLocalTargetCapability,
+  type LocalTargetBridgeCall,
+  type LocalTargetBridgeCapability
+} from './desktop-bridge.ts';
 export { runLocalTargetDoctorChecks } from './doctor-checks.ts';
 export type { FakeHandlers, FakeProviderOptions } from './fake-provider.ts';
 export { FakeLocalTargetProvider } from './fake-provider.ts';

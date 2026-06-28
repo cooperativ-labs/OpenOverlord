@@ -22,6 +22,8 @@ import {
   resolveDatabasePath as resolveConfiguredDatabasePath
 } from '../../cli/src/config.ts';
 import { loadEnvDefaults } from '../../cli/src/env.ts';
+import type { ServiceContext } from '../../packages/core/service/context.ts';
+import type { ClientDeviceIdentity } from '../../packages/core/service/device-identity.ts';
 import type { ChangeOperation } from '../shared/contract.ts';
 
 import { ENV_PROFILE, REPO_ROOT } from './env-profile.ts';
@@ -204,13 +206,15 @@ export interface RequestContext {
   actorWorkspaceUserId: string | null;
   activeTokenId: string | null;
   activeTokenScopes: string[] | null;
+  clientDevice: ClientDeviceIdentity | null;
 }
 
 function defaultRequestContext(): RequestContext {
   return {
     actorWorkspaceUserId: ACTOR_WORKSPACE_USER_ID,
     activeTokenId: ACTIVE_TOKEN_ID,
-    activeTokenScopes: ACTIVE_TOKEN_SCOPES
+    activeTokenScopes: ACTIVE_TOKEN_SCOPES,
+    clientDevice: null
   };
 }
 
@@ -232,6 +236,7 @@ function mutateRequestContext(next: RequestContext): void {
     store.actorWorkspaceUserId = next.actorWorkspaceUserId;
     store.activeTokenId = next.activeTokenId;
     store.activeTokenScopes = next.activeTokenScopes;
+    store.clientDevice = next.clientDevice;
     return;
   }
   ACTOR_WORKSPACE_USER_ID = next.actorWorkspaceUserId;
@@ -249,6 +254,32 @@ export function getActiveTokenId(): string | null {
 
 export function getActiveTokenScopes(): string[] | null {
   return requestContext().activeTokenScopes;
+}
+
+export function getClientDeviceIdentity(): ClientDeviceIdentity | null {
+  return requestContext().clientDevice;
+}
+
+export function setClientDeviceIdentity(clientDevice: ClientDeviceIdentity | null): void {
+  const current = requestContext();
+  mutateRequestContext({
+    actorWorkspaceUserId: current.actorWorkspaceUserId,
+    activeTokenId: current.activeTokenId,
+    activeTokenScopes: current.activeTokenScopes,
+    clientDevice
+  });
+}
+
+export function buildWebappServiceContext(
+  client: DatabaseClient = requireDatabaseClient()
+): ServiceContext {
+  return {
+    db: client,
+    workspace: { id: WORKSPACE.id, slug: WORKSPACE.slug, name: WORKSPACE.name },
+    actorWorkspaceUserId: getActorWorkspaceUserId(),
+    source: 'webapp',
+    clientDevice: getClientDeviceIdentity()
+  };
 }
 
 /**
@@ -306,8 +337,9 @@ export let ACTIVE_TOKEN_ID: string | null = null;
 export function setActiveWorkspaceUser(workspaceUserId: string | null): void {
   mutateRequestContext({
     actorWorkspaceUserId: workspaceUserId,
+    activeTokenId: null,
     activeTokenScopes: null,
-    activeTokenId: null
+    clientDevice: getClientDeviceIdentity()
   });
 }
 
@@ -328,7 +360,8 @@ export function setActiveTokenAuth({
   mutateRequestContext({
     actorWorkspaceUserId: workspaceUserId,
     activeTokenId: tokenId,
-    activeTokenScopes: scopeGrants && scopeGrants.length > 0 ? scopeGrants : null
+    activeTokenScopes: scopeGrants && scopeGrants.length > 0 ? scopeGrants : null,
+    clientDevice: getClientDeviceIdentity()
   });
 }
 

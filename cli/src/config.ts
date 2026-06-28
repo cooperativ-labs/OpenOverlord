@@ -36,6 +36,16 @@ export function normalizeBackendUrl(value: string): string {
   return `http://${trimmed}`;
 }
 
+/** True when the configured backend is the loopback Local edition server. */
+export function isLoopbackBackendUrl(backendUrl: string): boolean {
+  try {
+    const hostname = new URL(normalizeBackendUrl(backendUrl)).hostname;
+    return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1';
+  } catch {
+    return false;
+  }
+}
+
 export type BackendMode = 'local' | 'cloud';
 
 export type OverlordConfig = {

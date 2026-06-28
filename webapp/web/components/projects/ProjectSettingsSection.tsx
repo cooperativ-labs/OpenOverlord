@@ -5,6 +5,7 @@ import {
   DEFAULT_PROJECT_COLOR,
   ProjectColorSetter
 } from '@/components/projects/ProjectColorSetter';
+import { useProjectRepositoryContext } from '@/components/projects/ProjectRepositoryContext.tsx';
 import { useProjectSettings } from '@/components/projects/ProjectSettingsContext';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,7 +16,7 @@ import {
 import { Input } from '@/components/ui/input';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { buildEditorFileHref, getEditorSchemeLabel } from '@/lib/helpers/editor-scheme';
-import { useProfile, useProjectRepository, useUpdateProject } from '@/lib/queries';
+import { useProfile, useUpdateProject } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
 type ProjectSettingsSectionProps = {
@@ -31,7 +32,7 @@ export function ProjectSettingsSection({
 }: ProjectSettingsSectionProps) {
   const updateProject = useUpdateProject(projectId);
   const projectSettings = useProjectSettings();
-  const repositoryQ = useProjectRepository(projectId, null);
+  const { repository } = useProjectRepositoryContext();
   const profileQ = useProfile();
   const [name, setName] = useState(initialName);
   const [savedName, setSavedName] = useState(initialName);
@@ -104,7 +105,7 @@ export function ProjectSettingsSection({
     }
   }
 
-  const rootPath = repositoryQ.data?.rootPath ?? null;
+  const rootPath = repository?.rootPath ?? null;
   const editorScheme = profileQ.data?.editorScheme ?? null;
   const ideHref = rootPath ? buildEditorFileHref(rootPath, editorScheme) : null;
   const ideLabel = getEditorSchemeLabel(editorScheme);

@@ -512,6 +512,29 @@ Indexes:
 - `(project_id, execution_target_id, is_primary)`.
 - Unique active `(project_id, execution_target_id, path)`.
 
+### `target_resource_observations`
+
+Latest client-reported availability for a linked resource on a specific execution target.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `execution_target_id` | Id | yes | FK to `execution_targets`. |
+| `resource_id` | Id | yes | FK to `project_resources`. |
+| `state` | text | yes | Open vocabulary: `available`, `missing`, `unreachable`, `permission_denied`, `not_git_repository`, `unknown` (§5 target observation). |
+| `git_root` | Path | no | Observed git root when `state = available`. |
+| `branch` | text | no | Observed branch when available. |
+| `git_commit` | text | no | Observed commit SHA when available. |
+| `observed_at` | TimestampUTC | yes | When the target made the observation. |
+| `created_at` | TimestampUTC | yes | First writeback row time. |
+| `updated_at` | TimestampUTC | yes | Last upsert time. |
+
+Indexes:
+
+- Unique `(execution_target_id, resource_id)`.
+- `(resource_id)` for project resource list merges.
+
 ### `project_user_preferences`
 
 Stores user-specific project preferences without overloading project resource directory rows.

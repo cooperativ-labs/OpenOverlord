@@ -1,3 +1,5 @@
+import type { LocalTargetBridgeCall } from '../../packages/core/service/local-target/desktop-bridge.ts';
+import type { CapabilityResult } from '../../packages/core/service/local-target/types.ts';
 import type {
   AgentCatalogDto,
   ArtifactDto,
@@ -16,6 +18,7 @@ import type {
   EverhourIntegrationDto,
   ExecutionRequestDto,
   FileChangeDto,
+  GenerateCommitMessageBody,
   GenerateCommitMessageResultDto,
   LaunchObjectiveBody,
   LaunchPreferenceDto,
@@ -37,7 +40,10 @@ import type {
   ProjectRepositoryDto,
   ProjectResourceDto,
   ProjectTagDto,
+  PurgeMergedWorktreesBody,
   PurgeWorktreesResultDto,
+  RecordTargetResourceObservationsBody,
+  RecordTargetResourceObservationsResult,
   RemoveWorktreeBody,
   ReorderBoardColumnBody,
   ReorderFutureObjectivesBody,
@@ -65,6 +71,19 @@ import type {
   WorktreeDto
 } from '../../shared/contract.ts';
 
+export type LocalTargetServerCapability = 'in_process_server' | 'unavailable';
+
+export interface MetaCapabilities {
+  projects: boolean;
+  missions: boolean;
+  objectives: boolean;
+  realtime: boolean;
+  sqlStudio: boolean;
+  launchAgents: boolean;
+  executionTargets: boolean;
+  localTarget: LocalTargetServerCapability;
+}
+
 export interface Meta {
   workspace: { id: string; slug: string; name: string };
   /** True while the seeded first workspace still needs its initial setup step. */
@@ -72,7 +91,7 @@ export interface Meta {
   databasePath: string;
   web: { host: string; port: number; url: string };
   sqlStudio: { enabled: boolean; url: string | null };
-  capabilities: Record<string, boolean>;
+  capabilities: MetaCapabilities;
 }
 
 /** Error thrown for a non-2xx REST response; carries the server's typed `code`. */
@@ -241,6 +260,15 @@ export const api = {
     ),
   deleteProjectResource: (projectId: string, resourceId: string) =>
     request<{ ok: true }>('DELETE', `/api/projects/${projectId}/resources/${resourceId}`),
+  recordTargetResourceObservations: (
+    executionTargetId: string,
+    body: RecordTargetResourceObservationsBody
+  ) =>
+    request<RecordTargetResourceObservationsResult>(
+      'POST',
+      `/api/execution-targets/${executionTargetId}/observations`,
+      body
+    ),
   getProjectRepository: (id: string, executionTargetId?: string | null) => {
     const params = new URLSearchParams();
     if (executionTargetId) params.set('executionTargetId', executionTargetId);
@@ -272,8 +300,12 @@ export const api = {
   deleteMission: (id: string) => request<{ ok: true }>('DELETE', `/api/missions/${id}`),
   generateMissionTitle: (id: string) =>
     request<MissionDetailDto>('POST', `/api/missions/${id}/generate-title`),
-  generateCommitMessage: (id: string) =>
-    request<GenerateCommitMessageResultDto>('POST', `/api/missions/${id}/generate-commit-message`),
+  generateCommitMessage: (id: string, body?: GenerateCommitMessageBody) =>
+    request<GenerateCommitMessageResultDto>(
+      'POST',
+      `/api/missions/${id}/generate-commit-message`,
+      body
+    ),
   branchAction: (id: string, body: BranchActionBody) =>
     request<MissionDetailDto>('POST', `/api/missions/${id}/branch/action`, body),
   listMissionBranches: (id: string) =>
@@ -281,8 +313,8 @@ export const api = {
   listWorktrees: () => request<WorktreeDto[]>('GET', '/api/worktrees'),
   removeWorktree: (body: RemoveWorktreeBody) =>
     request<PurgeWorktreesResultDto>('POST', '/api/worktrees/remove', body),
-  purgeMergedWorktrees: () =>
-    request<PurgeWorktreesResultDto>('POST', '/api/worktrees/purge-merged'),
+  purgeMergedWorktrees: (body?: PurgeMergedWorktreesBody) =>
+    request<PurgeWorktreesResultDto>('POST', '/api/worktrees/purge-merged', body),
   listMissionEvents: (id: string) =>
     request<MissionEventDto[]>('GET', `/api/missions/${id}/events`),
   listMissionArtifacts: (id: string) =>
@@ -369,5 +401,9 @@ export const api = {
     request<MissionEverhourStateDto>(
       'DELETE',
       `/api/missions/${missionId}/everhour/time/${recordId}`
-    )
+    ),
+
+  /** Dev-only loopback SQLite proxy for checkout-local capabilities in plain browser. */
+  invokeLocalTarget: (call: LocalTargetBridgeCall) =>
+    request<CapabilityResult<unknown>>('POST', '/api/local-target/invoke', call)
 };

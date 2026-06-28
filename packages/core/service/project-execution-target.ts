@@ -2,7 +2,8 @@ import type { DatabaseClient } from '@overlord/database';
 
 import type { ServiceContext } from './context.js';
 import { ServiceError } from './errors.js';
-import { findCallerDeviceExecutionTargetId } from './execution-targets.js';
+import { findActingDeviceExecutionTargetId, isBackendHostFingerprint } from './execution-targets.js';
+import { isCoLocatedBackend } from './local-target/index.js';
 import { findPrimaryProjectResource } from './projects.js';
 import { newId, nowIso } from './util.js';
 
@@ -147,10 +148,11 @@ export async function listEligibleProjectExecutionTargets({
   const resolvedProjectId = await resolveProjectId(ctx, projectId);
   if (!ctx.actorWorkspaceUserId) return [];
 
-  const callerExecutionTargetId = await findCallerDeviceExecutionTargetId({ ctx });
+  const callerExecutionTargetId = await findActingDeviceExecutionTargetId({ ctx });
   const rows = (await ctx.db.all(
     `SELECT et.id AS execution_target_id, et.type, et.label AS target_label,
-              et.device_id, d.label AS device_label, d.last_seen_at
+              et.device_id, d.label AS device_label, d.fingerprint AS device_fingerprint,
+              d.last_seen_at
          FROM workspace_user_execution_targets wuet
          JOIN execution_targets et
            ON et.id = wuet.execution_target_id
@@ -173,11 +175,19 @@ export async function listEligibleProjectExecutionTargets({
     target_label: string;
     device_id: string | null;
     device_label: string | null;
+    device_fingerprint: string | null;
     last_seen_at: string | null;
   }>;
 
   const eligible: EligibleExecutionTarget[] = [];
   for (const row of rows) {
+    if (
+      !isCoLocatedBackend(ctx.db) &&
+      row.device_fingerprint &&
+      isBackendHostFingerprint(row.device_fingerprint)
+    ) {
+      continue;
+    }
     const primary = await findPrimaryProjectResource({
       ctx,
       projectId: resolvedProjectId,

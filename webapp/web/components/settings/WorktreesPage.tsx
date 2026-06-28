@@ -1,9 +1,11 @@
 import { useState } from 'react';
 
+import { LocalTargetRequiredNotice } from '@/components/LocalTargetRequiredNotice.tsx';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { ApiRequestError } from '@/lib/api';
+import { useLocalTargetUnavailable } from '@/lib/local-target-client.ts';
 import {
   useLaunchSettings,
   usePurgeMergedWorktrees,
@@ -134,6 +136,7 @@ export function WorktreesPage() {
   const launchSettings = useLaunchSettings();
   const updateWorktrees = useUpdateWorktreeBranchAutomation();
   const worktreesEnabled = launchSettings.data?.worktreeBranchAutomationEnabled ?? false;
+  const localTargetUnavailable = useLocalTargetUnavailable();
 
   const worktrees = useWorktrees();
   const purgeMerged = usePurgeMergedWorktrees();
@@ -170,6 +173,10 @@ export function WorktreesPage() {
       </div>
 
       <div className="space-y-3">
+        {localTargetUnavailable ? (
+          <LocalTargetRequiredNotice className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground" />
+        ) : (
+          <>
         <div className="flex items-center justify-between gap-4">
           <div>
             <h3 className="text-sm font-medium">Existing worktrees</h3>
@@ -207,6 +214,8 @@ export function WorktreesPage() {
               <WorktreeRow key={worktree.path} worktree={worktree} />
             ))}
           </div>
+        )}
+          </>
         )}
       </div>
     </div>

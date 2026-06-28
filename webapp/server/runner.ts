@@ -6,13 +6,17 @@ import {
   clearExecutionRequests,
   type ExecutionRequestSummary,
   expireStaleExecutionRequests,
+  getExecutionRequest,
   listExecutionRequests,
   markExecutionFailed,
   markExecutionLaunched,
   markExecutionLaunching
 } from '../../packages/core/service/execution-requests.ts';
+import { completeLocalTargetMutationRequest } from '../../packages/core/service/local-target-mutations.ts';
+import type { CapabilityResult } from '../../packages/core/service/local-target/types.ts';
 
 import {
+  buildWebappServiceContext,
   getActorWorkspaceUserId,
   newId,
   nowIso,
@@ -21,6 +25,7 @@ import {
   serviceDatabaseClient,
   WORKSPACE
 } from './db.ts';
+import { clientDeviceFromBody } from './client-device.ts';
 import { ApiError } from './errors.ts';
 
 type ExecutionRequestRow = {
@@ -85,6 +90,7 @@ function serviceSummaryToDto(row: ExecutionRequestSummary): Record<string, unkno
         ? row.launchFlags.flags.filter((flag): flag is string => typeof flag === 'string')
         : []
     },
+    metadata: row.metadata,
     status: row.status,
     requestedSource: row.requestedSource,
     workingDirectory: row.resolvedWorkingDirectory,
@@ -94,12 +100,14 @@ function serviceSummaryToDto(row: ExecutionRequestSummary): Record<string, unkno
   };
 }
 
-function serviceContext(): ServiceContext {
+function serviceContext(clientDevice?: {
+  deviceFingerprint?: string | null;
+  deviceLabel?: string | null;
+  devicePlatform?: string | null;
+} | null): ServiceContext {
   return {
-    db: serviceDatabaseClient(),
-    workspace: { id: WORKSPACE.id, slug: WORKSPACE.slug, name: WORKSPACE.name },
-    actorWorkspaceUserId: getActorWorkspaceUserId(),
-    source: 'runner' as const
+    ...buildWebappServiceContext(),
+    clientDevice: clientDeviceFromBody(clientDevice) ?? buildWebappServiceContext().clientDevice
   };
 }
 
@@ -128,9 +136,9 @@ export async function claimRunnerRequest({
   request: Record<string, unknown> | null;
 }> {
   const request = await claimNextExecutionRequest({
-    ctx: serviceContext(),
+    ctx: serviceContext(clientDevice),
     projectId,
-    clientDevice
+    clientDevice: clientDeviceFromBody(clientDevice)
   });
   return { request: request ? serviceSummaryToDto(request) : null };
 }
@@ -151,6 +159,48 @@ export async function updateRunnerRequestStatus({
       : status === 'launched'
         ? await markExecutionLaunched({ ctx, requestId })
         : await markExecutionFailed({ ctx, requestId, error: error ?? 'Launch failed' });
+  return serviceSummaryToDto(request);
+}
+
+export async function completeRunnerMutationRequest({
+  requestId,
+  mutationResult
+}: {
+  requestId: string;
+  mutationResult: unknown;
+}): Promise<Record<string, unknown>> {
+  if (
+    !mutationResult ||
+    typeof mutationResult !== 'object' ||
+    !('ok' in mutationResult) ||
+    typeof (mutationResult as { ok: unknown }).ok !== 'boolean'
+  ) {
+    throw new ApiError(400, 'mutationResult must be a CapabilityResult envelope.');
+  }
+  const result = mutationResult as CapabilityResult<unknown>;
+  const ctx = serviceContext();
+  const completed = await completeLocalTargetMutationRequest({
+    ctx,
+    requestId,
+    result
+  });
+  if (
+    completed?.kind === 'branch_action' &&
+    result.ok &&
+    result.value &&
+    typeof result.value === 'object' &&
+    result.value !== null &&
+    typeof (result.value as { summary?: unknown }).summary === 'string'
+  ) {
+    const { recordBranchActionActivityFromMutation } = await import(
+      './local-target-mutation-queue.ts'
+    );
+    await recordBranchActionActivityFromMutation({
+      requestId,
+      summary: (result.value as { summary: string }).summary
+    });
+  }
+  const request = await getExecutionRequest({ ctx, id: requestId });
   return serviceSummaryToDto(request);
 }
 

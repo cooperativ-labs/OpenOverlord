@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '0.58-draft'
+contractVersion: '0.65-draft'
 
 components:
   protocol:
@@ -184,7 +184,7 @@ components:
       - 'profile-scoped CSP (loopback in Local mode; remote REST + wss origins added in Remote mode), single-instance lock, shell-local navigation guard, external-navigation handling'
       - 'process supervision of the bundled web/REST server (Node utilityProcess) in Local mode only; Remote mode does not fork the embedded server'
       - 'backend profiles ({ id, label, mode: local|remote, backendUrl } + active id) in userData/settings.json, per-profile Electron session partitions (persist:backend-<id>), per-backend bearer-token storage via safeStorage, and the reload-and-login switcher / first-run chooser (0.55-draft, additive; Local is the default unchanged behavior)'
-      - 'the minimal window.overlord preload bridge surface (feature-detected by the SPA, never required by it), incl. getActiveBackend/listBackends/addBackend/removeBackend/switchBackend/writeProjectMetadata'
+      - 'the minimal window.overlord preload bridge surface (feature-detected by the SPA, never required by it), incl. getActiveBackend/listBackends/addBackend/removeBackend/switchBackend/writeProjectMetadata/invokeLocalTarget'
       - 'desktop packaging metadata and the build/sign/notarize pipeline (electron-builder, entitlements, app-data layout)'
     dependsOn:
       - rest

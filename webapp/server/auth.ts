@@ -6,6 +6,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { createAuth } from '../../auth/src/auth/config.ts';
 
 import { resolveAllowedBrowserOrigins } from './browser-origins.ts';
+import { clientDeviceFromRequest } from './client-device.ts';
 import {
   authDomainDatabase,
   DATABASE_PATH,
@@ -16,6 +17,7 @@ import {
   resolveActorForWorkspace,
   setActiveTokenAuth,
   setActiveWorkspaceUser,
+  setClientDeviceIdentity,
   withRequestContextAsync,
   WORKSPACE
 } from './db.ts';
@@ -157,6 +159,7 @@ export async function requireAuthenticatedSession(
   next: NextFunction
 ): Promise<void> {
   return withRequestContextAsync(async () => {
+    setClientDeviceIdentity(clientDeviceFromRequest(req));
     try {
       const nonBrowser = usesNonBrowserAuthSurface(req);
 

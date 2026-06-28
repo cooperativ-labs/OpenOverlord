@@ -1,17 +1,17 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-import {
-  flagBoolean,
-  flagValue,
-  parseArgs,
-  rejectOversizedInlineJson,
-  requireFlag
-} from './args.js';
+import { flagBoolean, flagValue, parseArgs, rejectOversizedInlineJson, requireFlag } from './args.js';
 import { type BranchAutomationPayload, prepareMissionBranch } from './branch-preparation.js';
-import { loadConfig } from './config.js';
+import { isLoopbackBackendUrl, loadConfig } from './config.js';
+import { discoverProjectOnClient } from './discover-project-local.js';
+import {
+  executeLocalTargetMutation,
+  parseMutationFromMetadata
+} from '../../packages/core/service/local-target-mutation-runner.ts';
 import { CliError } from './errors.js';
 import { clientDeviceIdentity } from './device-identity.js';
+import { reportRunnerResourceObservations } from './resource-observations.js';
 import { launchAgent } from './launch.js';
 import { resolveNativeSessionId } from './native-session.js';
 import { printJson, printKeyValue } from './output.js';
@@ -648,6 +648,17 @@ export async function runProtocolCommand({
     });
   }
 
+  // Hosted backends cannot walk the agent machine's filesystem for discovery.
+  if (subcommand === 'discover-project' && !isLoopbackBackendUrl(runtime.backend.baseUrl)) {
+    const discovery = await discoverProjectOnClient({
+      backend: runtime.backend,
+      workingDirectory: flagValue(parsed.flags, '--directory') ?? workingDirectory,
+      projectId: flagValue(parsed.flags, '--project-id')
+    });
+    printJson(discovery);
+    return;
+  }
+
   const result = await runtime.backend.post<unknown>({
     path: `/api/protocol/${encodeURIComponent(subcommand)}`,
     body: {
@@ -1050,8 +1061,43 @@ async function runRunnerCommand({
     if (!request) return false;
     const requestRecord = asRecord(request);
     const requestId = String(requestRecord.id);
+    const projectId = String(requestRecord.projectId ?? '');
+    const executionTargetId =
+      typeof requestRecord.executionTargetId === 'string'
+        ? requestRecord.executionTargetId.trim()
+        : '';
+    if (projectId && executionTargetId) {
+      try {
+        await reportRunnerResourceObservations({
+          backend: runtime.backend,
+          projectId,
+          executionTargetId
+        });
+      } catch {
+        // Observation writeback is best-effort; launch should still proceed.
+      }
+    }
     await runtime.backend.post({ path: `/api/runner/requests/${requestId}/launching` });
     try {
+      const mutation = parseMutationFromMetadata(requestRecord.metadata);
+      if (mutation) {
+        const mutationResult = await executeLocalTargetMutation({ mutation });
+        if (!mutationResult.ok) {
+          await runtime.backend.post({
+            path: `/api/runner/requests/${requestId}/failed`,
+            body: { error: mutationResult.message }
+          });
+          throw new CliError({ message: mutationResult.message });
+        }
+        await runtime.backend.post({
+          path: `/api/runner/requests/${requestId}/completed`,
+          body: { mutationResult }
+        });
+        if (json) printJson({ request, mutationResult });
+        else console.log(`Completed ${mutation.kind} for ${requestRecord.missionId}`);
+        return true;
+      }
+
       // The execution request's agent is decided upstream from the objective row,
       // so a missing value is an invariant violation — never silently substitute a
       // default agent, which would launch work as the wrong tool. Fail the request

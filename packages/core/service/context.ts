@@ -1,5 +1,6 @@
 import { type DatabaseClient } from '@overlord/database';
 
+import type { ClientDeviceIdentity } from './device-identity.js';
 import { ServiceError } from './errors.js';
 
 export type WorkspaceContext = {
@@ -8,11 +9,15 @@ export type WorkspaceContext = {
   name: string;
 };
 
+export type { ClientDeviceIdentity } from './device-identity.js';
+
 export type ServiceContext = {
   db: DatabaseClient;
   workspace: WorkspaceContext;
   actorWorkspaceUserId: string | null;
   source: 'cli' | 'protocol' | 'webapp' | 'runner';
+  /** Client machine identity (browser/desktop/CLI). Required on hosted backends. */
+  clientDevice?: ClientDeviceIdentity | null;
 };
 
 export async function createServiceContext({

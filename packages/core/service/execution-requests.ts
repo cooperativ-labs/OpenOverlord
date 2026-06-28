@@ -9,6 +9,7 @@ import {
   type ClientDeviceIdentity,
   resolveClaimingDeviceTarget
 } from './execution-targets.js';
+import { LOCAL_TARGET_MUTATION_REQUESTED_SOURCE } from './local-target-mutations.ts';
 import { assertPrimaryResourceConnected } from './projects.js';
 import { newId, nowIso } from './util.js';
 
@@ -34,6 +35,7 @@ export type ExecutionRequestSummary = {
   requestedModel: string | null;
   requestedReasoningEffort: string | null;
   launchFlags: Record<string, unknown>;
+  metadata: Record<string, unknown>;
   requestedSource: string;
   status: string;
   claimedByDeviceId: string | null;
@@ -72,6 +74,7 @@ function rowToSummary(row: {
   requested_model: string | null;
   requested_reasoning_effort: string | null;
   launch_flags_json: string;
+  metadata_json: string;
   requested_source: string;
   status: string;
   claimed_by_device_id: string | null;
@@ -98,6 +101,7 @@ function rowToSummary(row: {
     requestedModel: row.requested_model,
     requestedReasoningEffort: row.requested_reasoning_effort,
     launchFlags: parseJsonObject(row.launch_flags_json),
+    metadata: parseJsonObject(row.metadata_json),
     requestedSource: row.requested_source,
     status: row.status,
     claimedByDeviceId: row.claimed_by_device_id,
@@ -218,7 +222,7 @@ function assertTransition({
   }
 }
 
-async function getExecutionRequest({
+export async function getExecutionRequest({
   ctx,
   id
 }: {
@@ -495,11 +499,12 @@ export async function claimNextExecutionRequest({
     "er.status = 'queued'",
     'er.deleted_at IS NULL',
     'o.deleted_at IS NULL',
-    `o.state IN (${LAUNCHABLE_OBJECTIVE_STATES.map(() => '?').join(', ')})`,
+    `(er.requested_source = ? OR o.state IN (${LAUNCHABLE_OBJECTIVE_STATES.map(() => '?').join(', ')}))`,
     '(er.execution_target_id IS NULL OR er.execution_target_id = ?)'
   ];
   const params: string[] = [
     ctx.workspace.id,
+    LOCAL_TARGET_MUTATION_REQUESTED_SOURCE,
     ...LAUNCHABLE_OBJECTIVE_STATES,
     target.executionTargetId
   ];

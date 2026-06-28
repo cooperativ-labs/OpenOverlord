@@ -217,6 +217,39 @@ From a source checkout, this starts the local web/API backend at
 missions without using the CLI. In a packaged install, Desktop owns starting and
 supervising the local backend.
 
+### Checkout-local features (Desktop vs browser)
+
+Repository browsing, `@` mentions, branch lists, branch actions, and worktree
+management run **on your machine** — not on the hosted control plane. For the
+full product experience, use **Overlord Desktop** (Electron). The desktop shell
+exposes `window.overlord.invokeLocalTarget`, which routes git/fs work through the
+same capability bodies as the CLI.
+
+| Surface | Postgres (Cloud) | Loopback SQLite (local dev) |
+| --- | --- | --- |
+| **Overlord Desktop** | Full checkout/git via IPC bridge | Full checkout/git via IPC bridge |
+| **Browser only** | Degraded — control-plane metadata only; UI shows `LocalTargetRequiredNotice` where git is needed | Degraded by default; optional dev proxy (below) |
+
+The web app reads `GET /api/meta` → `capabilities.localTarget` to decide whether
+a browser session can call the server's in-process dev proxy:
+
+| Value | Meaning |
+| --- | --- |
+| `unavailable` | No server-side checkout proxy. Use Desktop, or (SQLite only) enable the dev flag below. |
+| `in_process_server` | Opt-in dev fallback: browser may `POST /api/local-target/invoke` on loopback SQLite only. |
+
+**Browser-only local dev (contributors):** when running `yarn dev` against
+loopback SQLite, you can enable the in-process server proxy without Electron:
+
+```bash
+# In repo-root .env.local (or export before starting the server)
+OVERLORD_DEV_IN_PROCESS_LOCAL_TARGET=true
+```
+
+Then restart the web/API server. This path is **for local development only** —
+it is disabled on Postgres backends and is not a substitute for Desktop in
+production or Cloud workspaces.
+
 ---
 
 ## Step 9 — Inspect the database with SQL Studio (optional)

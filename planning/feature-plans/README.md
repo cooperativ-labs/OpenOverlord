@@ -23,6 +23,8 @@ the **redirect** that points each plan at the module / topic it belongs to.
 | Plan | What it proposes |
 | --- | --- |
 | [Local Execution Target Capabilities](local-execution-target-capabilities.md) | Unify local/cloud filesystem, Git, worktree, and agent execution behind local targets. |
+| [Client Checkout Bridge — Unification & Cloud Parity](client-checkout-bridge-unification.md) | WS-F: one desktop bridge for all web UI checkout work; slim server; Local/Cloud parity. |
+| [Client Checkout Bridge — Finish Sequence](client-checkout-bridge-finish-sequence.md) | Agent task sequence to commit, verify, document, and ship branch observation writeback (F2.2). |
 | [Objective Launch and Execution Flow Review](objective-launch-execution-flow-review.md) | Review of the launch → execution-request → runner flow. |
 | [Runner Background Daemon](runner-background-daemon.md) | Run the poller without occupying a terminal. |
 | [Global Foreground Runner](runner-global-foreground.md) | One terminal serving all accessible projects. |

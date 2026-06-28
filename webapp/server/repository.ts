@@ -1,29 +1,20 @@
 import { scopeGrantsForPreset } from '@overlord/auth';
 import { bindBool, type DatabaseClient } from '@overlord/database';
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, readdirSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { ensureCallerDeviceTarget } from '../../packages/core/service/execution-targets.ts';
+import { ensureActingDeviceTarget } from '../../packages/core/service/execution-targets.ts';
+import { resolveProjectExecutionTargetForLaunch } from '../../packages/core/service/project-execution-target.ts';
 import {
-  deriveBranchPublicationStatus,
-  readPrimaryCheckoutBranch
-} from '../../packages/core/service/local-target/branch-status-git.ts';
-import {
-  deriveResourceStatus,
-  isCoLocatedBackend,
   resolveBackendResourceProvider
 } from '../../packages/core/service/local-target/index.ts';
-import type {
-  CapabilityResult,
-  TargetMetadata
-} from '../../packages/core/service/local-target/types.ts';
 import {
-  resolveRealPath,
-  worktreeIsDirty,
-  worktreePathForBranch
-} from '../../packages/core/service/local-target/worktree-git.ts';
+  loadTargetResourceObservations,
+  mergeResourceStatusWithObservation,
+  type TargetResourceObservationRow
+} from '../../packages/core/service/target-resource-observations.ts';
+import type { TargetMetadata } from '../../packages/core/service/local-target/types.ts';
 import type {
   ArtifactDto,
   CreateMissionBody,
@@ -38,7 +29,6 @@ import type {
   GenerateCommitMessageResultDto,
   MissionBranchDto,
   MissionBranchListDto,
-  MissionBranchStatus,
   MissionDetailDto,
   MissionDto,
   MissionEventDto,
@@ -76,6 +66,7 @@ import { missionWorktreePath, previewMissionBranch } from './branch-planning.ts'
 import { generateCommitMessageFromDiff } from './commit-message-automation.ts';
 import {
   DATABASE_DIALECT,
+  buildWebappServiceContext,
   getActorWorkspaceUserId,
   newId,
   nowIso,
@@ -86,6 +77,11 @@ import {
   WORKSPACE
 } from './db.ts';
 import { ApiError } from './errors.ts';
+import {
+  queueLocalTargetMutation,
+  resolveMutationAnchorMissionId,
+  resolveRemoteMutationTarget
+} from './local-target-mutation-queue.ts';
 import {
   dequeueObjective,
   getLaunchPreference,
@@ -103,10 +99,21 @@ import {
 
 export { ApiError };
 
-/** True when this backend process is co-located with linked checkouts (Local SQLite). */
-const BACKEND_CO_LOCATED_WITH_CHECKOUT = isCoLocatedBackend(DATABASE_DIALECT);
+/** Control-plane provider: never touches linked checkout paths on the server (WS-F3). */
+function checkoutControlPlaneProvider(target: TargetMetadata) {
+  return resolveBackendResourceProvider(false, target);
+}
 
-/** Metadata for an in-process capability call served by the co-located backend. */
+function throwCheckoutLocalRequired(): never {
+  throw new ApiError(
+    409,
+    'Checkout-local work must run on a local execution target (Overlord Desktop or the dev invoke proxy).',
+    'The hosted Overlord backend stores metadata and queues work, but it cannot inspect or mutate your local filesystem.',
+    'LOCAL_FILESYSTEM_UNAVAILABLE'
+  );
+}
+
+/** Metadata for capability calls that must not run on the control-plane backend. */
 function backendTargetMetadata(executionTargetId: string | null): TargetMetadata {
   return { executionTargetId, deviceLabel: null, transport: 'in_process' };
 }
@@ -431,60 +438,15 @@ function isTruthyFlag(value: unknown): boolean {
   return value === true || value === 1;
 }
 
-function localMutationProvider() {
-  return resolveBackendResourceProvider(
-    BACKEND_CO_LOCATED_WITH_CHECKOUT,
-    backendTargetMetadata(null)
-  );
-}
-
-function branchActionHttpStatus(code: string): number {
-  if (code === 'BRANCH_COMMIT_MESSAGE_REQUIRED') return 400;
-  if (code === 'BRANCH_PUSH_FAILED' || code === 'BRANCH_MERGE_FAILED')
-    return code === 'BRANCH_PUSH_FAILED' ? 502 : 500;
-  if (code === 'BRANCH_NO_WORKTREE' || code === 'BRANCH_NOTHING_TO_COMMIT') return 409;
-  return 409;
-}
-
-function assertCapabilitySuccess<T>(result: CapabilityResult<T>): T {
-  if (result.ok) return result.value;
-  if (result.code === 'LOCAL_TARGET_REQUIRED' || result.code === 'CAPABILITY_NOT_IMPLEMENTED') {
-    throw new ApiError(
-      409,
-      result.message,
-      'The hosted Overlord backend stores metadata and queues work, but it cannot inspect or mutate your local filesystem.',
-      'LOCAL_FILESYSTEM_UNAVAILABLE'
-    );
-  }
-  const details = result.details as { branchActionCode?: string; detail?: string } | undefined;
-  if (details?.branchActionCode === 'WORKTREE_DIRTY') {
-    throw new ApiError(409, result.message, details.detail, 'WORKTREE_DIRTY');
-  }
-  if (details?.branchActionCode) {
-    throw new ApiError(
-      branchActionHttpStatus(details.branchActionCode),
-      result.message,
-      details.detail,
-      details.branchActionCode
-    );
-  }
-  throw new ApiError(409, result.message, undefined, result.code);
-}
-
-async function toProjectResourceDto(r: ProjectResourceRow): Promise<ProjectResourceDto> {
-  // Route availability through the local-target capability: an in-process
-  // provider when this backend is co-located with the checkout (Local SQLite),
-  // otherwise lifecycle-only — the hosted backend never derives `missing` from
-  // its own filesystem (WS-D 1; design §5/§6).
-  const provider = resolveBackendResourceProvider(
-    BACKEND_CO_LOCATED_WITH_CHECKOUT,
-    backendTargetMetadata(r.execution_target_id)
-  );
-  const status = (await deriveResourceStatus(provider, {
-    resourceId: r.id,
-    status: r.status,
-    path: r.path
-  })) as ProjectResourceDto['status'];
+async function toProjectResourceDto(
+  r: ProjectResourceRow,
+  observationsByResourceId: Map<string, TargetResourceObservationRow> = new Map()
+): Promise<ProjectResourceDto> {
+  const merged = mergeResourceStatusWithObservation({
+    lifecycleStatus: r.status,
+    resourceExecutionTargetId: r.execution_target_id,
+    observation: observationsByResourceId.get(r.id)
+  });
   return {
     id: r.id,
     workspaceId: r.workspace_id,
@@ -494,7 +456,9 @@ async function toProjectResourceDto(r: ProjectResourceRow): Promise<ProjectResou
     label: r.label,
     path: r.path,
     isPrimary: isTruthyFlag(r.is_primary),
-    status,
+    status: merged.status as ProjectResourceDto['status'],
+    observedAt: merged.observedAt,
+    observationSource: merged.observedAt ? 'client' : null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     revision: r.revision
@@ -519,13 +483,8 @@ async function resolveResourceExecutionTargetId(
 ): Promise<string | null> {
   if (executionTargetId === undefined) {
     return (
-      await ensureCallerDeviceTarget({
-        ctx: {
-          db,
-          workspace: { id: WORKSPACE.id, slug: WORKSPACE.slug, name: WORKSPACE.name },
-          actorWorkspaceUserId: getActorWorkspaceUserId(),
-          source: 'webapp'
-        }
+      await ensureActingDeviceTarget({
+        ctx: buildWebappServiceContext(db)
       })
     ).executionTargetId;
   }
@@ -719,31 +678,14 @@ function resolveWorktreeRoot(): string {
 // diverges from the branch tip, keeping this derivation unambiguous (a plain
 // fast-forward would leave parent and branch tips identical and indistinguishable
 // from a freshly-cut branch — see the documented edge in CONTRACT.md 0.39-draft).
-async function deriveBranchStatus({
-  projectId,
-  branchName,
-  baseBranch
-}: {
+async function deriveBranchStatus(_input: {
   projectId: string;
   branchName: string;
   baseBranch: string | null;
+  executionTargetId?: string | null;
 }): Promise<'created' | 'published' | 'merged_unpushed' | 'merged'> {
-  if (!BACKEND_CO_LOCATED_WITH_CHECKOUT) return 'created';
-  const resource = (await requireDatabaseClient().get(
-    `SELECT path FROM project_resources
-        WHERE project_id = ? AND workspace_id = ? AND is_primary = ?
-          AND status = 'active' AND deleted_at IS NULL
-        ORDER BY created_at ASC
-        LIMIT 1`,
-    [projectId, WORKSPACE.id, bindBool(DATABASE_DIALECT, true)]
-  )) as { path: string } | undefined;
-  // Without an inspectable checkout we can only trust that the branch was created.
-  if (!resource || !existsSync(resource.path)) return 'created';
-  return deriveBranchPublicationStatus({
-    repoPath: resource.path,
-    branchName,
-    baseBranch
-  });
+  // Live git status is observed on the client via the desktop bridge (WS-F2/F3).
+  return 'created';
 }
 
 async function getProjectSlug(projectId: string): Promise<string> {
@@ -758,24 +700,27 @@ async function getProjectSlug(projectId: string): Promise<string> {
 // inspectable primary checkout can provide one.
 const FALLBACK_BASE_BRANCH = 'main';
 
-async function primaryCheckoutBranch(projectId: string): Promise<string | null> {
-  if (!BACKEND_CO_LOCATED_WITH_CHECKOUT) return null;
-  const repoPath = await primaryResourcePath(projectId);
-  if (!repoPath || !existsSync(repoPath)) return null;
-  return readPrimaryCheckoutBranch(repoPath);
+async function primaryCheckoutBranch(
+  _projectId: string,
+  _executionTargetId?: string | null
+): Promise<string | null> {
+  return null;
 }
 
 // Resolves the base/parent branch for new mission branches: the project-
 // configured default branch (Resources settings) when set, otherwise the branch
 // checked out in the project's primary/main worktree, otherwise `main`.
-async function resolveProjectBaseBranch(projectId: string): Promise<string> {
+async function resolveProjectBaseBranch(
+  projectId: string,
+  executionTargetId?: string | null
+): Promise<string> {
   const row = (await requireDatabaseClient().get(
     `SELECT settings_json FROM projects WHERE id = ? AND workspace_id = ?`,
     [projectId, WORKSPACE.id]
   )) as { settings_json: string } | undefined;
   return (
     (row && readProjectDefaultBranch(row.settings_json)) ||
-    (await primaryCheckoutBranch(projectId)) ||
+    (await primaryCheckoutBranch(projectId, executionTargetId)) ||
     FALLBACK_BASE_BRANCH
   );
 }
@@ -809,13 +754,20 @@ async function preparedBaseBranch(missionId: string, branchName: string): Promis
   return null;
 }
 
-async function resolveMissionBaseBranch(
-  projectId: string,
-  missionId: string,
-  branchName: string
-): Promise<string> {
+async function resolveMissionBaseBranch({
+  projectId,
+  missionId,
+  branchName,
+  executionTargetId
+}: {
+  projectId: string;
+  missionId: string;
+  branchName: string;
+  executionTargetId?: string | null;
+}): Promise<string> {
   return (
-    (await preparedBaseBranch(missionId, branchName)) || (await resolveProjectBaseBranch(projectId))
+    (await preparedBaseBranch(missionId, branchName)) ||
+    (await resolveProjectBaseBranch(projectId, executionTargetId))
   );
 }
 
@@ -847,17 +799,14 @@ async function resolveBranchAutomation(preference: MissionWorktreePreference | n
 // dedicated worktree (the canonical path); branch-only missions are checked out
 // in the project's primary repo. Prefer git's view of where the branch is
 // checked out, falling back to the canonical worktree path.
-async function resolvePreparedWorktreePath(
-  projectId: string,
-  branchName: string,
-  fallback: string
-): Promise<string> {
-  if (!BACKEND_CO_LOCATED_WITH_CHECKOUT) return fallback;
-  const primary = await primaryResourcePath(projectId);
-  if (primary && existsSync(primary)) {
-    const checkedOut = worktreePathForBranch(primary, branchName);
-    if (checkedOut) return checkedOut;
-  }
+async function resolvePreparedWorktreePath({
+  fallback
+}: {
+  projectId: string;
+  branchName: string;
+  fallback: string;
+  executionTargetId?: string | null;
+}): Promise<string> {
   return fallback;
 }
 
@@ -865,6 +814,7 @@ async function resolvePreparedWorktreePath(
 // source of truth the runner writes). When it is null no branch has been
 // prepared yet, so we surface the planner's predicted name with a pending status.
 async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
+  const executionTargetId = await resolveProjectResourceScopeTargetId(row.project_id);
   const projectSlug = await getProjectSlug(row.project_id);
   const worktreeRoot = resolveWorktreeRoot();
   const overrideBranch = row.branch_override?.trim() || null;
@@ -873,18 +823,30 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
     await resolveBranchAutomation(worktreePreference);
   const name = row.active_branch?.trim();
   if (name) {
-    const baseBranch = await resolveMissionBaseBranch(row.project_id, row.id, name);
+    const baseBranch = await resolveMissionBaseBranch({
+      projectId: row.project_id,
+      missionId: row.id,
+      branchName: name,
+      executionTargetId
+    });
     const canonical = missionWorktreePath({ worktreeRoot, projectSlug, branch: name });
-    const worktreePath = await resolvePreparedWorktreePath(row.project_id, name, canonical);
+    const worktreePath = await resolvePreparedWorktreePath({
+      projectId: row.project_id,
+      branchName: name,
+      fallback: canonical,
+      executionTargetId
+    });
     return {
       name,
       baseBranch,
       worktreePath,
-      status: await deriveBranchStatus({ projectId: row.project_id, branchName: name, baseBranch }),
-      dirty:
-        BACKEND_CO_LOCATED_WITH_CHECKOUT &&
-        existsSync(worktreePath) &&
-        worktreeIsDirty(worktreePath),
+      status: await deriveBranchStatus({
+        projectId: row.project_id,
+        branchName: name,
+        baseBranch,
+        executionTargetId
+      }),
+      dirty: false,
       overrideBranch,
       worktreeAutomationEnabled: automationEnabled,
       worktreePreference,
@@ -896,7 +858,7 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
   // No branch prepared yet: preview the name the next launch will use. A pinned
   // override wins over the planner's canonical prediction so the panel reflects
   // exactly what the next launch will prepare.
-  const baseBranch = await resolveProjectBaseBranch(row.project_id);
+  const baseBranch = await resolveProjectBaseBranch(row.project_id, executionTargetId);
   const preview = previewMissionBranch({
     mission: { title: row.title, sequence: row.sequence_number },
     project: { slug: projectSlug },
@@ -939,20 +901,51 @@ interface BranchActionContext {
   primaryRepoPath: string;
 }
 
-async function primaryResource(projectId: string): Promise<{ id: string; path: string } | null> {
-  const resource = (await requireDatabaseClient().get(
-    `SELECT id, path FROM project_resources
-        WHERE project_id = ? AND workspace_id = ? AND is_primary = ?
-          AND status = 'active' AND deleted_at IS NULL
-        ORDER BY created_at ASC
-        LIMIT 1`,
-    [projectId, WORKSPACE.id, bindBool(DATABASE_DIALECT, true)]
-  )) as { id: string; path: string } | undefined;
-  return resource ?? null;
+async function resolveProjectResourceScopeTargetId(projectId: string): Promise<string | null> {
+  return resolveProjectExecutionTargetForLaunch({
+    ctx: buildWebappServiceContext(),
+    projectId
+  });
 }
 
-async function primaryResourcePath(projectId: string): Promise<string | null> {
-  return (await primaryResource(projectId))?.path ?? null;
+async function primaryResource(
+  projectId: string,
+  executionTargetId?: string | null
+): Promise<{ id: string; path: string } | null> {
+  const targetId =
+    executionTargetId === undefined
+      ? await resolveProjectResourceScopeTargetId(projectId)
+      : executionTargetId;
+
+  const row = (await (targetId === null
+    ? requireDatabaseClient().get(
+        `SELECT id, path FROM project_resources
+            WHERE project_id = ? AND workspace_id = ?
+              AND status = 'active' AND deleted_at IS NULL
+            ORDER BY is_primary DESC, created_at ASC
+            LIMIT 1`,
+        [projectId, WORKSPACE.id]
+      )
+    : requireDatabaseClient().get(
+        `SELECT id, path FROM project_resources
+            WHERE project_id = ? AND workspace_id = ?
+              AND (execution_target_id = ? OR execution_target_id IS NULL)
+              AND status = 'active' AND deleted_at IS NULL
+            ORDER BY
+              CASE WHEN execution_target_id = ? THEN 0 ELSE 1 END,
+              is_primary DESC,
+              created_at ASC
+            LIMIT 1`,
+        [projectId, WORKSPACE.id, targetId, targetId]
+      ))) as { id: string; path: string } | undefined;
+  return row ?? null;
+}
+
+async function primaryResourcePath(
+  projectId: string,
+  executionTargetId?: string | null
+): Promise<string | null> {
+  return (await primaryResource(projectId, executionTargetId))?.path ?? null;
 }
 
 async function loadBranchActionContext(missionRef: string): Promise<BranchActionContext> {
@@ -966,8 +959,9 @@ async function loadBranchActionContext(missionRef: string): Promise<BranchAction
       'BRANCH_NOT_PREPARED'
     );
   }
-  const primaryRepoPath = await primaryResourcePath(row.project_id);
-  if (!primaryRepoPath || !existsSync(primaryRepoPath)) {
+  const executionTargetId = await resolveProjectResourceScopeTargetId(row.project_id);
+  const primaryRepoPath = await primaryResourcePath(row.project_id, executionTargetId);
+  if (!primaryRepoPath) {
     throw new ApiError(
       409,
       'This project has no connected primary working directory on this device.',
@@ -988,8 +982,18 @@ async function loadBranchActionContext(missionRef: string): Promise<BranchAction
     missionId: row.id,
     projectId: row.project_id,
     branchName,
-    baseBranch: await resolveMissionBaseBranch(row.project_id, row.id, branchName),
-    worktreePath: await resolvePreparedWorktreePath(row.project_id, branchName, canonicalWorktree),
+    baseBranch: await resolveMissionBaseBranch({
+      projectId: row.project_id,
+      missionId: row.id,
+      branchName,
+      executionTargetId
+    }),
+    worktreePath: await resolvePreparedWorktreePath({
+      projectId: row.project_id,
+      branchName,
+      fallback: canonicalWorktree,
+      executionTargetId
+    }),
     primaryRepoPath
   };
 }
@@ -1060,7 +1064,13 @@ async function recordBranchActionActivity(
 // success do we record the activity + realtime change in a single transaction.
 export async function performBranchAction(
   missionRef: string,
-  body: { action?: unknown; message?: unknown; confirmBusy?: unknown }
+  body: {
+    action?: unknown;
+    message?: unknown;
+    confirmBusy?: unknown;
+    clientExecuted?: unknown;
+    summary?: unknown;
+  }
 ): Promise<MissionDetailDto> {
   const action = String(body.action ?? '') as BranchActionName;
   if (
@@ -1081,19 +1091,40 @@ export async function performBranchAction(
     );
   }
 
-  const summary = assertCapabilitySuccess(
-    await localMutationProvider().performBranchAction({
-      action,
-      branchName: ctx.branchName,
-      baseBranch: ctx.baseBranch,
-      worktreePath: ctx.worktreePath,
-      primaryRepoPath: ctx.primaryRepoPath,
-      message: typeof body.message === 'string' ? body.message : undefined
-    })
-  ).summary;
+  if (body.clientExecuted === true) {
+    const summary = typeof body.summary === 'string' ? body.summary.trim() : '';
+    if (!summary) {
+      throw new ApiError(400, 'A branch-action summary is required when clientExecuted is true.');
+    }
+    await recordBranchActionActivity(ctx, summary);
+    return getMissionDetail(ctx.missionId);
+  }
 
-  await recordBranchActionActivity(ctx, summary);
-  return getMissionDetail(ctx.missionId);
+  const remoteTarget = await resolveRemoteMutationTarget({
+    ctx: buildWebappServiceContext(),
+    projectId: ctx.projectId
+  });
+  if (remoteTarget.queue) {
+    await queueLocalTargetMutation({
+      projectId: ctx.projectId,
+      missionId: ctx.missionId,
+      executionTargetId: remoteTarget.executionTargetId,
+      kind: 'branch_action',
+      capability: 'performBranchAction',
+      input: {
+        action,
+        branchName: ctx.branchName,
+        baseBranch: ctx.baseBranch,
+        worktreePath: ctx.worktreePath,
+        primaryRepoPath: ctx.primaryRepoPath,
+        ...(typeof body.message === 'string' ? { message: body.message } : {})
+      },
+      eventSummary: `Queued branch action "${action}" on remote execution target.`
+    });
+    return getMissionDetail(ctx.missionId);
+  }
+
+  throwCheckoutLocalRequired();
 }
 
 /**
@@ -1105,14 +1136,14 @@ export async function performBranchAction(
  * can explain why no draft appeared.
  */
 export async function generateCommitMessage(
-  missionRef: string
+  missionRef: string,
+  body: { diff?: unknown } = {}
 ): Promise<GenerateCommitMessageResultDto> {
-  const ctx = await loadBranchActionContext(missionRef);
-  const { diff } = assertCapabilitySuccess(
-    await localMutationProvider().generateCommitMessageFromLocalDiff({
-      worktreePath: ctx.worktreePath
-    })
-  );
+  await loadBranchActionContext(missionRef);
+  const diff = typeof body.diff === 'string' ? body.diff.trim() : '';
+  if (!diff) {
+    throwCheckoutLocalRequired();
+  }
 
   const message = await generateCommitMessageFromDiff({ diff, env: process.env });
   if (!message) {
@@ -1133,171 +1164,21 @@ export async function generateCommitMessage(
 // pins it as the mission's `branch_override` (consumed by the Runner Layer at the
 // next launch). We list real refs so the choice is always valid.
 
-// Returns the de-duplicated, sorted set of local + remote branch names in the
-// mission project's primary repository, plus the branch the mission is (or will
-// be) operating on. Returns an empty list when no inspectable checkout exists.
+// Returns the mission's current/pinned branch from metadata. Full ref lists come
+// from the desktop local-target bridge (WS-F3).
 export async function listMissionBranches(missionRef: string): Promise<MissionBranchListDto> {
   const row = await getMissionRow(missionRef);
   const current = row.active_branch?.trim() || row.branch_override?.trim() || null;
-  const resource = await primaryResource(row.project_id);
-  if (!resource) {
-    return { branches: current ? [current] : [], current };
-  }
-  const provider = localMutationProvider();
-  const result = await provider.listBranches({ resourceId: resource.id, repoPath: resource.path });
-  if (!result.ok) {
-    return { branches: current ? [current] : [], current };
-  }
-  const names = new Set<string>();
-  for (const name of [...result.value.local, ...result.value.remote]) names.add(name);
-  if (current) names.add(current);
-  return { branches: [...names].sort((a, b) => a.localeCompare(b)), current };
+  return { branches: current ? [current] : [], current };
 }
 
 // ---- Worktree management (Settings → Worktrees) --------------------------
 //
-// Overlord's per-mission worktrees live under the worktree root (~/.ovld/worktrees).
-// They are registered against each project's primary repository, so we enumerate
-// them with `git worktree list` per project and filter to those under the root.
-// The webapp server is co-located with these worktrees and operates on them
-// directly (the same host-side ownership as the branch actions above).
-
-interface WorktreeListEntry {
-  path: string;
-  branch: string | null;
-  projectId: string;
-  projectName: string;
-  primaryRepoPath: string;
-}
-
-// Total size of a directory tree in bytes, skipping nested `.git` admin dirs to
-// stay cheap. Best-effort: unreadable entries are ignored.
-function directorySizeBytes(dir: string, budget = 20000): number {
-  let total = 0;
-  let visited = 0;
-  const walk = (current: string): void => {
-    if (visited >= budget) return;
-    let entries: import('node:fs').Dirent[];
-    try {
-      entries = readdirSync(current, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (visited >= budget) return;
-      visited += 1;
-      const full = path.join(current, entry.name);
-      try {
-        if (entry.isDirectory()) {
-          walk(full);
-        } else if (entry.isFile()) {
-          total += statSync(full).size;
-        }
-      } catch {
-        /* skip unreadable entry */
-      }
-    }
-  };
-  walk(dir);
-  return total;
-}
-
-// Enumerates every Overlord-managed worktree across the workspace's projects.
-async function collectWorktreeEntries(): Promise<WorktreeListEntry[]> {
-  const worktreeRoot = path.resolve(resolveWorktreeRoot());
-  const projects = (await requireDatabaseClient().all(
-    `SELECT id, name FROM projects
-        WHERE workspace_id = ? AND deleted_at IS NULL`,
-    [WORKSPACE.id]
-  )) as Array<{ id: string; name: string }>;
-
-  const projectInputs: Array<{
-    projectId: string;
-    projectName: string;
-    primaryRepoPath: string;
-  }> = [];
-  for (const project of projects) {
-    const repoPath = await primaryResourcePath(project.id);
-    if (!repoPath || !existsSync(repoPath)) continue;
-    projectInputs.push({
-      projectId: project.id,
-      projectName: project.name,
-      primaryRepoPath: repoPath
-    });
-  }
-
-  const listed = await localMutationProvider().listWorktrees({
-    worktreeRoot,
-    projects: projectInputs.map(p => ({ primaryRepoPath: p.primaryRepoPath }))
-  });
-  if (!listed.ok) return [];
-
-  return listed.value.worktrees.map(worktree => {
-    const project =
-      projectInputs.find(p => p.primaryRepoPath === worktree.primaryRepoPath) ?? projectInputs[0]!;
-    return {
-      path: worktree.path,
-      branch: worktree.branch,
-      projectId: project.projectId,
-      projectName: project.projectName,
-      primaryRepoPath: worktree.primaryRepoPath
-    };
-  });
-}
-
-async function toWorktreeDto(entry: WorktreeListEntry): Promise<WorktreeDto> {
-  // Map the worktree's branch back to the mission operating on it, when any.
-  let missionId: string | null = null;
-  let missionDisplayId: string | null = null;
-  let status: MissionBranchStatus | null = null;
-  if (entry.branch) {
-    const mission = (await requireDatabaseClient().get(
-      `SELECT id, display_id FROM missions
-          WHERE workspace_id = ? AND project_id = ? AND active_branch = ? AND deleted_at IS NULL
-          ORDER BY updated_at DESC LIMIT 1`,
-      [WORKSPACE.id, entry.projectId, entry.branch]
-    )) as { id: string; display_id: string } | undefined;
-    if (mission) {
-      missionId = mission.id;
-      missionDisplayId = mission.display_id;
-    }
-    const baseBranch = missionId
-      ? await resolveMissionBaseBranch(entry.projectId, missionId, entry.branch)
-      : await resolveProjectBaseBranch(entry.projectId);
-    status = await deriveBranchStatus({
-      projectId: entry.projectId,
-      branchName: entry.branch,
-      baseBranch
-    });
-  }
-  const merged = status === 'merged' || status === 'merged_unpushed';
-  let sizeBytes: number | null = null;
-  let lastModifiedAt: string | null = null;
-  try {
-    lastModifiedAt = statSync(entry.path).mtime.toISOString();
-    sizeBytes = directorySizeBytes(entry.path);
-  } catch {
-    /* directory vanished between listing and stat */
-  }
-  return {
-    path: entry.path,
-    branch: entry.branch,
-    projectId: entry.projectId,
-    projectName: entry.projectName,
-    missionId,
-    missionDisplayId,
-    status,
-    merged,
-    dirty: worktreeIsDirty(entry.path),
-    sizeBytes,
-    lastModifiedAt
-  };
-}
+// Listing and git mutations run on the client via the desktop bridge (WS-F3).
+// The control plane only acknowledges client-executed removals.
 
 export async function listWorktrees(): Promise<WorktreeDto[]> {
-  const entries = await collectWorktreeEntries();
-  const dtos = await Promise.all(entries.map(toWorktreeDto));
-  return dtos.sort((a, b) => a.path.localeCompare(b.path));
+  return [];
 }
 
 // Removes a single worktree by path. Refuses a dirty worktree unless `force`,
@@ -1305,54 +1186,103 @@ export async function listWorktrees(): Promise<WorktreeDto[]> {
 export async function removeWorktree(body: RemoveWorktreeBody): Promise<PurgeWorktreesResultDto> {
   const target = typeof body.path === 'string' ? path.resolve(body.path.trim()) : '';
   if (!target) throw new ApiError(400, 'A worktree path is required.');
-  const entry = (await collectWorktreeEntries()).find(
-    e => resolveRealPath(e.path) === resolveRealPath(target)
-  );
-  if (!entry) {
-    throw new ApiError(
-      404,
-      'No Overlord-managed worktree at that path.',
-      undefined,
-      'WORKTREE_NOT_FOUND'
-    );
+
+  if (body.clientExecuted === true) {
+    const primaryRepoPath =
+      typeof body.primaryRepoPath === 'string' ? body.primaryRepoPath.trim() : '';
+    if (!primaryRepoPath) {
+      throw new ApiError(400, 'primaryRepoPath is required when clientExecuted is true.');
+    }
+    return {
+      removed: [target],
+      skipped: [],
+      worktrees: []
+    };
   }
-  const force = body.force === true;
-  const result = assertCapabilitySuccess(
-    await localMutationProvider().removeWorktree({
-      path: entry.path,
-      primaryRepoPath: entry.primaryRepoPath,
-      force
-    })
-  );
-  return {
-    removed: result.removed,
-    skipped: result.skipped,
-    worktrees: await listWorktrees()
-  };
+
+  const projectId = typeof body.projectId === 'string' ? body.projectId.trim() : '';
+  if (projectId) {
+    const remoteTarget = await resolveRemoteMutationTarget({
+      ctx: buildWebappServiceContext(),
+      projectId,
+      executionTargetId: body.executionTargetId ?? null
+    });
+    if (remoteTarget.queue) {
+      const primaryRepoPath =
+        typeof body.primaryRepoPath === 'string' ? body.primaryRepoPath.trim() : '';
+      if (!primaryRepoPath) {
+        throw new ApiError(
+          400,
+          'primaryRepoPath is required to queue worktree removal on a remote target.'
+        );
+      }
+      const missionId = await resolveMutationAnchorMissionId(projectId);
+      await queueLocalTargetMutation({
+        projectId,
+        missionId,
+        executionTargetId: remoteTarget.executionTargetId,
+        kind: 'worktree_purge',
+        capability: 'removeWorktree',
+        input: {
+          path: target,
+          primaryRepoPath,
+          force: body.force === true
+        },
+        eventSummary: `Queued worktree removal on remote execution target.`
+      });
+      return { removed: [], skipped: [], worktrees: [] };
+    }
+  }
+
+  throwCheckoutLocalRequired();
 }
 
 // Removes every clean, merged worktree in one pass ("Purge all merged"). Dirty
 // worktrees are skipped (never force-removed) so in-progress work is preserved.
-export async function purgeMergedWorktrees(): Promise<PurgeWorktreesResultDto> {
-  const entries = await collectWorktreeEntries();
-  const merged = (await Promise.all(entries.map(toWorktreeDto))).filter(
-    dto => dto.merged && !dto.dirty
-  );
-  const purgeTargets = merged
-    .map(dto => {
-      const entry = entries.find(e => e.path === dto.path);
-      return entry ? { path: entry.path, primaryRepoPath: entry.primaryRepoPath } : null;
-    })
-    .filter((entry): entry is { path: string; primaryRepoPath: string } => entry !== null);
+export async function purgeMergedWorktrees(
+  body: {
+    projectId?: unknown;
+    executionTargetId?: unknown;
+    primaryRepoPath?: unknown;
+    worktreeRoot?: unknown;
+  } = {}
+): Promise<PurgeWorktreesResultDto> {
+  const projectId = typeof body.projectId === 'string' ? body.projectId.trim() : '';
+  if (projectId) {
+    const remoteTarget = await resolveRemoteMutationTarget({
+      ctx: buildWebappServiceContext(),
+      projectId,
+      executionTargetId:
+        typeof body.executionTargetId === 'string' ? body.executionTargetId.trim() : null
+    });
+    if (remoteTarget.queue) {
+      const primaryRepoPath =
+        typeof body.primaryRepoPath === 'string' ? body.primaryRepoPath.trim() : '';
+      if (!primaryRepoPath) {
+        throw new ApiError(
+          400,
+          'primaryRepoPath is required to queue merged worktree purge on a remote target.'
+        );
+      }
+      const missionId = await resolveMutationAnchorMissionId(projectId);
+      await queueLocalTargetMutation({
+        projectId,
+        missionId,
+        executionTargetId: remoteTarget.executionTargetId,
+        kind: 'worktree_purge',
+        capability: 'purgeMergedWorktrees',
+        input: {
+          discover: true,
+          primaryRepoPath,
+          ...(typeof body.worktreeRoot === 'string' ? { worktreeRoot: body.worktreeRoot } : {})
+        },
+        eventSummary: 'Queued merged worktree purge on remote execution target.'
+      });
+      return { removed: [], skipped: [], worktrees: [] };
+    }
+  }
 
-  const result = assertCapabilitySuccess(
-    await localMutationProvider().purgeMergedWorktrees({ entries: purgeTargets })
-  );
-  return {
-    removed: result.removed,
-    skipped: result.skipped,
-    worktrees: await listWorktrees()
-  };
+  throwCheckoutLocalRequired();
 }
 
 interface ProjectTagRow {
@@ -1870,7 +1800,11 @@ export async function listProjectResources(projectId: string): Promise<ProjectRe
         ORDER BY status ASC, is_primary DESC, label ASC, path ASC`,
     [projectId]
   )) as ProjectResourceRow[];
-  return await Promise.all(rows.map(toProjectResourceDto));
+  const observations = await loadTargetResourceObservations({
+    ctx: buildWebappServiceContext(),
+    resourceIds: rows.map(row => row.id)
+  });
+  return await Promise.all(rows.map(row => toProjectResourceDto(row, observations)));
 }
 
 async function insertProjectResource(
@@ -1907,18 +1841,7 @@ async function insertProjectResource(
     ]
   );
 
-  // WS-D 2: write .overlord/project.json through the capability — an in-process
-  // provider when co-located (Local SQLite), otherwise nothing (the hosted
-  // backend never writes to its own filesystem; the client owns the write).
-  await resolveBackendResourceProvider(
-    BACKEND_CO_LOCATED_WITH_CHECKOUT,
-    backendTargetMetadata(executionTargetId)
-  ).writeProjectMetadata({
-    directoryPath: resourcePath,
-    projectId: project.id,
-    resourceId,
-    isPrimary: body.isPrimary !== false
-  });
+  // Client/desktop owns `.overlord/project.json` on linked paths (WS-F3).
 
   await recordChangeAsync(
     {
@@ -2104,10 +2027,7 @@ export async function getProjectRepository(
     };
   }
 
-  const provider = resolveBackendResourceProvider(
-    BACKEND_CO_LOCATED_WITH_CHECKOUT,
-    backendTargetMetadata(executionTargetId)
-  );
+  const provider = checkoutControlPlaneProvider(backendTargetMetadata(executionTargetId));
   const tree = await provider.readRepositoryTree({
     resourceId: resource.id,
     repoPath: resource.path

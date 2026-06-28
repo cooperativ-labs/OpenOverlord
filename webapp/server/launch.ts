@@ -28,7 +28,11 @@ import {
   type ExecutionRequestSummary
 } from '../../packages/core/service/execution-requests.ts';
 import {
-  ensureCallerDeviceTarget,
+  LOCAL_TARGET_MUTATION_REQUESTED_SOURCE,
+  parseLocalTargetMutation
+} from '../../packages/core/service/local-target-mutations.ts';
+import {
+  ensureActingDeviceTarget,
   updateTerminalProfile as persistTerminalProfile
 } from '../../packages/core/service/execution-targets.ts';
 import {
@@ -55,6 +59,7 @@ import type {
 } from '../shared/contract.ts';
 
 import {
+  buildWebappServiceContext,
   getActorWorkspaceUserId,
   newId,
   nowIso,
@@ -229,12 +234,7 @@ export async function refreshAgentCatalog(): Promise<AgentCatalogDto> {
 // ---- Local device / execution target provisioning -------------------------
 
 function serviceContext(client: DatabaseClient = serviceDatabaseClient()) {
-  return {
-    db: client,
-    workspace: { id: WORKSPACE.id, slug: WORKSPACE.slug, name: WORKSPACE.name },
-    actorWorkspaceUserId: getActorWorkspaceUserId(),
-    source: 'webapp' as const
-  };
+  return buildWebappServiceContext(client);
 }
 
 function toTerminalProfileDto(profile: TerminalProfile): TerminalProfileDto {
@@ -266,7 +266,7 @@ async function ensureLocalLaunchTarget(client: DatabaseClient = requireDatabaseC
   agentConfigs: Record<string, AgentLaunchConfigDto>;
   terminalProfile: TerminalProfileDto;
 }> {
-  const target = await ensureCallerDeviceTarget({ ctx: serviceContext(client) });
+  const target = await ensureActingDeviceTarget({ ctx: serviceContext(client) });
   return {
     deviceId: target.deviceId,
     deviceLabel: target.deviceLabel,
@@ -466,11 +466,23 @@ interface ExecutionRequestRow {
   requested_model: string | null;
   requested_reasoning_effort: string | null;
   launch_flags_json: string;
+  metadata_json: string;
   status: string;
   requested_source: string;
   last_error: string | null;
   created_at: string;
   updated_at: string;
+}
+
+function parseMetadataJson(json: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 function parseLaunchConfig(json: string): AgentLaunchConfigDto {
@@ -485,7 +497,17 @@ function parseLaunchConfig(json: string): AgentLaunchConfigDto {
   }
 }
 
+function executionRequestMutationKind(
+  requestedSource: string,
+  metadata: Record<string, unknown>
+): ExecutionRequestDto['localTargetMutationKind'] {
+  if (requestedSource !== LOCAL_TARGET_MUTATION_REQUESTED_SOURCE) return null;
+  const mutation = parseLocalTargetMutation(metadata);
+  return mutation?.kind ?? null;
+}
+
 function toExecutionRequestDto(r: ExecutionRequestRow): ExecutionRequestDto {
+  const metadata = parseMetadataJson(r.metadata_json);
   return {
     id: r.id,
     workspaceId: r.workspace_id,
@@ -499,6 +521,7 @@ function toExecutionRequestDto(r: ExecutionRequestRow): ExecutionRequestDto {
     launchConfig: parseLaunchConfig(r.launch_flags_json),
     status: r.status as ExecutionRequestStatus,
     requestedSource: r.requested_source,
+    localTargetMutationKind: executionRequestMutationKind(r.requested_source, metadata),
     lastError: r.last_error,
     createdAt: r.created_at,
     updatedAt: r.updated_at
@@ -524,6 +547,7 @@ function executionSummaryToDto(r: ExecutionRequestSummary): ExecutionRequestDto 
     },
     status: r.status as ExecutionRequestStatus,
     requestedSource: r.requestedSource,
+    localTargetMutationKind: executionRequestMutationKind(r.requestedSource, r.metadata),
     lastError: r.lastError,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt
@@ -533,7 +557,7 @@ function executionSummaryToDto(r: ExecutionRequestSummary): ExecutionRequestDto 
 const EXECUTION_REQUEST_COLUMNS = `
   id, workspace_id, project_id, mission_id, objective_id, execution_target_id,
   requested_agent, requested_model, requested_reasoning_effort, launch_flags_json,
-  status, requested_source, last_error, created_at, updated_at
+  metadata_json, status, requested_source, last_error, created_at, updated_at
 `;
 
 /** Active (queued/claimed/launching) requests for a mission, newest first per objective. */

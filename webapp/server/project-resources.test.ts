@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -78,15 +78,4 @@ test('createProject can create an initial primary resource atomically', async ()
   assert.equal(rows[0]?.path, resourceDir);
   assert.equal(rows[0]?.isPrimary, true);
   assert.equal(rows[0]?.executionTargetId, launchSettings.executionTargetId);
-
-  const projectJsonPath = path.join(resourceDir, '.overlord', 'project.json');
-  assert.equal(existsSync(projectJsonPath), true);
-  const projectJson = JSON.parse(readFileSync(projectJsonPath, 'utf8')) as {
-    projectId: string;
-    resourceId: string;
-    isPrimary: boolean;
-  };
-  assert.equal(projectJson.projectId, project.id);
-  assert.equal(projectJson.resourceId, rows[0]?.id);
-  assert.equal(projectJson.isPrimary, true);
 });

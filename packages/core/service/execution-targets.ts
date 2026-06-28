@@ -9,16 +9,13 @@ import {
 
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
+import type { ClientDeviceIdentity } from './device-identity.js';
 import { callerDeviceFingerprint } from './devices.js';
 import { ServiceError } from './errors.js';
 import { isCoLocatedBackend } from './local-target/index.js';
 import { newId, nowIso } from './util.js';
 
-export type ClientDeviceIdentity = {
-  deviceFingerprint: string;
-  deviceLabel?: string | null;
-  devicePlatform?: string | null;
-};
+export type { ClientDeviceIdentity } from './device-identity.js';
 
 export type LocalExecutionTarget = {
   deviceId: string;
@@ -105,16 +102,32 @@ async function ensureUserExecutionTargetPreference({
   return { id, terminalProfile };
 }
 
-/**
- * Read-only lookup of the local execution target for the process host fingerprint.
- * Does not provision devices, targets, or preferences — safe for list/read API paths.
- */
-export async function findCallerDeviceExecutionTargetId({
-  ctx
+/** Fingerprint of the hosted backend process host — never a client execution target. */
+export function backendHostFingerprint(): string {
+  return callerDeviceFingerprint();
+}
+
+export function isBackendHostFingerprint(fingerprint: string): boolean {
+  return fingerprint.trim() === backendHostFingerprint();
+}
+
+function resolveClientDevice(ctx: ServiceContext): ClientDeviceIdentity | null {
+  const fingerprint = ctx.clientDevice?.deviceFingerprint?.trim();
+  if (!fingerprint) return null;
+  return {
+    deviceFingerprint: fingerprint,
+    deviceLabel: ctx.clientDevice?.deviceLabel,
+    devicePlatform: ctx.clientDevice?.devicePlatform
+  };
+}
+
+async function findDeviceExecutionTargetIdForFingerprint({
+  ctx,
+  fingerprint
 }: {
   ctx: ServiceContext;
+  fingerprint: string;
 }): Promise<string | null> {
-  const fingerprint = callerDeviceFingerprint();
   const row = (await ctx.db.get(
     `SELECT et.id AS execution_target_id
        FROM devices d
@@ -129,6 +142,50 @@ export async function findCallerDeviceExecutionTargetId({
     [ctx.workspace.id, fingerprint]
   )) as { execution_target_id: string } | undefined;
   return row?.execution_target_id ?? null;
+}
+
+/**
+ * Read-only lookup of the acting client's local execution target. On co-located
+ * backends this is the process host; on hosted backends it uses `ctx.clientDevice`
+ * and never the Railway/container host.
+ */
+export async function findActingDeviceExecutionTargetId({
+  ctx
+}: {
+  ctx: ServiceContext;
+}): Promise<string | null> {
+  if (isCoLocatedBackend(ctx.db)) {
+    return findDeviceExecutionTargetIdForFingerprint({
+      ctx,
+      fingerprint: callerDeviceFingerprint()
+    });
+  }
+  const client = resolveClientDevice(ctx);
+  if (!client) return null;
+  if (isBackendHostFingerprint(client.deviceFingerprint)) return null;
+  return findDeviceExecutionTargetIdForFingerprint({
+    ctx,
+    fingerprint: client.deviceFingerprint
+  });
+}
+
+/**
+ * Read-only lookup of the local execution target for the process host fingerprint.
+ * Does not provision devices, targets, or preferences — safe for list/read API paths.
+ *
+ * @deprecated On hosted backends this returns the backend host target, which must
+ * never be used for client execution. Prefer {@link findActingDeviceExecutionTargetId}.
+ */
+export async function findCallerDeviceExecutionTargetId({
+  ctx
+}: {
+  ctx: ServiceContext;
+}): Promise<string | null> {
+  if (!isCoLocatedBackend(ctx.db)) return null;
+  return findDeviceExecutionTargetIdForFingerprint({
+    ctx,
+    fingerprint: callerDeviceFingerprint()
+  });
 }
 
 /**
@@ -314,6 +371,23 @@ export async function resolveClaimingDeviceTarget({
   ctx: ServiceContext;
   clientDevice?: ClientDeviceIdentity | null;
 }): Promise<LocalExecutionTarget> {
+  const mergedCtx: ServiceContext = {
+    ...ctx,
+    clientDevice: clientDevice ?? ctx.clientDevice ?? null
+  };
+  return ensureActingDeviceTarget({ ctx: mergedCtx });
+}
+
+/**
+ * Provision the execution target for the acting client machine. Co-located Local
+ * backends use the process host; hosted backends require `ctx.clientDevice` and
+ * refuse to provision the backend host as a target.
+ */
+export async function ensureActingDeviceTarget({
+  ctx
+}: {
+  ctx: ServiceContext;
+}): Promise<LocalExecutionTarget> {
   if (isCoLocatedBackend(ctx.db)) {
     return ensureDeviceTargetForFingerprint({
       ctx,
@@ -322,27 +396,45 @@ export async function resolveClaimingDeviceTarget({
       platformName: platform()
     });
   }
-  const fingerprint = clientDevice?.deviceFingerprint?.trim();
-  if (!fingerprint) {
+  const client = resolveClientDevice(ctx);
+  if (!client) {
     throw new ServiceError(
-      'deviceFingerprint is required when claiming from a hosted backend',
+      'Client device identity is required on a hosted backend',
       'device_fingerprint_required',
+      400
+    );
+  }
+  if (isBackendHostFingerprint(client.deviceFingerprint)) {
+    throw new ServiceError(
+      'The hosted backend cannot act as a local execution target',
+      'backend_not_execution_target',
       400
     );
   }
   return ensureClientDeviceTarget({
     ctx,
-    deviceFingerprint: fingerprint,
-    deviceLabel: clientDevice?.deviceLabel,
-    devicePlatform: clientDevice?.devicePlatform
+    deviceFingerprint: client.deviceFingerprint,
+    deviceLabel: client.deviceLabel,
+    devicePlatform: client.devicePlatform
   });
 }
 
+/**
+ * Provision the execution target for the process host. Valid only on co-located
+ * Local backends; hosted callers must use {@link ensureActingDeviceTarget}.
+ */
 export async function ensureCallerDeviceTarget({
   ctx
 }: {
   ctx: ServiceContext;
 }): Promise<LocalExecutionTarget> {
+  if (!isCoLocatedBackend(ctx.db)) {
+    throw new ServiceError(
+      'Caller device targets are only valid on a co-located local backend',
+      'backend_not_execution_target',
+      400
+    );
+  }
   return ensureDeviceTargetForFingerprint({
     ctx,
     fingerprint: callerDeviceFingerprint(),
@@ -358,7 +450,7 @@ export async function updateTerminalProfile({
   ctx: ServiceContext;
   profile: TerminalProfile;
 }): Promise<LocalExecutionTarget> {
-  const target = await ensureCallerDeviceTarget({ ctx });
+  const target = await ensureActingDeviceTarget({ ctx });
   requireActor(ctx);
   if (!target.preferenceId) {
     throw new ServiceError(

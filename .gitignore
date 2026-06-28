@@ -30,5 +30,11 @@ webapp/.yarn/install-state.gz
 
 **/.DS_Store
 
+# Accidental tsc emit next to sources in @overlord/core/service
+packages/core/service/*.js
+packages/core/service/*.js.map
+packages/core/service/*.d.ts
+packages/core/service/*.d.ts.map
+
 # private-docs
 # private-docs/**/*

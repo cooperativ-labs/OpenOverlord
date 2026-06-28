@@ -60,6 +60,16 @@ declare global {
     platform: NodeJS.Platform;
     version: string | null;
     chooseDirectory: () => Promise<string | null>;
+    getDeviceIdentity?: () => Promise<{
+      deviceFingerprint: string;
+      deviceLabel: string;
+      devicePlatform: string;
+    }>;
+    invokeLocalTarget?: (
+      call: import('../../packages/core/service/local-target/desktop-bridge.ts').LocalTargetBridgeCall
+    ) => Promise<
+      import('../../packages/core/service/local-target/types.ts').CapabilityResult<unknown>
+    >;
     writeProjectMetadata?: (payload: {
       directoryPath: string;
       projectId: string;
