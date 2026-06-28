@@ -15,6 +15,7 @@ import {
 } from '../../repository/git-tree.ts';
 
 import { performBranchActionGit } from './branch-actions-git.ts';
+import { normalizeBranchRef } from './branch-status-git.ts';
 import { gatherCommitMessageDiff } from './commit-message-diff-git.ts';
 import { runLocalTargetDoctorChecks } from './doctor-checks.ts';
 import { runGit } from './git-run.ts';
@@ -45,14 +46,6 @@ import {
   purgeManagedWorktrees,
   removeManagedWorktree
 } from './worktree-git.ts';
-
-function normalizeBranchRef(ref: string): string {
-  return ref
-    .replace(/^origin\//, '')
-    .replace(/^refs\/heads\//, '')
-    .replace(/^refs\/remotes\/origin\//, '')
-    .trim();
-}
 
 export class InProcessProvider implements LocalTargetCapabilities {
   constructor(readonly target: TargetMetadata) {}
@@ -165,7 +158,11 @@ export class InProcessProvider implements LocalTargetCapabilities {
 
   async removeWorktree(input: RemoveWorktreeInput) {
     try {
-      const result = removeManagedWorktree(input);
+      const result = removeManagedWorktree({
+        path: input.path,
+        primaryRepoPath: input.primaryRepoPath,
+        force: input.force ?? false
+      });
       if (!input.force && result.skipped.some(s => s.reason === 'uncommitted changes')) {
         return fail(
           this.target,
@@ -220,7 +217,7 @@ export class InProcessProvider implements LocalTargetCapabilities {
 
   // ---- routed (WS-D 6) -------------------------------------------------
 
-  launchAgent(_input: LaunchAgentInput) {
+  async launchAgent(_input: LaunchAgentInput) {
     return fail(
       this.target,
       'CAPABILITY_NOT_IMPLEMENTED',

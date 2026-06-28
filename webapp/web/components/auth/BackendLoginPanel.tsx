@@ -70,7 +70,7 @@ export function BackendLoginPanel() {
       const created = await bridge.addBackend({ label, backendUrl });
       setBackendUrl('');
       setShowAddForm(false);
-      await bridge.switchBackend(created.id);
+      await bridge.switchBackend?.(created.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add backend.');
     } finally {

@@ -143,10 +143,10 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
     return resource.executionTargetId;
   }
 
-  function handleExecutionTargetChange(value: string) {
+  function handleExecutionTargetChange(value: string | null) {
     setTargetError(null);
     updateExecutionTarget.mutate(
-      { executionTargetId: value === ANY_TARGET_VALUE ? null : value },
+      { executionTargetId: !value || value === ANY_TARGET_VALUE ? null : value },
       {
         onError: error => {
           setTargetError(
