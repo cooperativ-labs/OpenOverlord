@@ -1,6 +1,6 @@
 {
   "name": "open-overlord",
-  "version": "0.2606281653.0",
+  "version": "0.2606281828.0",
   "description": "Overlord CLI — management, agent protocol, and runner for OpenOverlord",
   "type": "module",
   "engines": {
