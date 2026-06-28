@@ -1,6 +1,6 @@
 # Local Execution Target — Rollout & Legacy Removal Plan
 
-**Status:** In progress (WS-E complete; WS-A provider bodies remain partial)
+**Status:** In progress (WS-E complete; WS-B/C behavioral gaps; R3 UI missing; WS-A provider bodies remain partial)
 **Date:** 2026-06-28
 **Contract baseline:** `0.59-draft`
 **Design doc:** [`local-execution-target-capabilities.md`](local-execution-target-capabilities.md)
@@ -21,11 +21,15 @@ Legend: ✅ done · 🔲 not started · 🔄 partial.
 | **WS-A** | Capability interface + provider registry + fake | ✅ | `packages/core/service/local-target/` (interface, `CapabilityResult`, error codes incl. `LOCAL_TARGET_REQUIRED`, §5 observation states, registry + `UnavailableProvider`, fake). Merged (PR #8). |
 | WS-A | `InProcessProvider` bodies | 🔄 | Class exists; bodies land per-capability with each WS-D step (see below) rather than as a throwaway verbatim wrapper. |
 | WS-A | `DesktopBridgeProvider`, `RunnerQueueProvider` | 🔄 | `RunnerQueueProvider` stub + default registry landed in WS-C; desktop bridge deferred to WS-D remote UI paths. |
-| **WS-B** | Split target identity (claim vs. create) | ✅ | `ensureLocalExecutionTarget` → `ensureCallerDeviceTarget`; request creation stamps `execution_target_id = NULL` (was the backend device). Merged (PR #8). |
+| WS-A | `createDefaultLocalTargetRegistry` co-location routing | 🔲 | `coLocatedWithCheckout: true` returns `InProcessProvider` for **any** local target, even when `callerExecutionTargetId` differs — contradicts contract (reachable non-co-located locals → `RunnerQueueProvider`). Add test: co-located backend, different target id → `RunnerQueueProvider`. |
+| **WS-B** | Split target identity (claim vs. create) | 🔄 | `ensureCallerDeviceTarget` + claim path landed (PR #8), but **`launch.ts:820` still falls back** to `localTarget.executionTargetId` when `resolveProjectExecutionTargetForLaunch` returns `null` (ambiguous multi-target). Violates contract `0.59-draft` (`NULL` required). |
+| WS-B | Launch must not override null selector | 🔲 | Remove `?? localTarget.executionTargetId` in `launchObjective`; stamp `execution_target_id = NULL` and resolve agent configs without the caller-device target. Centralize into one service helper `{ executionTargetId, agentConfigs }` so launch cannot reintroduce backend-device stamping. |
 | **WS-D(1)** | `observeResource` + resource status | ✅ | All three status-derivation sites routed through the capability; hosted backend never infers `missing` from its own fs; fixed the old `repository.ts` status type error. Branch `local-execution-target-wsd1`. |
 | **WS-D(2)** | `writeProjectMetadata` | ✅ | `writeProjectJson` moved into the local-target module; core/webapp resource creation writes via `provider.writeProjectMetadata` (co-located writes, hosted no-ops). Branch `local-execution-target-wsd1`. |
 | **WS-D(3)** | `readRepositoryTree`, `listBranches`, `readCurrentDiff` | ✅ | `getProjectRepository` and `listMissionBranches` now route through `LocalTargetCapabilities`; dead service-layer `readCurrentDiff` export removed (provider capability remains for future callers). |
-| **WS-C** | Execution-target selector | ✅ | `GET/PUT /api/projects/:id/execution-target`, preference in `project_user_preferences.preferences_json`, launch stamps selected/sole target, `RunnerQueueProvider` + default registry stub. |
+| **WS-C** | Execution-target selector | 🔄 | REST + preference + `ProjectRepositoryContext` plumbing landed; `RunnerQueueProvider` + default registry stub. **R3 UI not wired** (`setSelectedExecutionTargetId` unused; `ResourcesPage` still says selection surface needed). |
+| WS-C | Selector listing must not provision backend target | 🔲 | `listEligibleProjectExecutionTargets` calls `ensureCallerDeviceTarget` — a Cloud `GET /api/projects/:id/execution-target` can create/mark-reachable a Railway host target. List/read paths must not side-effect provision the service caller's device. |
+| WS-C | Visible target selector UI (R3 acceptance) | 🔲 | Wire `eligibleTargets` + `setSelectedExecutionTargetId` into project settings (replace `ResourcesPage` placeholder copy). Desktop/CLI should read/write the same preference. Exit: select CLI-only VM, Run from Desktop → agent runs on VM. |
 | **WS-D(4)** | `prepareBranch`, `listWorktrees`, `removeWorktree`, `purgeMergedWorktrees`, branch actions | ✅ | Git mutations in `repository.ts` route through `LocalTargetCapabilities` via shared `git-run.ts`, `worktree-git.ts`, and `branch-actions-git.ts`; `prepareBranch` remains CLI-owned (`CAPABILITY_NOT_IMPLEMENTED` in `InProcessProvider`). macOS `/tmp` ↔ `/private/tmp` normalized with `resolveRealPath`. Branch `local-execution-target-wsd1`. |
 | **WS-D(5)** | `generateCommitMessageFromLocalDiff` | ✅ | Local diff gathering moved to `commit-message-diff-git.ts` + `InProcessProvider`; backend still calls `generateCommitMessageFromDiff` (Gemini). Branch `local-execution-target-wsd1`. |
 | **WS-D(6)** | `launchAgent` + `doctor` | ✅ | `doctor` runs portable git/node checks via `doctor-checks.ts`; `launchAgent` remains CLI-owned (`CAPABILITY_NOT_IMPLEMENTED`). Branch `local-execution-target-wsd1`. |
@@ -33,6 +37,8 @@ Legend: ✅ done · 🔲 not started · 🔄 partial.
 | **WS-E3** | Drop `better-sqlite3` from the cloud image | ✅ | Lazy-load `better-sqlite3` in `@overlord/database` + auth; `build:server --cloud` stages Postgres migrations only; Dockerfile drops native toolchain + prunes the addon from runtime `node_modules`. |
 | **WS-E4** | Decide SPA serving (Open Q#7) | ✅ | **Decision:** Vercel serves the Cloud SPA (contract `0.55-draft`). `resolveServeSpa` gates `express.static` to SQLite/Local; Dockerfile sets `OVERLORD_SERVE_SPA=false` and never ships `webapp/dist`. |
 | **WS-E5** | Remove the stale root `src/` | ✅ | Stale untracked root `src/` removed; only ignored `.DS_Store` remained locally. |
+| **WS-E6** | Untrack generated `.overlord/project.json` | 🔲 | Contract `0.31-draft`: per-instance, not committed. `.gitignore` covers the path but `cli/.overlord/project.json` and `packages/core/.overlord/project.json` remain tracked — `git rm --cached` both. |
+| WS-D (cleanup) | Local-only git/status helpers behind providers | 🔲 | Remaining local-only helpers in `changes.ts` and `repository.ts` should move behind provider methods or small shared provider helpers (consolidation; not blocking R3). |
 
 **Architecture note for WS-D(3)+:** keep the in-process provider DB-free —
 make git-capability inputs path-based (resolved `repoPath`/`workingDirectory`).
