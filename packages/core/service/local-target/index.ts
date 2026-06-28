@@ -3,5 +3,7 @@
 export * from './types.ts';
 export * from './result.ts';
 export * from './registry.ts';
+export { InProcessProvider } from './in-process-provider.ts';
+export { deriveResourceStatus, resolveBackendResourceProvider } from './resource-status.ts';
 export { FakeLocalTargetProvider } from './fake-provider.ts';
 export type { FakeHandlers, FakeProviderOptions } from './fake-provider.ts';

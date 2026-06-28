@@ -11,6 +11,10 @@ import {
   RepositoryReadError
 } from '../../packages/core/repository/git-tree.ts';
 import { ensureCallerDeviceTarget } from '../../packages/core/service/execution-targets.ts';
+import {
+  deriveResourceStatus,
+  resolveBackendResourceProvider
+} from '../../packages/core/service/local-target/index.ts';
 import { writeProjectJson } from '../../packages/core/service/projects.ts';
 import type {
   ArtifactDto,
@@ -425,15 +429,21 @@ function assertServerCanAccessLinkedFilesystem(action: string): void {
   );
 }
 
-function toProjectResourceDto(r: ProjectResourceRow): ProjectResourceDto {
-  const status =
-    r.status === 'archived'
-      ? 'archived'
-      : serverCanAccessLinkedFilesystem()
-        ? existsSync(r.path)
-          ? 'active'
-          : 'missing'
-        : r.status;
+async function toProjectResourceDto(r: ProjectResourceRow): Promise<ProjectResourceDto> {
+  // Route availability through the local-target capability: an in-process
+  // provider when this backend is co-located with the checkout (Local SQLite),
+  // otherwise lifecycle-only — the hosted backend never derives `missing` from
+  // its own filesystem (WS-D 1; design §5/§6).
+  const provider = resolveBackendResourceProvider(serverCanAccessLinkedFilesystem(), {
+    executionTargetId: r.execution_target_id,
+    deviceLabel: null,
+    transport: 'in_process'
+  });
+  const status = (await deriveResourceStatus(provider, {
+    resourceId: r.id,
+    status: r.status,
+    path: r.path
+  })) as ProjectResourceDto['status'];
   return {
     id: r.id,
     workspaceId: r.workspace_id,
@@ -2200,7 +2210,7 @@ export async function listProjectResources(projectId: string): Promise<ProjectRe
         ORDER BY status ASC, is_primary DESC, label ASC, path ASC`,
     [projectId]
   )) as ProjectResourceRow[];
-  return rows.map(toProjectResourceDto);
+  return await Promise.all(rows.map(toProjectResourceDto));
 }
 
 async function insertProjectResource(
@@ -2276,7 +2286,7 @@ export async function createProjectResource(
           WHERE id = ?`,
       [id]
     )) as ProjectResourceRow;
-    return toProjectResourceDto(row);
+    return await toProjectResourceDto(row);
   });
 }
 
@@ -2314,7 +2324,7 @@ export async function updateProjectResource(
       );
     }
 
-    return toProjectResourceDto(await getProjectResourceRow(tx, projectId, resourceId));
+    return await toProjectResourceDto(await getProjectResourceRow(tx, projectId, resourceId));
   });
 }
 
@@ -2385,7 +2395,7 @@ async function getProjectRepositoryResource(
         LIMIT 1`,
         [projectId, executionTargetId, executionTargetId]
       ))) as ProjectResourceRow | undefined;
-  return row ? toProjectResourceDto(row) : null;
+  return row ? await toProjectResourceDto(row) : null;
 }
 
 export async function getProjectRepository(

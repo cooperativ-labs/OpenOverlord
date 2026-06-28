@@ -7,6 +7,10 @@ import type { ServiceContext } from './context.js';
 import { resolveProjectId } from './context.js';
 import { ServiceError } from './errors.js';
 import { ensureCallerDeviceTarget } from './execution-targets.js';
+import {
+  deriveResourceStatus,
+  resolveBackendResourceProvider
+} from './local-target/index.ts';
 import { initialTitleFromInstruction, newId, nowIso, slugify } from './util.js';
 
 export type ProjectSummary = {
@@ -38,13 +42,17 @@ export type PrimaryResourceConnection = {
   workingDirectory: string;
 };
 
-function effectiveResourceStatus(
-  resource: { status: string; path: string },
-  canAccessLinkedFilesystem = true
-): string {
-  if (resource.status === 'archived') return 'archived';
-  if (!canAccessLinkedFilesystem) return resource.status;
-  return existsSync(resource.path) ? 'active' : 'missing';
+/**
+ * Resolve the provider that observes resource availability for the backend:
+ * in-process when the backend is co-located with the checkout (Local SQLite),
+ * otherwise an unavailable provider so status falls back to recorded lifecycle.
+ */
+function backendResourceProvider(ctx: ServiceContext, executionTargetId: string | null) {
+  return resolveBackendResourceProvider(ctx.db.dialect === 'sqlite', {
+    executionTargetId,
+    deviceLabel: null,
+    transport: 'in_process'
+  });
 }
 
 export type ProjectDiscovery = {
@@ -281,16 +289,22 @@ export async function listProjectResources({
     status: string;
   }>;
 
-  return rows.map(row => ({
-    id: row.id,
-    projectId: row.project_id,
-    executionTargetId: row.execution_target_id,
-    type: row.type,
-    label: row.label,
-    path: row.path,
-    isPrimary: row.is_primary === 1,
-    status: effectiveResourceStatus(row, ctx.db.dialect === 'sqlite')
-  }));
+  return await Promise.all(
+    rows.map(async row => ({
+      id: row.id,
+      projectId: row.project_id,
+      executionTargetId: row.execution_target_id,
+      type: row.type,
+      label: row.label,
+      path: row.path,
+      isPrimary: row.is_primary === 1,
+      status: await deriveResourceStatus(backendResourceProvider(ctx, row.execution_target_id), {
+        resourceId: row.id,
+        status: row.status,
+        path: row.path
+      })
+    }))
+  );
 }
 
 export async function findPrimaryProjectResource({
@@ -348,7 +362,11 @@ export async function findPrimaryProjectResource({
     label: row.label,
     path: row.path,
     isPrimary: true,
-    status: effectiveResourceStatus(row, ctx.db.dialect === 'sqlite')
+    status: await deriveResourceStatus(backendResourceProvider(ctx, row.execution_target_id), {
+      resourceId: row.id,
+      status: row.status,
+      path: row.path
+    })
   };
 }
 
