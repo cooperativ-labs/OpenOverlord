@@ -98,8 +98,23 @@ async function ensureUserExecutionTargetPreference({
   return { id, terminalProfile };
 }
 
-/** Provision the local device, execution target, and user-target row for this machine. */
-export async function ensureLocalExecutionTarget({
+/**
+ * Provision (and return) the execution target for **the device running this
+ * service-layer call** — the calling process's own machine.
+ *
+ * This is the *caller/claiming* identity: the runner/CLI that polls
+ * (`claimNextExecutionRequest`), the device whose terminal/agent launch
+ * preferences apply, and the device a freshly-linked resource is scoped to. It
+ * is derived from `getDevice(ctx)`, so in the Local edition (backend == laptop)
+ * it is the user's machine.
+ *
+ * It MUST NOT be used to decide *where a queued request should run*: stamping a
+ * created request with the creator's device is the §3.2 conflation that breaks
+ * Cloud (the hosted backend would invent a target for the Railway host). Request
+ * creation stamps the *selected* execution target instead (WS-C), or NULL =
+ * "any eligible target may claim."
+ */
+export async function ensureCallerDeviceTarget({
   ctx
 }: {
   ctx: ServiceContext;
@@ -203,7 +218,7 @@ export async function updateTerminalProfile({
   ctx: ServiceContext;
   profile: TerminalProfile;
 }): Promise<LocalExecutionTarget> {
-  const target = await ensureLocalExecutionTarget({ ctx });
+  const target = await ensureCallerDeviceTarget({ ctx });
   requireActor(ctx);
   if (!target.preferenceId) {
     throw new ServiceError(

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { createServiceContext } from './context.js';
-import { ensureLocalExecutionTarget } from './execution-targets.js';
+import { ensureCallerDeviceTarget } from './execution-targets.js';
 import { addProjectResource, createProject } from './projects.js';
 import { newId, nowIso } from './util.js';
 
@@ -31,7 +31,7 @@ describe('addProjectResource', () => {
     const db = createSqliteClient(openInMemoryDatabase());
     const ctx = await createServiceContext({ db, source: 'cli' });
     const project = await createProject({ ctx, name: 'Execution target resources' });
-    const localTarget = await ensureLocalExecutionTarget({ ctx });
+    const localTarget = await ensureCallerDeviceTarget({ ctx });
     const now = nowIso();
     const otherDeviceId = newId();
 

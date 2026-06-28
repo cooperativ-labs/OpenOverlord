@@ -28,7 +28,7 @@ import {
   type ExecutionRequestSummary
 } from '../../packages/core/service/execution-requests.ts';
 import {
-  ensureLocalExecutionTarget,
+  ensureCallerDeviceTarget,
   updateTerminalProfile as persistTerminalProfile
 } from '../../packages/core/service/execution-targets.ts';
 import { assertPrimaryResourceConnected } from '../../packages/core/service/projects.ts';
@@ -280,7 +280,7 @@ async function ensureLocalLaunchTarget(client: DatabaseClient = requireDatabaseC
   agentConfigs: Record<string, AgentLaunchConfigDto>;
   terminalProfile: TerminalProfileDto;
 }> {
-  const target = await ensureLocalExecutionTarget({ ctx: serviceContext(client) });
+  const target = await ensureCallerDeviceTarget({ ctx: serviceContext(client) });
   return {
     deviceId: target.deviceId,
     deviceLabel: target.deviceLabel,
@@ -898,7 +898,12 @@ export async function launchObjective(
         flags: resolved.config.flags
       },
       requestedSource: 'webapp',
-      executionTargetId: target.executionTargetId,
+      // WS-B (§3.2): do NOT stamp the *creator's* device target here. Stamping the
+      // backend host's device is the conflation that breaks Cloud and "queue here,
+      // run there" (R3). Leave it NULL = "any eligible target may claim"; the
+      // claim filter is already `execution_target_id IS NULL OR = ?`. WS-C will
+      // stamp the project's *selected* execution target instead.
+      executionTargetId: null,
       metadata: { launchConfigSource: resolved.source },
       eventSummary: `Queued ${agentKey}${model ? ` (${model})` : ''} execution for a runner.`,
       eventPayload: { agent: agentKey, model, reasoningEffort }
