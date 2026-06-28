@@ -58,10 +58,14 @@ ENV NODE_ENV=production \
     OVERLORD_SQL_STUDIO_ENABLED=false \
     OVERLORD_IN_POD=1
 
-# The bundle plus external runtime deps and staged migrations the bundle resolves
-# relative to its own location (webapp/sqlite/migrations, webapp/postgres/migrations).
+# The bundle plus external runtime deps and the staged Postgres migrations the
+# bundle resolves relative to its own location (webapp/postgres/migrations).
+# This is a Postgres-only control plane (DATABASE_URL is always a postgres URL),
+# so the SQLite migration tree (webapp/sqlite/migrations) is intentionally not
+# copied: the Postgres runtime path never calls the sqlite migrator. See
+# webapp/server/db.ts — migrateDatabase/openDatabase run only for the sqlite
+# adapter; Postgres goes through migratePostgres.
 COPY --from=builder /app/webapp/dist-server ./webapp/dist-server
-COPY --from=builder /app/webapp/sqlite ./webapp/sqlite
 COPY --from=builder /app/webapp/postgres ./webapp/postgres
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
