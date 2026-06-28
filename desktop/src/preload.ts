@@ -57,7 +57,7 @@ export type DesktopBackendProfile = {
 /**
  * The `window.overlord` bridge. Kept deliberately tiny: a few shell-only
  * affordances the unmodified SPA can *feature-detect* (`if (window.overlord)`),
- * never depend on. No tokens, no Node, no product logic crosses this boundary.
+ * never depend on. No tokens, no Node, no DB access crosses this boundary.
  */
 const api = {
   /** Marks that the SPA is running inside the desktop shell. */
@@ -66,6 +66,13 @@ const api = {
   version: process.env.OVERLORD_DESKTOP_VERSION ?? null,
   /** Open the native directory picker; resolves to an absolute path or null. */
   chooseDirectory: (): Promise<string | null> => ipcRenderer.invoke('overlord:choose-directory'),
+  /** Write local `.overlord/project.json` metadata for a linked checkout. */
+  writeProjectMetadata: (payload: {
+    directoryPath: string;
+    projectId: string;
+    resourceId: string;
+    isPrimary: boolean;
+  }): Promise<boolean> => ipcRenderer.invoke('overlord:write-project-metadata', payload),
   /** Open an http(s) URL in the system browser. */
   openExternal: (url: string): Promise<boolean> =>
     ipcRenderer.invoke('overlord:open-external', url),

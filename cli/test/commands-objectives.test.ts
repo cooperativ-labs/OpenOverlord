@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
 import { runManagementCommand } from '../src/commands.ts';
@@ -61,4 +64,64 @@ test('ovld create sends objectives-json as one REST array payload', async () => 
       { objective: 'Second objective', title: 'Follow-up' }
     ]
   });
+});
+
+test('ovld add-cwd writes local project metadata after resource creation', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'ovld-add-cwd-'));
+  const posts: Array<{ path: string; body: unknown }> = [];
+  const runtime = {
+    backend: {
+      baseUrl: 'https://overlord.example.test',
+      health: async () => ({ ok: true }),
+      get: async () => [{ id: 'project-1', name: 'Project One', slug: 'project-one' }],
+      post: async ({ path, body }: { path: string; body?: unknown }) => {
+        posts.push({ path, body });
+        return {
+          id: 'resource-1',
+          projectId: 'project-1',
+          path: directory,
+          isPrimary: true
+        };
+      },
+      patch: async () => {
+        throw new Error('unexpected PATCH');
+      },
+      delete: async () => {
+        throw new Error('unexpected DELETE');
+      }
+    },
+    close: () => {}
+  } satisfies CliRuntime;
+
+  const originalLog = console.log;
+  console.log = () => {};
+  try {
+    await runManagementCommand({
+      runtime,
+      command: 'add-cwd',
+      rest: ['--directory', directory, '--project-id', 'project-1']
+    });
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0]?.path, '/api/projects/project-1/resources');
+  assert.deepEqual(posts[0]?.body, {
+    directoryPath: directory,
+    isPrimary: true
+  });
+
+  const projectJsonPath = path.join(directory, '.overlord', 'project.json');
+  assert.equal(existsSync(projectJsonPath), true);
+  const projectJson = JSON.parse(readFileSync(projectJsonPath, 'utf8')) as {
+    version: number;
+    projectId: string;
+    resourceId: string;
+    isPrimary: boolean;
+  };
+  assert.equal(projectJson.version, 1);
+  assert.equal(projectJson.projectId, 'project-1');
+  assert.equal(projectJson.resourceId, 'resource-1');
+  assert.equal(projectJson.isPrimary, true);
 });

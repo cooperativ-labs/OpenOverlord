@@ -42,6 +42,7 @@ import type {
 } from '../../shared/contract.ts';
 
 import { api } from './api.ts';
+import { clearDesktopBearerToken, isCurrentDesktopBearerTokenPrefix } from './api-base.ts';
 import { authClient, normalizeLocalUsername, usernameToLocalEmail } from './auth-client.ts';
 
 export const keys = {
@@ -274,7 +275,12 @@ export function useRevokeUserToken() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.revokeUserToken(id),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.userTokens })
+    onSuccess: token => {
+      if (isCurrentDesktopBearerTokenPrefix(token.tokenPrefix)) {
+        void clearDesktopBearerToken();
+      }
+      void qc.invalidateQueries({ queryKey: keys.userTokens });
+    }
   });
 }
 

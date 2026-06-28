@@ -60,6 +60,12 @@ declare global {
     platform: NodeJS.Platform;
     version: string | null;
     chooseDirectory: () => Promise<string | null>;
+    writeProjectMetadata?: (payload: {
+      directoryPath: string;
+      projectId: string;
+      resourceId: string;
+      isPrimary: boolean;
+    }) => Promise<boolean>;
     openExternal: (url: string) => Promise<boolean>;
     revealInFinder: (path: string) => Promise<boolean>;
     showNotification?: (payload: { title: string; body: string; tag?: string }) => Promise<boolean>;

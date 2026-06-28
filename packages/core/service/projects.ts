@@ -38,8 +38,12 @@ export type PrimaryResourceConnection = {
   workingDirectory: string;
 };
 
-function effectiveResourceStatus(resource: { status: string; path: string }): string {
+function effectiveResourceStatus(
+  resource: { status: string; path: string },
+  canAccessLinkedFilesystem = true
+): string {
   if (resource.status === 'archived') return 'archived';
+  if (!canAccessLinkedFilesystem) return resource.status;
   return existsSync(resource.path) ? 'active' : 'missing';
 }
 
@@ -285,7 +289,7 @@ export async function listProjectResources({
     label: row.label,
     path: row.path,
     isPrimary: row.is_primary === 1,
-    status: effectiveResourceStatus(row)
+    status: effectiveResourceStatus(row, ctx.db.dialect === 'sqlite')
   }));
 }
 
@@ -344,7 +348,7 @@ export async function findPrimaryProjectResource({
     label: row.label,
     path: row.path,
     isPrimary: true,
-    status: effectiveResourceStatus(row)
+    status: effectiveResourceStatus(row, ctx.db.dialect === 'sqlite')
   };
 }
 

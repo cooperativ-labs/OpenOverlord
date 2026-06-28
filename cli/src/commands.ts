@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 
 import {
   flagBoolean,
@@ -50,6 +51,58 @@ type SkipRationaleEntry = {
   reason?: string;
   [key: string]: unknown;
 };
+
+const PROJECT_JSON_VERSION = 1;
+
+function writeProjectJson({
+  directoryPath,
+  projectId,
+  resourceId,
+  isPrimary
+}: {
+  directoryPath: string;
+  projectId: string;
+  resourceId: string;
+  isPrimary: boolean;
+}): void {
+  const overlordDir = path.join(directoryPath, '.overlord');
+  mkdirSync(overlordDir, { recursive: true });
+  mkdirSync(path.join(overlordDir, 'tmp'), { recursive: true });
+  mkdirSync(path.join(overlordDir, 'logs'), { recursive: true });
+  writeFileSync(
+    path.join(overlordDir, 'project.json'),
+    `${JSON.stringify(
+      {
+        version: PROJECT_JSON_VERSION,
+        projectId,
+        resourceId,
+        isPrimary,
+        linkedAt: new Date().toISOString()
+      },
+      null,
+      2
+    )}\n`
+  );
+}
+
+function writeProjectJsonFromResource({
+  directory,
+  projectId,
+  resource
+}: {
+  directory: string;
+  projectId: string;
+  resource: unknown;
+}): void {
+  const record = asRecord(resource);
+  if (typeof record.id !== 'string') return;
+  writeProjectJson({
+    directoryPath: directory,
+    projectId,
+    resourceId: record.id,
+    isPrimary: record.isPrimary !== false
+  });
+}
 
 /** Parse an inline `--changed-files-json` value into entries (best-effort). */
 function parseChangedFilesJson(value: unknown): ChangedFileEntry[] {
@@ -669,13 +722,15 @@ export async function runManagementCommand({
       });
       const projectId = asRecord(project).id;
       if (!flagBoolean(parsed.flags, '--no-directory') && typeof projectId === 'string') {
-        await runtime.backend.post({
+        const directory = flagValue(parsed.flags, '--directory') ?? process.cwd();
+        const resource = await runtime.backend.post({
           path: `/api/projects/${encodeURIComponent(projectId)}/resources`,
           body: {
-            directoryPath: flagValue(parsed.flags, '--directory') ?? process.cwd(),
+            directoryPath: directory,
             isPrimary: true
           }
         });
+        writeProjectJsonFromResource({ directory, projectId, resource });
       }
       if (json) printJson({ project });
       else
@@ -716,6 +771,7 @@ export async function runManagementCommand({
           isPrimary: flagValue(parsed.flags, '--primary') !== 'false'
         }
       });
+      writeProjectJsonFromResource({ directory, projectId, resource });
       if (json) printJson({ resource });
       else console.log(`Linked ${directory} to project ${projectId}`);
       return;

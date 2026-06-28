@@ -1,4 +1,6 @@
 import { BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 
 import {
   addRemoteBackend,
@@ -26,11 +28,13 @@ import {
 } from './quick-task-window.js';
 import type { DesktopUpdater } from './updater.js';
 
+const PROJECT_JSON_VERSION = 1;
+
 /**
  * The minimal, audited IPC surface exposed to the renderer through the
  * `window.overlord` preload bridge. Each handler is a genuinely shell-only
- * capability (file picking, opening things in the OS) — no product logic, no DB
- * access. The SPA feature-detects these; it never requires them.
+ * capability (file picking, local metadata writes, opening things in the OS) —
+ * no DB access. The SPA feature-detects these; it never requires them.
  */
 export function registerIpc({
   getWindow,
@@ -60,6 +64,49 @@ export function registerIpc({
       : await dialog.showOpenDialog(options);
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
+  });
+
+  ipcMain.handle('overlord:write-project-metadata', (_event, payload: unknown) => {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('Project metadata payload is required.');
+    }
+    const { directoryPath, projectId, resourceId, isPrimary } = payload as {
+      directoryPath?: unknown;
+      projectId?: unknown;
+      resourceId?: unknown;
+      isPrimary?: unknown;
+    };
+    if (
+      typeof directoryPath !== 'string' ||
+      !path.isAbsolute(directoryPath) ||
+      typeof projectId !== 'string' ||
+      projectId.length === 0 ||
+      typeof resourceId !== 'string' ||
+      resourceId.length === 0 ||
+      typeof isPrimary !== 'boolean'
+    ) {
+      throw new Error('Valid directoryPath, projectId, resourceId, and isPrimary are required.');
+    }
+
+    const overlordDir = path.join(directoryPath, '.overlord');
+    mkdirSync(overlordDir, { recursive: true });
+    mkdirSync(path.join(overlordDir, 'tmp'), { recursive: true });
+    mkdirSync(path.join(overlordDir, 'logs'), { recursive: true });
+    writeFileSync(
+      path.join(overlordDir, 'project.json'),
+      `${JSON.stringify(
+        {
+          version: PROJECT_JSON_VERSION,
+          projectId,
+          resourceId,
+          isPrimary,
+          linkedAt: new Date().toISOString()
+        },
+        null,
+        2
+      )}\n`
+    );
+    return true;
   });
 
   // Open an external URL in the system browser. Only http(s) is allowed so the

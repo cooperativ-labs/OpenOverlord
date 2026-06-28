@@ -79,9 +79,10 @@ export async function seedAuthenticatedOperatorClient({
   }
 
   const roleId = `${workspaceUserId}-admin-role`;
-  const existingRole = await client.get<{ id: string }>(`SELECT id FROM role_assignments WHERE id = ?`, [
-    roleId
-  ]);
+  const existingRole = await client.get<{ id: string }>(
+    `SELECT id FROM role_assignments WHERE id = ?`,
+    [roleId]
+  );
   if (!existingRole) {
     await client.run(
       `INSERT INTO role_assignments (

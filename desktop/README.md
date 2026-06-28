@@ -68,7 +68,7 @@ Maps to the `desktop` contract component (`desktop/docs/desktop-app.md`).
   database directly; it points at the desktop/local backend URL (by default
   `http://127.0.0.1:4310`) and uses the same `/api/*` surface the SPA uses.
 - **Bridge.** `window.overlord` exposes only shell-only affordances
-  (`chooseDirectory`, `openExternal`, `revealInFinder`), which the SPA
+  (`chooseDirectory`, `writeProjectMetadata`, `openExternal`, `revealInFinder`), which the SPA
   feature-detects and never requires.
 
 ### Scripts

@@ -1002,10 +1002,9 @@ app.post(
     { mutates: true, requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM }
   )
 );
-// On-demand branch mutations (merge with parent / push parent / publish). The
-// webapp operates directly on the host-accessible worktrees; the action is the
-// discriminator in the body. Returns the refreshed MissionDetailDto, or a typed
-// error (BRANCH_MERGE_CONFLICT / BRANCH_BUSY_EXECUTING / BRANCH_DIRTY / …).
+// On-demand branch mutations (merge with parent / push parent / publish).
+// Available only when the webapp server is local and co-located with the linked
+// checkout; hosted backends return LOCAL_FILESYSTEM_UNAVAILABLE.
 app.post(
   '/api/missions/:id/branch/action',
   handle(req => performBranchAction(req.params.id, req.body ?? {}), {
@@ -1014,14 +1013,15 @@ app.post(
   })
 );
 // Available branches in the mission project's primary repo, for the branch selector.
+// Hosted backends return metadata-only branch choices.
 app.get(
   '/api/missions/:id/branches',
   handle(req => listMissionBranches(req.params.id), { requires: PERMISSIONS.MISSION_READ })
 );
 
 // ---- Worktrees (Settings → Worktrees) ---------------------------------------
-// Enumerate / purge Overlord-managed worktrees under ~/.ovld/worktrees. Like the
-// branch actions, these are host-side git ops the webapp performs directly.
+// Enumerate / purge Overlord-managed worktrees under ~/.ovld/worktrees. These are
+// local-backend-only host-side git operations.
 app.get(
   '/api/worktrees',
   handle(() => listWorktrees(), { requires: PERMISSIONS.PROJECT_READ })

@@ -101,6 +101,7 @@ A minimal, audited surface the SPA **feature-detects** (`if (window.overlord)`):
 | `platform` | `process.platform` |
 | `version` | the app version |
 | `chooseDirectory()` | native directory picker → absolute path or `null` |
+| `writeProjectMetadata(payload)` | write `.overlord/project.json` for a locally linked checkout after the backend resource is created |
 | `openExternal(url)` | open an http(s) URL in the system browser |
 | `revealInFinder(path)` | reveal a path in the OS file manager |
 | `setNativeThemeSource(source)` | mirror the SPA theme (`light` / `dark` / `system`) to Electron `nativeTheme` for macOS vibrancy |

@@ -250,7 +250,7 @@ async function resolveWorkingDirectory({
 }): Promise<{ workingDirectory: string; resourceId: string | null }> {
   if (explicitWorkingDirectory?.trim()) {
     const resolved = path.resolve(explicitWorkingDirectory);
-    if (!existsSync(resolved)) {
+    if (ctx.db.dialect === 'sqlite' && !existsSync(resolved)) {
       throw new ServiceError(
         `Working directory does not exist: ${resolved}`,
         'working_directory_missing'

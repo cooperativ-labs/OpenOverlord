@@ -20,6 +20,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { LoadingButton } from '@/components/ui/loading-button';
+import { api } from '@/lib/api';
+import { writeLocalProjectMetadata } from '@/lib/project-metadata';
 import { useCreateProject, useLaunchSettings } from '@/lib/queries';
 
 type ProjectCreatorModalProps = {
@@ -99,6 +101,19 @@ export function ProjectCreatorModal({ open, onOpenChange }: ProjectCreatorModalP
             }
           : null
       });
+      if (trimmedPrimaryResourcePath) {
+        const resources = await api.listProjectResources(created.id);
+        const primaryResource =
+          resources.find(resource => resource.path === trimmedPrimaryResourcePath) ??
+          resources.find(resource => resource.isPrimary);
+        if (primaryResource) {
+          await writeLocalProjectMetadata({
+            directoryPath: trimmedPrimaryResourcePath,
+            projectId: created.id,
+            resource: primaryResource
+          });
+        }
+      }
 
       setCreateButtonState('success');
       handleOpenChange(false);

@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { writeLocalProjectMetadata } from '@/lib/project-metadata';
 import {
   useCreateProjectResource,
   useDeleteProjectResource,
@@ -131,11 +132,12 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
 
     setAddError(null);
     try {
-      await createResource.mutateAsync({
+      const resource = await createResource.mutateAsync({
         directoryPath: trimmed,
         executionTargetId: localExecutionTargetId,
         isPrimary: !hasLocalPrimary
       });
+      await writeLocalProjectMetadata({ directoryPath: trimmed, projectId, resource });
       setDirectoryPath('');
     } catch (error) {
       setAddError(error instanceof Error ? error.message : 'Failed to add directory.');

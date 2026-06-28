@@ -411,8 +411,29 @@ function isTruthyFlag(value: unknown): boolean {
   return value === true || value === 1;
 }
 
+function serverCanAccessLinkedFilesystem(): boolean {
+  return DATABASE_DIALECT === 'sqlite';
+}
+
+function assertServerCanAccessLinkedFilesystem(action: string): void {
+  if (serverCanAccessLinkedFilesystem()) return;
+  throw new ApiError(
+    409,
+    `${action} must run on a local execution target with access to the linked checkout.`,
+    'The hosted Overlord backend stores metadata and queues work, but it cannot inspect or mutate your local filesystem.',
+    'LOCAL_FILESYSTEM_UNAVAILABLE'
+  );
+}
+
 function toProjectResourceDto(r: ProjectResourceRow): ProjectResourceDto {
-  const status = r.status === 'archived' ? 'archived' : existsSync(r.path) ? 'active' : 'missing';
+  const status =
+    r.status === 'archived'
+      ? 'archived'
+      : serverCanAccessLinkedFilesystem()
+        ? existsSync(r.path)
+          ? 'active'
+          : 'missing'
+        : r.status;
   return {
     id: r.id,
     workspaceId: r.workspace_id,
@@ -704,6 +725,7 @@ async function deriveBranchStatus({
   branchName: string;
   baseBranch: string | null;
 }): Promise<'created' | 'published' | 'merged_unpushed' | 'merged'> {
+  if (!serverCanAccessLinkedFilesystem()) return 'created';
   const resource = (await requireDatabaseClient().get(
     `SELECT path FROM project_resources
         WHERE project_id = ? AND workspace_id = ? AND is_primary = ?
@@ -747,6 +769,7 @@ async function getProjectSlug(projectId: string): Promise<string> {
 const FALLBACK_BASE_BRANCH = 'main';
 
 async function primaryCheckoutBranch(projectId: string): Promise<string | null> {
+  if (!serverCanAccessLinkedFilesystem()) return null;
   const repoPath = await primaryResourcePath(projectId);
   if (!repoPath || !existsSync(repoPath)) return null;
 
@@ -854,6 +877,7 @@ async function resolvePreparedWorktreePath(
   branchName: string,
   fallback: string
 ): Promise<string> {
+  if (!serverCanAccessLinkedFilesystem()) return fallback;
   const primary = await primaryResourcePath(projectId);
   if (primary && existsSync(primary)) {
     const checkedOut = worktreePathForBranch(primary, branchName);
@@ -882,7 +906,10 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
       baseBranch,
       worktreePath,
       status: await deriveBranchStatus({ projectId: row.project_id, branchName: name, baseBranch }),
-      dirty: existsSync(worktreePath) && worktreeIsDirty(worktreePath),
+      dirty:
+        serverCanAccessLinkedFilesystem() &&
+        existsSync(worktreePath) &&
+        worktreeIsDirty(worktreePath),
       overrideBranch,
       worktreeAutomationEnabled: automationEnabled,
       worktreePreference,
@@ -922,12 +949,10 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
 
 // ---- Branch actions (merge with parent / push / publish) -----------------
 //
-// On-demand git mutations the mission panel triggers. They run host-side against
-// the project's worktrees (under ~/.ovld/worktrees) and primary repo, which the
-// webapp server is co-located with — so it operates on them directly rather than
-// delegating to the Runner Layer (whose job is launching the *agent* into the
-// worktree, not these mutations). Conflicts are deliberately left in the branch's
-// own worktree for the user to resolve in their IDE. See CONTRACT.md 0.41-draft.
+// On-demand git mutations the mission panel triggers in local-backend mode. They
+// run host-side against the project's worktrees (under ~/.ovld/worktrees) and
+// primary repo only when the webapp server is co-located with those paths. Hosted
+// backends reject these calls; local execution targets own checkout mutation.
 
 type GitRun = { ok: boolean; stdout: string; stderr: string };
 
@@ -1313,6 +1338,7 @@ export async function performBranchAction(
   missionRef: string,
   body: { action?: unknown; message?: unknown; confirmBusy?: unknown }
 ): Promise<MissionDetailDto> {
+  assertServerCanAccessLinkedFilesystem('Branch actions');
   const action = String(body.action ?? '');
   if (
     action !== 'integrate' &&
@@ -1373,6 +1399,7 @@ function collectWorktreeChanges(worktreePath: string): string {
 export async function generateCommitMessage(
   missionRef: string
 ): Promise<GenerateCommitMessageResultDto> {
+  assertServerCanAccessLinkedFilesystem('Commit-message drafting from worktree changes');
   const ctx = await loadBranchActionContext(missionRef);
   if (!existsSync(ctx.worktreePath)) {
     throw new ApiError(
@@ -1425,6 +1452,9 @@ function normalizeBranchRef(ref: string): string {
 export async function listMissionBranches(missionRef: string): Promise<MissionBranchListDto> {
   const row = await getMissionRow(missionRef);
   const current = row.active_branch?.trim() || row.branch_override?.trim() || null;
+  if (!serverCanAccessLinkedFilesystem()) {
+    return { branches: current ? [current] : [], current };
+  }
   const repoPath = await primaryResourcePath(row.project_id);
   if (!repoPath || !existsSync(repoPath)) {
     return { branches: current ? [current] : [], current };
@@ -1491,6 +1521,7 @@ function directorySizeBytes(dir: string, budget = 20000): number {
 
 // Enumerates every Overlord-managed worktree across the workspace's projects.
 async function collectWorktreeEntries(): Promise<WorktreeListEntry[]> {
+  if (!serverCanAccessLinkedFilesystem()) return [];
   const worktreeRoot = path.resolve(resolveWorktreeRoot());
   const projects = (await requireDatabaseClient().all(
     `SELECT id, name FROM projects
@@ -1601,6 +1632,7 @@ export async function listWorktrees(): Promise<WorktreeDto[]> {
 // Removes a single worktree by path. Refuses a dirty worktree unless `force`,
 // returning a typed error so the UI can warn before destroying uncommitted work.
 export async function removeWorktree(body: RemoveWorktreeBody): Promise<PurgeWorktreesResultDto> {
+  assertServerCanAccessLinkedFilesystem('Worktree removal');
   const target = typeof body.path === 'string' ? path.resolve(body.path.trim()) : '';
   if (!target) throw new ApiError(400, 'A worktree path is required.');
   const entry = (await collectWorktreeEntries()).find(e => e.path === target);
@@ -1632,6 +1664,7 @@ export async function removeWorktree(body: RemoveWorktreeBody): Promise<PurgeWor
 // Removes every clean, merged worktree in one pass ("Purge all merged"). Dirty
 // worktrees are skipped (never force-removed) so in-progress work is preserved.
 export async function purgeMergedWorktrees(): Promise<PurgeWorktreesResultDto> {
+  assertServerCanAccessLinkedFilesystem('Worktree purge');
   const removed: string[] = [];
   const skipped: Array<{ path: string; reason: string }> = [];
   const entries = await collectWorktreeEntries();
@@ -2204,12 +2237,14 @@ async function insertProjectResource(
     ]
   );
 
-  writeProjectJson({
-    directoryPath: resourcePath,
-    projectId: project.id,
-    resourceId,
-    isPrimary: body.isPrimary !== false
-  });
+  if (DATABASE_DIALECT === 'sqlite') {
+    writeProjectJson({
+      directoryPath: resourcePath,
+      projectId: project.id,
+      resourceId,
+      isPrimary: body.isPrimary !== false
+    });
+  }
 
   await recordChangeAsync(
     {
@@ -2392,6 +2427,24 @@ export async function getProjectRepository(
       truncated: false,
       scannedAt,
       message: `Repository reading is not supported for ${resource.type} resources yet.`
+    };
+  }
+
+  if (!serverCanAccessLinkedFilesystem()) {
+    return {
+      projectId,
+      executionTargetId,
+      resource,
+      status: 'unsupported_resource',
+      rootPath: resource.path,
+      gitRoot: null,
+      branch: null,
+      commit: null,
+      entries: [],
+      truncated: false,
+      scannedAt,
+      message:
+        'Repository browsing for linked local directories must run on a local execution target.'
     };
   }
 

@@ -97,6 +97,18 @@ export async function persistDesktopBearerToken(token: string): Promise<void> {
   await bridge.setBearerToken({ profileId: activeBackend.id, token: userToken });
 }
 
+export function isCurrentDesktopBearerTokenPrefix(tokenPrefix: string | null | undefined): boolean {
+  const prefix = tokenPrefix?.trim();
+  return Boolean(prefix && userToken?.startsWith(prefix));
+}
+
+export async function clearDesktopBearerToken(): Promise<void> {
+  userToken = null;
+  const bridge = window.overlord;
+  if (!activeBackend || !bridge?.clearBearerToken) return;
+  await bridge.clearBearerToken(activeBackend.id);
+}
+
 export async function clearDesktopAuthTokens(): Promise<void> {
   userToken = null;
   sessionToken = null;

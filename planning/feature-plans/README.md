@@ -22,6 +22,7 @@ the **redirect** that points each plan at the module / topic it belongs to.
 ### Runner · Launch & Execution
 | Plan | What it proposes |
 | --- | --- |
+| [Local Execution Target Capabilities](local-execution-target-capabilities.md) | Unify local/cloud filesystem, Git, worktree, and agent execution behind local targets. |
 | [Objective Launch and Execution Flow Review](objective-launch-execution-flow-review.md) | Review of the launch → execution-request → runner flow. |
 | [Runner Background Daemon](runner-background-daemon.md) | Run the poller without occupying a terminal. |
 | [Global Foreground Runner](runner-global-foreground.md) | One terminal serving all accessible projects. |
@@ -38,6 +39,7 @@ the **redirect** that points each plan at the module / topic it belongs to.
 ### Database · Deployment
 | Plan | What it proposes |
 | --- | --- |
+| [Local Execution Target Capabilities](local-execution-target-capabilities.md) | Keeps hosted/local backends interchangeable by moving checkout-local work to targets. |
 | [Railway + PostgreSQL Deployment](railway-postgres-deployment-recommendation.md) | Hosted Postgres deployment recommendation. |
 | [Remote Overlord Architecture Recommendations](remote-overlord-architecture-recommendations.md) | Architecture options for a remote/hosted Overlord. |
 | → Owning module: [`database/`](../../database/README.md) |

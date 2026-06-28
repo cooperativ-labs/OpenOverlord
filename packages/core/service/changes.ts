@@ -159,7 +159,7 @@ export async function listChangedFilesForReview({
     });
   }
 
-  if (includeCurrent) {
+  if (includeCurrent && ctx.db.dialect === 'sqlite') {
     const workingDirectory = await resolveWorkingDirectory({ ctx, missionId: mission.id });
     if (workingDirectory) {
       for (const current of currentGitStatus(workingDirectory)) {
@@ -243,6 +243,9 @@ export async function readCurrentDiff({
   missionId: string;
   filePath?: string | null;
 }): Promise<{ workingDirectory: string | null; diff: string; unavailable: boolean }> {
+  if (ctx.db.dialect !== 'sqlite') {
+    return { workingDirectory: null, diff: '', unavailable: true };
+  }
   const workingDirectory = await resolveWorkingDirectory({ ctx, missionId });
   if (!workingDirectory) {
     return { workingDirectory: null, diff: '', unavailable: true };
