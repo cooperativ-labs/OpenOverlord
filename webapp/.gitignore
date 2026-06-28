@@ -2,7 +2,9 @@
 dist/
 dist-server/
 # Staged SQL migrations copied next to the server bundle by build:server
+# (regenerated copies of database/{sqlite,postgres}/migrations — never source)
 sqlite/
+postgres/
 *.tsbuildinfo
 
 # npm artifacts (this package uses Yarn)
