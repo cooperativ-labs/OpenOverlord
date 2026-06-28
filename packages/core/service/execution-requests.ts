@@ -5,7 +5,7 @@ import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import { resolveMissionId, resolveProjectId } from './context.js';
 import { ServiceError } from './errors.js';
-import { ensureLocalExecutionTarget } from './execution-targets.js';
+import { ensureCallerDeviceTarget } from './execution-targets.js';
 import { assertPrimaryResourceConnected } from './projects.js';
 import { newId, nowIso } from './util.js';
 
@@ -484,7 +484,7 @@ export async function claimNextExecutionRequest({
   claimTtlMs?: number;
 }): Promise<ClaimedExecutionRequest | null> {
   await expireStaleExecutionRequests({ ctx });
-  const target = await ensureLocalExecutionTarget({ ctx });
+  const target = await ensureCallerDeviceTarget({ ctx });
   const conditions = [
     'er.workspace_id = ?',
     "er.status = 'queued'",

@@ -6,7 +6,7 @@ import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import { resolveProjectId } from './context.js';
 import { ServiceError } from './errors.js';
-import { ensureLocalExecutionTarget } from './execution-targets.js';
+import { ensureCallerDeviceTarget } from './execution-targets.js';
 import { initialTitleFromInstruction, newId, nowIso, slugify } from './util.js';
 
 export type ProjectSummary = {
@@ -192,7 +192,7 @@ export async function addProjectResource({
 }): Promise<ProjectResourceSummary> {
   const resolvedProjectId = await resolveProjectId(ctx, projectId);
   const resolvedPath = path.resolve(directoryPath);
-  const executionTargetId = (await ensureLocalExecutionTarget({ ctx })).executionTargetId;
+  const executionTargetId = (await ensureCallerDeviceTarget({ ctx })).executionTargetId;
   const now = nowIso();
   const id = newId();
 

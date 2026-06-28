@@ -10,7 +10,7 @@ import {
   readRepositoryTree,
   RepositoryReadError
 } from '../../packages/core/repository/git-tree.ts';
-import { ensureLocalExecutionTarget } from '../../packages/core/service/execution-targets.ts';
+import { ensureCallerDeviceTarget } from '../../packages/core/service/execution-targets.ts';
 import { writeProjectJson } from '../../packages/core/service/projects.ts';
 import type {
   ArtifactDto,
@@ -468,7 +468,7 @@ async function resolveResourceExecutionTargetId(
 ): Promise<string | null> {
   if (executionTargetId === undefined) {
     return (
-      await ensureLocalExecutionTarget({
+      await ensureCallerDeviceTarget({
         ctx: {
           db,
           workspace: { id: WORKSPACE.id, slug: WORKSPACE.slug, name: WORKSPACE.name },
