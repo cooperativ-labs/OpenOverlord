@@ -32,10 +32,20 @@ describe('InProcessProvider.observeResource', () => {
     assert.equal(r.value.state, 'missing');
   });
 
-  it('reports CAPABILITY_NOT_IMPLEMENTED for not-yet-routed capabilities', async () => {
-    const r = await new InProcessProvider(META).listWorktrees();
-    assert.ok(!r.ok);
-    assert.equal(r.code, 'CAPABILITY_NOT_IMPLEMENTED');
+  it('reports CAPABILITY_NOT_IMPLEMENTED for CLI-owned capabilities', async () => {
+    const provider = new InProcessProvider(META);
+    const prepare = await provider.prepareBranch({ missionId: 'm1' });
+    assert.ok(!prepare.ok);
+    assert.equal(prepare.code, 'CAPABILITY_NOT_IMPLEMENTED');
+    const launch = await provider.launchAgent({ executionRequestId: 'req-1' });
+    assert.ok(!launch.ok);
+    assert.equal(launch.code, 'CAPABILITY_NOT_IMPLEMENTED');
+  });
+
+  it('runs portable doctor checks', async () => {
+    const r = await new InProcessProvider(META).doctor();
+    assert.ok(isOk(r));
+    assert.ok(r.value.checks.length >= 2);
   });
 });
 

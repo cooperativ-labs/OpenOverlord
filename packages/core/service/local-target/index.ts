@@ -24,6 +24,7 @@ export type {
   CommitMessageGatherErrorCode,
   CommitMessageGatherResult
 } from './commit-message-diff-git.ts';
+export { runLocalTargetDoctorChecks } from './doctor-checks.ts';
 export { PROJECT_JSON_VERSION, writeProjectJson } from './project-metadata.ts';
 export { FakeLocalTargetProvider } from './fake-provider.ts';
 export type { FakeHandlers, FakeProviderOptions } from './fake-provider.ts';

@@ -21,8 +21,8 @@ import type { LocalTargetCapabilities, TargetMetadata } from './types.ts';
  * backend is co-located with the checkout (Local SQLite), that is the in-process
  * provider; otherwise there is no local target reachable from the backend, so
  * the returned provider reports every capability unavailable (and the caller
- * falls back to lifecycle status). This is the seam that replaces the old
- * `serverCanAccessLinkedFilesystem()` boolean guard.
+ * falls back to lifecycle status). This is the seam that replaces ad-hoc
+ * `dialect === 'sqlite'` filesystem guards in the webapp backend.
  */
 export function resolveBackendResourceProvider(
   coLocatedWithCheckout: boolean,

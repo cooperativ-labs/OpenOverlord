@@ -9,6 +9,7 @@
 
 import { performBranchActionGit } from './branch-actions-git.ts';
 import { gatherCommitMessageDiff } from './commit-message-diff-git.ts';
+import { runLocalTargetDoctorChecks } from './doctor-checks.ts';
 import { runGit } from './git-run.ts';
 
 import {
@@ -219,7 +220,28 @@ export class InProcessProvider implements LocalTargetCapabilities {
     return ok(this.target, { diff: result.diff });
   }
 
-  // ---- not yet routed (filled in by later WS-D steps) ------------------
+  // ---- routed (WS-D 6) -------------------------------------------------
+
+  launchAgent(_input: LaunchAgentInput) {
+    return fail(
+      this.target,
+      'CAPABILITY_NOT_IMPLEMENTED',
+      'Agent launch is owned by the CLI runner (`ovld runner` / `ovld launch`).'
+    );
+  }
+
+  async doctor() {
+    return ok(this.target, { checks: runLocalTargetDoctorChecks() });
+  }
+
+  // ---- not yet routed (CLI-owned or future WS-D paths) -----------------
+
+  prepareBranch(_input: PrepareBranchInput) {
+    return this.#notImplemented();
+  }
+  readCurrentDiff(_input: ReadCurrentDiffInput) {
+    return this.#notImplemented();
+  }
 
   #notImplemented(): Promise<CapabilityFailure> {
     return Promise.resolve(
@@ -229,18 +251,5 @@ export class InProcessProvider implements LocalTargetCapabilities {
         'This capability is not yet routed through the in-process provider.'
       )
     );
-  }
-
-  prepareBranch(_input: PrepareBranchInput) {
-    return this.#notImplemented();
-  }
-  readCurrentDiff(_input: ReadCurrentDiffInput) {
-    return this.#notImplemented();
-  }
-  launchAgent(_input: LaunchAgentInput) {
-    return this.#notImplemented();
-  }
-  doctor() {
-    return this.#notImplemented();
   }
 }

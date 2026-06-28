@@ -75,6 +75,9 @@ import {
   WORKSPACE
 } from './db.ts';
 import { ApiError } from './errors.ts';
+
+/** True when this backend process is co-located with linked checkouts (Local SQLite). */
+const BACKEND_CO_LOCATED_WITH_CHECKOUT = DATABASE_DIALECT === 'sqlite';
 import {
   dequeueObjective,
   getLaunchPreference,
@@ -412,22 +415,8 @@ function isTruthyFlag(value: unknown): boolean {
   return value === true || value === 1;
 }
 
-function serverCanAccessLinkedFilesystem(): boolean {
-  return DATABASE_DIALECT === 'sqlite';
-}
-
-function assertServerCanAccessLinkedFilesystem(action: string): void {
-  if (serverCanAccessLinkedFilesystem()) return;
-  throw new ApiError(
-    409,
-    `${action} must run on a local execution target with access to the linked checkout.`,
-    'The hosted Overlord backend stores metadata and queues work, but it cannot inspect or mutate your local filesystem.',
-    'LOCAL_FILESYSTEM_UNAVAILABLE'
-  );
-}
-
 function localMutationProvider() {
-  return resolveBackendResourceProvider(serverCanAccessLinkedFilesystem(), {
+  return resolveBackendResourceProvider(BACKEND_CO_LOCATED_WITH_CHECKOUT, {
     executionTargetId: null,
     deviceLabel: null,
     transport: 'in_process'
@@ -473,7 +462,7 @@ async function toProjectResourceDto(r: ProjectResourceRow): Promise<ProjectResou
   // provider when this backend is co-located with the checkout (Local SQLite),
   // otherwise lifecycle-only — the hosted backend never derives `missing` from
   // its own filesystem (WS-D 1; design §5/§6).
-  const provider = resolveBackendResourceProvider(serverCanAccessLinkedFilesystem(), {
+  const provider = resolveBackendResourceProvider(BACKEND_CO_LOCATED_WITH_CHECKOUT, {
     executionTargetId: r.execution_target_id,
     deviceLabel: null,
     transport: 'in_process'
@@ -774,7 +763,7 @@ async function deriveBranchStatus({
   branchName: string;
   baseBranch: string | null;
 }): Promise<'created' | 'published' | 'merged_unpushed' | 'merged'> {
-  if (!serverCanAccessLinkedFilesystem()) return 'created';
+  if (!BACKEND_CO_LOCATED_WITH_CHECKOUT) return 'created';
   const resource = (await requireDatabaseClient().get(
     `SELECT path FROM project_resources
         WHERE project_id = ? AND workspace_id = ? AND is_primary = ?
@@ -826,7 +815,7 @@ function normalizeBranchRef(ref: string): string {
 }
 
 async function primaryCheckoutBranch(projectId: string): Promise<string | null> {
-  if (!serverCanAccessLinkedFilesystem()) return null;
+  if (!BACKEND_CO_LOCATED_WITH_CHECKOUT) return null;
   const repoPath = await primaryResourcePath(projectId);
   if (!repoPath || !existsSync(repoPath)) return null;
 
@@ -934,7 +923,7 @@ async function resolvePreparedWorktreePath(
   branchName: string,
   fallback: string
 ): Promise<string> {
-  if (!serverCanAccessLinkedFilesystem()) return fallback;
+  if (!BACKEND_CO_LOCATED_WITH_CHECKOUT) return fallback;
   const primary = await primaryResourcePath(projectId);
   if (primary && existsSync(primary)) {
     const checkedOut = worktreePathForBranch(primary, branchName);
@@ -964,7 +953,7 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
       worktreePath,
       status: await deriveBranchStatus({ projectId: row.project_id, branchName: name, baseBranch }),
       dirty:
-        serverCanAccessLinkedFilesystem() &&
+        BACKEND_CO_LOCATED_WITH_CHECKOUT &&
         existsSync(worktreePath) &&
         worktreeIsDirty(worktreePath),
       overrideBranch,
@@ -1144,7 +1133,6 @@ export async function performBranchAction(
   missionRef: string,
   body: { action?: unknown; message?: unknown; confirmBusy?: unknown }
 ): Promise<MissionDetailDto> {
-  assertServerCanAccessLinkedFilesystem('Branch actions');
   const action = String(body.action ?? '') as BranchActionName;
   if (
     action !== 'integrate' &&
@@ -1230,7 +1218,7 @@ export async function listMissionBranches(missionRef: string): Promise<MissionBr
   if (!resource) {
     return { branches: current ? [current] : [], current };
   }
-  const provider = resolveBackendResourceProvider(serverCanAccessLinkedFilesystem(), {
+  const provider = resolveBackendResourceProvider(BACKEND_CO_LOCATED_WITH_CHECKOUT, {
     executionTargetId: null,
     deviceLabel: null,
     transport: 'in_process'
@@ -1295,7 +1283,6 @@ function directorySizeBytes(dir: string, budget = 20000): number {
 
 // Enumerates every Overlord-managed worktree across the workspace's projects.
 async function collectWorktreeEntries(): Promise<WorktreeListEntry[]> {
-  if (!serverCanAccessLinkedFilesystem()) return [];
   const worktreeRoot = path.resolve(resolveWorktreeRoot());
   const projects = (await requireDatabaseClient().all(
     `SELECT id, name FROM projects
@@ -1395,7 +1382,6 @@ export async function listWorktrees(): Promise<WorktreeDto[]> {
 // Removes a single worktree by path. Refuses a dirty worktree unless `force`,
 // returning a typed error so the UI can warn before destroying uncommitted work.
 export async function removeWorktree(body: RemoveWorktreeBody): Promise<PurgeWorktreesResultDto> {
-  assertServerCanAccessLinkedFilesystem('Worktree removal');
   const target = typeof body.path === 'string' ? path.resolve(body.path.trim()) : '';
   if (!target) throw new ApiError(400, 'A worktree path is required.');
   const entry = (await collectWorktreeEntries()).find(
@@ -1427,7 +1413,6 @@ export async function removeWorktree(body: RemoveWorktreeBody): Promise<PurgeWor
 // Removes every clean, merged worktree in one pass ("Purge all merged"). Dirty
 // worktrees are skipped (never force-removed) so in-progress work is preserved.
 export async function purgeMergedWorktrees(): Promise<PurgeWorktreesResultDto> {
-  assertServerCanAccessLinkedFilesystem('Worktree purge');
   const entries = await collectWorktreeEntries();
   const merged = (await Promise.all(entries.map(toWorktreeDto))).filter(
     dto => dto.merged && !dto.dirty
@@ -2004,7 +1989,7 @@ async function insertProjectResource(
   // WS-D 2: write .overlord/project.json through the capability — an in-process
   // provider when co-located (Local SQLite), otherwise nothing (the hosted
   // backend never writes to its own filesystem; the client owns the write).
-  await resolveBackendResourceProvider(serverCanAccessLinkedFilesystem(), {
+  await resolveBackendResourceProvider(BACKEND_CO_LOCATED_WITH_CHECKOUT, {
     executionTargetId,
     deviceLabel: null,
     transport: 'in_process'
@@ -2199,7 +2184,7 @@ export async function getProjectRepository(
     };
   }
 
-  const provider = resolveBackendResourceProvider(serverCanAccessLinkedFilesystem(), {
+  const provider = resolveBackendResourceProvider(BACKEND_CO_LOCATED_WITH_CHECKOUT, {
     executionTargetId,
     deviceLabel: null,
     transport: 'in_process'
