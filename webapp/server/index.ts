@@ -46,6 +46,8 @@ import {
   getProjectExecutionTarget,
   updateProjectExecutionTarget
 } from './project-execution-target.ts';
+import { postMissionBranchObservations } from './mission-branch-observations.ts';
+import { getExecutionTargetMigrationDiagnostics } from './execution-target-migration.ts';
 import { postExecutionTargetObservations } from './target-resource-observations.ts';
 import { runProtocolSubcommand } from './protocol.ts';
 import { requirePermission } from './rbac.ts';
@@ -292,6 +294,13 @@ app.get(
     }),
     { requires: PERMISSIONS.WORKSPACE_READ }
   )
+);
+
+app.get(
+  '/api/diagnostics/execution-target-migration',
+  handle(() => getExecutionTargetMigrationDiagnostics(), {
+    requires: PERMISSIONS.WORKSPACE_READ
+  })
 );
 
 // ---- Initial instance setup ----------------------------------------------
@@ -971,6 +980,17 @@ app.post(
   handle(
     req =>
       postExecutionTargetObservations({
+        executionTargetId: req.params.id,
+        body: req.body
+      }),
+    { mutates: true }
+  )
+);
+app.post(
+  '/api/execution-targets/:id/mission-branch-observations',
+  handle(
+    req =>
+      postMissionBranchObservations({
         executionTargetId: req.params.id,
         body: req.body
       }),

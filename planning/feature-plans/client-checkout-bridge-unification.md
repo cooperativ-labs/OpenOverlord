@@ -444,21 +444,56 @@ Document in release notes / `ovld doctor` warning when container hostname detect
 ## Remaining work
 
 F0–F5 implementation is in the working tree. Open items (verification, branch
-observation writeback, migration guidance, and final PR) are tracked in
+observation writeback, and final PR) are tracked in
 [`client-checkout-bridge-finish-sequence.md`](client-checkout-bridge-finish-sequence.md)
-(Steps 4–9).
+(Steps 4–6, 9).
 
 ---
 
-## 12. Open questions
+## 12. Product decisions (resolved 2026-06-28)
 
-1. **F3 dev fallback** — Keep `in_process_server` REST proxy indefinitely, or
-   require Electron for all contributor workflows?
-2. **Observation retention** — Ephemeral cache vs durable `target_resource_observations`?
-3. **Pure browser Cloud** — Accept permanent degradation, or stable browser
-   fingerprint + service worker (probably not worth it)?
-4. **AI summarization** — Keep on server (needs diff upload) or move to desktop
-   when API keys are local?
+These were open questions during planning; they are now explicit product policy.
+
+### 12.1 Dev fallback (`in_process_server`)
+
+**Decision:** Keep the opt-in dev REST proxy indefinitely.
+
+- Set `OVERLORD_DEV_IN_PROCESS_LOCAL_TARGET=true` on loopback SQLite when
+  developing in a browser without Electron.
+- `meta.capabilities.localTarget = in_process_server` remains supported for
+  contributors only; production Cloud and Desktop flows use the client bridge.
+- Electron/Desktop is the primary product surface for checkout-local work.
+
+### 12.2 Observation retention
+
+**Decision:** Durable latest-row cache, no TTL for now.
+
+- `target_resource_observations` and `mission_branch_observations` upsert one
+  row per `(execution_target_id, resource_id)` or `(execution_target_id,
+  mission_id)`.
+- REST reads merge the freshest observation when the desktop bridge is
+  unavailable; live bridge observations win in the UI when present.
+- Automatic expiry/cleanup is **out of scope** until storage or privacy needs
+  require it.
+
+### 12.3 Pure browser on Cloud Postgres
+
+**Decision:** Permanent graceful degradation is accepted.
+
+- Without Overlord Desktop (or a runner on the execution target), checkout-local
+  features show `LocalTargetRequiredNotice` and read last client observations —
+  they do not silently use wrong server paths.
+- A stable browser fingerprint or service worker bridge is **not planned**.
+
+### 12.4 AI commit-message summarization
+
+**Decision:** Server-side summarization with client-uploaded diff remains the
+long-term design.
+
+- Diff gathering stays on the client execution target; the control plane may
+  summarize once it receives diff text (API keys can remain server-side).
+- Moving summarization entirely to desktop is **not planned** unless server-side
+  keys become unavailable for a deployment.
 
 ---
 

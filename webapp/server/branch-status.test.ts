@@ -117,4 +117,58 @@ describe('branch status derivation', () => {
     assert.equal(detail.branch?.baseBranch, 'release/prepared');
     assert.equal(detail.branch?.status, 'created');
   });
+
+  it('merges client-reported branch observations into mission detail', async () => {
+    const dir = mkdtempSync(path.join('/tmp', 'ovld-branch-observation-'));
+    const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
+    await bootstrapIntegrationTestDb({ sqlitePath: path.join(dir, 'Overlord.sqlite') });
+
+    const { createProject, createMission, createProjectResource, getMissionDetail } =
+      await import('./repository.ts');
+    const { postMissionBranchObservations } = await import('./mission-branch-observations.ts');
+    const { recordBranchPrepared } = await import('./runner.ts');
+
+    const project = await createProject({ name: 'Branch Observation DTO Test' });
+    const resource = await createProjectResource(project.id, {
+      directoryPath: '/tmp/repo',
+      isPrimary: true
+    });
+    const mission = await createMission({ projectId: project.id, firstObjective: 'Prepared work' });
+    const observedWorktree = path.join(dir, 'observed-wt');
+
+    await recordBranchPrepared({
+      missionId: mission.displayId,
+      payload: {
+        branchName: 'feat-observed',
+        baseBranch: 'main',
+        worktreePath: path.join(dir, 'fallback-wt'),
+        action: 'create',
+        cycle: 1
+      }
+    });
+
+    const observedAt = new Date().toISOString();
+    assert.ok(resource.executionTargetId);
+    await postMissionBranchObservations({
+      executionTargetId: resource.executionTargetId,
+      body: {
+        observations: [
+          {
+            missionId: mission.id,
+            status: 'merged_unpushed',
+            dirty: true,
+            worktreePath: observedWorktree,
+            observedAt
+          }
+        ]
+      }
+    });
+
+    const detail = await getMissionDetail(mission.id);
+    assert.equal(detail.branch?.status, 'merged_unpushed');
+    assert.equal(detail.branch?.dirty, true);
+    assert.equal(detail.branch?.worktreePath, observedWorktree);
+    assert.equal(detail.branch?.observedAt, observedAt);
+    assert.equal(detail.branch?.observationSource, 'client');
+  });
 });

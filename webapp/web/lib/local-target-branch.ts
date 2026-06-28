@@ -12,7 +12,7 @@ import type {
   RemoveWorktreeBody,
   WorktreeDto
 } from '../../shared/contract.ts';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ApiRequestError } from './api.ts';
 import {
@@ -21,6 +21,7 @@ import {
   isLocalTargetCapabilityAvailable,
   useLocalTargetCapabilityAvailable
 } from './local-target-client.ts';
+import { reportMissionBranchObservation } from './mission-branch-observations.ts';
 
 export { useLocalTargetCapabilityAvailable, useLocalTargetUnavailable } from './local-target-client.ts';
 
@@ -350,13 +351,16 @@ export async function purgeMergedWorktreesOnLocalTarget({
 export function useObservedMissionBranch({
   mission,
   resource,
+  executionTargetId,
   enabled
 }: {
   mission: MissionDetailDto;
   resource: ProjectResourceDto | null;
+  executionTargetId: string | null;
   enabled: boolean;
 }) {
   const localTargetAvailable = useLocalTargetCapabilityAvailable();
+  const queryClient = useQueryClient();
 
   return useQuery({
     queryKey: [
@@ -364,12 +368,27 @@ export function useObservedMissionBranch({
       mission.id,
       resource?.id,
       resource?.path,
+      executionTargetId,
       mission.branch?.name,
       mission.branch?.status
     ],
     queryFn: async () => {
       if (!mission.branch || !resource) return mission.branch;
-      return observeMissionBranchFromLocalTarget({ branch: mission.branch, resource });
+      const observed = await observeMissionBranchFromLocalTarget({
+        branch: mission.branch,
+        resource
+      });
+      if (executionTargetId && observed.observationSource === 'client') {
+        const recorded = await reportMissionBranchObservation({
+          executionTargetId,
+          missionId: mission.id,
+          branch: observed
+        });
+        if (recorded > 0) {
+          await queryClient.invalidateQueries({ queryKey: ['mission', mission.id] });
+        }
+      }
+      return observed;
     },
     enabled: enabled && localTargetAvailable && Boolean(mission.branch && resource),
     staleTime: 5_000

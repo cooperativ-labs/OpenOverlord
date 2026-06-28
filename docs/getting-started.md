@@ -250,6 +250,11 @@ Then restart the web/API server. This path is **for local development only** —
 it is disabled on Postgres backends and is not a substitute for Desktop in
 production or Cloud workspaces.
 
+**Upgrading Cloud workspaces:** if your workspace predates the client checkout
+bridge, run `ovld doctor` against your hosted backend and follow
+[`docs/upgrading-client-checkout-bridge.md`](upgrading-client-checkout-bridge.md)
+when stale backend-host execution targets are reported.
+
 ---
 
 ## Step 9 — Inspect the database with SQL Studio (optional)

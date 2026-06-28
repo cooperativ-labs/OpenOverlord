@@ -554,6 +554,19 @@ export interface StorageBuckets {
   workspace_id: string;
 }
 
+export interface MissionBranchObservations {
+  created_at: string;
+  dirty: number;
+  execution_target_id: string;
+  id: string | null;
+  mission_id: string;
+  observed_at: string;
+  status: string;
+  updated_at: string;
+  workspace_id: string;
+  worktree_path: string | null;
+}
+
 export interface TargetResourceObservations {
   branch: string | null;
   created_at: string;
@@ -747,6 +760,7 @@ export interface DB {
   execution_requests: ExecutionRequests;
   execution_targets: ExecutionTargets;
   idempotency_keys: IdempotencyKeys;
+  mission_branch_observations: MissionBranchObservations;
   mission_events: MissionEvents;
   mission_sequences: MissionSequences;
   mission_tags: MissionTags;

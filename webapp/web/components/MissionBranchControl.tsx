@@ -779,6 +779,7 @@ export function MissionBranchControl({ mission }: { mission: MissionDetailDto })
   const observedBranch = useObservedMissionBranch({
     mission,
     resource: primaryResource,
+    executionTargetId: selectedExecutionTargetId ?? primaryResource?.executionTargetId ?? null,
     enabled: true
   });
   const displayMission = useMemo<MissionDetailDto>(

@@ -535,6 +535,28 @@ Indexes:
 - Unique `(execution_target_id, resource_id)`.
 - `(resource_id)` for project resource list merges.
 
+### `mission_branch_observations`
+
+Latest client-reported git state for a prepared mission branch on a specific execution target.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `execution_target_id` | Id | yes | FK to `execution_targets`. |
+| `mission_id` | Id | yes | FK to `missions`. |
+| `status` | text | yes | Closed vocabulary: `created`, `published`, `merged_unpushed`, `merged`. Pending branches are not observed because no branch exists yet. |
+| `dirty` | Bool | yes | Whether the target observed uncommitted work in the branch worktree. |
+| `worktree_path` | Path | no | Target-reported worktree path when available. |
+| `observed_at` | TimestampUTC | yes | When the target made the observation. |
+| `created_at` | TimestampUTC | yes | First writeback row time. |
+| `updated_at` | TimestampUTC | yes | Last upsert time. |
+
+Indexes:
+
+- Unique `(execution_target_id, mission_id)`.
+- `(mission_id)` for mission detail branch DTO merges.
+
 ### `project_user_preferences`
 
 Stores user-specific project preferences without overloading project resource directory rows.

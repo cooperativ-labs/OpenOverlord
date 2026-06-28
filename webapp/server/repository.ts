@@ -14,6 +14,10 @@ import {
   mergeResourceStatusWithObservation,
   type TargetResourceObservationRow
 } from '../../packages/core/service/target-resource-observations.ts';
+import {
+  loadMissionBranchObservationsForMissions,
+  mergeMissionBranchObservation
+} from '../../packages/core/service/mission-branch-observations.ts';
 import type { TargetMetadata } from '../../packages/core/service/local-target/types.ts';
 import type {
   ArtifactDto,
@@ -836,7 +840,7 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
       fallback: canonical,
       executionTargetId
     });
-    return {
+    const branch = {
       name,
       baseBranch,
       worktreePath,
@@ -853,6 +857,15 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
       willPrepareBranch,
       willUseWorktree
     };
+    const observations = await loadMissionBranchObservationsForMissions({
+      ctx: buildWebappServiceContext(),
+      executionTargetId,
+      missionIds: [row.id]
+    });
+    return mergeMissionBranchObservation({
+      controlPlaneBranch: branch,
+      observation: observations.get(row.id)
+    });
   }
 
   // No branch prepared yet: preview the name the next launch will use. A pinned

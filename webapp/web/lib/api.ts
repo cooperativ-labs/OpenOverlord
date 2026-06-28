@@ -42,6 +42,8 @@ import type {
   ProjectTagDto,
   PurgeMergedWorktreesBody,
   PurgeWorktreesResultDto,
+  RecordMissionBranchObservationsBody,
+  RecordMissionBranchObservationsResult,
   RecordTargetResourceObservationsBody,
   RecordTargetResourceObservationsResult,
   RemoveWorktreeBody,
@@ -267,6 +269,15 @@ export const api = {
     request<RecordTargetResourceObservationsResult>(
       'POST',
       `/api/execution-targets/${executionTargetId}/observations`,
+      body
+    ),
+  recordMissionBranchObservations: (
+    executionTargetId: string,
+    body: RecordMissionBranchObservationsBody
+  ) =>
+    request<RecordMissionBranchObservationsResult>(
+      'POST',
+      `/api/execution-targets/${executionTargetId}/mission-branch-observations`,
       body
     ),
   getProjectRepository: (id: string, executionTargetId?: string | null) => {

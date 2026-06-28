@@ -228,6 +228,20 @@ export interface RecordTargetResourceObservationsResult {
   recorded: number;
 }
 
+export interface MissionBranchObservationInput {
+  missionId: string;
+  status: Exclude<MissionBranchStatus, 'pending'>;
+  dirty: boolean;
+  worktreePath?: string | null;
+  observedAt: string;
+}
+
+export interface RecordMissionBranchObservationsBody {
+  observations: MissionBranchObservationInput[];
+}
+
+export type RecordMissionBranchObservationsResult = RecordTargetResourceObservationsResult;
+
 export type RepositoryEntryType = 'file' | 'directory';
 
 export interface RepositoryEntryDto {

@@ -238,6 +238,8 @@ observations.
 
 ## Step 7 — Migration & cleanup (parent plan §10)
 
+**Status:** Done (2026-06-28)
+
 **Goal:** Help workspaces that previously stamped the Railway/backend host as
 execution target.
 
@@ -258,6 +260,8 @@ execution target.
 ---
 
 ## Step 8 — Resolve open questions (parent plan §12)
+
+**Status:** Done (2026-06-28)
 
 **Goal:** Record explicit product decisions in the parent plan.
 

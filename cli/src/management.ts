@@ -429,6 +429,31 @@ export async function runLocalCommand({
         });
       }
 
+      if (health.ok) {
+        const { isLoopbackBackendUrl } = await import('./config.js');
+        const { readStoredAuthCredentials } = await import('./auth-credentials.js');
+        const { buildExecutionTargetMigrationDoctorCheck } = await import(
+          './execution-target-migration-doctor.js'
+        );
+        const hasAuth =
+          Boolean(
+            process.env.OVERLORD_USER_TOKEN?.trim() ||
+              process.env.OVLD_USER_TOKEN?.trim() ||
+              process.env.USER_TOKEN?.trim()
+          ) || readStoredAuthCredentials() !== null;
+        if (hasAuth && !isLoopbackBackendUrl(backend.baseUrl)) {
+          try {
+            const diagnostics = await backend.get<
+              import('./execution-target-migration-doctor.js').ExecutionTargetMigrationDiagnostics
+            >('/api/diagnostics/execution-target-migration');
+            const migrationCheck = buildExecutionTargetMigrationDoctorCheck({ diagnostics });
+            if (migrationCheck) checks.push(migrationCheck);
+          } catch {
+            // Older backends may not expose migration diagnostics yet.
+          }
+        }
+      }
+
       const allOk = checks.every(check => !check.required || check.ok);
       if (json) {
         printJson({ ok: allOk, checks });
