@@ -577,6 +577,26 @@ export interface LaunchPreferenceDto {
   selectedReasoningEffort: string | null;
 }
 
+/** A project execution target the acting user may select for queue-here/run-there (WS-C). */
+export interface EligibleExecutionTargetDto {
+  executionTargetId: string;
+  type: string;
+  label: string;
+  deviceLabel: string | null;
+  reachable: boolean;
+  primaryResourceConnected: boolean;
+}
+
+/** Per-project execution target selection for the acting workspace user. */
+export interface ProjectExecutionTargetDto {
+  selectedExecutionTargetId: string | null;
+  eligibleTargets: EligibleExecutionTargetDto[];
+}
+
+export interface UpdateProjectExecutionTargetBody {
+  executionTargetId: string | null;
+}
+
 export type ExecutionRequestStatus =
   | 'queued'
   | 'claimed'

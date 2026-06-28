@@ -33,6 +33,7 @@ import type {
   ObjectivePromptDto,
   ProfileDto,
   ProjectDto,
+  ProjectExecutionTargetDto,
   ProjectRepositoryDto,
   ProjectResourceDto,
   ProjectTagDto,
@@ -45,6 +46,7 @@ import type {
   UpdateAgentLaunchConfigBody,
   UpdateEverhourTimeBody,
   UpdateLaunchPreferenceBody,
+  UpdateProjectExecutionTargetBody,
   UpdateMissionBody,
   UpdateObjectiveBody,
   UpdateProfileBody,
@@ -335,6 +337,10 @@ export const api = {
     request<LaunchPreferenceDto>('GET', `/api/projects/${projectId}/launch-preference`),
   updateLaunchPreference: (projectId: string, body: UpdateLaunchPreferenceBody) =>
     request<LaunchPreferenceDto>('PUT', `/api/projects/${projectId}/launch-preference`, body),
+  getProjectExecutionTarget: (projectId: string) =>
+    request<ProjectExecutionTargetDto>('GET', `/api/projects/${projectId}/execution-target`),
+  updateProjectExecutionTarget: (projectId: string, body: UpdateProjectExecutionTargetBody) =>
+    request<ProjectExecutionTargetDto>('PUT', `/api/projects/${projectId}/execution-target`, body),
 
   // ---- Everhour integration ----------------------------------------------
   getEverhourIntegration: () =>

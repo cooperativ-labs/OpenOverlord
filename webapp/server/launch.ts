@@ -31,6 +31,7 @@ import {
   ensureCallerDeviceTarget,
   updateTerminalProfile as persistTerminalProfile
 } from '../../packages/core/service/execution-targets.ts';
+import { resolveProjectExecutionTargetForLaunch } from '../../packages/core/service/project-execution-target.ts';
 import { assertPrimaryResourceConnected } from '../../packages/core/service/projects.ts';
 import type {
   AgentCatalogAgentDto,
@@ -290,6 +291,35 @@ async function ensureLocalLaunchTarget(client: DatabaseClient = requireDatabaseC
     agentConfigs: await readAgentConfigs(target.preferenceId, client),
     terminalProfile: toTerminalProfileDto(target.terminalProfile)
   };
+}
+
+async function readAgentConfigsForExecutionTarget(
+  executionTargetId: string,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<Record<string, AgentLaunchConfigDto>> {
+  if (!getActorWorkspaceUserId()) return {};
+  const row = await client.get<{ preference_id: string | null }>(
+    `SELECT uetp.id AS preference_id
+       FROM execution_targets et
+       JOIN devices d
+         ON d.id = et.device_id
+        AND d.workspace_id = et.workspace_id
+        AND d.deleted_at IS NULL
+       JOIN workspace_users wu
+         ON wu.id = ?
+        AND wu.workspace_id = et.workspace_id
+        AND wu.deleted_at IS NULL
+       LEFT JOIN user_execution_target_preferences uetp
+         ON uetp.profile_id = wu.profile_id
+        AND uetp.target_type = et.type
+        AND uetp.target_fingerprint = d.fingerprint
+        AND uetp.deleted_at IS NULL
+      WHERE et.id = ?
+        AND et.workspace_id = ?
+        AND et.deleted_at IS NULL`,
+    [getActorWorkspaceUserId(), executionTargetId, WORKSPACE.id]
+  );
+  return row?.preference_id ? readAgentConfigs(row.preference_id, client) : {};
 }
 
 export async function getLaunchSettings(): Promise<LaunchSettingsDto> {
@@ -782,13 +812,21 @@ export async function launchObjective(
       );
     }
 
-    const target = await ensureLocalLaunchTarget(tx);
+    const localTarget = await ensureLocalLaunchTarget(tx);
+    const selectedExecutionTargetId = await resolveProjectExecutionTargetForLaunch({
+      ctx: serviceContext(tx),
+      projectId: objective.project_id
+    });
+    const queueExecutionTargetId = selectedExecutionTargetId ?? localTarget.executionTargetId;
+    const queueAgentConfigs = selectedExecutionTargetId
+      ? await readAgentConfigsForExecutionTarget(selectedExecutionTargetId, tx)
+      : localTarget.agentConfigs;
     const now = nowIso();
 
     await assertPrimaryResourceConnected({
       ctx: serviceContext(tx),
       projectId: objective.project_id,
-      executionTargetId: target.executionTargetId
+      executionTargetId: queueExecutionTargetId
     });
 
     // Persist the selection (and explicit override) onto the objective so the
@@ -823,8 +861,8 @@ export async function launchObjective(
       } catch {
         parsed = {};
       }
-      parsed[target.executionTargetId] = {
-        ...(parsed[target.executionTargetId] ?? {}),
+      parsed[queueExecutionTargetId] = {
+        ...(parsed[queueExecutionTargetId] ?? {}),
         [agentKey]: {
           preCommand: body.launchConfigOverride.preCommand ?? '',
           flags: body.launchConfigOverride.flags ?? []
@@ -865,9 +903,9 @@ export async function launchObjective(
 
     const resolved = await resolveLaunchConfig(
       launchConfigJson,
-      target.executionTargetId,
+      queueExecutionTargetId,
       agentKey,
-      target.agentConfigs,
+      queueAgentConfigs,
       tx
     );
 
@@ -898,12 +936,9 @@ export async function launchObjective(
         flags: resolved.config.flags
       },
       requestedSource: 'webapp',
-      // WS-B (§3.2): do NOT stamp the *creator's* device target here. Stamping the
-      // backend host's device is the conflation that breaks Cloud and "queue here,
-      // run there" (R3). Leave it NULL = "any eligible target may claim"; the
-      // claim filter is already `execution_target_id IS NULL OR = ?`. WS-C will
-      // stamp the project's *selected* execution target instead.
-      executionTargetId: null,
+      // WS-C (R3): stamp the project's selected execution target (or the sole
+      // eligible target). NULL still means "any eligible target may claim."
+      executionTargetId: selectedExecutionTargetId,
       metadata: { launchConfigSource: resolved.source },
       eventSummary: `Queued ${agentKey}${model ? ` (${model})` : ''} execution for a runner.`,
       eventPayload: { agent: agentKey, model, reasoningEffort }

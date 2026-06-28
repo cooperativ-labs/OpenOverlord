@@ -39,6 +39,10 @@ import {
   updateTerminalProfile,
   updateWorktreeBranchAutomation
 } from './launch.ts';
+import {
+  getProjectExecutionTarget,
+  updateProjectExecutionTarget
+} from './project-execution-target.ts';
 import { runProtocolSubcommand } from './protocol.ts';
 import { requirePermission } from './rbac.ts';
 import { realtime } from './realtime.ts';
@@ -918,6 +922,17 @@ app.get(
 app.put(
   '/api/projects/:id/launch-preference',
   handle(req => updateLaunchPreference(req.params.id, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.LAUNCH_CONFIGURE
+  })
+);
+app.get(
+  '/api/projects/:id/execution-target',
+  handle(req => getProjectExecutionTarget(req.params.id), { requires: PERMISSIONS.LAUNCH_READ })
+);
+app.put(
+  '/api/projects/:id/execution-target',
+  handle(req => updateProjectExecutionTarget(req.params.id, req.body), {
     mutates: true,
     requires: PERMISSIONS.LAUNCH_CONFIGURE
   })

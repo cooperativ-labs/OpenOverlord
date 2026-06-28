@@ -27,6 +27,7 @@ import type {
   UpdateAgentLaunchConfigBody,
   UpdateEverhourTimeBody,
   UpdateLaunchPreferenceBody,
+  UpdateProjectExecutionTargetBody,
   UpdateMissionBody,
   UpdateObjectiveBody,
   UpdateProfileBody,
@@ -70,6 +71,8 @@ export const keys = {
   agentCatalog: ['agent-catalog'] as const,
   launchSettings: ['launch-settings'] as const,
   launchPreference: (projectId: string) => ['project', projectId, 'launch-preference'] as const,
+  projectExecutionTarget: (projectId: string) =>
+    ['project', projectId, 'execution-target'] as const,
   everhourIntegration: ['integrations', 'everhour'] as const,
   missionEverhour: (id: string) => ['mission', id, 'everhour'] as const
 };
@@ -775,6 +778,25 @@ export const useLaunchPreference = (projectId: string) =>
     queryFn: () => api.getLaunchPreference(projectId),
     staleTime: 60_000
   });
+
+export const useProjectExecutionTarget = (projectId: string) =>
+  useQuery({
+    queryKey: keys.projectExecutionTarget(projectId),
+    queryFn: () => api.getProjectExecutionTarget(projectId),
+    staleTime: 30_000
+  });
+
+export function useUpdateProjectExecutionTarget(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateProjectExecutionTargetBody) =>
+      api.updateProjectExecutionTarget(projectId, body),
+    onSuccess: data => {
+      qc.setQueryData(keys.projectExecutionTarget(projectId), data);
+      void qc.invalidateQueries({ queryKey: keys.projectRepository(projectId, data.selectedExecutionTargetId) });
+    }
+  });
+}
 
 export function useLaunchObjective() {
   const qc = useQueryClient();

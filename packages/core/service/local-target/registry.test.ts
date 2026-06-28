@@ -5,8 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 
+import { createDefaultLocalTargetRegistry } from './default-registry.ts';
 import { FakeLocalTargetProvider } from './fake-provider.ts';
 import { InProcessProvider } from './in-process-provider.ts';
+import { RunnerQueueProvider } from './runner-queue-provider.ts';
 import {
   type ExecutionTargetRef,
   LocalTargetProviderRegistry,
@@ -124,6 +126,54 @@ describe('InProcessProvider repository reads', () => {
     assert.ok(isOk(result));
     assert.deepEqual(result.value.local.sort(), ['feature/demo', 'main']);
     assert.equal(result.value.current, 'main');
+  });
+});
+
+describe('createDefaultLocalTargetRegistry', () => {
+  const remoteLocal: ExecutionTargetRef = {
+    executionTargetId: 'vm-1',
+    type: 'local',
+    deviceLabel: 'CI VM',
+    reachable: true
+  };
+  const offlineLocal: ExecutionTargetRef = {
+    executionTargetId: 'vm-off',
+    type: 'local',
+    deviceLabel: 'Offline VM',
+    reachable: false
+  };
+
+  it('uses in-process for the caller target even when the backend is not co-located', () => {
+    const registry = createDefaultLocalTargetRegistry({
+      coLocatedWithCheckout: false,
+      callerExecutionTargetId: 'laptop-1'
+    });
+    const provider = registry.resolve({
+      executionTargetId: 'laptop-1',
+      type: 'local',
+      reachable: true
+    });
+    assert.ok(provider instanceof InProcessProvider);
+  });
+
+  it('uses runner queue for a reachable remote local target', () => {
+    const registry = createDefaultLocalTargetRegistry({
+      coLocatedWithCheckout: false,
+      callerExecutionTargetId: 'laptop-1'
+    });
+    const provider = registry.resolve(remoteLocal);
+    assert.ok(provider instanceof RunnerQueueProvider);
+  });
+
+  it('marks offline remote targets unreachable', async () => {
+    const registry = createDefaultLocalTargetRegistry({
+      coLocatedWithCheckout: false,
+      callerExecutionTargetId: 'laptop-1'
+    });
+    const provider = registry.resolveOrUnavailable(offlineLocal);
+    const result = await provider.listBranches({ resourceId: 'r1', repoPath: '/repo' });
+    assert.ok(isFailure(result));
+    assert.equal(result.code, 'LOCAL_TARGET_UNREACHABLE');
   });
 });
 
