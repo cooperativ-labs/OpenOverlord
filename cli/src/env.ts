@@ -1,7 +1,27 @@
-import { parse as parseDotenv } from 'dotenv';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+/** Minimal .env parser (dotenv-compatible `parse` only — avoids bundling CJS dotenv). */
+function parseDotenv(src: string): Record<string, string> {
+  const obj: Record<string, string> = {};
+  const line =
+    /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/gm;
+  let lines = src.replace(/\r\n?/g, '\n');
+  let match: RegExpExecArray | null;
+  while ((match = line.exec(lines)) !== null) {
+    const key = match[1];
+    if (!key) continue;
+    let value = (match[2] ?? '').trim();
+    const maybeQuote = value[0];
+    value = value.replace(/^(['"`])([\s\S]*)\1$/m, '$2');
+    if (maybeQuote === '"') {
+      value = value.replace(/\\n/g, '\n').replace(/\\r/g, '\r');
+    }
+    obj[key] = value;
+  }
+  return obj;
+}
 
 export type EnvProfile = 'development' | 'production';
 

@@ -1,4 +1,4 @@
-import { UPDATE_EVENT_TYPES, UPDATE_PHASES } from '@overlord/database';
+import { bindBool, UPDATE_EVENT_TYPES, UPDATE_PHASES } from '@overlord/database';
 import { createHash } from 'node:crypto';
 
 import { recordChange } from './change-feed.js';
@@ -1451,7 +1451,7 @@ export async function deliverSession({
              (id, workspace_id, project_id, mission_id, objective_id, session_id, delivery_id,
               changed_file_id, file_path, label, summary, why, impact, hunks_json,
               is_final, created_at, updated_at, revision)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 1)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
         [
           newId(),
           ctx.workspace.id,
@@ -1467,6 +1467,7 @@ export async function deliverSession({
           rationale.why,
           rationale.impact,
           JSON.stringify(rationale.hunks ?? []),
+          bindBool(txCtx.db.dialect, true),
           now,
           now
         ]
@@ -1822,7 +1823,7 @@ export async function recordWork({
         `INSERT INTO change_rationales
              (id, workspace_id, project_id, mission_id, objective_id, delivery_id,
               file_path, label, summary, why, impact, hunks_json, is_final, created_at, updated_at, revision)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 1)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
         [
           newId(),
           ctx.workspace.id,
@@ -1836,6 +1837,7 @@ export async function recordWork({
           rationale.why,
           rationale.impact,
           JSON.stringify(rationale.hunks ?? []),
+          bindBool(txCtx.db.dialect, true),
           now,
           now
         ]

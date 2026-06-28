@@ -1,14 +1,13 @@
-import { migrateDatabase } from '@overlord/database';
-import Database from 'better-sqlite3';
-import assert from 'node:assert/strict';
-import test from 'node:test';
-
 import { createServiceContext } from '@overlord/core/service/context';
 import {
   addObjectivesToMission,
   createMissionWithObjectives
 } from '@overlord/core/service/missions';
 import { createProject } from '@overlord/core/service/projects';
+import { migrateDatabase } from '@overlord/database';
+import Database from 'better-sqlite3';
+import assert from 'node:assert/strict';
+import test from 'node:test';
 
 function createContext() {
   const db = new Database(':memory:');

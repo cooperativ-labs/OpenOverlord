@@ -1,14 +1,4 @@
-import { migrateDatabase } from '@overlord/database';
-import Database from 'better-sqlite3';
-import assert from 'node:assert/strict';
-import { rmSync } from 'node:fs';
-import path from 'node:path';
-import test from 'node:test';
-
-import {
-  listChangedFilesForReview,
-  listRationalesForReview
-} from '@overlord/core/service/changes';
+import { listChangedFilesForReview, listRationalesForReview } from '@overlord/core/service/changes';
 import { createServiceContext } from '@overlord/core/service/context';
 import {
   claimNextExecutionRequest,
@@ -21,12 +11,14 @@ import {
 } from '@overlord/core/service/execution-requests';
 import { createMissionWithObjectives } from '@overlord/core/service/missions';
 import { addProjectResource, createProject } from '@overlord/core/service/projects';
-import {
-  attachSession,
-  deliverSession,
-  updateSession
-} from '@overlord/core/service/protocol';
+import { attachSession, deliverSession, updateSession } from '@overlord/core/service/protocol';
 import { newId } from '@overlord/core/service/util';
+import { migrateDatabase } from '@overlord/database';
+import Database from 'better-sqlite3';
+import assert from 'node:assert/strict';
+import { rmSync } from 'node:fs';
+import path from 'node:path';
+import test from 'node:test';
 
 function createContext() {
   const db = new Database(':memory:');

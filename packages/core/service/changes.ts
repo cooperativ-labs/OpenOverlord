@@ -82,7 +82,7 @@ export async function listChangedFilesForReview({
     `SELECT cf.file_path, cf.vcs_status, cf.current_diff_state, cf.objective_id, cf.session_id,
               cf.first_observed_at, cf.last_observed_at, cf.observed_metadata_json,
               COUNT(cr.id) AS rationale_count,
-              SUM(CASE WHEN cr.is_final = 1 THEN 1 ELSE 0 END) AS final_rationale_count,
+              SUM(CASE WHEN cr.is_final THEN 1 ELSE 0 END) AS final_rationale_count,
               GROUP_CONCAT(cr.label, char(10)) AS rationale_labels
        FROM changed_files cf
        LEFT JOIN change_rationales cr
@@ -194,7 +194,7 @@ export async function listRationalesForReview({
     objective_id: string;
     session_id: string | null;
     delivery_id: string | null;
-    is_final: number;
+    is_final: boolean | number;
     created_at: string;
   }>;
 
@@ -208,7 +208,7 @@ export async function listRationalesForReview({
     objectiveId: row.objective_id,
     sessionId: row.session_id,
     deliveryId: row.delivery_id,
-    isFinal: row.is_final === 1,
+    isFinal: Boolean(row.is_final),
     createdAt: row.created_at
   }));
 }

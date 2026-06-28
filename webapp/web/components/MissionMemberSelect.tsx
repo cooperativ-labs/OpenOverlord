@@ -19,7 +19,7 @@ type MissionMemberSelectProps = {
 };
 
 function memberLabel(member: WorkspaceMemberDto): string {
-  return member.displayName?.trim() || member.handle || member.email || 'Member';
+  return member.displayName?.trim() || member.email || 'Member';
 }
 
 function memberInitials(member: WorkspaceMemberDto): string {
@@ -35,13 +35,7 @@ function MemberAvatar({ member }: { member: WorkspaceMemberDto }) {
   );
 }
 
-function MemberOptionLabel({
-  member,
-  includeHandle = true
-}: {
-  member: WorkspaceMemberDto | null;
-  includeHandle?: boolean;
-}) {
+function MemberOptionLabel({ member }: { member: WorkspaceMemberDto | null }) {
   if (!member) {
     return <span>Unassigned</span>;
   }
@@ -50,9 +44,6 @@ function MemberOptionLabel({
     <span className="inline-flex items-center gap-2">
       <MemberAvatar member={member} />
       <span>{memberLabel(member)}</span>
-      {includeHandle && member.handle ? (
-        <span className="text-muted-foreground">@{member.handle}</span>
-      ) : null}
     </span>
   );
 }
@@ -94,7 +85,7 @@ export function MissionMemberSelect({
           ))}
           <SelectValue placeholder="Unassigned" className="col-start-1 row-start-1">
             {currentMember ? (
-              <MemberOptionLabel member={currentMember} includeHandle={false} />
+              <MemberOptionLabel member={currentMember} />
             ) : (
               <span className="text-muted-foreground">Unassigned</span>
             )}

@@ -1,18 +1,17 @@
 import { hostname, platform } from 'node:os';
 
-import {
-  DEFAULT_TERMINAL_PROFILE,
-  parseTerminalProfileJson,
-  serializeTerminalProfile,
-  type TerminalProfile
-} from './terminal-profile-types.js';
-
 import { isCoLocatedBackend } from './local-target/index.js';
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import type { ClientDeviceIdentity } from './device-identity.js';
 import { callerDeviceFingerprint } from './devices.js';
 import { ServiceError } from './errors.js';
+import {
+  DEFAULT_TERMINAL_PROFILE,
+  parseTerminalProfileJson,
+  serializeTerminalProfile,
+  type TerminalProfile
+} from './terminal-profile-types.js';
 import { newId, nowIso } from './util.js';
 
 export type { ClientDeviceIdentity } from './device-identity.js';

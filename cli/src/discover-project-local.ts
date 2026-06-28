@@ -1,8 +1,7 @@
+import type { ProjectDto } from '@overlord/contract';
+import type { ProjectDiscovery } from '@overlord/core/service/projects';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-
-import type { ProjectDiscovery } from '@overlord/core/service/projects';
-import type { ProjectDto } from '@overlord/contract';
 
 import type { BackendClient } from './backend-client.js';
 import { CliError } from './errors.js';

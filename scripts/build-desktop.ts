@@ -248,7 +248,6 @@ function main(): void {
     }
   }
 
-
   // 1. Build the modules the bundle consumes (existing outputs).
   run('yarn', ['workspace', '@overlord/database', 'build']);
   run('yarn', ['workspace', '@overlord/auth', 'build']);

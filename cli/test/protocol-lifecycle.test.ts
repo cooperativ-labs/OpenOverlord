@@ -1,8 +1,3 @@
-import { listSqliteMigrationFiles, migrateDatabase } from '@overlord/database';
-import Database from 'better-sqlite3';
-import assert from 'node:assert/strict';
-import test from 'node:test';
-
 import { createServiceContext } from '@overlord/core/service/context';
 import { createMissionWithObjectives } from '@overlord/core/service/missions';
 import { addProjectResource, createProject } from '@overlord/core/service/projects';
@@ -12,6 +7,10 @@ import {
   recordHookEvent,
   updateSession
 } from '@overlord/core/service/protocol';
+import { listSqliteMigrationFiles, migrateDatabase } from '@overlord/database';
+import Database from 'better-sqlite3';
+import assert from 'node:assert/strict';
+import test from 'node:test';
 
 test('protocol lifecycle: attach → update → deliver', () => {
   const db = new Database(':memory:');

@@ -16,11 +16,11 @@
  *   config → workspace default → empty) and snapshots it into
  *   `execution_requests.launch_flags_json` for the runner to consume verbatim.
  */
+import type { TerminalProfile } from '@overlord/core/service/terminal-profile-types';
 import type { DatabaseClient } from '@overlord/database';
 
 import { resolveInstanceAgentCatalog } from '../../cli/src/agent-catalog.ts';
 import { loadConfig } from '../../cli/src/config.ts';
-import type { TerminalProfile } from '@overlord/core/service/terminal-profile-types';
 import {
   ACTIVE_EXECUTION_REQUEST_STATUSES,
   clearExecutionRequests,

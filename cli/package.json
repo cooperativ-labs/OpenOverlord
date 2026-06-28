@@ -28,7 +28,6 @@
     "@overlord/contract": "workspace:*",
     "@overlord/core": "workspace:*",
     "@overlord/database": "workspace:*",
-    "dotenv": "^17.4.2",
     "esbuild": "^0.28.0",
     "smol-toml": "^1.6.1"
   },
