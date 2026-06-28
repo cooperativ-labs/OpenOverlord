@@ -83,7 +83,14 @@ export class FakeLocalTargetProvider implements LocalTargetCapabilities {
   ): Promise<CapabilityResult<RepositoryTreeResult>> {
     this.#record('readRepositoryTree', [input]);
     if (this.#handlers.readRepositoryTree) return this.#handlers.readRepositoryTree(input);
-    return ok(this.target, { root: '/fake/repo', entries: [] });
+    return ok(this.target, {
+      rootPath: input.repoPath,
+      gitRoot: input.repoPath,
+      branch: 'main',
+      commit: '0000000',
+      entries: [],
+      truncated: false
+    });
   }
 
   async listBranches(input: ListBranchesInput): Promise<CapabilityResult<BranchListResult>> {

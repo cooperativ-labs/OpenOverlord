@@ -6,10 +6,6 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import {
-  readRepositoryTree,
-  RepositoryReadError
-} from '../../packages/core/repository/git-tree.ts';
 import { ensureCallerDeviceTarget } from '../../packages/core/service/execution-targets.ts';
 import {
   deriveResourceStatus,
@@ -777,6 +773,14 @@ async function getProjectSlug(projectId: string): Promise<string> {
 // inspectable primary checkout can provide one.
 const FALLBACK_BASE_BRANCH = 'main';
 
+function normalizeBranchRef(ref: string): string {
+  return ref
+    .replace(/^origin\//, '')
+    .replace(/^refs\/heads\//, '')
+    .replace(/^refs\/remotes\/origin\//, '')
+    .trim();
+}
+
 async function primaryCheckoutBranch(projectId: string): Promise<string | null> {
   if (!serverCanAccessLinkedFilesystem()) return null;
   const repoPath = await primaryResourcePath(projectId);
@@ -997,16 +1001,20 @@ interface BranchActionContext {
   primaryRepoPath: string;
 }
 
-async function primaryResourcePath(projectId: string): Promise<string | null> {
+async function primaryResource(projectId: string): Promise<{ id: string; path: string } | null> {
   const resource = (await requireDatabaseClient().get(
-    `SELECT path FROM project_resources
+    `SELECT id, path FROM project_resources
         WHERE project_id = ? AND workspace_id = ? AND is_primary = ?
           AND status = 'active' AND deleted_at IS NULL
         ORDER BY created_at ASC
         LIMIT 1`,
     [projectId, WORKSPACE.id, bindBool(DATABASE_DIALECT, true)]
-  )) as { path: string } | undefined;
-  return resource?.path ?? null;
+  )) as { id: string; path: string } | undefined;
+  return resource ?? null;
+}
+
+async function primaryResourcePath(projectId: string): Promise<string | null> {
+  return (await primaryResource(projectId))?.path ?? null;
 }
 
 async function loadBranchActionContext(missionRef: string): Promise<BranchActionContext> {
@@ -1447,35 +1455,27 @@ export async function generateCommitMessage(
 // pins it as the mission's `branch_override` (consumed by the Runner Layer at the
 // next launch). We list real refs so the choice is always valid.
 
-function normalizeBranchRef(ref: string): string {
-  return ref
-    .replace(/^origin\//, '')
-    .replace(/^refs\/heads\//, '')
-    .replace(/^refs\/remotes\/origin\//, '')
-    .trim();
-}
-
 // Returns the de-duplicated, sorted set of local + remote branch names in the
 // mission project's primary repository, plus the branch the mission is (or will
 // be) operating on. Returns an empty list when no inspectable checkout exists.
 export async function listMissionBranches(missionRef: string): Promise<MissionBranchListDto> {
   const row = await getMissionRow(missionRef);
   const current = row.active_branch?.trim() || row.branch_override?.trim() || null;
-  if (!serverCanAccessLinkedFilesystem()) {
+  const resource = await primaryResource(row.project_id);
+  if (!resource) {
     return { branches: current ? [current] : [], current };
   }
-  const repoPath = await primaryResourcePath(row.project_id);
-  if (!repoPath || !existsSync(repoPath)) {
+  const provider = resolveBackendResourceProvider(serverCanAccessLinkedFilesystem(), {
+    executionTargetId: null,
+    deviceLabel: null,
+    transport: 'in_process'
+  });
+  const result = await provider.listBranches({ resourceId: resource.id, repoPath: resource.path });
+  if (!result.ok) {
     return { branches: current ? [current] : [], current };
   }
-  const local = runGit(repoPath, ['branch', '--format=%(refname:short)']);
-  const remote = runGit(repoPath, ['branch', '-r', '--format=%(refname:short)']);
   const names = new Set<string>();
-  for (const line of `${local}\n${remote}`.split('\n')) {
-    const name = normalizeBranchRef(line);
-    // Skip the symbolic `origin/HEAD -> origin/main` pointer git emits.
-    if (name && !name.includes('->') && name !== 'HEAD') names.add(name);
-  }
+  for (const name of [...result.value.local, ...result.value.remote]) names.add(name);
   if (current) names.add(current);
   return { branches: [...names].sort((a, b) => a.localeCompare(b)), current };
 }
@@ -2444,60 +2444,55 @@ export async function getProjectRepository(
     };
   }
 
-  if (!serverCanAccessLinkedFilesystem()) {
-    return {
-      projectId,
-      executionTargetId,
-      resource,
-      status: 'unsupported_resource',
-      rootPath: resource.path,
-      gitRoot: null,
-      branch: null,
-      commit: null,
-      entries: [],
-      truncated: false,
-      scannedAt,
-      message:
-        'Repository browsing for linked local directories must run on a local execution target.'
-    };
-  }
-
-  try {
-    const tree = readRepositoryTree(resource.path);
+  const provider = resolveBackendResourceProvider(serverCanAccessLinkedFilesystem(), {
+    executionTargetId,
+    deviceLabel: null,
+    transport: 'in_process'
+  });
+  const tree = await provider.readRepositoryTree({
+    resourceId: resource.id,
+    repoPath: resource.path
+  });
+  if (tree.ok) {
     return {
       projectId,
       executionTargetId,
       resource,
       status: 'ready',
-      rootPath: tree.rootPath,
-      gitRoot: tree.gitRoot,
-      branch: tree.branch,
-      commit: tree.commit,
-      entries: tree.entries,
-      truncated: tree.truncated,
+      rootPath: tree.value.rootPath,
+      gitRoot: tree.value.gitRoot,
+      branch: tree.value.branch,
+      commit: tree.value.commit,
+      entries: tree.value.entries,
+      truncated: tree.value.truncated,
       scannedAt,
       message: null
     };
-  } catch (error) {
-    const status =
-      error instanceof RepositoryReadError && error.code === 'not_git_repository'
+  }
+  const status =
+    tree.code === 'LOCAL_TARGET_REQUIRED' || tree.code === 'LOCAL_TARGET_UNREACHABLE'
+      ? 'unsupported_resource'
+      : tree.code === 'NOT_GIT_REPOSITORY'
         ? 'not_git_repository'
         : 'unreadable';
-    return {
-      projectId,
-      executionTargetId,
-      resource,
-      status,
-      rootPath: resource.path,
-      gitRoot: null,
-      branch: null,
-      commit: null,
-      entries: [],
-      truncated: false,
-      scannedAt,
-      message: error instanceof Error ? error.message : 'Could not read repository.'
-    };
-  }
+  const message =
+    tree.code === 'LOCAL_TARGET_REQUIRED'
+      ? 'Repository browsing for linked local directories must run on a local execution target.'
+      : tree.message;
+  return {
+    projectId,
+    executionTargetId,
+    resource,
+    status,
+    rootPath: resource.path,
+    gitRoot: null,
+    branch: null,
+    commit: null,
+    entries: [],
+    truncated: false,
+    scannedAt,
+    message
+  };
 }
 
 const hexColorPattern = /^#?[0-9a-fA-F]{6}$/;

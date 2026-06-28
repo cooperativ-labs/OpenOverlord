@@ -116,6 +116,8 @@ export interface ResourceObservation {
 
 export interface ReadRepositoryTreeInput {
   resourceId: string;
+  /** Absolute checkout path resolved by the backend before crossing this boundary. */
+  repoPath: string;
   /** Repo-relative subdirectory to list; null/empty lists the root. */
   subPath?: string | null;
 }
@@ -124,14 +126,22 @@ export interface RepositoryTreeEntry {
   /** Repo-relative path. */
   path: string;
   type: 'file' | 'directory';
+  parentPath: string | null;
+  depth: number;
 }
 export interface RepositoryTreeResult {
-  root: string;
+  rootPath: string;
+  gitRoot: string;
+  branch: string | null;
+  commit: string | null;
   entries: RepositoryTreeEntry[];
+  truncated: boolean;
 }
 
 export interface ListBranchesInput {
   resourceId: string;
+  /** Absolute checkout path resolved by the backend before crossing this boundary. */
+  repoPath: string;
 }
 export interface BranchListResult {
   local: string[];

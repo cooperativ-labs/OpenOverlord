@@ -8,7 +8,12 @@
 // provider is still safe to hand to any caller.
 
 import { existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
+import {
+  readRepositoryTree as readGitRepositoryTree,
+  RepositoryReadError
+} from '../../repository/git-tree.ts';
 import { writeProjectJson } from './project-metadata.ts';
 import { fail, ok } from './result.ts';
 import type {
@@ -28,6 +33,23 @@ import type {
   WriteProjectMetadataInput,
   WriteProjectMetadataResult
 } from './types.ts';
+
+function runGit(cwd: string, args: string[]): string {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 10 * 1024 * 1024,
+    stdio: ['ignore', 'pipe', 'pipe']
+  }).trim();
+}
+
+function normalizeBranchRef(ref: string): string {
+  return ref
+    .replace(/^origin\//, '')
+    .replace(/^refs\/heads\//, '')
+    .replace(/^refs\/remotes\/origin\//, '')
+    .trim();
+}
 
 export class InProcessProvider implements LocalTargetCapabilities {
   constructor(readonly target: TargetMetadata) {}
@@ -69,6 +91,63 @@ export class InProcessProvider implements LocalTargetCapabilities {
     }
   }
 
+  // ---- routed (WS-D 3) -------------------------------------------------
+
+  async readRepositoryTree(input: ReadRepositoryTreeInput) {
+    try {
+      const tree = readGitRepositoryTree(input.repoPath);
+      return ok(this.target, {
+        rootPath: tree.rootPath,
+        gitRoot: tree.gitRoot,
+        branch: tree.branch,
+        commit: tree.commit,
+        entries: tree.entries,
+        truncated: tree.truncated
+      });
+    } catch (error) {
+      if (error instanceof RepositoryReadError && error.code === 'not_git_repository') {
+        return fail(
+          this.target,
+          'NOT_GIT_REPOSITORY',
+          error.message,
+          { resourceId: input.resourceId }
+        );
+      }
+      return fail(
+        this.target,
+        'TARGET_OPERATION_FAILED',
+        error instanceof Error ? error.message : 'Could not read repository.',
+        { resourceId: input.resourceId }
+      );
+    }
+  }
+
+  async listBranches(input: ListBranchesInput) {
+    try {
+      const local = runGit(input.repoPath, ['branch', '--format=%(refname:short)']);
+      const remote = runGit(input.repoPath, ['branch', '-r', '--format=%(refname:short)']);
+      const current = runGit(input.repoPath, ['branch', '--show-current']) || null;
+      return ok(this.target, {
+        local: local
+          .split('\n')
+          .map(normalizeBranchRef)
+          .filter(name => name && !name.includes('->') && name !== 'HEAD'),
+        remote: remote
+          .split('\n')
+          .map(normalizeBranchRef)
+          .filter(name => name && !name.includes('->') && name !== 'HEAD'),
+        current
+      });
+    } catch (error) {
+      return fail(
+        this.target,
+        'GIT_COMMAND_FAILED',
+        error instanceof Error ? error.message : 'Could not list repository branches.',
+        { resourceId: input.resourceId }
+      );
+    }
+  }
+
   // ---- not yet routed (filled in by later WS-D steps) ------------------
 
   #notImplemented(): Promise<CapabilityFailure> {
@@ -81,12 +160,6 @@ export class InProcessProvider implements LocalTargetCapabilities {
     );
   }
 
-  readRepositoryTree(_input: ReadRepositoryTreeInput) {
-    return this.#notImplemented();
-  }
-  listBranches(_input: ListBranchesInput) {
-    return this.#notImplemented();
-  }
   prepareBranch(_input: PrepareBranchInput) {
     return this.#notImplemented();
   }

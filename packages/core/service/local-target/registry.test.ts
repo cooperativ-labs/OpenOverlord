@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, it } from 'node:test';
 
 import { FakeLocalTargetProvider } from './fake-provider.ts';
+import { InProcessProvider } from './in-process-provider.ts';
 import {
   type ExecutionTargetRef,
   LocalTargetProviderRegistry,
@@ -64,7 +69,7 @@ describe('LocalTargetProviderRegistry', () => {
     const registry = new LocalTargetProviderRegistry();
     const provider = registry.resolveOrUnavailable(cloudTarget);
     assert.ok(provider instanceof UnavailableProvider);
-    const r = await provider.listBranches({ resourceId: 'r1' });
+    const r = await provider.listBranches({ resourceId: 'r1', repoPath: '/repo' });
     assert.ok(isFailure(r));
     assert.equal(r.code, 'LOCAL_TARGET_REQUIRED');
     assert.equal(r.target.executionTargetId, 't2');
@@ -81,6 +86,44 @@ describe('targetMetadata', () => {
   it('defaults a missing deviceLabel to null', () => {
     const meta = targetMetadata({ executionTargetId: null, type: 'local' }, 'in_process');
     assert.equal(meta.deviceLabel, null);
+  });
+});
+
+describe('InProcessProvider repository reads', () => {
+  function git(cwd: string, args: string[]): void {
+    execFileSync('git', args, { cwd, stdio: 'ignore' });
+  }
+
+  function makeRepo(): string {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'ovld-provider-repo-'));
+    git(dir, ['init']);
+    git(dir, ['checkout', '-b', 'main']);
+    writeFileSync(path.join(dir, 'README.md'), '# Test\n');
+    git(dir, ['add', 'README.md']);
+    git(dir, ['-c', 'user.email=test@example.com', '-c', 'user.name=Test User', 'commit', '-m', 'init']);
+    git(dir, ['branch', 'feature/demo']);
+    return dir;
+  }
+
+  it('reads repository trees through the capability boundary', async () => {
+    const repoPath = makeRepo();
+    const provider = new InProcessProvider(META);
+    const result = await provider.readRepositoryTree({ resourceId: 'r1', repoPath });
+
+    assert.ok(isOk(result));
+    assert.equal(result.value.rootPath, repoPath);
+    assert.equal(result.value.branch, 'main');
+    assert.equal(result.value.entries.some(entry => entry.path === 'README.md'), true);
+  });
+
+  it('lists local branches through the capability boundary', async () => {
+    const repoPath = makeRepo();
+    const provider = new InProcessProvider(META);
+    const result = await provider.listBranches({ resourceId: 'r1', repoPath });
+
+    assert.ok(isOk(result));
+    assert.deepEqual(result.value.local.sort(), ['feature/demo', 'main']);
+    assert.equal(result.value.current, 'main');
   });
 });
 
@@ -130,7 +173,7 @@ describe('FakeLocalTargetProvider', () => {
     assert.equal(r.code, 'RESOURCE_MISSING');
     assert.equal(r.message, 'no checkout at /gone');
     // Unoverridden capabilities still use the default success.
-    const branches = await fake.listBranches({ resourceId: 'r1' });
+    const branches = await fake.listBranches({ resourceId: 'r1', repoPath: '/repo' });
     assert.ok(isOk(branches));
     assert.deepEqual(branches.value, { local: ['main'], remote: [], current: 'main' });
   });
