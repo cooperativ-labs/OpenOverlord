@@ -1,4 +1,4 @@
-import { useProjectRepositoryContext } from '@/components/projects/ProjectRepositoryContext.tsx';
+import { useMergedProjectRepository } from '@/components/projects/ProjectRepositoryContext.tsx';
 import { useMissionFileChanges, useProfile } from '@/lib/queries';
 
 import { LiveFileChangeCard } from './LiveFileChangeCard.tsx';
@@ -21,7 +21,7 @@ export function LiveFileChanges({
 }) {
   const fileChangesQ = useMissionFileChanges(missionId);
   const profileQ = useProfile();
-  const { repository } = useProjectRepositoryContext();
+  const { repository } = useMergedProjectRepository(projectId);
 
   if (fileChangesQ.isLoading) {
     return (

@@ -4,7 +4,7 @@ import path from 'node:path';
 import {
   executeLocalTargetMutation,
   parseMutationFromMetadata
-} from '../../packages/core/service/local-target-mutation-runner.ts';
+} from '@overlord/core/service/local-target-mutation-runner';
 
 import {
   flagBoolean,

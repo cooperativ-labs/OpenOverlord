@@ -1,5 +1,5 @@
-import { InProcessProvider } from '../../packages/core/service/local-target/in-process-provider.ts';
-import type { ProjectResourceDto } from '../../webapp/shared/contract.ts';
+import { InProcessProvider } from '@overlord/core/service/local-target/in-process-provider';
+import type { ProjectResourceDto } from '@overlord/contract';
 
 type BackendClient = {
   get: <T>(path: string) => Promise<T>;

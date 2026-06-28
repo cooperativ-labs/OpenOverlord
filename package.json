@@ -1,6 +1,6 @@
 {
   "name": "overlord",
-  "version": "0.2606281828.0",
+  "version": "0.2606281919.0",
   "description": "Open-source management and coordination layer for AI coding agents",
   "type": "module",
   "private": true,
@@ -15,7 +15,8 @@
     "cli",
     "webapp",
     "desktop",
-    "packages/core"
+    "packages/core",
+    "packages/contract"
   ],
   "resolutions": {
     "@google/genai": "2.8.0",
@@ -42,6 +43,7 @@
     "auth:build:prod": "yarn workspace @overlord/auth build",
     "automations:build:prod": "yarn workspace @overlord/automations build",
     "core:build:prod": "yarn workspace @overlord/core build",
+    "contract:build:prod": "yarn workspace @overlord/contract build",
     "cli:build:prod": "yarn workspace open-overlord build",
     "cli:pack:prod": "yarn cli:build:prod && yarn workspace open-overlord pack",
     "cli:publish": "yarn cli:build:prod && node scripts/with-prod-env.mjs yarn workspace open-overlord npm publish",
@@ -62,7 +64,7 @@
     "server:dev": "node scripts/with-dev-env.mjs yarn workspace @overlord/webapp server:dev",
     "webapp:build:prod": "yarn workspace @overlord/webapp build",
     "webapp:dev": "node scripts/with-dev-env.mjs yarn workspace @overlord/webapp dev",
-    "typecheck": "yarn db:build:prod && yarn auth:build:prod && yarn automations:build:prod && yarn typecheck:core && yarn typecheck:cli && yarn typecheck:webapp",
+    "typecheck": "yarn db:build:prod && yarn auth:build:prod && yarn automations:build:prod && yarn contract:build:prod && yarn typecheck:core && yarn typecheck:cli && yarn typecheck:webapp",
     "typecheck:auth": "yarn workspace @overlord/auth typecheck",
     "typecheck:automations": "yarn workspace @overlord/automations typecheck",
     "typecheck:core": "yarn workspace @overlord/core typecheck",

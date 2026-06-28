@@ -127,8 +127,7 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   projectsRoute,
   myMissionsRoute.addChildren([myMissionsPanelRoute]),
-  boardRoute,
-  missionRoute
+  boardRoute.addChildren([missionRoute])
 ]);
 
 export const router = createRouter({ routeTree, defaultPreload: 'intent' });

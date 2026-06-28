@@ -4,7 +4,6 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2023"],
-    "rootDir": "..",
     "strict": true,
     "exactOptionalPropertyTypes": false,
     "noUncheckedIndexedAccess": true,
@@ -14,9 +13,5 @@
     "rewriteRelativeImportExtensions": true,
     "types": ["node"]
   },
-  "include": [
-    "src/**/*.ts",
-    "test/**/*.ts",
-    "../packages/core/service/**/*.ts"
-  ]
+  "include": ["src/**/*.ts", "test/**/*.ts"]
 }

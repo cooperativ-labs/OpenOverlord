@@ -30,11 +30,13 @@ webapp/.yarn/install-state.gz
 
 **/.DS_Store
 
-# Accidental tsc emit next to sources in @overlord/core/service
-packages/core/service/*.js
-packages/core/service/*.js.map
-packages/core/service/*.d.ts
-packages/core/service/*.d.ts.map
+# Accidental tsc emit next to sources in @overlord/core/service (including subdirs).
+# Never ignore `*.ts` here — Railway CLI upload respects .gitignore and would omit
+# tracked sources from the Docker build context.
+packages/core/service/**/*.js
+packages/core/service/**/*.js.map
+packages/core/service/**/*.d.ts
+packages/core/service/**/*.d.ts.map
 
 # private-docs
 # private-docs/**/*

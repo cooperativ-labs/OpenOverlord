@@ -3,12 +3,12 @@ import Database from 'better-sqlite3';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createServiceContext } from '../../packages/core/service/context.ts';
+import { createServiceContext } from '@overlord/core/service/context';
 import {
   addObjectivesToMission,
   createMissionWithObjectives
-} from '../../packages/core/service/missions.ts';
-import { createProject } from '../../packages/core/service/projects.ts';
+} from '@overlord/core/service/missions';
+import { createProject } from '@overlord/core/service/projects';
 
 function createContext() {
   const db = new Database(':memory:');

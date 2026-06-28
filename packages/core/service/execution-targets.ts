@@ -5,7 +5,7 @@ import {
   parseTerminalProfileJson,
   serializeTerminalProfile,
   type TerminalProfile
-} from '../../../cli/src/terminal-profile-types.ts';
+} from './terminal-profile-types.js';
 
 import { isCoLocatedBackend } from './local-target/index.js';
 import { recordChange } from './change-feed.js';

@@ -1,6 +1,6 @@
 {
   "name": "open-overlord",
-  "version": "0.2606281828.0",
+  "version": "0.2606281919.0",
   "description": "Overlord CLI — management, agent protocol, and runner for OpenOverlord",
   "type": "module",
   "engines": {
@@ -12,19 +12,24 @@
   },
   "files": [
     "bin/",
-    "dist/",
+    "dist/index.js",
+    "dist/index.js.map",
     "scripts/postinstall.mjs"
   ],
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "build": "yarn clean && ../node_modules/.bin/tsc --project tsconfig.build.json",
+    "build": "node scripts/build.mjs",
     "typecheck": "../node_modules/.bin/tsc --project tsconfig.build.json --noEmit",
     "test": "yarn build && tsx --test 'test/**/*.test.ts'",
     "prepack": "yarn build",
     "postinstall": "node scripts/postinstall.mjs"
   },
-  "dependencies": {
+  "devDependencies": {
+    "@overlord/contract": "workspace:*",
+    "@overlord/core": "workspace:*",
+    "@overlord/database": "workspace:*",
     "dotenv": "^17.4.2",
+    "esbuild": "^0.28.0",
     "smol-toml": "^1.6.1"
   },
   "keywords": [

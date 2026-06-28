@@ -7,29 +7,32 @@
   "engines": {
     "node": ">=20"
   },
-  "main": "./types/index.ts",
-  "types": "./types/index.ts",
+  "main": "./dist/types/index.js",
+  "types": "./dist/types/index.d.ts",
   "exports": {
     ".": {
-      "types": "./types/index.ts",
-      "default": "./types/index.ts"
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/types/index.js"
     },
     "./service/*": {
-      "types": "./service/*.ts",
-      "default": "./service/*.ts"
+      "types": "./dist/service/*.d.ts",
+      "default": "./dist/service/*.js"
     },
     "./repository/*": {
-      "types": "./repository/*.ts",
-      "default": "./repository/*.ts"
+      "types": "./dist/repository/*.d.ts",
+      "default": "./dist/repository/*.js"
     },
     "./types/*": {
-      "types": "./types/*.ts",
-      "default": "./types/*.ts"
+      "types": "./dist/types/*.d.ts",
+      "default": "./dist/types/*.js"
     }
   },
+  "files": [
+    "dist/"
+  ],
   "scripts": {
-    "build": "tsc --project ../../tsconfig.build.json",
-    "typecheck": "tsc --project ../../tsconfig.build.json --noEmit",
+    "build": "../../node_modules/.bin/tsc --project tsconfig.build.json",
+    "typecheck": "../../node_modules/.bin/tsc --project tsconfig.build.json --noEmit",
     "test": "node ../../scripts/with-ovld-home.mjs tsx --test '**/*.test.ts'"
   },
   "dependencies": {

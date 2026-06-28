@@ -33,16 +33,19 @@ COPY cli/package.json cli/
 COPY webapp/package.json webapp/
 COPY desktop/package.json desktop/
 COPY packages/core/package.json packages/core/
+COPY packages/contract/package.json packages/contract/
 # Source is copied after install; skip workspace builds until COPY . . below.
 RUN yarn install --immutable --mode=skip-build
 
-# Build the workspace packages that resolve to dist/ (database, auth,
-# automations), then bundle the Postgres-only server. @overlord/core resolves
-# to source and is bundled directly by esbuild.
+# Build workspace packages that resolve to dist/ (database, auth, automations,
+# contract, core), then bundle the Postgres-only server. esbuild still follows
+# relative imports into packages/core/service/*.ts for the server graph.
 COPY . .
 RUN yarn db:build:prod \
   && yarn auth:build:prod \
   && yarn automations:build:prod \
+  && yarn contract:build:prod \
+  && yarn core:build:prod \
   && yarn workspace @overlord/webapp build:server -- --cloud \
   && rm -rf node_modules/better-sqlite3
 

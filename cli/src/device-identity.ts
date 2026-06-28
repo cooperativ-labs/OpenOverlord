@@ -1,6 +1,6 @@
 import { hostname, platform } from 'node:os';
 
-import { deviceIdentityFromParts } from '../../packages/core/service/device-identity.ts';
+import { deviceIdentityFromParts } from '@overlord/core/service/device-identity';
 
 /** Stable device identity for the machine running the CLI (matches core `devices.ts`). */
 export function clientDeviceIdentity(): {

@@ -248,14 +248,12 @@ function main(): void {
     }
   }
 
-  const tsc = resolveBin('tsc');
 
   // 1. Build the modules the bundle consumes (existing outputs).
   run('yarn', ['workspace', '@overlord/database', 'build']);
   run('yarn', ['workspace', '@overlord/auth', 'build']);
   run('yarn', ['workspace', '@overlord/automations', 'build']);
-  // The CLI is built directly (the root cli:build:prod alias is name-sensitive).
-  run(tsc, ['--project', path.join(repoRoot, 'cli', 'tsconfig.build.json')]);
+  run('yarn', ['workspace', 'open-overlord', 'build']);
   // SPA + server bundle.
   run('yarn', ['workspace', '@overlord/webapp', 'build']);
   run('yarn', ['workspace', '@overlord/webapp', 'build:server']);
@@ -297,16 +295,18 @@ function main(): void {
 
 /**
  * Stage the `ovld` CLI next to the app so a future "Install CLI" action and a
- * supervised runner can find it. Ships the bin + compiled dist + the vendored
- * `@overlord/database`. (A fully self-contained Node-ABI native build is a P3
- * follow-up; the GUI itself needs nothing from here.)
+ * supervised runner can find it. Ships the bin + bundled dist (self-contained).
  */
 function stageCli(): void {
   const cliStaging = path.join(desktopDir, 'staging', 'cli');
   rmSync(cliStaging, { recursive: true, force: true });
-  mkdirSync(cliStaging, { recursive: true });
+  mkdirSync(path.join(cliStaging, 'dist'), { recursive: true });
   cpSync(path.join(repoRoot, 'cli', 'bin'), path.join(cliStaging, 'bin'), { recursive: true });
-  cpSync(path.join(repoRoot, 'cli', 'dist'), path.join(cliStaging, 'dist'), { recursive: true });
+  cpSync(path.join(repoRoot, 'cli', 'dist', 'index.js'), path.join(cliStaging, 'dist', 'index.js'));
+  cpSync(
+    path.join(repoRoot, 'cli', 'dist', 'index.js.map'),
+    path.join(cliStaging, 'dist', 'index.js.map')
+  );
   cpSync(path.join(repoRoot, 'cli', 'package.json'), path.join(cliStaging, 'package.json'));
 }
 

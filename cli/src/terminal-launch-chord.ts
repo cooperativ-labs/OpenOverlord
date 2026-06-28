@@ -1,4 +1,6 @@
-export type TerminalLaunchPlacement = 'window' | 'tab' | 'chord';
+import type { TerminalLaunchPlacement } from '@overlord/core/service/terminal-profile-types';
+
+export type { TerminalLaunchPlacement } from '@overlord/core/service/terminal-profile-types';
 
 export type ParsedTerminalChord = {
   modifiers: Array<'command' | 'control' | 'option' | 'shift'>;

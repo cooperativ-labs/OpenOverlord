@@ -8,8 +8,8 @@ import test from 'node:test';
 import {
   listChangedFilesForReview,
   listRationalesForReview
-} from '../../packages/core/service/changes.ts';
-import { createServiceContext } from '../../packages/core/service/context.ts';
+} from '@overlord/core/service/changes';
+import { createServiceContext } from '@overlord/core/service/context';
 import {
   claimNextExecutionRequest,
   clearExecutionRequests,
@@ -18,15 +18,15 @@ import {
   listExecutionRequests,
   markExecutionLaunched,
   markExecutionLaunching
-} from '../../packages/core/service/execution-requests.ts';
-import { createMissionWithObjectives } from '../../packages/core/service/missions.ts';
-import { addProjectResource, createProject } from '../../packages/core/service/projects.ts';
+} from '@overlord/core/service/execution-requests';
+import { createMissionWithObjectives } from '@overlord/core/service/missions';
+import { addProjectResource, createProject } from '@overlord/core/service/projects';
 import {
   attachSession,
   deliverSession,
   updateSession
-} from '../../packages/core/service/protocol.ts';
-import { newId } from '../../packages/core/service/util.ts';
+} from '@overlord/core/service/protocol';
+import { newId } from '@overlord/core/service/util';
 
 function createContext() {
   const db = new Database(':memory:');

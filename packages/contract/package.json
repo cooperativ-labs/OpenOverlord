@@ -1,0 +1,26 @@
+{
+  "name": "@overlord/contract",
+  "version": "0.1.0",
+  "description": "Shared REST API DTO types for Overlord server and clients.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "../../node_modules/.bin/tsc --project tsconfig.build.json",
+    "typecheck": "../../node_modules/.bin/tsc --project tsconfig.build.json --noEmit"
+  },
+  "license": "MIT"
+}

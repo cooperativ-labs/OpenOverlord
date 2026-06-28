@@ -58,8 +58,10 @@ install through first delivered mission.
 ### How the published CLI works
 
 The npm package ships command parsing, config/auth onboarding, connector setup,
-an HTTP backend client, and the local runner/agent launcher. It does **not** ship
-SQLite, `better-sqlite3`, migrations, or the service-layer database runtime.
+an HTTP backend client, and the local runner/agent launcher. Production builds
+bundle the shared `@overlord/core` runtime into `dist/index.js`, so the tarball
+does not depend on other Overlord packages at install time. It still does **not**
+ship SQLite, `better-sqlite3`, migrations, or the service-layer database runtime.
 
 ```mermaid
 flowchart LR
@@ -240,7 +242,7 @@ colocation convention):
 The packaged CLI lives in this module as a self-contained Yarn sub-project:
 
 ```bash
-yarn build:cli:prod       # compile TypeScript to cli/dist/
+yarn build:cli:prod       # tsc emit + esbuild bundle to cli/dist/index.js
 yarn test:cli             # unit + subprocess smoke tests
 yarn pack:cli:prod        # produce an installable tarball
 node cli/bin/ovld.mjs version
@@ -250,9 +252,10 @@ Layout:
 
 ```
 cli/
-  bin/ovld.mjs            # published bin entry (imports compiled dist/)
+  bin/ovld.mjs            # published bin entry (imports bundled dist/index.js)
   src/                    # TypeScript implementation
-  dist/                   # build output (gitignored)
+  scripts/build.mjs       # tsc emit for tests + esbuild bundle for runtime
+  dist/                   # build output (gitignored; index.js is self-contained)
   test/                   # colocated tests, including cli/test/e2e/
   package.json            # bin map, build scripts, pack metadata
 ```

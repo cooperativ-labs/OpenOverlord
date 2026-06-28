@@ -56,27 +56,10 @@ function mergeRepositoryWithBridge({
   };
 }
 
-export function ProjectRepositoryProvider({
-  projectId,
-  children
-}: {
-  projectId: string;
-  children: ReactNode;
-}) {
+export function useMergedProjectRepository(projectId: string) {
   const executionTarget = useProjectExecutionTarget(projectId);
-  const updateExecutionTarget = useUpdateProjectExecutionTarget(projectId);
   const selectedExecutionTargetId = executionTarget.data?.selectedExecutionTargetId ?? null;
-  const resources = useProjectResources(projectId);
-  const launchSettings = useLaunchSettings();
-  const localExecutionTargetId = launchSettings.data?.executionTargetId ?? null;
   const restRepository = useProjectRepository(projectId, selectedExecutionTargetId);
-
-  useResourceObservationReporter({
-    projectId,
-    executionTargetId: localExecutionTargetId,
-    resources: resources.data ?? [],
-    enabled: Boolean(localExecutionTargetId)
-  });
 
   const bridgeEnabled =
     hasDesktopLocalTargetBridge() &&
@@ -111,6 +94,43 @@ export function ProjectRepositoryProvider({
       bridgeTree: bridgeTree.data
     });
   }, [bridgeEnabled, bridgeTree.data, restRepository.data]);
+
+  return {
+    executionTarget,
+    selectedExecutionTargetId,
+    restRepository,
+    bridgeEnabled,
+    bridgeTree,
+    repository
+  };
+}
+
+export function ProjectRepositoryProvider({
+  projectId,
+  children
+}: {
+  projectId: string;
+  children: ReactNode;
+}) {
+  const {
+    executionTarget,
+    selectedExecutionTargetId,
+    restRepository,
+    bridgeEnabled,
+    bridgeTree,
+    repository
+  } = useMergedProjectRepository(projectId);
+  const updateExecutionTarget = useUpdateProjectExecutionTarget(projectId);
+  const resources = useProjectResources(projectId);
+  const launchSettings = useLaunchSettings();
+  const localExecutionTargetId = launchSettings.data?.executionTargetId ?? null;
+
+  useResourceObservationReporter({
+    projectId,
+    executionTargetId: localExecutionTargetId,
+    resources: resources.data ?? [],
+    enabled: Boolean(localExecutionTargetId)
+  });
 
   const setSelectedExecutionTargetId = useCallback(
     (executionTargetId: string | null) => {

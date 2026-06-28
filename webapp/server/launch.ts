@@ -20,7 +20,7 @@ import type { DatabaseClient } from '@overlord/database';
 
 import { resolveInstanceAgentCatalog } from '../../cli/src/agent-catalog.ts';
 import { loadConfig } from '../../cli/src/config.ts';
-import type { TerminalProfile } from '../../cli/src/terminal-profile-types.ts';
+import type { TerminalProfile } from '@overlord/core/service/terminal-profile-types';
 import {
   ACTIVE_EXECUTION_REQUEST_STATUSES,
   clearExecutionRequests,

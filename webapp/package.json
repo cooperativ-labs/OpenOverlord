@@ -1,6 +1,6 @@
 {
   "name": "@overlord/webapp",
-  "version": "0.2606281828.0",
+  "version": "0.2606281919.0",
   "private": true,
   "type": "module",
   "description": "Overlord realtime web control center (REST + realtime API backed by the local SQLite database, plus the React SPA that consumes it).",
@@ -30,6 +30,8 @@
     "@google/genai": "^2.8.0",
     "@overlord/auth": "workspace:*",
     "@overlord/automations": "workspace:*",
+    "@overlord/contract": "workspace:*",
+    "@overlord/core": "workspace:*",
     "better-auth": "^1.2.7",
     "better-sqlite3": "^12.11.1",
     "class-variance-authority": "^0.7.1",
