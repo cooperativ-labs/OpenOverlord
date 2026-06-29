@@ -24,7 +24,7 @@ import { registerIpc } from './ipc.js';
 import {
   hideQuickTaskWindow,
   initQuickTaskWindow,
-  setQuickTaskBaseUrl,
+  setQuickTaskBackend,
   unregisterQuickTaskHotkey
 } from './quick-task-window.js';
 import { DesktopUpdater } from './updater.js';
@@ -133,8 +133,11 @@ async function boot(): Promise<void> {
   }
 
   await openMainWindow({ reloadExisting: false });
-  initQuickTaskWindow({ appOrigin: shellOrigin, preloadPath: PRELOAD });
-  setQuickTaskBaseUrl(shellOrigin);
+  initQuickTaskWindow({
+    appOrigin: shellOrigin,
+    preloadPath: PRELOAD,
+    partition: sessionPartitionForProfile(active.id)
+  });
   updater.startAutomaticChecks();
   cliUpdater.startAutomaticChecks();
 
@@ -176,7 +179,10 @@ async function openMainWindow({
   if (!mainWindow) return null;
 
   await mainWindow.loadURL(`${active.shellOrigin}/`);
-  setQuickTaskBaseUrl(active.shellOrigin);
+  setQuickTaskBackend({
+    appOrigin: active.shellOrigin,
+    partition: sessionPartitionForProfile(active.id)
+  });
   return mainWindow;
 }
 

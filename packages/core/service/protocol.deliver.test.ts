@@ -1,11 +1,14 @@
 import { createSqliteClient, openInMemoryDatabase } from '@overlord/database';
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, it } from 'node:test';
 
 import { listChangedFilesForReview } from './changes.js';
 import { createServiceContext } from './context.js';
 import { createMissionWithObjectives, insertObjective } from './missions.js';
-import { createProject } from './projects.js';
+import { addProjectResource, createProject } from './projects.js';
 import {
   askQuestion,
   attachSession,
@@ -209,6 +212,80 @@ describe('deliverSession mechanical change capture', () => {
       placeholder.id
     ])) as { deleted_at: string | null };
     assert.ok(placeholderRow.deleted_at);
+
+    await db.close();
+  });
+
+  it('stamps the resolved launch config onto the auto-advanced next request', async () => {
+    const { db, ctx } = await setup();
+    const project = await createProject({ ctx, name: 'Auto Advance Launch Flags' });
+    const { mission, objectives } = await createMissionWithObjectives({
+      ctx,
+      projectId: project.id,
+      objectives: [
+        { objective: 'First objective' },
+        { objective: 'Second objective', autoAdvance: true }
+      ]
+    });
+    const secondObjectiveId = objectives[1]?.id as string;
+
+    // createExecutionRequest resolves the working directory from the project's
+    // primary resource, so the auto-advance path needs one linked.
+    await addProjectResource({
+      ctx,
+      projectId: project.id,
+      directoryPath: mkdtempSync(path.join(tmpdir(), 'ovld-auto-advance-')),
+      isPrimary: true
+    });
+
+    // Workspace catalog launch default for the agent — the lowest-priority
+    // launch-config source the shared resolver must still honor on the
+    // auto-advance path (previously this path stamped an empty config).
+    await ctx.db.run(`UPDATE workspaces SET settings_json = ? WHERE id = ?`, [
+      JSON.stringify({
+        agentCatalog: {
+          agents: {
+            claude: { launchDefaults: { preCommand: 'nvm use 20', flags: ['--verbose'] } }
+          }
+        }
+      }),
+      ctx.workspace.id
+    ]);
+
+    await ctx.db.run(`UPDATE objectives SET state = 'submitted' WHERE id = ?`, [objectives[0]?.id]);
+    const attached = await attachSession({
+      ctx,
+      missionId: mission.displayId,
+      agentIdentifier: 'claude'
+    });
+
+    await deliverSession({
+      ctx,
+      missionId: mission.displayId,
+      sessionKey: attached.sessionKey,
+      summary: 'Delivered first objective; auto-advance the second.'
+    });
+
+    const request = (await ctx.db.get(
+      `SELECT launch_flags_json, requested_agent, requested_source
+         FROM execution_requests
+        WHERE objective_id = ? AND deleted_at IS NULL
+        ORDER BY created_at DESC LIMIT 1`,
+      [secondObjectiveId]
+    )) as
+      | { launch_flags_json: string; requested_agent: string | null; requested_source: string }
+      | undefined;
+    assert.ok(request, 'auto-advance should queue an execution request for the next objective');
+    assert.equal(request.requested_source, 'auto_advance');
+    // The agent is inherited from the just-delivered objective so the launch
+    // config can be resolved for it.
+    assert.equal(request.requested_agent, 'claude');
+    const flags = JSON.parse(request.launch_flags_json) as {
+      preCommand?: string;
+      flags?: string[];
+    };
+    assert.equal(flags.preCommand, 'nvm use 20');
+    assert.deepEqual(flags.flags, ['--verbose']);
 
     await db.close();
   });

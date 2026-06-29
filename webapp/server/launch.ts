@@ -38,6 +38,7 @@ import {
 import {
   parseAgentConfigs,
   readProjectUserPreferenceRow,
+  resolveLaunchConfig,
   resolveLaunchExecutionTarget
 } from '../../packages/core/service/project-execution-target.ts';
 import { assertPrimaryResourceConnected } from '../../packages/core/service/projects.ts';
@@ -693,66 +694,6 @@ export async function dequeueObjective({
 }
 
 /**
- * Resolve the launch config for an objective + target + agent, most specific
- * source first (see "Launch Configuration Resolution" in the architecture doc):
- *
- * 1. `objectives.launch_config_json[targetId][agentKey]` — authoritative when present
- * 2. The user's per-target config (`user_execution_target_preferences.agent_configs_json`)
- * 3. The workspace catalog's launch default for the agent
- * 4. Empty (no pre-command, no flags)
- */
-async function resolveLaunchConfig(
-  objectiveLaunchConfigJson: string | null,
-  executionTargetId: string | null,
-  agentKey: string,
-  userConfigs: Record<string, AgentLaunchConfigDto>,
-  client: DatabaseClient = requireDatabaseClient()
-): Promise<{
-  config: AgentLaunchConfigDto;
-  source: 'objective' | 'user_target' | 'workspace' | 'none';
-}> {
-  if (executionTargetId && objectiveLaunchConfigJson) {
-    try {
-      const parsed = JSON.parse(objectiveLaunchConfigJson) as Record<
-        string,
-        Record<string, unknown>
-      >;
-      const override = parsed?.[executionTargetId]?.[agentKey];
-      if (override && typeof override === 'object') {
-        const cast = override as { preCommand?: unknown; flags?: unknown };
-        return {
-          config: {
-            preCommand: typeof cast.preCommand === 'string' ? cast.preCommand : '',
-            flags: Array.isArray(cast.flags) ? cast.flags.filter(f => typeof f === 'string') : []
-          },
-          source: 'objective'
-        };
-      }
-    } catch {
-      /* treat unparseable override as absent */
-    }
-  }
-
-  if (userConfigs[agentKey]) {
-    return { config: userConfigs[agentKey], source: 'user_target' };
-  }
-
-  const stored = await readStoredCatalog(client);
-  const workspaceDefault = stored?.agents[agentKey]?.launchDefaults;
-  if (workspaceDefault) {
-    return {
-      config: {
-        preCommand: workspaceDefault.preCommand ?? '',
-        flags: Array.isArray(workspaceDefault.flags) ? workspaceDefault.flags : []
-      },
-      source: 'workspace'
-    };
-  }
-
-  return { config: { preCommand: '', flags: [] }, source: 'none' };
-}
-
-/**
  * Queue an execution request for an objective. Persists the agent/model
  * selection onto the objective, stores an explicit launch override when one is
  * supplied, resolves the effective launch config, moves a draft objective to
@@ -790,12 +731,7 @@ export async function launchObjective(
           WHERE mission_id = ? AND workspace_id = ? AND id <> ? AND deleted_at IS NULL
             AND state IN (${ACTIVE_SIBLING_OBJECTIVE_STATES.map(() => '?').join(', ')})
           LIMIT 1`,
-      [
-        objective.mission_id,
-        WORKSPACE.id,
-        objective.id,
-        ...ACTIVE_SIBLING_OBJECTIVE_STATES
-      ]
+      [objective.mission_id, WORKSPACE.id, objective.id, ...ACTIVE_SIBLING_OBJECTIVE_STATES]
     );
     const activeSiblingRequest = await tx.get<{ id: string }>(
       `SELECT id FROM execution_requests
@@ -900,13 +836,13 @@ export async function launchObjective(
       );
     }
 
-    const resolved = await resolveLaunchConfig(
-      launchConfigJson,
+    const resolved = await resolveLaunchConfig({
+      ctx: serviceContext(tx),
+      objectiveLaunchConfigJson: launchConfigJson,
       executionTargetId,
       agentKey,
-      agentConfigs,
-      tx
-    );
+      userConfigs: agentConfigs
+    });
 
     // An objective stays in `launching` state until the runner claims and
     // launches its request; a second Run click in that window must not queue

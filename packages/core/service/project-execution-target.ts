@@ -343,6 +343,104 @@ export function parseAgentConfigs(json: string): Record<string, AgentLaunchConfi
   return configs;
 }
 
+/** How the effective launch config was resolved, most specific first. */
+export type LaunchConfigSource = 'objective' | 'user_target' | 'workspace' | 'none';
+
+/**
+ * Read the workspace catalog's launch default for one agent (the lowest-priority
+ * launch-config source). Lives in `workspaces.settings_json.agentCatalog.agents
+ * [agentKey].launchDefaults`; tolerates missing/malformed settings by returning null.
+ */
+async function readWorkspaceAgentLaunchDefault(
+  ctx: ServiceContext,
+  agentKey: string
+): Promise<AgentLaunchConfig | null> {
+  const row = (await ctx.db.get(
+    `SELECT settings_json FROM workspaces WHERE id = ? AND deleted_at IS NULL`,
+    [ctx.workspace.id]
+  )) as { settings_json: string } | undefined;
+  if (!row) return null;
+  let settings: Record<string, unknown>;
+  try {
+    settings = JSON.parse(row.settings_json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const catalog = settings.agentCatalog as
+    | { agents?: Record<string, { launchDefaults?: { preCommand?: unknown; flags?: unknown } }> }
+    | undefined;
+  const launchDefaults = catalog?.agents?.[agentKey]?.launchDefaults;
+  if (!launchDefaults || typeof launchDefaults !== 'object') return null;
+  return {
+    preCommand: typeof launchDefaults.preCommand === 'string' ? launchDefaults.preCommand : '',
+    flags: Array.isArray(launchDefaults.flags)
+      ? launchDefaults.flags.filter((f): f is string => typeof f === 'string')
+      : []
+  };
+}
+
+/**
+ * Resolve the effective launch config (pre-command + flags) for an objective +
+ * target + agent, most specific source first (see "Launch Configuration
+ * Resolution" in connectors/docs/agent-harness-configuration-architecture.md):
+ *
+ * 1. `objectives.launch_config_json[targetId][agentKey]` — authoritative when present
+ * 2. The user's per-target config (`user_execution_target_preferences.agent_configs_json`)
+ * 3. The workspace catalog's launch default for the agent
+ * 4. Empty (no pre-command, no flags)
+ *
+ * Shared by the manual webapp launch path and the core auto-advance path so both
+ * stamp the same `execution_requests.launch_flags_json`.
+ */
+export async function resolveLaunchConfig({
+  ctx,
+  objectiveLaunchConfigJson,
+  executionTargetId,
+  agentKey,
+  userConfigs
+}: {
+  ctx: ServiceContext;
+  objectiveLaunchConfigJson: string | null;
+  executionTargetId: string | null;
+  agentKey: string;
+  userConfigs: Record<string, AgentLaunchConfig>;
+}): Promise<{ config: AgentLaunchConfig; source: LaunchConfigSource }> {
+  if (executionTargetId && objectiveLaunchConfigJson) {
+    try {
+      const parsed = JSON.parse(objectiveLaunchConfigJson) as Record<
+        string,
+        Record<string, unknown>
+      >;
+      const override = parsed?.[executionTargetId]?.[agentKey];
+      if (override && typeof override === 'object') {
+        const cast = override as { preCommand?: unknown; flags?: unknown };
+        return {
+          config: {
+            preCommand: typeof cast.preCommand === 'string' ? cast.preCommand : '',
+            flags: Array.isArray(cast.flags)
+              ? cast.flags.filter((f): f is string => typeof f === 'string')
+              : []
+          },
+          source: 'objective'
+        };
+      }
+    } catch {
+      /* treat unparseable override as absent */
+    }
+  }
+
+  if (userConfigs[agentKey]) {
+    return { config: userConfigs[agentKey], source: 'user_target' };
+  }
+
+  const workspaceDefault = await readWorkspaceAgentLaunchDefault(ctx, agentKey);
+  if (workspaceDefault) {
+    return { config: workspaceDefault, source: 'workspace' };
+  }
+
+  return { config: { preCommand: '', flags: [] }, source: 'none' };
+}
+
 export async function readAgentConfigsForExecutionTarget({
   ctx,
   executionTargetId

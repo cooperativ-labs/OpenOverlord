@@ -145,10 +145,7 @@ class RealtimeHub {
       return;
     }
 
-    const rows = await client.all<ChangeRow>(SELECT_CHANGES_SQL, [
-      this.cursor,
-      CHANGE_BATCH_LIMIT
-    ]);
+    const rows = await client.all<ChangeRow>(SELECT_CHANGES_SQL, [this.cursor, CHANGE_BATCH_LIMIT]);
     if (rows.length > 0) {
       const changes: EntityChangeDto[] = rows.map(entityChangeDtoFromRow);
       this.cursor = rows[rows.length - 1]!.seq;

@@ -67,7 +67,6 @@ test('launching an objective twice while a request is active returns the same re
     )
     .get(objectiveId) as { n: number };
   assert.equal(serviceClearEvents.n, 0);
-
 });
 
 test('launching another objective while one is active is rejected without queueing', async () => {
@@ -89,10 +88,7 @@ test('launching another objective while one is active is rejected without queuei
     instructionText: 'Second objective'
   });
 
-  await assert.rejects(
-    () => launchObjective(second.id, { agent: 'codex' }),
-    /Enable auto-advance/
-  );
+  await assert.rejects(() => launchObjective(second.id, { agent: 'codex' }), /Enable auto-advance/);
 
   const secondRequestCount = db
     .prepare(`SELECT COUNT(*) AS n FROM execution_requests WHERE objective_id = ?`)

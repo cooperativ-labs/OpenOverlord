@@ -1,4 +1,4 @@
-import { BrowserWindow, globalShortcut, screen, session } from 'electron';
+import { BrowserWindow, globalShortcut, screen } from 'electron';
 
 import { store } from './settings-store.js';
 
@@ -52,6 +52,13 @@ function getCursorDisplayPosition(width: number): SavedPosition {
 let quickWindow: BrowserWindow | null = null;
 let registeredAccelerator: string | null = null;
 let baseUrl = '';
+// Session partition shared with the main window so the quick-task window adopts
+// the same backend, auth, and theme state. The quick-task window is an extension
+// of the desktop app: cookies (better-auth session), persisted desktop bearer
+// tokens, and the `overlord-theme` localStorage key all live in this partition.
+// Using Electron's default session here would fork all three states.
+let quickTaskPartition: string | undefined;
+let quickTaskPreloadPath: string | null = null;
 let quickTaskBlurHideTimer: ReturnType<typeof setTimeout> | null = null;
 let barAnchorScreenY: number | null = null;
 let suppressMovedReset = false;
@@ -117,7 +124,10 @@ function ensureWindow(preloadPath: string): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      spellcheck: true
+      spellcheck: true,
+      // Share the active backend profile's partition with the main window so the
+      // quick-task renderer reuses its auth session, backend selection, and theme.
+      partition: quickTaskPartition
     }
   });
 
@@ -367,20 +377,50 @@ export function unregisterQuickTaskHotkey(): void {
 
 export function initQuickTaskWindow({
   appOrigin,
-  preloadPath
+  preloadPath,
+  partition
 }: {
   appOrigin: string;
   preloadPath: string;
+  partition?: string;
 }): void {
   baseUrl = appOrigin;
-  void session.defaultSession;
+  quickTaskPartition = partition;
+  quickTaskPreloadPath = preloadPath;
   ensureWindow(preloadPath);
   registerQuickTaskHotkey({ preloadPath });
 }
 
-export function setQuickTaskBaseUrl(appOrigin: string): void {
+/**
+ * Point the quick-task window at the active backend. When the backend profile
+ * changes the session partition changes with it; a BrowserWindow's partition is
+ * fixed at construction, so the window is destroyed and rebuilt under the new
+ * partition to keep its backend/auth/theme state aligned with the main window.
+ */
+export function setQuickTaskBackend({
+  appOrigin,
+  partition
+}: {
+  appOrigin: string;
+  partition?: string;
+}): void {
   baseUrl = appOrigin;
-  if (quickWindow && !quickWindow.isDestroyed()) {
-    void quickWindow.loadURL(getQuickTaskUrl());
+  const partitionChanged = partition !== quickTaskPartition;
+  quickTaskPartition = partition;
+
+  if (!quickWindow || quickWindow.isDestroyed()) return;
+
+  if (partitionChanged && quickTaskPreloadPath) {
+    const wasVisible = quickWindow.isVisible();
+    quickWindow.destroy();
+    quickWindow = null;
+    if (wasVisible) {
+      showQuickTaskWindow(quickTaskPreloadPath);
+    } else {
+      ensureWindow(quickTaskPreloadPath);
+    }
+    return;
   }
+
+  void quickWindow.loadURL(getQuickTaskUrl());
 }

@@ -5,13 +5,14 @@ import { AgentModelChooserButton } from '@/components/objectives/AgentModelChoos
 import type { AgentModelSelection } from '@/components/objectives/AgentModelSelector.tsx';
 import { RepositoryMentionTextarea } from '@/components/RepositoryMentionTextarea.tsx';
 import { api } from '@/lib/api.ts';
-import { primaryResourceConnection } from '@/lib/project-resources.ts';
+import { executionTargetAvailability, primaryResourceConnection } from '@/lib/project-resources.ts';
 import {
   useAgentCatalog,
   useCreateMission,
   useLaunchObjective,
   useLaunchPreference,
   useLaunchSettings,
+  useProjectExecutionTarget,
   useProjectResources,
   useProjects,
   useUpdateAgentLaunchConfig,
@@ -107,6 +108,11 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
 
   const selectedProject = projects.find(project => project.id === selectedProjectId) ?? null;
   const primaryConnection = primaryResourceConnection(resourcesQ.data ?? []);
+  const executionTargetQ = useProjectExecutionTarget(selectedProjectId);
+  const targetAvailability = executionTargetAvailability({
+    primaryConnected: primaryConnection.connected,
+    eligibleTargets: executionTargetQ.data?.eligibleTargets
+  });
 
   useEffect(() => {
     setSelectedProjectId(current => {
@@ -246,6 +252,9 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
     try {
       if (shouldLaunch && !primaryConnection.connected) {
         throw new Error(primaryConnection.message ?? 'Primary resource is not connected.');
+      }
+      if (shouldLaunch && !targetAvailability.available) {
+        throw new Error(targetAvailability.message ?? 'No execution target is available.');
       }
 
       const detail = await createMission.mutateAsync({
@@ -456,6 +465,14 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
           >
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
             <p>{primaryConnection.message}</p>
+          </div>
+        ) : !targetAvailability.available && selectionLoaded ? (
+          <div
+            role="alert"
+            className="electron-no-drag flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-800 dark:text-amber-200"
+          >
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+            <p>{targetAvailability.message}</p>
           </div>
         ) : null}
       </div>

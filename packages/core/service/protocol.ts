@@ -26,6 +26,7 @@ import {
   type SharedContextEntry
 } from './missions.js';
 import { loadAgentInstructionsForWorkspaceUser } from './profiles.js';
+import { resolveLaunchConfig, resolveLaunchExecutionTarget } from './project-execution-target.js';
 import { discoverProject } from './projects.js';
 import { generateSessionKey, hashSessionKey, newId, nowIso } from './util.js';
 
@@ -1615,7 +1616,8 @@ export async function deliverSession({
   });
 
   const nextObjective = (await ctx.db.get(
-    `SELECT id, title, auto_advance, assigned_agent, model, reasoning_effort FROM objectives
+    `SELECT id, title, auto_advance, assigned_agent, model, reasoning_effort, launch_config_json
+       FROM objectives
        WHERE mission_id = ? AND position > (
          SELECT position FROM objectives WHERE id = ?
        ) AND state = 'draft'
@@ -1629,6 +1631,7 @@ export async function deliverSession({
         assigned_agent: string | null;
         model: string | null;
         reasoning_effort: string | null;
+        launch_config_json: string | null;
       }
     | undefined;
 
@@ -1674,19 +1677,43 @@ export async function deliverSession({
         changedFields
       });
       try {
+        // Mirror the manual launch path (webapp launchObjective): resolve the
+        // project's execution target and the effective launch config (pre-command
+        // + flags) for the resolved agent, then stamp both onto the queued request.
+        // Without this, auto-advanced requests were written with launch_flags_json
+        // = '{}' and a null target, so the agent launched with no pre-command and
+        // none of the configured flags.
+        const resolvedAgent =
+          nextObjective.assigned_agent ?? deliveredObjective?.assigned_agent ?? null;
+        const { executionTargetId, agentConfigs } = await resolveLaunchExecutionTarget({
+          ctx: ctx,
+          projectId: mission.projectId
+        });
+        const resolvedLaunch = await resolveLaunchConfig({
+          ctx: ctx,
+          objectiveLaunchConfigJson: nextObjective.launch_config_json,
+          executionTargetId,
+          agentKey: resolvedAgent ?? '',
+          userConfigs: agentConfigs
+        });
         await createExecutionRequest({
           ctx: ctx,
           missionId: mission.id,
           objectiveId: nextObjective.id,
-          requestedAgent:
-            nextObjective.assigned_agent ?? deliveredObjective?.assigned_agent ?? null,
+          requestedAgent: resolvedAgent,
           requestedModel: nextObjective.assigned_agent
             ? nextObjective.model
             : (deliveredObjective?.model ?? null),
           requestedReasoningEffort: nextObjective.assigned_agent
             ? nextObjective.reasoning_effort
             : (deliveredObjective?.reasoning_effort ?? null),
+          launchFlags: {
+            preCommand: resolvedLaunch.config.preCommand,
+            flags: resolvedLaunch.config.flags
+          },
+          executionTargetId,
           requestedSource: 'auto_advance',
+          metadata: { launchConfigSource: resolvedLaunch.source },
           idempotencyKey: `auto_advance:${nextObjective.id}`
         });
       } catch (error) {

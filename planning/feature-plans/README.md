@@ -44,6 +44,7 @@ the **redirect** that points each plan at the module / topic it belongs to.
 | [Local Execution Target Capabilities](local-execution-target-capabilities.md) | Keeps hosted/local backends interchangeable by moving checkout-local work to targets. |
 | [Realtime UI Sync and Native Workflow Notifications](realtime-ui-sync-and-native-notifications.md) | Lightweight plan to make UI invalidation and native notifications derive from the durable `entity_changes` feed. |
 | [Railway + PostgreSQL Deployment](railway-postgres-deployment-recommendation.md) | Hosted Postgres deployment recommendation. |
+| [Railway S3 Storage Implementation](railway-s3-storage-implementation-plan.md) | Add a private `s3` byte backend for images/attachments, gated by existing auth/RBAC (coo:45). |
 | [Remote Overlord Architecture Recommendations](remote-overlord-architecture-recommendations.md) | Architecture options for a remote/hosted Overlord. |
 | → Owning module: [`database/`](../../database/README.md) |
 

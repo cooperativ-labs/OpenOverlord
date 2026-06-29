@@ -15,13 +15,14 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu.tsx';
 import { readLastUsedProjectId, writeLastUsedProjectId } from '@/lib/last-used-project.ts';
-import { primaryResourceConnection } from '@/lib/project-resources.ts';
+import { executionTargetAvailability, primaryResourceConnection } from '@/lib/project-resources.ts';
 import {
   useAgentCatalog,
   useCreateMission,
   useLaunchObjective,
   useLaunchPreference,
   useLaunchSettings,
+  useProjectExecutionTarget,
   useProjectResources,
   useProjects,
   useProjectTags,
@@ -85,12 +86,17 @@ export function NewMissionModal({
 
   const preferenceQ = useLaunchPreference(selectedProjectId);
   const resourcesQ = useProjectResources(selectedProjectId);
+  const executionTargetQ = useProjectExecutionTarget(selectedProjectId);
   const updatePreference = useUpdateLaunchPreference(selectedProjectId);
 
   const catalog = catalogQ.data ?? null;
   const agentConfigs = settingsQ.data?.agentConfigs ?? {};
   const selectionLoaded = Boolean(catalog) && !preferenceQ.isLoading && !settingsQ.isLoading;
   const primaryConnection = primaryResourceConnection(resourcesQ.data ?? []);
+  const targetAvailability = executionTargetAvailability({
+    primaryConnected: primaryConnection.connected,
+    eligibleTargets: executionTargetQ.data?.eligibleTargets
+  });
 
   const defaultSelection = useMemo<AgentModelSelection>(() => {
     if (preferenceQ.data?.selectedAgent) {
@@ -148,7 +154,7 @@ export function NewMissionModal({
   const isBusy = pendingAction !== null;
   const canSubmit =
     Boolean(instruction.trim()) && Boolean(selectedProjectId) && selectionLoaded && !isBusy;
-  const canRun = canSubmit && primaryConnection.connected;
+  const canRun = canSubmit && primaryConnection.connected && targetAvailability.available;
 
   async function submit(shouldLaunch: boolean) {
     const text = instruction.trim();
@@ -160,6 +166,9 @@ export function NewMissionModal({
     try {
       if (shouldLaunch && !primaryConnection.connected) {
         throw new Error(primaryConnection.message ?? 'Primary resource is not connected.');
+      }
+      if (shouldLaunch && !targetAvailability.available) {
+        throw new Error(targetAvailability.message ?? 'No execution target is available.');
       }
 
       // Omit statusId so the mission lands in the workspace default status,
@@ -414,6 +423,16 @@ export function NewMissionModal({
             >
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
               <p>{primaryConnection.message}</p>
+            </div>
+          </div>
+        ) : !targetAvailability.available && selectionLoaded && selectedProjectId ? (
+          <div className="bg-background rounded-md mt-1">
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-800 dark:text-amber-200"
+            >
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              <p>{targetAvailability.message}</p>
             </div>
           </div>
         ) : null}
