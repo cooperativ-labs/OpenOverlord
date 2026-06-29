@@ -693,6 +693,8 @@ export interface ObjectivePromptDto {
  * A compact projection of an `entity_changes` row, ordered by the monotonic
  * `seq`. The SPA uses these to invalidate its query cache so the UI reflects
  * database changes — including writes made by the CLI — in real time.
+ * `changedFields` comes from `entity_changes.changed_fields_json`; malformed
+ * stored values project as an empty array.
  */
 export interface EntityChangeDto {
   seq: number;
@@ -702,6 +704,7 @@ export interface EntityChangeDto {
   projectId: string | null;
   missionId: string | null;
   objectiveId: string | null;
+  changedFields: string[];
   occurredAt: string;
 }
 

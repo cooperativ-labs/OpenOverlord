@@ -435,11 +435,11 @@ export async function attachSession({
   const now = nowIso();
   const sessionId = newId();
   const currentObjectiveAssignment = (await ctx.db.get(
-    `SELECT assigned_agent
+    `SELECT assigned_agent, revision
        FROM objectives
        WHERE id = ? AND mission_id = ? AND deleted_at IS NULL`,
     [objective.id, context.mission.id]
-  )) as { assigned_agent: string | null } | undefined;
+  )) as { assigned_agent: string | null; revision: number } | undefined;
   const inheritedDraftAgent = currentObjectiveAssignment?.assigned_agent?.trim() || agentIdentifier;
 
   await ctx.db.transaction(async tx => {
@@ -453,6 +453,20 @@ export async function attachSession({
          WHERE id = ? AND mission_id = ?`,
       [inheritedDraftAgent || null, now, objective.id, context.mission.id]
     );
+    await recordChange({
+      ctx: txCtx,
+      entityType: 'objective',
+      entityId: objective.id,
+      operation: 'update',
+      entityRevision: (currentObjectiveAssignment?.revision ?? 0) + 1,
+      projectId: context.mission.projectId,
+      missionId: context.mission.id,
+      objectiveId: objective.id,
+      changedFields: [
+        'state',
+        ...(currentObjectiveAssignment?.assigned_agent ? [] : ['assigned_agent'])
+      ]
+    });
 
     await ensureNextDraftObjective({
       ctx: txCtx,
@@ -1512,12 +1526,37 @@ export async function deliverSession({
         now
       ]
     );
+    await recordChange({
+      ctx: txCtx,
+      entityType: 'mission_event',
+      entityId: eventId,
+      operation: 'insert',
+      projectId: mission.projectId,
+      missionId: mission.id,
+      objectiveId: session.objective_id
+    });
 
     await txCtx.db.run(
       `UPDATE objectives SET state = 'complete', completed_at = ?, updated_at = ?, revision = revision + 1
          WHERE id = ?`,
       [now, now, session.objective_id]
     );
+    const objectiveRevision = (
+      (await txCtx.db.get(`SELECT revision FROM objectives WHERE id = ?`, [
+        session.objective_id
+      ])) as { revision: number } | undefined
+    )?.revision;
+    await recordChange({
+      ctx: txCtx,
+      entityType: 'objective',
+      entityId: session.objective_id,
+      operation: 'update',
+      entityRevision: objectiveRevision ?? null,
+      projectId: mission.projectId,
+      missionId: mission.id,
+      objectiveId: session.objective_id,
+      changedFields: ['state', 'completed_at']
+    });
 
     await txCtx.db.run(
       `UPDATE agent_sessions
@@ -1525,6 +1564,22 @@ export async function deliverSession({
          WHERE id = ?`,
       [now, now, session.id]
     );
+    const sessionRevision = (
+      (await txCtx.db.get(`SELECT revision FROM agent_sessions WHERE id = ?`, [session.id])) as
+        | { revision: number }
+        | undefined
+    )?.revision;
+    await recordChange({
+      ctx: txCtx,
+      entityType: 'agent_session',
+      entityId: session.id,
+      operation: 'update',
+      entityRevision: sessionRevision ?? null,
+      projectId: mission.projectId,
+      missionId: mission.id,
+      objectiveId: session.objective_id,
+      changedFields: ['delivery_state', 'phase', 'ended_at']
+    });
 
     await moveMissionToReview({ ctx: txCtx, missionId: mission.id });
   });

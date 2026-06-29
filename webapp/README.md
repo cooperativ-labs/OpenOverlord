@@ -96,7 +96,8 @@ webapp/
 Realtime works off the `entity_changes` feed: every mutation appends a row in
 the same transaction, and the server polls that feed (with a `PRAGMA
 data_version` safety net for external table writes) and streams compact deltas
-to the browser, which invalidates its TanStack Query cache.
+to the browser, including `changedFields` parsed from `changed_fields_json`,
+which invalidates its TanStack Query cache.
 
 ### REST surface (as built)
 

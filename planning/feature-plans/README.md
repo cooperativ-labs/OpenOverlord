@@ -42,6 +42,7 @@ the **redirect** that points each plan at the module / topic it belongs to.
 | Plan | What it proposes |
 | --- | --- |
 | [Local Execution Target Capabilities](local-execution-target-capabilities.md) | Keeps hosted/local backends interchangeable by moving checkout-local work to targets. |
+| [Realtime UI Sync and Native Workflow Notifications](realtime-ui-sync-and-native-notifications.md) | Lightweight plan to make UI invalidation and native notifications derive from the durable `entity_changes` feed. |
 | [Railway + PostgreSQL Deployment](railway-postgres-deployment-recommendation.md) | Hosted Postgres deployment recommendation. |
 | [Remote Overlord Architecture Recommendations](remote-overlord-architecture-recommendations.md) | Architecture options for a remote/hosted Overlord. |
 | → Owning module: [`database/`](../../database/README.md) |

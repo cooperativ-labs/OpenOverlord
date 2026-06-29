@@ -9,12 +9,44 @@ const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
 await bootstrapIntegrationTestDb({ sqlitePath: path.join(tempDir, 'webapp.sqlite') });
 
 const { db, WORKSPACE, setActiveWorkspaceUser, nowIso, newId } = await import('./db.ts');
+const { entityChangeDtoFromRow, parseChangedFields } = await import('./realtime.ts');
 const { createMission, createProject, createObjective, reorderFutureObjectives, updateObjective } =
   await import('./repository.ts');
 const { updateLaunchPreference } = await import('./launch.ts');
 const { ApiError } = await import('./errors.ts');
 
 // Operator is seeded by bootstrapIntegrationTestDb.
+
+test('realtime change DTOs include safely parsed changed fields', () => {
+  assert.deepEqual(parseChangedFields('["state","completed_at"]'), ['state', 'completed_at']);
+  assert.deepEqual(parseChangedFields('{"state":true}'), []);
+  assert.deepEqual(parseChangedFields('not json'), []);
+  assert.deepEqual(parseChangedFields('["state",42,null,"phase"]'), ['state', 'phase']);
+
+  const dto = entityChangeDtoFromRow({
+    seq: 42,
+    entity_type: 'objective',
+    entity_id: 'objective-1',
+    operation: 'update',
+    project_id: 'project-1',
+    mission_id: 'mission-1',
+    objective_id: 'objective-1',
+    changed_fields_json: '["state","completed_at"]',
+    occurred_at: '2026-06-29T00:00:00.000Z'
+  });
+
+  assert.deepEqual(dto, {
+    seq: 42,
+    entityType: 'objective',
+    entityId: 'objective-1',
+    operation: 'update',
+    projectId: 'project-1',
+    missionId: 'mission-1',
+    objectiveId: 'objective-1',
+    changedFields: ['state', 'completed_at'],
+    occurredAt: '2026-06-29T00:00:00.000Z'
+  });
+});
 
 test('clearing a draft objective instruction to empty leaves it blank instead of erroring', async () => {
   const project = await createProject({ name: 'Clear Instruction Test' });

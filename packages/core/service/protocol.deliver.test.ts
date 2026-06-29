@@ -6,7 +6,7 @@ import { listChangedFilesForReview } from './changes.js';
 import { createServiceContext } from './context.js';
 import { createMissionWithObjectives, insertObjective } from './missions.js';
 import { createProject } from './projects.js';
-import { attachSession, deliverSession, updateSession } from './protocol.js';
+import { attachSession, deliverSession, resumeFollowUp, updateSession } from './protocol.js';
 import { nowIso } from './util.js';
 
 async function setup() {
@@ -29,7 +29,113 @@ async function submittedMission(
   return { project, mission, objectiveId: objectives[0]?.id as string };
 }
 
+async function entityChangesFor(
+  ctx: Awaited<ReturnType<typeof createServiceContext>>,
+  entityType: string,
+  entityId: string
+) {
+  return (await ctx.db.all(
+    `SELECT entity_type, entity_id, operation, entity_revision, changed_fields_json,
+            project_id, mission_id, objective_id
+       FROM entity_changes
+      WHERE entity_type = ? AND entity_id = ?
+      ORDER BY seq ASC`,
+    [entityType, entityId]
+  )) as Array<{
+    entity_type: string;
+    entity_id: string;
+    operation: string;
+    entity_revision: number | null;
+    changed_fields_json: string;
+    project_id: string | null;
+    mission_id: string | null;
+    objective_id: string | null;
+  }>;
+}
+
+function changedFields(row: { changed_fields_json: string }): string[] {
+  return JSON.parse(row.changed_fields_json) as string[];
+}
+
 describe('deliverSession mechanical change capture', () => {
+  it('records objective change feed coverage when attach moves an objective to executing', async () => {
+    const { db, ctx } = await setup();
+    const { mission, objectiveId } = await submittedMission(ctx, 'Attach Feed');
+
+    await attachSession({ ctx, missionId: mission.displayId, agentIdentifier: 'codex' });
+
+    const changes = await entityChangesFor(ctx, 'objective', objectiveId);
+    const attachChange = changes.find(change => change.operation === 'update');
+    assert.ok(attachChange);
+    assert.equal(attachChange.project_id, mission.projectId);
+    assert.equal(attachChange.mission_id, mission.id);
+    assert.equal(attachChange.objective_id, objectiveId);
+    assert.deepEqual(changedFields(attachChange), ['state', 'assigned_agent']);
+
+    await db.close();
+  });
+
+  it('keeps resume follow-up objective changes in the durable change feed', async () => {
+    const { db, ctx } = await setup();
+    const { mission, objectiveId } = await submittedMission(ctx, 'Resume Feed');
+    const attached = await attachSession({ ctx, missionId: mission.displayId });
+    await deliverSession({
+      ctx,
+      missionId: mission.displayId,
+      sessionKey: attached.sessionKey,
+      summary: 'Delivered before follow-up.'
+    });
+
+    await resumeFollowUp({ ctx, missionId: mission.displayId, objectiveId });
+
+    const changes = await entityChangesFor(ctx, 'objective', objectiveId);
+    const latestUpdate = changes.filter(change => change.operation === 'update').at(-1);
+    assert.ok(latestUpdate);
+    assert.deepEqual(changedFields(latestUpdate), ['state', 'completed_at']);
+
+    await db.close();
+  });
+
+  it('records delivery workflow state transitions in the durable change feed', async () => {
+    const { db, ctx } = await setup();
+    const { mission, objectiveId } = await submittedMission(ctx, 'Deliver Feed');
+    const attached = await attachSession({ ctx, missionId: mission.displayId });
+
+    const delivered = await deliverSession({
+      ctx,
+      missionId: mission.displayId,
+      sessionKey: attached.sessionKey,
+      summary: 'Delivered with feed coverage.'
+    });
+
+    const eventChanges = await entityChangesFor(ctx, 'mission_event', delivered.eventId);
+    assert.equal(eventChanges.length, 1);
+    assert.equal(eventChanges[0]?.operation, 'insert');
+    assert.equal(eventChanges[0]?.mission_id, mission.id);
+    assert.equal(eventChanges[0]?.objective_id, objectiveId);
+
+    const objectiveChanges = await entityChangesFor(ctx, 'objective', objectiveId);
+    const completeChange = objectiveChanges.find(
+      change =>
+        change.operation === 'update' &&
+        changedFields(change).includes('state') &&
+        changedFields(change).includes('completed_at')
+    );
+    assert.ok(completeChange);
+
+    const sessionChanges = await entityChangesFor(ctx, 'agent_session', attached.session.id);
+    const deliveredSessionChange = sessionChanges.find(
+      change =>
+        change.operation === 'update' &&
+        changedFields(change).includes('delivery_state') &&
+        changedFields(change).includes('phase') &&
+        changedFields(change).includes('ended_at')
+    );
+    assert.ok(deliveredSessionChange);
+
+    await db.close();
+  });
+
   it('promotes a future objective over a blank draft placeholder after delivery', async () => {
     const { db, ctx } = await setup();
     const project = await createProject({ ctx, name: 'Deliver Future Before Placeholder' });

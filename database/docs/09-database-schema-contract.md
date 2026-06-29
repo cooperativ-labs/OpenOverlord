@@ -1456,7 +1456,7 @@ Every service-layer mutation should append one or more `entity_changes` rows in 
 | `entity_id` | Id | yes | Changed entity ID. |
 | `operation` | text | yes | `insert`, `update`, `delete`, `restore`. |
 | `entity_revision` | integer | no | New revision where applicable. |
-| `changed_fields_json` | Json | yes | Field names or compact summary. No secrets. |
+| `changed_fields_json` | Json | yes | Field names or compact summary. No secrets. REST realtime projections expose array values as `EntityChangeDto.changedFields`; malformed or non-array values project as `[]`. |
 | `actor_workspace_user_id` | Id | no | FK to `workspace_users`. |
 | `actor_token_id` | Id | no | FK to `user_tokens`. |
 | `source` | text | yes | `cli`, `api`, `runner`, `worker`, `hook`, `migration`. |
@@ -1756,7 +1756,7 @@ Recommended boundary:
 - `/execution-requests` for runner queue operations.
 - `/uploads/:bucketKey` (core upload service) accepts raw image bytes, persists them to the `storage_buckets` backend, records the matching object table row (e.g. `user_images`), and returns the stored descriptor; `/storage/:bucketKey/:storageKey` serves the bytes for a recorded object.
 - `/sync/changes?after=<seq>` for realtime catch-up and local DB sync.
-- `/realtime` SSE/WebSocket endpoint backed by `entity_changes`.
+- `/realtime` SSE/WebSocket endpoint backed by `entity_changes`; compact change DTOs include `changedFields: string[]` parsed from `entity_changes.changed_fields_json`.
 
 REST handlers should:
 

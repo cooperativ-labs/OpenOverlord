@@ -4,7 +4,7 @@ import type { EntityChangeDto } from '../shared/contract.ts';
 
 import { currentMaxSeqAsync, DATABASE_DIALECT, dataVersion, requireDatabaseClient } from './db.ts';
 
-interface ChangeRow {
+export interface ChangeRow {
   seq: number;
   entity_type: string;
   entity_id: string;
@@ -12,16 +12,43 @@ interface ChangeRow {
   project_id: string | null;
   mission_id: string | null;
   objective_id: string | null;
+  changed_fields_json: string | null;
   occurred_at: string;
 }
 
 const SELECT_CHANGES_SQL = `
-  SELECT seq, entity_type, entity_id, operation, project_id, mission_id, objective_id, occurred_at
+  SELECT seq, entity_type, entity_id, operation, project_id, mission_id, objective_id,
+         changed_fields_json, occurred_at
     FROM entity_changes
    WHERE seq > ?
    ORDER BY seq ASC
    LIMIT 500
 `;
+
+export function parseChangedFields(value: string | null | undefined): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((field): field is string => typeof field === 'string');
+  } catch {
+    return [];
+  }
+}
+
+export function entityChangeDtoFromRow(row: ChangeRow): EntityChangeDto {
+  return {
+    seq: row.seq,
+    entityType: row.entity_type,
+    entityId: row.entity_id,
+    operation: row.operation,
+    projectId: row.project_id,
+    missionId: row.mission_id,
+    objectiveId: row.objective_id,
+    changedFields: parseChangedFields(row.changed_fields_json),
+    occurredAt: row.occurred_at
+  };
+}
 
 /**
  * Tracks SSE subscribers and turns `entity_changes` rows into realtime deltas.
@@ -94,16 +121,7 @@ class RealtimeHub {
 
     const rows = await client.all<ChangeRow>(SELECT_CHANGES_SQL, [this.cursor]);
     if (rows.length > 0) {
-      const changes: EntityChangeDto[] = rows.map(r => ({
-        seq: r.seq,
-        entityType: r.entity_type,
-        entityId: r.entity_id,
-        operation: r.operation,
-        projectId: r.project_id,
-        missionId: r.mission_id,
-        objectiveId: r.objective_id,
-        occurredAt: r.occurred_at
-      }));
+      const changes: EntityChangeDto[] = rows.map(entityChangeDtoFromRow);
       this.cursor = rows[rows.length - 1]!.seq;
       this.broadcast('change', { type: 'change', changes, cursor: this.cursor });
     }

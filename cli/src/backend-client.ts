@@ -1,5 +1,6 @@
 import { clearStoredAuthCredentials, readStoredAuthCredentials } from './auth-credentials.js';
 import { loadConfig, resolveBackendUrl } from './config.js';
+import { clientDeviceIdentity } from './device-identity.js';
 import { CliError } from './errors.js';
 
 export type BackendClient = {
@@ -70,6 +71,7 @@ function errorMessageFromJson(value: unknown): string | null {
 
 export function createBackendClient(): BackendClient {
   const baseUrl = normalizeBaseUrl(resolveBackendUrl(loadConfig()));
+  const clientDevice = clientDeviceIdentity();
 
   async function request<T>({
     method,
@@ -89,6 +91,9 @@ export function createBackendClient(): BackendClient {
         headers: {
           Accept: 'application/json',
           ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          'x-overlord-device-fingerprint': clientDevice.deviceFingerprint,
+          'x-overlord-device-label': clientDevice.deviceLabel,
+          'x-overlord-device-platform': clientDevice.devicePlatform,
           ...auth.headers
         },
         body: body === undefined ? undefined : JSON.stringify(body)

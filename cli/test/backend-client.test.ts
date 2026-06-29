@@ -10,7 +10,34 @@ import {
   writeStoredAuthCredentials
 } from '../src/auth-credentials.ts';
 import { createBackendClient } from '../src/backend-client.ts';
+import { clientDeviceIdentity } from '../src/device-identity.ts';
 import { CliError } from '../src/errors.ts';
+
+const ISOLATED_ENV_KEYS = [
+  'OVERLORD_BACKEND_URL',
+  'OVERLORD_BACKEND_URL_DEV',
+  'OVERLORD_USER_TOKEN',
+  'OVLD_USER_TOKEN',
+  'USER_TOKEN'
+] as const;
+
+function isolateBackendClientEnv(): Record<(typeof ISOLATED_ENV_KEYS)[number], string | undefined> {
+  const previous = {} as Record<(typeof ISOLATED_ENV_KEYS)[number], string | undefined>;
+  for (const key of ISOLATED_ENV_KEYS) {
+    previous[key] = process.env[key];
+    delete process.env[key];
+  }
+  return previous;
+}
+
+function restoreBackendClientEnv(
+  previous: Record<(typeof ISOLATED_ENV_KEYS)[number], string | undefined>
+): void {
+  for (const key of ISOLATED_ENV_KEYS) {
+    if (previous[key] === undefined) delete process.env[key];
+    else process.env[key] = previous[key];
+  }
+}
 
 test('clearStoredAuthCredentials removes auth.json', () => {
   const home = mkdtempSync(path.join(tmpdir(), 'overlord-auth-clear-'));
@@ -35,6 +62,7 @@ test('clearStoredAuthCredentials removes auth.json', () => {
 test('createBackendClient clears stored credentials and guides re-login on 401', async () => {
   const home = mkdtempSync(path.join(tmpdir(), 'overlord-backend-client-'));
   const previousHome = process.env.OVLD_HOME;
+  const previousEnv = isolateBackendClientEnv();
   process.env.OVLD_HOME = home;
 
   writeFileSync(
@@ -75,6 +103,50 @@ default_agent = "claude"
     assert.equal(existsSync(authCredentialsPath()), false);
   } finally {
     globalThis.fetch = originalFetch;
+    restoreBackendClientEnv(previousEnv);
+    if (previousHome === undefined) delete process.env.OVLD_HOME;
+    else process.env.OVLD_HOME = previousHome;
+  }
+});
+
+test('createBackendClient sends local device identity headers', async () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'overlord-backend-client-device-'));
+  const previousHome = process.env.OVLD_HOME;
+  const previousEnv = isolateBackendClientEnv();
+  process.env.OVLD_HOME = home;
+
+  writeFileSync(
+    path.join(home, 'overlord.toml'),
+    `instance_name = "Local Overlord"
+backend_mode = "cloud"
+backend_url = "https://cloud.overlord.test"
+web_host = "127.0.0.1"
+web_port = 4310
+default_agent = "claude"
+`
+  );
+
+  const originalFetch = globalThis.fetch;
+  let capturedHeaders: Headers | null = null;
+  globalThis.fetch = (async (_url, init) => {
+    capturedHeaders = new Headers(init?.headers);
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }) as typeof fetch;
+
+  try {
+    const backend = createBackendClient();
+    await backend.get('/api/launch-settings');
+
+    const identity = clientDeviceIdentity();
+    assert.equal(capturedHeaders?.get('x-overlord-device-fingerprint'), identity.deviceFingerprint);
+    assert.equal(capturedHeaders?.get('x-overlord-device-label'), identity.deviceLabel);
+    assert.equal(capturedHeaders?.get('x-overlord-device-platform'), identity.devicePlatform);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreBackendClientEnv(previousEnv);
     if (previousHome === undefined) delete process.env.OVLD_HOME;
     else process.env.OVLD_HOME = previousHome;
   }
