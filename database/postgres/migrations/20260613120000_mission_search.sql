@@ -32,6 +32,9 @@ CREATE INDEX idx_search_documents_workspace_project_type ON search_documents (wo
 CREATE INDEX idx_search_documents_mission ON search_documents (mission_id);
 CREATE INDEX idx_search_documents_tsv ON search_documents USING gin (search_tsv);
 
+-- Sync triggers remove stale derived rows when source rows move across workspace IDs
+-- (e.g. initial setup re-key) so retries cannot collide with idx_search_documents_entity.
+
 -- ---------------------------------------------------------------------------
 -- Mission title documents.
 -- ---------------------------------------------------------------------------
@@ -40,6 +43,10 @@ BEGIN
   IF (TG_OP = 'DELETE') THEN
     DELETE FROM search_documents WHERE workspace_id = OLD.workspace_id AND mission_id = OLD.id;
     RETURN OLD;
+  END IF;
+
+  IF (TG_OP = 'UPDATE' AND NEW.workspace_id IS DISTINCT FROM OLD.workspace_id) THEN
+    DELETE FROM search_documents WHERE workspace_id = OLD.workspace_id AND mission_id = OLD.id;
   END IF;
 
   IF (NEW.deleted_at IS NOT NULL) THEN
@@ -81,6 +88,11 @@ BEGIN
     RETURN OLD;
   END IF;
 
+  IF (TG_OP = 'UPDATE' AND NEW.workspace_id IS DISTINCT FROM OLD.workspace_id) THEN
+    DELETE FROM search_documents
+    WHERE workspace_id = OLD.workspace_id AND entity_type = 'objective' AND entity_id = OLD.id;
+  END IF;
+
   IF (NEW.deleted_at IS NOT NULL) THEN
     DELETE FROM search_documents
     WHERE workspace_id = NEW.workspace_id AND entity_type = 'objective' AND entity_id = NEW.id;
@@ -118,6 +130,11 @@ BEGIN
     DELETE FROM search_documents
     WHERE workspace_id = OLD.workspace_id AND entity_type = 'event' AND entity_id = OLD.id;
     RETURN OLD;
+  END IF;
+
+  IF (TG_OP = 'UPDATE' AND NEW.workspace_id IS DISTINCT FROM OLD.workspace_id) THEN
+    DELETE FROM search_documents
+    WHERE workspace_id = OLD.workspace_id AND entity_type = 'event' AND entity_id = OLD.id;
   END IF;
 
   INSERT INTO search_documents (

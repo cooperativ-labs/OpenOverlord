@@ -51,6 +51,7 @@ const workflowNavItems: SettingsNavItem[] = [
 
 const appNavItems: SettingsNavItem[] = [
   { name: 'Application', icon: Palette },
+  { name: 'Hotkeys', icon: Keyboard },
   { name: 'Integrations', icon: Plug },
   { name: 'Notifications', icon: Bell },
   { name: 'About', icon: Info }
@@ -64,8 +65,7 @@ const desktopNavItems: SettingsNavItem[] = [
 const userNavItems: SettingsNavItem[] = [
   { name: 'Profile', icon: User },
   { name: 'Account', icon: ShieldCheck },
-  { name: 'Tokens', icon: KeyRound },
-  { name: 'Hotkeys', icon: Keyboard }
+  { name: 'Tokens', icon: KeyRound }
 ];
 
 export type SettingsNavSection =
