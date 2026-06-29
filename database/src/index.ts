@@ -52,3 +52,9 @@ export {
   resolveGlobalDataDir
 } from './local-paths.js';
 export { listPostgresMigrationFiles, migratePostgres } from './migrate-postgres.js';
+export {
+  applyHostedS3StorageBackend,
+  type HostedS3SeedResult,
+  resolveHostedS3SettingsFromEnv,
+  type S3BucketSettings
+} from './storage-seed.js';

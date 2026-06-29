@@ -8,8 +8,9 @@
  * the matching object table, and producing a server-relative URL the SPA can
  * load.
  *
- * Bytes live in the storage backend (a `local_fs` directory for local installs);
- * the database holds metadata and backend keys only — see
+ * Bytes live in the storage backend (`local_fs` on disk for local installs, or
+ * `s3` / `railway_volume` against an S3-compatible endpoint for hosted
+ * deployments); the database holds metadata and backend keys only — see
  * database/docs/09-database-schema-contract.md (`storage_buckets`, `user_images`).
  *
  * Only the seeded `user-images` bucket is wired through a metadata writer today;
@@ -17,9 +18,11 @@
  * and `attachments` can reuse them with their own writers later.
  */
 
+import type { Response } from 'express';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
+import type { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
 import type { ObjectiveAttachmentDto, StoredImageDto } from '../shared/contract.ts';
@@ -33,6 +36,7 @@ import {
   WORKSPACE
 } from './db.ts';
 import { ApiError } from './errors.ts';
+import { createStorageBackend, readStorageReadSettings } from './storage-backends.ts';
 
 // webapp/server/storage.ts -> repo root is two levels up from server/.
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -65,31 +69,19 @@ interface StorageBucketRow {
   storage_backend: string;
   base_url: string | null;
   local_path: string | null;
+  settings_json: string;
 }
 
 /** Resolve the active workspace's bucket for `bucketKey`, or 404 if absent. */
 async function resolveBucket(bucketKey: string): Promise<StorageBucketRow> {
   const row = await requireDatabaseClient().get<StorageBucketRow>(
-    `SELECT id, bucket_key, storage_backend, base_url, local_path
+    `SELECT id, bucket_key, storage_backend, base_url, local_path, settings_json
        FROM storage_buckets
       WHERE workspace_id = ? AND bucket_key = ? AND deleted_at IS NULL`,
     [WORKSPACE.id, bucketKey]
   );
   if (!row) throw new ApiError(404, `Unknown storage bucket '${bucketKey}'`);
   return row;
-}
-
-/** Absolute filesystem root for a `local_fs` bucket; rejects other backends. */
-function localRootFor(bucket: StorageBucketRow): string {
-  if (bucket.storage_backend !== 'local_fs' || !bucket.local_path) {
-    throw new ApiError(
-      501,
-      `Storage backend '${bucket.storage_backend}' is not supported by this build`
-    );
-  }
-  return path.isAbsolute(bucket.local_path)
-    ? bucket.local_path
-    : path.resolve(repoRoot, bucket.local_path);
 }
 
 /** Pick a safe extension and normalise the content type, or reject the upload. */
@@ -122,7 +114,10 @@ interface WrittenObject {
 }
 
 /** Validate image bytes, write them to the bucket backend, return metadata. */
-function writeImageObject(bucket: StorageBucketRow, input: UploadImageInput): WrittenObject {
+async function writeImageObject(
+  bucket: StorageBucketRow,
+  input: UploadImageInput
+): Promise<WrittenObject> {
   if (!input.bytes || input.bytes.length === 0) {
     throw new ApiError(400, 'No image data received');
   }
@@ -134,9 +129,8 @@ function writeImageObject(bucket: StorageBucketRow, input: UploadImageInput): Wr
 
   const id = newId();
   const storageKey = `${id}${ext}`;
-  const root = localRootFor(bucket);
-  if (!existsSync(root)) mkdirSync(root, { recursive: true });
-  writeFileSync(path.join(root, storageKey), input.bytes);
+  const backend = createStorageBackend({ bucket, repoRoot });
+  await backend.put({ key: storageKey, bytes: input.bytes, contentType });
 
   return {
     id,
@@ -173,7 +167,7 @@ async function operatorUserId(): Promise<string> {
  */
 export async function uploadUserImage(input: UploadImageInput): Promise<StoredImageDto> {
   const bucket = await resolveBucket('user-images');
-  const written = writeImageObject(bucket, input);
+  const written = await writeImageObject(bucket, input);
   const userId = await operatorUserId();
   const now = nowIso();
   const filename = input.filename.trim() || `image${path.extname(written.storageKey)}`;
@@ -327,12 +321,14 @@ export async function uploadObjectiveAttachment(
 
   const id = newId();
   const storageKey = `${id}${attachmentExtension(input.filename)}`;
-  const root = localRootFor(bucket);
-  if (!existsSync(root)) mkdirSync(root, { recursive: true });
-  writeFileSync(path.join(root, storageKey), input.bytes);
-
   const now = nowIso();
   const contentType = input.contentType.split(';')[0].trim().toLowerCase() || null;
+  const backend = createStorageBackend({ bucket, repoRoot });
+  await backend.put({
+    key: storageKey,
+    bytes: input.bytes,
+    contentType: contentType ?? 'application/octet-stream'
+  });
   const filename = input.filename.trim() || `attachment${path.extname(storageKey)}`;
   const checksum = createHash('sha256').update(input.bytes).digest('hex');
 
@@ -459,11 +455,19 @@ export async function deleteObjectiveAttachment(
 }
 
 export interface ResolvedStoredObject {
-  absolutePath: string;
   contentType: string;
   filename: string;
   /** Whether the bytes should be served as a download rather than rendered inline. */
   forceDownload: boolean;
+  /** Populated for `local_fs` buckets; the serve route streams from disk. */
+  absolutePath?: string;
+  /** Populated for remote backends such as `s3`; the serve route proxies the stream. */
+  bodyStream?: Readable;
+  /**
+   * Populated when the bucket opts into presigned reads (`settings_json.presignReads`);
+   * the serve route 302-redirects after RBAC and metadata resolution.
+   */
+  presignedRedirectUrl?: string;
 }
 
 /** Bucket → metadata table for buckets whose objects can be served back. */
@@ -496,12 +500,65 @@ export async function resolveStoredObject(
   );
   if (!row) throw new ApiError(404, 'File not found');
 
-  const absolutePath = path.join(localRootFor(bucket), storageKey);
-  if (!existsSync(absolutePath)) throw new ApiError(404, 'File not found');
+  const backend = createStorageBackend({ bucket, repoRoot });
+  const contentType = row.content_type ?? 'application/octet-stream';
+  const forceDownload = bucketKey === ATTACHMENTS_BUCKET_KEY;
+  const readSettings = readStorageReadSettings(bucket.settings_json);
+
+  if (readSettings.presignReads && backend.presignGet) {
+    const responseContentDisposition = forceDownload
+      ? `attachment; filename="${row.filename.replace(/"/g, '\\"')}"`
+      : undefined;
+    return {
+      contentType,
+      filename: row.filename,
+      forceDownload,
+      presignedRedirectUrl: await backend.presignGet({
+        key: storageKey,
+        ttlSeconds: readSettings.presignTtlSeconds,
+        responseContentDisposition
+      })
+    };
+  }
+
+  if (bucket.storage_backend === 'local_fs') {
+    if (!bucket.local_path) {
+      throw new ApiError(500, `Bucket '${bucket.bucket_key}' is missing a local_path`);
+    }
+    const root = path.isAbsolute(bucket.local_path)
+      ? bucket.local_path
+      : path.resolve(repoRoot, bucket.local_path);
+    const absolutePath = path.join(root, storageKey);
+    if (!existsSync(absolutePath)) throw new ApiError(404, 'File not found');
+    return {
+      absolutePath,
+      contentType,
+      filename: row.filename,
+      forceDownload
+    };
+  }
+
   return {
-    absolutePath,
-    contentType: row.content_type ?? 'application/octet-stream',
+    bodyStream: await backend.getStream({ key: storageKey }),
+    contentType,
     filename: row.filename,
-    forceDownload: bucketKey === ATTACHMENTS_BUCKET_KEY
+    forceDownload
   };
+}
+
+/** Stream, send, or redirect a resolved stored object through an Express response. */
+export function serveStoredObject(res: Response, resolved: ResolvedStoredObject): void {
+  if (resolved.presignedRedirectUrl) {
+    res.redirect(302, resolved.presignedRedirectUrl);
+    return;
+  }
+  if (resolved.absolutePath) {
+    res.sendFile(resolved.absolutePath);
+    return;
+  }
+  if (resolved.bodyStream) {
+    resolved.bodyStream.pipe(res);
+    return;
+  }
+  throw new ApiError(500, 'Stored object has no byte source');
 }

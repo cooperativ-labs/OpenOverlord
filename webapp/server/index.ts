@@ -123,6 +123,7 @@ import {
   MAX_ATTACHMENT_BYTES,
   MAX_IMAGE_BYTES,
   resolveStoredObject,
+  serveStoredObject,
   uploadObjectiveAttachment,
   uploadUserImage
 } from './storage.ts';
@@ -490,15 +491,21 @@ app.get(
         await requirePermission(PERMISSIONS.PROJECT_READ);
         const resolved = await resolveStoredObject(req.params.bucketKey, req.params.storageKey);
         res.type(resolved.contentType);
-        res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+        if (resolved.presignedRedirectUrl) {
+          res.setHeader('Cache-Control', 'private, no-store');
+        } else {
+          res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+        }
         if (resolved.forceDownload) {
           res.setHeader('X-Content-Type-Options', 'nosniff');
-          res.setHeader(
-            'Content-Disposition',
-            `attachment; filename="${encodeURIComponent(resolved.filename)}"`
-          );
+          if (!resolved.presignedRedirectUrl) {
+            res.setHeader(
+              'Content-Disposition',
+              `attachment; filename="${encodeURIComponent(resolved.filename)}"`
+            );
+          }
         }
-        res.sendFile(resolved.absolutePath);
+        serveStoredObject(res, resolved);
       } catch (err) {
         next(err);
       }

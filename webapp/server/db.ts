@@ -1,5 +1,6 @@
 import type { AuthDomainDatabase, PostgresQueryExecutor } from '@overlord/auth';
 import {
+  applyHostedS3StorageBackend,
   createSqliteClient,
   type DatabaseClient,
   fixupLocalStoragePaths,
@@ -118,6 +119,11 @@ export async function initDatabase(): Promise<DatabaseClient> {
       const client = await openDatabaseClient(adapter);
       if (client.dialect === 'postgres') {
         await migratePostgres(client);
+        // Hosted-only, idempotent: point the seeded storage buckets at the S3
+        // backend when the S3_* env vars are present. Local/SQLite installs keep
+        // local_fs (this branch never runs for them). Credentials stay in env;
+        // only non-secret provider metadata is written to settings_json.
+        await applyHostedS3StorageBackend(client);
       }
       databaseClient = client;
       await refreshActiveWorkspaceFromClient(client);
