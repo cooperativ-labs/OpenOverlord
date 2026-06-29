@@ -40,7 +40,26 @@ Conclusion: the right fix is to complete and tighten the current durable
 database-specific realtime product, or a second desktop notification polling
 loop would add moving parts without addressing the observed missing writebacks.
 
-## Current Gap
+## Implementation Status
+
+Status as of 2026-06-29: implemented. The durable feed holes, `changedFields`
+projection, targeted client invalidation, native notification derivation, and
+canonical route/catch-up surface are all present in the codebase. The native
+notification classifier also handles the planned objective-completion fallback:
+when an objective change includes `state` and `completed_at`, the client can
+emit "Ready for review" after refetching and confirming the objective is
+`complete`, even if no delivery event is present in the realtime batch.
+
+Verification notes:
+
+- Focused client realtime tests cover targeted invalidation and notification
+  classification.
+- Server catch-up/projection tests exist, but local execution currently depends
+  on a working `better-sqlite3` native module.
+- The webapp typecheck command requires a resolvable `tsc` binary in the webapp
+  install.
+
+## Original Gap
 
 The contract says every service-layer mutation should append `entity_changes` in
 the same transaction as the domain change. Most paths do this today, but the

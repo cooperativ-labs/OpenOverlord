@@ -1755,8 +1755,8 @@ Recommended boundary:
 - `/protocol/*` endpoints mirroring `ovld protocol`.
 - `/execution-requests` for runner queue operations.
 - `/uploads/:bucketKey` (core upload service) accepts raw image bytes, persists them to the `storage_buckets` backend, records the matching object table row (e.g. `user_images`), and returns the stored descriptor; `/storage/:bucketKey/:storageKey` serves the bytes for a recorded object.
-- `/sync/changes?after=<seq>` for realtime catch-up and local DB sync.
-- `/realtime` SSE/WebSocket endpoint backed by `entity_changes`; compact change DTOs include `changedFields: string[]` parsed from `entity_changes.changed_fields_json`.
+- `/sync/changes?after=<seq>` for realtime catch-up and local DB sync, returning `SyncChangesDto { changes, cursor, hasMore }` in ascending `entity_changes.seq` order.
+- `/realtime` SSE/WebSocket endpoint backed by `entity_changes` (with compatibility alias `/api/stream`); compact change DTOs include `changedFields: string[]` parsed from `entity_changes.changed_fields_json`.
 
 REST handlers should:
 

@@ -1,8 +1,10 @@
 import type { Response } from 'express';
 
-import type { EntityChangeDto } from '../shared/contract.ts';
+import type { EntityChangeDto, SyncChangesDto } from '../shared/contract.ts';
 
 import { currentMaxSeqAsync, DATABASE_DIALECT, dataVersion, requireDatabaseClient } from './db.ts';
+
+const CHANGE_BATCH_LIMIT = 500;
 
 export interface ChangeRow {
   seq: number;
@@ -22,7 +24,7 @@ const SELECT_CHANGES_SQL = `
     FROM entity_changes
    WHERE seq > ?
    ORDER BY seq ASC
-   LIMIT 500
+   LIMIT ?
 `;
 
 export function parseChangedFields(value: string | null | undefined): string[] {
@@ -50,6 +52,27 @@ export function entityChangeDtoFromRow(row: ChangeRow): EntityChangeDto {
   };
 }
 
+export type ChangeFeedBatch = SyncChangesDto;
+
+export async function readChangesAfter(
+  afterSeq: number,
+  limit = CHANGE_BATCH_LIMIT
+): Promise<ChangeFeedBatch> {
+  const normalizedAfter = Number.isFinite(afterSeq) && afterSeq > 0 ? Math.floor(afterSeq) : 0;
+  const requestedLimit = Number.isFinite(limit) ? Math.floor(limit) : CHANGE_BATCH_LIMIT;
+  const normalizedLimit = Math.max(1, Math.min(requestedLimit, CHANGE_BATCH_LIMIT));
+  const rows = await requireDatabaseClient().all<ChangeRow>(SELECT_CHANGES_SQL, [
+    normalizedAfter,
+    normalizedLimit + 1
+  ]);
+  const hasMore = rows.length > normalizedLimit;
+  const returnedRows = hasMore ? rows.slice(0, normalizedLimit) : rows;
+  const changes = returnedRows.map(entityChangeDtoFromRow);
+  const cursor = changes.length > 0 ? changes[changes.length - 1]!.seq : normalizedAfter;
+
+  return { changes, cursor, hasMore };
+}
+
 /**
  * Tracks SSE subscribers and turns `entity_changes` rows into realtime deltas.
  *
@@ -74,7 +97,7 @@ class RealtimeHub {
     this.heartbeatTimer = setInterval(() => this.heartbeat(), 25_000);
   }
 
-  addClient(res: Response): void {
+  addClient(res: Response, options: { afterSeq?: number } = {}): void {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
@@ -84,6 +107,9 @@ class RealtimeHub {
     res.write('retry: 2000\n\n');
     this.clients.add(res);
     this.send(res, 'hello', { type: 'hello', cursor: this.cursor });
+    if (options.afterSeq !== undefined && options.afterSeq < this.cursor) {
+      void this.sendCatchUp(res, options.afterSeq);
+    }
   }
 
   removeClient(res: Response): void {
@@ -119,7 +145,10 @@ class RealtimeHub {
       return;
     }
 
-    const rows = await client.all<ChangeRow>(SELECT_CHANGES_SQL, [this.cursor]);
+    const rows = await client.all<ChangeRow>(SELECT_CHANGES_SQL, [
+      this.cursor,
+      CHANGE_BATCH_LIMIT
+    ]);
     if (rows.length > 0) {
       const changes: EntityChangeDto[] = rows.map(entityChangeDtoFromRow);
       this.cursor = rows[rows.length - 1]!.seq;
@@ -146,8 +175,24 @@ class RealtimeHub {
     for (const res of this.clients) this.send(res, event, data);
   }
 
+  private async sendCatchUp(res: Response, afterSeq: number): Promise<void> {
+    let cursor = afterSeq;
+    while (this.clients.has(res)) {
+      const batch = await readChangesAfter(cursor);
+      if (batch.changes.length === 0) return;
+      this.send(res, 'change', { type: 'change', changes: batch.changes, cursor: batch.cursor });
+      cursor = batch.cursor;
+      if (!batch.hasMore) return;
+    }
+  }
+
   private send(res: Response, event: string, data: unknown): void {
     res.write(`event: ${event}\n`);
+    const cursor =
+      typeof data === 'object' && data && 'cursor' in data
+        ? Number((data as { cursor?: unknown }).cursor)
+        : NaN;
+    if (Number.isFinite(cursor)) res.write(`id: ${cursor}\n`);
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   }
 }

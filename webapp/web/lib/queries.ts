@@ -95,8 +95,8 @@ export const keys = {
   missionEverhour: (id: string) => ['mission', id, 'everhour'] as const
 };
 
-// Realtime invalidation is global, but mutations also invalidate eagerly so the
-// originating user sees their change instantly rather than after the next poll.
+// Mutations still invalidate eagerly so the originating user sees their change
+// instantly; the realtime feed later reconciles the scoped query keys it can map.
 function invalidateAll(qc: QueryClient) {
   void qc.invalidateQueries();
 }
@@ -151,8 +151,8 @@ export const useMissions = (projectId: string) =>
   useQuery({ queryKey: keys.missions(projectId), queryFn: () => api.listMissions(projectId) });
 
 // The active operator's assigned missions across the selected workspace. The
-// global realtime SSE feed invalidates this whenever missions change, and the
-// reorder mutation updates it optimistically.
+// realtime SSE feed invalidates this for mission/objective workflow changes, and
+// the reorder mutation updates it optimistically.
 export const useWorkspaceMyMissions = () =>
   useQuery({ queryKey: keys.myMissions, queryFn: () => api.listWorkspaceMyMissions() });
 
@@ -228,19 +228,17 @@ export const useWorktrees = () => {
   });
 };
 
-// The global realtime SSE feed invalidates this query whenever the database
-// changes — including mission_events written by the CLI/agent in another process
-// — so the activity feed updates in real time without bespoke wiring here.
+// The realtime SSE feed invalidates this query for mission_event changes written
+// by the CLI/agent in another process, so the activity feed updates without
+// bespoke wiring here.
 export const useMissionEvents = (id: string) =>
   useQuery({ queryKey: keys.missionEvents(id), queryFn: () => api.listMissionEvents(id) });
 
 export const useMissionArtifacts = (id: string) =>
   useQuery({ queryKey: keys.missionArtifacts(id), queryFn: () => api.listMissionArtifacts(id) });
 
-// Like the activity feed, the global realtime SSE feed invalidates this query
-// whenever the database changes — including change_rationales recorded by the
-// CLI/agent in another process — so the File Changes section stays current
-// without bespoke wiring here.
+// Change rationale writes currently arrive through broad fallback invalidation
+// unless a future feed row carries a more specific file-change entity type.
 export const useMissionFileChanges = (id: string) =>
   useQuery({
     queryKey: keys.missionFileChanges(id),

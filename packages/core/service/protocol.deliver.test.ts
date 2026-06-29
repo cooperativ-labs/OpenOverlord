@@ -6,7 +6,13 @@ import { listChangedFilesForReview } from './changes.js';
 import { createServiceContext } from './context.js';
 import { createMissionWithObjectives, insertObjective } from './missions.js';
 import { createProject } from './projects.js';
-import { attachSession, deliverSession, resumeFollowUp, updateSession } from './protocol.js';
+import {
+  askQuestion,
+  attachSession,
+  deliverSession,
+  resumeFollowUp,
+  updateSession
+} from './protocol.js';
 import { nowIso } from './util.js';
 
 async function setup() {
@@ -132,6 +138,28 @@ describe('deliverSession mechanical change capture', () => {
         changedFields(change).includes('ended_at')
     );
     assert.ok(deliveredSessionChange);
+
+    await db.close();
+  });
+
+  it('records blocking question mission events in the durable change feed', async () => {
+    const { db, ctx } = await setup();
+    const { mission, objectiveId } = await submittedMission(ctx, 'Ask Feed');
+    const attached = await attachSession({ ctx, missionId: mission.displayId });
+
+    const asked = await askQuestion({
+      ctx,
+      missionId: mission.displayId,
+      sessionKey: attached.sessionKey,
+      question: 'Which path should I take?'
+    });
+
+    const eventChanges = await entityChangesFor(ctx, 'mission_event', asked.eventId);
+    assert.equal(eventChanges.length, 1);
+    assert.equal(eventChanges[0]?.operation, 'insert');
+    assert.equal(eventChanges[0]?.project_id, mission.projectId);
+    assert.equal(eventChanges[0]?.mission_id, mission.id);
+    assert.equal(eventChanges[0]?.objective_id, objectiveId);
 
     await db.close();
   });

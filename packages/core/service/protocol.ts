@@ -1170,26 +1170,38 @@ export async function askQuestion({
   const now = nowIso();
   const eventId = newId();
 
-  await ctx.db.run(
-    `INSERT INTO mission_events
-         (id, workspace_id, project_id, mission_id, objective_id, session_id,
-          type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'ask', 'blocked', ?, '{}', ?, ?, ?)`,
-    [
-      eventId,
-      ctx.workspace.id,
-      mission.projectId,
-      mission.id,
-      session.objective_id,
-      session.id,
-      trimmed,
-      ctx.source,
-      ctx.actorWorkspaceUserId,
-      now
-    ]
-  );
+  await ctx.db.transaction(async tx => {
+    const txCtx = { ...ctx, db: tx };
+    await txCtx.db.run(
+      `INSERT INTO mission_events
+           (id, workspace_id, project_id, mission_id, objective_id, session_id,
+            type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'ask', 'blocked', ?, '{}', ?, ?, ?)`,
+      [
+        eventId,
+        ctx.workspace.id,
+        mission.projectId,
+        mission.id,
+        session.objective_id,
+        session.id,
+        trimmed,
+        ctx.source,
+        ctx.actorWorkspaceUserId,
+        now
+      ]
+    );
+    await recordChange({
+      ctx: txCtx,
+      entityType: 'mission_event',
+      entityId: eventId,
+      operation: 'insert',
+      projectId: mission.projectId,
+      missionId: mission.id,
+      objectiveId: session.objective_id
+    });
 
-  await moveMissionToReview({ ctx, missionId: mission.id });
+    await moveMissionToReview({ ctx: txCtx, missionId: mission.id });
+  });
 
   return { eventId };
 }

@@ -80,9 +80,14 @@ controls in the UI yet.
 - The page reads `GET /api/missions/:id` → `MissionDetailDto` (mission + `objectives`
   + project `statuses`) under the `['mission', id]` query key.
 - Realtime is **not** mission-scoped. The app holds one global SSE connection
-  (`GET /api/stream`); any `entity_changes` delta triggers a broad TanStack Query
-  invalidation, so the open mission re-fetches. Mutations also invalidate eagerly so
-  the originating user sees their edit immediately. The connection's
+  (`GET /realtime`, with `GET /api/stream` as a compatibility alias); reconnect
+  catch-up reads `GET /sync/changes?after=<seq>` before trusting the stream
+  cursor. `entity_changes` deltas are routed to targeted TanStack Query
+  invalidations for mission detail, mission events, project mission lists, My
+  Missions, branch, and objective-scoped queries where possible. Refreshes,
+  malformed deltas, missing routing IDs, unknown entity types, and unavailable
+  catch-up still trigger a broad invalidation. Mutations also invalidate eagerly
+  so the originating user sees their edit immediately. The connection's
   Live / Connecting / Reconnecting state shows in the sidebar, not on this page.
 
 ### Gap to target

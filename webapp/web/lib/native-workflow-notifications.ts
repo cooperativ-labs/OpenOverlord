@@ -3,10 +3,25 @@ import type { EntityChangeDto, MissionEventDto, ObjectiveDto } from '../../share
 import { api } from './api.ts';
 import { isNativeNotificationsEnabled } from './native-notification-preferences.ts';
 
+type WorkflowNotificationKind =
+  | 'agent_started'
+  | 'ready_for_review'
+  | 'blocking_question'
+  | 'launch_failed';
+
 type NotificationPayload = {
   title: string;
   body: string;
   tag: string;
+};
+
+export type WorkflowNotificationCandidate = {
+  kind: WorkflowNotificationKind;
+  missionId: string;
+  objectiveId: string | null;
+  entityId: string;
+  seq: number;
+  occurredAt: string;
 };
 
 const notifiedKeys = new Set<string>();
@@ -48,6 +63,7 @@ async function showBrowserNotification(payload: NotificationPayload): Promise<bo
 
 async function showNativeNotification(payload: NotificationPayload): Promise<void> {
   if (!isNativeNotificationsEnabled()) return;
+  if (typeof window === 'undefined') return;
 
   const desktopNotifier = window.overlord?.showNotification;
   if (desktopNotifier) {
@@ -64,43 +80,191 @@ function earliestChangeTime(changes: EntityChangeDto[]): number {
   return times.length > 0 ? Math.min(...times) : Date.now();
 }
 
-export async function notifyWorkflowChanges(changes: EntityChangeDto[]): Promise<void> {
-  const missionIds = [
-    ...new Set(changes.map(change => change.missionId).filter(Boolean))
-  ] as string[];
-  if (missionIds.length === 0) return;
+function hasChangedField(change: EntityChangeDto, field: string): boolean {
+  return change.changedFields.includes(field);
+}
 
-  const sinceMs = earliestChangeTime(changes);
+function candidateKey(candidate: WorkflowNotificationCandidate): string {
+  return [
+    candidate.kind,
+    candidate.missionId,
+    candidate.objectiveId ?? '',
+    candidate.entityId,
+    candidate.seq
+  ].join(':');
+}
 
-  for (const missionId of missionIds) {
-    const missionChanges = changes.filter(change => change.missionId === missionId);
-    const affectedObjectiveIds = new Set(
-      missionChanges
-        .filter(change => change.entityType === 'objective')
-        .map(change => change.objectiveId)
-        .filter(Boolean) as string[]
+function dedupeCandidates(
+  candidates: WorkflowNotificationCandidate[]
+): WorkflowNotificationCandidate[] {
+  const seen = new Set<string>();
+  return candidates.filter(candidate => {
+    const key = candidateKey(candidate);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function selectWorkflowNotificationCandidates(
+  changes: EntityChangeDto[]
+): WorkflowNotificationCandidate[] {
+  const candidates: WorkflowNotificationCandidate[] = [];
+
+  for (const change of changes) {
+    if (!change.missionId) continue;
+
+    if (
+      change.entityType === 'objective' &&
+      change.operation === 'update' &&
+      change.objectiveId &&
+      hasChangedField(change, 'state')
+    ) {
+      candidates.push({
+        kind: 'agent_started',
+        missionId: change.missionId,
+        objectiveId: change.objectiveId,
+        entityId: change.entityId,
+        seq: change.seq,
+        occurredAt: change.occurredAt
+      });
+      if (hasChangedField(change, 'completed_at')) {
+        candidates.push({
+          kind: 'ready_for_review',
+          missionId: change.missionId,
+          objectiveId: change.objectiveId,
+          entityId: change.entityId,
+          seq: change.seq,
+          occurredAt: change.occurredAt
+        });
+      }
+      continue;
+    }
+
+    if (change.entityType === 'mission_event' && change.operation === 'insert') {
+      candidates.push({
+        kind: 'blocking_question',
+        missionId: change.missionId,
+        objectiveId: change.objectiveId,
+        entityId: change.entityId,
+        seq: change.seq,
+        occurredAt: change.occurredAt
+      });
+      candidates.push({
+        kind: 'ready_for_review',
+        missionId: change.missionId,
+        objectiveId: change.objectiveId,
+        entityId: change.entityId,
+        seq: change.seq,
+        occurredAt: change.occurredAt
+      });
+      continue;
+    }
+
+    if (
+      change.entityType === 'execution_request' &&
+      change.operation === 'update' &&
+      change.objectiveId &&
+      hasChangedField(change, 'status') &&
+      hasChangedField(change, 'last_error')
+    ) {
+      candidates.push({
+        kind: 'launch_failed',
+        missionId: change.missionId,
+        objectiveId: change.objectiveId,
+        entityId: change.entityId,
+        seq: change.seq,
+        occurredAt: change.occurredAt
+      });
+    }
+  }
+
+  return dedupeCandidates(candidates);
+}
+
+function eventMatchesCandidate(
+  event: MissionEventDto,
+  candidate: WorkflowNotificationCandidate,
+  sinceMs: number
+): boolean {
+  if (candidate.kind === 'blocking_question') {
+    return event.id === candidate.entityId && event.type === 'ask';
+  }
+  if (candidate.kind === 'ready_for_review') {
+    return event.id === candidate.entityId && event.type === 'delivery';
+  }
+  if (candidate.kind === 'launch_failed') {
+    return (
+      event.objectiveId === candidate.objectiveId &&
+      event.type === 'status_change' &&
+      event.summary.startsWith('Agent run failed:') &&
+      eventIsRecent(event, sinceMs)
     );
+  }
+  return false;
+}
 
+export async function notifyWorkflowChanges(changes: EntityChangeDto[]): Promise<void> {
+  const candidates = selectWorkflowNotificationCandidates(changes);
+  if (candidates.length === 0) return;
+  const sinceMs = earliestChangeTime(changes);
+  const candidatesByMission = new Map<string, WorkflowNotificationCandidate[]>();
+  for (const candidate of candidates) {
+    const missionCandidates = candidatesByMission.get(candidate.missionId) ?? [];
+    missionCandidates.push(candidate);
+    candidatesByMission.set(candidate.missionId, missionCandidates);
+  }
+
+  for (const [missionId, missionCandidates] of candidatesByMission) {
     const [mission, events] = await Promise.all([
       api.getMission(missionId),
       api.listMissionEvents(missionId)
     ]);
 
-    for (const objective of mission.objectives) {
-      if (!affectedObjectiveIds.has(objective.id) || objective.state !== 'executing') continue;
-      const key = `objective-executing:${objective.id}:${objective.updatedAt}`;
-      if (!remember(key)) continue;
-      const index = mission.objectives.findIndex(item => item.id === objective.id);
-      await showNativeNotification({
-        title: 'Agent started',
-        body: `${mission.displayId}: ${objectiveLabel(objective, index)}`,
-        tag: key
-      });
-    }
+    for (const candidate of missionCandidates) {
+      if (candidate.kind === 'agent_started') {
+        const objective = mission.objectives.find(item => item.id === candidate.objectiveId);
+        if (objective?.state !== 'executing') continue;
+        const key = `objective-executing:${objective.id}:r${objective.revision}`;
+        if (!remember(key)) continue;
+        const index = mission.objectives.findIndex(item => item.id === objective.id);
+        await showNativeNotification({
+          title: 'Agent started',
+          body: `${mission.displayId}: ${objectiveLabel(objective, index)}`,
+          tag: key
+        });
+        continue;
+      }
 
-    for (const event of events) {
-      if (!eventIsRecent(event, sinceMs)) continue;
-      if (event.type === 'ask') {
+      const event = events.find(item => eventMatchesCandidate(item, candidate, sinceMs));
+      if (!event) {
+        if (candidate.kind === 'ready_for_review') {
+          const objective = mission.objectives.find(item => item.id === candidate.objectiveId);
+          if (objective?.state !== 'complete') continue;
+          const key = `objective-complete:${objective.id}:r${objective.revision}`;
+          if (!remember(key)) continue;
+          const index = mission.objectives.findIndex(item => item.id === objective.id);
+          await showNativeNotification({
+            title: 'Ready for review',
+            body: `${mission.displayId}: ${objectiveLabel(objective, index)}`,
+            tag: key
+          });
+          continue;
+        }
+
+        if (candidate.kind === 'launch_failed') {
+          const key = `launch-failed:${candidate.entityId}:seq:${candidate.seq}`;
+          if (!remember(key)) continue;
+          await showNativeNotification({
+            title: 'Launch failed',
+            body: `${mission.displayId}: Agent run failed`,
+            tag: key
+          });
+        }
+        continue;
+      }
+
+      if (candidate.kind === 'blocking_question') {
         const key = `blocking-question:${event.id}`;
         if (!remember(key)) continue;
         await showNativeNotification({
@@ -109,11 +273,22 @@ export async function notifyWorkflowChanges(changes: EntityChangeDto[]): Promise
           tag: key
         });
       }
-      if (event.type === 'delivery') {
+
+      if (candidate.kind === 'ready_for_review') {
         const key = `objective-delivered:${event.id}`;
         if (!remember(key)) continue;
         await showNativeNotification({
           title: 'Ready for review',
+          body: `${mission.displayId}: ${event.summary}`,
+          tag: key
+        });
+      }
+
+      if (candidate.kind === 'launch_failed') {
+        const key = `launch-failed:${event.id}`;
+        if (!remember(key)) continue;
+        await showNativeNotification({
+          title: 'Launch failed',
           body: `${mission.displayId}: ${event.summary}`,
           tag: key
         });

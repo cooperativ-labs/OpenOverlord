@@ -96,8 +96,11 @@ webapp/
 Realtime works off the `entity_changes` feed: every mutation appends a row in
 the same transaction, and the server polls that feed (with a `PRAGMA
 data_version` safety net for external table writes) and streams compact deltas
-to the browser, including `changedFields` parsed from `changed_fields_json`,
-which invalidates its TanStack Query cache.
+to the browser over `GET /realtime` (with `GET /api/stream` kept as a
+compatibility alias), including `changedFields` parsed from
+`changed_fields_json`, which the SPA maps to targeted TanStack Query
+invalidations. Reconnects replay `GET /sync/changes?after=<seq>` and fall back
+to full-cache invalidation if catch-up is unavailable.
 
 ### REST surface (as built)
 
@@ -108,7 +111,9 @@ camelCase per the [REST API Boundary](../database/docs/09-database-schema-contra
 | --- | --- |
 | `GET /api/meta` | Workspace + capability flags (what this build supports), plus `needsSetup` while the seeded first workspace is still unnamed |
 | `POST /api/setup` | One-time initial instance setup: names the first workspace and sets the slug that prefixes mission identifiers (`<slug>:<sequence>`) |
-| `GET /api/stream` | SSE realtime feed of `entity_changes` deltas |
+| `GET /realtime` | Canonical SSE realtime feed of `entity_changes` deltas |
+| `GET /api/stream` | Compatibility alias for the SSE realtime feed |
+| `GET /sync/changes?after=<seq>` | Reconnect catch-up read backed by `entity_changes` |
 | `GET /api/agent-catalog`, `POST /api/agent-catalog/refresh` | Workspace agent catalog for launch/settings surfaces |
 | `GET /api/launch-settings` | The acting user's local execution-target launch defaults |
 | `PATCH /api/launch-settings/agents/:agentKey` | Persist per-agent pre-command / flags to `user_execution_target_preferences.agent_configs_json` |
@@ -129,13 +134,11 @@ camelCase per the [REST API Boundary](../database/docs/09-database-schema-contra
 | `GET /api/missions/:id/objectives` | Objectives of a mission |
 | `POST /api/objectives`, `PATCH/DELETE /api/objectives/:id` | Objectives |
 
-**Deviations from the recommended boundary, to ratify:** the realtime endpoint
-is `GET /api/stream` (vs the doc's `/realtime` + `/sync/changes`) and pushes the
-compact deltas inline; `/api/meta` and `/api/workspace/statuses` are new
-reads the board needs. As a local single-user console it does **not** yet do
-per-request auth/authorization or use idempotency keys — both are required
-before any multi-user/hosted deployment and before the shared service layer
-lands.
+**Deviations from the recommended boundary, to ratify:** `/api/meta` and
+`/api/workspace/statuses` are new reads the board needs. As a local single-user
+console it does **not** yet do per-request auth/authorization or use idempotency
+keys — both are required before any multi-user/hosted deployment and before the
+shared service layer lands.
 
 ### Contract Component
 

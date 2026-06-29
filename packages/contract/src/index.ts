@@ -708,7 +708,14 @@ export interface EntityChangeDto {
   occurredAt: string;
 }
 
-/** Named SSE events emitted by `GET /api/stream`. */
+/** Response from `GET /sync/changes?after=<seq>` for reconnect catch-up. */
+export interface SyncChangesDto {
+  changes: EntityChangeDto[];
+  cursor: number;
+  hasMore: boolean;
+}
+
+/** Named SSE events emitted by `GET /realtime` and compatibility `GET /api/stream`. */
 export type RealtimeEvent =
   | { type: 'hello'; cursor: number }
   | { type: 'change'; changes: EntityChangeDto[]; cursor: number }

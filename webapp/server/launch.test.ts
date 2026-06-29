@@ -2,16 +2,21 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import test from 'node:test';
+import test, { after } from 'node:test';
 
 const tempDir = mkdtempSync(path.join(tmpdir(), 'overlord-webapp-launch-'));
 process.env.OVERLORD_SQLITE_PATH = path.join(tempDir, 'webapp.sqlite');
 
 const { db, initDatabase } = await import('./db.ts');
 await initDatabase();
-const { createProject, createProjectResource, createMission, updateObjective } =
+const { createProject, createProjectResource, createMission, createObjective, updateObjective } =
   await import('./repository.ts');
 const { launchObjective } = await import('./launch.ts');
+
+after(() => {
+  db.close();
+  rmSync(tempDir, { recursive: true, force: true });
+});
 
 test('launching an objective twice while a request is active returns the same request', async () => {
   const project = await createProject({ name: 'Idempotent Launch Test' });
@@ -63,6 +68,39 @@ test('launching an objective twice while a request is active returns the same re
     .get(objectiveId) as { n: number };
   assert.equal(serviceClearEvents.n, 0);
 
-  db.close();
-  rmSync(tempDir, { recursive: true, force: true });
+});
+
+test('launching another objective while one is active is rejected without queueing', async () => {
+  const project = await createProject({ name: 'Busy Mission Launch Test' });
+  await createProjectResource(project.id, {
+    directoryPath: mkdtempSync(path.join(tmpdir(), 'overlord-launch-busy-resource-')),
+    executionTargetId: null,
+    isPrimary: true
+  });
+  const mission = await createMission({
+    projectId: project.id,
+    firstObjective: 'First objective'
+  });
+  const firstObjectiveId = mission.objectives[0]!.id;
+  await launchObjective(firstObjectiveId, { agent: 'codex' });
+
+  const second = await createObjective({
+    missionId: mission.id,
+    instructionText: 'Second objective'
+  });
+
+  await assert.rejects(
+    () => launchObjective(second.id, { agent: 'codex' }),
+    /Enable auto-advance/
+  );
+
+  const secondRequestCount = db
+    .prepare(`SELECT COUNT(*) AS n FROM execution_requests WHERE objective_id = ?`)
+    .get(second.id) as { n: number };
+  assert.equal(secondRequestCount.n, 0);
+
+  const secondObjective = db
+    .prepare(`SELECT auto_advance FROM objectives WHERE id = ?`)
+    .get(second.id) as { auto_advance: number };
+  assert.equal(secondObjective.auto_advance, 0);
 });

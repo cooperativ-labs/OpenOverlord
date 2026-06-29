@@ -8,8 +8,12 @@ const tempDir = mkdtempSync(path.join(tmpdir(), 'overlord-webapp-objectives-'));
 const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
 await bootstrapIntegrationTestDb({ sqlitePath: path.join(tempDir, 'webapp.sqlite') });
 
-const { db, WORKSPACE, setActiveWorkspaceUser, nowIso, newId } = await import('./db.ts');
-const { entityChangeDtoFromRow, parseChangedFields } = await import('./realtime.ts');
+const { db, WORKSPACE, setActiveWorkspaceUser, nowIso, newId, recordChange } = await import(
+  './db.ts'
+);
+const { entityChangeDtoFromRow, parseChangedFields, readChangesAfter } = await import(
+  './realtime.ts'
+);
 const { createMission, createProject, createObjective, reorderFutureObjectives, updateObjective } =
   await import('./repository.ts');
 const { updateLaunchPreference } = await import('./launch.ts');
@@ -46,6 +50,39 @@ test('realtime change DTOs include safely parsed changed fields', () => {
     changedFields: ['state', 'completed_at'],
     occurredAt: '2026-06-29T00:00:00.000Z'
   });
+});
+
+test('realtime catch-up reads changes after the cursor in order', async () => {
+  const before = db.prepare(`SELECT COALESCE(MAX(seq), 0) AS seq FROM entity_changes`).get() as {
+    seq: number;
+  };
+
+  await recordChange({
+    entityType: 'test_sync',
+    entityId: 'sync-1',
+    operation: 'insert',
+    changedFields: ['state']
+  });
+  await recordChange({
+    entityType: 'test_sync',
+    entityId: 'sync-2',
+    operation: 'update',
+    changedFields: ['state', 'updated_at']
+  });
+
+  const firstPage = await readChangesAfter(before.seq, 1);
+  assert.equal(firstPage.changes.length, 1);
+  assert.equal(firstPage.changes[0]!.entityId, 'sync-1');
+  assert.equal(firstPage.hasMore, true);
+
+  const secondPage = await readChangesAfter(firstPage.cursor, 1);
+  assert.equal(secondPage.changes.length, 1);
+  assert.equal(secondPage.changes[0]!.entityId, 'sync-2');
+  assert.deepEqual(secondPage.changes[0]!.changedFields, ['state', 'updated_at']);
+  assert.equal(secondPage.hasMore, false);
+
+  const emptyPage = await readChangesAfter(secondPage.cursor, 1);
+  assert.deepEqual(emptyPage, { changes: [], cursor: secondPage.cursor, hasMore: false });
 });
 
 test('clearing a draft objective instruction to empty leaves it blank instead of erroring', async () => {

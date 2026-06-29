@@ -42,6 +42,11 @@ import { useObjectiveAgentSelection } from './useObjectiveAgentSelection.ts';
 
 const AUTO_ADVANCE_TOGGLE_STATES: ObjectiveState[] = ['future', 'draft', 'submitted', 'launching'];
 const ACTIVE_SIBLING_STATES: ObjectiveState[] = ['launching', 'executing', 'pending_delivery'];
+const ACTIVE_EXECUTION_REQUEST_STATES: ExecutionRequestDto['status'][] = [
+  'queued',
+  'claimed',
+  'launching'
+];
 const OBJECTIVE_STATES: ObjectiveState[] = [
   'future',
   'draft',
@@ -90,9 +95,13 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
   const isLaunching = objective.state === 'launching';
   const isLaunchable = objective.state === 'draft' || isSubmitted || isLaunching;
   const canToggleAutoAdvance = AUTO_ADVANCE_TOGGLE_STATES.includes(objective.state);
-  const hasActiveSibling = siblings.some(
-    o => o.id !== objective.id && ACTIVE_SIBLING_STATES.includes(o.state)
-  );
+  const hasActiveSibling =
+    siblings.some(o => o.id !== objective.id && ACTIVE_SIBLING_STATES.includes(o.state)) ||
+    executionRequests.some(
+      request =>
+        request.objectiveId !== objective.id &&
+        ACTIVE_EXECUTION_REQUEST_STATES.includes(request.status)
+    );
   const activeRequest = executionRequests.find(r => r.objectiveId === objective.id) ?? null;
   const autoAdvancePending =
     update.isPending && update.variables?.id === objective.id

@@ -1,11 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
+import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from 'react';
 
-import type { EntityChangeDto } from '../../shared/contract.ts';
+import type { EntityChangeDto, SyncChangesDto } from '../../shared/contract.ts';
 
 import { getAuthorizationHeader, isRemoteBackend } from './api-base.ts';
-import { resolveEventSourceUrl } from './api-transport.ts';
+import { fetchApi, resolveEventSourceUrl } from './api-transport.ts';
 import { connectEventStream } from './fetch-sse.ts';
+import { invalidateRealtimeChanges } from './realtime-invalidation.ts';
 
 export type LinkState = 'connecting' | 'live' | 'reconnecting';
 
@@ -26,29 +27,73 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<LinkState>('connecting');
   const [lastSeq, setLastSeq] = useState(0);
   const [lastChanges, setLastChanges] = useState<EntityChangeDto[]>([]);
+  const cursorRef = useRef(0);
 
   useEffect(() => {
     const invalidateAll = () => queryClient.invalidateQueries();
-    const onLive = () => setState('live');
+    const updateCursor = (cursor: number) => {
+      if (!Number.isFinite(cursor) || cursor <= cursorRef.current) return;
+      cursorRef.current = cursor;
+      setLastSeq(cursor);
+    };
+    const onHello = (cursor: number) => {
+      if (cursorRef.current === 0) updateCursor(cursor);
+    };
+    const applyChangePayload = (payload: { cursor?: number; changes?: unknown[] }) => {
+      const changes = Array.isArray(payload.changes) ? (payload.changes as EntityChangeDto[]) : [];
+      const payloadCursor =
+        typeof payload.cursor === 'number'
+          ? payload.cursor
+          : changes.length > 0
+            ? (changes[changes.length - 1]?.seq ?? 0)
+            : 0;
+      updateCursor(payloadCursor);
+      setLastChanges(changes);
+      invalidateRealtimeChanges(queryClient, payload.changes);
+    };
+    const catchUp = async () => {
+      let cursor = cursorRef.current;
+      if (cursor <= 0) return;
+
+      while (true) {
+        const response = await fetchApi(`/sync/changes?after=${cursor}`);
+        if (!response.ok) throw new Error('Realtime catch-up failed');
+        const payload = (await response.json()) as Partial<SyncChangesDto>;
+        applyChangePayload(payload);
+        cursor = typeof payload.cursor === 'number' ? payload.cursor : cursorRef.current;
+        if (!payload.hasMore) return;
+      }
+    };
+    const onOpen = () => {
+      const hadCursor = cursorRef.current > 0;
+      if (!hadCursor) {
+        setState('live');
+        return;
+      }
+      void catchUp()
+        .catch(() => {
+          invalidateAll();
+        })
+        .finally(() => setState('live'));
+    };
 
     const authHeaders = getAuthorizationHeader();
     if (isRemoteBackend() || authHeaders) {
       const close = connectEventStream({
-        url: resolveEventSourceUrl('/api/stream'),
+        url: () =>
+          resolveEventSourceUrl(
+            cursorRef.current > 0 ? `/realtime?after=${cursorRef.current}` : '/realtime'
+          ),
         headers: authHeaders,
         handlers: {
-          onOpen: onLive,
-          onHello: cursor => setLastSeq(cursor ?? 0),
+          onOpen,
+          onHello,
           onChange: payload => {
-            onLive();
-            setLastSeq(payload.cursor ?? 0);
-            setLastChanges(
-              Array.isArray(payload.changes) ? (payload.changes as EntityChangeDto[]) : []
-            );
-            invalidateAll();
+            setState('live');
+            applyChangePayload(payload);
           },
           onRefresh: () => {
-            onLive();
+            setState('live');
             invalidateAll();
           },
           onError: () => setState('reconnecting')
@@ -57,33 +102,34 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       return close;
     }
 
-    const source = new EventSource('/api/stream');
+    const source = new EventSource(
+      cursorRef.current > 0 ? `/realtime?after=${cursorRef.current}` : '/realtime'
+    );
 
-    source.addEventListener('open', onLive);
+    source.addEventListener('open', onOpen);
     source.addEventListener('hello', event => {
-      onLive();
+      setState('live');
       try {
-        setLastSeq(JSON.parse((event as MessageEvent).data).cursor ?? 0);
+        onHello(JSON.parse((event as MessageEvent).data).cursor ?? 0);
       } catch {
         /* ignore */
       }
     });
     source.addEventListener('change', event => {
-      onLive();
+      setState('live');
       try {
         const payload = JSON.parse((event as MessageEvent).data) as {
           cursor?: number;
           changes?: EntityChangeDto[];
         };
-        setLastSeq(payload.cursor ?? 0);
-        setLastChanges(Array.isArray(payload.changes) ? payload.changes : []);
+        applyChangePayload(payload);
       } catch {
-        /* ignore */
+        invalidateAll();
+        return;
       }
-      invalidateAll();
     });
     source.addEventListener('refresh', () => {
-      onLive();
+      setState('live');
       invalidateAll();
     });
     source.addEventListener('error', () => {

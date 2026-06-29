@@ -591,6 +591,7 @@ interface LaunchObjectiveRow {
 }
 
 export const LAUNCHABLE_STATES = ['draft', 'submitted', 'launching'];
+const ACTIVE_SIBLING_OBJECTIVE_STATES = ['launching', 'executing', 'pending_delivery'];
 
 /**
  * Remove an objective from the runner queue when a user manually completes,
@@ -781,6 +782,32 @@ export async function launchObjective(
         objective.state === 'future'
           ? 'Promote the objective to draft first.'
           : 'Only draft, submitted, or launching objectives can be queued.'
+      );
+    }
+
+    const activeSiblingObjective = await tx.get<{ id: string }>(
+      `SELECT id FROM objectives
+          WHERE mission_id = ? AND workspace_id = ? AND id <> ? AND deleted_at IS NULL
+            AND state IN (${ACTIVE_SIBLING_OBJECTIVE_STATES.map(() => '?').join(', ')})
+          LIMIT 1`,
+      [
+        objective.mission_id,
+        WORKSPACE.id,
+        objective.id,
+        ...ACTIVE_SIBLING_OBJECTIVE_STATES
+      ]
+    );
+    const activeSiblingRequest = await tx.get<{ id: string }>(
+      `SELECT id FROM execution_requests
+          WHERE mission_id = ? AND workspace_id = ? AND objective_id <> ? AND deleted_at IS NULL
+            AND status IN (${ACTIVE_EXECUTION_REQUEST_STATUSES.map(() => '?').join(', ')})
+          LIMIT 1`,
+      [objective.mission_id, WORKSPACE.id, objective.id, ...ACTIVE_EXECUTION_REQUEST_STATUSES]
+    );
+    if (activeSiblingObjective || activeSiblingRequest) {
+      throw new ApiError(
+        409,
+        'Another objective on this mission is already active. Enable auto-advance on this objective instead of queueing it for the runner.'
       );
     }
 

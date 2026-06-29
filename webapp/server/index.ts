@@ -50,7 +50,7 @@ import {
 } from './project-execution-target.ts';
 import { runProtocolSubcommand } from './protocol.ts';
 import { requirePermission } from './rbac.ts';
-import { realtime } from './realtime.ts';
+import { readChangesAfter, realtime } from './realtime.ts';
 import {
   ApiError,
   createMission,
@@ -508,7 +508,15 @@ app.get(
 
 // ---- Realtime ------------------------------------------------------------
 
-app.get('/api/stream', (req: Request, res: Response) => {
+function parseSeqCursor(value: unknown): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== 'string' || raw.trim().length === 0) return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return Math.floor(parsed);
+}
+
+function streamRealtime(req: Request, res: Response): void {
   void (async () => {
     try {
       await requirePermission(PERMISSIONS.PROJECT_READ);
@@ -516,10 +524,40 @@ app.get('/api/stream', (req: Request, res: Response) => {
       res.status(403).json({ error: 'Permission denied: realtime stream' });
       return;
     }
-    realtime.addClient(res);
+    const afterSeq =
+      parseSeqCursor(req.query.after) ?? parseSeqCursor(req.headers['last-event-id']) ?? undefined;
+    realtime.addClient(res, { afterSeq });
     req.on('close', () => realtime.removeClient(res));
   })();
-});
+}
+
+app.get('/api/stream', streamRealtime);
+app.get('/realtime', requireAuthenticatedSession, streamRealtime);
+app.get(
+  '/sync/changes',
+  requireAuthenticatedSession,
+  (req: Request, res: Response, next: NextFunction) => {
+    void (async () => {
+      try {
+        await requirePermission(PERMISSIONS.PROJECT_READ);
+      } catch {
+        res.status(403).json({ error: 'Permission denied: realtime catch-up' });
+        return;
+      }
+
+      try {
+        const afterSeq = parseSeqCursor(req.query.after);
+        if (afterSeq === null) {
+          res.status(400).json({ error: 'Query parameter "after" must be a non-negative integer' });
+          return;
+        }
+        res.json(await readChangesAfter(afterSeq));
+      } catch (err) {
+        next(err);
+      }
+    })();
+  }
+);
 
 // ---- Projects ------------------------------------------------------------
 
