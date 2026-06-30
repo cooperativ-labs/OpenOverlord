@@ -562,6 +562,15 @@ export function useDeleteMission() {
   });
 }
 
+export function useSetMissionStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ missionId, statusId }: { missionId: string; statusId: string }) =>
+      api.updateMission(missionId, { statusId }),
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
 export function useGenerateMissionTitle(id: string) {
   const qc = useQueryClient();
   return useMutation({

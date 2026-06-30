@@ -5,6 +5,7 @@ import { STATUS_CONFIG } from '@/components/ui.tsx';
 
 import type { MissionDto, WorkspaceMemberDto, WorkspaceStatusDto } from '../../shared/contract.ts';
 
+import { type BlankMissionCreateOptions } from './BlankMissionCard.tsx';
 import { type ColumnMap, resolveAssignee, resolveColumnMissions } from './board-shared.ts';
 import { MissionListCard } from './MissionListCard.tsx';
 import { MissionListStatusGroup } from './MissionListStatusGroup.tsx';
@@ -19,7 +20,10 @@ export function MissionListView({
   projectColor,
   membersByWorkspaceUserId,
   selectedMissionId,
-  draggable = true
+  draggable = true,
+  onCreateMission,
+  onCreateAndOpenMission,
+  onCompleteMission
 }: {
   statuses: WorkspaceStatusDto[];
   columns: ColumnMap;
@@ -30,6 +34,19 @@ export function MissionListView({
   membersByWorkspaceUserId: Map<string, WorkspaceMemberDto>;
   selectedMissionId?: string;
   draggable?: boolean;
+  onCreateMission?: (
+    statusId: string,
+    objective: string,
+    position: 'top' | 'bottom',
+    options?: BlankMissionCreateOptions
+  ) => Promise<void> | void;
+  onCreateAndOpenMission?: (
+    statusId: string,
+    objective: string,
+    position: 'top' | 'bottom',
+    options?: BlankMissionCreateOptions
+  ) => Promise<void> | void;
+  onCompleteMission?: (missionId: string) => void;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const { activeId, displayColumns, dndContextProps } = useBoardColumnDnd({
@@ -78,6 +95,9 @@ export function MissionListView({
             selectedMissionId={selectedMissionId}
             isCollapsed={collapsed.has(status.id)}
             onToggleCollapse={toggleCollapse}
+            onCreateMission={onCreateMission}
+            onCreateAndOpenMission={onCreateAndOpenMission}
+            onCompleteMission={onCompleteMission}
           />
         ))}
       </div>

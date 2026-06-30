@@ -60,6 +60,7 @@ export type AttachmentSummary = {
   mimeType: string | null;
   sizeBytes: number | null;
   status: string;
+  storageKey: string;
 };
 
 async function nextMissionSequence(ctx: ServiceContext): Promise<number> {
@@ -988,8 +989,8 @@ export async function listAttachments({
 }): Promise<AttachmentSummary[]> {
   const resolved = await resolveMissionId(ctx, missionId);
   const params: string[] = [resolved.id];
-  let sql = `SELECT id, filename, content_type, size_bytes, upload_status
-             FROM objective_attachments
+  let sql = `SELECT id, storage_key, filename, content_type, size_bytes, upload_status
+             FROM attachments
              WHERE mission_id = ? AND deleted_at IS NULL`;
 
   if (objectiveId) {
@@ -1000,6 +1001,7 @@ export async function listAttachments({
   sql += ' ORDER BY created_at ASC';
   const rows = (await ctx.db.all(sql, params)) as Array<{
     id: string;
+    storage_key: string;
     filename: string;
     content_type: string | null;
     size_bytes: number | null;
@@ -1008,6 +1010,7 @@ export async function listAttachments({
 
   return rows.map(row => ({
     id: row.id,
+    storageKey: row.storage_key,
     filename: row.filename,
     mimeType: row.content_type,
     sizeBytes: row.size_bytes,

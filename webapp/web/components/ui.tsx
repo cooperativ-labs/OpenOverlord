@@ -35,6 +35,8 @@ export interface StatusStyle {
   text: string;
   bg: string;
   rail: string;
+  /** Faint, status-tinted fill for the horizontal divider line in list headers. */
+  rule: string;
 }
 
 // Single source of truth for stage → icon/color across the board, list, and
@@ -45,42 +47,48 @@ export const STATUS_CONFIG: Record<StatusType, StatusStyle> = {
     icon: NotebookPen,
     text: 'text-muted-foreground',
     bg: 'bg-muted',
-    rail: 'border-l-border'
+    rail: 'border-l-border',
+    rule: 'bg-border'
   },
   execute: {
     label: 'Execute',
     icon: Play,
     text: 'text-blue-600 dark:text-blue-400',
     bg: 'bg-blue-500/15',
-    rail: 'border-l-blue-500/40'
+    rail: 'border-l-blue-500/40',
+    rule: 'bg-blue-500/25'
   },
   review: {
     label: 'Review',
     icon: Eye,
     text: 'text-amber-600 dark:text-amber-400',
     bg: 'bg-amber-500/15',
-    rail: 'border-l-amber-500/40'
+    rail: 'border-l-amber-500/40',
+    rule: 'bg-amber-500/25'
   },
   complete: {
     label: 'Complete',
     icon: CheckCheck,
     text: 'text-emerald-600 dark:text-emerald-400',
     bg: 'bg-emerald-500/15',
-    rail: 'border-l-emerald-500/40'
+    rail: 'border-l-emerald-500/40',
+    rule: 'bg-emerald-500/25'
   },
   blocked: {
     label: 'Blocked',
     icon: Ban,
     text: 'text-red-600 dark:text-red-400',
     bg: 'bg-red-500/15',
-    rail: 'border-l-red-500/40'
+    rail: 'border-l-red-500/40',
+    rule: 'bg-red-500/25'
   },
   cancelled: {
     label: 'Cancelled',
     icon: CircleSlash,
     text: 'text-zinc-500 dark:text-zinc-400',
     bg: 'bg-zinc-500/15',
-    rail: 'border-l-zinc-500/40'
+    rail: 'border-l-zinc-500/40',
+    rule: 'bg-zinc-500/25'
   }
 };
 

@@ -13,6 +13,7 @@ import {
   useProject,
   useProjectTags,
   useReorderBoardColumn,
+  useSetMissionStatus,
   useWorkspaceMembers,
   useWorkspaceStatuses
 } from '../lib/queries.ts';
@@ -48,6 +49,7 @@ export function BoardPage() {
   const projectTagsQ = useProjectTags(projectId);
   const createMission = useCreateMission();
   const reorder = useReorderBoardColumn();
+  const setMissionStatus = useSetMissionStatus();
   const [modalOpen, setModalOpen] = useState(false);
   const [view, setView] = useState<BoardView>(() => readStoredBoardView(projectId));
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
@@ -224,6 +226,21 @@ export function BoardPage() {
     [createMissionInColumn, navigate]
   );
 
+  // The list-row checkbox marks a mission complete by moving it into the
+  // workspace status whose type is `complete`. No-op if no such status exists.
+  const completeStatusId = useMemo(
+    () => statuses.find(status => status.type === 'complete')?.id ?? null,
+    [statuses]
+  );
+
+  const handleCompleteMission = useCallback(
+    (missionId: string) => {
+      if (!completeStatusId) return;
+      void setMissionStatus.mutateAsync({ missionId, statusId: completeStatusId });
+    },
+    [completeStatusId, setMissionStatus]
+  );
+
   if (project.isLoading || statusesQ.isLoading || missionsQ.isLoading) {
     return (
       <div className="p-8">
@@ -350,6 +367,9 @@ export function BoardPage() {
             membersByWorkspaceUserId={membersByWorkspaceUserId}
             selectedMissionId={selectedMissionId}
             draggable={!isTagFilterActive}
+            onCreateMission={handleCreateMissionFromColumn}
+            onCreateAndOpenMission={handleCreateAndOpenMissionFromColumn}
+            onCompleteMission={completeStatusId ? handleCompleteMission : undefined}
           />
         )}
       </div>

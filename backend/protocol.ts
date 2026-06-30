@@ -1,6 +1,7 @@
 import { type Permission, PERMISSIONS } from '@overlord/auth';
 
 import type { ServiceContext } from '../packages/core/service/context.ts';
+import { listAttachments } from '../packages/core/service/missions.ts';
 import { discoverProject } from '../packages/core/service/projects.ts';
 import {
   addObjectivesToMission,
@@ -409,8 +410,28 @@ const handlers: Record<string, Handler> = {
     });
   },
 
-  'attachment-list': async (ctx, body) =>
-    (await loadMissionContext({ ctx, missionId: requireFlag(body, '--mission-id') })).attachments,
+  'attachment-list': async (ctx, body) => {
+    const missionId = requireFlag(body, '--mission-id');
+    const attachments = await listAttachments({ ctx, missionId });
+    return attachments.map(a => ({
+      ...a,
+      url: `/api/storage/attachments/${encodeURIComponent(a.storageKey)}`
+    }));
+  },
+
+  'attachment-download-url': async (ctx, body) => {
+    const missionId = requireFlag(body, '--mission-id');
+    const attachmentId = requireFlag(body, '--attachment-id');
+    const attachments = await listAttachments({ ctx, missionId });
+    const found = attachments.find(a => a.id === attachmentId);
+    if (!found) throw new ApiError(404, `Attachment not found: ${attachmentId}`);
+    return {
+      id: found.id,
+      filename: found.filename,
+      contentType: found.mimeType,
+      url: `/api/storage/attachments/${encodeURIComponent(found.storageKey)}`
+    };
+  },
 
   // Auth and discovery -----------------------------------------------------
   'auth-status': ctx => authStatus({ ctx }),
@@ -452,6 +473,7 @@ const SUBCOMMAND_PERMISSIONS: Record<string, Permission | null> = {
   'read-context': PERMISSIONS.MISSION_READ,
   'write-context': PERMISSIONS.MISSION_UPDATE,
   'attachment-list': PERMISSIONS.ARTIFACT_READ,
+  'attachment-download-url': PERMISSIONS.ARTIFACT_READ,
   'auth-status': null,
   'discover-project': PERMISSIONS.PROJECT_READ,
   'list-organizations': PERMISSIONS.PROJECT_READ

@@ -713,6 +713,29 @@ export async function runProtocolCommand({
   if (typeof resultRecord.missionId === 'string') {
     printKeyValue({ MISSION_ID: resultRecord.missionId });
   }
+
+  // Make attachment URLs absolute by prepending the backend base URL so agents
+  // can use them directly with curl without guessing the backend address.
+  if (subcommand === 'attachment-download-url') {
+    const relUrl = resultRecord.url;
+    if (typeof relUrl === 'string' && relUrl.startsWith('/')) {
+      printJson({ ...resultRecord, url: `${runtime.backend.baseUrl}${relUrl}` });
+      return;
+    }
+  }
+  if (subcommand === 'attachment-list' && Array.isArray(result)) {
+    const baseUrl = runtime.backend.baseUrl;
+    const enhanced = result.map(entry => {
+      const rec = asRecord(entry);
+      const relUrl = rec.url;
+      return typeof relUrl === 'string' && relUrl.startsWith('/')
+        ? { ...rec, url: `${baseUrl}${relUrl}` }
+        : rec;
+    });
+    printJson(enhanced);
+    return;
+  }
+
   printJson(result);
 }
 

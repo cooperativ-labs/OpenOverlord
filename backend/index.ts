@@ -818,7 +818,7 @@ app.patch(
 app.get(
   '/api/missions/search',
   handle(
-    req => {
+    async req => {
       const query = typeof req.query.q === 'string' ? req.query.q : null;
       const projectId =
         typeof req.query.projectId === 'string' && req.query.projectId.trim()
@@ -829,7 +829,7 @@ app.get(
         10
       );
       const limit = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
-      return { missions: searchMissions({ query, projectId, limit }) };
+      return { missions: await searchMissions({ query, projectId, limit }) };
     },
     { requires: PERMISSIONS.MISSION_READ }
   )

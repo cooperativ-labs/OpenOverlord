@@ -3,6 +3,7 @@ export const SUPPORTED_PROTOCOL_SUBCOMMANDS = [
   'add-objectives',
   'ask',
   'attach',
+  'attachment-download-url',
   'attachment-list',
   'auth-status',
   'connect',
@@ -88,7 +89,8 @@ Subcommands:
   hook-event             Record a connector lifecycle hook (e.g. UserPromptSubmit)
   read-context           Read shared persistent context for this mission
   write-context          Write shared persistent context for future sessions
-  attachment-list        List objective attachments visible on the mission
+  attachment-list        List all attachments for the mission
+  attachment-download-url  Get the download URL for a specific attachment
 
 Runner queue (management commands, not protocol):
   ${primaryCommand} runner once|start|status|clear|clear-all [--branch <name>] [--no-worktree]
@@ -350,9 +352,18 @@ write-context:
 
 attachment-list:
   Purpose:
-    List objective attachments visible on the mission.
+    List all attachments for the mission (across all objectives).
+    Each entry includes id, filename, mimeType, sizeBytes, status, storageKey, and url.
+    The url field is a server-relative path; prepend the backend base URL to download.
   Required:
     --mission-id <id>
+
+attachment-download-url:
+  Purpose:
+    Return the download URL for a specific attachment on the mission.
+  Required:
+    --mission-id <id>
+    --attachment-id <id>  (use the id from attachment-list output)
 
 list-organizations:
   Purpose:

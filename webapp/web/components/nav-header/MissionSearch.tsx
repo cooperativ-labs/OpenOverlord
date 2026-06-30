@@ -5,6 +5,7 @@ import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { api } from '@/lib/api';
 import { useProjects } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
@@ -25,7 +26,6 @@ export function MissionSearch({ className }: MissionSearchProps) {
   const listboxId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<MissionDto[]>([]);
@@ -49,42 +49,31 @@ export function MissionSearch({ className }: MissionSearchProps) {
       setResults([]);
       setIsOpen(false);
       setActiveIndex(0);
-      abortRef.current?.abort();
+      setIsLoading(false);
       return;
     }
 
-    const controller = new AbortController();
-    abortRef.current?.abort();
-    abortRef.current = controller;
+    let isCurrent = true;
     setIsLoading(true);
 
     const timeoutId = window.setTimeout(async () => {
       try {
-        const response = await fetch(`/api/missions/search?q=${encodeURIComponent(query.trim())}`, {
-          signal: controller.signal
-        });
-        if (!response.ok) {
-          throw new Error('Mission search failed.');
-        }
-        const data = await response.json();
+        const data = await api.searchMissions(query.trim());
+        if (!isCurrent) return;
         const missions = Array.isArray(data?.missions) ? (data.missions as MissionDto[]) : [];
         setResults(missions);
         setIsOpen(missions.length > 0);
         setActiveIndex(0);
       } catch (error) {
-        if ((error as Error).name !== 'AbortError') {
-          console.error(error);
-        }
+        if (isCurrent) console.error(error);
       } finally {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-        }
+        if (isCurrent) setIsLoading(false);
       }
     }, 240);
 
     return () => {
+      isCurrent = false;
       window.clearTimeout(timeoutId);
-      controller.abort();
     };
   }, [query]);
 
