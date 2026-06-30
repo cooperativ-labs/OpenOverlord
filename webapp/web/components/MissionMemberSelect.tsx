@@ -1,4 +1,4 @@
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AuthenticatedAvatarImage } from '@/components/ui/avatar';
 import {
   Select,
   SelectContent,
@@ -29,7 +29,9 @@ function memberInitials(member: WorkspaceMemberDto): string {
 function MemberAvatar({ member }: { member: WorkspaceMemberDto }) {
   return (
     <Avatar className="h-4 w-4">
-      {member.avatarUrl ? <AvatarImage src={member.avatarUrl} alt={memberLabel(member)} /> : null}
+      {member.avatarUrl ? (
+        <AuthenticatedAvatarImage src={member.avatarUrl} alt={memberLabel(member)} />
+      ) : null}
       <AvatarFallback className="rounded-full text-[8px]">{memberInitials(member)}</AvatarFallback>
     </Avatar>
   );

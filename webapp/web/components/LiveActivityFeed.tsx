@@ -12,7 +12,7 @@ import {
   ShieldQuestion
 } from 'lucide-react';
 
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AuthenticatedAvatarImage } from '@/components/ui/avatar';
 
 import type { MissionEventDto, MissionEventType } from '../../shared/contract.ts';
 import { useMissionEvents } from '../lib/queries.ts';
@@ -74,7 +74,7 @@ function ActivityEntry({ event }: { event: MissionEventDto }) {
         {isUserFollowUp && event.actor ? (
           <Avatar size="sm" title={userLabel}>
             {event.actor.avatarUrl ? (
-              <AvatarImage src={event.actor.avatarUrl} alt={userLabel} />
+              <AuthenticatedAvatarImage src={event.actor.avatarUrl} alt={userLabel} />
             ) : null}
             <AvatarFallback className="rounded-full text-[9px]">
               {actorInitials(userLabel)}

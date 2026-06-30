@@ -14,6 +14,8 @@ import {
   useObjectiveAttachments,
   useUploadObjectiveAttachment
 } from '../../lib/queries.ts';
+import { downloadStorageObject } from '../../lib/storage-download.ts';
+import { storageUrlNeedsAuthenticatedFetch } from '../../lib/storage-url.ts';
 import { cn } from '../../lib/utils.ts';
 import { Button } from '../ui/button.tsx';
 import { type FileDropZoneDragState, useFileDropZone } from '../ui/file-drop-zone.tsx';
@@ -153,6 +155,14 @@ export function ObjectiveAttachmentList({
           <a
             href={attachment.url}
             download={attachment.filename}
+            onClick={event => {
+              if (!storageUrlNeedsAuthenticatedFetch({ url: attachment.url })) return;
+              event.preventDefault();
+              void downloadStorageObject({
+                url: attachment.url,
+                filename: attachment.filename
+              }).catch(() => undefined);
+            }}
             className="min-w-0 flex-1 truncate text-left text-xs hover:underline"
             title={attachment.filename}
           >

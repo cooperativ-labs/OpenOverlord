@@ -4,6 +4,7 @@ import { Avatar as AvatarPrimitive } from '@base-ui/react/avatar';
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
+import { useAuthenticatedMediaUrl } from '@/lib/use-authenticated-media-url';
 
 function Avatar({
   className,
@@ -33,6 +34,12 @@ function AvatarImage({ className, ...props }: AvatarPrimitive.Image.Props) {
       {...props}
     />
   );
+}
+
+function AuthenticatedAvatarImage({ src, ...props }: AvatarPrimitive.Image.Props) {
+  const resolvedSrc = useAuthenticatedMediaUrl(typeof src === 'string' ? src : null);
+  if (!resolvedSrc) return null;
+  return <AvatarImage src={resolvedSrc} {...props} />;
 }
 
 function AvatarFallback({ className, ...props }: AvatarPrimitive.Fallback.Props) {
@@ -90,4 +97,12 @@ function AvatarGroupCount({ className, ...props }: React.ComponentProps<'div'>) 
   );
 }
 
-export { Avatar, AvatarBadge, AvatarFallback, AvatarGroup, AvatarGroupCount, AvatarImage };
+export {
+  AuthenticatedAvatarImage,
+  Avatar,
+  AvatarBadge,
+  AvatarFallback,
+  AvatarGroup,
+  AvatarGroupCount,
+  AvatarImage
+};

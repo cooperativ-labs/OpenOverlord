@@ -9,6 +9,16 @@ export type DesktopBackendInfo = {
   shellOrigin: string;
 };
 
+export type HostedWebRuntimeConfig = {
+  apiBaseUrl?: string;
+};
+
+declare global {
+  interface Window {
+    __OVERLORD_RUNTIME__?: HostedWebRuntimeConfig;
+  }
+}
+
 let activeBackend: DesktopBackendInfo | null = null;
 let userToken: string | null = null;
 let sessionToken: string | null = null;
@@ -54,12 +64,36 @@ async function loadStoredTokensForActiveBackend(): Promise<void> {
   }
 }
 
-export async function initDesktopApiConfig(): Promise<void> {
-  const bridge = typeof window === 'undefined' ? undefined : window.overlord;
-  if (!bridge?.getActiveBackend) return;
+function initHostedWebApiConfig(): void {
+  const runtime =
+    typeof window === 'undefined' ? undefined : window.__OVERLORD_RUNTIME__;
+  const apiBaseUrl = runtime?.apiBaseUrl?.trim();
+  if (!apiBaseUrl) return;
 
-  activeBackend = await bridge.getActiveBackend();
-  await loadStoredTokensForActiveBackend();
+  activeBackend = {
+    id: 'hosted-web',
+    label: 'Overlord Cloud',
+    mode: 'remote',
+    backendUrl: apiBaseUrl,
+    apiBaseUrl,
+    shellOrigin: window.location.origin
+  };
+}
+
+export async function initApiConfig(): Promise<void> {
+  const bridge = typeof window === 'undefined' ? undefined : window.overlord;
+  if (bridge?.getActiveBackend) {
+    activeBackend = await bridge.getActiveBackend();
+    await loadStoredTokensForActiveBackend();
+    return;
+  }
+
+  initHostedWebApiConfig();
+}
+
+/** @deprecated Use initApiConfig */
+export async function initDesktopApiConfig(): Promise<void> {
+  return initApiConfig();
 }
 
 function resolveAuthorizationToken(): string | null {

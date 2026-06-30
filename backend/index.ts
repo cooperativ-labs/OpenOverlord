@@ -12,6 +12,7 @@ import { ServiceError } from '../packages/core/service/errors.ts';
 import type { LocalTargetBridgeCall } from '../packages/core/service/local-target/desktop-bridge.ts';
 
 import { authNodeHandler, getAllowedBrowserOrigins, requireAuthenticatedSession } from './auth.ts';
+import { isAllowedBrowserOrigin } from './browser-origins.ts';
 import { DATABASE_DIALECT, DATABASE_PATH, initDatabase, WORKSPACE } from './db.ts';
 import { ENV_PROFILE, REPO_ROOT } from './env-profile.ts';
 import { apiErrorFromDatabaseError } from './errors.ts';
@@ -196,12 +197,12 @@ function parsePort(value: string, name: string): number {
 }
 
 const app = express();
-const allowedBrowserOrigins = new Set(getAllowedBrowserOrigins());
+const allowedBrowserOrigins = getAllowedBrowserOrigins();
 app.use(
   cors({
     origin(origin, callback) {
       // Non-browser clients and same-origin requests omit Origin.
-      if (!origin || allowedBrowserOrigins.has(origin)) {
+      if (!origin || isAllowedBrowserOrigin(origin, allowedBrowserOrigins)) {
         callback(null, true);
         return;
       }
@@ -211,6 +212,7 @@ app.use(
     allowedHeaders: [
       'Authorization',
       'Content-Type',
+      'X-Upload-Filename',
       'X-Overlord-Device-Fingerprint',
       'X-Overlord-Device-Label',
       'X-Overlord-Device-Platform'

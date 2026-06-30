@@ -2,7 +2,7 @@ import { ChevronsUpDown, LogOut, Monitor, Moon, Settings, Sun } from 'lucide-rea
 import { useTheme } from 'next-themes';
 
 import type { SettingsNavSection } from '@/components/settings/SettingsModal';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AuthenticatedAvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -57,7 +57,7 @@ export function NavUser({ onOpenSettings }: NavUserProps) {
           >
             <Avatar className="size-8 rounded-lg">
               {profile?.avatarUrl ? (
-                <AvatarImage src={profile.avatarUrl} alt={displayName} className="rounded-lg" />
+                <AuthenticatedAvatarImage src={profile.avatarUrl} alt={displayName} className="rounded-lg" />
               ) : null}
               <AvatarFallback className="rounded-lg">{initials || 'OL'}</AvatarFallback>
             </Avatar>
@@ -78,7 +78,7 @@ export function NavUser({ onOpenSettings }: NavUserProps) {
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                   <Avatar className="size-8 rounded-lg">
                     {profile?.avatarUrl ? (
-                      <AvatarImage
+                      <AuthenticatedAvatarImage
                         src={profile.avatarUrl}
                         alt={displayName}
                         className="rounded-lg"

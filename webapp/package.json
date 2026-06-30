@@ -1,6 +1,6 @@
 {
   "name": "@overlord/webapp",
-  "version": "0.2606301149.0",
+  "version": "0.2606301334.0",
   "private": true,
   "type": "module",
   "description": "Overlord React SPA that consumes the Overlord backend REST and realtime API.",
@@ -10,14 +10,14 @@
   "scripts": {
     "dev": "concurrently -k -n server,web -c blue,magenta \"yarn dev:server\" \"yarn dev:web\"",
     "dev:server": "yarn workspace @overlord/backend dev",
-    "dev:web": "vite",
-    "build": "vite build",
+    "dev:web": "node scripts/write-runtime-config.mjs && vite",
+    "build": "node scripts/write-runtime-config.mjs && vite build",
     "build:server": "yarn workspace @overlord/backend build:server",
     "build:server:cloud": "yarn workspace @overlord/backend build:server:cloud",
     "start": "yarn workspace @overlord/backend start",
     "start:bundle": "yarn workspace @overlord/backend start:bundle",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test web/lib/local-target-client.test.ts web/lib/realtime-invalidation.test.ts web/lib/native-workflow-notifications.test.ts web/lib/project-resources.test.ts"
+    "test": "node --import tsx --test web/lib/local-target-client.test.ts web/lib/realtime-invalidation.test.ts web/lib/native-workflow-notifications.test.ts web/lib/project-resources.test.ts web/lib/storage-url.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

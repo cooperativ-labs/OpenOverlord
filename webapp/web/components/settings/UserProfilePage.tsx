@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AuthenticatedAvatarImage } from '@/components/ui/avatar';
 import { ImageDropzone } from '@/components/ui/image-dropzone';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -166,7 +166,7 @@ function AvatarUploader({ profile }: { profile: ProfileDto }) {
       >
         <Avatar size="lg" className="size-12">
           {profile.avatarUrl ? (
-            <AvatarImage src={profile.avatarUrl} alt={profile.displayName} />
+            <AuthenticatedAvatarImage src={profile.avatarUrl} alt={profile.displayName} />
           ) : null}
           <AvatarFallback className="rounded-full">{initialsFor(profile)}</AvatarFallback>
         </Avatar>

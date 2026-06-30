@@ -15,5 +15,24 @@ export function resolveAllowedBrowserOrigins({
     origins.add(`http://127.0.0.1:${port}`);
     origins.add(`http://localhost:${port}`);
   }
+
+  const extraOrigins = process.env.OVERLORD_WEB_ORIGINS?.trim();
+  if (extraOrigins) {
+    for (const origin of extraOrigins.split(',')) {
+      const trimmed = origin.trim();
+      if (trimmed) origins.add(trimmed);
+    }
+  }
+
   return [...origins];
+}
+
+function matchesOriginPattern(origin: string, pattern: string): boolean {
+  if (!pattern.includes('*')) return origin === pattern;
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+  return new RegExp(`^${escaped}$`).test(origin);
+}
+
+export function isAllowedBrowserOrigin(origin: string, allowedOrigins: string[]): boolean {
+  return allowedOrigins.some(entry => matchesOriginPattern(origin, entry));
 }
