@@ -39,13 +39,7 @@ The result is a Kanban-style workflow where humans plan and agents execute, with
 | Plans, missions, and code drift apart                         | One mission holds many ordered objectives sharing the same context and artifacts |
 | Agent lock-in: hard to switch between different agents between each turn | Assign any agent you want to each objective.                 |
 
-
-### Getting Started
-
-New to Overlord? Follow the [Getting Started guide](docs/getting-started.md) —
-ten minutes from a fresh `ovld` install to your first delivered mission.
-
-#### Using the prodution-ready app
+### Using the production-ready app
 
 You can use Overlord locally on MacOS for free by following these steps:
 1. [Download the Desktop App](https://github.com/cooperativ-labs/OpenOverlord/releases)
@@ -55,8 +49,12 @@ You can use Overlord locally on MacOS for free by following these steps:
 5. Run `ovld setup` in your terminal to configure and log into the CLI
 6. run `ovld runner start` to make sure the CLI automatically picks up queued work.
 
-Now, you can create "missions" in the desktop app, select your preferred agent, and click "Run". In a few moments you will see the agent open in your terminal and begin working. Agents launched by Overlord use your exsiting Claude/Codex/Cursor subscriptions. 
+Now, you can create "missions" in the desktop app, select your preferred agent, and click "Run". In a few moments you will see the agent open in your terminal and begin working. Agents launched by Overlord use your existing Claude/Codex/Cursor subscriptions. 
 
+### Getting Started
+
+New to Overlord? Follow the [Getting Started guide](docs/getting-started.md) —
+ten minutes from a fresh `ovld` install to your first delivered mission.
 
 #### Setting up a custom instance
 
