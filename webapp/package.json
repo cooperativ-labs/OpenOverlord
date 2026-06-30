@@ -1,6 +1,6 @@
 {
   "name": "@overlord/webapp",
-  "version": "0.2606291944.0",
+  "version": "0.2606300942.0",
   "private": true,
   "type": "module",
   "description": "Overlord realtime web control center (REST + realtime API backed by the local SQLite database, plus the React SPA that consumes it).",
@@ -17,7 +17,7 @@
     "start": "tsx server/index.ts",
     "start:bundle": "node dist-server/index.cjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test server/load-repo-env.test.ts server/project-resources.test.ts server/title-automation.test.ts server/mission-ref.test.ts server/workspace-settings.test.ts server/workspaces.test.ts server/workspaces.postgres-conformance.test.ts server/my-missions.test.ts server/objectives.test.ts server/launch.test.ts server/branch-planning.test.ts server/branch-prepared.test.ts server/branch-status.test.ts server/branch-actions.test.ts server/branch-selection-worktrees.test.ts server/local-target-capability.test.ts server/local-target-invoke.test.ts server/mission-worktree-preference.test.ts server/generate-commit-message.test.ts server/storage-backends.test.ts server/serve-spa.test.ts web/lib/local-target-client.test.ts web/lib/realtime-invalidation.test.ts web/lib/native-workflow-notifications.test.ts web/lib/project-resources.test.ts"
+    "test": "node --import tsx --test server/load-repo-env.test.ts server/project-resources.test.ts server/title-automation.test.ts server/mission-ref.test.ts server/workspace-settings.test.ts server/workspaces.test.ts server/workspaces.postgres-conformance.test.ts server/my-missions.test.ts server/objectives.test.ts server/launch.test.ts server/branch-planning.test.ts server/branch-prepared.test.ts server/branch-status.test.ts server/branch-actions.test.ts server/branch-selection-worktrees.test.ts server/local-target-capability.test.ts server/local-target-invoke.test.ts server/mission-worktree-preference.test.ts server/generate-commit-message.test.ts server/storage-backends.test.ts server/storage.test.ts server/serve-spa.test.ts web/lib/local-target-client.test.ts web/lib/realtime-invalidation.test.ts web/lib/native-workflow-notifications.test.ts web/lib/project-resources.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1075.0",

@@ -15,6 +15,7 @@ export {
   createPostgresSessionClient,
   createSqliteClient,
   type DatabaseClient,
+  groupConcat,
   openDatabaseClient,
   type RunResult,
   sqlBoolLiteral,

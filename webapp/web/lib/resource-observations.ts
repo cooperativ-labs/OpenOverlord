@@ -79,14 +79,28 @@ export function useResourceObservationReporter({
   const queryClient = useQueryClient();
   const inFlight = useRef(false);
 
+  // Hold the latest resources in a ref so the polling effect can read them without
+  // listing `resources` as a dependency. Without this, invalidating the
+  // projectResources query on a successful observation produces a new `resources`
+  // reference, which would re-run the effect and immediately fire another
+  // observation — a feedback loop that bypasses OBSERVATION_INTERVAL_MS and hammers
+  // the /observations endpoint multiple times per second.
+  const resourcesRef = useRef(resources);
+  resourcesRef.current = resources;
+
+  const hasResources = resources.length > 0;
+
   useEffect(() => {
-    if (!enabled || !executionTargetId || resources.length === 0) return;
+    if (!enabled || !executionTargetId || !hasResources) return;
 
     const run = async (): Promise<void> => {
       if (inFlight.current) return;
       inFlight.current = true;
       try {
-        const recorded = await reportResourceObservations({ executionTargetId, resources });
+        const recorded = await reportResourceObservations({
+          executionTargetId,
+          resources: resourcesRef.current
+        });
         if (recorded > 0) {
           await queryClient.invalidateQueries({ queryKey: keys.projectResources(projectId) });
         }
@@ -107,5 +121,5 @@ export function useResourceObservationReporter({
       window.clearInterval(interval);
       window.removeEventListener('focus', onFocus);
     };
-  }, [enabled, executionTargetId, projectId, queryClient, resources]);
+  }, [enabled, executionTargetId, projectId, queryClient, hasResources]);
 }

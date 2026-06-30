@@ -80,6 +80,37 @@ describe('storage service', () => {
     }
   });
 
+  it('surfaces s3 storage buckets without byte-layer coupling', async () => {
+    const db = createSqliteClient(openInMemoryDatabase());
+    try {
+      await seedServiceOperator({ db });
+      const ctx = await createServiceContext({ db, source: 'cli' });
+      await db.run(
+        `UPDATE storage_buckets
+            SET storage_backend = 's3', local_path = NULL,
+                settings_json = ?
+          WHERE workspace_id = ? AND bucket_key = 'attachments'`,
+        [
+          JSON.stringify({
+            bucketName: 'overlord-storage',
+            region: 'us-east-1',
+            endpoint: 'http://minio.railway.internal:9000',
+            pathPrefix: 'prod/attachments'
+          }),
+          ctx.workspace.id
+        ]
+      );
+
+      const attachmentsBucket = (await listStorageBuckets({ ctx })).find(
+        bucket => bucket.key === 'attachments'
+      );
+      assert.equal(attachmentsBucket?.backend, 's3');
+      assert.equal(attachmentsBucket?.localPath, null);
+    } finally {
+      await db.close();
+    }
+  });
+
   it('allows public image reads but not workspace image writes', async () => {
     const db = createSqliteClient(openInMemoryDatabase());
     try {

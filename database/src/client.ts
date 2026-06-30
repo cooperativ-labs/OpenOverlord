@@ -37,6 +37,21 @@ export function sqlBoolLiteral(dialect: SqlDialect, value: boolean): string {
   return value ? '1' : '0';
 }
 
+/**
+ * Aggregate expression that joins a grouped column's values into one string,
+ * separated by `separator`. SQLite spells this `GROUP_CONCAT(expr, sep)`; Postgres
+ * spells it `STRING_AGG(expr, sep)` and the two names are not interchangeable, so
+ * any shared query that aggregates text has to go through this helper to stay
+ * dialect-agnostic. The separator is embedded as a quoted SQL string literal
+ * (single quotes are escaped); it is intended for constant separators like `','`
+ * or `'\n'`, not for user input.
+ */
+export function groupConcat(dialect: SqlDialect, expr: string, separator: string): string {
+  const literal = `'${separator.replace(/'/g, "''")}'`;
+  const fn = dialect === 'postgres' ? 'STRING_AGG' : 'GROUP_CONCAT';
+  return `${fn}(${expr}, ${literal})`;
+}
+
 export interface RunResult {
   /** Rows affected (`better-sqlite3` `changes` / `pg` `rowCount`). */
   changes: number;

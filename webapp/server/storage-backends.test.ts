@@ -49,6 +49,12 @@ test('s3 storage backend accepts Postgres jsonb settings objects', async () => {
         res.end(body);
         return;
       }
+      if (req.method === 'DELETE') {
+        objects.delete(key);
+        res.statusCode = 204;
+        res.end();
+        return;
+      }
       res.statusCode = 405;
       res.end();
     })().catch(error => {
@@ -96,6 +102,10 @@ test('s3 storage backend accepts Postgres jsonb settings objects', async () => {
 
     const stream = await backend.getStream({ key: 'avatar.png' });
     assert.deepEqual(await readStream(stream), Buffer.from('image-bytes'));
+
+    assert.ok(backend.deleteObject);
+    await backend.deleteObject({ key: 'avatar.png' });
+    assert.equal(objects.has('/overlord-storage/hosted/user-images/avatar.png'), false);
 
     assert.ok(backend.presignGet);
     const signedUrl = await backend.presignGet({

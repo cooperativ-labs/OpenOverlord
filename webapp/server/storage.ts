@@ -405,19 +405,33 @@ export async function listObjectiveAttachments(
 }
 
 /**
- * Soft-delete an objective attachment (tombstone + revision bump). The bytes are
- * left on disk for now; provider cleanup is a separate concern per the schema
- * contract. Returns the objective's remaining attachments.
+ * Soft-delete an objective attachment (tombstone + revision bump). Remote
+ * backends delete their object after the metadata transaction commits; local
+ * buckets keep historical on-disk behavior. Returns the objective's remaining
+ * attachments.
  */
 export async function deleteObjectiveAttachment(
   objectiveId: string,
   attachmentId: string
 ): Promise<ObjectiveAttachmentDto[]> {
-  return requireDatabaseClient().transaction(async tx => {
+  const { remaining, cleanup } = await requireDatabaseClient().transaction(async tx => {
     const scope = await resolveObjectiveScope(objectiveId);
-    const row = await tx.get<{ id: string; revision: number }>(
-      `SELECT id, revision FROM attachments
-        WHERE id = ? AND objective_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+    const row = await tx.get<{
+      id: string;
+      revision: number;
+      storage_key: string;
+      bucket_id: string;
+      bucket_key: string;
+      storage_backend: string;
+      local_path: string | null;
+      settings_json: string;
+    }>(
+      `SELECT a.id, a.revision, a.storage_key,
+              b.id AS bucket_id, b.bucket_key, b.storage_backend, b.local_path, b.settings_json
+         FROM attachments a
+         JOIN storage_buckets b ON b.id = a.storage_bucket_id
+        WHERE a.id = ? AND a.objective_id = ? AND a.workspace_id = ?
+          AND a.deleted_at IS NULL AND b.deleted_at IS NULL`,
       [attachmentId, objectiveId, WORKSPACE.id]
     );
     if (!row) throw new ApiError(404, 'Attachment not found');
@@ -450,8 +464,29 @@ export async function deleteObjectiveAttachment(
         ORDER BY created_at ASC`,
       [objectiveId, WORKSPACE.id]
     );
-    return rows.map(toObjectiveAttachmentDto);
+    return {
+      remaining: rows.map(toObjectiveAttachmentDto),
+      cleanup: {
+        key: row.storage_key,
+        bucket: {
+          id: row.bucket_id,
+          bucket_key: row.bucket_key,
+          storage_backend: row.storage_backend,
+          local_path: row.local_path,
+          settings_json: row.settings_json
+        }
+      }
+    };
   });
+
+  if (
+    cleanup.bucket.storage_backend === 's3' ||
+    cleanup.bucket.storage_backend === 'railway_volume'
+  ) {
+    const backend = createStorageBackend({ bucket: cleanup.bucket, repoRoot });
+    await backend.deleteObject?.({ key: cleanup.key });
+  }
+  return remaining;
 }
 
 export interface ResolvedStoredObject {

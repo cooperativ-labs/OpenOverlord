@@ -1,4 +1,9 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createReadStream, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -17,6 +22,7 @@ export interface StorageBackend {
     contentType: string;
   }): Promise<void>;
   getStream({ key }: { key: string }): Promise<Readable>;
+  deleteObject?({ key }: { key: string }): Promise<void>;
   presignGet?({
     key,
     ttlSeconds,
@@ -206,6 +212,14 @@ function createS3Backend({
         }
         throw error;
       }
+    },
+    async deleteObject({ key }) {
+      await client.send(
+        new DeleteObjectCommand({
+          Bucket: bucketName,
+          Key: resolveKey(key)
+        })
+      );
     },
     async presignGet({ key, ttlSeconds, responseContentDisposition }) {
       return getSignedUrl(

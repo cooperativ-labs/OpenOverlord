@@ -1,3 +1,4 @@
+import { groupConcat } from '@overlord/database';
 import path from 'node:path';
 
 import { readGitStatusPorcelain } from './local-target/git-status.ts';
@@ -83,7 +84,7 @@ export async function listChangedFilesForReview({
               cf.first_observed_at, cf.last_observed_at, cf.observed_metadata_json,
               COUNT(cr.id) AS rationale_count,
               SUM(CASE WHEN cr.is_final THEN 1 ELSE 0 END) AS final_rationale_count,
-              GROUP_CONCAT(cr.label, char(10)) AS rationale_labels
+              ${groupConcat(ctx.db.dialect, 'cr.label', '\n')} AS rationale_labels
        FROM changed_files cf
        LEFT JOIN change_rationales cr
          ON cr.mission_id = cf.mission_id
