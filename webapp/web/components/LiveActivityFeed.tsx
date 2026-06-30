@@ -12,7 +12,7 @@ import {
   ShieldQuestion
 } from 'lucide-react';
 
-import { Avatar, AvatarFallback, AuthenticatedAvatarImage } from '@/components/ui/avatar';
+import { AuthenticatedAvatarImage, Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 import type { MissionEventDto, MissionEventType } from '../../shared/contract.ts';
 import { useMissionEvents } from '../lib/queries.ts';

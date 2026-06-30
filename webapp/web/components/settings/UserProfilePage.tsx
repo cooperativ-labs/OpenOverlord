@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { Avatar, AvatarFallback, AuthenticatedAvatarImage } from '@/components/ui/avatar';
+import { AuthenticatedAvatarImage, Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ImageDropzone } from '@/components/ui/image-dropzone';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';

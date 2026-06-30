@@ -1,4 +1,4 @@
-import { Avatar, AvatarFallback, AuthenticatedAvatarImage } from '@/components/ui/avatar';
+import { AuthenticatedAvatarImage, Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Select,
   SelectContent,

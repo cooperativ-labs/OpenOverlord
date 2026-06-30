@@ -65,8 +65,7 @@ async function loadStoredTokensForActiveBackend(): Promise<void> {
 }
 
 function initHostedWebApiConfig(): void {
-  const runtime =
-    typeof window === 'undefined' ? undefined : window.__OVERLORD_RUNTIME__;
+  const runtime = typeof window === 'undefined' ? undefined : window.__OVERLORD_RUNTIME__;
   const apiBaseUrl = runtime?.apiBaseUrl?.trim();
   if (!apiBaseUrl) return;
 

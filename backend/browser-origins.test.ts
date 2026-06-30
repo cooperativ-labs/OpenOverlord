@@ -27,9 +27,7 @@ describe('resolveAllowedBrowserOrigins', () => {
       });
 
       assert.ok(origins.includes('https://overlord-webapp.vercel.app'));
-      assert.ok(
-        origins.includes('https://overlord-webapp-git-main-cooperativ-labs.vercel.app')
-      );
+      assert.ok(origins.includes('https://overlord-webapp-git-main-cooperativ-labs.vercel.app'));
     } finally {
       if (previous === undefined) delete process.env.OVERLORD_WEB_ORIGINS;
       else process.env.OVERLORD_WEB_ORIGINS = previous;
@@ -41,7 +39,7 @@ describe('resolveAllowedBrowserOrigins', () => {
       baseUrl: 'https://overlord-backend-production.up.railway.app',
       devPort: '5173'
     });
-  origins.push('https://overlord-webapp-*.vercel.app');
+    origins.push('https://overlord-webapp-*.vercel.app');
 
     assert.ok(
       isAllowedBrowserOrigin('https://overlord-webapp-git-main-cooperativ-labs.vercel.app', origins)

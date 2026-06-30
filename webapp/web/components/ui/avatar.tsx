@@ -3,8 +3,8 @@
 import { Avatar as AvatarPrimitive } from '@base-ui/react/avatar';
 import * as React from 'react';
 
-import { cn } from '@/lib/utils';
 import { useAuthenticatedMediaUrl } from '@/lib/use-authenticated-media-url';
+import { cn } from '@/lib/utils';
 
 function Avatar({
   className,

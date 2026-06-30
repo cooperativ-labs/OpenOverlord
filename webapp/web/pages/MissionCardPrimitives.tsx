@@ -1,4 +1,4 @@
-import { Avatar, AvatarFallback, AuthenticatedAvatarImage } from '@/components/ui/avatar';
+import { AuthenticatedAvatarImage, Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 
 import type { WorkspaceMemberDto } from '../../shared/contract.ts';
@@ -51,7 +51,9 @@ export function MissionAssigneeAvatar({
 
   return (
     <Avatar className="h-5 w-5 shrink-0 ring-1 ring-border" title={`Assigned to ${label}`}>
-      {assignee.avatarUrl ? <AuthenticatedAvatarImage src={assignee.avatarUrl} alt={label} /> : null}
+      {assignee.avatarUrl ? (
+        <AuthenticatedAvatarImage src={assignee.avatarUrl} alt={label} />
+      ) : null}
       <AvatarFallback className="rounded-full text-[8px]">
         {memberInitials(assignee)}
       </AvatarFallback>

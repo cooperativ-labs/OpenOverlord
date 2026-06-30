@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  isOverlordStorageUrl,
-  storageUrlNeedsAuthenticatedFetch
-} from './storage-url.ts';
+import { isOverlordStorageUrl, storageUrlNeedsAuthenticatedFetch } from './storage-url.ts';
 
 describe('storage-url', () => {
   it('detects Overlord storage paths', () => {
