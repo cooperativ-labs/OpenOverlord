@@ -1,4 +1,4 @@
-import type { AuthDomainDatabase, PostgresQueryExecutor } from '@overlord/auth';
+import type { AuthDomainDatabase } from '@overlord/auth';
 import {
   applyHostedS3StorageBackend,
   createSqliteClient,
@@ -9,8 +9,7 @@ import {
   openDatabase,
   openDatabaseClient,
   resolveAdapter,
-  type SqlDialect,
-  toPostgresPlaceholders
+  type SqlDialect
 } from '@overlord/database';
 import type Database from 'better-sqlite3';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -23,6 +22,7 @@ import {
   resolveDatabasePath as resolveConfiguredDatabasePath
 } from '../../cli/src/config.ts';
 import { loadEnvDefaults } from '../../cli/src/env.ts';
+import { insertEntityChange } from '../../packages/core/service/change-feed.ts';
 import type { ServiceContext } from '../../packages/core/service/context.ts';
 import type { ClientDeviceIdentity } from '../../packages/core/service/device-identity.ts';
 import type { ChangeOperation } from '../shared/contract.ts';
@@ -45,50 +45,9 @@ export function resolveDatabasePath(): string {
 const databasePath = resolveDatabasePath();
 const adapter = resolveAdapter({ databasePath });
 
-type LegacyStatement = {
-  get(...params: unknown[]): unknown;
-  all(...params: unknown[]): unknown[];
-  run(...params: unknown[]): { changes: number; lastInsertRowid?: number | bigint };
-};
-
-function postgresLegacyError(): Error {
-  return new Error(
-    'This server booted with a Postgres database, but this code path still uses the legacy ' +
-      'synchronous better-sqlite3 handle. Port this call site to DatabaseClient before using it.'
-  );
-}
-
-function createPostgresLegacyDatabase(): Database.Database {
-  const statement: LegacyStatement = {
-    get() {
-      throw postgresLegacyError();
-    },
-    all() {
-      throw postgresLegacyError();
-    },
-    run() {
-      throw postgresLegacyError();
-    }
-  };
-  return {
-    prepare() {
-      return statement as Database.Statement;
-    },
-    pragma() {
-      throw postgresLegacyError();
-    },
-    transaction() {
-      throw postgresLegacyError();
-    },
-    exec() {
-      throw postgresLegacyError();
-    },
-    close() {
-      // The real Postgres pool is closed through DatabaseClient.
-    }
-  } as unknown as Database.Database;
-}
-
+// On Local (SQLite) the file is opened synchronously at module load so first-run
+// migrations seed an empty database before any request lands. On Postgres this
+// stays null — there is no synchronous handle.
 let sqliteDb: Database.Database | null = null;
 
 if (adapter.type === 'sqlite') {
@@ -102,7 +61,17 @@ if (adapter.type === 'sqlite') {
   fixupLocalStoragePaths(sqliteDb, databasePath);
 }
 
-export const db: Database.Database = sqliteDb ?? createPostgresLegacyDatabase();
+/**
+ * The raw synchronous better-sqlite3 handle. **No production code path reads this
+ * anymore** — the realtime `data_version` probe and the auth domain queries both
+ * go through the async `DatabaseClient` below, which owns the handle. It remains
+ * exported solely for the SQLite integration-test harness, which seeds fixtures
+ * and asserts rows synchronously; those tests always run on SQLite, where this is
+ * the live handle. On Postgres it is null (the cast keeps the test-only call sites
+ * untyped-non-null); production never dereferences it, so the previous throwing
+ * Postgres shim is no longer needed.
+ */
+export const db = sqliteDb as Database.Database;
 export const DATABASE_DIALECT: SqlDialect = adapter.type;
 export let databaseClient: DatabaseClient | null =
   sqliteDb === null ? null : createSqliteClient(sqliteDb);
@@ -396,19 +365,13 @@ export async function bindDatabaseClient(client: DatabaseClient): Promise<void> 
   await refreshActiveWorkspaceFromClient(client);
 }
 
-function postgresAuthExecutor(client: DatabaseClient): PostgresQueryExecutor {
-  return {
-    query: async <Row>(sql: string, values: readonly unknown[] = []) => {
-      const rows = await client.all<Row>(toPostgresPlaceholders(sql), [...values]);
-      return { rows, rowCount: rows.length };
-    }
-  };
-}
-
-/** Auth token helpers accept either the sqlite handle or a Postgres executor. */
+/**
+ * The handle the auth domain queries run against. The async `DatabaseClient`
+ * speaks `?` placeholders on both SQLite and Postgres, so one handle serves both
+ * editions — there is no longer a dialect branch or a raw synchronous handle here.
+ */
 export function authDomainDatabase(): AuthDomainDatabase {
-  if (DATABASE_DIALECT === 'sqlite') return db;
-  return postgresAuthExecutor(requireDatabaseClient());
+  return requireDatabaseClient();
 }
 
 export function serviceDatabaseClient(): DatabaseClient {
@@ -444,41 +407,23 @@ export async function recordChange(
   input: RecordChangeInput,
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<void> {
-  await recordChangeAsync(input, client);
-}
-
-export async function recordChangeAsync(
-  input: RecordChangeInput,
-  client: DatabaseClient = requireDatabaseClient()
-): Promise<void> {
-  await client.run(
-    `INSERT INTO entity_changes (
-      id, workspace_id, project_id, mission_id, objective_id,
-      entity_type, entity_id, operation, entity_revision,
-      changed_fields_json, actor_workspace_user_id, actor_token_id, source, occurred_at
-    ) VALUES (
-      ?, ?, ?, ?, ?,
-      ?, ?, ?, ?,
-      ?, ?, ?, 'webapp', ?
-    )`,
-    [
-      newId(),
-      input.workspaceId ?? WORKSPACE.id,
-      input.projectId ?? null,
-      input.missionId ?? null,
-      input.objectiveId ?? null,
-      input.entityType,
-      input.entityId,
-      input.operation,
-      input.entityRevision ?? null,
-      JSON.stringify(input.changedFields ?? []),
+  await insertEntityChange(client, {
+    workspaceId: input.workspaceId ?? WORKSPACE.id,
+    projectId: input.projectId,
+    missionId: input.missionId,
+    objectiveId: input.objectiveId,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    operation: input.operation,
+    entityRevision: input.entityRevision,
+    changedFields: input.changedFields,
+    actorWorkspaceUserId:
       input.actorWorkspaceUserId !== undefined
         ? input.actorWorkspaceUserId
         : getActorWorkspaceUserId(),
-      getActiveTokenId(),
-      nowIso()
-    ]
-  );
+    actorTokenId: getActiveTokenId(),
+    source: 'webapp'
+  });
 }
 
 export async function currentMaxSeq(
@@ -488,18 +433,4 @@ export async function currentMaxSeq(
     `SELECT MAX(seq) AS seq FROM entity_changes`
   );
   return row?.seq ?? 0;
-}
-
-export async function currentMaxSeqAsync(
-  client: DatabaseClient = requireDatabaseClient()
-): Promise<number> {
-  return currentMaxSeq(client);
-}
-
-export function dataVersion(): number {
-  if (DATABASE_DIALECT !== 'sqlite') {
-    throw new Error('dataVersion() is SQLite-only; use currentMaxSeqAsync() on Postgres.');
-  }
-  const row = db.pragma('data_version', { simple: true });
-  return typeof row === 'number' ? row : Number(row);
 }

@@ -4,7 +4,7 @@ import {
   generateObjectiveTitle
 } from '@overlord/automations';
 
-import { nowIso, recordChangeAsync, requireDatabaseClient } from './db.ts';
+import { nowIso, recordChange, requireDatabaseClient } from './db.ts';
 import { realtime } from './realtime.ts';
 
 type ObjectiveContext = {
@@ -50,7 +50,7 @@ const objectiveTitleStore = {
       [title, now, revision, objectiveId]
     );
 
-    await recordChangeAsync({
+    await recordChange({
       entityType: 'objective',
       entityId: objectiveId,
       operation: 'update',
@@ -93,7 +93,7 @@ async function updateMissionTitle({
     [title, now, revision, missionId]
   );
 
-  await recordChangeAsync({
+  await recordChange({
     entityType: 'mission',
     entityId: missionId,
     operation: 'update',

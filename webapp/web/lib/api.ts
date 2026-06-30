@@ -117,6 +117,27 @@ export class ApiRequestError extends Error {
 
 import { fetchApi } from './api-transport.ts';
 
+/**
+ * Build an {@link ApiRequestError} from a non-2xx response, folding the server's
+ * JSON `error`/`detail`/`code` shape into a display message. Shared by every
+ * request helper so error extraction lives in one place.
+ */
+async function parseErrorResponse(res: Response): Promise<ApiRequestError> {
+  let message = `${res.status} ${res.statusText}`;
+  let code: string | undefined;
+  let detail: string | undefined;
+  try {
+    const payload = (await res.json()) as { error?: string; detail?: string; code?: string };
+    message = payload.error ?? message;
+    detail = payload.detail;
+    if (payload.detail) message += ` — ${payload.detail}`;
+    code = payload.code;
+  } catch {
+    /* non-JSON error body */
+  }
+  return new ApiRequestError(message, res.status, code, detail);
+}
+
 async function request<T>(
   method: string,
   url: string,
@@ -136,19 +157,7 @@ async function request<T>(
     body: isRaw ? (body as BodyInit) : body !== undefined ? JSON.stringify(body) : undefined
   });
   if (!res.ok) {
-    let message = `${res.status} ${res.statusText}`;
-    let code: string | undefined;
-    let detail: string | undefined;
-    try {
-      const payload = (await res.json()) as { error?: string; detail?: string; code?: string };
-      message = payload.error ?? message;
-      detail = payload.detail;
-      if (payload.detail) message += ` — ${payload.detail}`;
-      code = payload.code;
-    } catch {
-      /* non-JSON error body */
-    }
-    throw new ApiRequestError(message, res.status, code, detail);
+    throw await parseErrorResponse(res);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -168,19 +177,7 @@ async function requestDownload(
 ): Promise<{ blob: Blob; filename: string | null }> {
   const res = await fetchApi(url, { method });
   if (!res.ok) {
-    let message = `${res.status} ${res.statusText}`;
-    let code: string | undefined;
-    let detail: string | undefined;
-    try {
-      const payload = (await res.json()) as { error?: string; detail?: string; code?: string };
-      message = payload.error ?? message;
-      detail = payload.detail;
-      if (payload.detail) message += ` — ${payload.detail}`;
-      code = payload.code;
-    } catch {
-      /* non-JSON error body */
-    }
-    throw new ApiRequestError(message, res.status, code, detail);
+    throw await parseErrorResponse(res);
   }
   return {
     blob: await res.blob(),

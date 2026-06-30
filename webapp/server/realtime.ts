@@ -2,7 +2,7 @@ import type { Response } from 'express';
 
 import type { EntityChangeDto, SyncChangesDto } from '../shared/contract.ts';
 
-import { currentMaxSeqAsync, DATABASE_DIALECT, dataVersion, requireDatabaseClient } from './db.ts';
+import { currentMaxSeq, requireDatabaseClient } from './db.ts';
 
 const CHANGE_BATCH_LIMIT = 500;
 
@@ -131,8 +131,9 @@ class RealtimeHub {
   }
 
   private async initializeCursor(): Promise<void> {
-    this.cursor = await currentMaxSeqAsync(requireDatabaseClient());
-    this.lastDataVersion = DATABASE_DIALECT === 'sqlite' ? dataVersion() : null;
+    const client = requireDatabaseClient();
+    this.cursor = await currentMaxSeq(client);
+    this.lastDataVersion = (await client.sqliteDataVersion?.()) ?? null;
   }
 
   private async poll(): Promise<void> {
@@ -140,8 +141,8 @@ class RealtimeHub {
     if (this.clients.size === 0) {
       // Keep the cursor moving even with no subscribers so a later client does
       // not get flooded with backlog it does not need.
-      this.cursor = await currentMaxSeqAsync(client);
-      this.lastDataVersion = DATABASE_DIALECT === 'sqlite' ? dataVersion() : null;
+      this.cursor = await currentMaxSeq(client);
+      this.lastDataVersion = (await client.sqliteDataVersion?.()) ?? null;
       return;
     }
 
@@ -152,10 +153,10 @@ class RealtimeHub {
       this.broadcast('change', { type: 'change', changes, cursor: this.cursor });
     }
 
-    if (DATABASE_DIALECT !== 'sqlite') return;
-
-    const version = dataVersion();
-    if (version !== this.lastDataVersion) {
+    // SQLite-only external-write net: `sqliteDataVersion()` returns null on
+    // Postgres, so this branch never fires there (the feed is the sole detector).
+    const version = (await client.sqliteDataVersion?.()) ?? null;
+    if (version !== null && version !== this.lastDataVersion) {
       this.lastDataVersion = version;
       if (rows.length === 0) {
         // External write that did not (or has not yet) produced feed rows.

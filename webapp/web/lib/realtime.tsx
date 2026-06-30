@@ -3,7 +3,7 @@ import { createContext, type ReactNode, useContext, useEffect, useRef, useState 
 
 import type { EntityChangeDto, SyncChangesDto } from '../../shared/contract.ts';
 
-import { getAuthorizationHeader, isRemoteBackend } from './api-base.ts';
+import { getAuthorizationHeader } from './api-base.ts';
 import { fetchApi, resolveEventSourceUrl } from './api-transport.ts';
 import { connectEventStream } from './fetch-sse.ts';
 import { invalidateRealtimeChanges } from './realtime-invalidation.ts';
@@ -77,66 +77,30 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         .finally(() => setState('live'));
     };
 
-    const authHeaders = getAuthorizationHeader();
-    if (isRemoteBackend() || authHeaders) {
-      const close = connectEventStream({
-        url: () =>
-          resolveEventSourceUrl(
-            cursorRef.current > 0 ? `/realtime?after=${cursorRef.current}` : '/realtime'
-          ),
-        headers: authHeaders,
-        handlers: {
-          onOpen,
-          onHello,
-          onChange: payload => {
-            setState('live');
-            applyChangePayload(payload);
-          },
-          onRefresh: () => {
-            setState('live');
-            invalidateAll();
-          },
-          onError: () => setState('reconnecting')
-        }
-      });
-      return close;
-    }
-
-    const source = new EventSource(
-      cursorRef.current > 0 ? `/realtime?after=${cursorRef.current}` : '/realtime'
-    );
-
-    source.addEventListener('open', onOpen);
-    source.addEventListener('hello', event => {
-      setState('live');
-      try {
-        onHello(JSON.parse((event as MessageEvent).data).cursor ?? 0);
-      } catch {
-        /* ignore */
+    // One SSE code path for every backend mode. `connectEventStream` sends the
+    // Authorization header for remote/bearer backends and falls back to
+    // `credentials: 'include'` (cookie auth) when no header is present, so the
+    // local same-origin case no longer needs a separate native EventSource branch.
+    return connectEventStream({
+      url: () =>
+        resolveEventSourceUrl(
+          cursorRef.current > 0 ? `/realtime?after=${cursorRef.current}` : '/realtime'
+        ),
+      headers: getAuthorizationHeader(),
+      handlers: {
+        onOpen,
+        onHello,
+        onChange: payload => {
+          setState('live');
+          applyChangePayload(payload);
+        },
+        onRefresh: () => {
+          setState('live');
+          invalidateAll();
+        },
+        onError: () => setState('reconnecting')
       }
     });
-    source.addEventListener('change', event => {
-      setState('live');
-      try {
-        const payload = JSON.parse((event as MessageEvent).data) as {
-          cursor?: number;
-          changes?: EntityChangeDto[];
-        };
-        applyChangePayload(payload);
-      } catch {
-        invalidateAll();
-        return;
-      }
-    });
-    source.addEventListener('refresh', () => {
-      setState('live');
-      invalidateAll();
-    });
-    source.addEventListener('error', () => {
-      setState('reconnecting');
-    });
-
-    return () => source.close();
   }, [queryClient]);
 
   return (

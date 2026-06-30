@@ -73,7 +73,6 @@ import {
   newId,
   nowIso,
   recordChange,
-  recordChangeAsync,
   type RecordChangeInput,
   requireDatabaseClient,
   WORKSPACE
@@ -1038,7 +1037,7 @@ async function recordBranchActionActivity(
          WHERE id = ? AND workspace_id = ?`,
         [now, revision, ctx.missionId, WORKSPACE.id]
       );
-      await recordChangeAsync(
+      await recordChange(
         {
           entityType: 'mission',
           entityId: ctx.missionId,
@@ -1480,7 +1479,7 @@ export async function createWorkspaceStatus(
       ]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'workspace_status',
         entityId: id,
@@ -1541,7 +1540,7 @@ export async function updateWorkspaceStatus(
       [...setParams, now, revision, statusId, WORKSPACE.id]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'workspace_status',
         entityId: statusId,
@@ -1584,7 +1583,7 @@ export async function deleteWorkspaceStatus(statusId: string): Promise<void> {
       [now, now, revision, statusId, WORKSPACE.id]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'workspace_status',
         entityId: statusId,
@@ -1626,7 +1625,7 @@ export async function reorderWorkspaceStatuses(
         WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
         [position, now, id, WORKSPACE.id]
       );
-      await recordChangeAsync(
+      await recordChange(
         {
           entityType: 'workspace_status',
           entityId: id,
@@ -1702,7 +1701,7 @@ export async function createProjectTag(
       [id, WORKSPACE.id, projectId, label, normalizeTagColor(body.color), now, now]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'project_tag',
         entityId: id,
@@ -1758,7 +1757,7 @@ export async function updateProjectTag(
       [...setParams, now, revision, tagId, projectId]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'project_tag',
         entityId: tagId,
@@ -1787,7 +1786,7 @@ export async function deleteProjectTag(projectId: string, tagId: string): Promis
       [now, now, revision, tagId, projectId]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'project_tag',
         entityId: tagId,
@@ -1854,7 +1853,7 @@ async function insertProjectResource(
 
   // Client/desktop owns `.overlord/project.json` on linked paths (WS-F3).
 
-  await recordChangeAsync(
+  await recordChange(
     {
       entityType: 'project_resource',
       entityId: resourceId,
@@ -1909,7 +1908,7 @@ export async function updateProjectResource(
           WHERE id = ?`,
         [bindBool(DATABASE_DIALECT, true), now, resourceId]
       );
-      await recordChangeAsync(
+      await recordChange(
         {
           entityType: 'project_resource',
           entityId: resourceId,
@@ -1949,7 +1948,7 @@ export async function deleteProjectResource(projectId: string, resourceId: strin
       now
     });
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'project_resource',
         entityId: resourceId,
@@ -2129,7 +2128,7 @@ export async function createProject(body: CreateProjectBody): Promise<ProjectDto
     // Card statuses live at the workspace level (`workspace_statuses`) and are
     // seeded once per workspace, so creating a project no longer seeds statuses.
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'project',
         entityId: id,
@@ -2222,7 +2221,7 @@ export async function updateProject(id: string, body: UpdateProjectBody): Promis
       [...setParams, now, revision, id, WORKSPACE.id]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'project',
         entityId: id,
@@ -2278,7 +2277,7 @@ export async function deleteProject(id: string): Promise<void> {
       [now, now, revision, id, WORKSPACE.id]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'project',
         entityId: id,
@@ -2838,7 +2837,7 @@ async function createMissionTx(body: CreateMissionBody): Promise<CreateMissionRe
       ]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'mission',
         entityId: id,
@@ -3066,7 +3065,7 @@ async function patchMissionFieldsTx(id: string, body: UpdateMissionBody): Promis
       [...setParams, now, revision, id, WORKSPACE.id]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'mission',
         entityId: id,
@@ -3153,7 +3152,7 @@ async function moveMissionProjectTx({
       [...setParams, now, revision, id, WORKSPACE.id]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'mission',
         entityId: id,
@@ -3225,7 +3224,7 @@ export async function deleteMission(id: string): Promise<void> {
       [now, revision, id, WORKSPACE.id]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'mission',
         entityId: id,
@@ -3297,7 +3296,7 @@ export async function reorderBoardColumn(
         [...setParams, now, revision, missionId, WORKSPACE.id]
       );
 
-      await recordChangeAsync(
+      await recordChange(
         {
           entityType: 'mission',
           entityId: missionId,
@@ -3500,7 +3499,7 @@ async function reorderWorkspaceMyMissionsTx(body: MyMissionReorderRequest): Prom
             WORKSPACE.id
           ]
         );
-        await recordChangeAsync(
+        await recordChange(
           {
             entityType: 'mission',
             entityId: missionId,
@@ -3668,7 +3667,7 @@ export async function reorderFutureObjectives(
         [position, now, revision, existing.id, WORKSPACE.id]
       );
 
-      await recordChangeAsync(
+      await recordChange(
         {
           entityType: 'objective',
           entityId: existing.id,
@@ -3768,7 +3767,7 @@ async function insertObjective(
     ]
   );
 
-  await recordChangeAsync(
+  await recordChange(
     {
       entityType: 'objective',
       entityId: id,
@@ -3848,7 +3847,7 @@ async function ensureDraftSlotAfterObjectiveLeavesQueue(
         [now, now, draftRevision, draft.id, WORKSPACE.id]
       );
 
-      await recordChangeAsync(
+      await recordChange(
         {
           entityType: 'objective',
           entityId: draft.id,
@@ -3870,7 +3869,7 @@ async function ensureDraftSlotAfterObjectiveLeavesQueue(
       [now, nextRevision, nextFuture.id, WORKSPACE.id]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'objective',
         entityId: nextFuture.id,
@@ -3989,7 +3988,7 @@ async function updateObjectiveTx(
           [now, draftRevision, draft.id, WORKSPACE.id]
         );
 
-        await recordChangeAsync(
+        await recordChange(
           {
             entityType: 'objective',
             entityId: draft.id,
@@ -4011,7 +4010,7 @@ async function updateObjectiveTx(
       [...setParams, now, revision, id, WORKSPACE.id]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'objective',
         entityId: id,
@@ -4107,7 +4106,7 @@ export async function deleteObjective(id: string): Promise<void> {
       [now, revision, id, WORKSPACE.id]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'objective',
         entityId: id,
@@ -4336,7 +4335,7 @@ export async function updateProfile(body: UpdateProfileBody): Promise<ProfileDto
       [...setParams, now, revision, existing.id]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'profile',
         entityId: existing.id,
@@ -4562,7 +4561,7 @@ export async function createUserToken(
       );
     }
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'user_token',
         entityId: id,
@@ -4596,7 +4595,7 @@ export async function renameUserToken(
       [label, now, revision, id, WORKSPACE.id]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'user_token',
         entityId: id,
@@ -4629,7 +4628,7 @@ export async function revokeUserToken(id: string): Promise<UserTokenDto> {
       [now, workspaceUserId, now, revision, id, WORKSPACE.id]
     );
 
-    await recordChangeAsync(
+    await recordChange(
       {
         entityType: 'user_token',
         entityId: id,

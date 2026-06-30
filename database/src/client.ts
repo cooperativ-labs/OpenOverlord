@@ -78,6 +78,16 @@ export interface DatabaseClient {
    * calls use SAVEPOINTs so composing transactional service functions is safe.
    */
   transaction<T>(fn: (tx: DatabaseClient) => Promise<T>): Promise<T>;
+  /**
+   * SQLite-only external-write probe: the current `PRAGMA data_version`, which
+   * advances when any *other* connection commits to the database file. The
+   * realtime poller uses it to emit a coarse `refresh` when a tool wrote a table
+   * directly without appending to the `entity_changes` feed. Returns `null` on
+   * Postgres, where the hosted edition relies solely on the feed (every writer
+   * goes through the service layer). Optional so lightweight test doubles need
+   * not implement it; treat an absent method as `null`.
+   */
+  sqliteDataVersion?(): Promise<number | null>;
   /** Release the underlying handle/pool. */
   close(): Promise<void>;
 }
@@ -216,6 +226,13 @@ class SqliteClient implements DatabaseClient {
         this.#db.exec('ROLLBACK');
         throw error;
       }
+    });
+  }
+
+  async sqliteDataVersion(): Promise<number | null> {
+    return this.#guard(() => {
+      const value = this.#db.pragma('data_version', { simple: true });
+      return typeof value === 'number' ? value : Number(value);
     });
   }
 
@@ -379,6 +396,12 @@ class PostgresClient implements DatabaseClient {
     } finally {
       client.release();
     }
+  }
+
+  async sqliteDataVersion(): Promise<number | null> {
+    // Postgres change-detection relies solely on the `entity_changes` feed; there
+    // is no per-connection data_version equivalent in use here.
+    return null;
   }
 
   async close(): Promise<void> {
