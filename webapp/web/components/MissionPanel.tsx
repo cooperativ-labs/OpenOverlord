@@ -275,7 +275,6 @@ export function MissionPanel({
       >
         {/* Card section — primary work surface: objectives */}
         <section className="border-b border-(--color-border) bg-(--color-surface-1) pb-5 pt-2">
-
           <div className="flex flex-col gap-3 px-5 ">
             <MissionObjectivesSection mission={mission} />
             <AddObjective mission={mission} />

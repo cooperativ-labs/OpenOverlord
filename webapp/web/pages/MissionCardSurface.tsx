@@ -53,9 +53,9 @@ export function MissionCardSurface({
         onOpen
           ? onOpen()
           : navigate({
-            to: '/projects/$projectId/missions/$missionId',
-            params: { projectId, missionId: mission.id }
-          })
+              to: '/projects/$projectId/missions/$missionId',
+              params: { projectId, missionId: mission.id }
+            })
       }
     >
       <MissionCardStateOverlay state={cardState} />

@@ -6,11 +6,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
-import {
-  SidebarMenuAction,
-  SidebarMenuButton,
-  SidebarMenuItem
-} from '@/components/ui/sidebar';
+import { SidebarMenuAction, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 
 type SidebarLinkMenuButtonProps = {
   isActive?: boolean;
@@ -52,9 +48,7 @@ export function SidebarLinkMenuButton({
         {children}
       </SidebarMenuButton>
       <DropdownMenu open={open} onOpenChange={setOpen}>
-        <DropdownMenuTrigger
-          render={<SidebarMenuAction showOnHover disabled={menuDisabled} />}
-        >
+        <DropdownMenuTrigger render={<SidebarMenuAction showOnHover disabled={menuDisabled} />}>
           <MoreHorizontal />
           <span className="sr-only">{menuLabel}</span>
         </DropdownMenuTrigger>

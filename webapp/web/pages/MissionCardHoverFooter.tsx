@@ -1,5 +1,5 @@
 import { Tag } from 'lucide-react';
-import { useMemo, type MouseEvent, type PointerEvent } from 'react';
+import { type MouseEvent, type PointerEvent, useMemo } from 'react';
 
 import { DeleteMissionButton } from '@/components/DeleteMissionButton';
 import { MissionTimerCircleButton } from '@/components/everhour/MissionTimerButtons';
@@ -34,9 +34,7 @@ function TagsSelector({
     const projectTags = tagsQ.data ?? [];
     const activeTags = projectTags.filter(tag => tag.active);
     const activeIds = new Set(activeTags.map(tag => tag.id));
-    const inactiveAssigned = projectTags.filter(
-      tag => !tag.active && assignedTagIdSet.has(tag.id)
-    );
+    const inactiveAssigned = projectTags.filter(tag => !tag.active && assignedTagIdSet.has(tag.id));
     return [...activeTags, ...inactiveAssigned];
   }, [assignedTagIdSet, tagsQ.data]);
 

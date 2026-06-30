@@ -2,8 +2,9 @@ import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Plus } from 'lucide-react';
 import { useCallback, useState } from 'react';
-import { cn } from '@/lib/utils';
+
 import { Badge, STATUS_CONFIG, statusClasses } from '@/components/ui.tsx';
+import { cn } from '@/lib/utils';
 
 import type { MissionDto, WorkspaceMemberDto, WorkspaceStatusDto } from '../../shared/contract.ts';
 
@@ -69,7 +70,10 @@ export function BoardColumn({
   const content = (
     <div
       ref={setNodeRef}
-      className={cn("flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-1 transition-colors", isOver ? 'bg-muted/40 ring-1 ring-inset ring-accent/30' : '')}
+      className={cn(
+        'flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-1 transition-colors',
+        isOver ? 'bg-muted/40 ring-1 ring-inset ring-accent/30' : ''
+      )}
     >
       {isAddingTop ? (
         <BlankMissionCard
@@ -131,7 +135,8 @@ export function BoardColumn({
     <div className="flex h-full min-h-0 w-72 shrink-0 flex-col bg-muted/40 dark:bg-muted/20 rounded-lg p-2 py-4">
       <div className="mb-3 flex shrink-0 items-center justify-between px-1">
         <div className="flex items-center gap-1 text-xs uppercase font-semibold text-muted-foreground/90 tracking-wide">
-          <StatusIcon className={cn("mr-1.5 h-3.5 w-3.5", statusClasses(status.type))} />  {status.name}
+          <StatusIcon className={cn('mr-1.5 h-3.5 w-3.5', statusClasses(status.type))} />{' '}
+          {status.name}
         </div>
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-(--color-ink-dim)">{count}</span>

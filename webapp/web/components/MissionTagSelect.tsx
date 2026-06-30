@@ -56,9 +56,7 @@ export function MissionTagSelect({ missionId, projectId, assignedTags }: Mission
   const tagOptions = useMemo(() => {
     const projectTags = tagsQ.data ?? [];
     const activeTags = projectTags.filter(tag => tag.active);
-    const inactiveAssigned = projectTags.filter(
-      tag => !tag.active && assignedTagIdSet.has(tag.id)
-    );
+    const inactiveAssigned = projectTags.filter(tag => !tag.active && assignedTagIdSet.has(tag.id));
     return [...activeTags, ...inactiveAssigned];
   }, [assignedTagIdSet, tagsQ.data]);
 

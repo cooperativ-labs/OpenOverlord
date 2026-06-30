@@ -93,7 +93,7 @@ export function MyMissionsColumn({
         <div className="flex items-center gap-1 text-xs uppercase font-semibold text-muted-foreground/90 tracking-wide">
           {StatusIcon ? (
             <StatusIcon
-              className={cn('mr-1.5 h-3.5 w-3.5', statusClasses(type as StatusType ?? 'draft'))}
+              className={cn('mr-1.5 h-3.5 w-3.5', statusClasses((type as StatusType) ?? 'draft'))}
             />
           ) : null}{' '}
           {title}
