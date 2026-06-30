@@ -1,6 +1,6 @@
-# Open Overlord
+# Overlord
 
-Open-source coordination layer for AI coding agents. Overlord persists work as
+Open-source management layer for AI coding agents. Overlord persists work as
 **missions** with structured **objectives**, routes execution to the right
 **device**, and records **change rationales** so every agent session builds on
 the last.
@@ -25,7 +25,7 @@ the last.
 
 ### What it is
 
-Overlord is a coordination layer for AI coding agents (Claude Code, Codex, Cursor, OpenCode, Antigravity, and others). Instead of treating each agent session as a one-shot, throwaway interaction, Overlord persists work as **missions** with structured **objectives**, accumulates **shared context** as work progresses, and routes execution to the right **device** for the job — your laptop, a remote workstation, or a cloud runner.
+Overlord is a project management layer for AI coding agents (Claude Code, Codex, Cursor, OpenCode, Antigravity, and others). Instead of treating each agent session as a one-shot, throwaway interaction, Overlord persists work as **missions** with structured **objectives**, accumulates **shared context** as work progresses, and routes execution to the right **device** for the job — your laptop, a remote workstation, or a cloud runner.
 
 The result is a Kanban-style workflow where humans plan and agents execute, with every session producing artifacts, change rationales, and history that the next session inherits.
 
@@ -36,13 +36,27 @@ The result is a Kanban-style workflow where humans plan and agents execute, with
 | Users lose track of context between prompts                  | Structured Kanban workflow lets you thoroughly plan prompts and prompt sequences |
 | Agent sessions lose context between runs                     | Missions persist objectives, history, attachments, and shared state in the backend |
 | Hard to track what an agent actually changed and why         | Agents record `changeRationales` per file as part of the deliver step |
-| Agent lock-in: hard to switch between different agents between each turn | Assign any agent you want to each objective.                 |
 | Plans, missions, and code drift apart                         | One mission holds many ordered objectives sharing the same context and artifacts |
+| Agent lock-in: hard to switch between different agents between each turn | Assign any agent you want to each objective.                 |
+
 
 ### Getting Started
 
 New to Overlord? Follow the [Getting Started guide](docs/getting-started.md) —
 ten minutes from a fresh `ovld` install to your first delivered mission.
+
+#### Using the prodution-ready app
+
+You can use Overlord locally on MacOS for free by following these steps:
+1. [Download the Desktop App](https://github.com/cooperativ-labs/OpenOverlord/releases)
+2. Download the CLI: `npm install -g open-overlord`.
+3. Open the desktop app and create an account with a username and password
+4. Create a project and link a repository
+5. Run `ovld setup` in your terminal to configure and log into the CLI
+6. run `ovld runner start` to make sure the CLI automatically picks up queued work.
+
+Now, you can create "missions" in the desktop app, select your preferred agent, and click "Run". In a few moments you will see the agent open in your terminal and begin working. Agents launched by Overlord use your exsiting Claude/Codex/Cursor subscriptions. 
+
 
 #### Setting up a custom instance
 
