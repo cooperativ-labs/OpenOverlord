@@ -20,9 +20,9 @@ node_modules/
 dist/
 **/dist/
 *.tgz
-.yarn
-
-.yarn/install-state.gz
+.yarn/*
+!.yarn/releases
+!.yarn/releases/**
 webapp/.yarn/install-state.gz
 **/.yarn/install-state.gz
 **/node_modules/.yarn/install-state.gz
