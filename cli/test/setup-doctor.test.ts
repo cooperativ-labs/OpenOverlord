@@ -22,7 +22,7 @@ function tempHome(): string {
 test('parseConnectorManifestYaml reads the constrained manifest subset', () => {
   const parsed = parseConnectorManifestYaml(
     [
-      'contractVersion: "0.2-draft"',
+      'contractVersion: "0"',
       'componentKey: demo',
       'connector:',
       '  agentIdentifier: demo',
@@ -35,7 +35,7 @@ test('parseConnectorManifestYaml reads the constrained manifest subset', () => {
     ].join('\n')
   ) as Record<string, any>;
 
-  assert.equal(parsed.contractVersion, '0.2-draft');
+  assert.equal(parsed.contractVersion, '0');
   assert.equal(parsed.connector.agentIdentifier, 'demo');
   assert.deepEqual(parsed.connector.capabilities, ['followUpHook', 'permissionHook']);
   assert.equal(parsed.connector.installPath, '~/.demo/plugin');

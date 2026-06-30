@@ -29,9 +29,9 @@ properties:
 
   contractVersion:
     type: string
-    description: "The Overlord contract version this component was validated against (e.g. '0.1-draft')"
+    description: "The Overlord contract version this component was validated against (e.g. '0')"
     examples:
-      - "0.1-draft"
+      - "0"
 
   componentType:
     type: string

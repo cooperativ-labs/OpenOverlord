@@ -33,11 +33,7 @@ modules. This index is what ties them back into a single narrative.
 
 ## A note on numbering
 
-The series historically collided (two `01`s, two `05`s) and had gaps (`06`,
-`11`). Phase D of the [repo structure & docs reorg](../planning/feature-plans/repo-structure-and-docs-reorg.md)
-resolved the collisions **without touching any file pinned by the contract**:
-`cli`'s core-domain spec moved `01 → 06` and its review spec moved `05 → 11`,
-filling the gaps. The numbers pinned by `CONTRACT.md` (`automations/01`,
-`cli/02–04`, `connectors/05`, `auth/07–08`, `database/09`) were left untouched.
-Future renumbers that would touch a contract-pinned path must be promoted into a
-contract-changing phase (Phase C/S), not done here.
+The cross-module series uses stable `NN-` identifiers pinned by
+[`CONTRACT.md`](../CONTRACT.md). Read the table above in order, not by number.
+The [`webapp/docs/ui/`](../webapp/docs/ui/README.md) set (`00…10`) follows the
+same discipline for UI specs.

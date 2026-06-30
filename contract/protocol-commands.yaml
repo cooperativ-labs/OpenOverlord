@@ -7,7 +7,7 @@
 # IMPORTANT: Any addition, rename, or flag change to a command in this file requires
 # a contract version update in CONTRACT.md and components.yaml.
 
-contractVersion: "0.56-draft"
+contractVersion: "0"
 referenceSpec: "cli/docs/03-agent-protocol.md"
 
 # Transport-level shape shared by every protocol command, independent of subcommand.

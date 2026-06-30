@@ -1,6 +1,6 @@
 # Database Schema Contract
 
-Contract Version: `0.4-draft`
+Contract Version: `0`
 
 ## Goal
 
@@ -1872,5 +1872,4 @@ To keep this contract up to date:
 
 ## Changelog
 
-- `0.2-draft`: Adds concurrency, soft-delete, extension, migration, vocabulary, default seed, and conformance requirements from the database schema review.
-- `0.1-draft`: Initial portable schema contract.
+- `0`: Initial public release baseline (portable SQLite/Postgres schema, extensions, vocabularies, and conformance requirements).

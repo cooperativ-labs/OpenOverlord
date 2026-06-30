@@ -1,7 +1,7 @@
 # Overlord Test Implementation Plan
 
-Plan Version: `0.1-draft`
-Targets Contract Version: `0.2-draft`
+Plan Version: `0`
+Targets Contract Version: `0`
 
 ## Purpose
 
@@ -216,7 +216,7 @@ contract update":
 
 - A test loads `contractVersion` from `CONTRACT.md`, `contract/components.yaml`,
   and each `contract/*.yaml`, and asserts they agree (within the documented
-  per-file version, e.g. protocol-commands at `0.1-draft`).
+  per-file version where applicable).
 - A snapshot/fingerprint test over the closed vocabularies and the protocol
   command set fails when they change, forcing the author to (a) bump the contract
   version and (b) update the snapshot in the same change — a deliberate

@@ -194,7 +194,7 @@ Track each instance against the same adoption matrix:
 
 | Instance | Current distribution | Target distribution | Contract version | Extension set | Migration state | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| production-a | `<commit>` | `<commit>` | `0.2-draft` | `<list>` | `<version>` | pending |
+| production-a | `<commit>` | `<commit>` | `0` | `<list>` | `<version>` | pending |
 
 Roll out in small batches. After each batch, verify protocol attach/update/deliver
 flows, runner queue processing, auth identity resolution, and any custom

@@ -34,7 +34,7 @@ An auth provider replaces or supplements the built-in `USER_TOKEN` mechanism. Th
 
 **Steps:**
 
-1. **Create a conformance manifest** at `auth/providers/<name>/conformance-manifest.yaml` declaring `componentType: auth-provider` and `contractVersion: 0.2-draft`.
+1. **Create a conformance manifest** at `auth/providers/<name>/conformance-manifest.yaml` declaring `componentType: auth-provider` and `contractVersion: "0"`.
 2. **Implement the `AuthenticationProvider` interface** (define the interface in `auth/src/auth/` if it does not exist yet). The provider must accept a credential and resolve it to an Overlord `Actor` or reject it.
 3. **Do not read Better Auth tables directly** (`user`, `session`, `account`, `verification`, `apikey`). Only the Auth Layer's own identity bridge code may read those.
 4. **Wire the identity bridge**: read `workspace_users` and `profiles` (where `profiles.id` matches the Better Auth user id) to resolve the external identity to an `Actor`.

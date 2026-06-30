@@ -49,7 +49,7 @@ Requirements:
 - Future web app can create a token from settings.
 - Token has a user-supplied label.
 - Token creation defaults `expires_at` to 90 days from creation when no expiry is supplied
-  (contract `0.20-draft`). Callers may pass an explicit expiry, or an explicit `null` to opt out
+  when no expiry is supplied. Callers may pass an explicit expiry, or an explicit `null` to opt out
   and mint a non-expiring token.
 - The raw token secret is shown exactly once at creation.
 - Persist only a secure hash of the token secret.
@@ -179,7 +179,7 @@ Potential protocol commands:
 - Redact token-like values in diagnostics.
 - Treat tokens like passwords in docs and warnings.
 
-## Scoped Permissions (implemented in `0.20-draft`)
+## Scoped Permissions
 
 Token scopes are now implemented. A token is created with a `scope`:
 

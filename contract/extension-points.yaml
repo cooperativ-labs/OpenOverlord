@@ -9,7 +9,7 @@
 # IMPORTANT: Adding a new capability flag, extension point, or vocabulary change
 # requires a contract version update in CONTRACT.md and components.yaml.
 
-contractVersion: "0.1-draft"
+contractVersion: "0"
 
 # Sanctioned extension points — the only ways to extend Overlord
 extensionPoints:

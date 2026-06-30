@@ -238,7 +238,7 @@ export async function addProjectResource({
   // WS-D 2: write .overlord/project.json through the capability. A co-located
   // backend resolves an in-process provider and writes; a hosted backend resolves
   // an unavailable provider and writes nothing (the CLI/Desktop client owns the
-  // write on its own machine — contract 0.57-draft).
+  // write on its own machine).
   await backendResourceProvider(ctx, executionTargetId).writeProjectMetadata({
     directoryPath: resolvedPath,
     projectId: resolvedProjectId,

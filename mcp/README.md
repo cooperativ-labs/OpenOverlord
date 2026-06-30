@@ -15,11 +15,9 @@ capabilities (missions, objectives, protocol operations) to MCP-aware clients.
 
 ### Status
 
-> **Not yet implemented.** MCP is a Phase 5 expansion item (see "Phase 5:
-> Expansion" in the [feature-plans README](../planning/feature-plans/README.md)).
-> There is no MCP server to install or configure today. Agent connectors such as
-> Claude, Codex, and Cursor already ship their own MCP bridges to `ovld protocol`
-> — see the [connectors module](../connectors/README.md).
+> **Not yet implemented.** There is no MCP server to install today. Agent
+> connectors (Claude, Codex, Cursor) ship their own MCP bridges to
+> `ovld protocol` — see the [connectors module](../connectors/README.md).
 
 ## For Developers
 

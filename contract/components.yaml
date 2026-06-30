@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '0.69-draft'
+contractVersion: '0'
 
 components:
   protocol:
@@ -183,7 +183,7 @@ components:
       - 'Electron app/window lifecycle and the hardened BrowserWindow security baseline (contextIsolation, sandbox, nodeIntegration: false, preload)'
       - 'profile-scoped CSP (loopback in Local mode; remote REST + wss origins added in Remote mode), single-instance lock, shell-local navigation guard, external-navigation handling'
       - 'process supervision of the bundled web/REST server (Node utilityProcess) in Local mode only; Remote mode does not fork the embedded server'
-      - 'backend profiles ({ id, label, mode: local|remote, backendUrl } + active id) in userData/settings.json, per-profile Electron session partitions (persist:backend-<id>), per-backend bearer-token storage via safeStorage, and the reload-and-login switcher / first-run chooser (0.55-draft, additive; Local is the default unchanged behavior)'
+      - 'backend profiles ({ id, label, mode: local|remote, backendUrl } + active id) in userData/settings.json, per-profile Electron session partitions (persist:backend-<id>), per-backend bearer-token storage via safeStorage, and the reload-and-login switcher / first-run chooser (additive; Local is the default unchanged behavior)'
       - 'the minimal window.overlord preload bridge surface (feature-detected by the SPA, never required by it), incl. getActiveBackend/listBackends/addBackend/removeBackend/switchBackend/writeProjectMetadata/invokeLocalTarget'
       - 'desktop packaging metadata and the build/sign/notarize pipeline (electron-builder, entitlements, app-data layout)'
     dependsOn:
@@ -227,9 +227,9 @@ interactionSurfaces:
     transport: http-json
     rules:
       - 'CLI must not import database adapters or service internals'
-      - 'Backend URL comes from backend_url (loopback for Local, HTTPS for Cloud); a container/agent-pod CLI consumes the injected runtime OVERLORD_BACKEND_URL and must not persist config (0.36/0.55-draft)'
+      - 'Backend URL comes from backend_url (loopback for Local, HTTPS for Cloud); a container/agent-pod CLI consumes the injected runtime OVERLORD_BACKEND_URL and must not persist config'
       - 'Mutations go through backend endpoints that own persistence and idempotency'
-      - 'Cloud/headless runners authenticate with scoped service tokens that can claim only their own target/workspace requests (0.55-draft)'
+      - 'Cloud/headless runners authenticate with scoped service tokens that can claim only their own target/workspace requests'
 
   connectorToProtocol:
     description: 'Connector hook scripts invoke protocol commands via subprocess'
@@ -304,7 +304,7 @@ interactionSurfaces:
       - 'Reactions to core events via service APIs, entity_changes, or outbox_messages only'
 
   shellToRest:
-    description: "The desktop shell's BrowserWindow loads the SPA and calls /api/* (incl. SSE realtime) over the loopback origin (Local) or the hosted backend's HTTPS/wss origin (Remote, 0.55-draft) via the SPA's runtime-injected API base URL — another HTTP client of the existing REST surface"
+    description: "The desktop shell's BrowserWindow loads the SPA and calls /api/* (incl. SSE realtime) over the loopback origin (Local) or the hosted backend's HTTPS/wss origin (Remote) via the SPA's runtime-injected API base URL — another HTTP client of the existing REST surface"
     from: desktop
     to: rest
     transport: loopback-or-https-http-and-sse

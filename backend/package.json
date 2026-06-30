@@ -1,6 +1,6 @@
 {
   "name": "@overlord/backend",
-  "version": "0.2606300942.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Overlord REST, protocol, runner, and realtime control-plane backend.",

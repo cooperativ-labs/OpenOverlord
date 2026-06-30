@@ -12,7 +12,7 @@ import { nowIso } from './util.js';
  * safe multi-writer claiming — handled by `FOR UPDATE SKIP LOCKED` on Postgres
  * and by the SQLite client's serialized transactions locally. Claiming stays a
  * single service-layer transaction; provider adapters never touch the rows
- * directly (Database/REST contract, `0.55-draft`).
+ * directly (Database/REST contract).
  */
 
 const DEFAULT_CLAIM_TTL_MS = 15 * 60 * 1000;

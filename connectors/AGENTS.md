@@ -60,7 +60,7 @@ A new connector is the primary sanctioned extension point for this module. It re
 
 6. **Create `connectors/adapters/<agent-name>/conformance-manifest.yaml`** declaring:
    ```yaml
-   contractVersion: "0.2-draft"
+   contractVersion: "0"
    componentType: connector
    componentKey: <agent-name>
    capabilities:

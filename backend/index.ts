@@ -1180,7 +1180,7 @@ app.post(
 );
 
 // ---- Static SPA (Local/desktop only: `yarn build` then `yarn start`) -------
-// Cloud/Postgres backends are API-only; Vercel serves the SPA (contract 0.55-draft).
+// Cloud/Postgres backends are API-only; Vercel serves the SPA.
 
 if (resolveServeSpa({ dialect: DATABASE_DIALECT }) && existsSync(distDir)) {
   app.use(express.static(distDir));

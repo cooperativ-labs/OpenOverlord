@@ -57,9 +57,8 @@ Each workspace owns its detailed specs and test plan under `<module>/docs/`:
 
 ### 5. Planning & proposals
 
-Not-yet-built or under-discussion work, in
-[`planning/feature-plans/`](../planning/feature-plans/README.md) — see its index
-for the full catalog grouped by topic.
+Not-yet-built or under-discussion work lives in
+[`planning/feature-plans/`](../planning/feature-plans/).
 
 ### 6. Security audits
 
@@ -81,7 +80,7 @@ home and a rule:
 | Architecture series | how the system works, in order | `<module>/docs/NN-*.md` (indexed by [`docs/architecture.md`](architecture.md)) |
 | Module behavior specs | per-module detail + `testing.md` | `<module>/docs/` |
 | Web UI design set | the ideal web control center, screen by screen | [`webapp/docs/ui/`](../webapp/docs/ui/README.md) |
-| Planning / proposals | not-yet-built or under-discussion work | [`planning/feature-plans/`](../planning/feature-plans/README.md) |
+| Planning / proposals | not-yet-built or under-discussion work | [`planning/feature-plans/`](../planning/feature-plans/) |
 | Security audits | dated external-surface reviews | [`security-audits/`](../security-audits/) |
 | Agent history | per-mission investigation notes | [`ai/history/`](../ai/history/) |
 | Normative spec | the contract | [`CONTRACT.md`](../CONTRACT.md) + [`contract/`](../contract/) |

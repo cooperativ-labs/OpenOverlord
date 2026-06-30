@@ -11,7 +11,7 @@ function parseTruthyEnv(value: string | undefined): boolean | null {
 /**
  * Whether the REST server should mount the built SPA (`express.static` + HTML
  * fallback). Cloud/Postgres control planes are API-only — Vercel serves the web
- * client per contract `0.55-draft`. Local SQLite (desktop, `ovld serve`) keeps
+ * client per the contract. Local SQLite (desktop, `ovld serve`) keeps
  * same-origin static serving when `webapp/dist` is present.
  */
 export function resolveServeSpa({

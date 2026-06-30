@@ -87,10 +87,10 @@ A version bump is required for any **breaking** stable-interface change:
 
 **Steps:**
 
-1. Increment `contractVersion` in `components.yaml` (e.g. `0.2-draft` → `0.3-draft` or `1.0` for stable release).
+1. Increment `contractVersion` in `components.yaml` (e.g. `0` → `0.1` or `1.0` for a stable release).
 2. Add a changelog entry to `CONTRACT.md` under "Contract Version" table:
    ```markdown
-   | `0.3-draft` | Brief description of the breaking change. |
+   | `0.1` | Brief description of the breaking change. |
    ```
 3. Update all conformance manifests that declare the old version.
 
@@ -115,7 +115,7 @@ The manifest schema is in `contract/conformance-manifest.schema.yaml`. Required 
 ## Example: Minimal Conformance Manifest
 
 ```yaml
-contractVersion: "0.2-draft"
+contractVersion: "0"
 componentType: connector
 componentKey: my-agent
 capabilities:

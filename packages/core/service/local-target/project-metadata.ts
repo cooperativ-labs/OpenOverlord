@@ -4,7 +4,7 @@
 // This lives in the local-target module (not projects.ts) so the in-process
 // provider can wrap it without a cycle — projects.ts depends on the local-target
 // module, never the other way around. The hosted backend must NOT write this to
-// its own filesystem (design §2, contract 0.57-draft); routing through a provider
+// its own filesystem; routing through a provider
 // makes that automatic — only a co-located in-process provider writes.
 
 import { mkdirSync, writeFileSync } from 'node:fs';

@@ -2,7 +2,7 @@ export const SEED_WORKSPACE_ID = 'local-workspace';
 export const SEED_WORKSPACE_SLUG = 'local';
 export const SEED_WORKSPACE_USER_ID = 'local-workspace-user';
 export const SEED_USER_ID = 'local-user';
-export const CONTRACT_VERSION = '0.43-draft';
+export const CONTRACT_VERSION = '0';
 
 export const DEFAULT_STATUSES = [
   {

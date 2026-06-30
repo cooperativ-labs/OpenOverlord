@@ -27,7 +27,7 @@ module behind those boundaries.
 
 ## Current Upstream Baseline
 
-This guide is based on OpenOverlord contract version `0.7-draft`.
+This guide is based on OpenOverlord contract version `0`.
 
 Read these files first in the downstream repo:
 
@@ -136,7 +136,7 @@ Before adding `lite/src/*`, update the downstream contract.
 
 Recommended downstream contract changes:
 
-1. Bump the downstream contract version from `0.7-draft` to a downstream-labeled
+1. Bump the downstream contract version from `0` to a downstream-labeled
    version such as `0.8-downstream.0` in `CONTRACT.md` and
    `contract/components.yaml`.
 2. Add a `lite` component to the Component Registry.
