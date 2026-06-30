@@ -60,23 +60,20 @@ export function ProjectColorSetter({ value, onSelect, className }: ProjectColorS
   }
 
   return (
-    <div className={cn('space-y-2', className)}>
-      <div className="flex flex-wrap gap-1.5">
+    <div className={cn('w-fit space-y-2', className)}>
+      <div className="grid grid-cols-6 gap-1">
         {PRESET_PROJECT_COLORS.map(color => {
           const isActive = color.toLowerCase() === value.toLowerCase();
           return (
             <button
               key={color}
               type="button"
-              aria-label={`Select color ${color}`}
-              aria-pressed={isActive}
               className={cn(
-                'h-6 w-6 rounded-full border transition-transform hover:scale-110',
-                isActive
-                  ? 'ring-2 ring-ring ring-offset-2 ring-offset-background'
-                  : 'border-border/60'
+                'h-4 w-4 rounded-[4px] border transition ring-offset-1',
+                isActive ? 'ring-2 ring-primary' : 'hover:ring-2 hover:ring-primary/50'
               )}
-              style={{ backgroundColor: color }}
+              style={{ backgroundColor: color, borderColor: color }}
+              aria-label={`Use color ${color}`}
               onClick={() => onSelect(color)}
             />
           );
@@ -91,7 +88,7 @@ export function ProjectColorSetter({ value, onSelect, className }: ProjectColorS
         }}
         placeholder={DEFAULT_PROJECT_COLOR}
         spellCheck={false}
-        className="h-7 w-24 text-xs"
+        className="mt-2 h-7 w-24 text-xs"
       />
     </div>
   );

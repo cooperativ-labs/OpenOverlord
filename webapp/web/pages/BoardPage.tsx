@@ -280,7 +280,7 @@ export function BoardPage() {
           initialName={projectName}
           initialColor={projectColor}
         />
-        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] px-5 py-3">
+        <div className="flex flex-wrap items-center gap-2  border-(--color-border) px-5 mt-5">
           <div className="flex flex-wrap items-center gap-2">
             <MissionsViewToggle value={view} onChange={handleViewChange} />
             <MissionTagFilterDropdown
@@ -297,7 +297,7 @@ export function BoardPage() {
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-auto p-6">
+      <div className="min-h-0 flex-1 overflow-auto p-3 px-5">
         {missions.length === 0 ? (
           <EmptyState
             title="No missions in this project"

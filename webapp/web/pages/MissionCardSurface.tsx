@@ -45,7 +45,7 @@ export function MissionCardSurface({
       aria-label={`Open mission: ${mission.title}`}
       size={size}
       className={cn(
-        'group relative overflow-hidden rounded-md border-gray-300/60 bg-linear-to-br from-gray-300/5 to-transparent transition-all hover:shadow-md dark:border-gray-700/40',
+        'group relative overflow-hidden rounded-md border-gray-300/60 bg-linear-to-br from-gray-300/5 over:from-gray-300/20  to-transparent transition-all hover:shadow-md dark:border-gray-700/40',
         selected && 'border-gray-600/60 bg-gray-100/90 dark:border-gray-500/70 dark:bg-gray-900/40',
         className
       )}
@@ -53,9 +53,9 @@ export function MissionCardSurface({
         onOpen
           ? onOpen()
           : navigate({
-              to: '/projects/$projectId/missions/$missionId',
-              params: { projectId, missionId: mission.id }
-            })
+            to: '/projects/$projectId/missions/$missionId',
+            params: { projectId, missionId: mission.id }
+          })
       }
     >
       <MissionCardStateOverlay state={cardState} />

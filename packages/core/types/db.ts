@@ -251,6 +251,19 @@ export interface IdempotencyKeys {
   workspace_id: string;
 }
 
+export interface MissionBranchObservations {
+  created_at: string;
+  dirty: number;
+  execution_target_id: string;
+  id: string | null;
+  mission_id: string;
+  observed_at: string;
+  status: string;
+  updated_at: string;
+  workspace_id: string;
+  worktree_path: string | null;
+}
+
 export interface MissionEvents {
   actor_token_id: string | null;
   actor_workspace_user_id: string | null;
@@ -552,19 +565,6 @@ export interface StorageBuckets {
   storage_backend: string;
   updated_at: string;
   workspace_id: string;
-}
-
-export interface MissionBranchObservations {
-  created_at: string;
-  dirty: number;
-  execution_target_id: string;
-  id: string | null;
-  mission_id: string;
-  observed_at: string;
-  status: string;
-  updated_at: string;
-  workspace_id: string;
-  worktree_path: string | null;
 }
 
 export interface TargetResourceObservations {

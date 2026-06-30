@@ -3589,6 +3589,70 @@ const VALID_STATES = [
 ];
 
 /**
+ * Persists objective position changes with a two-phase write so
+ * mission_id+position uniqueness is not violated mid-transaction.
+ */
+async function applyObjectivePositionUpdates(
+  tx: DatabaseClient,
+  options: {
+    missionId: string;
+    projectId: string;
+    rows: ObjectiveRow[];
+    positionById: Map<string, number>;
+    now: string;
+  }
+): Promise<void> {
+  const { missionId, projectId, rows, positionById, now } = options;
+  const byId = new Map(rows.map(row => [row.id, row]));
+
+  const updates = [...positionById.entries()]
+    .map(([objectiveId, position]) => {
+      const existing = byId.get(objectiveId);
+      if (!existing || existing.position === position) return null;
+      return { existing, position, revision: existing.revision + 1 };
+    })
+    .filter((update): update is NonNullable<typeof update> => update !== null);
+
+  if (updates.length === 0) return;
+
+  const maxPosition = Math.max(
+    ...rows.map(row => row.position),
+    ...updates.map(update => update.position)
+  );
+  const tempBase = maxPosition + updates.length + 1;
+
+  for (const [index, { existing }] of updates.entries()) {
+    await tx.run(
+      `UPDATE objectives SET position = ?, updated_at = ?
+         WHERE id = ? AND workspace_id = ?`,
+      [tempBase + index, now, existing.id, WORKSPACE.id]
+    );
+  }
+
+  for (const { existing, position, revision } of updates) {
+    await tx.run(
+      `UPDATE objectives SET position = ?, updated_at = ?, revision = ?
+         WHERE id = ? AND workspace_id = ?`,
+      [position, now, revision, existing.id, WORKSPACE.id]
+    );
+
+    await recordChange(
+      {
+        entityType: 'objective',
+        entityId: existing.id,
+        operation: 'update',
+        entityRevision: revision,
+        projectId,
+        missionId,
+        objectiveId: existing.id,
+        changedFields: ['position']
+      },
+      tx
+    );
+  }
+}
+
+/**
  * Reorder a mission's `future` objectives. `orderedObjectiveIds` is the full
  * top-to-bottom order the future group should have afterwards. The future rows
  * are renumbered relative to one another starting at the lowest position they
@@ -3972,13 +4036,14 @@ async function updateObjectiveTx(
 
     const now = nowIso();
     const revision = existing.revision + 1;
+    let promotedDraftSlotPosition: number | null = null;
     if (body.state === 'draft') {
       const otherDrafts = (await tx.all(
-        `SELECT id, revision FROM objectives
+        `SELECT id, revision, position FROM objectives
            WHERE mission_id = ? AND workspace_id = ? AND state = 'draft'
              AND id <> ? AND deleted_at IS NULL`,
         [existing.mission_id, WORKSPACE.id, id]
-      )) as Array<{ id: string; revision: number }>;
+      )) as Array<{ id: string; revision: number; position: number }>;
 
       for (const draft of otherDrafts) {
         const draftRevision = draft.revision + 1;
@@ -4002,6 +4067,42 @@ async function updateObjectiveTx(
           tx
         );
       }
+
+      if (existing.state === 'future' && otherDrafts.length > 0) {
+        const draftSlotPosition = Math.min(...otherDrafts.map(draft => draft.position));
+        if (existing.position > draftSlotPosition) {
+          promotedDraftSlotPosition = draftSlotPosition;
+          const missionRows = (await tx.all(
+            `SELECT * FROM objectives
+               WHERE mission_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+            [existing.mission_id, WORKSPACE.id]
+          )) as ObjectiveRow[];
+          const positionById = new Map<string, number>();
+          for (const row of missionRows) {
+            if (row.id === id) continue;
+            if (row.position >= draftSlotPosition && row.position < existing.position) {
+              positionById.set(row.id, row.position + 1);
+            }
+          }
+          await applyObjectivePositionUpdates(tx, {
+            missionId: existing.mission_id,
+            projectId: existing.project_id,
+            rows: missionRows,
+            positionById,
+            now
+          });
+        }
+      }
+    }
+
+    if (
+      promotedDraftSlotPosition !== null &&
+      body.position === undefined &&
+      !changed.includes('position')
+    ) {
+      fields.push('position = ?');
+      setParams.push(promotedDraftSlotPosition);
+      changed.push('position');
     }
 
     await tx.run(

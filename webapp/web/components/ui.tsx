@@ -91,17 +91,17 @@ export const STATUS_LABEL: Record<StatusType, string> = Object.fromEntries(
 export function statusClasses(type: StatusType): string {
   switch (type) {
     case 'draft':
-      return 'bg-slate-500/15 text-slate-600 ring-slate-400/30 dark:text-slate-300';
+      return 'text-slate-600';
     case 'execute':
-      return 'bg-blue-500/15 text-blue-700 ring-blue-400/30 dark:text-blue-300';
+      return 'text-blue-700';
     case 'review':
-      return 'bg-amber-500/15 text-amber-700 ring-amber-400/30 dark:text-amber-300';
+      return 'text-amber-700';
     case 'complete':
-      return 'bg-emerald-500/15 text-emerald-700 ring-emerald-400/30 dark:text-emerald-300';
+      return 'text-emerald-700';
     case 'blocked':
-      return 'bg-red-500/15 text-red-700 ring-red-400/30 dark:text-red-300';
+      return 'text-red-700';
     case 'cancelled':
-      return 'bg-zinc-500/15 text-zinc-600 ring-zinc-400/30 dark:text-zinc-400';
+      return 'text-zinc-600';
   }
 }
 

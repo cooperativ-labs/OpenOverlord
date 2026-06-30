@@ -2,7 +2,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Plus } from 'lucide-react';
 import { useCallback, useState } from 'react';
-
+import { cn } from '@/lib/utils';
 import { Badge, STATUS_CONFIG, statusClasses } from '@/components/ui.tsx';
 
 import type { MissionDto, WorkspaceMemberDto, WorkspaceStatusDto } from '../../shared/contract.ts';
@@ -69,11 +69,7 @@ export function BoardColumn({
   const content = (
     <div
       ref={setNodeRef}
-      className={`flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-1 transition-colors ${
-        isOver
-          ? 'bg-[var(--color-surface-2)]/40 ring-1 ring-inset ring-[var(--color-accent)]/30'
-          : ''
-      }`}
+      className={cn("flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-1 transition-colors", isOver ? 'bg-muted/40 ring-1 ring-inset ring-accent/30' : '')}
     >
       {isAddingTop ? (
         <BlankMissionCard
@@ -132,19 +128,18 @@ export function BoardColumn({
   );
 
   return (
-    <div className="flex h-full min-h-0 w-72 shrink-0 flex-col">
-      <div className="mb-2 flex shrink-0 items-center justify-between px-1">
-        <Badge className={statusClasses(status.type)}>
-          {status.name}
-          <StatusIcon className="ml-1.5 h-3 w-3 opacity-60" />
-        </Badge>
+    <div className="flex h-full min-h-0 w-72 shrink-0 flex-col bg-muted/40 dark:bg-muted/20 rounded-lg p-2 py-4">
+      <div className="mb-3 flex shrink-0 items-center justify-between px-1">
+        <div className="flex items-center gap-1 text-xs uppercase font-semibold text-muted-foreground/90 tracking-wide">
+          <StatusIcon className={cn("mr-1.5 h-3.5 w-3.5", statusClasses(status.type))} />  {status.name}
+        </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-xs text-[var(--color-ink-dim)]">{count}</span>
+          <span className="text-xs text-(--color-ink-dim)">{count}</span>
           <button
             type="button"
             onClick={handleStartAddingTop}
             aria-label="Add mission to top of column"
-            className="rounded-md p-0.5 text-muted-foreground/40 transition-colors hover:bg-[var(--color-surface-2)]/60 hover:text-muted-foreground/80"
+            className="rounded-md p-0.5 text-gray-900/60 dark:text-gray-100/60 font-bold transition-colors hover:bg-muted hover:text-muted-foreground"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>

@@ -1,6 +1,10 @@
 import { Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
+import {
+  DEFAULT_PROJECT_COLOR,
+  ProjectColorSetter
+} from '@/components/projects/ProjectColorSetter';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -10,6 +14,11 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -20,8 +29,6 @@ import {
 } from '@/lib/queries';
 
 import type { ProjectTagDto } from '../../../../shared/contract.ts';
-
-const DEFAULT_NEW_COLOR = '#94a3b8';
 
 type TagsPageProps = {
   projectId: string;
@@ -35,7 +42,7 @@ export function TagsPage({ projectId }: TagsPageProps) {
   const deleteTag = useDeleteProjectTag(projectId);
 
   const [newLabel, setNewLabel] = useState('');
-  const [newColor, setNewColor] = useState(DEFAULT_NEW_COLOR);
+  const [newColor, setNewColor] = useState(DEFAULT_PROJECT_COLOR);
   const [addError, setAddError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProjectTagDto | null>(null);
@@ -81,7 +88,7 @@ export function TagsPage({ projectId }: TagsPageProps) {
     try {
       await createTag.mutateAsync({ label: trimmed, color: newColor });
       setNewLabel('');
-      setNewColor(DEFAULT_NEW_COLOR);
+      setNewColor(DEFAULT_PROJECT_COLOR);
     } catch (error) {
       setAddError(error instanceof Error ? error.message : 'Failed to add tag.');
     }
@@ -126,14 +133,28 @@ export function TagsPage({ projectId }: TagsPageProps) {
               {tags.map(tag => (
                 <tr key={tag.id} className="border-t">
                   <td className="px-3 py-2">
-                    <input
-                      type="color"
-                      aria-label={`Color for ${tag.label}`}
-                      value={tag.color ?? DEFAULT_NEW_COLOR}
-                      disabled={updateTag.isPending}
-                      onChange={event => void handleRecolor(tag, event.target.value)}
-                      className="h-7 w-9 cursor-pointer rounded border bg-transparent p-0.5"
-                    />
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        disabled={updateTag.isPending}
+                        render={
+                          <button
+                            type="button"
+                            className="h-5 w-5 shrink-0 rounded border transition hover:ring-2 hover:ring-primary hover:ring-offset-2 disabled:opacity-50"
+                            style={{
+                              backgroundColor: tag.color ?? DEFAULT_PROJECT_COLOR,
+                              borderColor: tag.color ?? DEFAULT_PROJECT_COLOR
+                            }}
+                            aria-label={`Color for ${tag.label}`}
+                          />
+                        }
+                      />
+                      <DropdownMenuContent className="w-auto p-2" align="start">
+                        <ProjectColorSetter
+                          value={tag.color ?? DEFAULT_PROJECT_COLOR}
+                          onSelect={color => void handleRecolor(tag, color)}
+                        />
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </td>
                   <td className="px-3 py-2">
                     <Input
@@ -186,14 +207,8 @@ export function TagsPage({ projectId }: TagsPageProps) {
         <h3 className="text-sm font-medium">Add tag</h3>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <div className="grid gap-1.5">
-            <Label htmlFor="new-tag-color">Color</Label>
-            <input
-              id="new-tag-color"
-              type="color"
-              value={newColor}
-              onChange={event => setNewColor(event.target.value)}
-              className="h-8 w-10 cursor-pointer rounded border bg-transparent p-0.5"
-            />
+            <Label>Color</Label>
+            <ProjectColorSetter value={newColor} onSelect={setNewColor} />
           </div>
           <div className="grid min-w-[12rem] gap-1.5">
             <Label htmlFor="new-tag-label">Label</Label>

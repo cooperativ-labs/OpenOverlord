@@ -46,9 +46,9 @@ export function MissionCardBody({
                     render={
                       <div
                         className={cn(
-                          'pointer-events-auto flex h-5 min-w-5 items-center justify-center rounded-full text-[11px] font-medium tabular-nums',
+                          'pointer-events-auto flex h-5 min-w-5 items-center justify-center rounded-full text-[10px] font-medium tabular-nums ',
                           cardState.objectiveCountAlert
-                            ? 'bg-red-500 text-white'
+                            ? 'bg-red-700 text-white'
                             : 'bg-muted text-muted-foreground'
                         )}
                         onClick={e => e.stopPropagation()}

@@ -270,6 +270,65 @@ test('marking the only queued objective executing creates a blank draft fallback
   assert.equal(rows[1]!.assigned_agent, 'codex');
 });
 
+test('promoting a future objective splices it into the draft slot and cascades positions', async () => {
+  const project = await createProject({ name: 'Promote Future Splice' });
+  const mission = await createMission({ projectId: project.id, firstObjective: 'Objective 1' });
+  const objectiveIds = [mission.objectives[0]!.id];
+
+  for (let index = 2; index <= 5; index += 1) {
+    const objective = await createObjective({
+      missionId: mission.id,
+      instructionText: `Objective ${index}`
+    });
+    objectiveIds.push(objective.id);
+  }
+
+  const promoted = await createObjective({
+    missionId: mission.id,
+    instructionText: 'Inserted objective'
+  });
+
+  const [firstId, secondId, thirdId, fourthId, fifthId] = objectiveIds;
+  db.prepare(`UPDATE objectives SET state = 'complete', position = 0 WHERE id = ?`).run(firstId);
+  db.prepare(`UPDATE objectives SET state = 'complete', position = 1 WHERE id = ?`).run(secondId);
+  db.prepare(`UPDATE objectives SET state = 'draft', position = 2 WHERE id = ?`).run(thirdId);
+  db.prepare(`UPDATE objectives SET state = 'future', position = 3 WHERE id = ?`).run(fourthId);
+  db.prepare(`UPDATE objectives SET state = 'future', position = 4 WHERE id = ?`).run(fifthId);
+  db.prepare(`UPDATE objectives SET state = 'future', position = 5 WHERE id = ?`).run(promoted.id);
+
+  await updateObjective(promoted.id, { state: 'draft' });
+
+  const rows = db
+    .prepare(
+      `SELECT id, instruction_text, state, position
+       FROM objectives
+       WHERE mission_id = ? AND deleted_at IS NULL
+       ORDER BY position ASC`
+    )
+    .all(mission.id) as Array<{
+    id: string;
+    instruction_text: string;
+    state: string;
+    position: number;
+  }>;
+
+  assert.deepEqual(
+    rows.map(row => ({
+      text: row.instruction_text,
+      state: row.state,
+      position: row.position
+    })),
+    [
+      { text: 'Objective 1', state: 'complete', position: 0 },
+      { text: 'Objective 2', state: 'complete', position: 1 },
+      { text: 'Inserted objective', state: 'draft', position: 2 },
+      { text: 'Objective 3', state: 'future', position: 3 },
+      { text: 'Objective 4', state: 'future', position: 4 },
+      { text: 'Objective 5', state: 'future', position: 5 }
+    ]
+  );
+});
+
 test.after(() => {
   db.close();
   rmSync(tempDir, { recursive: true, force: true });
