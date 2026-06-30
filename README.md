@@ -176,8 +176,15 @@ All surfaces share one contract: [`CONTRACT.md`](CONTRACT.md) (version `0`).
 This repo is a single [Yarn 4](https://yarnpkg.com) workspace: the `auth`,
 `automations`, `database`, `cli`, `webapp`, and optional `desktop` packages
 alongside the root. One install at the root bootstraps everything — there are
-no per-package installs to remember. Yarn 4 is provided via `packageManager`;
-run `corepack enable` once if `yarn --version` does not report `4.x`.
+no per-package installs to remember. Yarn is pinned via `packageManager` in
+`package.json` and a committed binary at `.yarn/releases/` (see `yarnPath` in
+`.yarnrc.yml`). After cloning, run `yarn install` from the repo root — `yarn`
+delegates to that binary automatically.
+
+To upgrade Yarn: `yarn set version <version> --yarn-path`, then commit
+`package.json`, `.yarnrc.yml`, the new `.yarn/releases/*.cjs`, and remove the
+old release file. Docker and Vercel read `yarnPath` from `.yarnrc.yml`; no
+Dockerfile edits are needed on bump.
 
 ```bash
 yarn setup   # install, build, start the local DB, and regenerate DB types

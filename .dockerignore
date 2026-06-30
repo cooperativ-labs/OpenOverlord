@@ -4,6 +4,8 @@ node_modules
 .git
 .yarn/cache
 .yarn/install-state.gz
+!.yarn/releases
+!.yarn/releases/**
 **/.yarn/install-state.gz
 dist
 **/dist

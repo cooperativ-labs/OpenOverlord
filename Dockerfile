@@ -21,11 +21,11 @@ FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 ENV YARN_ENABLE_SCRIPTS=1
 
-# Yarn 4 via Corepack, pinned by package.json "packageManager".
-RUN corepack enable
+# Yarn 4 via committed yarnPath (.yarnrc.yml), not Corepack.
 
 # Install against the full workspace manifest set so workspace resolution works.
 COPY package.json yarn.lock .yarnrc.yml ./
+COPY .yarn/releases .yarn/releases
 COPY auth/package.json auth/
 COPY automations/package.json automations/
 COPY backend/package.json backend/tsconfig.json backend/
@@ -36,19 +36,26 @@ COPY desktop/package.json desktop/
 COPY packages/core/package.json packages/core/
 COPY packages/contract/package.json packages/contract/
 # Source is copied after install; skip workspace builds until COPY . . below.
-RUN yarn install --immutable --mode=skip-build
+RUN printf '%s\n' \
+  '#!/bin/sh' \
+  'set -e' \
+  'YARN="$(sed -n "s/^yarnPath: //p" /app/.yarnrc.yml)"' \
+  'exec node "$YARN" "$@"' \
+  > /usr/local/bin/repo-yarn \
+  && chmod +x /usr/local/bin/repo-yarn
+RUN repo-yarn install --immutable --mode=skip-build
 
 # Build workspace packages that resolve to dist/ (database, auth, automations,
 # contract, core), then bundle the Postgres-only server. esbuild still follows
 # relative imports into packages/core/service/*.ts for the server graph.
 COPY . .
-RUN yarn db:build:prod \
-  && yarn auth:build:prod \
-  && yarn automations:build:prod \
-  && yarn contract:build:prod \
-  && yarn core:build:prod \
-  && yarn workspace @overlord/backend build:server:cloud \
-  && yarn workspaces focus --production @overlord/automations
+RUN repo-yarn db:build:prod \
+  && repo-yarn auth:build:prod \
+  && repo-yarn automations:build:prod \
+  && repo-yarn contract:build:prod \
+  && repo-yarn core:build:prod \
+  && repo-yarn workspace @overlord/backend build:server:cloud \
+  && repo-yarn workspaces focus --production @overlord/automations
 
 # ---- Runtime -------------------------------------------------------------
 FROM node:20-bookworm-slim AS runtime
