@@ -6,8 +6,8 @@ the packaged app. It is excluded from the default `yarn test` aggregate.
 
 ## Automated / scriptable
 
-- **Server bundle boots on plain Node.** `yarn workspace @overlord/webapp
-  build:server` then `node webapp/dist-server/index.mjs` against a fresh
+- **Server bundle boots on plain Node.** `yarn workspace @overlord/backend
+  build:server` then `node backend/dist-server/index.cjs` against a fresh
   `OVERLORD_SQLITE_PATH` must create + migrate the DB, seed the workspace, and
   answer `GET /api/health` with `{ ok: true }`.
 - **`ovld serve` first-run.** On a clean machine,

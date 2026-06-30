@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
+import type { RepositoryTreeResult } from '../../../packages/core/service/local-target/types.ts';
 import type { ProjectResourceDto } from '../../shared/contract.ts';
 import type {
   MissionMentionOption,
@@ -74,7 +75,7 @@ export function useRepositoryMentionOptions(projectId: string) {
   const bridgeMentions = useQuery({
     queryKey: ['repository-mention-paths', projectId, primaryResource?.id, primaryResource?.path],
     queryFn: async () => {
-      const result = await invokeLocalTarget({
+      const result = await invokeLocalTarget<RepositoryTreeResult>({
         capability: 'readRepositoryTree',
         input: {
           resourceId: primaryResource!.id,

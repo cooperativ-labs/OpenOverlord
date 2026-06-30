@@ -32,7 +32,7 @@ export interface EntityChangeFields {
 
 /**
  * The single `entity_changes` writer shared by both data layers (the REST
- * `webapp/server/db.ts` path and the protocol/CLI service path). This must run
+ * `backend/db.ts` path and the protocol/CLI service path). This must run
  * inside the same transaction as the domain mutation so the realtime feed never
  * diverges from the data; the realtime poller turns these rows into SSE deltas.
  */

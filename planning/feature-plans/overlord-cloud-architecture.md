@@ -85,6 +85,50 @@ Pin the Railway service to **EU West (Amsterdam)** to co-locate with the phase-1
 Railway Postgres database and stay close to the phase-2 Neon EU target (see
 Region & Latency).
 
+#### Build & packaging (Railway = API-only)
+
+Railway builds the backend from a dedicated, backend-owned Dockerfile, **not**
+the repo-root `Dockerfile` (which is the all-in-one local/desktop image). The
+deploy wiring is:
+
+- `railway.json` → `build.dockerfilePath: "backend/Dockerfile.railway"`.
+- `backend/Dockerfile.railway` — multi-stage build that bundles only the
+  Postgres-only control-plane server (`@overlord/backend`'s
+  `build:server:cloud`, an esbuild bundle) and ships a pruned runtime.
+- `backend/Dockerfile.railway.dockerignore` — a **default-deny** context
+  (`**` then `!`-re-includes) so only server/runtime source reaches the build:
+  workspace manifests + TS config, `auth/src`, `automations/src`,
+  `database/src` + `database/postgres/migrations`, `packages/core` +
+  `packages/contract` source, `backend/`, `webapp/shared`, and the small
+  `cli/src` config subset the server still imports.
+
+What stays out of the Railway image, by design (Vercel/desktop-only):
+
+- `webapp/web`, `webapp/public`, `webapp/index.html`, `vite.config.ts` — the SPA
+  is **Vercel's** responsibility, so it is neither copied into the build context
+  nor bundled into `index.cjs`.
+- `desktop/src` — desktop is a separate distribution channel.
+- tests, fixtures, docs, planning, READMEs, and local metadata.
+
+Runtime invariants the image preserves:
+
+- `OVERLORD_SERVE_SPA=false` (Railway serves the API only; no static SPA).
+- Postgres migrations are present (`backend/postgres/migrations`); the SQLite
+  migration tree is omitted on the `--cloud` build.
+- `/api/health` is the Railway healthcheck (`railway.json`).
+- The pruned `node_modules` comes from `yarn workspaces focus --production
+  @overlord/automations`, which resolves to exactly the bundle's one external
+  runtime dep — `@google/genai` — plus its transitives. `better-sqlite3` is
+  intentionally absent because the Postgres boot path never loads it.
+
+**Maintenance rule:** keep Railway API-only and Vercel the SPA host. If the
+server gains a new external (non-bundled) runtime dependency, add it to the
+focused workspace's dependency tree so the pruned image still resolves it; never
+add `webapp/web`, `webapp/public`, or desktop sources to the backend build
+context or COPY allowlist. New shared source the server compiles must be
+re-included in `backend/Dockerfile.railway.dockerignore` and copied in
+`backend/Dockerfile.railway`.
+
 ### Database → Railway Postgres first, Neon later
 
 The first production deployment uses Railway Postgres in the same Railway

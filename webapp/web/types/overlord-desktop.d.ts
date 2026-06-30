@@ -66,9 +66,9 @@ declare global {
       devicePlatform: string;
     }>;
     invokeLocalTarget?: (
-      call: import('../../packages/core/service/local-target/desktop-bridge.ts').LocalTargetBridgeCall
+      call: import('../../../packages/core/service/local-target/desktop-bridge.ts').LocalTargetBridgeCall
     ) => Promise<
-      import('../../packages/core/service/local-target/types.ts').CapabilityResult<unknown>
+      import('../../../packages/core/service/local-target/types.ts').CapabilityResult<unknown>
     >;
     writeProjectMetadata?: (payload: {
       directoryPath: string;

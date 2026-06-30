@@ -24,7 +24,9 @@ export default [
       'desktop/staging/**',
       'desktop/webapp-dist/**',
       'desktop/release/**',
-      // Webapp: esbuild server bundle consumed by desktop packaging
+      // Backend: esbuild server bundle consumed by desktop packaging
+      'backend/dist-server/**',
+      // Legacy webapp server bundle (pre-backend migration)
       'webapp/dist-server/**'
     ]
   },
@@ -59,6 +61,7 @@ export default [
           'tsconfig.json',
           'auth/tsconfig.json',
           'automations/tsconfig.json',
+          'backend/tsconfig.json',
           'database/tsconfig.json',
           'webapp/tsconfig.json',
           'cli/tsconfig.json',

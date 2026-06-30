@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import type { LocalTargetBridgeCall } from '../../packages/core/service/local-target/desktop-bridge.ts';
+import type { LocalTargetBridgeCall } from '../../../packages/core/service/local-target/desktop-bridge.ts';
 import type {
   CapabilityResult,
   RepositoryTreeResult
-} from '../../packages/core/service/local-target/types.ts';
+} from '../../../packages/core/service/local-target/types.ts';
 
 const bridgeCall: LocalTargetBridgeCall = {
   capability: 'readRepositoryTree',
@@ -65,7 +65,7 @@ test('hasDesktopLocalTargetBridge is true when invokeLocalTarget is exposed', as
       },
       invokeLocalTarget: async () => bridgeResult
     }
-  } as Window;
+  } as unknown as Window;
 
   const { hasDesktopLocalTargetBridge, invokeLocalTarget } =
     await import('./local-target-client.ts');

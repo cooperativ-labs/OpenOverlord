@@ -197,7 +197,8 @@ function isRepoDevProcess(row: ProcessRow, repoRoot: string): boolean {
   return (
     command.includes('/node_modules/concurrently/dist/bin/concurrently.js') ||
     (command.includes('/node_modules/tsx/dist/cli.mjs') &&
-      command.includes('watch server/index.ts')) ||
+      command.includes('/backend/') &&
+      command.includes('watch index.ts')) ||
     command.includes('/node_modules/vite/bin/vite.js')
   );
 }
@@ -211,12 +212,16 @@ function isDevWrapperProcess(row: ProcessRow): boolean {
     command.includes('corepack/dist/yarn.js workspace @overlord/webapp dev') ||
     command.includes('corepack/dist/yarn.js dev:server') ||
     command.includes('corepack/dist/yarn.js server:dev') ||
+    command.includes('corepack/dist/yarn.js backend:dev') ||
+    command.includes('corepack/dist/yarn.js workspace @overlord/backend dev') ||
     command.includes('corepack/dist/yarn.js workspace @overlord/webapp dev:server') ||
     command.includes('corepack/dist/yarn.js dev:web') ||
     command.includes('scripts/with-dev-env.mjs yarn dev:webapp') ||
     command.includes('scripts/with-dev-env.mjs yarn webapp:dev') ||
     command.includes('scripts/with-dev-env.mjs yarn dev:server') ||
     command.includes('scripts/with-dev-env.mjs yarn server:dev') ||
+    command.includes('scripts/with-dev-env.mjs yarn backend:dev') ||
+    command.includes('scripts/with-dev-env.mjs yarn workspace @overlord/backend dev') ||
     command.includes('scripts/with-dev-env.mjs yarn workspace @overlord/webapp dev') ||
     command.includes('scripts/with-dev-env.mjs yarn workspace @overlord/webapp dev:server')
   );

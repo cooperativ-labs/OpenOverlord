@@ -14,14 +14,14 @@ import { printJson } from './output.js';
  * reimplement the server: it resolves where the server entry lives, sets the
  * host/port/database environment the server reads on boot, and spawns it. The
  * server itself creates + migrates the SQLite database on first run (see
- * `webapp/server/db.ts`), so a fresh machine comes up with no extra steps.
+ * `backend/db.ts`), so a fresh machine comes up with no extra steps.
  *
  * Entry resolution (first match wins):
  *   1. `OVERLORD_SERVER_ENTRY` env — an explicit path (run with the matching
  *      runtime by extension: `.ts` via tsx, otherwise `node`).
- *   2. `<project>/webapp/dist-server/index.cjs` — the esbuild server bundle
+ *   2. `<project>/backend/dist-server/index.cjs` — the esbuild server bundle
  *      (`yarn build:server:prod`), run with `node`. Preferred when present.
- *   3. `<project>/webapp/server/index.ts` — the TypeScript source, run with
+ *   3. `<project>/backend/index.ts` — the TypeScript source, run with
  *      tsx. The repo dev path.
  *
  * The desktop app does not use this command: it forks the server bundle inside
@@ -45,8 +45,8 @@ export async function runServeCommand({ rest }: { rest: string[] }): Promise<voi
     throw new CliError({
       message:
         'Could not find the Overlord web server to serve.\n' +
-        `Looked for ${path.join(projectRoot, 'webapp', 'dist-server', 'index.cjs')} (built bundle) ` +
-        `and ${path.join(projectRoot, 'webapp', 'server', 'index.ts')} (source).\n` +
+        `Looked for ${path.join(projectRoot, 'backend', 'dist-server', 'index.cjs')} (built bundle) ` +
+        `and ${path.join(projectRoot, 'backend', 'index.ts')} (source).\n` +
         'Run `ovld serve` from an OpenOverlord checkout, build the server bundle with ' +
         '`yarn build:server:prod`, or set OVERLORD_SERVER_ENTRY to the server entry file.'
     });
@@ -84,10 +84,10 @@ function resolveServerEntry(projectRoot: string): ResolvedEntry | null {
     return { entry, runtime: override.endsWith('.ts') ? 'tsx' : 'node' };
   }
 
-  const bundle = path.join(projectRoot, 'webapp', 'dist-server', 'index.cjs');
+  const bundle = path.join(projectRoot, 'backend', 'dist-server', 'index.cjs');
   if (existsSync(bundle)) return { entry: bundle, runtime: 'node' };
 
-  const source = path.join(projectRoot, 'webapp', 'server', 'index.ts');
+  const source = path.join(projectRoot, 'backend', 'index.ts');
   if (existsSync(source)) return { entry: source, runtime: 'tsx' };
 
   return null;

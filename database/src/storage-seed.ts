@@ -14,7 +14,7 @@ import { type DatabaseClient } from './client.js';
  * **non-secret** provider metadata in `settings_json` (`bucketName`, `region`,
  * `endpoint`, `pathPrefix`). Secrets (`S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY`)
  * stay in deployment environment variables and are only read at byte-I/O time by
- * `webapp/server/storage-backends.ts`. The schema contract requires credentials
+ * `backend/storage-backends.ts`. The schema contract requires credentials
  * never live in `storage_buckets`, so they are deliberately not persisted here.
  *
  * The flip is **idempotent** and **opt-in by data**: it only runs when the S3

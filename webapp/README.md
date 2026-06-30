@@ -64,8 +64,8 @@ yarn dev               # server (:4310) + Vite dev server (:5173) together
 # open http://localhost:5173
 ```
 
-`yarn dev` runs the REST/realtime server (`server/index.ts`) and the Vite
-dev server (which proxies `/api` to it). For a production-style run:
+`yarn dev` runs the top-level backend (`../backend/index.ts`) and the Vite dev
+server (which proxies `/api` to it). For a production-style run:
 
 ```bash
 yarn build && yarn start   # builds the SPA, serves it + the API on :4310
@@ -85,12 +85,14 @@ Initialise that database first with `yarn start:local` from the repo root.
 
 ```
 webapp/
-  server/     ← the `rest` contract component: Express REST routes + SSE realtime,
-              ← opening the SQLite DB via better-sqlite3 (db.ts, repository.ts,
-              ← realtime.ts, index.ts)
   web/        ← the React SPA (pure consumer of the REST surface)
   shared/     ← the typed API contract (camelCase DTOs) shared by server + web
   docs/       ← design + planning specs (below)
+
+backend/
+  *.ts        ← the `rest` contract component: Express REST routes + SSE realtime,
+              ← opening the SQLite DB via better-sqlite3 (db.ts, repository.ts,
+              ← realtime.ts, index.ts)
 ```
 
 Realtime works off the `entity_changes` feed: every mutation appends a row in

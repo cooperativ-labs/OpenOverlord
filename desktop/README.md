@@ -60,7 +60,7 @@ Maps to the `desktop` contract component (`desktop/docs/desktop-app.md`).
   single-instance lock, and external-link handling (links open in the system
   browser). The renderer is the SPA, unchanged.
 - **Server supervision.** On launch the main process forks the bundled server
-  (`webapp/dist-server/index.mjs`) inside an Electron **`utilityProcess`** — a
+  (`backend/dist-server/index.cjs`) inside an Electron **`utilityProcess`** — a
   Node context on Electron's ABI, so there is a single runtime to ship and sign.
   It polls `/api/health`, then loads the URL. The server is stopped on quit.
 - **Local backend and database.** The desktop-supervised server owns the local
@@ -88,7 +88,7 @@ yarn desktop:publish       # publish desktop/release artifacts to GitHub Release
 rebuild during development). Start a server first, then launch the shell:
 
 ```bash
-yarn build:webapp:prod && yarn workspace @overlord/webapp build:server
+yarn build:webapp:prod && yarn workspace @overlord/backend build:server
 ovld serve            # serves the SPA + API at http://127.0.0.1:4310 from a source checkout
 yarn desktop:dev      # Electron window connects to it
 ```

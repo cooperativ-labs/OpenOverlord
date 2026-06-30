@@ -13,8 +13,10 @@ import type {
   LocalTargetCapabilities,
   ObserveResourceInput,
   PerformBranchActionInput,
+  PurgeMergedWorktreesInput,
   ReadCurrentDiffInput,
   ReadRepositoryTreeInput,
+  RemoveWorktreeInput,
   WriteProjectMetadataInput
 } from './types.ts';
 
@@ -35,6 +37,8 @@ export type LocalTargetBridgeCall =
   | { capability: 'listWorktrees'; input: ListWorktreesInput }
   | { capability: 'deriveBranchStatus'; input: BranchStatusInput }
   | { capability: 'performBranchAction'; input: PerformBranchActionInput }
+  | { capability: 'removeWorktree'; input: RemoveWorktreeInput }
+  | { capability: 'purgeMergedWorktrees'; input: PurgeMergedWorktreesInput }
   | { capability: 'generateCommitMessageFromLocalDiff'; input: GenerateCommitMessageInput }
   | { capability: 'writeProjectMetadata'; input: WriteProjectMetadataInput };
 
@@ -67,6 +71,10 @@ export async function invokeLocalTargetCapability({
       return ok(provider.target, observeMissionBranchGit(call.input));
     case 'performBranchAction':
       return provider.performBranchAction(call.input);
+    case 'removeWorktree':
+      return provider.removeWorktree(call.input);
+    case 'purgeMergedWorktrees':
+      return provider.purgeMergedWorktrees(call.input);
     case 'generateCommitMessageFromLocalDiff':
       return provider.generateCommitMessageFromLocalDiff(call.input);
     case 'writeProjectMetadata':

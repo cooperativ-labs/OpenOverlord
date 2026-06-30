@@ -1,0 +1,42 @@
+{
+  "name": "@overlord/backend",
+  "version": "0.2606300942.0",
+  "private": true,
+  "type": "module",
+  "description": "Overlord REST, protocol, runner, and realtime control-plane backend.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch index.ts",
+    "build:server": "node scripts/build-server.mjs",
+    "build:server:cloud": "node scripts/build-server.mjs --cloud",
+    "start": "tsx index.ts",
+    "start:bundle": "node dist-server/index.cjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test load-repo-env.test.ts project-resources.test.ts title-automation.test.ts mission-ref.test.ts workspace-settings.test.ts workspaces.test.ts workspaces.postgres-conformance.test.ts my-missions.test.ts objectives.test.ts launch.test.ts branch-planning.test.ts branch-prepared.test.ts branch-status.test.ts branch-actions.test.ts branch-selection-worktrees.test.ts local-target-capability.test.ts local-target-invoke.test.ts mission-worktree-preference.test.ts generate-commit-message.test.ts storage-backends.test.ts storage.test.ts serve-spa.test.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1075.0",
+    "@aws-sdk/s3-request-presigner": "^3.1075.0",
+    "@google/genai": "^2.8.0",
+    "@overlord/auth": "workspace:*",
+    "@overlord/automations": "workspace:*",
+    "@overlord/contract": "workspace:*",
+    "@overlord/core": "workspace:*",
+    "@overlord/database": "workspace:*",
+    "better-auth": "^1.2.7",
+    "better-sqlite3": "^12.11.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^25.9.3",
+    "esbuild": "^0.28.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}

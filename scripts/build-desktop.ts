@@ -255,12 +255,12 @@ function main(): void {
   run('yarn', ['workspace', 'open-overlord', 'build']);
   // SPA + server bundle.
   run('yarn', ['workspace', '@overlord/webapp', 'build']);
-  run('yarn', ['workspace', '@overlord/webapp', 'build:server']);
+  run('yarn', ['workspace', '@overlord/backend', 'build:server']);
   // Electron main/preload.
   run(process.execPath, [path.join(desktopDir, 'esbuild.mjs')]);
 
   // 2. Stage assets into the desktop workspace for electron-builder.
-  stage(path.join(repoRoot, 'webapp', 'dist-server'), path.join(desktopDir, 'server'));
+  stage(path.join(repoRoot, 'backend', 'dist-server'), path.join(desktopDir, 'server'));
   stage(path.join(repoRoot, 'webapp', 'dist'), path.join(desktopDir, 'webapp-dist'));
   // The bundled @overlord/database resolves migrations relative to the server
   // bundle (`<dir>/../sqlite/migrations`), i.e. app.asar/sqlite/migrations.

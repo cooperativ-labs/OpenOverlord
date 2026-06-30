@@ -113,7 +113,7 @@ components:
       - 'URL paths and HTTP method contracts'
       - 'request/response DTO shapes (camelCase, derived from logical schema)'
       - 'admin-only workspace objective CSV export (GET /api/workspaces/:id/objectives.csv) as a text/csv attachment'
-      - 'read-only derived mission branch metadata (MissionBranchDto) from missions.active_branch, predicted via the service layer copy of the branch-planning algorithm (webapp/server/branch-planning.ts) pinned to contract/branch-planning-vectors.json, then merged with latest client branch observations when available'
+      - 'read-only derived mission branch metadata (MissionBranchDto) from missions.active_branch, predicted via the service layer copy of the branch-planning algorithm (backend/branch-planning.ts) pinned to contract/branch-planning-vectors.json, then merged with latest client branch observations when available'
       - 'mission branch base metadata resolution: project-configured base first, then the primary resource main worktree checkout for pending branches, with prepared branches tied to the runner-recorded baseBranch payload'
       - 'on-demand branch-action git mutations (POST /api/missions/:id/branch/action: merge-with-parent / push-parent / publish) run host-side against worktrees under ~/.ovld/worktrees and the primary repo; the Runner Layer owns launching the agent into a worktree, not these mutations'
       - 'REST auth integration points'

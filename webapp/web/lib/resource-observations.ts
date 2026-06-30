@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 
+import type { ResourceObservation } from '../../../packages/core/service/local-target/types.ts';
 import type {
   ProjectResourceDto,
   RecordTargetResourceObservationsBody
@@ -41,7 +42,7 @@ export async function reportResourceObservations({
 
   const observations: RecordTargetResourceObservationsBody['observations'] = [];
   for (const resource of scoped) {
-    const result = await invokeLocalTarget({
+    const result = await invokeLocalTarget<ResourceObservation>({
       capability: 'observeResource',
       input: { resourceId: resource.id, path: resource.path }
     });

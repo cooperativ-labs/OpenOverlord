@@ -9,7 +9,7 @@ import { loadRepoEnvForProfile } from './load-repo-env';
 loadRepoEnvForProfile(path.resolve(__dirname, '..'), 'development');
 
 // The dev server hosts the React SPA and proxies the REST + realtime (SSE)
-// surface to the local server process (server/index.ts).
+// surface to the local backend process (backend/index.ts).
 const apiHost =
   process.env.OVERLORD_WEB_HOST && process.env.OVERLORD_WEB_HOST !== '0.0.0.0'
     ? process.env.OVERLORD_WEB_HOST

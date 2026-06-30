@@ -23,7 +23,7 @@ function repoRoot(): string {
 export function serverBundlePath(): string {
   return isPackaged
     ? path.join(app.getAppPath(), 'server', 'index.cjs')
-    : path.join(repoRoot(), 'webapp', 'dist-server', 'index.cjs');
+    : path.join(repoRoot(), 'backend', 'dist-server', 'index.cjs');
 }
 
 /** The built static SPA the embedded server serves (absolute, via OVERLORD_WEBAPP_DIST). */

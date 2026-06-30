@@ -12,7 +12,7 @@ import {
 } from '../src/branch-planning.ts';
 
 // The Runner Layer's branch-planning algorithm is duplicated in the service
-// layer (webapp/server/branch-planning.ts). Both implementations are pinned to
+// layer (backend/branch-planning.ts). Both implementations are pinned to
 // the shared conformance fixture so they can never drift apart — see CONTRACT.md
 // "Shared Deterministic Algorithms".
 const fixturePath = fileURLToPath(

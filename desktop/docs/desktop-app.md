@@ -60,7 +60,7 @@ stays out of the way.
 1. On `app.whenReady`, claim a free loopback port (starting at `web_port`,
    default 4310).
 2. Show a splash window (`splash.html`).
-3. Fork the bundled server (`webapp/dist-server/index.mjs`) inside an Electron
+3. Fork the bundled server (`backend/dist-server/index.cjs`) inside an Electron
    **`utilityProcess`** with `OVERLORD_WEB_HOST`/`OVERLORD_WEB_PORT`/
    `OVERLORD_WEBAPP_DIST` set and SQL Studio disabled.
 4. Poll `GET /api/health` until ready (30s budget), then load

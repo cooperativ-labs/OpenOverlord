@@ -1,4 +1,4 @@
-/** Protocol subcommands implemented by the local backend (`webapp/server/protocol.ts`). */
+/** Protocol subcommands implemented by the local backend (`backend/protocol.ts`). */
 export const SUPPORTED_PROTOCOL_SUBCOMMANDS = [
   'add-objectives',
   'ask',

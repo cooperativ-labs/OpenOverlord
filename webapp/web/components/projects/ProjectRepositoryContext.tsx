@@ -75,7 +75,7 @@ export function useMergedProjectRepository(projectId: string) {
       restRepository.data?.resource?.path
     ],
     queryFn: () =>
-      invokeLocalTarget({
+      invokeLocalTarget<RepositoryTreeResult>({
         capability: 'readRepositoryTree',
         input: {
           resourceId: restRepository.data!.resource!.id,

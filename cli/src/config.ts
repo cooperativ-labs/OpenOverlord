@@ -19,7 +19,7 @@ import { CliError } from './errors.ts';
  * Default profile for bare CLI calls: `production` for an installed binary,
  * `development` only for the source build. Keeps the dev-only
  * `OVERLORD_BACKEND_URL_DEV` / `.env.local` out of the production CLI. Callers
- * with their own context (webapp/server, desktop) pass an explicit profile.
+ * with their own context (backend, desktop) pass an explicit profile.
  */
 const CLI_ENV_PROFILE: EnvProfile = detectCliEnvProfile();
 

@@ -1,8 +1,9 @@
 # Data Transfer Logic Review (mission coo:61)
 
 Status: review + implementation. Objective 1 produced this review; objective 2
-implemented the contract-safe items (1–5 below). Item 6 remains a tracked,
-contract-touching follow-up.
+implemented the contract-safe items (1–5 below). Objective 3 implemented item 6
+part A (§3.2 sync-handle retirement) and staged item 6 part B (§2.2 read
+convergence) as a tracked, contract-touching follow-up.
 Scope: how data moves between the database and the client (web SPA, Desktop renderer,
 and CLI), the realtime change feed, and the two service/data layers that feed them.
 
@@ -182,52 +183,59 @@ error-extraction block. Extract a `parseErrorResponse(res)` helper used by both.
 
 ## 3. Legacy / transitional / unused code
 
-### 3.1 Redundant sync/async wrapper pairs (Postgres-migration residue)
+### 3.1 Redundant sync/async wrapper pairs (Postgres-migration residue) — resolved
 
-The async DatabaseClient migration (mission coo:5) left dead-weight pass-through wrappers:
+The async DatabaseClient migration (mission coo:5) left dead-weight pass-through wrappers.
+Objective 2 removed them:
 
-- `webapp/server/db.ts:443` `recordChange()` is now just `await recordChangeAsync(...)`.
-  Both are public; 55 call sites use `recordChange`, 33 use `recordChangeAsync`. They are
-  identical. Collapse to one name (mechanical rename) and delete the wrapper.
-- `webapp/server/db.ts:493` `currentMaxSeqAsync()` is just `return currentMaxSeq(client)`.
-  `currentMaxSeqAsync` has 2 call sites (`realtime.ts`); `currentMaxSeq` has **0** external
-  call sites. Keep one, delete the other.
+- `recordChangeAsync()` was deleted; all REST call sites now use `recordChange()`.
+- `currentMaxSeqAsync()` was deleted; `webapp/server/realtime.ts` now calls
+  `currentMaxSeq()`.
 
-The `Async` suffix no longer distinguishes anything now that the client is uniformly async —
-it is a migration artifact.
+The `Async` suffix no longer distinguished anything once the client was uniformly async, so
+this migration artifact is gone.
 
-### 3.2 Legacy sync SQLite handle and Postgres shim in `db.ts`
+### 3.2 Legacy sync SQLite handle and Postgres shim in `db.ts` — production path resolved
 
-`webapp/server/db.ts` still exports a synchronous `better-sqlite3` `db` handle
-(`db.ts:105`) and a `createPostgresLegacyDatabase()` shim (`db.ts:61`) whose every method
-throws `postgresLegacyError()` — a guard for code paths not yet ported off the sync handle.
-The only remaining consumer of the sync handle is `dataVersion()` (`db.ts:499`, SQLite-only
-`PRAGMA data_version`, used by the realtime poller). Once the realtime change-detection no
-longer needs the sync pragma (or it is isolated behind the adapter), the entire sync `db`
-export and the throwing Postgres shim can be deleted. Track this as the tail of the coo:5
-async cutover; it is the last thing pinning the legacy sync handle in the server.
+Objective 3 completed the production-path half of this cleanup under contract `0.69-draft`:
 
-### 3.3 `dataVersion()` is SQLite-only by design
+- `createPostgresLegacyDatabase()` and its throwing `postgresLegacyError()` shim were
+  deleted.
+- The realtime poller's SQLite `PRAGMA data_version` probe moved behind
+  `DatabaseClient.sqliteDataVersion()`.
+- `authDomainDatabase()` now returns the async `DatabaseClient` for both SQLite and
+  Postgres, so auth token verification no longer receives a raw synchronous handle.
+
+`webapp/server/db.ts` still exports the raw synchronous `better-sqlite3` handle only for the
+SQLite integration-test harness, where direct fixture seeding and row assertions remain
+deliberately synchronous. That test harness migration is optional follow-up work; it is not a
+production blocker and does not affect the Postgres runtime.
+
+### 3.3 `sqliteDataVersion()` is SQLite-only by design
 
 Not a bug — but note that the external-writer `refresh` safety net (§1.3 path 2) exists only
-on local SQLite. On hosted Postgres the only change-detection is the `entity_changes` feed.
-That is acceptable because on Postgres every writer goes through the service layer, but it
-should be documented so nobody assumes the `data_version` net protects the hosted deployment.
+on local SQLite. On hosted Postgres `DatabaseClient.sqliteDataVersion()` returns `null`, and
+the only change-detection is the `entity_changes` feed. That is acceptable because on
+Postgres every writer goes through the service layer; the contract now documents this so
+nobody assumes the `data_version` net protects the hosted deployment.
 
 ---
 
 ## 4. Recommended sequencing
 
-Smallest-blast-radius first; each step is independently shippable and testable:
+Smallest-blast-radius first; each step is independently shippable and testable. Current
+status:
 
-1. **§3.1** delete the redundant sync/async wrappers (mechanical, no behavior change).
-2. **§2.5** extract `parseErrorResponse` in `api.ts`.
-3. **§2.4** unify on `connectEventStream`, delete the native `EventSource` branch.
-4. **§2.1** single `insertEntityChange()` writer shared by both layers.
-5. **§2.3** `rowToCamel()` for pure-rename DTO mappers.
-6. **§2.2 / §3.2** the larger, contract-touching work: converge the two data layers' reads and
-   finish retiring the legacy sync `db` handle. Plan separately; both cross contract surfaces
-   (Database / REST / Protocol) and need the contract-modifying procedure in `CONTRACT.md`.
+1. **§3.1** delete the redundant sync/async wrappers — done.
+2. **§2.5** extract `parseErrorResponse` in `api.ts` — done.
+3. **§2.4** unify on `connectEventStream`, delete the native `EventSource` branch — done.
+4. **§2.1** single `insertEntityChange()` writer shared by both layers — done.
+5. **§2.3** `rowToCamel()` for pure-rename DTO mappers — assessed and intentionally skipped
+   because no pure-rename mappers exist.
+6. **§3.2** retire production use of the legacy sync `db` handle — done under contract
+   `0.69-draft`.
+7. **§2.2** converge the two data layers' overlapping reads — staged as phased follow-up in
+   `planning/feature-plans/data-layer-convergence-and-sync-handle-retirement.md`.
 
-Items 1–5 are pure internal refactors that adhere to the existing contract. Item 6 will
-require a `CONTRACT.md` note because it changes which layer owns the read implementations.
+The remaining §2.2 read-convergence work will require a future `CONTRACT.md` note because it
+changes which layer owns the read implementations.

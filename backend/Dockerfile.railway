@@ -1,0 +1,91 @@
+# syntax=docker/dockerfile:1
+#
+# Railway backend image for the hosted Overlord control plane.
+#
+# This Dockerfile is intentionally owned by the top-level backend workspace
+# because Railway runs only the API/protocol/realtime backend. Vercel owns the
+# SPA build and static web assets. Keep this file paired with
+# Dockerfile.railway.dockerignore so the backend build context stays limited to
+# server/runtime inputs.
+
+# ---- Builder -------------------------------------------------------------
+FROM node:20-bookworm-slim AS builder
+
+WORKDIR /app
+ENV YARN_ENABLE_SCRIPTS=1
+
+# Yarn 4 via Corepack, pinned by package.json "packageManager".
+RUN corepack enable
+
+# Install against the workspace manifest set so Yarn can resolve workspace:
+# dependencies without copying unrelated workspace source.
+COPY package.json yarn.lock .yarnrc.yml tsconfig.json tsconfig.build.json ./
+COPY auth/package.json auth/tsconfig.json auth/tsconfig.build.json auth/
+COPY automations/package.json automations/tsconfig.json automations/tsconfig.build.json automations/
+COPY backend/package.json backend/tsconfig.json backend/
+COPY database/package.json database/tsconfig.json database/tsconfig.build.json database/
+COPY cli/package.json cli/
+COPY webapp/package.json webapp/tsconfig.json webapp/
+COPY desktop/package.json desktop/
+COPY packages/core/package.json packages/core/tsconfig.build.json packages/core/
+COPY packages/contract/package.json packages/contract/tsconfig.build.json packages/contract/
+RUN yarn install --immutable --mode=skip-build
+
+# Copy only the source inputs needed to compile shared packages and bundle the
+# Postgres-only server. The Dockerfile-specific ignore file removes tests,
+# frontend assets, desktop sources, docs, planning, and local metadata from the
+# build context before these copies run.
+COPY auth/src auth/src
+COPY automations/src automations/src
+COPY database/src database/src
+COPY database/postgres/migrations database/postgres/migrations
+COPY packages/contract/src packages/contract/src
+COPY packages/core/repository packages/core/repository
+COPY packages/core/service packages/core/service
+COPY packages/core/types packages/core/types
+COPY backend backend
+COPY webapp/shared webapp/shared
+
+# The server still imports a small CLI config/env/catalog subset at runtime.
+COPY cli/src/agent-catalog.ts \
+  cli/src/agent-catalog-defaults.ts \
+  cli/src/config.ts \
+  cli/src/env.ts \
+  cli/src/errors.ts \
+  cli/src/redact-secrets.ts \
+  cli/src/terminal-profile-types.ts \
+  cli/src/
+
+# Prune runtime deps to the bundle's cloud external set under the existing
+# workspace lockfile. The bundled server carries its own code; Railway only
+# needs the automations provider package (@google/genai) and its transitives.
+RUN yarn db:build:prod \
+  && yarn auth:build:prod \
+  && yarn automations:build:prod \
+  && yarn contract:build:prod \
+  && yarn core:build:prod \
+  && yarn workspace @overlord/backend build:server:cloud \
+  && yarn workspaces focus --production @overlord/automations
+
+# ---- Runtime -------------------------------------------------------------
+FROM node:20-bookworm-slim AS runtime
+
+WORKDIR /app
+ENV NODE_ENV=production \
+    OVERLORD_WEB_HOST=0.0.0.0 \
+    OVERLORD_SQL_STUDIO_ENABLED=false \
+    OVERLORD_SERVE_SPA=false \
+    OVERLORD_IN_POD=1
+
+# Runtime keeps the bundled backend, its Postgres migrations, and a pruned
+# production node_modules containing only the cloud-path external runtime deps
+# (today: @google/genai plus transitives resolved from the lockfile). The SPA
+# and SQLite migrations are not copied into this hosted Postgres-only image.
+COPY --from=builder /app/backend/dist-server ./backend/dist-server
+COPY --from=builder /app/backend/postgres ./backend/postgres
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+
+# Railway injects $PORT; /api/health is configured as the service healthcheck.
+EXPOSE 8080
+CMD ["sh", "-c", "OVERLORD_WEB_PORT=${PORT:-8080} node backend/dist-server/index.cjs"]

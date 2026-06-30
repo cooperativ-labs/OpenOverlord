@@ -226,8 +226,8 @@ Owns:
 - URL paths and HTTP method contracts
 - Request/response DTO shapes (derived from the logical schema's camelCase field names)
 - Realtime `EntityChangeDto` projections from `entity_changes`, including `changedFields` parsed from `changed_fields_json`
-- Read-only derived mission branch metadata (`MissionBranchDto`) from `missions.active_branch`, predicted via the service layer's copy of the shared branch/worktree planning algorithm (`webapp/server/branch-planning.ts`) — co-owned with the Runner Layer and pinned to `contract/branch-planning-vectors.json` (see "Shared Deterministic Algorithms")
-- On-demand branch-action git mutations (`POST /api/missions/:id/branch/action`: commit / merge-with-parent / push-parent / publish) run host-side against the project's worktrees under `~/.ovld/worktrees` and primary repo (`webapp/server/repository.ts`). The Runner Layer owns launching the *agent* into a worktree, not these on-demand mutations.
+- Read-only derived mission branch metadata (`MissionBranchDto`) from `missions.active_branch`, predicted via the service layer's copy of the shared branch/worktree planning algorithm (`backend/branch-planning.ts`) — co-owned with the Runner Layer and pinned to `contract/branch-planning-vectors.json` (see "Shared Deterministic Algorithms")
+- On-demand branch-action git mutations (`POST /api/missions/:id/branch/action`: commit / merge-with-parent / push-parent / publish) run host-side against the project's worktrees under `~/.ovld/worktrees` and primary repo (`backend/repository.ts`). The Runner Layer owns launching the *agent* into a worktree, not these on-demand mutations.
 - REST auth integration points
 - SSE/WebSocket realtime endpoint
 - SQL Studio launch metadata in `/api/meta` when the optional external SQL Studio process is enabled
@@ -450,8 +450,8 @@ A few pure, deterministic computations must produce **identical** results in mor
 - **Algorithm**: `planMissionBranch`, `previewMissionBranch`, `missionWorktreePath`, `sanitizeBranchName`, `canonicalMissionBranch`, `slugifyBranchTitle` (and the `BranchDecision*` types).
 - **Implementations** (must stay byte-for-byte equivalent in behavior):
   - Runner Layer — `cli/src/branch-planning.ts`, used by `cli/src/branch-preparation.ts` to **prepare** the real branch/worktree before launch.
-  - Service layer (webapp) — `webapp/server/branch-planning.ts`, used by `webapp/server/repository.ts` to **predict** `MissionBranchDto` branch metadata surfaced over REST.
-- **Conformance fixture**: [`contract/branch-planning-vectors.json`](contract/branch-planning-vectors.json). Both `cli/test/branch-planning.test.ts` and `webapp/server/branch-planning.test.ts` assert their implementation against every vector.
+  - Service layer (backend) — `backend/branch-planning.ts`, used by `backend/repository.ts` to **predict** `MissionBranchDto` branch metadata surfaced over REST.
+- **Conformance fixture**: [`contract/branch-planning-vectors.json`](contract/branch-planning-vectors.json). Both `cli/test/branch-planning.test.ts` and `backend/branch-planning.test.ts` assert their implementation against every vector.
 - **Rule**: Neither component may import the other's copy across the boundary. Any change to the algorithm MUST update both copies, regenerate the fixture, and **bump the contract version** — the fixture is a stable interface.
 
 ## Extension Points
