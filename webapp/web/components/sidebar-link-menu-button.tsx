@@ -22,6 +22,7 @@ type SidebarLinkMenuButtonProps = {
   menuOpen?: boolean;
   onMenuOpenChange?: (open: boolean) => void;
   menuDisabled?: boolean;
+  buttonClassName?: string;
 };
 
 export function SidebarLinkMenuButton({
@@ -33,7 +34,8 @@ export function SidebarLinkMenuButton({
   menuLabel = 'Options',
   menuOpen,
   onMenuOpenChange,
-  menuDisabled = false
+  menuDisabled = false,
+  buttonClassName
 }: SidebarLinkMenuButtonProps) {
   const [internalOpen, setInternalOpen] = React.useState(false);
   const open = menuOpen ?? internalOpen;
@@ -41,7 +43,12 @@ export function SidebarLinkMenuButton({
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton render={link} isActive={isActive} tooltip={tooltip}>
+      <SidebarMenuButton
+        render={link}
+        isActive={isActive}
+        tooltip={tooltip}
+        className={buttonClassName}
+      >
         {children}
       </SidebarMenuButton>
       <DropdownMenu open={open} onOpenChange={setOpen}>
