@@ -1013,6 +1013,11 @@ export interface UpdateMissionBody {
    * inherit the workspace setting. See `MissionWorktreePreference`.
    */
   worktreePreference?: MissionWorktreePreference | null;
+  /**
+   * Replace the mission's assigned tags with this set of `project_tags.id` values.
+   * Every id must belong to the mission's project. Pass `[]` to clear all tags.
+   */
+  tagIds?: string[];
 }
 
 /**

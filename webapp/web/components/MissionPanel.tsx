@@ -24,6 +24,7 @@ import { MissionMemberSelect } from './MissionMemberSelect.tsx';
 import { MissionPanelHeader } from './MissionPanelHeader.tsx';
 import { MissionProjectSelect } from './MissionProjectSelect.tsx';
 import { MissionStatusSelect } from './MissionStatusSelect.tsx';
+import { MissionTagSelect } from './MissionTagSelect.tsx';
 import { MissionToolsAndCriteria } from './MissionToolsAndCriteria.tsx';
 import { Button, Spinner } from './ui.tsx';
 
@@ -96,6 +97,7 @@ function GenerateMissionTitleButton({ mission }: { mission: MissionDetailDto }) 
             aria-label="Generate title with AI"
             disabled={disabled}
             onClick={handleClick}
+            className="text-muted-foreground hover:text-foreground"
           />
         }
       >
@@ -120,10 +122,11 @@ function MissionTitle({ mission }: { mission: MissionDetailDto }) {
   const update = useUpdateMission(mission.id);
 
   return (
-    <section className="border-b border-[var(--color-border)] bg-[var(--color-surface-1)] px-5 py-3">
-      <h1 className="flex items-center gap-1 text-base font-semibold leading-snug">
+    <section className=" px-5 py-3 mt-2">
+      <h1 className="flex items-center gap-1 text-xl font-bold leading-snug">
         <InlineEditField
           className="min-w-0 flex-1"
+          inputClassName="md:text-lg font-bold"
           value={mission.title}
           ariaLabel="Mission title"
           onSave={title => update.mutate({ title })}
@@ -150,7 +153,7 @@ function MissionSettingsBar({
   onProjectChanged?: (projectId: string) => void;
 }) {
   return (
-    <section className="flex flex-wrap items-center gap-1 border-b border-[var(--color-border)] bg-[var(--color-surface-1)] px-5 py-1.5">
+    <section className="flex flex-wrap items-center gap-1 px-5 py-1.5">
       <MissionMemberSelect
         missionId={mission.id}
         workspaceId={mission.workspaceId}
@@ -250,12 +253,19 @@ export function MissionPanel({
         onClose={() => closeToProject(mission.projectId)}
       />
       <MissionTitle mission={mission} />
+
       <MissionSettingsBar
         mission={mission}
         projectId={mission.projectId}
         onProjectChanged={handleProjectChanged}
       />
-
+      <section className="px-5 py-1.5 pt-2">
+        <MissionTagSelect
+          missionId={mission.id}
+          projectId={mission.projectId}
+          assignedTags={mission.tags}
+        />
+      </section>
       <div
         className={cn(
           'scrollbar-auto-hide min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-muted',
@@ -264,9 +274,9 @@ export function MissionPanel({
         onScroll={handleScroll}
       >
         {/* Card section — primary work surface: objectives */}
-        <section className="border-b border-(--color-border) bg-(--color-surface-1) py-5">
-          <div className="mb-3 px-5"></div>
-          <div className="flex flex-col gap-3 px-5 pb-1">
+        <section className="border-b border-(--color-border) bg-(--color-surface-1) pb-5 pt-2">
+
+          <div className="flex flex-col gap-3 px-5 ">
             <MissionObjectivesSection mission={mission} />
             <AddObjective mission={mission} />
           </div>

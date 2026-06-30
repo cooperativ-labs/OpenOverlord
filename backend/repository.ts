@@ -2875,10 +2875,58 @@ async function createMissionTx(body: CreateMissionBody): Promise<CreateMissionRe
 }
 
 /**
- * Assign tag definitions to a mission. De-duplicates the input and validates that
+ * Replace a mission's tag assignments. De-duplicates the input and validates that
  * every tag belongs to the mission's project (and is not soft-deleted) so a mission
- * can never carry a foreign-project tag. Intended to run inside the create
- * transaction. Unknown or cross-project tag ids raise a 400.
+ * can never carry a foreign-project tag. Unknown or cross-project tag ids raise a 400.
+ */
+async function syncMissionTags(
+  db: DatabaseClient,
+  {
+    missionId,
+    projectId,
+    tagIds,
+    now
+  }: {
+    missionId: string;
+    projectId: string;
+    tagIds: string[];
+    now: string;
+  }
+): Promise<void> {
+  const unique = [...new Set(tagIds.map(value => value.trim()).filter(Boolean))];
+
+  for (const tagId of unique) {
+    const tag = (await db.get(
+      `SELECT id FROM project_tags
+       WHERE id = ? AND project_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+      [tagId, projectId, WORKSPACE.id]
+    )) as { id: string } | undefined;
+    if (!tag) throw new ApiError(400, 'Tag does not belong to this project');
+  }
+
+  if (unique.length === 0) {
+    await db.run(`DELETE FROM mission_tags WHERE mission_id = ?`, [missionId]);
+    return;
+  }
+
+  const placeholders = unique.map(() => '?').join(', ');
+  await db.run(
+    `DELETE FROM mission_tags WHERE mission_id = ? AND tag_id NOT IN (${placeholders})`,
+    [missionId, ...unique]
+  );
+
+  for (const tagId of unique) {
+    // Portable upsert-ignore: works on both modern SQLite and PostgreSQL.
+    await db.run(
+      `INSERT INTO mission_tags (mission_id, tag_id, created_at) VALUES (?, ?, ?)
+         ON CONFLICT DO NOTHING`,
+      [missionId, tagId, now]
+    );
+  }
+}
+
+/**
+ * Assign tag definitions to a mission. Intended to run inside the create transaction.
  */
 async function assignMissionTags(
   db: DatabaseClient,
@@ -2895,23 +2943,7 @@ async function assignMissionTags(
   }
 ): Promise<void> {
   if (!tagIds || tagIds.length === 0) return;
-  const unique = [...new Set(tagIds.map(value => value.trim()).filter(Boolean))];
-  if (unique.length === 0) return;
-
-  for (const tagId of unique) {
-    const tag = (await db.get(
-      `SELECT id FROM project_tags
-       WHERE id = ? AND project_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [tagId, projectId, WORKSPACE.id]
-    )) as { id: string } | undefined;
-    if (!tag) throw new ApiError(400, 'Tag does not belong to this project');
-    // Portable upsert-ignore: works on both modern SQLite and PostgreSQL.
-    await db.run(
-      `INSERT INTO mission_tags (mission_id, tag_id, created_at) VALUES (?, ?, ?)
-         ON CONFLICT DO NOTHING`,
-      [missionId, tagId, now]
-    );
-  }
+  await syncMissionTags(db, { missionId, projectId, tagIds, now });
 }
 
 export async function createMission(body: CreateMissionBody): Promise<MissionDetailDto> {
@@ -3055,15 +3087,34 @@ async function patchMissionFieldsTx(id: string, body: UpdateMissionBody): Promis
       setParams.push(preference);
       changed.push('worktree_preference');
     }
-    if (fields.length === 0) return;
 
     const now = nowIso();
+    const tagsChanged = body.tagIds !== undefined;
+    if (tagsChanged) {
+      await syncMissionTags(tx, {
+        missionId: id,
+        projectId: existing.project_id,
+        tagIds: body.tagIds ?? [],
+        now
+      });
+      changed.push('tags');
+    }
+
+    if (fields.length === 0 && !tagsChanged) return;
+
     const revision = existing.revision + 1;
-    await tx.run(
-      `UPDATE missions SET ${fields.join(', ')}, updated_at = ?, revision = ?
+    if (fields.length > 0) {
+      await tx.run(
+        `UPDATE missions SET ${fields.join(', ')}, updated_at = ?, revision = ?
          WHERE id = ? AND workspace_id = ?`,
-      [...setParams, now, revision, id, WORKSPACE.id]
-    );
+        [...setParams, now, revision, id, WORKSPACE.id]
+      );
+    } else {
+      await tx.run(
+        `UPDATE missions SET updated_at = ?, revision = ? WHERE id = ? AND workspace_id = ?`,
+        [now, revision, id, WORKSPACE.id]
+      );
+    }
 
     await recordChange(
       {

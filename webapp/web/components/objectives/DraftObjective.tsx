@@ -226,7 +226,7 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
       disabled={isUploading || isFuture}
       dragState={dragState}
       className={cn(
-        'w-full overflow-hidden rounded-xl border transition-all focus-within:shadow-md dark:focus-within:ring-1 focus-within:ring-ring/50 md:min-w-[350px]',
+        'w-full overflow-hidden rounded-xl border transition-all focus-within:shadow-md focus-within:ring-1 focus-within:ring-ring/50 md:min-w-[350px]',
         isFuture
           ? 'border-border/50 bg-muted/20 opacity-70 focus-within:opacity-100'
           : 'border-muted-foreground/20',
@@ -248,9 +248,9 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
           <InlineEditField
             multiline
             value={objective.instructionText}
-            className="text-sm whitespace-pre-wrap"
-            inputClassName="text-sm whitespace-pre-wrap"
-            minRows={objective.state === 'draft' ? 4 : undefined}
+            className="text-base text-foreground/90 font-medium whitespace-pre-wrap"
+            inputClassName="text-base text-foreground/90 font-medium whitespace-pre-wrap"
+            minRows={objective.state === 'draft' ? 2 : undefined}
             placeholder="Describe what the agent should do… (@ file, # project, $ mission)"
             ariaLabel="Objective instruction"
             commitEmpty={objective.state === 'future' || objective.state === 'draft'}

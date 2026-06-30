@@ -76,7 +76,7 @@ export function MissionCardBody({
         missionId={mission.id}
         projectId={projectId}
         displayId={mission.displayId}
-        tags={tags}
+        assignedTagIds={tags.map(tag => tag.id)}
       />
     </CardContent>
   );

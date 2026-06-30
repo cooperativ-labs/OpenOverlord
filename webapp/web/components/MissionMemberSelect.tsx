@@ -74,9 +74,9 @@ export function MissionMemberSelect({
         id="mission-member-select"
         aria-label="Select assignee"
         size="sm"
-        className="h-[22px] w-auto rounded-full border-border/50 bg-transparent px-2 text-[11px] font-normal text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground [&_[data-slot=select-value]]:line-clamp-none"
+        className="h-[22px] w-auto rounded-full border-border/80 bg-transparent px-2 text-xs font-normal text-foreground hover:border-border hover:bg-muted/60 hover:text-foreground *:data-[slot=select-value]:line-clamp-none"
       >
-        <span className="inline-grid [&>*]:col-start-1 [&>*]:row-start-1">
+        <span className="inline-grid *:col-start-1 *:row-start-1">
           <span className="invisible whitespace-nowrap" aria-hidden>
             <MemberOptionLabel member={null} />
           </span>

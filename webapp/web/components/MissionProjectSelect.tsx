@@ -53,7 +53,7 @@ export function MissionProjectSelect({
         aria-label="Select project"
         size="sm"
         className={cn(
-          'h-[22px] w-auto max-w-[9rem] rounded-full border-border/50 bg-transparent px-2 text-[11px] font-normal text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground'
+          'h-[22px] w-auto max-w-36 rounded-full border-border/80 bg-transparent px-2 text-xs font-normal text-foreground hover:border-border hover:bg-muted/60 hover:text-foreground'
         )}
       >
         <SelectValue>
