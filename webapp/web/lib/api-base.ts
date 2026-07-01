@@ -133,6 +133,7 @@ export async function initApiConfig(): Promise<void> {
   }
 
   initHostedWebApiConfig();
+  await loadStoredTokensForActiveBackend();
 }
 
 /** @deprecated Use initApiConfig */

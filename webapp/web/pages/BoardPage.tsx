@@ -385,10 +385,10 @@ export function BoardPage() {
             }
           />
         ) : view === 'board' && isFilterActive ? (
-          <div className="flex h-full min-h-0 items-stretch gap-4">{renderBoardColumns(false)}</div>
+          <div className="flex h-full min-h-0 items-stretch gap-2">{renderBoardColumns(false)}</div>
         ) : view === 'board' ? (
           <DndContext {...dndContextProps}>
-            <div className="flex h-full min-h-0 items-stretch gap-4">
+            <div className="flex h-full min-h-0 items-stretch gap-4">2
               {renderBoardColumns(true)}
             </div>
             <DragOverlay>
