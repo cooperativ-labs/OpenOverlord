@@ -1,4 +1,4 @@
-import { Bot, ChevronDown } from 'lucide-react';
+import { Bot, ChevronDown, User } from 'lucide-react';
 import { useState } from 'react';
 
 import type { AgentCatalogDto, AgentLaunchConfigDto } from '../../../shared/contract.ts';
@@ -8,7 +8,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover.tsx';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip.tsx';
 
 import { AgentIcon } from './AgentIcon.tsx';
-import { type AgentModelSelection, AgentModelSelector } from './AgentModelSelector.tsx';
+import {
+  type AgentModelSelection,
+  AgentModelSelector,
+  MANUAL_AGENT_KEY
+} from './AgentModelSelector.tsx';
 
 type AgentModelChooserButtonProps = {
   catalog: AgentCatalogDto | null;
@@ -36,9 +40,10 @@ export function AgentModelChooserButton({
   compact = false
 }: AgentModelChooserButtonProps) {
   const [open, setOpen] = useState(false);
+  const isManual = selection.agent === MANUAL_AGENT_KEY;
   const agent = catalog?.agents.find(a => a.key === selection.agent);
   const model = agent?.models.find(m => m.id === selection.model);
-  const agentLabel = agent ? agent.label : selection.agent;
+  const agentLabel = isManual ? 'Manual' : agent ? agent.label : selection.agent;
   const fullLabel = model ? `${agentLabel} · ${model.displayName}` : agentLabel;
   const label = model ? model.displayName : agentLabel;
   const triggerLabel = `Choose agent and model: ${fullLabel}`;
@@ -62,7 +67,9 @@ export function AgentModelChooserButton({
               aria-label={compact ? triggerLabel : undefined}
               title={compact ? triggerLabel : 'Choose agent and model'}
             >
-              {hasAgentIcon ? (
+              {isManual ? (
+                <User className="h-3.5 w-3.5 shrink-0" />
+              ) : hasAgentIcon ? (
                 <AgentIcon
                   agentKey={agentIconKey}
                   size={14}

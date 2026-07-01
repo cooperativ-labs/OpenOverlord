@@ -43,6 +43,10 @@ export type PrimaryResourceConnection = {
   workingDirectory: string;
 };
 
+function isTruthyFlag(value: unknown): boolean {
+  return value === true || value === 1;
+}
+
 /**
  * Resolve the provider that observes resource availability for the backend:
  * in-process when the backend is co-located with the checkout (Local SQLite),
@@ -288,7 +292,7 @@ export async function listProjectResources({
     type: string;
     label: string | null;
     path: string;
-    is_primary: number;
+    is_primary: boolean | number;
     status: string;
   }>;
 
@@ -300,7 +304,7 @@ export async function listProjectResources({
       type: row.type,
       label: row.label,
       path: row.path,
-      isPrimary: row.is_primary === 1,
+      isPrimary: isTruthyFlag(row.is_primary),
       status: await deriveResourceStatus(backendResourceProvider(ctx, row.execution_target_id), {
         resourceId: row.id,
         status: row.status,
@@ -448,14 +452,14 @@ export async function discoverProject({
           `SELECT id, path, is_primary FROM project_resources
              WHERE id = ? AND project_id = ? AND deleted_at IS NULL`,
           [raw.resourceId, raw.projectId]
-        )) as { id: string; path: string; is_primary: number } | undefined;
+        )) as { id: string; path: string; is_primary: boolean | number } | undefined;
 
         return {
           projectId: project.id,
           projectName: project.name,
           resourceId: resource?.id ?? raw.resourceId,
           resourcePath: resource?.path ?? current,
-          isPrimary: resource ? resource.is_primary === 1 : raw.isPrimary
+          isPrimary: resource ? isTruthyFlag(resource.is_primary) : raw.isPrimary
         };
       }
     } catch {

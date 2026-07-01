@@ -2,7 +2,10 @@ import { AlertTriangle, Check, ChevronDown, Loader2, Play, Tag } from 'lucide-re
 import { useEffect, useMemo, useState } from 'react';
 
 import { AgentModelChooserButton } from '@/components/objectives/AgentModelChooserButton.tsx';
-import type { AgentModelSelection } from '@/components/objectives/AgentModelSelector.tsx';
+import {
+  type AgentModelSelection,
+  MANUAL_AGENT_KEY
+} from '@/components/objectives/AgentModelSelector.tsx';
 import { RepositoryMentionTextarea } from '@/components/RepositoryMentionTextarea.tsx';
 import { Button } from '@/components/ui.tsx';
 import {
@@ -152,9 +155,10 @@ export function NewMissionModal({
   };
 
   const isBusy = pendingAction !== null;
+  const isManual = selection.agent === MANUAL_AGENT_KEY;
   const canSubmit =
     Boolean(instruction.trim()) && Boolean(selectedProjectId) && selectionLoaded && !isBusy;
-  const canRun = canSubmit && primaryConnection.connected && targetAvailability.available;
+  const canRun = canSubmit && !isManual && primaryConnection.connected && targetAvailability.available;
 
   async function submit(shouldLaunch: boolean) {
     const text = instruction.trim();
@@ -164,6 +168,9 @@ export function NewMissionModal({
     setSubmitError(null);
 
     try {
+      if (shouldLaunch && isManual) {
+        throw new Error('Please select an agent to launch this task');
+      }
       if (shouldLaunch && !primaryConnection.connected) {
         throw new Error(primaryConnection.message ?? 'Primary resource is not connected.');
       }
@@ -397,19 +404,21 @@ export function NewMissionModal({
                 Save
               </Button>
 
-              <Button
-                variant="primary"
-                className="h-8 gap-1.5 px-3 text-xs"
-                onClick={() => void submit(true)}
-                disabled={!canRun}
-              >
-                {pendingAction === 'run' ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Play className="h-3.5 w-3.5" />
-                )}
-                Run
-              </Button>
+              {isManual ? null : (
+                <Button
+                  variant="primary"
+                  className="h-8 gap-1.5 px-3 text-xs"
+                  onClick={() => void submit(true)}
+                  disabled={!canRun}
+                >
+                  {pendingAction === 'run' ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Play className="h-3.5 w-3.5" />
+                  )}
+                  Run
+                </Button>
+              )}
             </div>
           </div>
         </div>

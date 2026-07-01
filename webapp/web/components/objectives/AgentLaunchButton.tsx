@@ -15,7 +15,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover.tsx';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip.tsx';
 
-import type { AgentModelSelection } from './AgentModelSelector.tsx';
+import { MANUAL_AGENT_KEY, type AgentModelSelection } from './AgentModelSelector.tsx';
 
 type AgentLaunchButtonSize = 'sm' | 'default';
 
@@ -78,6 +78,7 @@ export function AgentLaunchButton({
   const primaryConnection = primaryResourceConnection(resourcesQ.data ?? []);
   const isQueued = Boolean(activeRequest);
   const isLaunching = launch.isPending || updateObjective.isPending;
+  const isManual = selection.agent === MANUAL_AGENT_KEY;
   // Blank draft slots can exist for inline authoring — they must not be launched
   // until an instruction has been written.
   const hasInstruction = objective.instructionText.trim().length > 0;
@@ -89,6 +90,10 @@ export function AgentLaunchButton({
   const styles = sizeStyles[size];
 
   function queueLaunch() {
+    if (isManual) {
+      setError('Please select an agent to launch this task');
+      return;
+    }
     if (!primaryConnection.connected) {
       setError(primaryConnection.message);
       return;
@@ -221,6 +226,11 @@ export function AgentLaunchButton({
       </TooltipContent>
     </Tooltip>
   );
+
+  // No agent selected — there's nothing to run, so the launch affordance is
+  // hidden entirely. queueLaunch still guards against being reached another
+  // way and reports the same error.
+  if (isManual) return null;
 
   return (
     <div className="relative">

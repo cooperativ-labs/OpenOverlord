@@ -430,8 +430,8 @@ function toStatusDto(r: WorkspaceStatusRow): WorkspaceStatusDto {
     name: r.name,
     type: r.type as StatusType,
     position: r.position,
-    isDefault: r.is_default === 1,
-    isTerminal: r.is_terminal === 1
+    isDefault: isTruthyFlag(r.is_default),
+    isTerminal: isTruthyFlag(r.is_terminal)
   };
 }
 
@@ -1301,7 +1301,7 @@ interface ProjectTagRow {
   project_id: string;
   label: string;
   color: string | null;
-  active: number;
+  active: boolean | number;
   revision: number;
 }
 
@@ -1311,7 +1311,7 @@ function toProjectTagDto(r: ProjectTagRow): ProjectTagDto {
     projectId: r.project_id,
     label: r.label,
     color: r.color,
-    active: r.active === 1
+    active: isTruthyFlag(r.active)
   };
 }
 
@@ -1362,7 +1362,7 @@ function toObjectiveDto(r: ObjectiveRow): ObjectiveDto {
     title: r.title,
     instructionText: r.instruction_text,
     state: r.state as ObjectiveDto['state'],
-    autoAdvance: r.auto_advance === 1,
+    autoAdvance: isTruthyFlag(r.auto_advance),
     assignedAgent: r.assigned_agent,
     model: r.model,
     reasoningEffort: r.reasoning_effort,
@@ -1697,8 +1697,17 @@ export async function createProjectTag(
     await tx.run(
       `INSERT INTO project_tags
          (id, workspace_id, project_id, label, color, active, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, ?, 1, ?, ?, 1)`,
-      [id, WORKSPACE.id, projectId, label, normalizeTagColor(body.color), now, now]
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      [
+        id,
+        WORKSPACE.id,
+        projectId,
+        label,
+        normalizeTagColor(body.color),
+        bindBool(DATABASE_DIALECT, true),
+        now,
+        now
+      ]
     );
 
     await recordChange(
@@ -1845,7 +1854,7 @@ async function insertProjectResource(
       executionTargetId,
       body.label ?? null,
       resourcePath,
-      body.isPrimary === false ? 0 : 1,
+      bindBool(DATABASE_DIALECT, body.isPrimary !== false),
       now,
       now
     ]

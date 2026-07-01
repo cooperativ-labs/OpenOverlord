@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react';
+import { Check, User } from 'lucide-react';
 import { useCallback } from 'react';
 
 import type { AgentCatalogDto, AgentLaunchConfigDto } from '../../../shared/contract.ts';
@@ -13,6 +13,13 @@ export interface AgentModelSelection {
   model: string | null;
   reasoningEffort: string | null;
 }
+
+/**
+ * Pseudo-agent key for "no agent, I'll drive this myself". Not part of the
+ * workspace catalog — a client-only option that launch surfaces must guard
+ * against (hide the Run button, reject the launch call).
+ */
+export const MANUAL_AGENT_KEY = 'manual';
 
 type AgentModelSelectorProps = {
   /** Workspace agent catalog (built-ins + workspace availability). */
@@ -66,6 +73,7 @@ export function AgentModelSelector({
     agent => agent.availableByDefault || agent.key === value.agent
   );
   const selectedAgent = catalog.agents.find(agent => agent.key === value.agent) ?? null;
+  const isManual = value.agent === MANUAL_AGENT_KEY;
   const models = selectedAgent?.models ?? [];
   const selectedModel = models.find(m => m.id === value.model) ?? null;
   const reasoningOptions = selectedModel?.reasoningOptions ?? [];
@@ -117,49 +125,60 @@ export function AgentModelSelector({
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => handleAgentChange(MANUAL_AGENT_KEY)}
+            className={optionButtonClasses(isManual)}
+          >
+            <User className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">Manual</span>
+            {isManual && <Check className="ml-auto h-3 w-3 shrink-0" />}
+          </button>
           {visibleAgents.length === 0 ? (
             <p className="px-2 py-1.5 text-xs text-muted-foreground">No agents available</p>
           ) : null}
         </div>
 
-        {/* Model column */}
-        <div className={cn('flex flex-col gap-0.5', inline ? 'w-full' : 'min-w-[160px]')}>
-          <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            Model
-          </p>
-          <button
-            type="button"
-            onClick={() => handleModelChange(null)}
-            className={optionButtonClasses(value.model === null)}
-            title="Let the agent use its own default model"
-          >
-            <span className="truncate text-muted-foreground">Default</span>
-            {value.model === null && <Check className="ml-auto h-3 w-3 shrink-0" />}
-          </button>
-          {models.length > 0 ? (
-            <div className="max-h-[220px] overflow-y-auto">
-              {models.map(model => {
-                const isSelected = value.model === model.id;
-                return (
-                  <button
-                    key={model.id}
-                    type="button"
-                    onClick={() => handleModelChange(model.id)}
-                    className={optionButtonClasses(isSelected)}
-                  >
-                    <span className="truncate">{model.displayName}</span>
-                    {isSelected && <Check className="ml-auto h-3 w-3 shrink-0" />}
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="px-2 py-1.5 text-xs text-muted-foreground">No models in the catalog</p>
-          )}
-        </div>
+        {/* Model column — not applicable when driving the task manually */}
+        {!isManual && (
+          <div className={cn('flex flex-col gap-0.5', inline ? 'w-full' : 'min-w-[160px]')}>
+            <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Model
+            </p>
+            <button
+              type="button"
+              onClick={() => handleModelChange(null)}
+              className={optionButtonClasses(value.model === null)}
+              title="Let the agent use its own default model"
+            >
+              <span className="truncate text-muted-foreground">Default</span>
+              {value.model === null && <Check className="ml-auto h-3 w-3 shrink-0" />}
+            </button>
+            {models.length > 0 ? (
+              <div className="max-h-[220px] overflow-y-auto">
+                {models.map(model => {
+                  const isSelected = value.model === model.id;
+                  return (
+                    <button
+                      key={model.id}
+                      type="button"
+                      onClick={() => handleModelChange(model.id)}
+                      className={optionButtonClasses(isSelected)}
+                    >
+                      <span className="truncate">{model.displayName}</span>
+                      {isSelected && <Check className="ml-auto h-3 w-3 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="px-2 py-1.5 text-xs text-muted-foreground">No models in the catalog</p>
+            )}
+          </div>
+        )}
 
         {/* Reasoning column — only when the selected model offers options */}
-        {reasoningOptions.length > 0 && (
+        {!isManual && reasoningOptions.length > 0 && (
           <div className={cn('flex flex-col gap-0.5', inline ? 'w-full' : 'min-w-[90px]')}>
             <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
               {selectedAgent?.reasoningLabel ?? 'Thinking'}
@@ -190,15 +209,18 @@ export function AgentModelSelector({
         )}
       </div>
 
-      {/* Keyed by agent so the fields re-seed from the new agent's config. */}
-      <AgentLaunchFooter
-        key={value.agent}
-        agentKey={value.agent}
-        preCommand={launchConfig?.preCommand ?? ''}
-        flags={launchConfig?.flags ?? []}
-        onCommit={config => onLaunchConfigCommit(value.agent, config)}
-        sourceHint={launchConfigSourceHint}
-      />
+      {/* Keyed by agent so the fields re-seed from the new agent's config. Not
+          applicable to the manual pseudo-agent — there's nothing to launch. */}
+      {!isManual && (
+        <AgentLaunchFooter
+          key={value.agent}
+          agentKey={value.agent}
+          preCommand={launchConfig?.preCommand ?? ''}
+          flags={launchConfig?.flags ?? []}
+          onCommit={config => onLaunchConfigCommit(value.agent, config)}
+          sourceHint={launchConfigSourceHint}
+        />
+      )}
     </div>
   );
 }

@@ -63,6 +63,10 @@ export type AttachmentSummary = {
   storageKey: string;
 };
 
+function isTruthyFlag(value: unknown): boolean {
+  return value === true || value === 1;
+}
+
 async function nextMissionSequence(ctx: ServiceContext): Promise<number> {
   const row = (await ctx.db.get(
     `SELECT id, next_value FROM mission_sequences
@@ -189,7 +193,7 @@ function toObjectiveSummary(row: {
     title: row.title,
     objective: row.instruction_text,
     state: row.state,
-    autoAdvance: row.auto_advance === 1
+    autoAdvance: isTruthyFlag(row.auto_advance)
   };
 }
 

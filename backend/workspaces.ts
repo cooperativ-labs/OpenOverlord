@@ -1,4 +1,4 @@
-import { type DatabaseClient, DEFAULT_STATUSES } from '@overlord/database';
+import { bindBool, type DatabaseClient, DEFAULT_STATUSES } from '@overlord/database';
 
 import type {
   CompleteInitialSetupBody,
@@ -330,8 +330,8 @@ async function seedWorkspaceStatuses({
         status.name,
         status.type,
         status.position,
-        status.isDefault ? 1 : 0,
-        status.isTerminal ? 1 : 0,
+        bindBool(client.dialect, status.isDefault),
+        bindBool(client.dialect, status.isTerminal),
         now,
         now
       ]

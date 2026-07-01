@@ -2,7 +2,10 @@ import { AlertTriangle, ArrowUp, Bot, ChevronDown, Loader2, Plus } from 'lucide-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AgentIcon } from '@/components/objectives/AgentIcon.tsx';
-import type { AgentModelSelection } from '@/components/objectives/AgentModelSelector.tsx';
+import {
+  type AgentModelSelection,
+  MANUAL_AGENT_KEY
+} from '@/components/objectives/AgentModelSelector.tsx';
 import { RepositoryMentionTextarea } from '@/components/RepositoryMentionTextarea.tsx';
 import { api } from '@/lib/api.ts';
 import { getAgentIcon } from '@/lib/helpers/agent-icons.ts';
@@ -274,6 +277,9 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
     const filesToUpload = stagedFiles;
 
     try {
+      if (shouldLaunch && objectiveSelection.agent === MANUAL_AGENT_KEY) {
+        throw new Error('Please select an agent to launch this task');
+      }
       if (shouldLaunch && !primaryConnection.connected) {
         throw new Error(primaryConnection.message ?? 'Primary resource is not connected.');
       }
