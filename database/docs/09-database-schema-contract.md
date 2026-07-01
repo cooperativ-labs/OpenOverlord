@@ -1662,6 +1662,7 @@ Closed values:
 - `permission_requests.status`: `requested`, `approved`, `denied`, `expired`, `not_required`.
 - `idempotency_keys.status`: `in_progress`, `completed`, `failed`.
 - `audit_log.result`: `allowed`, `denied`, `failed`.
+- `workspace_invitations.status`: `pending`, `accepted`, `revoked`, `expired`.
 
 Open extension values:
 

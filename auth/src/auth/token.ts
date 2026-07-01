@@ -215,6 +215,32 @@ export async function revokeUserToken(
   );
 }
 
+/**
+ * Resolve which workspace a raw USER_TOKEN belongs to, from the token alone
+ * (no workspace id required up front). Tokens are looked up by the SHA-256
+ * hash of a 256-bit random secret, so a hash collision across workspaces is
+ * not a practical concern even without a DB-level uniqueness constraint on
+ * `token_hash` alone. Callers pass the resolved id back into `verifyUserToken`
+ * to do the real (workspace-scoped) validation. Returns `null` if no active,
+ * non-deleted token matches.
+ */
+export async function resolveUserTokenWorkspaceId(
+  db: AuthDomainDatabase,
+  rawToken: string
+): Promise<string | null> {
+  const tokenHash = hashToken(rawToken);
+  const row = await queryOne<{ workspace_id: string }>(
+    db,
+    `SELECT workspace_id FROM user_tokens
+     WHERE token_hash = ?
+       AND status = 'active'
+       AND deleted_at IS NULL
+     LIMIT 1`,
+    [tokenHash]
+  );
+  return row?.workspace_id ?? null;
+}
+
 interface VerifiedToken {
   id: string;
   workspaceId: string;

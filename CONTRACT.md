@@ -422,6 +422,7 @@ See [`contract/extension-points.yaml`](contract/extension-points.yaml) for machi
 - `permission_requests.status`: `requested`, `approved`, `denied`, `expired`, `not_required`
 - `idempotency_keys.status`: `in_progress`, `completed`, `failed`
 - `audit_log.result`: `allowed`, `denied`, `failed`
+- `workspace_invitations.status`: `pending`, `accepted`, `revoked`, `expired`
 
 ### Open (extensions may add namespaced values)
 

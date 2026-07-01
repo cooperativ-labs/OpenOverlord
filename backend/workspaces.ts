@@ -1,15 +1,24 @@
 import { bindBool, type DatabaseClient, DEFAULT_STATUSES } from '@overlord/database';
+import { createHash, randomBytes } from 'node:crypto';
 
 import type {
+  AcceptWorkspaceInvitationBody,
   CompleteInitialSetupBody,
   CreateWorkspaceBody,
+  InviteWorkspaceMemberBody,
+  InviteWorkspaceMemberResultDto,
   UpdateWorkspaceBody,
+  UpdateWorkspaceMemberRoleBody,
   WorkspaceDto,
+  WorkspaceInvitationDto,
   WorkspaceMemberDto
 } from '../webapp/shared/contract.ts';
 
 import {
   DATABASE_DIALECT,
+  getActiveProfileId,
+  getActiveWorkspaceId,
+  getActiveWorkspaceIdOrNull,
   getActorWorkspaceUserId,
   newId,
   nowIso,
@@ -17,9 +26,9 @@ import {
   reloadActiveWorkspace,
   requireDatabaseClient,
   resolveActorForWorkspace,
-  setActiveWorkspace,
-  WORKSPACE
+  setActiveWorkspace
 } from './db.ts';
+import { invitationEmailSenderFromEnv, inviteAcceptUrl } from './email-invitation.ts';
 import { ApiError } from './errors.ts';
 import { actorIsAdmin, requireAdmin } from './rbac.ts';
 import { syncSqlStudioForWorkspace } from './sql-studio-manager.ts';
@@ -43,7 +52,7 @@ async function toWorkspaceDto(r: WorkspaceListRow): Promise<WorkspaceDto> {
     slug: r.slug,
     name: r.name,
     kind: r.kind,
-    isActive: r.id === WORKSPACE.id,
+    isActive: r.id === getActiveWorkspaceId(),
     projectCount: r.project_count,
     memberCount: r.member_count,
     sqlStudioEnabled: await readSqlStudioEnabled({ workspaceId: r.id }),
@@ -220,6 +229,8 @@ async function resolveLocalUserId(
 async function resolveCurrentProfileId(
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<string> {
+  const activeProfileId = getActiveProfileId();
+  if (activeProfileId) return activeProfileId;
   if (getActorWorkspaceUserId()) {
     const row = await client.get<{ profile_id: string }>(
       `SELECT profile_id FROM workspace_users WHERE id = ?`,
@@ -287,7 +298,7 @@ export async function grantWorkspaceAdminRole({
 
 /** Every workspace the local operator is an active member of. */
 export async function listWorkspaces(): Promise<WorkspaceDto[]> {
-  const localUserId = await resolveLocalUserId();
+  const localUserId = await resolveCurrentProfileId();
   const rows = await requireDatabaseClient().all<WorkspaceListRow>(
     `SELECT w.id, w.slug, w.name, w.kind, w.created_at,
             (SELECT COUNT(*) FROM projects p
@@ -341,6 +352,7 @@ async function seedWorkspaceStatuses({
 
 /** Create a workspace, add the local operator as an admin member, and make it active. */
 export async function createWorkspace(body: CreateWorkspaceBody): Promise<WorkspaceDto> {
+  const creatorProfileId = await resolveCurrentProfileId();
   const workspaceId = await requireDatabaseClient().transaction(async tx => {
     const name = (body.name ?? '').trim();
     if (!name) throw new ApiError(400, 'Workspace name is required');
@@ -351,8 +363,6 @@ export async function createWorkspace(body: CreateWorkspaceBody): Promise<Worksp
       desired: body.slug?.trim() ? slugify(body.slug) : suggestSlugFromName(name),
       client: tx
     });
-    const localUserId = await resolveLocalUserId(tx);
-
     const now = nowIso();
     const workspaceUserId = newId();
 
@@ -367,7 +377,7 @@ export async function createWorkspace(body: CreateWorkspaceBody): Promise<Worksp
          (id, workspace_id, profile_id, member_key, status, metadata_json,
           created_at, updated_at, revision)
        VALUES (?, ?, ?, ?, 'active', '{}', ?, ?, 1)`,
-      [workspaceUserId, nextWorkspaceId, localUserId, `local:${slug}`, now, now]
+      [workspaceUserId, nextWorkspaceId, creatorProfileId, `auth:${creatorProfileId}`, now, now]
     );
 
     await grantWorkspaceAdminRole({ workspaceId: nextWorkspaceId, workspaceUserId, client: tx });
@@ -429,7 +439,7 @@ const SETUP_COMPLETED_KEY = 'initialSetupCompletedAt';
 export async function needsInitialSetup(
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<boolean> {
-  if (WORKSPACE.id !== SEED_WORKSPACE_ID) return false;
+  if (getActiveWorkspaceIdOrNull() !== SEED_WORKSPACE_ID) return false;
   const row = await client.get<{
     name: string;
     slug: string;
@@ -479,7 +489,7 @@ export async function completeInitialSetup(body: CompleteInitialSetupBody): Prom
 
     const existing = await tx.get<{ id: string; settings_json: string; revision: number }>(
       `SELECT id, settings_json, revision FROM workspaces WHERE id = ? AND deleted_at IS NULL`,
-      [WORKSPACE.id]
+      [getActiveWorkspaceId()]
     );
     if (!existing) throw new ApiError(404, 'Workspace not found');
 
@@ -535,7 +545,7 @@ export async function completeInitialSetup(body: CompleteInitialSetupBody): Prom
 
   // Initial setup may re-key the seeded workspace. Re-point the live workspace
   // binding when that happens so `/api/meta` and mission display ids stay in sync.
-  if (workspaceId === WORKSPACE.id) await reloadActiveWorkspace();
+  if (workspaceId === getActiveWorkspaceId()) await reloadActiveWorkspace();
   else await setActiveWorkspace(workspaceId);
   const updated = (await listWorkspaces()).find(w => w.id === workspaceId);
   if (!updated) throw new ApiError(500, 'Workspace was updated but could not be loaded');
@@ -580,7 +590,7 @@ export async function updateWorkspace(
       if (body.sqlStudioEnabled !== current) {
         await writeSqlStudioEnabled({ workspaceId: id, enabled: body.sqlStudioEnabled });
         changed.push('settings_json');
-        if (id === WORKSPACE.id) {
+        if (id === getActiveWorkspaceId()) {
           syncSqlStudioForWorkspace({ enabled: body.sqlStudioEnabled });
         }
       }
@@ -609,7 +619,7 @@ export async function updateWorkspace(
 
   // Renaming the active workspace must be observed by the `WORKSPACE` live
   // binding so `/api/meta` and change attribution stay accurate.
-  if (id === WORKSPACE.id) await reloadActiveWorkspace();
+  if (id === getActiveWorkspaceId()) await reloadActiveWorkspace();
   const updated = (await listWorkspaces()).find(w => w.id === id);
   if (!updated) throw new ApiError(404, 'Workspace not found or no active membership');
   return updated;
@@ -654,7 +664,7 @@ export async function deleteWorkspace(id: string): Promise<WorkspaceDto[]> {
     );
   });
 
-  if (id === WORKSPACE.id) {
+  if (id === getActiveWorkspaceId()) {
     const next = (await listWorkspaces())[0];
     if (next) await setActiveWorkspace(next.id);
   }
@@ -670,6 +680,24 @@ interface WorkspaceMemberRow {
   kind: string;
   joined_at: string;
   metadata_json: string;
+}
+
+async function listMemberRoleKeys({
+  workspaceId,
+  workspaceUserId,
+  client = requireDatabaseClient()
+}: {
+  workspaceId: string;
+  workspaceUserId: string;
+  client?: DatabaseClient;
+}): Promise<string[]> {
+  const rows = await client.all<{ role_key: string }>(
+    `SELECT role_key FROM role_assignments
+      WHERE workspace_id = ? AND workspace_user_id = ? AND deleted_at IS NULL
+      ORDER BY role_key ASC`,
+    [workspaceId, workspaceUserId]
+  );
+  return rows.map(row => row.role_key);
 }
 
 /** Active members of a workspace (`workspace_users` joined to `profiles`). */
@@ -692,28 +720,36 @@ export async function listWorkspaceMembers(workspaceId: string): Promise<Workspa
     [workspaceId]
   );
 
-  return rows.map(r => {
-    let avatarUrl: string | null = null;
-    try {
-      const meta = JSON.parse(r.metadata_json) as { avatarUrl?: unknown };
-      if (typeof meta.avatarUrl === 'string' && meta.avatarUrl.trim()) {
-        avatarUrl = meta.avatarUrl.trim();
+  return Promise.all(
+    rows.map(async r => {
+      const roleKeys = await listMemberRoleKeys({
+        workspaceId,
+        workspaceUserId: r.workspace_user_id
+      });
+      let avatarUrl: string | null = null;
+      try {
+        const meta = JSON.parse(r.metadata_json) as { avatarUrl?: unknown };
+        if (typeof meta.avatarUrl === 'string' && meta.avatarUrl.trim()) {
+          avatarUrl = meta.avatarUrl.trim();
+        }
+      } catch {
+        // malformed metadata_json — avatarUrl stays null
       }
-    } catch {
-      // malformed metadata_json — avatarUrl stays null
-    }
-    return {
-      workspaceUserId: r.workspace_user_id,
-      userId: r.profile_id,
-      displayName: r.display_name,
-      handle: r.handle,
-      email: r.email,
-      kind: r.kind,
-      isOperator: r.profile_id === localUserId,
-      joinedAt: r.joined_at,
-      avatarUrl
-    };
-  });
+      return {
+        workspaceUserId: r.workspace_user_id,
+        userId: r.profile_id,
+        displayName: r.display_name,
+        handle: r.handle,
+        email: r.email,
+        kind: r.kind,
+        roleKeys,
+        isAdmin: roleKeys.includes('ADMIN'),
+        isOperator: r.profile_id === localUserId,
+        joinedAt: r.joined_at,
+        avatarUrl
+      };
+    })
+  );
 }
 
 interface WorkspaceObjectiveExportRow {
@@ -784,11 +820,571 @@ export async function exportWorkspaceObjectivesCsv(
   };
 }
 
+// ---- member invitations ---------------------------------------------------
+//
+// The only way to add another user to a workspace (Phase 3 of
+// planning/feature-plans/multitenancy-access-control.md). An ADMIN issues a
+// single-use, hashed token (mirroring `user_tokens`, 003_rbac.sql) tied to an
+// email address; accepting it creates the `workspace_users` row. Raw tokens
+// are returned to the caller once and never persisted.
+
+const INVITATION_TOKEN_SCHEME = 'inv';
+const INVITATION_HASH_ALGORITHM = 'sha256';
+const INVITATION_TTL_DAYS = 14;
+const WORKSPACE_ROLE_KEYS = new Set(['ADMIN', 'MEMBER']);
+
+function generateInvitationSecret(): { secret: string; prefix: string; hash: string } {
+  const prefix = `${INVITATION_TOKEN_SCHEME}_${randomBytes(4).toString('hex')}`;
+  const secret = `${prefix}${randomBytes(24).toString('hex')}`;
+  const hash = createHash(INVITATION_HASH_ALGORITHM).update(secret).digest('hex');
+  return { secret, prefix, hash };
+}
+
+interface WorkspaceInvitationRow {
+  id: string;
+  workspace_id: string;
+  email: string;
+  role_key: string;
+  token_prefix: string;
+  status: string;
+  invited_by_workspace_user_id: string;
+  expires_at: string;
+  created_at: string;
+  revision: number;
+}
+
+const INVITATION_COLUMNS =
+  'id, workspace_id, email, role_key, token_prefix, status, invited_by_workspace_user_id, ' +
+  'expires_at, created_at, revision';
+
+function toWorkspaceInvitationDto(row: WorkspaceInvitationRow): WorkspaceInvitationDto {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    email: row.email,
+    roleKey: row.role_key,
+    status: row.status as WorkspaceInvitationDto['status'],
+    tokenPrefix: row.token_prefix,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at
+  };
+}
+
+/**
+ * Invite an email address to join a workspace with a given role (defaults to
+ * `MEMBER`). ADMIN-only. Re-inviting an email with an existing pending
+ * invitation supersedes it (the settings "resend" action), so the unique
+ * active `(workspace_id, email)` index is never tripped.
+ */
+export async function inviteWorkspaceMember(
+  workspaceId: string,
+  body: InviteWorkspaceMemberBody
+): Promise<InviteWorkspaceMemberResultDto> {
+  await requireWorkspaceAdmin(workspaceId);
+
+  const email = (body.email ?? '').trim().toLowerCase();
+  if (!email || !email.includes('@')) throw new ApiError(400, 'A valid email is required');
+  const roleKey = (body.roleKey ?? 'MEMBER').trim().toUpperCase();
+  if (!WORKSPACE_ROLE_KEYS.has(roleKey)) throw new ApiError(400, `Unknown role: ${roleKey}`);
+
+  const client = requireDatabaseClient();
+  const workspace = await client.get<{ id: string }>(
+    `SELECT id FROM workspaces WHERE id = ? AND deleted_at IS NULL`,
+    [workspaceId]
+  );
+  if (!workspace) throw new ApiError(404, 'Workspace not found');
+
+  const existingMember = await client.get<{ id: string }>(
+    `SELECT wu.id FROM workspace_users wu
+       JOIN profiles p ON p.id = wu.profile_id AND p.deleted_at IS NULL
+      WHERE wu.workspace_id = ? AND wu.status = 'active' AND wu.deleted_at IS NULL
+        AND LOWER(p.email) = ?`,
+    [workspaceId, email]
+  );
+  if (existingMember) throw new ApiError(409, 'This email already belongs to a member');
+
+  const invitedByWorkspaceUserId = getActorWorkspaceUserId();
+  if (!invitedByWorkspaceUserId) throw new ApiError(403, 'Admin role required');
+
+  const { invitation, rawToken } = await client.transaction(async tx => {
+    const pending = await tx.get<{ id: string }>(
+      `SELECT id FROM workspace_invitations
+         WHERE workspace_id = ? AND email = ? AND status = 'pending' AND deleted_at IS NULL`,
+      [workspaceId, email]
+    );
+    const now = nowIso();
+    if (pending) {
+      await tx.run(
+        `UPDATE workspace_invitations
+            SET status = 'revoked', revoked_at = ?, updated_at = ?, revision = revision + 1
+          WHERE id = ?`,
+        [now, now, pending.id]
+      );
+    }
+
+    let generated: ReturnType<typeof generateInvitationSecret> | null = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const candidate = generateInvitationSecret();
+      const clash = await tx.get(
+        `SELECT 1 FROM workspace_invitations WHERE workspace_id = ? AND token_prefix = ?`,
+        [workspaceId, candidate.prefix]
+      );
+      if (!clash) {
+        generated = candidate;
+        break;
+      }
+    }
+    if (!generated) {
+      throw new ApiError(409, 'Could not allocate a unique invitation token; try again');
+    }
+
+    const id = newId();
+    const expiresAt = new Date(
+      Date.now() + INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000
+    ).toISOString();
+    await tx.run(
+      `INSERT INTO workspace_invitations (
+         id, workspace_id, email, role_key, token_prefix, token_hash, hash_algorithm,
+         status, invited_by_workspace_user_id, expires_at, created_at, updated_at, revision
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, 1)`,
+      [
+        id,
+        workspaceId,
+        email,
+        roleKey,
+        generated.prefix,
+        generated.hash,
+        INVITATION_HASH_ALGORITHM,
+        invitedByWorkspaceUserId,
+        expiresAt,
+        now,
+        now
+      ]
+    );
+
+    await recordChange(
+      {
+        entityType: 'workspace_invitation',
+        entityId: id,
+        operation: 'insert',
+        entityRevision: 1,
+        workspaceId,
+        actorWorkspaceUserId: invitedByWorkspaceUserId
+      },
+      tx
+    );
+
+    const row = await tx.get<WorkspaceInvitationRow>(
+      `SELECT ${INVITATION_COLUMNS} FROM workspace_invitations WHERE id = ?`,
+      [id]
+    );
+    if (!row) throw new ApiError(500, 'Invitation was created but could not be loaded');
+    return { invitation: toWorkspaceInvitationDto(row), rawToken: generated.secret };
+  });
+
+  const sendEmail = invitationEmailSenderFromEnv();
+  const acceptUrl = inviteAcceptUrl(rawToken);
+  if (sendEmail) {
+    await sendEmail({ email, confirmationUrl: acceptUrl });
+    return { invitation };
+  }
+
+  // No email provider configured (self-hosted default) — the raw token never
+  // leaves the server otherwise, so hand the link back for the admin to share
+  // manually instead of silently creating an invite no one can accept.
+  return { invitation, acceptUrl };
+}
+
+/** List every non-deleted invitation for a workspace (pending and resolved). ADMIN-only. */
+export async function listWorkspaceInvitations(
+  workspaceId: string
+): Promise<WorkspaceInvitationDto[]> {
+  await requireWorkspaceAdmin(workspaceId);
+  const rows = await requireDatabaseClient().all<WorkspaceInvitationRow>(
+    `SELECT ${INVITATION_COLUMNS} FROM workspace_invitations
+       WHERE workspace_id = ? AND deleted_at IS NULL
+       ORDER BY created_at DESC`,
+    [workspaceId]
+  );
+  return rows.map(toWorkspaceInvitationDto);
+}
+
+/** Revoke a still-pending invitation. No-op if already accepted/revoked/expired. ADMIN-only. */
+export async function revokeWorkspaceInvitation(
+  workspaceId: string,
+  invitationId: string
+): Promise<void> {
+  await requireWorkspaceAdmin(workspaceId);
+  await requireDatabaseClient().transaction(async tx => {
+    const invitation = await tx.get<{ id: string; status: string; revision: number }>(
+      `SELECT id, status, revision FROM workspace_invitations
+         WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+      [invitationId, workspaceId]
+    );
+    if (!invitation) throw new ApiError(404, 'Invitation not found');
+    if (invitation.status !== 'pending') return;
+
+    const now = nowIso();
+    const revision = invitation.revision + 1;
+    await tx.run(
+      `UPDATE workspace_invitations
+          SET status = 'revoked', revoked_at = ?, updated_at = ?, revision = ?
+        WHERE id = ?`,
+      [now, now, revision, invitationId]
+    );
+    await recordChange(
+      {
+        entityType: 'workspace_invitation',
+        entityId: invitationId,
+        operation: 'update',
+        entityRevision: revision,
+        workspaceId,
+        actorWorkspaceUserId: getActorWorkspaceUserId()
+      },
+      tx
+    );
+  });
+}
+
+/**
+ * Accept an invitation by its raw token. Binds the authenticated caller's
+ * profile to the invitation's workspace with the invited role, and makes that
+ * workspace active for the caller. The token is looked up by hash alone (no
+ * workspace id required up front, mirroring `resolveUserTokenWorkspaceId`);
+ * the email on the accepting profile must match the invited email exactly.
+ */
+export async function acceptWorkspaceInvitation(
+  body: AcceptWorkspaceInvitationBody
+): Promise<WorkspaceDto> {
+  const rawToken = (body.token ?? '').trim();
+  if (!rawToken) throw new ApiError(400, 'Invitation token is required');
+  const profileId = getActiveProfileId();
+  if (!profileId) throw new ApiError(401, 'Authentication required');
+
+  const tokenHash = createHash(INVITATION_HASH_ALGORITHM).update(rawToken).digest('hex');
+  const client = requireDatabaseClient();
+
+  const outcome = await client.transaction<
+    { kind: 'accepted'; workspaceId: string } | { kind: 'expired' }
+  >(async tx => {
+    const invitation = await tx.get<WorkspaceInvitationRow>(
+      `SELECT ${INVITATION_COLUMNS} FROM workspace_invitations
+         WHERE token_hash = ? AND deleted_at IS NULL`,
+      [tokenHash]
+    );
+    if (!invitation) throw new ApiError(404, 'Invitation not found or already used');
+    if (invitation.status !== 'pending') {
+      throw new ApiError(409, `Invitation has already been ${invitation.status}`);
+    }
+    const now = nowIso();
+    if (invitation.expires_at <= now) {
+      const revision = invitation.revision + 1;
+      await tx.run(
+        `UPDATE workspace_invitations
+            SET status = 'expired', updated_at = ?, revision = ?
+          WHERE id = ?`,
+        [now, revision, invitation.id]
+      );
+      await recordChange(
+        {
+          entityType: 'workspace_invitation',
+          entityId: invitation.id,
+          operation: 'update',
+          entityRevision: revision,
+          workspaceId: invitation.workspace_id,
+          actorWorkspaceUserId: getActorWorkspaceUserId(),
+          changedFields: ['status']
+        },
+        tx
+      );
+      return { kind: 'expired' };
+    }
+
+    const profile = await tx.get<{ email: string | null }>(
+      `SELECT email FROM profiles WHERE id = ? AND deleted_at IS NULL`,
+      [profileId]
+    );
+    if (!profile?.email || profile.email.trim().toLowerCase() !== invitation.email) {
+      throw new ApiError(403, 'This invitation was sent to a different email address');
+    }
+
+    const existingMembership = await tx.get<{ id: string }>(
+      `SELECT id FROM workspace_users
+         WHERE workspace_id = ? AND profile_id = ? AND status = 'active' AND deleted_at IS NULL`,
+      [invitation.workspace_id, profileId]
+    );
+
+    let workspaceUserId: string;
+    if (existingMembership) {
+      workspaceUserId = existingMembership.id;
+    } else {
+      workspaceUserId = newId();
+      await tx.run(
+        `INSERT INTO workspace_users
+           (id, workspace_id, profile_id, member_key, status, metadata_json,
+            created_at, updated_at, revision)
+         VALUES (?, ?, ?, ?, 'active', '{}', ?, ?, 1)`,
+        [workspaceUserId, invitation.workspace_id, profileId, `auth:${profileId}`, now, now]
+      );
+      await recordChange(
+        {
+          entityType: 'workspace_user',
+          entityId: workspaceUserId,
+          operation: 'insert',
+          entityRevision: 1,
+          workspaceId: invitation.workspace_id,
+          actorWorkspaceUserId: workspaceUserId
+        },
+        tx
+      );
+    }
+
+    // Grant the invited role only when this member has no active role rows
+    // yet — re-accepting (or an already-a-member invite) never re-grants or
+    // downgrades an existing membership's roles.
+    const hasRole = await tx.get(
+      `SELECT 1 FROM role_assignments
+         WHERE workspace_id = ? AND workspace_user_id = ? AND deleted_at IS NULL LIMIT 1`,
+      [invitation.workspace_id, workspaceUserId]
+    );
+    if (!hasRole) {
+      if (invitation.role_key === 'ADMIN') {
+        await grantWorkspaceAdminRole({
+          workspaceId: invitation.workspace_id,
+          workspaceUserId,
+          client: tx
+        });
+      } else {
+        await tx.run(
+          `INSERT INTO role_assignments
+             (id, workspace_id, workspace_user_id, role_key, resource_type, resource_id,
+              assigned_by_workspace_user_id, created_at, updated_at, revision)
+           VALUES (?, ?, ?, ?, '', '', ?, ?, ?, 1)`,
+          [
+            newId(),
+            invitation.workspace_id,
+            workspaceUserId,
+            invitation.role_key,
+            invitation.invited_by_workspace_user_id,
+            now,
+            now
+          ]
+        );
+      }
+    }
+
+    const revision = invitation.revision + 1;
+    await tx.run(
+      `UPDATE workspace_invitations
+          SET status = 'accepted', accepted_by_workspace_user_id = ?, accepted_at = ?,
+              updated_at = ?, revision = ?
+        WHERE id = ?`,
+      [workspaceUserId, now, now, revision, invitation.id]
+    );
+    await recordChange(
+      {
+        entityType: 'workspace_invitation',
+        entityId: invitation.id,
+        operation: 'update',
+        entityRevision: revision,
+        workspaceId: invitation.workspace_id,
+        actorWorkspaceUserId: workspaceUserId
+      },
+      tx
+    );
+
+    return { kind: 'accepted', workspaceId: invitation.workspace_id };
+  });
+
+  if (outcome.kind === 'expired') {
+    throw new ApiError(410, 'Invitation has expired');
+  }
+
+  const workspaceId = outcome.workspaceId;
+  await setActiveWorkspace(workspaceId);
+  const workspace = (await listWorkspaces()).find(w => w.id === workspaceId);
+  if (!workspace) throw new ApiError(500, 'Joined workspace could not be loaded');
+  return workspace;
+}
+
+/**
+ * Count active ADMIN members for the last-admin guard. This intentionally joins
+ * through active workspace_users so stale role rows on disabled members do not
+ * keep a workspace administrable.
+ */
+async function countActiveWorkspaceAdmins({
+  workspaceId,
+  client = requireDatabaseClient()
+}: {
+  workspaceId: string;
+  client?: DatabaseClient;
+}): Promise<number> {
+  const row = await client.get<{ count: number }>(
+    `SELECT COUNT(DISTINCT wu.id) AS count
+       FROM workspace_users wu
+       JOIN role_assignments ra
+         ON ra.workspace_user_id = wu.id
+        AND ra.workspace_id = wu.workspace_id
+        AND ra.role_key = 'ADMIN'
+        AND ra.deleted_at IS NULL
+      WHERE wu.workspace_id = ?
+        AND wu.status = 'active'
+        AND wu.deleted_at IS NULL`,
+    [workspaceId]
+  );
+  return row?.count ?? 0;
+}
+
+async function assertNotLastWorkspaceAdmin({
+  workspaceId,
+  workspaceUserId,
+  client
+}: {
+  workspaceId: string;
+  workspaceUserId: string;
+  client: DatabaseClient;
+}): Promise<void> {
+  const roles = await listMemberRoleKeys({ workspaceId, workspaceUserId, client });
+  if (!roles.includes('ADMIN')) return;
+  if ((await countActiveWorkspaceAdmins({ workspaceId, client })) <= 1) {
+    throw new ApiError(409, 'Cannot remove or demote the last workspace admin');
+  }
+}
+
+/**
+ * Set a member's workspace-level role. ADMIN-only. Replaces active role rows
+ * with exactly the requested role and refuses to demote the final ADMIN.
+ */
+export async function updateWorkspaceMemberRole(
+  workspaceId: string,
+  workspaceUserId: string,
+  body: UpdateWorkspaceMemberRoleBody
+): Promise<WorkspaceMemberDto> {
+  await requireWorkspaceAdmin(workspaceId);
+
+  const roleKey = (body.roleKey ?? '').trim().toUpperCase();
+  if (!WORKSPACE_ROLE_KEYS.has(roleKey)) throw new ApiError(400, `Unknown role: ${roleKey}`);
+
+  await requireDatabaseClient().transaction(async tx => {
+    const membership = await tx.get<{ id: string }>(
+      `SELECT id FROM workspace_users
+         WHERE id = ? AND workspace_id = ? AND status = 'active' AND deleted_at IS NULL`,
+      [workspaceUserId, workspaceId]
+    );
+    if (!membership) throw new ApiError(404, 'Member not found');
+
+    if (roleKey !== 'ADMIN') {
+      await assertNotLastWorkspaceAdmin({ workspaceId, workspaceUserId, client: tx });
+    }
+
+    const existingRoles = await listMemberRoleKeys({ workspaceId, workspaceUserId, client: tx });
+    if (existingRoles.length === 1 && existingRoles[0] === roleKey) return;
+
+    const now = nowIso();
+    await tx.run(
+      `UPDATE role_assignments
+          SET deleted_at = ?, updated_at = ?, revision = revision + 1
+        WHERE workspace_id = ? AND workspace_user_id = ? AND deleted_at IS NULL`,
+      [now, now, workspaceId, workspaceUserId]
+    );
+    await tx.run(
+      `INSERT INTO role_assignments
+         (id, workspace_id, workspace_user_id, role_key, resource_type, resource_id,
+          assigned_by_workspace_user_id, created_at, updated_at, revision)
+       VALUES (?, ?, ?, ?, '', '', ?, ?, ?, 1)`,
+      [newId(), workspaceId, workspaceUserId, roleKey, getActorWorkspaceUserId(), now, now]
+    );
+    await recordChange(
+      {
+        entityType: 'role_assignment',
+        entityId: workspaceUserId,
+        operation: 'update',
+        workspaceId,
+        actorWorkspaceUserId: getActorWorkspaceUserId(),
+        changedFields: ['role_key']
+      },
+      tx
+    );
+  });
+
+  const updated = (await listWorkspaceMembers(workspaceId)).find(
+    member => member.workspaceUserId === workspaceUserId
+  );
+  if (!updated) throw new ApiError(404, 'Member not found');
+  return updated;
+}
+
+/**
+ * Remove an active member from a workspace: soft-deletes their `workspace_users`
+ * row and revokes their role rows. ADMIN-only. Refuses to remove the workspace's
+ * only remaining active member and the final ADMIN.
+ */
+export async function removeWorkspaceMember(
+  workspaceId: string,
+  workspaceUserId: string
+): Promise<void> {
+  await requireWorkspaceAdmin(workspaceId);
+  await requireDatabaseClient().transaction(async tx => {
+    const membership = await tx.get<{ id: string; revision: number }>(
+      `SELECT id, revision FROM workspace_users
+         WHERE id = ? AND workspace_id = ? AND status = 'active' AND deleted_at IS NULL`,
+      [workspaceUserId, workspaceId]
+    );
+    if (!membership) throw new ApiError(404, 'Member not found');
+
+    await assertNotLastWorkspaceAdmin({ workspaceId, workspaceUserId, client: tx });
+
+    const activeCount = await tx.get<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM workspace_users
+         WHERE workspace_id = ? AND status = 'active' AND deleted_at IS NULL`,
+      [workspaceId]
+    );
+    if ((activeCount?.count ?? 0) <= 1) {
+      throw new ApiError(409, 'Cannot remove the only member of a workspace');
+    }
+
+    const now = nowIso();
+    const revision = membership.revision + 1;
+    await tx.run(
+      `UPDATE workspace_users
+          SET status = 'disabled', deleted_at = ?, updated_at = ?, revision = ?
+        WHERE id = ?`,
+      [now, now, revision, workspaceUserId]
+    );
+    await tx.run(
+      `UPDATE role_assignments
+          SET deleted_at = ?, updated_at = ?, revision = revision + 1
+        WHERE workspace_id = ? AND workspace_user_id = ? AND deleted_at IS NULL`,
+      [now, now, workspaceId, workspaceUserId]
+    );
+    await recordChange(
+      {
+        entityType: 'workspace_user',
+        entityId: workspaceUserId,
+        operation: 'delete',
+        entityRevision: revision,
+        workspaceId,
+        actorWorkspaceUserId: getActorWorkspaceUserId()
+      },
+      tx
+    );
+  });
+}
+
 /** Switch the active workspace and return the refreshed workspace list. */
 export async function activateWorkspace(id: string): Promise<WorkspaceDto[]> {
-  // Validate membership (which also implies existence) before switching so a
-  // bad id never leaves the server pointed at a workspace with no actor.
-  if ((await resolveActorForWorkspace(id)) === null) {
+  // Validate that the *calling* profile — not just some member of `id` — has
+  // an active membership before switching. This is per-user: it changes this
+  // caller's own active workspace (this request's context, persisted for
+  // future requests via the route's `ACTIVE_WORKSPACE_COOKIE`), never a
+  // process-wide default that would affect other tenants' sessions.
+  const membership = await requireDatabaseClient().get<{ id: string }>(
+    `SELECT id FROM workspace_users
+       WHERE workspace_id = ? AND profile_id = ? AND status = 'active' AND deleted_at IS NULL
+       LIMIT 1`,
+    [id, await resolveCurrentProfileId()]
+  );
+  if (!membership) {
     throw new ApiError(404, 'Workspace not found or no active membership');
   }
   if (!(await setActiveWorkspace(id))) throw new ApiError(404, 'Workspace not found');

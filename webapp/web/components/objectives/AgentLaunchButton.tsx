@@ -15,7 +15,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover.tsx';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip.tsx';
 
-import { MANUAL_AGENT_KEY, type AgentModelSelection } from './AgentModelSelector.tsx';
+import { type AgentModelSelection, MANUAL_AGENT_KEY } from './AgentModelSelector.tsx';
 
 type AgentLaunchButtonSize = 'sm' | 'default';
 

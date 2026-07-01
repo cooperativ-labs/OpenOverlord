@@ -158,7 +158,8 @@ export function NewMissionModal({
   const isManual = selection.agent === MANUAL_AGENT_KEY;
   const canSubmit =
     Boolean(instruction.trim()) && Boolean(selectedProjectId) && selectionLoaded && !isBusy;
-  const canRun = canSubmit && !isManual && primaryConnection.connected && targetAvailability.available;
+  const canRun =
+    canSubmit && !isManual && primaryConnection.connected && targetAvailability.available;
 
   async function submit(shouldLaunch: boolean) {
     const text = instruction.trim();

@@ -115,11 +115,11 @@ export function UserProfilePage({ open }: UserProfilePageProps) {
           <dl className="max-w-lg space-y-3 text-sm">
             <div className="space-y-1">
               <dt className="text-muted-foreground">Name</dt>
-              <dd className="font-medium">{meta.data.workspace.name}</dd>
+              <dd className="font-medium">{meta.data.workspace?.name ?? 'No active workspace'}</dd>
             </div>
             <div className="space-y-1">
               <dt className="text-muted-foreground">Slug</dt>
-              <dd className="font-mono text-xs">{meta.data.workspace.slug}</dd>
+              <dd className="font-mono text-xs">{meta.data.workspace?.slug ?? '-'}</dd>
             </div>
             <div className="space-y-1">
               <dt className="text-muted-foreground">Database</dt>

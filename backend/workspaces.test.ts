@@ -8,14 +8,28 @@ const tempDir = mkdtempSync(path.join(tmpdir(), 'overlord-webapp-workspaces-'));
 process.env.OVERLORD_SQLITE_PATH = path.join(tempDir, 'webapp.sqlite');
 
 const dbModule = await import('./db.ts');
-const { db, initDatabase, resolveActorForWorkspace, setActiveWorkspace, setActiveWorkspaceUser } =
-  dbModule;
+const {
+  db,
+  initDatabase,
+  resolveActorForWorkspace,
+  setActiveProfileId,
+  setActiveWorkspace,
+  setActiveWorkspaceContext,
+  setActiveWorkspaceUser,
+  withRequestContextAsync
+} = dbModule;
 await initDatabase();
 const { actorCan, loadActorRoles } = await import('./rbac.ts');
-const { createMission, createObjective, createProject } = await import('./repository.ts');
+const { createMission, createObjective, createProject, listProjects } =
+  await import('./repository.ts');
 const { seedAuthenticatedOperator } = await import('./test-helpers.ts');
-const { completeInitialSetup, createWorkspace, exportWorkspaceObjectivesCsv, needsInitialSetup } =
-  await import('./workspaces.ts');
+const {
+  completeInitialSetup,
+  createWorkspace,
+  exportWorkspaceObjectivesCsv,
+  listWorkspaces,
+  needsInitialSetup
+} = await import('./workspaces.ts');
 
 const operatorWorkspaceUserId = seedAuthenticatedOperator({ db });
 setActiveWorkspaceUser(operatorWorkspaceUserId);
@@ -30,6 +44,49 @@ test('createWorkspace grants ADMIN to the creator so switching workspaces keeps 
   setActiveWorkspaceUser(workspaceUserId);
   assert.equal(await actorCan('project:read'), true);
   assert.equal(await actorCan('workspace:update'), true);
+});
+
+test('brand-new authenticated user can create a private admin-owned workspace', async () => {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO "user" ("id", "name", "email", "emailVerified", "image", "createdAt", "updatedAt")
+     VALUES (?, ?, ?, 1, NULL, ?, ?)`
+  ).run('brand-new-user', 'brand-new-user', 'brand-new@overlord.local', now, now);
+
+  await withRequestContextAsync(async () => {
+    setActiveProfileId('brand-new-user');
+    setActiveWorkspaceContext(null);
+    setActiveWorkspaceUser(null);
+
+    const created = await createWorkspace({ name: 'Brand New User Workspace' });
+    const members = db
+      .prepare(
+        `SELECT id, profile_id FROM workspace_users
+         WHERE workspace_id = ? AND status = 'active' AND deleted_at IS NULL`
+      )
+      .all(created.id) as { id: string; profile_id: string }[];
+
+    assert.equal(members.length, 1);
+    assert.equal(members[0]?.profile_id, 'brand-new-user');
+    assert.deepEqual(
+      await loadActorRoles({ workspaceId: created.id, workspaceUserId: members[0]?.id }),
+      ['ADMIN']
+    );
+
+    const visibleWorkspaces = await listWorkspaces();
+    assert.deepEqual(
+      visibleWorkspaces.map(workspace => workspace.id),
+      [created.id],
+      'new user should only see the workspace they created'
+    );
+
+    await createProject({ name: 'Private Project' });
+    assert.deepEqual(
+      (await listProjects()).map(project => project.name),
+      ['Private Project'],
+      'new user should only see data in their own active workspace'
+    );
+  });
 });
 
 test('createWorkspace accepts a custom workspace ID and rejects collisions', async () => {

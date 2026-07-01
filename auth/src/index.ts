@@ -13,6 +13,7 @@ export {
   getActorForSession,
   getActorForToken,
   listUserTokens,
+  resolveUserTokenWorkspaceId,
   revokeUserToken,
   verifyUserToken
 } from './auth/index.js';

@@ -69,13 +69,14 @@ import { generateCommitMessageFromDiff } from './commit-message-automation.ts';
 import {
   buildWebappServiceContext,
   DATABASE_DIALECT,
+  getActiveWorkspace,
+  getActiveWorkspaceId,
   getActorWorkspaceUserId,
   newId,
   nowIso,
   recordChange,
   type RecordChangeInput,
-  requireDatabaseClient,
-  WORKSPACE
+  requireDatabaseClient
 } from './db.ts';
 import { ApiError } from './errors.ts';
 import {
@@ -260,7 +261,7 @@ async function uniqueStatusKey(db: DatabaseClient, { name }: { name: string }): 
   let suffix = 2;
   while (
     await db.get(`SELECT 1 FROM workspace_statuses WHERE workspace_id = ? AND key = ?`, [
-      WORKSPACE.id,
+      getActiveWorkspaceId(),
       key
     ])
   ) {
@@ -278,7 +279,7 @@ async function getWorkspaceStatusRow(
     `SELECT id, workspace_id, key, name, type, position, is_default, is_terminal, revision
          FROM workspace_statuses
         WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [statusId, WORKSPACE.id]
+    [statusId, getActiveWorkspaceId()]
   )) as WorkspaceStatusRow | undefined;
   if (!row) throw new ApiError(404, 'Status not found');
   return row;
@@ -298,7 +299,7 @@ async function assertUniqueStatusName(
     `SELECT 1 FROM workspace_statuses
         WHERE workspace_id = ? AND deleted_at IS NULL AND lower(name) = lower(?)
           AND id != ?`,
-    [WORKSPACE.id, name, excludeStatusId ?? '']
+    [getActiveWorkspaceId(), name, excludeStatusId ?? '']
   );
   if (existing) throw new ApiError(409, `A status named "${name}" already exists`);
 }
@@ -310,7 +311,7 @@ async function countActiveStatusesByType(
   const row = (await db.get(
     `SELECT COUNT(*) AS count FROM workspace_statuses
         WHERE workspace_id = ? AND type = ? AND deleted_at IS NULL`,
-    [WORKSPACE.id, type]
+    [getActiveWorkspaceId(), type]
   )) as { count: number };
   return row.count;
 }
@@ -331,7 +332,12 @@ async function clearWorkspaceDefaultStatuses(
     `UPDATE workspace_statuses
         SET is_default = ?, updated_at = ?, revision = revision + 1
       WHERE workspace_id = ? AND is_default = ? AND deleted_at IS NULL`,
-    [bindBool(DATABASE_DIALECT, false), now, WORKSPACE.id, bindBool(DATABASE_DIALECT, true)]
+    [
+      bindBool(DATABASE_DIALECT, false),
+      now,
+      getActiveWorkspaceId(),
+      bindBool(DATABASE_DIALECT, true)
+    ]
   );
 }
 
@@ -473,7 +479,7 @@ async function executionTargetBelongsToWorkspace(
   const row = (await db.get(
     `SELECT id FROM execution_targets
         WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [executionTargetId, WORKSPACE.id]
+    [executionTargetId, getActiveWorkspaceId()]
   )) as { id: string } | undefined;
   return Boolean(row);
 }
@@ -692,7 +698,7 @@ async function deriveBranchStatus(_input: {
 async function getProjectSlug(projectId: string): Promise<string> {
   const row = (await requireDatabaseClient().get(
     `SELECT slug FROM projects WHERE id = ? AND workspace_id = ?`,
-    [projectId, WORKSPACE.id]
+    [projectId, getActiveWorkspaceId()]
   )) as { slug: string } | undefined;
   return row?.slug ?? 'project';
 }
@@ -717,7 +723,7 @@ async function resolveProjectBaseBranch(
 ): Promise<string> {
   const row = (await requireDatabaseClient().get(
     `SELECT settings_json FROM projects WHERE id = ? AND workspace_id = ?`,
-    [projectId, WORKSPACE.id]
+    [projectId, getActiveWorkspaceId()]
   )) as { settings_json: string } | undefined;
   return (
     (row && readProjectDefaultBranch(row.settings_json)) ||
@@ -733,7 +739,7 @@ async function preparedBaseBranch(missionId: string, branchName: string): Promis
           AND payload_json IS NOT NULL
         ORDER BY created_at DESC
         LIMIT 50`,
-    [WORKSPACE.id, missionId]
+    [getActiveWorkspaceId(), missionId]
   )) as { payload_json: string | null }[];
 
   for (const row of rows) {
@@ -934,7 +940,7 @@ async function primaryResource(
               AND status = 'active' AND deleted_at IS NULL
             ORDER BY is_primary DESC, created_at ASC
             LIMIT 1`,
-        [projectId, WORKSPACE.id]
+        [projectId, getActiveWorkspaceId()]
       )
     : requireDatabaseClient().get(
         `SELECT id, path FROM project_resources
@@ -946,7 +952,7 @@ async function primaryResource(
               is_primary DESC,
               created_at ASC
             LIMIT 1`,
-        [projectId, WORKSPACE.id, targetId, targetId]
+        [projectId, getActiveWorkspaceId(), targetId, targetId]
       ))) as { id: string; path: string } | undefined;
   return row ?? null;
 }
@@ -1015,7 +1021,7 @@ async function missionHasActiveExecution(missionId: string): Promise<boolean> {
           WHERE mission_id = ? AND workspace_id = ?
             AND status IN ('queued', 'claimed', 'launching')
           LIMIT 1`,
-      [missionId, WORKSPACE.id]
+      [missionId, getActiveWorkspaceId()]
     )
   );
 }
@@ -1027,7 +1033,7 @@ async function recordBranchActionActivity(
   await requireDatabaseClient().transaction(async tx => {
     const mission = (await tx.get(
       `SELECT revision FROM missions WHERE id = ? AND workspace_id = ?`,
-      [ctx.missionId, WORKSPACE.id]
+      [ctx.missionId, getActiveWorkspaceId()]
     )) as { revision: number } | undefined;
     const now = nowIso();
     if (mission) {
@@ -1035,7 +1041,7 @@ async function recordBranchActionActivity(
       await tx.run(
         `UPDATE missions SET updated_at = ?, revision = ?
          WHERE id = ? AND workspace_id = ?`,
-        [now, revision, ctx.missionId, WORKSPACE.id]
+        [now, revision, ctx.missionId, getActiveWorkspaceId()]
       );
       await recordChange(
         {
@@ -1057,7 +1063,7 @@ async function recordBranchActionActivity(
      VALUES (?, ?, ?, ?, NULL, 'update', 'execute', ?, ?, 'webapp', ?, ?)`,
       [
         newId(),
-        WORKSPACE.id,
+        getActiveWorkspaceId(),
         ctx.projectId,
         ctx.missionId,
         summary,
@@ -1397,7 +1403,7 @@ const selectProjectsSql = `
 export async function listProjects(): Promise<ProjectDto[]> {
   const rows = (await requireDatabaseClient().all(
     `${selectProjectsSql} ORDER BY p.status ASC, p.created_at ASC`,
-    [WORKSPACE.id]
+    [getActiveWorkspaceId()]
   )) as ProjectRow[];
   return rows.map(toProjectDto);
 }
@@ -1406,7 +1412,7 @@ export async function getProject(
   id: string,
   db: DatabaseClient = requireDatabaseClient()
 ): Promise<ProjectDto> {
-  const row = (await db.get(`${selectProjectsSql} AND p.id = ?`, [WORKSPACE.id, id])) as
+  const row = (await db.get(`${selectProjectsSql} AND p.id = ?`, [getActiveWorkspaceId(), id])) as
     | ProjectRow
     | undefined;
   if (!row) throw new ApiError(404, 'Project not found');
@@ -1421,7 +1427,7 @@ export async function listWorkspaceStatuses(
          FROM workspace_statuses
         WHERE workspace_id = ? AND deleted_at IS NULL
         ORDER BY position ASC`,
-    [WORKSPACE.id]
+    [getActiveWorkspaceId()]
   )) as WorkspaceStatusRow[];
   return rows.map(toStatusDto);
 }
@@ -1452,7 +1458,7 @@ export async function createWorkspaceStatus(
     const maxPos = (await tx.get(
       `SELECT COALESCE(MAX(position), -1) AS max_pos FROM workspace_statuses
           WHERE workspace_id = ? AND deleted_at IS NULL`,
-      [WORKSPACE.id]
+      [getActiveWorkspaceId()]
     )) as { max_pos: number };
     const position = maxPos.max_pos + 1;
 
@@ -1467,7 +1473,7 @@ export async function createWorkspaceStatus(
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       [
         id,
-        WORKSPACE.id,
+        getActiveWorkspaceId(),
         key,
         name,
         type,
@@ -1537,7 +1543,7 @@ export async function updateWorkspaceStatus(
       `UPDATE workspace_statuses
           SET ${fields.join(', ')}, updated_at = ?, revision = ?
         WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [...setParams, now, revision, statusId, WORKSPACE.id]
+      [...setParams, now, revision, statusId, getActiveWorkspaceId()]
     );
 
     await recordChange(
@@ -1580,7 +1586,7 @@ export async function deleteWorkspaceStatus(statusId: string): Promise<void> {
       `UPDATE workspace_statuses
         SET deleted_at = ?, updated_at = ?, revision = ?
       WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [now, now, revision, statusId, WORKSPACE.id]
+      [now, now, revision, statusId, getActiveWorkspaceId()]
     );
 
     await recordChange(
@@ -1623,7 +1629,7 @@ export async function reorderWorkspaceStatuses(
         `UPDATE workspace_statuses
           SET position = ?, updated_at = ?, revision = revision + 1
         WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-        [position, now, id, WORKSPACE.id]
+        [position, now, id, getActiveWorkspaceId()]
       );
       await recordChange(
         {
@@ -1653,7 +1659,7 @@ async function getProjectTagRow(
   const row = (await db.get(
     `SELECT ${selectProjectTagColumns} FROM project_tags
         WHERE id = ? AND project_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [tagId, projectId, WORKSPACE.id]
+    [tagId, projectId, getActiveWorkspaceId()]
   )) as ProjectTagRow | undefined;
   if (!row) throw new ApiError(404, 'Tag not found');
   return row;
@@ -1665,7 +1671,7 @@ export async function listProjectTags(projectId: string): Promise<ProjectTagDto[
     `SELECT ${selectProjectTagColumns} FROM project_tags
         WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL
         ORDER BY ${orderByLabelAsc('label')}`,
-    [projectId, WORKSPACE.id]
+    [projectId, getActiveWorkspaceId()]
   )) as ProjectTagRow[];
   return rows.map(toProjectTagDto);
 }
@@ -1700,7 +1706,7 @@ export async function createProjectTag(
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       [
         id,
-        WORKSPACE.id,
+        getActiveWorkspaceId(),
         projectId,
         label,
         normalizeTagColor(body.color),
@@ -2123,7 +2129,7 @@ export async function createProject(body: CreateProjectBody): Promise<ProjectDto
      VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, 1)`,
       [
         id,
-        WORKSPACE.id,
+        getActiveWorkspaceId(),
         slug,
         name,
         body.description?.trim() || null,
@@ -2152,7 +2158,7 @@ export async function createProject(body: CreateProjectBody): Promise<ProjectDto
     if (primaryResourcePath) {
       await insertProjectResource(
         tx,
-        { id, workspaceId: WORKSPACE.id },
+        { id, workspaceId: getActiveWorkspaceId() },
         {
           directoryPath: primaryResourcePath,
           executionTargetId: body.primaryResource?.executionTargetId,
@@ -2170,7 +2176,7 @@ export async function updateProject(id: string, body: UpdateProjectBody): Promis
   return requireDatabaseClient().transaction(async tx => {
     const existing = (await tx.get(
       `SELECT * FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [id, WORKSPACE.id]
+      [id, getActiveWorkspaceId()]
     )) as ProjectRow | undefined;
     if (!existing) throw new ApiError(404, 'Project not found');
 
@@ -2227,7 +2233,7 @@ export async function updateProject(id: string, body: UpdateProjectBody): Promis
     await tx.run(
       `UPDATE projects SET ${fields.join(', ')}, updated_at = ?, revision = ?
          WHERE id = ? AND workspace_id = ?`,
-      [...setParams, now, revision, id, WORKSPACE.id]
+      [...setParams, now, revision, id, getActiveWorkspaceId()]
     );
 
     await recordChange(
@@ -2249,7 +2255,7 @@ export async function deleteProject(id: string): Promise<void> {
   await requireDatabaseClient().transaction(async tx => {
     const existing = (await tx.get(
       `SELECT id, revision FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [id, WORKSPACE.id]
+      [id, getActiveWorkspaceId()]
     )) as { id: string; revision: number } | undefined;
     if (!existing) throw new ApiError(404, 'Project not found');
 
@@ -2260,7 +2266,7 @@ export async function deleteProject(id: string): Promise<void> {
     const missionIds = (
       (await tx.all(
         `SELECT id FROM missions WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-        [id, WORKSPACE.id]
+        [id, getActiveWorkspaceId()]
       )) as { id: string }[]
     ).map(r => r.id);
 
@@ -2276,14 +2282,14 @@ export async function deleteProject(id: string): Promise<void> {
       await tx.run(
         `UPDATE missions SET deleted_at = ?, revision = revision + 1
          WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-        [now, id, WORKSPACE.id]
+        [now, id, getActiveWorkspaceId()]
       );
     }
 
     await tx.run(
       `UPDATE projects SET deleted_at = ?, updated_at = ?, revision = ?
        WHERE id = ? AND workspace_id = ?`,
-      [now, now, revision, id, WORKSPACE.id]
+      [now, now, revision, id, getActiveWorkspaceId()]
     );
 
     await recordChange(
@@ -2334,7 +2340,7 @@ export async function listMissions(projectId: string): Promise<MissionDto[]> {
   const rows = (await requireDatabaseClient().all(
     `${selectMissionsSql} AND t.project_id = ?
          ORDER BY t.board_position ASC, t.sequence_number DESC`,
-    [WORKSPACE.id, projectId]
+    [getActiveWorkspaceId(), projectId]
   )) as MissionRow[];
   const tagsByMission = await getTagsByMission(rows.map(row => row.id));
   return rows.map(row => toMissionDto(row, tagsByMission.get(row.id) ?? []));
@@ -2374,7 +2380,9 @@ export async function searchMissions({
     const sql = projectId
       ? `${selectMissionsSql} AND t.project_id = ? ORDER BY t.updated_at DESC LIMIT ?`
       : `${selectMissionsSql} ORDER BY t.updated_at DESC LIMIT ?`;
-    const params = projectId ? [WORKSPACE.id, projectId, limit] : [WORKSPACE.id, limit];
+    const params = projectId
+      ? [getActiveWorkspaceId(), projectId, limit]
+      : [getActiveWorkspaceId(), limit];
     const rows = (await requireDatabaseClient().all(sql, params)) as MissionRow[];
     const tagsByMission = await getTagsByMission(rows.map(row => row.id));
     return rows.map(row => toMissionDto(row, tagsByMission.get(row.id) ?? []));
@@ -2409,7 +2417,7 @@ export async function searchMissions({
          JOIN missions t ON t.id = search_documents_fts.mission_id
            AND t.workspace_id = ? AND t.deleted_at IS NULL${projectFilter}
         WHERE search_documents_fts MATCH ?`,
-    projectId ? [WORKSPACE.id, projectId, match] : [WORKSPACE.id, match]
+    projectId ? [getActiveWorkspaceId(), projectId, match] : [getActiveWorkspaceId(), match]
   )) as Array<MissionRow & { doc_score: number }>;
 
   // Aggregate per-document scores into one relevance per mission, then rank.
@@ -2462,7 +2470,7 @@ async function getWorkspaceStatus(
 ): Promise<WorkspaceStatusRow> {
   const statusRow = (await db.get(
     `SELECT * FROM workspace_statuses WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [statusId, WORKSPACE.id]
+    [statusId, getActiveWorkspaceId()]
   )) as WorkspaceStatusRow | undefined;
   if (!statusRow) throw new ApiError(400, 'Unknown status for workspace');
   return statusRow;
@@ -2485,48 +2493,48 @@ async function cascadeMissionProjectId(
     `UPDATE objectives
        SET project_id = ?, updated_at = ?, revision = revision + 1
      WHERE mission_id = ? AND workspace_id = ?`,
-    [newProjectId, now, missionId, WORKSPACE.id]
+    [newProjectId, now, missionId, getActiveWorkspaceId()]
   );
   await db.run(
     `UPDATE agent_sessions
        SET project_id = ?, updated_at = ?, revision = revision + 1
      WHERE mission_id = ? AND workspace_id = ?`,
-    [newProjectId, now, missionId, WORKSPACE.id]
+    [newProjectId, now, missionId, getActiveWorkspaceId()]
   );
   await db.run(
     `UPDATE mission_events SET project_id = ?
      WHERE mission_id = ? AND workspace_id = ?`,
-    [newProjectId, missionId, WORKSPACE.id]
+    [newProjectId, missionId, getActiveWorkspaceId()]
   );
   await db.run(
     `UPDATE deliveries
        SET project_id = ?, updated_at = ?, revision = revision + 1
      WHERE mission_id = ? AND workspace_id = ?`,
-    [newProjectId, now, missionId, WORKSPACE.id]
+    [newProjectId, now, missionId, getActiveWorkspaceId()]
   );
   await db.run(
     `UPDATE artifacts
        SET project_id = ?, updated_at = ?, revision = revision + 1
      WHERE mission_id = ? AND workspace_id = ?`,
-    [newProjectId, now, missionId, WORKSPACE.id]
+    [newProjectId, now, missionId, getActiveWorkspaceId()]
   );
   await db.run(
     `UPDATE changed_files
        SET project_id = ?, updated_at = ?, revision = revision + 1
      WHERE mission_id = ? AND workspace_id = ?`,
-    [newProjectId, now, missionId, WORKSPACE.id]
+    [newProjectId, now, missionId, getActiveWorkspaceId()]
   );
   await db.run(
     `UPDATE change_rationales
        SET project_id = ?, updated_at = ?, revision = revision + 1
      WHERE mission_id = ? AND workspace_id = ?`,
-    [newProjectId, now, missionId, WORKSPACE.id]
+    [newProjectId, now, missionId, getActiveWorkspaceId()]
   );
   await db.run(
     `UPDATE execution_requests
        SET project_id = ?, updated_at = ?, revision = revision + 1
      WHERE mission_id = ? AND workspace_id = ?`,
-    [newProjectId, now, missionId, WORKSPACE.id]
+    [newProjectId, now, missionId, getActiveWorkspaceId()]
   );
 }
 
@@ -2534,13 +2542,14 @@ async function getMissionRow(
   missionRef: string,
   db: DatabaseClient = requireDatabaseClient()
 ): Promise<MissionRow> {
-  const byId = (await db.get(`${selectMissionsSql} AND t.id = ?`, [WORKSPACE.id, missionRef])) as
-    | MissionRow
-    | undefined;
+  const byId = (await db.get(`${selectMissionsSql} AND t.id = ?`, [
+    getActiveWorkspaceId(),
+    missionRef
+  ])) as MissionRow | undefined;
   if (byId) return byId;
 
   const byDisplayId = (await db.get(`${selectMissionsSql} AND t.display_id = ?`, [
-    WORKSPACE.id,
+    getActiveWorkspaceId(),
     missionRef
   ])) as MissionRow | undefined;
   if (byDisplayId) return byDisplayId;
@@ -2606,7 +2615,7 @@ export async function listMissionEvents(
         WHERE me.mission_id = ? AND me.workspace_id = ?
         ORDER BY me.created_at DESC, me.id DESC
         LIMIT ?`,
-    [mission.id, WORKSPACE.id, limit]
+    [mission.id, getActiveWorkspaceId(), limit]
   )) as MissionEventRow[];
   return rows.map(row => ({
     id: row.id,
@@ -2668,7 +2677,7 @@ export async function listMissionFileChanges(
           AND cr.deleted_at IS NULL
         ORDER BY cr.created_at DESC, cr.id DESC
         LIMIT ?`,
-    [mission.id, WORKSPACE.id, limit]
+    [mission.id, getActiveWorkspaceId(), limit]
   )) as FileChangeRow[];
   return rows.map(row => ({
     id: row.id,
@@ -2712,7 +2721,7 @@ export async function listArtifacts(missionRef: string, limit = 200): Promise<Ar
         WHERE mission_id = ? AND workspace_id = ? AND deleted_at IS NULL
         ORDER BY created_at DESC, id DESC
         LIMIT ?`,
-    [mission.id, WORKSPACE.id, limit]
+    [mission.id, getActiveWorkspaceId(), limit]
   )) as ArtifactRow[];
   return rows.map(row => ({
     id: row.id,
@@ -2739,7 +2748,7 @@ async function nextMissionSequence(db: DatabaseClient): Promise<number> {
     `SELECT id, next_value FROM mission_sequences
          WHERE workspace_id = ? AND scope_type = 'workspace'
            AND scope_id = ? AND counter_name = 'mission'`,
-    [WORKSPACE.id, WORKSPACE.id]
+    [getActiveWorkspaceId(), getActiveWorkspaceId()]
   )) as { id: string; next_value: number } | undefined;
 
   if (!row) {
@@ -2747,7 +2756,7 @@ async function nextMissionSequence(db: DatabaseClient): Promise<number> {
     await db.run(
       `INSERT INTO mission_sequences (id, workspace_id, scope_type, scope_id, counter_name, next_value, updated_at)
        VALUES (?, ?, 'workspace', ?, 'mission', ?, ?)`,
-      [newId(), WORKSPACE.id, WORKSPACE.id, seq + 1, nowIso()]
+      [newId(), getActiveWorkspaceId(), getActiveWorkspaceId(), seq + 1, nowIso()]
     );
     return seq;
   }
@@ -2786,7 +2795,7 @@ async function createMissionTx(body: CreateMissionBody): Promise<CreateMissionRe
 
     const project = (await tx.get(
       `SELECT id FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [body.projectId, WORKSPACE.id]
+      [body.projectId, getActiveWorkspaceId()]
     )) as { id: string } | undefined;
     if (!project) throw new ApiError(404, 'Project not found');
 
@@ -2795,14 +2804,14 @@ async function createMissionTx(body: CreateMissionBody): Promise<CreateMissionRe
     if (body.statusId) {
       statusRow = (await tx.get(
         `SELECT * FROM workspace_statuses WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-        [body.statusId, WORKSPACE.id]
+        [body.statusId, getActiveWorkspaceId()]
       )) as WorkspaceStatusRow | undefined;
       if (!statusRow) throw new ApiError(400, 'Unknown status for workspace');
     } else {
       statusRow = (await tx.get(
         `SELECT * FROM workspace_statuses
            WHERE workspace_id = ? AND is_default = ? AND deleted_at IS NULL LIMIT 1`,
-        [WORKSPACE.id, bindBool(DATABASE_DIALECT, true)]
+        [getActiveWorkspaceId(), bindBool(DATABASE_DIALECT, true)]
       )) as WorkspaceStatusRow | undefined;
       if (!statusRow) throw new ApiError(409, 'Workspace has no default status');
     }
@@ -2815,7 +2824,7 @@ async function createMissionTx(body: CreateMissionBody): Promise<CreateMissionRe
     const now = nowIso();
     const id = newId();
     const sequence = await nextMissionSequence(tx);
-    const displayId = `${WORKSPACE.slug}:${sequence}`;
+    const displayId = `${getActiveWorkspace().slug}:${sequence}`;
     const boardPosition = await topBoardPosition(tx, body.projectId, statusRow.id);
     const assignedWorkspaceUserId =
       body.assignedWorkspaceUserId === undefined
@@ -2830,7 +2839,7 @@ async function createMissionTx(body: CreateMissionBody): Promise<CreateMissionRe
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', '{}', '{}', ?, ?, ?, ?, 1)`,
       [
         id,
-        WORKSPACE.id,
+        getActiveWorkspaceId(),
         body.projectId,
         displayId,
         sequence,
@@ -2908,7 +2917,7 @@ async function syncMissionTags(
     const tag = (await db.get(
       `SELECT id FROM project_tags
        WHERE id = ? AND project_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [tagId, projectId, WORKSPACE.id]
+      [tagId, projectId, getActiveWorkspaceId()]
     )) as { id: string } | undefined;
     if (!tag) throw new ApiError(400, 'Tag does not belong to this project');
   }
@@ -3023,7 +3032,7 @@ async function resolveAssignedWorkspaceUserId(
   const member = (await db.get(
     `SELECT id FROM workspace_users
         WHERE id = ? AND workspace_id = ? AND status = 'active' AND deleted_at IS NULL`,
-    [trimmed, WORKSPACE.id]
+    [trimmed, getActiveWorkspaceId()]
   )) as { id: string } | undefined;
   if (!member) throw new ApiError(400, 'Assignee is not a member of this workspace');
   return member.id;
@@ -3116,12 +3125,12 @@ async function patchMissionFieldsTx(id: string, body: UpdateMissionBody): Promis
       await tx.run(
         `UPDATE missions SET ${fields.join(', ')}, updated_at = ?, revision = ?
          WHERE id = ? AND workspace_id = ?`,
-        [...setParams, now, revision, id, WORKSPACE.id]
+        [...setParams, now, revision, id, getActiveWorkspaceId()]
       );
     } else {
       await tx.run(
         `UPDATE missions SET updated_at = ?, revision = ? WHERE id = ? AND workspace_id = ?`,
-        [now, revision, id, WORKSPACE.id]
+        [now, revision, id, getActiveWorkspaceId()]
       );
     }
 
@@ -3209,7 +3218,7 @@ async function moveMissionProjectTx({
     await tx.run(
       `UPDATE missions SET ${fields.join(', ')}, updated_at = ?, revision = ?
          WHERE id = ? AND workspace_id = ?`,
-      [...setParams, now, revision, id, WORKSPACE.id]
+      [...setParams, now, revision, id, getActiveWorkspaceId()]
     );
 
     await recordChange(
@@ -3237,7 +3246,7 @@ export async function updateMission(
   if (body.projectId !== undefined && body.projectId !== existing.project_id) {
     const targetProject = (await client.get(
       `SELECT id FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [body.projectId, WORKSPACE.id]
+      [body.projectId, getActiveWorkspaceId()]
     )) as { id: string } | undefined;
     if (!targetProject) throw new ApiError(404, 'Project not found');
 
@@ -3281,7 +3290,7 @@ export async function deleteMission(id: string): Promise<void> {
     await tx.run(
       `UPDATE missions SET deleted_at = ?, revision = ?
        WHERE id = ? AND workspace_id = ?`,
-      [now, revision, id, WORKSPACE.id]
+      [now, revision, id, getActiveWorkspaceId()]
     );
 
     await recordChange(
@@ -3318,7 +3327,7 @@ export async function reorderBoardColumn(
   await requireDatabaseClient().transaction(async tx => {
     const statusRow = (await tx.get(
       `SELECT * FROM workspace_statuses WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [statusId, WORKSPACE.id]
+      [statusId, getActiveWorkspaceId()]
     )) as WorkspaceStatusRow | undefined;
     if (!statusRow) throw new ApiError(400, 'Unknown status for workspace');
 
@@ -3331,7 +3340,7 @@ export async function reorderBoardColumn(
       const existing = (await tx.get(
         `SELECT * FROM missions
              WHERE id = ? AND workspace_id = ? AND project_id = ? AND deleted_at IS NULL`,
-        [missionId, WORKSPACE.id, projectId]
+        [missionId, getActiveWorkspaceId(), projectId]
       )) as MissionRow | undefined;
       if (!existing) throw new ApiError(404, `Mission ${missionId} not found in project`);
 
@@ -3353,7 +3362,7 @@ export async function reorderBoardColumn(
       await tx.run(
         `UPDATE missions SET ${setClauses.join(', ')}, updated_at = ?, revision = ?
            WHERE id = ? AND workspace_id = ?`,
-        [...setParams, now, revision, missionId, WORKSPACE.id]
+        [...setParams, now, revision, missionId, getActiveWorkspaceId()]
       );
 
       await recordChange(
@@ -3452,7 +3461,7 @@ export async function listWorkspaceMyMissions(): Promise<MyMissionsResponse> {
     `${selectMyMissionsSql}
          ORDER BY (mtp.position IS NULL) ASC, mtp.position ASC,
                   t.board_position ASC, t.updated_at DESC, t.sequence_number DESC, t.id ASC`,
-    [actor, WORKSPACE.id, actor]
+    [actor, getActiveWorkspaceId(), actor]
   )) as MyMissionRow[];
   const tagsByMission = await getTagsByMission(rows.map(row => row.id));
   return { missions: rows.map(row => toMyMissionDto(row, tagsByMission.get(row.id) ?? [])) };
@@ -3478,7 +3487,7 @@ async function upsertMyMissionPosition(
   const existing = (await db.get(
     `SELECT id, revision FROM my_mission_positions
          WHERE workspace_id = ? AND workspace_user_id = ? AND mission_id = ?`,
-    [WORKSPACE.id, actor, missionId]
+    [getActiveWorkspaceId(), actor, missionId]
   )) as { id: string; revision: number } | undefined;
   if (existing) {
     await db.run(
@@ -3493,7 +3502,7 @@ async function upsertMyMissionPosition(
     `INSERT INTO my_mission_positions
        (id, workspace_id, workspace_user_id, mission_id, status_id, position, created_at, updated_at, revision)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-    [newId(), WORKSPACE.id, actor, missionId, statusId, position, now, now]
+    [newId(), getActiveWorkspaceId(), actor, missionId, statusId, position, now, now]
   );
 }
 
@@ -3515,12 +3524,12 @@ async function reorderWorkspaceMyMissionsTx(body: MyMissionReorderRequest): Prom
     // early with a typed, workspace-specific code the client renders as an alert.
     const statusRow = (await tx.get(
       `SELECT * FROM workspace_statuses WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [statusId, WORKSPACE.id]
+      [statusId, getActiveWorkspaceId()]
     )) as WorkspaceStatusRow | undefined;
     if (!statusRow) {
       throw new ApiError(
         409,
-        `That status is not available for missions in the ${WORKSPACE.name} workspace`,
+        `That status is not available for missions in the ${getActiveWorkspace().name} workspace`,
         undefined,
         STATUS_UNAVAILABLE_FOR_WORKSPACE
       );
@@ -3531,7 +3540,7 @@ async function reorderWorkspaceMyMissionsTx(body: MyMissionReorderRequest): Prom
     for (const [index, missionId] of orderedIds.entries()) {
       const existing = (await tx.get(
         `SELECT * FROM missions WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-        [missionId, WORKSPACE.id]
+        [missionId, getActiveWorkspaceId()]
       )) as MissionRow | undefined;
       if (!existing) throw new ApiError(404, `Mission ${missionId} not found in workspace`);
       if (existing.assigned_workspace_user_id !== actor) {
@@ -3556,7 +3565,7 @@ async function reorderWorkspaceMyMissionsTx(body: MyMissionReorderRequest): Prom
             now,
             revision,
             missionId,
-            WORKSPACE.id
+            getActiveWorkspaceId()
           ]
         );
         await recordChange(
@@ -3606,7 +3615,7 @@ export async function reorderWorkspaceMyMissions(
     ) {
       throw new ApiError(
         409,
-        `That status is not available for missions in the ${WORKSPACE.name} workspace`,
+        `That status is not available for missions in the ${getActiveWorkspace().name} workspace`,
         undefined,
         STATUS_UNAVAILABLE_FOR_WORKSPACE
       );
@@ -3685,7 +3694,7 @@ async function applyObjectivePositionUpdates(
     await tx.run(
       `UPDATE objectives SET position = ?, updated_at = ?
          WHERE id = ? AND workspace_id = ?`,
-      [tempBase + index, now, existing.id, WORKSPACE.id]
+      [tempBase + index, now, existing.id, getActiveWorkspaceId()]
     );
   }
 
@@ -3693,7 +3702,7 @@ async function applyObjectivePositionUpdates(
     await tx.run(
       `UPDATE objectives SET position = ?, updated_at = ?, revision = ?
          WHERE id = ? AND workspace_id = ?`,
-      [position, now, revision, existing.id, WORKSPACE.id]
+      [position, now, revision, existing.id, getActiveWorkspaceId()]
     );
 
     await recordChange(
@@ -3736,14 +3745,14 @@ export async function reorderFutureObjectives(
   await requireDatabaseClient().transaction(async tx => {
     const mission = (await tx.get(
       `SELECT id, project_id FROM missions WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [missionId, WORKSPACE.id]
+      [missionId, getActiveWorkspaceId()]
     )) as { id: string; project_id: string } | undefined;
     if (!mission) throw new ApiError(404, 'Mission not found');
 
     const rows = (await tx.all(
       `SELECT * FROM objectives
            WHERE mission_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [missionId, WORKSPACE.id]
+      [missionId, getActiveWorkspaceId()]
     )) as ObjectiveRow[];
     const byId = new Map(rows.map(row => [row.id, row]));
 
@@ -3780,7 +3789,7 @@ export async function reorderFutureObjectives(
       await tx.run(
         `UPDATE objectives SET position = ?, updated_at = ?
            WHERE id = ? AND workspace_id = ?`,
-        [tempBase + index, now, existing.id, WORKSPACE.id]
+        [tempBase + index, now, existing.id, getActiveWorkspaceId()]
       );
     }
 
@@ -3788,7 +3797,7 @@ export async function reorderFutureObjectives(
       await tx.run(
         `UPDATE objectives SET position = ?, updated_at = ?, revision = ?
            WHERE id = ? AND workspace_id = ?`,
-        [position, now, revision, existing.id, WORKSPACE.id]
+        [position, now, revision, existing.id, getActiveWorkspaceId()]
       );
 
       await recordChange(
@@ -3822,7 +3831,7 @@ async function insertObjective(
 
   const mission = (await db.get(
     `SELECT id, project_id FROM missions WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [body.missionId, WORKSPACE.id]
+    [body.missionId, getActiveWorkspaceId()]
   )) as { id: string; project_id: string } | undefined;
   if (!mission) throw new ApiError(404, 'Mission not found');
 
@@ -3833,7 +3842,7 @@ async function insertObjective(
     `SELECT id FROM objectives
        WHERE mission_id = ? AND workspace_id = ? AND state = 'draft' AND deleted_at IS NULL
        LIMIT 1`,
-    [body.missionId, WORKSPACE.id]
+    [body.missionId, getActiveWorkspaceId()]
   )) as { id: string } | undefined;
   const state = requestedState === 'draft' && draftRow ? 'future' : requestedState;
 
@@ -3873,7 +3882,7 @@ async function insertObjective(
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, '{}', ?, ?, ?, 1)`,
     [
       id,
-      WORKSPACE.id,
+      getActiveWorkspaceId(),
       mission.project_id,
       body.missionId,
       position,
@@ -3945,7 +3954,7 @@ async function ensureDraftSlotAfterObjectiveLeavesQueue(
     `SELECT id, instruction_text, revision FROM objectives
        WHERE mission_id = ? AND workspace_id = ? AND state = 'draft' AND deleted_at IS NULL
        ORDER BY position ASC, created_at ASC`,
-    [missionId, WORKSPACE.id]
+    [missionId, getActiveWorkspaceId()]
   )) as Array<{
     id: string;
     instruction_text: string;
@@ -3958,7 +3967,7 @@ async function ensureDraftSlotAfterObjectiveLeavesQueue(
     `SELECT id, revision FROM objectives
        WHERE mission_id = ? AND workspace_id = ? AND state = 'future' AND deleted_at IS NULL
        ORDER BY position ASC, created_at ASC LIMIT 1`,
-    [missionId, WORKSPACE.id]
+    [missionId, getActiveWorkspaceId()]
   )) as { id: string; revision: number } | undefined;
 
   if (nextFuture) {
@@ -3968,7 +3977,7 @@ async function ensureDraftSlotAfterObjectiveLeavesQueue(
         `UPDATE objectives
          SET deleted_at = ?, updated_at = ?, revision = ?
          WHERE id = ? AND workspace_id = ?`,
-        [now, now, draftRevision, draft.id, WORKSPACE.id]
+        [now, now, draftRevision, draft.id, getActiveWorkspaceId()]
       );
 
       await recordChange(
@@ -3990,7 +3999,7 @@ async function ensureDraftSlotAfterObjectiveLeavesQueue(
       `UPDATE objectives
        SET state = 'draft', completed_at = NULL, updated_at = ?, revision = ?
        WHERE id = ? AND workspace_id = ?`,
-      [now, nextRevision, nextFuture.id, WORKSPACE.id]
+      [now, nextRevision, nextFuture.id, getActiveWorkspaceId()]
     );
 
     await recordChange(
@@ -4026,7 +4035,7 @@ async function updateObjectiveTx(
   return requireDatabaseClient().transaction(async tx => {
     const existing = (await tx.get(
       `SELECT * FROM objectives WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [id, WORKSPACE.id]
+      [id, getActiveWorkspaceId()]
     )) as ObjectiveRow | undefined;
     if (!existing) throw new ApiError(404, 'Objective not found');
 
@@ -4102,7 +4111,7 @@ async function updateObjectiveTx(
         `SELECT id, revision, position FROM objectives
            WHERE mission_id = ? AND workspace_id = ? AND state = 'draft'
              AND id <> ? AND deleted_at IS NULL`,
-        [existing.mission_id, WORKSPACE.id, id]
+        [existing.mission_id, getActiveWorkspaceId(), id]
       )) as Array<{ id: string; revision: number; position: number }>;
 
       for (const draft of otherDrafts) {
@@ -4110,7 +4119,7 @@ async function updateObjectiveTx(
         await tx.run(
           `UPDATE objectives SET state = 'future', updated_at = ?, revision = ?
            WHERE id = ? AND workspace_id = ?`,
-          [now, draftRevision, draft.id, WORKSPACE.id]
+          [now, draftRevision, draft.id, getActiveWorkspaceId()]
         );
 
         await recordChange(
@@ -4135,7 +4144,7 @@ async function updateObjectiveTx(
           const missionRows = (await tx.all(
             `SELECT * FROM objectives
                WHERE mission_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-            [existing.mission_id, WORKSPACE.id]
+            [existing.mission_id, getActiveWorkspaceId()]
           )) as ObjectiveRow[];
           const positionById = new Map<string, number>();
           for (const row of missionRows) {
@@ -4168,7 +4177,7 @@ async function updateObjectiveTx(
     await tx.run(
       `UPDATE objectives SET ${fields.join(', ')}, updated_at = ?, revision = ?
          WHERE id = ? AND workspace_id = ?`,
-      [...setParams, now, revision, id, WORKSPACE.id]
+      [...setParams, now, revision, id, getActiveWorkspaceId()]
     );
 
     await recordChange(
@@ -4255,7 +4264,7 @@ export async function deleteObjective(id: string): Promise<void> {
   await requireDatabaseClient().transaction(async tx => {
     const existing = (await tx.get(
       `SELECT * FROM objectives WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [id, WORKSPACE.id]
+      [id, getActiveWorkspaceId()]
     )) as ObjectiveRow | undefined;
     if (!existing) throw new ApiError(404, 'Objective not found');
 
@@ -4264,7 +4273,7 @@ export async function deleteObjective(id: string): Promise<void> {
     await tx.run(
       `UPDATE objectives SET deleted_at = ?, revision = ?
        WHERE id = ? AND workspace_id = ?`,
-      [now, revision, id, WORKSPACE.id]
+      [now, revision, id, getActiveWorkspaceId()]
     );
 
     await recordChange(
@@ -4556,7 +4565,7 @@ async function loadTokenScopeGrants(db: DatabaseClient, tokenId: string): Promis
     `SELECT permission FROM user_token_scopes
          WHERE token_id = ? AND workspace_id = ? AND deleted_at IS NULL
          ORDER BY permission ASC`,
-    [tokenId, WORKSPACE.id]
+    [tokenId, getActiveWorkspaceId()]
   )) as Array<{ permission: string }>;
   return rows.map(r => r.permission);
 }
@@ -4587,7 +4596,7 @@ async function loadOperatorIdentity(db: DatabaseClient): Promise<OperatorIdentit
     `SELECT id FROM workspace_users
          WHERE workspace_id = ? AND profile_id = ? AND deleted_at IS NULL
          ORDER BY created_at ASC LIMIT 1`,
-    [WORKSPACE.id, user.id]
+    [getActiveWorkspaceId(), user.id]
   )) as { id: string } | undefined;
   if (!membership) {
     throw new ApiError(409, 'No workspace membership for the local operator');
@@ -4614,7 +4623,7 @@ async function loadUserTokenForUpdate(
   const row = (await db.get(
     `SELECT id, status, revision FROM user_tokens
          WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [id, WORKSPACE.id]
+    [id, getActiveWorkspaceId()]
   )) as UserTokenMutableRow | undefined;
   if (!row) throw new ApiError(404, 'Token not found');
   return row;
@@ -4632,7 +4641,7 @@ export async function listUserTokens(): Promise<UserTokenDto[]> {
     `SELECT ${USER_TOKEN_COLUMNS} FROM user_tokens
          WHERE workspace_id = ? AND deleted_at IS NULL
          ORDER BY created_at DESC`,
-    [WORKSPACE.id]
+    [getActiveWorkspaceId()]
   )) as UserTokenRow[];
   return Promise.all(rows.map(row => toUserTokenDto(client, row)));
 }
@@ -4671,7 +4680,7 @@ export async function createUserToken(
       const candidate = generateUserTokenSecret();
       const clash = await tx.get(
         'SELECT 1 FROM user_tokens WHERE workspace_id = ? AND token_prefix = ?',
-        [WORKSPACE.id, candidate.prefix]
+        [getActiveWorkspaceId(), candidate.prefix]
       );
       if (!clash) {
         generated = candidate;
@@ -4690,7 +4699,7 @@ export async function createUserToken(
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, '{}', '{}', ?, ?, 1)`,
       [
         id,
-        WORKSPACE.id,
+        getActiveWorkspaceId(),
         userId,
         workspaceUserId,
         label,
@@ -4712,7 +4721,7 @@ export async function createUserToken(
          id, workspace_id, token_id, permission, resource_type, resource_id,
          created_at, updated_at, revision
        ) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, 1)`,
-        [newId(), WORKSPACE.id, id, permission, now, now]
+        [newId(), getActiveWorkspaceId(), id, permission, now, now]
       );
     }
 
@@ -4747,7 +4756,7 @@ export async function renameUserToken(
     await tx.run(
       `UPDATE user_tokens SET label = ?, updated_at = ?, revision = ?
          WHERE id = ? AND workspace_id = ?`,
-      [label, now, revision, id, WORKSPACE.id]
+      [label, now, revision, id, getActiveWorkspaceId()]
     );
 
     await recordChange(
@@ -4780,7 +4789,7 @@ export async function revokeUserToken(id: string): Promise<UserTokenDto> {
             revoked_by_workspace_user_id = ?,
             updated_at = ?, revision = ?
       WHERE id = ? AND workspace_id = ?`,
-      [now, workspaceUserId, now, revision, id, WORKSPACE.id]
+      [now, workspaceUserId, now, revision, id, getActiveWorkspaceId()]
     );
 
     await recordChange(

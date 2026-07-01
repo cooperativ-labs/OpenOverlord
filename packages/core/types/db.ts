@@ -692,6 +692,26 @@ export interface WorkspaceImages {
   workspace_id: string;
 }
 
+export interface WorkspaceInvitations {
+  accepted_at: string | null;
+  accepted_by_workspace_user_id: string | null;
+  created_at: string;
+  deleted_at: string | null;
+  email: string;
+  expires_at: string;
+  hash_algorithm: string;
+  id: string | null;
+  invited_by_workspace_user_id: string;
+  revision: Generated<number>;
+  revoked_at: string | null;
+  role_key: Generated<string>;
+  status: string;
+  token_hash: string;
+  token_prefix: string;
+  updated_at: string;
+  workspace_id: string;
+}
+
 export interface Workspaces {
   created_at: string;
   deleted_at: string | null;
@@ -792,6 +812,7 @@ export interface DB {
   user_tokens: UserTokens;
   verification: Verification;
   workspace_images: WorkspaceImages;
+  workspace_invitations: WorkspaceInvitations;
   workspace_statuses: WorkspaceStatuses;
   workspace_user_execution_targets: WorkspaceUserExecutionTargets;
   workspace_users: WorkspaceUsers;

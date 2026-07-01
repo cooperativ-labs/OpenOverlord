@@ -48,7 +48,7 @@ export function WorkspaceSwitcher() {
   const items = workspaces.data ?? [];
   const active =
     items.find(w => w.isActive) ??
-    (meta.data
+    (meta.data?.workspace
       ? {
           id: meta.data.workspace.id,
           slug: meta.data.workspace.slug,

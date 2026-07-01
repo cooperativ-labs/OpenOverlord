@@ -11,9 +11,21 @@ import { isExplicitRuntimeEnv, resolveLayeredEnv } from '../cli/src/env.ts';
 import { ServiceError } from '../packages/core/service/errors.ts';
 import type { LocalTargetBridgeCall } from '../packages/core/service/local-target/desktop-bridge.ts';
 
-import { authNodeHandler, getAllowedBrowserOrigins, requireAuthenticatedSession } from './auth.ts';
+import {
+  ACTIVE_WORKSPACE_COOKIE,
+  authNodeHandler,
+  getAllowedBrowserOrigins,
+  requireAuthenticatedSession
+} from './auth.ts';
 import { isAllowedBrowserOrigin } from './browser-origins.ts';
-import { DATABASE_DIALECT, DATABASE_PATH, initDatabase, WORKSPACE } from './db.ts';
+import {
+  DATABASE_DIALECT,
+  DATABASE_PATH,
+  getActiveWorkspaceIdOrNull,
+  getActorWorkspaceUserId,
+  initDatabase,
+  WORKSPACE
+} from './db.ts';
 import { ENV_PROFILE, REPO_ROOT } from './env-profile.ts';
 import { apiErrorFromDatabaseError } from './errors.ts';
 import {
@@ -131,15 +143,21 @@ import {
 import { postExecutionTargetObservations } from './target-resource-observations.ts';
 import { readSqlStudioEnabled } from './workspace-settings.ts';
 import {
+  acceptWorkspaceInvitation,
   activateWorkspace,
   completeInitialSetup,
   createWorkspace,
   deleteWorkspace,
   exportWorkspaceObjectivesCsv,
+  inviteWorkspaceMember,
+  listWorkspaceInvitations,
   listWorkspaceMembers,
   listWorkspaces,
   needsInitialSetup,
-  updateWorkspace
+  removeWorkspaceMember,
+  revokeWorkspaceInvitation,
+  updateWorkspace,
+  updateWorkspaceMemberRole
 } from './workspaces.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -237,6 +255,25 @@ app.use((req, res, next) => {
   return jsonBody(req, res, next);
 });
 
+/**
+ * Persist which workspace a browser session defaults to on future requests
+ * (the per-user replacement for the old process-global active workspace —
+ * see `ensureWorkspaceUser`/`ACTIVE_WORKSPACE_COOKIE` in `backend/auth.ts`).
+ * `httpOnly` + `sameSite: 'lax'` since this is a same-site preference, not a
+ * credential; membership is still re-validated from `workspace_users` on every
+ * request, so a forged/stale value only ever downgrades to a 403 or the
+ * caller's default membership, never an escalation.
+ */
+function setActiveWorkspaceCookie(res: Response, workspaceId: string): void {
+  res.cookie(ACTIVE_WORKSPACE_COOKIE, workspaceId, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: res.req.secure,
+    path: '/',
+    maxAge: 400 * 24 * 60 * 60 * 1000
+  });
+}
+
 // Small wrapper so handlers can throw ApiError / Error and get a clean response.
 // Also triggers an immediate realtime poll after mutations for snappy echoes.
 // `requires` declares the RBAC permission the route needs; it is enforced (role
@@ -270,7 +307,9 @@ app.get(
   '/api/meta',
   handle(
     async () => ({
-      workspace: WORKSPACE,
+      workspace: getActiveWorkspaceIdOrNull()
+        ? { id: WORKSPACE.id, slug: WORKSPACE.slug, name: WORKSPACE.name }
+        : null,
       // True while the seeded first workspace is still unnamed; the web UI shows
       // the one-time initial setup step until `POST /api/setup` completes.
       needsSetup: await needsInitialSetup(),
@@ -295,7 +334,7 @@ app.get(
         localTarget: resolveLocalTargetServerCapability({ dialect: DATABASE_DIALECT })
       }
     }),
-    { requires: PERMISSIONS.WORKSPACE_READ }
+    {}
   )
 );
 
@@ -332,17 +371,22 @@ app.post(
 
 app.get(
   '/api/workspaces',
-  handle(() => listWorkspaces(), { requires: PERMISSIONS.WORKSPACE_READ })
+  handle(async () => {
+    if (getActorWorkspaceUserId()) await requirePermission(PERMISSIONS.WORKSPACE_READ);
+    return listWorkspaces();
+  })
 );
 app.post(
   '/api/workspaces',
   handle(
-    async req => {
+    async (req, res) => {
+      if (getActorWorkspaceUserId()) await requirePermission(PERMISSIONS.WORKSPACE_CREATE);
       const result = await createWorkspace(req.body);
+      setActiveWorkspaceCookie(res, result.id);
       realtime.refreshAll();
       return result;
     },
-    { mutates: true, requires: PERMISSIONS.WORKSPACE_CREATE }
+    { mutates: true }
   )
 );
 app.patch(
@@ -373,6 +417,55 @@ app.get(
   '/api/workspaces/:id/members',
   handle(req => listWorkspaceMembers(req.params.id), { requires: PERMISSIONS.WORKSPACE_READ })
 );
+app.delete(
+  '/api/workspaces/:id/members/:workspaceUserId',
+  handle(req => removeWorkspaceMember(req.params.id, req.params.workspaceUserId), {
+    mutates: true,
+    requires: PERMISSIONS.MEMBER_REMOVE
+  })
+);
+app.patch(
+  '/api/workspaces/:id/members/:workspaceUserId/role',
+  handle(req => updateWorkspaceMemberRole(req.params.id, req.params.workspaceUserId, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.ROLE_ASSIGN
+  })
+);
+app.get(
+  '/api/workspaces/:id/invitations',
+  handle(req => listWorkspaceInvitations(req.params.id), {
+    requires: PERMISSIONS.INVITATION_READ
+  })
+);
+app.post(
+  '/api/workspaces/:id/invitations',
+  handle(req => inviteWorkspaceMember(req.params.id, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.MEMBER_INVITE
+  })
+);
+app.delete(
+  '/api/workspaces/:id/invitations/:invitationId',
+  handle(req => revokeWorkspaceInvitation(req.params.id, req.params.invitationId), {
+    mutates: true,
+    requires: PERMISSIONS.INVITATION_REVOKE
+  })
+);
+// Accepting an invitation is how a brand-new (or not-yet-a-member) authenticated
+// profile gains its first workspace membership, so this route deliberately
+// carries no `requires` gate — the invitation token itself is the credential.
+app.post(
+  '/api/invitations/accept',
+  handle(
+    async (req, res) => {
+      const result = await acceptWorkspaceInvitation(req.body);
+      setActiveWorkspaceCookie(res, result.id);
+      realtime.refreshAll();
+      return result;
+    },
+    { mutates: true }
+  )
+);
 app.get(
   '/api/workspaces/:id/objectives.csv',
   handle(
@@ -388,8 +481,9 @@ app.get(
 app.post(
   '/api/workspaces/:id/activate',
   handle(
-    async req => {
+    async (req, res) => {
       const result = await activateWorkspace(req.params.id);
+      setActiveWorkspaceCookie(res, req.params.id);
       realtime.refreshAll();
       return result;
     },

@@ -1,6 +1,7 @@
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type {
+  AcceptWorkspaceInvitationBody,
   BranchActionBody,
   CompleteInitialSetupBody,
   CreateEverhourTimeBody,
@@ -12,6 +13,7 @@ import type {
   CreateUserTokenBody,
   CreateWorkspaceBody,
   CreateWorkspaceStatusBody,
+  InviteWorkspaceMemberBody,
   LaunchObjectiveBody,
   LaunchPreferenceDto,
   LinkProjectEverhourBody,
@@ -37,6 +39,7 @@ import type {
   UpdateTerminalProfileBody,
   UpdateUserTokenBody,
   UpdateWorkspaceBody,
+  UpdateWorkspaceMemberRoleBody,
   UpdateWorkspaceStatusBody,
   UpdateWorktreeBranchAutomationBody,
   WorkspaceStatusDto
@@ -74,6 +77,7 @@ export const keys = {
   userTokens: ['user-tokens'] as const,
   workspaces: ['workspaces'] as const,
   workspaceMembers: (id: string) => ['workspace', id, 'members'] as const,
+  workspaceInvitations: (id: string) => ['workspace', id, 'invitations'] as const,
   projects: ['projects'] as const,
   project: (id: string) => ['project', id] as const,
   workspaceStatuses: ['workspace', 'statuses'] as const,
@@ -121,6 +125,13 @@ export const useWorkspaceMembers = (id: string | null) =>
   useQuery({
     queryKey: keys.workspaceMembers(id ?? '__none__'),
     queryFn: () => api.listWorkspaceMembers(id ?? ''),
+    enabled: Boolean(id)
+  });
+
+export const useWorkspaceInvitations = (id: string | null) =>
+  useQuery({
+    queryKey: keys.workspaceInvitations(id ?? '__none__'),
+    queryFn: () => api.listWorkspaceInvitations(id ?? ''),
     enabled: Boolean(id)
   });
 
@@ -425,6 +436,54 @@ export function useDeleteWorkspace() {
   return useMutation({
     mutationFn: (id: string) => api.deleteWorkspace(id),
     // Deleting may switch the active workspace, so the whole cache is stale.
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
+export function useInviteWorkspaceMember(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: InviteWorkspaceMemberBody) => api.inviteWorkspaceMember(workspaceId, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.workspaceInvitations(workspaceId) })
+  });
+}
+
+export function useRevokeWorkspaceInvitation(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (invitationId: string) => api.revokeWorkspaceInvitation(workspaceId, invitationId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.workspaceInvitations(workspaceId) })
+  });
+}
+
+export function useRemoveWorkspaceMember(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (workspaceUserId: string) =>
+      api.removeWorkspaceMember(workspaceId, workspaceUserId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.workspaceMembers(workspaceId) })
+  });
+}
+
+export function useUpdateWorkspaceMemberRole(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      workspaceUserId,
+      body
+    }: {
+      workspaceUserId: string;
+      body: UpdateWorkspaceMemberRoleBody;
+    }) => api.updateWorkspaceMemberRole(workspaceId, workspaceUserId, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.workspaceMembers(workspaceId) })
+  });
+}
+
+export function useAcceptWorkspaceInvitation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AcceptWorkspaceInvitationBody) => api.acceptWorkspaceInvitation(body),
+    // Accepting grants a brand-new workspace membership, so the whole cache is stale.
     onSuccess: () => invalidateAll(qc)
   });
 }

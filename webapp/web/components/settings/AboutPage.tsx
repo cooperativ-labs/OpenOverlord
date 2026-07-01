@@ -37,7 +37,7 @@ export function AboutPage({ open }: AboutPageProps) {
           <>
             <div className="flex items-baseline justify-between gap-4">
               <dt className="text-muted-foreground">Workspace</dt>
-              <dd>{meta.data.workspace.name}</dd>
+              <dd>{meta.data.workspace?.name ?? 'No active workspace'}</dd>
             </div>
             <div className="flex items-baseline justify-between gap-4">
               <dt className="text-muted-foreground">Realtime</dt>

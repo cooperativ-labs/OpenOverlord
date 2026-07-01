@@ -63,8 +63,8 @@ export function MyMissionsPage() {
   const missionMatch = useMatch({ from: '/workspace/missions/$missionId', shouldThrow: false });
   const selectedMissionId = missionMatch?.params.missionId;
 
-  const workspaceId = meta.data?.workspace.id ?? null;
-  const workspaceName = meta.data?.workspace.name ?? 'this';
+  const workspaceId = meta.data?.workspace?.id ?? null;
+  const workspaceName = meta.data?.workspace?.name ?? 'this';
   const membersQ = useWorkspaceMembers(workspaceId);
 
   const [view, setView] = useState<BoardView>(() => readStoredView());

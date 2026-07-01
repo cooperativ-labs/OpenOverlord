@@ -9,14 +9,14 @@ import {
 
 import {
   getActiveTokenScopes,
+  getActiveWorkspaceIdOrNull,
   getActorWorkspaceUserId,
-  requireDatabaseClient,
-  WORKSPACE
+  requireDatabaseClient
 } from './db.ts';
 import { ApiError } from './errors.ts';
 
 export async function loadActorRoles({
-  workspaceId = WORKSPACE.id,
+  workspaceId = getActiveWorkspaceIdOrNull() ?? undefined,
   workspaceUserId = getActorWorkspaceUserId()
 }: {
   workspaceId?: string;
@@ -32,7 +32,7 @@ export async function loadActorRoles({
 }
 
 export async function actorIsAdmin({
-  workspaceId = WORKSPACE.id,
+  workspaceId = getActiveWorkspaceIdOrNull() ?? undefined,
   workspaceUserId = getActorWorkspaceUserId()
 }: {
   workspaceId?: string;
@@ -61,7 +61,7 @@ export async function requireAdmin(): Promise<void> {
 export async function actorCan(
   action: Permission,
   {
-    workspaceId = WORKSPACE.id,
+    workspaceId = getActiveWorkspaceIdOrNull() ?? undefined,
     workspaceUserId = getActorWorkspaceUserId(),
     tokenScopes = getActiveTokenScopes()
   }: {

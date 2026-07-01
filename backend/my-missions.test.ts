@@ -8,7 +8,14 @@ const tempDir = mkdtempSync(path.join(tmpdir(), 'overlord-webapp-my-missions-'))
 const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
 await bootstrapIntegrationTestDb({ sqlitePath: path.join(tempDir, 'webapp.sqlite') });
 
-const { db, WORKSPACE, setActiveWorkspaceUser, nowIso, newId } = await import('./db.ts');
+const {
+  db,
+  setActiveProfileId,
+  setActiveWorkspaceContext,
+  setActiveWorkspaceUser,
+  nowIso,
+  withRequestContextAsync
+} = await import('./db.ts');
 const {
   createProject,
   createMission,
@@ -152,6 +159,62 @@ test('reorder rejects a mission not assigned to the operator', async () => {
     reorderWorkspaceMyMissions({ statusId: backlog.id, orderedMissionIds: [mission.id] }),
     (err: unknown) => err instanceof ApiError && err.status === 403
   );
+});
+
+test('different tenants only see their own My Missions entries', async () => {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO "user" ("id", "name", "email", "emailVerified", "image", "createdAt", "updatedAt")
+     VALUES (?, ?, ?, 1, NULL, ?, ?)`
+  ).run('tenant-b-user', 'tenant-b-user', 'tenant-b@overlord.local', now, now);
+  db.prepare(
+    `INSERT INTO workspaces (id, slug, name, kind, settings_json, created_at, updated_at, revision)
+     VALUES ('tenant-b', 'tenant-b', 'Tenant B', 'local', '{}', ?, ?, 1)`
+  ).run(now, now);
+  db.prepare(
+    `INSERT INTO workspace_users
+       (id, workspace_id, profile_id, member_key, status, metadata_json, created_at, updated_at, revision)
+     VALUES (?, 'tenant-b', 'tenant-b-user', 'auth:tenant-b-user', 'active', '{}', ?, ?, 1)`
+  ).run('tenant-b-workspace-user', now, now);
+  db.prepare(
+    `INSERT INTO role_assignments
+       (id, workspace_id, workspace_user_id, role_key, resource_type, resource_id,
+        assigned_by_workspace_user_id, created_at, updated_at, revision)
+     VALUES (?, 'tenant-b', 'tenant-b-workspace-user', 'ADMIN', '', '', ?, ?, ?, 1)`
+  ).run('tenant-b-admin-role', 'tenant-b-workspace-user', now, now);
+  db.prepare(
+    `INSERT INTO workspace_statuses
+       (id, workspace_id, key, name, type, position, is_default, is_terminal, created_at, updated_at, revision)
+     VALUES ('tenant-b-backlog', 'tenant-b', 'backlog', 'Backlog', 'draft', 100, 1, 0, ?, ?, 1)`
+  ).run(now, now);
+
+  const operatorProject = await createProject({ name: 'Tenant A Project' });
+  const operatorMission = await createMission({
+    projectId: operatorProject.id,
+    firstObjective: 'tenant-a-objective'
+  });
+
+  const tenantBWorkspace = { id: 'tenant-b', slug: 'tenant-b', name: 'Tenant B', kind: 'local' };
+  const tenantBMissionId = await withRequestContextAsync(async () => {
+    setActiveProfileId('tenant-b-user');
+    setActiveWorkspaceContext(tenantBWorkspace);
+    setActiveWorkspaceUser('tenant-b-workspace-user');
+
+    const tenantBProject = await createProject({ name: 'Tenant B Project' });
+    const tenantBMission = await createMission({
+      projectId: tenantBProject.id,
+      firstObjective: 'tenant-b-objective'
+    });
+
+    const visibleIds = (await listWorkspaceMyMissions()).missions.map(mission => mission.id);
+    assert.ok(visibleIds.includes(tenantBMission.id));
+    assert.ok(!visibleIds.includes(operatorMission.id));
+    return tenantBMission.id;
+  });
+
+  const operatorVisibleIds = (await listWorkspaceMyMissions()).missions.map(mission => mission.id);
+  assert.ok(operatorVisibleIds.includes(operatorMission.id));
+  assert.ok(!operatorVisibleIds.includes(tenantBMissionId));
 });
 
 test.after(() => {

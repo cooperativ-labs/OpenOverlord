@@ -36,7 +36,7 @@ export function NavUser({ onOpenSettings }: NavUserProps) {
   const profileQ = useProfile();
 
   const profile = profileQ.data;
-  const displayName = profile?.displayName || meta.data?.workspace.name || 'Local workspace';
+  const displayName = profile?.displayName || meta.data?.workspace?.name || 'Local workspace';
   const subtitle = profile?.email ?? (profile?.handle ? `@${profile.handle}` : 'Local operator');
   const initials = displayName
     .split(/\s+/)

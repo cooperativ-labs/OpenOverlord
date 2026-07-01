@@ -1,6 +1,7 @@
 import type { LocalTargetBridgeCall } from '../../../packages/core/service/local-target/desktop-bridge.ts';
 import type { CapabilityResult } from '../../../packages/core/service/local-target/types.ts';
 import type {
+  AcceptWorkspaceInvitationBody,
   AgentCatalogDto,
   ArtifactDto,
   BranchActionBody,
@@ -20,6 +21,8 @@ import type {
   FileChangeDto,
   GenerateCommitMessageBody,
   GenerateCommitMessageResultDto,
+  InviteWorkspaceMemberBody,
+  InviteWorkspaceMemberResultDto,
   LaunchObjectiveBody,
   LaunchPreferenceDto,
   LaunchSettingsDto,
@@ -64,10 +67,12 @@ import type {
   UpdateTerminalProfileBody,
   UpdateUserTokenBody,
   UpdateWorkspaceBody,
+  UpdateWorkspaceMemberRoleBody,
   UpdateWorkspaceStatusBody,
   UpdateWorktreeBranchAutomationBody,
   UserTokenDto,
   WorkspaceDto,
+  WorkspaceInvitationDto,
   WorkspaceMemberDto,
   WorkspaceStatusDto,
   WorktreeDto
@@ -87,7 +92,7 @@ export interface MetaCapabilities {
 }
 
 export interface Meta {
-  workspace: { id: string; slug: string; name: string };
+  workspace: { id: string; slug: string; name: string } | null;
   /** True while the seeded first workspace still needs its initial setup step. */
   needsSetup: boolean;
   databasePath: string;
@@ -222,8 +227,28 @@ export const api = {
   deleteWorkspace: (id: string) => request<WorkspaceDto[]>('DELETE', `/api/workspaces/${id}`),
   listWorkspaceMembers: (id: string) =>
     request<WorkspaceMemberDto[]>('GET', `/api/workspaces/${id}/members`),
+  removeWorkspaceMember: (id: string, workspaceUserId: string) =>
+    request<{ ok: true }>('DELETE', `/api/workspaces/${id}/members/${workspaceUserId}`),
+  updateWorkspaceMemberRole: (
+    id: string,
+    workspaceUserId: string,
+    body: UpdateWorkspaceMemberRoleBody
+  ) =>
+    request<WorkspaceMemberDto>(
+      'PATCH',
+      `/api/workspaces/${id}/members/${workspaceUserId}/role`,
+      body
+    ),
   downloadWorkspaceObjectivesCsv: (id: string) =>
     requestDownload('GET', `/api/workspaces/${id}/objectives.csv`),
+  listWorkspaceInvitations: (id: string) =>
+    request<WorkspaceInvitationDto[]>('GET', `/api/workspaces/${id}/invitations`),
+  inviteWorkspaceMember: (id: string, body: InviteWorkspaceMemberBody) =>
+    request<InviteWorkspaceMemberResultDto>('POST', `/api/workspaces/${id}/invitations`, body),
+  revokeWorkspaceInvitation: (id: string, invitationId: string) =>
+    request<{ ok: true }>('DELETE', `/api/workspaces/${id}/invitations/${invitationId}`),
+  acceptWorkspaceInvitation: (body: AcceptWorkspaceInvitationBody) =>
+    request<WorkspaceDto>('POST', '/api/invitations/accept', body),
 
   listProjects: () => request<ProjectDto[]>('GET', '/api/projects'),
   getProject: (id: string) => request<ProjectDto>('GET', `/api/projects/${id}`),

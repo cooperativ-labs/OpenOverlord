@@ -146,6 +146,11 @@ function routeChange(change: EntityChangeDto): QueryKey[] | null {
     case 'workspace_user': {
       return [keys.workspaces, keys.meta, keys.profile];
     }
+    case 'workspace_invitation': {
+      // No workspace id travels on the change record, so invalidate every
+      // `['workspace', ...]`-prefixed query (members, invitations, statuses).
+      return [keys.workspaces, keys.meta, ['workspace'] as const];
+    }
     case 'profile': {
       return [keys.profile, keys.meta];
     }

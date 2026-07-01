@@ -80,9 +80,7 @@ export interface CompleteInitialSetupBody {
 }
 
 /**
- * A workspace membership (`workspace_users` joined to `profiles`). Read-only in
- * this single-trusted-user build — invitations and role management are hosted
- * features; the local web server only lists who belongs to a workspace.
+ * A workspace membership (`workspace_users` joined to `profiles`).
  */
 export interface WorkspaceMemberDto {
   /** `workspace_users.id` — the workspace-scoped identity. */
@@ -95,12 +93,59 @@ export interface WorkspaceMemberDto {
   email: string | null;
   /** Open vocabulary (`human`, `service`). */
   kind: string;
+  /** Active workspace-level role keys assigned to this member. */
+  roleKeys: string[];
+  /** Whether one of the active role assignments is `ADMIN`. */
+  isAdmin: boolean;
   /** Whether this membership belongs to the local operator. */
   isOperator: boolean;
   /** `workspace_users.created_at`. */
   joinedAt: string;
   /** Optional avatar image URL from `profiles.metadata_json.avatarUrl`. */
   avatarUrl: string | null;
+}
+
+export type WorkspaceInvitationStatus = 'pending' | 'accepted' | 'revoked' | 'expired';
+
+/** A pending or resolved invitation for someone to join a workspace. */
+export interface WorkspaceInvitationDto {
+  id: string;
+  workspaceId: string;
+  email: string;
+  /** Role the invitee is granted on acceptance (default `MEMBER`). */
+  roleKey: string;
+  status: WorkspaceInvitationStatus;
+  /** Display prefix of the invitation token (never the raw secret). */
+  tokenPrefix: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface InviteWorkspaceMemberBody {
+  email: string;
+  /** Defaults to `MEMBER` when omitted. */
+  roleKey?: string;
+}
+
+/**
+ * Result of a successful invite. `acceptUrl` is only present when no email
+ * provider is configured (`RESEND_API_KEY` unset — the local/self-hosted
+ * default): the admin must share the link manually since no invite email was
+ * sent. When an email was sent, `acceptUrl` is omitted — the raw token never
+ * otherwise leaves the server.
+ */
+export interface InviteWorkspaceMemberResultDto {
+  invitation: WorkspaceInvitationDto;
+  acceptUrl?: string;
+}
+
+export interface AcceptWorkspaceInvitationBody {
+  /** The raw invitation token from the emailed accept link. */
+  token: string;
+}
+
+export interface UpdateWorkspaceMemberRoleBody {
+  roleKey: 'ADMIN' | 'MEMBER';
 }
 
 export interface ProjectDto {

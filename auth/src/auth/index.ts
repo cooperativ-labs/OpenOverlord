@@ -7,6 +7,7 @@ export {
   createUserToken,
   getActorForToken,
   listUserTokens,
+  resolveUserTokenWorkspaceId,
   revokeUserToken,
   verifyUserToken
 } from './token.js';

@@ -167,7 +167,23 @@ export async function resolveActorForWorkspace(
 
 export const resolveActorForWorkspaceAsync = resolveActorForWorkspace;
 
-export let WORKSPACE: { id: string; slug: string; name: string; kind: string } = {
+export interface ActiveWorkspace {
+  id: string;
+  slug: string;
+  name: string;
+  kind: string;
+}
+
+/**
+ * The process-wide fallback workspace: the value used for code that runs
+ * outside any per-request context (server boot logging, the CLI/loopback
+ * surface, background scripts, tests that never call `withRequestContextAsync`).
+ * Every *authenticated web request* overrides this with the caller's own
+ * resolved workspace via `setActiveWorkspaceContext` — see
+ * `requireAuthenticatedSession` (`backend/auth.ts`) — so this default is never
+ * consulted for a browser session's tenant-scoped reads.
+ */
+let defaultWorkspace: ActiveWorkspace = {
   id: 'pending-workspace',
   slug: 'pending',
   name: 'Pending Workspace',
@@ -178,18 +194,29 @@ export let WORKSPACE: { id: string; slug: string; name: string; kind: string } =
 export let ACTOR_WORKSPACE_USER_ID: string | null = null;
 
 export interface RequestContext {
+  activeProfileId: string | null;
   actorWorkspaceUserId: string | null;
   activeTokenId: string | null;
   activeTokenScopes: string[] | null;
   clientDevice: ClientDeviceIdentity | null;
+  /**
+   * The tenant this request is scoped to. `null` means the authenticated
+   * caller has no active workspace membership — reads/writes that depend on
+   * `getActiveWorkspaceId()` must not run in that state (see
+   * `getActiveWorkspace()` below), so every permission-gated route rejects it
+   * before ever reaching a handler.
+   */
+  activeWorkspace: ActiveWorkspace | null;
 }
 
 function defaultRequestContext(): RequestContext {
   return {
+    activeProfileId: null,
     actorWorkspaceUserId: ACTOR_WORKSPACE_USER_ID,
     activeTokenId: ACTIVE_TOKEN_ID,
     activeTokenScopes: ACTIVE_TOKEN_SCOPES,
-    clientDevice: null
+    clientDevice: null,
+    activeWorkspace: defaultWorkspace
   };
 }
 
@@ -209,19 +236,95 @@ function mutateRequestContext(next: RequestContext): void {
   const store = requestContextStorage.getStore();
   if (store) {
     store.actorWorkspaceUserId = next.actorWorkspaceUserId;
+    store.activeProfileId = next.activeProfileId;
     store.activeTokenId = next.activeTokenId;
     store.activeTokenScopes = next.activeTokenScopes;
     store.clientDevice = next.clientDevice;
+    store.activeWorkspace = next.activeWorkspace;
     return;
   }
   ACTOR_WORKSPACE_USER_ID = next.actorWorkspaceUserId;
   ACTIVE_TOKEN_ID = next.activeTokenId;
   ACTIVE_TOKEN_SCOPES = next.activeTokenScopes;
+  // `activeWorkspace` has no legacy module-global fallback to write through to:
+  // `defaultWorkspace` is maintained solely by `refreshActiveWorkspaceFromClient`/
+  // `bindDatabaseClient`, and this branch only runs when a setter is invoked
+  // outside `withRequestContextAsync` (test helpers), which never target it.
+}
+
+export function getActiveProfileId(): string | null {
+  return requestContext().activeProfileId;
+}
+
+export function setActiveProfileId(profileId: string | null): void {
+  mutateRequestContext({ ...requestContext(), activeProfileId: profileId });
 }
 
 export function getActorWorkspaceUserId(): string | null {
   return requestContext().actorWorkspaceUserId;
 }
+
+/**
+ * The tenant scoping this request. Throws if the authenticated caller has no
+ * active workspace membership — every query that scopes by workspace must not
+ * silently run against some other tenant's data (or the bootstrap default) in
+ * that state. `requirePermission`/`actorCan` already reject a null actor before
+ * any handler runs, so this only throws for routes that (incorrectly) skip
+ * that gate; failing loudly beats leaking cross-tenant.
+ */
+export function getActiveWorkspace(): ActiveWorkspace {
+  const workspace = requestContext().activeWorkspace;
+  if (workspace === null) {
+    throw new Error(
+      'No active workspace for this request: the authenticated user has no active workspace membership.'
+    );
+  }
+  return workspace;
+}
+
+export function getActiveWorkspaceId(): string {
+  return getActiveWorkspace().id;
+}
+
+/**
+ * Non-throwing variant for call sites that must run *before* it's known
+ * whether the request has a resolved workspace at all — namely `rbac.ts`'s
+ * `workspaceId = getActiveWorkspaceIdOrNull()` defaults. Default parameter
+ * expressions evaluate unconditionally when the argument is omitted, even
+ * though `actorCan`/`loadActorRoles` short-circuit to "no roles" before ever
+ * using `workspaceId` when the actor is null — so that default must not throw,
+ * or a no-membership request would 500 instead of the intended clean 403.
+ */
+export function getActiveWorkspaceIdOrNull(): string | null {
+  return requestContext().activeWorkspace?.id ?? null;
+}
+
+/** Point the current request's tenant scoping at `workspace` (or `null` for no active membership). */
+export function setActiveWorkspaceContext(workspace: ActiveWorkspace | null): void {
+  mutateRequestContext({ ...requestContext(), activeWorkspace: workspace });
+}
+
+/**
+ * Back-compat read-only view of the active workspace for call sites not yet
+ * migrated to `getActiveWorkspaceId()`/`getActiveWorkspace()`. Each accessor
+ * re-reads the current request's tenant scoping live (never a snapshot from
+ * import time), so it is safe for any per-request code path to keep reading
+ * `WORKSPACE.id`/`.slug`/`.name`/`.kind`.
+ */
+export const WORKSPACE: ActiveWorkspace = {
+  get id() {
+    return getActiveWorkspaceId();
+  },
+  get slug() {
+    return getActiveWorkspace().slug;
+  },
+  get name() {
+    return getActiveWorkspace().name;
+  },
+  get kind() {
+    return getActiveWorkspace().kind;
+  }
+};
 
 export function getActiveTokenId(): string | null {
   return requestContext().activeTokenId;
@@ -236,21 +339,16 @@ export function getClientDeviceIdentity(): ClientDeviceIdentity | null {
 }
 
 export function setClientDeviceIdentity(clientDevice: ClientDeviceIdentity | null): void {
-  const current = requestContext();
-  mutateRequestContext({
-    actorWorkspaceUserId: current.actorWorkspaceUserId,
-    activeTokenId: current.activeTokenId,
-    activeTokenScopes: current.activeTokenScopes,
-    clientDevice
-  });
+  mutateRequestContext({ ...requestContext(), clientDevice });
 }
 
 export function buildWebappServiceContext(
   client: DatabaseClient = requireDatabaseClient()
 ): ServiceContext {
+  const workspace = getActiveWorkspace();
   return {
     db: client,
-    workspace: { id: WORKSPACE.id, slug: WORKSPACE.slug, name: WORKSPACE.name },
+    workspace: { id: workspace.id, slug: workspace.slug, name: workspace.name },
     actorWorkspaceUserId: getActorWorkspaceUserId(),
     source: 'webapp',
     clientDevice: getClientDeviceIdentity()
@@ -258,17 +356,29 @@ export function buildWebappServiceContext(
 }
 
 /**
- * Switch the active workspace. Re-points the `WORKSPACE` and
- * `ACTOR_WORKSPACE_USER_ID` live bindings so subsequent reads/writes scope to
- * the new workspace. Returns the new workspace row, or `null` if `id` does not
- * resolve to an existing (non-deleted) workspace.
+ * Switch the active workspace: updates the process-wide fallback (self-hosted
+ * single-operator mode, the CLI loopback surface, and any code running outside
+ * a request context) and, when called from inside a request, the calling
+ * request's own tenant scoping too — so e.g. `createWorkspace` immediately sees
+ * the workspace it just created as active for the rest of that same response.
+ * It never touches *other* concurrent requests' contexts: each browser session
+ * resolves its own workspace from its memberships in `requireAuthenticatedSession`,
+ * independent of this fallback. Returns the new workspace row, or `null` if `id`
+ * does not resolve to an existing (non-deleted) workspace.
  */
 export async function setActiveWorkspace(id: string): Promise<WorkspaceRow | null> {
-  if (id === WORKSPACE.id) return (await loadWorkspaceRowAsync(id)) ?? null;
   const row = await loadWorkspaceRowAsync(id);
   if (!row) return null;
-  WORKSPACE = { id: row.id, slug: row.slug, name: row.name, kind: row.kind };
-  ACTOR_WORKSPACE_USER_ID = await resolveActorForWorkspace(row.id);
+  const actorWorkspaceUserId = await resolveActorForWorkspace(row.id);
+  defaultWorkspace = { id: row.id, slug: row.slug, name: row.name, kind: row.kind };
+  ACTOR_WORKSPACE_USER_ID = actorWorkspaceUserId;
+  if (requestContextStorage.getStore()) {
+    mutateRequestContext({
+      ...requestContext(),
+      activeWorkspace: defaultWorkspace,
+      actorWorkspaceUserId
+    });
+  }
   return row;
 }
 
@@ -283,12 +393,15 @@ async function loadWorkspaceRowAsync(
   );
 }
 
+/** Resolve a workspace row by id. Exported for auth's per-request/per-token resolution. */
+export const loadWorkspaceRow = loadWorkspaceRowAsync;
+
 async function refreshActiveWorkspaceFromClient(client: DatabaseClient): Promise<void> {
   const row = await oldestWorkspaceRowFromClient(client);
   if (!row) {
     throw new Error('No workspace found in the database. Re-run migrations to seed it.');
   }
-  WORKSPACE = { id: row.id, slug: row.slug, name: row.name, kind: row.kind };
+  defaultWorkspace = { id: row.id, slug: row.slug, name: row.name, kind: row.kind };
   ACTOR_WORKSPACE_USER_ID = await resolveActorForWorkspace(row.id, client);
 }
 
@@ -311,10 +424,10 @@ export let ACTIVE_TOKEN_ID: string | null = null;
  */
 export function setActiveWorkspaceUser(workspaceUserId: string | null): void {
   mutateRequestContext({
+    ...requestContext(),
     actorWorkspaceUserId: workspaceUserId,
     activeTokenId: null,
-    activeTokenScopes: null,
-    clientDevice: getClientDeviceIdentity()
+    activeTokenScopes: null
   });
 }
 
@@ -333,21 +446,27 @@ export function setActiveTokenAuth({
   scopeGrants: string[] | null;
 }): void {
   mutateRequestContext({
+    ...requestContext(),
     actorWorkspaceUserId: workspaceUserId,
     activeTokenId: tokenId,
-    activeTokenScopes: scopeGrants && scopeGrants.length > 0 ? scopeGrants : null,
-    clientDevice: getClientDeviceIdentity()
+    activeTokenScopes: scopeGrants && scopeGrants.length > 0 ? scopeGrants : null
   });
 }
 
 /**
  * Re-read the active workspace row after it was mutated in place (e.g. a
- * rename) so the `WORKSPACE` live binding — and everything derived from it,
- * like `/api/meta` — reflects the new values.
+ * rename) so `getActiveWorkspace()`/`WORKSPACE` — and everything derived from
+ * them, like `/api/meta` — reflect the new values. Refreshes both the current
+ * request's tenant scoping and the process-wide fallback when they pointed at
+ * the same (just-renamed) workspace.
  */
 export async function reloadActiveWorkspace(): Promise<void> {
-  const row = await loadWorkspaceRowAsync(WORKSPACE.id);
-  if (row) WORKSPACE = { id: row.id, slug: row.slug, name: row.name, kind: row.kind };
+  const id = getActiveWorkspaceId();
+  const row = await loadWorkspaceRowAsync(id);
+  if (!row) return;
+  const refreshed: ActiveWorkspace = { id: row.id, slug: row.slug, name: row.name, kind: row.kind };
+  if (id === defaultWorkspace.id) defaultWorkspace = refreshed;
+  if (requestContextStorage.getStore()) setActiveWorkspaceContext(refreshed);
 }
 
 export function requireDatabaseClient(): DatabaseClient {
@@ -408,7 +527,7 @@ export async function recordChange(
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<void> {
   await insertEntityChange(client, {
-    workspaceId: input.workspaceId ?? WORKSPACE.id,
+    workspaceId: input.workspaceId ?? getActiveWorkspaceId(),
     projectId: input.projectId,
     missionId: input.missionId,
     objectiveId: input.objectiveId,
