@@ -212,7 +212,7 @@ export function MyMissionsPage() {
         ) : null}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-auto p-6">
+      <div className="min-h-0 flex-1 overflow-auto p-3 px-5">
         {missions.length === 0 ? (
           <EmptyState
             title="No missions are assigned to you"
