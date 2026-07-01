@@ -270,7 +270,7 @@ async function runAuthCommand({ rest, json }: { rest: string[]; json: boolean })
       configuredDuringLogin: setup !== null
     });
   } else {
-    const methodLabel = login.authMethod === 'user_token' ? 'USER_TOKEN' : 'username and password';
+    const methodLabel = login.authMethod === 'user_token' ? 'USER_TOKEN' : 'email and password';
     console.log(`Logged in to ${backendUrl} using ${methodLabel}.`);
     console.log(`Saved credentials to ${login.credentialsPath}`);
   }

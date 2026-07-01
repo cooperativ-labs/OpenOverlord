@@ -23,6 +23,8 @@ let activeBackend: DesktopBackendInfo | null = null;
 let userToken: string | null = null;
 let sessionToken: string | null = null;
 
+const BROWSER_SESSION_TOKEN_STORAGE_PREFIX = 'overlord:auth:session-token';
+
 function trimTrailingSlash(url: string): string {
   return url.replace(/\/+$/, '');
 }
@@ -41,6 +43,45 @@ export function getActiveBackendInfo(): DesktopBackendInfo | null {
   return activeBackend;
 }
 
+function hasDesktopBridge(): boolean {
+  return Boolean(typeof window !== 'undefined' && window.overlord);
+}
+
+function browserSessionStorageKey(): string | null {
+  if (!activeBackend || hasDesktopBridge()) return null;
+  return `${BROWSER_SESSION_TOKEN_STORAGE_PREFIX}:${activeBackend.id}:${getApiBaseUrl()}`;
+}
+
+function readBrowserSessionToken(): string | null {
+  const key = browserSessionStorageKey();
+  if (!key) return null;
+  try {
+    return window.localStorage.getItem(key)?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeBrowserSessionToken(token: string): void {
+  const key = browserSessionStorageKey();
+  if (!key) return;
+  try {
+    window.localStorage.setItem(key, token);
+  } catch {
+    /* localStorage may be unavailable in hardened browser contexts. */
+  }
+}
+
+function clearBrowserSessionToken(): void {
+  const key = browserSessionStorageKey();
+  if (!key) return;
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    /* localStorage may be unavailable in hardened browser contexts. */
+  }
+}
+
 export function resolveApiUrl(path: string): string {
   const base = getApiBaseUrl();
   if (!base) return path;
@@ -54,7 +95,11 @@ export function getAuthBaseUrl(): string {
 
 async function loadStoredTokensForActiveBackend(): Promise<void> {
   const bridge = window.overlord;
-  if (!activeBackend || !bridge) return;
+  if (!activeBackend) return;
+  if (!bridge) {
+    sessionToken = readBrowserSessionToken();
+    return;
+  }
 
   if (bridge.getSessionToken) {
     sessionToken = await bridge.getSessionToken(activeBackend.id);
@@ -114,11 +159,24 @@ export function getDesktopSessionToken(): string {
   return sessionToken ?? '';
 }
 
-export async function persistDesktopSessionToken(token: string): Promise<void> {
+export async function persistAuthSessionToken(token: string): Promise<void> {
   sessionToken = token.trim();
+  if (!sessionToken) {
+    clearBrowserSessionToken();
+    return;
+  }
   const bridge = window.overlord;
-  if (!activeBackend || !bridge?.setSessionToken) return;
+  if (!activeBackend) return;
+  if (!bridge?.setSessionToken) {
+    writeBrowserSessionToken(sessionToken);
+    return;
+  }
   await bridge.setSessionToken({ profileId: activeBackend.id, token: sessionToken });
+}
+
+/** @deprecated Use persistAuthSessionToken. */
+export async function persistDesktopSessionToken(token: string): Promise<void> {
+  await persistAuthSessionToken(token);
 }
 
 export async function persistDesktopBearerToken(token: string): Promise<void> {
@@ -140,13 +198,19 @@ export async function clearDesktopBearerToken(): Promise<void> {
   await bridge.clearBearerToken(activeBackend.id);
 }
 
-export async function clearDesktopAuthTokens(): Promise<void> {
+export async function clearAuthTokens(): Promise<void> {
   userToken = null;
   sessionToken = null;
   const bridge = window.overlord;
   if (!activeBackend) return;
+  clearBrowserSessionToken();
   if (bridge?.clearBearerToken) await bridge.clearBearerToken(activeBackend.id);
   if (bridge?.clearSessionToken) await bridge.clearSessionToken(activeBackend.id);
+}
+
+/** @deprecated Use clearAuthTokens. */
+export async function clearDesktopAuthTokens(): Promise<void> {
+  await clearAuthTokens();
 }
 
 export function apiFetchCredentials(): RequestCredentials {
@@ -156,12 +220,13 @@ export function apiFetchCredentials(): RequestCredentials {
 export function clearInMemoryAuthTokens(): void {
   userToken = null;
   sessionToken = null;
+  clearBrowserSessionToken();
 }
 
 export function captureAuthTokenFromResponse(response: Response): void {
   const token = response.headers.get('set-auth-token');
   if (!token) return;
-  void persistDesktopSessionToken(token);
+  void persistAuthSessionToken(token);
 }
 
 /** Better Auth returns the session token in sign-in/sign-up JSON for bearer clients. */
@@ -169,5 +234,5 @@ export async function persistAuthSessionFromSignInResult(data: unknown): Promise
   if (!data || typeof data !== 'object' || !('token' in data)) return;
   const token = (data as { token?: unknown }).token;
   if (typeof token !== 'string' || token.trim().length === 0) return;
-  await persistDesktopSessionToken(token);
+  await persistAuthSessionToken(token);
 }

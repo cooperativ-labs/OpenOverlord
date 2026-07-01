@@ -92,10 +92,9 @@ export function createAuth(dbPathOrOptions?: string | CreateAuthOptions) {
     database: createBetterAuthDatabase(options.database),
     ...(options.trustedOrigins ? { trustedOrigins: options.trustedOrigins } : {}),
     emailAndPassword: { enabled: true },
-    // The account username is the local-part of the synthetic
-    // `<username>@overlord.local` sign-in email, so changing the username means
-    // changing the account email. Local accounts are never email-verified, so
-    // Better Auth applies the change directly without a verification round-trip.
+    // Email is the primary account identifier. Local accounts are never
+    // email-verified, so Better Auth applies a `changeEmail` call directly
+    // without a verification round-trip.
     user: { changeEmail: { enabled: true } },
     plugins: [bearer()]
   });

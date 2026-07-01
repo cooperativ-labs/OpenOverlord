@@ -167,7 +167,7 @@ async function configureAuthForSetup({
   const status = await resolveAuthStatus();
   if (status.loggedIn) {
     const methodLabel =
-      status.credentialType === 'user_token' ? 'USER_TOKEN' : 'username and password';
+      status.credentialType === 'user_token' ? 'USER_TOKEN' : 'email and password';
     printLine(`Already authenticated with ${status.backendUrl} using ${methodLabel}.`);
     return {
       ok: true,
@@ -180,7 +180,7 @@ async function configureAuthForSetup({
 
   try {
     const login = await runInteractiveAuthLogin({ backendUrl });
-    const methodLabel = login.authMethod === 'user_token' ? 'USER_TOKEN' : 'username and password';
+    const methodLabel = login.authMethod === 'user_token' ? 'USER_TOKEN' : 'email and password';
     printLine(`Authenticated with ${login.backendUrl} using ${methodLabel}.`);
     return login;
   } catch (error) {

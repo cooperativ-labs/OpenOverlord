@@ -126,7 +126,7 @@ CLI only stores the backend URL and sends HTTP requests.
 
 Both the desktop app and the CLI authenticate to `/api/*` with a bearer token:
 
-- **Session bearer** — from `ovld auth login` (username/password) or a desktop
+- **Session bearer** — from `ovld auth login` (email/password) or a desktop
   sign-in on the **local** backend. Stored in `~/.ovld/auth.json` for the CLI
   and in the desktop shell's encrypted settings for each backend profile.
 - **USER_TOKEN** (`out_…`) — long-lived token from Settings → Tokens. Works for

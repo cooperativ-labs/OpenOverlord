@@ -12,27 +12,22 @@ import {
 } from '../src/auth-credentials.ts';
 import {
   formatUserTokenLoginCommand,
-  normalizeLocalUsername,
-  signInWithUsernamePassword,
-  usernameToLocalEmail,
-  validateLocalUsername
+  normalizeEmail,
+  signInWithEmailPassword,
+  validateEmail
 } from '../src/auth-login.ts';
 
 test('formatUserTokenLoginCommand builds the non-interactive login command', () => {
   assert.equal(formatUserTokenLoginCommand('out_abc123'), 'ovld auth login --token out_abc123');
 });
 
-test('normalizeLocalUsername lowercases and trims', () => {
-  assert.equal(normalizeLocalUsername('  Jake.Smith  '), 'jake.smith');
+test('normalizeEmail lowercases and trims', () => {
+  assert.equal(normalizeEmail('  Jake.Smith@Example.com  '), 'jake.smith@example.com');
 });
 
-test('usernameToLocalEmail maps to the local auth domain', () => {
-  assert.equal(usernameToLocalEmail('jake'), 'jake@overlord.local');
-});
-
-test('validateLocalUsername enforces local username rules', () => {
-  assert.equal(validateLocalUsername('ab'), 'Username must be at least 3 characters.');
-  assert.equal(validateLocalUsername('valid-user'), null);
+test('validateEmail enforces a valid email address', () => {
+  assert.equal(validateEmail('not-an-email'), 'Enter a valid email address.');
+  assert.equal(validateEmail('jake@example.com'), null);
 });
 
 test('writeStoredAuthCredentials persists token metadata under OVLD_HOME', () => {
@@ -64,7 +59,7 @@ test('writeStoredAuthCredentials persists token metadata under OVLD_HOME', () =>
   }
 });
 
-test('signInWithUsernamePassword sends an Origin header so Better Auth accepts the request', async () => {
+test('signInWithEmailPassword sends an Origin header so Better Auth accepts the request', async () => {
   const originalFetch = globalThis.fetch;
   let capturedInit: RequestInit | undefined;
 
@@ -77,9 +72,9 @@ test('signInWithUsernamePassword sends an Origin header so Better Auth accepts t
   }) as typeof fetch;
 
   try {
-    const token = await signInWithUsernamePassword({
+    const token = await signInWithEmailPassword({
       backendUrl: 'http://127.0.0.1:4310/',
-      username: 'jake',
+      email: 'jake@example.com',
       password: 'hunter2'
     });
 

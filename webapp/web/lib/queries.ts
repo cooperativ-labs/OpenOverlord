@@ -44,7 +44,7 @@ import type {
 
 import { api } from './api.ts';
 import { clearDesktopBearerToken, isCurrentDesktopBearerTokenPrefix } from './api-base.ts';
-import { authClient, normalizeLocalUsername, usernameToLocalEmail } from './auth-client.ts';
+import { authClient, normalizeEmail } from './auth-client.ts';
 import {
   fetchMissionBranchesFromLocalTarget,
   fetchWorktreesFromLocalTarget,
@@ -260,25 +260,20 @@ export function useUpdateProfile() {
 }
 
 /**
- * Change the account username through the Auth surface. The username is the
- * local-part of the synthetic `<username>@overlord.local` sign-in email, so this
- * updates both the Better Auth account name and email; the auth→profiles bridge
- * then mirrors the new username into `profiles.handle`.
+ * Change the account email through the Auth surface. Email is the primary
+ * account identifier, so this updates the Better Auth account email directly;
+ * the auth→profiles bridge then mirrors the new email into `profiles.email`.
  */
-export function useChangeUsername() {
+export function useChangeEmail() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (rawUsername: string) => {
-      const username = normalizeLocalUsername(rawUsername);
-      const named = await authClient.updateUser({ name: username });
-      if (named.error) {
-        throw new Error(named.error.message ?? 'Failed to update username.');
-      }
-      const reemailed = await authClient.changeEmail({ newEmail: usernameToLocalEmail(username) });
+    mutationFn: async (rawEmail: string) => {
+      const email = normalizeEmail(rawEmail);
+      const reemailed = await authClient.changeEmail({ newEmail: email });
       if (reemailed.error) {
-        throw new Error(reemailed.error.message ?? 'Failed to update username.');
+        throw new Error(reemailed.error.message ?? 'Failed to update email.');
       }
-      return username;
+      return email;
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.profile });

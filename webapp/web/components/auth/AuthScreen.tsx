@@ -6,12 +6,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui
 import { Input } from '@/components/ui/input';
 import { type ButtonLoadingState, LoadingButton } from '@/components/ui/loading-button';
 import { persistAuthSessionFromSignInResult } from '@/lib/api-base';
-import {
-  authClient,
-  normalizeLocalUsername,
-  usernameToLocalEmail,
-  validateLocalUsername
-} from '@/lib/auth-client';
+import { authClient, normalizeEmail, validateEmail } from '@/lib/auth-client';
 import { cn } from '@/lib/utils';
 
 type AuthMode = 'sign-in' | 'create-account';
@@ -30,7 +25,7 @@ function authErrorMessage(error: unknown): string {
 
 export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>('sign-in');
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitButtonState, setSubmitButtonState] = useState<ButtonLoadingState>('default');
@@ -39,9 +34,9 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const usernameError = validateLocalUsername(username);
-    if (usernameError) {
-      setError(usernameError);
+    const emailError = validateEmail(email);
+    if (emailError) {
+      setError(emailError);
       setSubmitButtonState('error');
       return;
     }
@@ -54,15 +49,14 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
     setError(null);
     setSubmitButtonState('loading');
     try {
-      const normalizedUsername = normalizeLocalUsername(username);
-      const email = usernameToLocalEmail(normalizedUsername);
+      const normalizedEmail = normalizeEmail(email);
       const result = isCreate
         ? await authClient.signUp.email({
-            email,
+            email: normalizedEmail,
             password,
-            name: normalizedUsername
+            name: normalizedEmail.split('@')[0] ?? normalizedEmail
           })
-        : await authClient.signIn.email({ email, password });
+        : await authClient.signIn.email({ email: normalizedEmail, password });
 
       if (result.error) {
         setError(result.error.message ?? 'Authentication failed.');
@@ -148,12 +142,13 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
               </div>
 
               <Field>
-                <FieldLabel htmlFor="auth-username">Username</FieldLabel>
+                <FieldLabel htmlFor="auth-email">Email</FieldLabel>
                 <Input
-                  id="auth-username"
-                  autoComplete="username"
-                  value={username}
-                  onChange={event => setUsername(event.target.value)}
+                  id="auth-email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={event => setEmail(event.target.value)}
                   disabled={submitButtonState === 'loading'}
                   autoFocus
                   required

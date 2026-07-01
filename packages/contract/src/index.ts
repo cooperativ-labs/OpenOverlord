@@ -1135,8 +1135,13 @@ export interface ProfileDto {
   userId: string;
   /** `profiles.display_name` — required, non-empty. */
   displayName: string;
-  /** `profiles.handle` — the username, mirrored from the Better Auth account (read-only here). */
+  /** `profiles.handle` — an optional display handle, mirrored from the Better Auth account name (read-only here). */
   handle: string | null;
+  /**
+   * `profiles.email` — the account's primary identifier, mirrored from the
+   * Better Auth account email (read-only here; changed through the Auth
+   * surface).
+   */
   email: string | null;
   /** Optional avatar image URL stored in `profiles.metadata_json.avatarUrl`. */
   avatarUrl: string | null;
@@ -1163,9 +1168,9 @@ export interface ProfileDto {
 /** Partial update of the local operator's profile. Omitted fields are left unchanged. */
 export interface UpdateProfileBody {
   displayName?: string;
-  // `handle` is intentionally omitted: the profile username mirrors the Better
-  // Auth account username and is changed through the Auth surface, not here.
-  email?: string | null;
+  // `handle` and `email` are intentionally omitted: both mirror the Better
+  // Auth account (name and email respectively) and are changed through the
+  // Auth surface, not here. `email` is the account's primary identifier.
   avatarUrl?: string | null;
   /** Replaces the user's saved custom agent instructions; pass null or "" to clear. */
   agentInstructions?: string | null;

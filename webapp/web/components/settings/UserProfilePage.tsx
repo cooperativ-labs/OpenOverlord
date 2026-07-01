@@ -18,7 +18,7 @@ type UserProfilePageProps = {
 
 /** Derive up-to-two-letter initials for the avatar fallback. */
 function initialsFor(profile: ProfileDto): string {
-  const source = profile.displayName || profile.handle || profile.email || '';
+  const source = profile.displayName || profile.email || profile.handle || '';
   const initials = source
     .split(/\s+/)
     .filter(Boolean)
@@ -74,21 +74,19 @@ export function UserProfilePage({ open }: UserProfilePageProps) {
           />
           <Separator />
           <ReadOnlyProfileField
-            id="profile-handle"
-            label="Username"
-            value={data.handle ?? ''}
-            emptyText="Set from your account username"
-            description="Mirrors your account username. Change it under Account settings."
-          />
-          <Separator />
-          <ProfileField
             id="profile-email"
             label="Email"
-            type="email"
             value={data.email ?? ''}
-            placeholder="you@example.com"
-            toBody={value => ({ email: value || null })}
-            errorFallbackVerb="email"
+            emptyText="Set from your account email"
+            description="Your primary identifier. Mirrors your account email. Change it under Account settings."
+          />
+          <Separator />
+          <ReadOnlyProfileField
+            id="profile-handle"
+            label="Handle"
+            value={data.handle ?? ''}
+            emptyText="Set from your account name"
+            description="An optional display handle mirrored from your account."
           />
           <Separator />
           <ProfileField
@@ -194,8 +192,9 @@ type ReadOnlyProfileFieldProps = {
 
 /**
  * A non-editable profile field, used for values that mirror an authoritative
- * source (e.g. the username, which mirrors the account username and is changed
- * under Account settings) and so must not be edited directly here.
+ * source (e.g. email, the primary identifier, which mirrors the account email
+ * and is changed under Account settings) and so must not be edited directly
+ * here.
  */
 function ReadOnlyProfileField({
   id,

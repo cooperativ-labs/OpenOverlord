@@ -4432,17 +4432,11 @@ export async function updateProfile(body: UpdateProfileBody): Promise<ProfileDto
       changed.push('display_name');
     }
     // `handle` is not directly editable: it mirrors the Better Auth account
-    // username via the auth→profiles bridge trigger. The username is changed
-    // through the Auth surface (Account settings), not this profile patch.
-    if (body.email !== undefined) {
-      const email = body.email?.trim() || null;
-      if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-        throw new ApiError(400, 'Enter a valid email address');
-      }
-      fields.push('email = ?');
-      setParams.push(email);
-      changed.push('email');
-    }
+    // name via the auth→profiles bridge trigger.
+    // `email` is likewise not directly editable here: it is the primary
+    // identifier and mirrors the Better Auth account email via the
+    // auth→profiles bridge trigger. Email is changed through the Auth surface
+    // (Account settings), not this profile patch.
     if (body.avatarUrl !== undefined) {
       const avatarUrl = body.avatarUrl?.trim() || null;
       // Accept absolute http(s) URLs or a server-relative path (e.g. an image

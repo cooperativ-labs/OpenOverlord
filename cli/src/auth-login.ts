@@ -13,20 +13,14 @@ export type AuthLoginResult = {
   credentialsPath: string;
 };
 
-export function normalizeLocalUsername(username: string): string {
-  return username.trim().toLowerCase();
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
 }
 
-export function usernameToLocalEmail(username: string): string {
-  return `${normalizeLocalUsername(username)}@overlord.local`;
-}
-
-export function validateLocalUsername(username: string): string | null {
-  const normalized = normalizeLocalUsername(username);
-  if (normalized.length < 3) return 'Username must be at least 3 characters.';
-  if (normalized.length > 40) return 'Username must be 40 characters or fewer.';
-  if (!/^[a-z0-9][a-z0-9._-]*$/.test(normalized)) {
-    return 'Use letters, numbers, dots, underscores, or dashes.';
+export function validateEmail(email: string): string | null {
+  const normalized = normalizeEmail(email);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) {
+    return 'Enter a valid email address.';
   }
   return null;
 }
@@ -142,12 +136,12 @@ async function promptPassword({ message }: { message: string }): Promise<string>
 
 async function promptAuthMethod(): Promise<AuthLoginMethod> {
   console.log('Choose how to authenticate:');
-  console.log('  1. Username and password');
+  console.log('  1. Email and password');
   console.log('  2. USER_TOKEN (generate one in Overlord Desktop: Settings > Tokens)');
 
   const answer = (await promptLine({ message: 'Selection', defaultValue: '1' })).toLowerCase();
   if (answer === '2' || answer === 'token' || answer === 'user_token') return 'user_token';
-  if (answer === '1' || answer === 'password' || answer === 'username') return 'password';
+  if (answer === '1' || answer === 'password' || answer === 'email') return 'password';
   throw new CliError({ message: 'Selection must be 1 or 2.' });
 }
 
@@ -244,21 +238,21 @@ export async function validateBearerToken({
   });
 }
 
-export async function signInWithUsernamePassword({
+export async function signInWithEmailPassword({
   backendUrl,
-  username,
+  email: rawEmail,
   password
 }: {
   backendUrl: string;
-  username: string;
+  email: string;
   password: string;
 }): Promise<string> {
-  const usernameError = validateLocalUsername(username);
-  if (usernameError) throw new CliError({ message: usernameError });
+  const emailError = validateEmail(rawEmail);
+  if (emailError) throw new CliError({ message: emailError });
   if (!password) throw new CliError({ message: 'Password is required.' });
 
   const baseUrl = normalizeBaseUrl(backendUrl);
-  const email = usernameToLocalEmail(username);
+  const email = normalizeEmail(rawEmail);
   let response: Response;
   try {
     response = await fetch(`${baseUrl}/api/auth/sign-in/email`, {
@@ -289,7 +283,7 @@ export async function signInWithUsernamePassword({
   throw new CliError({
     message:
       errorMessageFromJson(payload) ??
-      `Sign-in failed (${response.status}). Check your username and password.`
+      `Sign-in failed (${response.status}). Check your email and password.`
   });
 }
 
@@ -307,14 +301,14 @@ export async function runInteractiveAuthLogin({
     return loginWithUserToken({ backendUrl: normalizedBackendUrl, token });
   }
 
-  const username = await promptLine({ message: 'Username' });
-  const usernameError = validateLocalUsername(username);
-  if (usernameError) throw new CliError({ message: usernameError });
+  const email = await promptLine({ message: 'Email' });
+  const emailError = validateEmail(email);
+  if (emailError) throw new CliError({ message: emailError });
 
   const password = await promptPassword({ message: 'Password' });
-  const sessionToken = await signInWithUsernamePassword({
+  const sessionToken = await signInWithEmailPassword({
     backendUrl: normalizedBackendUrl,
-    username,
+    email,
     password
   });
   await validateBearerToken({ backendUrl: normalizedBackendUrl, token: sessionToken });

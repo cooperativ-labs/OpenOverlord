@@ -195,22 +195,30 @@ actor must have a Better Auth `user` row first; the corresponding `profiles` row
 uses the same `id` as the Better Auth user and is created automatically by the
 auth migration bridge. A profile can exist independently of any one workspace.
 
-The auth migration bridge also keeps `handle` synchronized with the account
-username: it copies the Better Auth `user.name` (the account username) into
-`profiles.handle` when the user row is inserted, and an `AFTER UPDATE OF name ON
-"user"` trigger re-copies it (bumping `updated_at`/`revision`) whenever the
-username changes. Because `handle` is bridge-managed it is **not** directly
-editable through the application — `PATCH /api/profile` does not accept a
-`handle` field. `display_name` is seeded from the username at sign-up but stays
-independently editable thereafter.
+Email is the account's primary identifier, both for display and for auth. The
+auth migration bridge keeps `profiles.email` synchronized with the Better Auth
+account email: it copies `user.email` into `profiles.email` when the user row
+is inserted, and an `AFTER UPDATE OF email ON "user"` trigger re-copies it
+(bumping `updated_at`/`revision`) whenever the account email changes. Because
+`email` is bridge-managed it is **not** directly editable through the
+application — `PATCH /api/profile` does not accept an `email` field; it is
+changed through the Auth surface (`changeEmail`) instead.
+
+The bridge also keeps `handle` synchronized with the account name: it copies
+the Better Auth `user.name` into `profiles.handle` when the user row is
+inserted, and an `AFTER UPDATE OF name ON "user"` trigger re-copies it whenever
+the name changes. `handle` is an optional display value, not the primary
+identifier, and like `email` is bridge-managed and **not** directly editable
+through `PATCH /api/profile`. `display_name` is seeded from the account name
+at sign-up but stays independently editable thereafter.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | Id | yes | Stable profile ID and FK to Better Auth `"user".id`. |
 | `kind` | text | yes | `human`, `service`, or adapter-defined. |
 | `display_name` | text | yes |  |
-| `handle` | text | no | Globally unique, URL/display-safe username. Mirrors the Better Auth account username via the auth bridge; not directly editable. |
-| `email` | text | no | Optional for local MVP. |
+| `handle` | text | no | Optional, globally unique, URL/display-safe handle. Mirrors the Better Auth account name via the auth bridge; not directly editable. |
+| `email` | text | no | The account's primary identifier. Mirrors the Better Auth account email via the auth bridge; not directly editable. |
 | `status` | text | yes | `active`, `disabled`. Removal is represented by `deleted_at`. |
 | `metadata_json` | Json | yes | Auth provider metadata, not secrets. |
 | `created_at` | TimestampUTC | yes |  |

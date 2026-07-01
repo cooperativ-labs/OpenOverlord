@@ -21,6 +21,7 @@ import {
   SidebarMenuItem,
   useSidebar
 } from '@/components/ui/sidebar';
+import { clearAuthTokens } from '@/lib/api-base';
 import { authClient } from '@/lib/auth-client';
 import { useMeta, useProfile } from '@/lib/queries';
 
@@ -36,7 +37,7 @@ export function NavUser({ onOpenSettings }: NavUserProps) {
 
   const profile = profileQ.data;
   const displayName = profile?.displayName || meta.data?.workspace.name || 'Local workspace';
-  const subtitle = profile?.handle ? `@${profile.handle}` : (profile?.email ?? 'Local operator');
+  const subtitle = profile?.email ?? (profile?.handle ? `@${profile.handle}` : 'Local operator');
   const initials = displayName
     .split(/\s+/)
     .slice(0, 2)
@@ -130,6 +131,7 @@ export function NavUser({ onOpenSettings }: NavUserProps) {
               <DropdownMenuItem
                 onClick={async () => {
                   await authClient.signOut();
+                  await clearAuthTokens();
                   window.location.reload();
                 }}
               >

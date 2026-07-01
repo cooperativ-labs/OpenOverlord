@@ -5,17 +5,17 @@ import { Label } from '@/components/ui/label';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Separator } from '@/components/ui/separator';
-import { localEmailToUsername, validateLocalUsername } from '@/lib/auth-client';
-import { useChangePassword, useChangeUsername, useProfile } from '@/lib/queries';
+import { validateEmail } from '@/lib/auth-client';
+import { useChangeEmail, useChangePassword, useProfile } from '@/lib/queries';
 
 type AccountPageProps = {
   open: boolean;
 };
 
 /**
- * Account & security settings: change the sign-in username and password. The
- * username is the authoritative identity — the profile handle and (at sign-up)
- * display name mirror it — so it is edited here through the Auth surface rather
+ * Account & security settings: change the sign-in email and password. Email
+ * is the authoritative identity — it is shown as your profile email wherever
+ * you are attributed — so it is edited here through the Auth surface rather
  * than on the Profile page.
  */
 export function AccountPage({ open }: AccountPageProps) {
@@ -36,7 +36,7 @@ export function AccountPage({ open }: AccountPageProps) {
     );
   }
 
-  const currentUsername = profile.data.handle ?? localEmailToUsername(profile.data.email);
+  const currentEmail = profile.data.email ?? '';
 
   return (
     <div className="space-y-8">
@@ -44,13 +44,13 @@ export function AccountPage({ open }: AccountPageProps) {
         <div>
           <h2 className="text-base font-medium">Account</h2>
           <p className="text-sm text-muted-foreground">
-            Your sign-in credentials. Your username is also shown as your profile username wherever
-            you are attributed.
+            Your sign-in credentials. Your email is also shown as your profile email wherever you
+            are attributed.
           </p>
         </div>
 
         <div className="space-y-5 rounded-lg border p-4">
-          <UsernameForm currentUsername={currentUsername} />
+          <EmailForm currentEmail={currentEmail} />
           <Separator />
           <PasswordForm />
         </div>
@@ -59,21 +59,21 @@ export function AccountPage({ open }: AccountPageProps) {
   );
 }
 
-function UsernameForm({ currentUsername }: { currentUsername: string }) {
-  const changeUsername = useChangeUsername();
-  const [draft, setDraft] = useState(currentUsername);
+function EmailForm({ currentEmail }: { currentEmail: string }) {
+  const changeEmail = useChangeEmail();
+  const [draft, setDraft] = useState(currentEmail);
   const [saveState, setSaveState] = useState<ButtonLoadingState>('default');
   const [error, setError] = useState<string | null>(null);
 
-  // Re-sync when the underlying username changes (e.g. after a save/refetch).
+  // Re-sync when the underlying email changes (e.g. after a save/refetch).
   useEffect(() => {
-    setDraft(currentUsername);
-  }, [currentUsername]);
+    setDraft(currentEmail);
+  }, [currentEmail]);
 
   async function handleSave() {
     const next = draft.trim();
-    if (next.toLowerCase() === currentUsername.trim().toLowerCase()) return;
-    const validationError = validateLocalUsername(next);
+    if (next.toLowerCase() === currentEmail.trim().toLowerCase()) return;
+    const validationError = validateEmail(next);
     if (validationError) {
       setError(validationError);
       setSaveState('error');
@@ -83,23 +83,24 @@ function UsernameForm({ currentUsername }: { currentUsername: string }) {
     setSaveState('loading');
     setError(null);
     try {
-      await changeUsername.mutateAsync(next);
+      await changeEmail.mutateAsync(next);
       setSaveState('success');
     } catch (err) {
       setSaveState('error');
-      setError(err instanceof Error ? err.message : 'Failed to update username.');
+      setError(err instanceof Error ? err.message : 'Failed to update email.');
     }
   }
 
   return (
     <div className="grid max-w-lg gap-2">
-      <Label htmlFor="account-username">Username</Label>
+      <Label htmlFor="account-email">Email</Label>
       <div className="flex gap-2">
         <Input
-          id="account-username"
-          autoComplete="username"
+          id="account-email"
+          type="email"
+          autoComplete="email"
           value={draft}
-          placeholder="e.g. ada"
+          placeholder="you@example.com"
           className="h-8"
           onChange={e => setDraft(e.target.value)}
           onKeyDown={e => {
@@ -122,8 +123,7 @@ function UsernameForm({ currentUsername }: { currentUsername: string }) {
         />
       </div>
       <p className="text-xs text-muted-foreground">
-        Used to sign in and shown as your profile username. Letters, numbers, dots, underscores, or
-        dashes.
+        Used to sign in and shown as your profile email.
       </p>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>

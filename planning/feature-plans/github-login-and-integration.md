@@ -46,13 +46,14 @@ Non-goals for v1:
 | Decision | Choice | Rationale |
 | --- | --- | --- |
 | Login provider | Better Auth `socialProviders.github` | Already mandated in cloud architecture doc; `account` table exists; no second IdP. |
-| Login vs integration credentials | **Separate** OAuth apps / token stores | Login needs minimal scopes (`read:user`, `user:email`). Repo/PR work needs `repo` or a GitHub App installation token. Mixing scopes on the login token complicates consent and least-privilege. |
-| Integration auth model | **GitHub App** (workspace installation) | Supports org repos, fine-grained permissions, webhooks later, and avoids per-user PAT management. Fallback: OAuth user token with explicit “Connect GitHub for repos” if App setup is too heavy for MVP. |
+| Login vs integration credentials | **Separate** OAuth apps / token stores | Login needs minimal scopes (`user:email` is **required** by Better Auth). Repo/PR work needs `repo` or a GitHub App installation token. Mixing scopes on the login token complicates consent and least-privilege. |
+| Integration auth model | **GitHub App** (workspace installation) | Supports org repos, fine-grained permissions, webhooks later, and avoids per-user PAT management. Fallback: OAuth user token via `authClient.linkSocial({ provider: 'github', scopes: ['repo'] })` — reuses Better Auth's `account` token store, so no separate token table needed for the MVP fallback. |
+| Same GitHub App for login + integration? | **No — keep login as an OAuth App (or a dedicated login GitHub App)** | If a single GitHub App were used for login too, its *Account Permissions → Email Addresses* must be set to Read-Only or logins fail with `email_not_found` (Better Auth doc). Separate apps keep the email-permission requirement isolated to the login app and repo permissions isolated to the integration app. |
 | Secret storage | Env vars for app credentials; installation id + encrypted token metadata in `workspaces.settings_json` or `ext_github_*` table | Matches Everhour pattern (no secrets in DTOs); schema contract already allows namespaced `settings_json` keys. |
 | API surface | `/api/integrations/github/*` on REST layer | Same module boundary as Everhour; auth-gated; service-layer persistence. |
 | Desktop OAuth | Custom protocol `overlord://auth/callback` **or** loopback `http://127.0.0.1:<port>/auth/callback` forwarded into the active backend partition | Cross-origin cloud login cannot rely on cookies alone; bearer capture already exists. |
 | Profile handle for GitHub users | Use GitHub login as `user.name` / `profiles.handle` when no local username was chosen | Existing trigger mirrors `user.name` → `handle`. Validate GitHub handle charset (broader than `validateLocalUsername`). |
-| Account linking | Better Auth account linking (same email) when enabled | Allow existing email users to attach GitHub without duplicate profiles. Document edge cases (email mismatch). |
+| Account linking | Better Auth account linking, **but do NOT add `github` to `trustedProviders`** | Better Auth doc warns trusted providers auto-link on same email *even when the provider hasn't confirmed email verification* → account-takeover risk. Rely on default (verified-email) implicit linking; consider `disableImplicitLinking: true` to force explicit link from Account settings. Leave `allowDifferentEmails` and `allowUnlinkingAll` at defaults. |
 | Local edition | GitHub login **optional**; disabled when `GITHUB_CLIENT_ID` unset | Preserves zero-config Local; Cloud/Railway enables via env. |
 
 ---
@@ -63,29 +64,37 @@ Non-goals for v1:
 
 **Files:** `auth/src/auth/config.ts`, new `auth/providers/github/conformance-manifest.yaml` (sanctioned `auth-provider` extension point per `auth/AGENTS.md`).
 
-1. Extend `createAuth()`:
+1. Extend `createAuth()` (learnings from Better Auth GitHub doc):
    ```ts
    socialProviders: {
      github: {
        clientId: process.env.GITHUB_CLIENT_ID as string,
        clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
-       // mapProfile: prefer GitHub login for user.name when present
-     }
+       // scope: user:email is REQUIRED — Better Auth cannot resolve the
+       // account without it. Keep scopes minimal (no repo scope on login).
+       mapProfileToUser: (profile) => ({
+         name: profile.login,            // prefer GitHub login for user.name → profiles.handle
+         email: profile.email,           // may be null when primary email is private (see step 4)
+         image: profile.avatar_url,
+       }),
+     },
    }
    ```
    Gate on env presence so Local builds without GitHub creds behave unchanged.
 
-2. Set `baseURL` / `BETTER_AUTH_URL` consistently for Cloud (already `https://…railway.app` in `.env.prod.example`). Add GitHub OAuth callback URL to the GitHub OAuth App:
+2. Set `baseURL` / `BETTER_AUTH_URL` consistently for Cloud (already `https://…railway.app` in `.env.prod.example`). Callback path is fixed by Better Auth as `<baseURL>/api/auth/callback/github` (adjust if the auth route base path is customized). Register it on the GitHub OAuth App:
    - Cloud API: `https://<backend>/api/auth/callback/github`
    - Local dev: `http://127.0.0.1:4310/api/auth/callback/github` (and Vite dev origin in `trustedOrigins`).
 
-3. Enable **account linking** (Better Auth) for matching verified emails so a user with email/password can later attach GitHub.
+3. Configure **account linking** (Better Auth `account.accountLinking`): rely on default verified-email implicit linking so an email/password user can attach GitHub. **Do not** list `github` in `trustedProviders` (auto-links unverified emails → takeover risk). Optionally set `disableImplicitLinking: true` to require explicit linking from Account settings.
 
-4. Identity bridge: no change to `getActorForSession` — still `profiles.id = user.id`. Verify DB trigger populates `profiles.email` from GitHub email and `handle` from GitHub login.
+4. **Private-email handling** (`email_not_found`): GitHub users with a private primary email return no email, and Better Auth's identity bridge (and our `profiles.email`) depends on it. Ensure the login OAuth App / GitHub App is granted email read (for a GitHub App: *Account Permissions → Email Addresses → Read-Only*), and use `mapProfileToUser` as the fallback path. Decide behavior when email is still absent (block with actionable error vs. synthesize a `noreply` handle-based email) — track as an open question.
 
-5. First-login provisioning: `ensureWorkspaceUser()` already runs on session auth — confirm it executes after GitHub sign-up the same as email sign-up.
+5. Identity bridge: no change to `getActorForSession` — still `profiles.id = user.id`. Verify DB trigger populates `profiles.email` from GitHub email and `handle` from GitHub login.
 
-6. Tests (`auth/docs/testing.md`):
+6. First-login provisioning: `ensureWorkspaceUser()` already runs on session auth — confirm it executes after GitHub sign-up the same as email sign-up.
+
+7. Tests (`auth/docs/testing.md`):
    - Mock Better Auth session for a GitHub-origin user → `Actor` resolves.
    - Profile row created with GitHub login as handle.
 
@@ -104,7 +113,7 @@ Non-goals for v1:
    - **Desktop local**: same-origin loopback — standard redirect.
    - **Desktop remote**: open system browser → OAuth → deep link or loopback handler → `persistAuthSessionFromSignInResult`.
 3. Adjust copy: “Sign in with username” vs “Continue with GitHub” — do not force `@overlord.local` mental model when GitHub is available.
-4. `AccountPage`: show linked providers (read-only list from Better Auth client) when available; password change hidden if account is GitHub-only.
+4. `AccountPage`: list linked providers via `authClient.listAccounts()`; offer link/unlink with `authClient.linkSocial({ provider: 'github' })` / `authClient.unlinkAccount({ providerId: 'github' })`. Hide password change if account is GitHub-only (guard against unlinking the sole account — Better Auth blocks this unless `allowUnlinkingAll`).
 
 ### A.4 Desktop shell (`desktop/`)
 
@@ -184,6 +193,7 @@ Implementation notes:
 - App credentials: `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (PEM), `GITHUB_APP_SLUG` env vars.
 - Generate short-lived installation access tokens server-side per request (cache in memory with expiry buffer).
 - All GitHub errors → `ApiError` with actionable messages (403 private repo, 404, rate limit).
+- **OAuth-fallback path (no GitHub App):** obtain a user token by having the user run `authClient.linkSocial({ provider: 'github', scopes: ['repo'] })`, then read it server-side from the Better Auth `account` table. GitHub issues **no refresh token** and its access tokens are effectively long-lived (revoked or after 1yr unused), so no refresh loop is needed. Better Auth does **not** encrypt account tokens by default — add a `databaseHooks.account.create.before` (and `update.before`) hook to encrypt `accessToken` before storage, reusing `redactSecrets`/crypto helpers. Prefer the GitHub App path so Overlord never persists a user repo token at all.
 
 ### B.3 REST routes (`backend/index.ts`)
 
@@ -334,8 +344,24 @@ Estimated relative size: **A ≈ 2–3 days**, **B ≈ 3–4 days**, **C ≈ 2 d
 3. **Handle collisions** — GitHub login `foo` vs existing local username `foo`: rely on Better Auth linking + unique `profiles.handle` index; define UX error.
 4. **PR author identity** — PRs created with installation token appear as the App bot unless `--author` / co-author semantics added later.
 5. **Required GitHub scopes for private repos** — confirm App permissions: `contents:read`, `pull_requests:write`, `metadata:read`.
+6. **Private GitHub email fallback** — when a user's primary email is private and `mapProfileToUser` still yields no email, block sign-in with an actionable message or synthesize a `<login>@users.noreply.github.com` address? (Affects `profiles.email` uniqueness and account linking.)
+7. **Implicit vs explicit linking** — default same-email implicit linking (frictionless) or `disableImplicitLinking: true` (safer, forces link from Account settings)? Do not use `trustedProviders` either way.
 
 ---
+
+## Better Auth GitHub — doc learnings (source of truth for Phase A)
+
+Distilled from <https://better-auth.com/docs/authentication/github> and the accounts/linking concept doc (reviewed 2026-07-01):
+
+| Learning | Impact on plan |
+| --- | --- |
+| `user:email` scope is **required**; only `clientId`/`clientSecret` are needed otherwise | Configure scope explicitly; keep login scopes minimal (no `repo`). |
+| Callback path is `<baseURL>/api/auth/callback/github` (shifts with auth base path) | Register exactly this per environment; matches our REST mount. |
+| `email_not_found` when GitHub App lacks email permission or user's primary email is private | Grant *Account Permissions → Email Addresses → Read-Only* on a login GitHub App; add `mapProfileToUser` fallback; decide no-email behavior (open Q6). |
+| GitHub issues **no refresh token**; access tokens effectively long-lived | OAuth-fallback integration path needs no refresh loop. |
+| Client APIs: `signIn.social({ provider, callbackURL })`, `listAccounts()`, `linkSocial({ provider, scopes })`, `unlinkAccount({ providerId })` | Drives AuthScreen + AccountPage; `linkSocial({ scopes:['repo'] })` is the Phase B OAuth fallback. |
+| `account.accountLinking`: `enabled`, `trustedProviders`, `disableImplicitLinking`, `allowDifferentEmails`, `updateUserInfoOnLink`, `allowUnlinkingAll` | Use default verified-email linking; avoid `trustedProviders` (takeover risk); Better Auth blocks unlinking the sole account unless `allowUnlinkingAll`. |
+| Provider tokens stored in `account` table, **unencrypted by default** | If we ever store a GitHub user token, add `databaseHooks.account.create.before` encryption. |
 
 ## References
 
@@ -347,3 +373,5 @@ Estimated relative size: **A ≈ 2–3 days**, **B ≈ 3–4 days**, **C ≈ 2 d
 - `planning/feature-plans/overlord-cloud-architecture.md` — OAuth + bearer decisions
 - `auth/AGENTS.md` — auth provider extension procedure
 - `CONTRACT.md` — Auth Layer, REST Layer, Desktop Shell surfaces
+- <https://better-auth.com/docs/authentication/github> — GitHub provider config (scopes, callback, `email_not_found`)
+- <https://better-auth.com/docs/concepts/users-accounts> — account linking + token storage

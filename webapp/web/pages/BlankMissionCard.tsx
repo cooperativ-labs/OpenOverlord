@@ -103,7 +103,7 @@ export function BlankMissionCard({
   const cardRef = useRef<HTMLDivElement | null>(null);
   const overlayOwnerId = inputId;
   const valueRef = useRef(value);
-  const handleDismissRef = useRef<(currentValue: string) => Promise<void>>(async () => { });
+  const handleDismissRef = useRef<(currentValue: string) => Promise<void>>(async () => {});
 
   valueRef.current = value;
 
@@ -323,9 +323,7 @@ export function BlankMissionCard({
                       borderColor: selectedProject?.color ?? undefined
                     }}
                   />
-                  <span className="max-w-32 truncate">
-                    {selectedProject?.name ?? 'Project'}
-                  </span>
+                  <span className="max-w-32 truncate">{selectedProject?.name ?? 'Project'}</span>
                   <ChevronDown className="h-3 w-3 opacity-60" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent

@@ -154,7 +154,6 @@ export function BoardColumn({
       </div>
       {draggable ? (
         <SortableContext items={missions.map(t => t.id)} strategy={verticalListSortingStrategy}>
-
           {content}
         </SortableContext>
       ) : (
