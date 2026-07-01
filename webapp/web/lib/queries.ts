@@ -43,7 +43,11 @@ import type {
 } from '../../shared/contract.ts';
 
 import { api } from './api.ts';
-import { clearDesktopBearerToken, isCurrentDesktopBearerTokenPrefix } from './api-base.ts';
+import {
+  clearAuthTokens,
+  clearDesktopBearerToken,
+  isCurrentDesktopBearerTokenPrefix
+} from './api-base.ts';
 import { authClient, normalizeEmail } from './auth-client.ts';
 import {
   fetchMissionBranchesFromLocalTarget,
@@ -294,6 +298,27 @@ export function useChangePassword() {
       if (result.error) {
         throw new Error(result.error.message ?? 'Failed to update password.');
       }
+    }
+  });
+}
+
+/**
+ * Permanently delete the signed-in account through the Auth surface. The
+ * server cascades workspace memberships, tokens, and avatar images before
+ * removing the underlying auth user (see backend/account-deletion.ts), then
+ * clears the session cookie itself — this only needs to drop local tokens
+ * once the call succeeds so the next render sees a signed-out state.
+ */
+export function useDeleteAccount() {
+  return useMutation({
+    mutationFn: async (password: string) => {
+      const result = await authClient.deleteUser({ password });
+      if (result.error) {
+        throw new Error(result.error.message ?? 'Failed to delete account.');
+      }
+    },
+    onSuccess: async () => {
+      await clearAuthTokens();
     }
   });
 }
@@ -895,10 +920,14 @@ export function useDeleteObjective() {
 
 // ---- Objective attachments -----------------------------------------------
 
-export const useObjectiveAttachments = (objectiveId: string) =>
+export const useObjectiveAttachments = (
+  objectiveId: string,
+  { enabled = true }: { enabled?: boolean } = {}
+) =>
   useQuery({
     queryKey: keys.objectiveAttachments(objectiveId),
-    queryFn: () => api.listObjectiveAttachments(objectiveId)
+    queryFn: () => api.listObjectiveAttachments(objectiveId),
+    enabled
   });
 
 export function useUploadObjectiveAttachment(objectiveId: string) {

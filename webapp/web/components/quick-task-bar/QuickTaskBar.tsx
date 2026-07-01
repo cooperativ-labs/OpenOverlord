@@ -1,10 +1,11 @@
-import { AlertTriangle, ArrowUp, Loader2, Plus } from 'lucide-react';
+import { AlertTriangle, ArrowUp, Bot, ChevronDown, Loader2, Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { AgentModelChooserButton } from '@/components/objectives/AgentModelChooserButton.tsx';
+import { AgentIcon } from '@/components/objectives/AgentIcon.tsx';
 import type { AgentModelSelection } from '@/components/objectives/AgentModelSelector.tsx';
 import { RepositoryMentionTextarea } from '@/components/RepositoryMentionTextarea.tsx';
 import { api } from '@/lib/api.ts';
+import { getAgentIcon } from '@/lib/helpers/agent-icons.ts';
 import { executionTargetAvailability, primaryResourceConnection } from '@/lib/project-resources.ts';
 import {
   useAgentCatalog,
@@ -21,6 +22,7 @@ import {
 } from '@/lib/queries.ts';
 import { cn } from '@/lib/utils';
 
+import { AgentModelPickerPanel } from './AgentModelPickerPanel.tsx';
 import { ProjectPickerPanel } from './ProjectPickerPanel.tsx';
 import {
   getQuickTaskApi,
@@ -64,7 +66,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
   );
   const [stagedFiles, setStagedFiles] = useState<StagedFile[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeMenu, setActiveMenu] = useState<'project' | null>(null);
+  const [activeMenu, setActiveMenu] = useState<'project' | 'agent' | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -107,6 +109,16 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
   }, [defaultSelection]);
 
   const selectedProject = projects.find(project => project.id === selectedProjectId) ?? null;
+  const selectedAgentDef = catalog?.agents.find(a => a.key === objectiveSelection.agent);
+  const selectedAgentModelDef = selectedAgentDef?.models.find(
+    m => m.id === objectiveSelection.model
+  );
+  const selectedAgentLabel = selectedAgentDef ? selectedAgentDef.label : objectiveSelection.agent;
+  const selectedAgentFullLabel = selectedAgentModelDef
+    ? `${selectedAgentLabel} · ${selectedAgentModelDef.displayName}`
+    : selectedAgentLabel;
+  const selectedAgentIconKey = selectedAgentDef?.key ?? objectiveSelection.agent;
+  const hasSelectedAgentIcon = getAgentIcon(selectedAgentIconKey) !== null;
   const primaryConnection = primaryResourceConnection(resourcesQ.data ?? []);
   const executionTargetQ = useProjectExecutionTarget(selectedProjectId);
   const targetAvailability = executionTargetAvailability({
@@ -151,6 +163,18 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
   useEffect(() => {
     autoResize();
   }, [autoResize, objective, stagedFiles.length, activeMenu, objectiveSelection]);
+
+  // Selector panels (agent launch flags wrapping, model list scrolling, etc.)
+  // can change height without touching the state above — observe the
+  // container directly so the host window always grows/shrinks to match
+  // whatever is actually rendered, instead of missing an edge case.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => autoResize());
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [autoResize]);
 
   useEffect(() => {
     if (activeMenu) return;
@@ -422,19 +446,33 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
               </span>
             </button>
 
-            <div className="electron-no-drag">
-              <AgentModelChooserButton
-                catalog={catalog}
-                selection={objectiveSelection}
-                onChange={handleSelectionChange}
-                agentConfigs={agentConfigs}
-                onLaunchConfigCommit={(agentKey, config) => {
-                  updateAgentConfig.mutate({ agentKey, body: config });
-                }}
-                disabled={isSubmitting}
-                compact
-              />
-            </div>
+            <button
+              type="button"
+              aria-label={`Choose agent and model: ${selectedAgentFullLabel}`}
+              aria-expanded={activeMenu === 'agent'}
+              title={selectedAgentFullLabel}
+              onClick={() => setActiveMenu(current => (current === 'agent' ? null : 'agent'))}
+              disabled={isSubmitting || !catalog}
+              className={cn(
+                'electron-no-drag flex h-8 shrink-0 items-center gap-1 rounded-full px-2 text-xs text-muted-foreground shadow-sm transition-colors',
+                activeMenu === 'agent' && 'bg-muted text-foreground',
+                isSubmitting || !catalog
+                  ? 'cursor-not-allowed opacity-60'
+                  : 'cursor-pointer hover:bg-muted hover:text-foreground'
+              )}
+            >
+              {hasSelectedAgentIcon ? (
+                <AgentIcon
+                  agentKey={selectedAgentIconKey}
+                  size={14}
+                  alt=""
+                  className="h-3.5 w-3.5 shrink-0"
+                />
+              ) : (
+                <Bot className="h-3.5 w-3.5 shrink-0" />
+              )}
+              <ChevronDown className="h-3 w-3 shrink-0" />
+            </button>
           </div>
 
           <button
@@ -484,6 +522,16 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
           onSelect={projectId => {
             setSelectedProjectId(projectId);
             setActiveMenu(null);
+          }}
+        />
+      ) : activeMenu === 'agent' && catalog ? (
+        <AgentModelPickerPanel
+          catalog={catalog}
+          selection={objectiveSelection}
+          onChange={handleSelectionChange}
+          agentConfigs={agentConfigs}
+          onLaunchConfigCommit={(agentKey, config) => {
+            updateAgentConfig.mutate({ agentKey, body: config });
           }}
         />
       ) : null}

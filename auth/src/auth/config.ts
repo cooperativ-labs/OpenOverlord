@@ -1,5 +1,5 @@
 import { type AdapterConfig, loadBetterSqlite3, resolveAdapter } from '@overlord/database';
-import { betterAuth } from 'better-auth';
+import { betterAuth, type User } from 'better-auth';
 import { bearer } from 'better-auth/plugins';
 import { Kysely, PostgresDialect } from 'kysely';
 import { Pool } from 'pg';
@@ -27,6 +27,23 @@ export interface CreateAuthOptions {
   database: AuthDatabaseConfig;
   /** Origins allowed to call Better Auth (e.g. the Vite dev server in split-port dev). */
   trustedOrigins?: string[];
+  /**
+   * Called from the `deleteUser` `beforeDelete` hook with the Better Auth
+   * user id (`profiles.id`) before the user row — and everything that
+   * hard-cascades from it — is removed. The caller is responsible for
+   * clearing any `ON DELETE RESTRICT` children first; see
+   * `backend/account-deletion.ts`. Self-service account deletion
+   * (`user.deleteUser`) is enabled only when this is provided.
+   */
+  onDeleteUser?: (userId: string) => Promise<void>;
+  /**
+   * Delivers the sign-up/sign-in verification email (backend-supplied, e.g.
+   * Resend-backed — see `backend/email-verification.ts`). Sign-up/sign-in
+   * email verification is enabled only when this is provided; when omitted,
+   * accounts are never email-verified, matching prior behavior (the default
+   * for offline/local editions with no configured email-sending provider).
+   */
+  sendVerificationEmail?: (params: { user: User; url: string; token: string }) => Promise<void>;
 }
 
 function postgresSearchPath(schema: string | undefined): string | undefined {
@@ -91,11 +108,49 @@ export function createAuth(dbPathOrOptions?: string | CreateAuthOptions) {
   return betterAuth({
     database: createBetterAuthDatabase(options.database),
     ...(options.trustedOrigins ? { trustedOrigins: options.trustedOrigins } : {}),
-    emailAndPassword: { enabled: true },
-    // Email is the primary account identifier. Local accounts are never
-    // email-verified, so Better Auth applies a `changeEmail` call directly
-    // without a verification round-trip.
-    user: { changeEmail: { enabled: true } },
+    // `requireEmailVerification` also gates sign-in for unverified accounts,
+    // so it must only be enabled alongside a real `sendVerificationEmail`
+    // sender — otherwise every sign-in would be rejected with no way to
+    // (re)send the verification email that would unblock it.
+    emailAndPassword: {
+      enabled: true,
+      ...(options.sendVerificationEmail ? { requireEmailVerification: true } : {})
+    },
+    ...(options.sendVerificationEmail
+      ? {
+          emailVerification: {
+            sendVerificationEmail: async ({
+              user,
+              url,
+              token
+            }: {
+              user: User;
+              url: string;
+              token: string;
+            }) => options.sendVerificationEmail!({ user, url, token }),
+            sendOnSignUp: true,
+            sendOnSignIn: true,
+            autoSignInAfterVerification: true
+          }
+        }
+      : {}),
+    // Email is the primary account identifier. Changing email applies
+    // immediately without re-verifying the new address (the account is
+    // already authenticated for the change), independent of sign-up/sign-in
+    // verification above.
+    user: {
+      changeEmail: { enabled: true },
+      ...(options.onDeleteUser
+        ? {
+            deleteUser: {
+              enabled: true,
+              beforeDelete: async (user: User) => {
+                await options.onDeleteUser!(user.id);
+              }
+            }
+          }
+        : {})
+    },
     plugins: [bearer()]
   });
 }

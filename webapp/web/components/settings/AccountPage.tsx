@@ -1,12 +1,22 @@
+import { Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Separator } from '@/components/ui/separator';
 import { validateEmail } from '@/lib/auth-client';
-import { useChangeEmail, useChangePassword, useProfile } from '@/lib/queries';
+import { useChangeEmail, useChangePassword, useDeleteAccount, useProfile } from '@/lib/queries';
 
 type AccountPageProps = {
   open: boolean;
@@ -54,6 +64,14 @@ export function AccountPage({ open }: AccountPageProps) {
           <Separator />
           <PasswordForm />
         </div>
+      </div>
+
+      <div className="space-y-4 border-t pt-8">
+        <div>
+          <h2 className="text-base font-medium text-destructive">Danger zone</h2>
+          <p className="text-sm text-muted-foreground">Permanently delete your account.</p>
+        </div>
+        <DeleteAccountSection />
       </div>
     </div>
   );
@@ -223,5 +241,103 @@ function PasswordForm() {
       </div>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
+  );
+}
+
+function DeleteAccountSection() {
+  const deleteAccount = useDeleteAccount();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [password, setPassword] = useState('');
+  const [deleteState, setDeleteState] = useState<ButtonLoadingState>('default');
+  const [error, setError] = useState<string | null>(null);
+
+  function openDialog() {
+    setPassword('');
+    setError(null);
+    setDeleteState('default');
+    setConfirmOpen(true);
+  }
+
+  async function handleDelete() {
+    if (!password) {
+      setError('Enter your password to confirm.');
+      setDeleteState('error');
+      return;
+    }
+
+    setDeleteState('loading');
+    setError(null);
+    try {
+      await deleteAccount.mutateAsync(password);
+      // The session cookie is already cleared server-side; reload lands on
+      // the signed-out state, mirroring the sign-out flow in nav-user.tsx.
+      window.location.reload();
+    } catch (err) {
+      setDeleteState('error');
+      setError(err instanceof Error ? err.message : 'Failed to delete account.');
+    }
+  }
+
+  return (
+    <>
+      <div className="grid gap-2">
+        <p className="text-sm text-muted-foreground">
+          Deleting your account removes your profile, workspace memberships, tokens, and avatar
+          images. This cannot be undone.
+        </p>
+        <Button
+          type="button"
+          variant="destructive"
+          size="sm"
+          className="w-fit gap-1.5"
+          onClick={openDialog}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Delete account
+        </Button>
+      </div>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete your account?</DialogTitle>
+            <DialogDescription>
+              This permanently removes your account and cannot be undone from the UI. Enter your
+              password to confirm.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <Label htmlFor="delete-account-password">Password</Label>
+            <Input
+              id="delete-account-password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              className="h-8"
+              onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') void handleDelete();
+              }}
+              disabled={deleteState === 'loading'}
+            />
+            {error ? <p className="text-xs text-destructive">{error}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <LoadingButton
+              buttonState={deleteState}
+              setButtonState={setDeleteState}
+              text="Delete account"
+              loadingText="Deleting…"
+              errorText="Retry"
+              variant="destructive"
+              onClick={() => void handleDelete()}
+            />
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

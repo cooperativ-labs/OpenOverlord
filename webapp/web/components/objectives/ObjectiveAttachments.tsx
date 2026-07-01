@@ -124,11 +124,13 @@ function AttachmentIcon({ contentType }: { contentType: string | null }) {
 
 type ObjectiveAttachmentListProps = {
   attachments: ObjectiveAttachmentDto[];
-  removingId: string | null;
-  onRemove: (id: string) => void;
+  removingId?: string | null;
+  onRemove?: (id: string) => void;
   className?: string;
   /** Match Overlord toolbar padding when rendered above the upload trigger row. */
   toolbar?: boolean;
+  /** Render as a plain download list with no remove control (e.g. read-only history views). */
+  readOnly?: boolean;
 };
 
 /**
@@ -137,10 +139,11 @@ type ObjectiveAttachmentListProps = {
  */
 export function ObjectiveAttachmentList({
   attachments,
-  removingId,
+  removingId = null,
   onRemove,
   className,
-  toolbar = false
+  toolbar = false,
+  readOnly = false
 }: ObjectiveAttachmentListProps) {
   if (attachments.length === 0) return null;
 
@@ -173,20 +176,22 @@ export function ObjectiveAttachmentList({
               {formatFileSize(attachment.sizeBytes)}
             </span>
           ) : null}
-          <button
-            type="button"
-            onClick={() => onRemove(attachment.id)}
-            disabled={removingId === attachment.id}
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-colors hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
-            aria-label={`Remove ${attachment.filename}`}
-            title="Remove"
-          >
-            {removingId === attachment.id ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Trash2 className="h-3 w-3" />
-            )}
-          </button>
+          {readOnly ? null : (
+            <button
+              type="button"
+              onClick={() => onRemove?.(attachment.id)}
+              disabled={removingId === attachment.id}
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-colors hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
+              aria-label={`Remove ${attachment.filename}`}
+              title="Remove"
+            >
+              {removingId === attachment.id ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Trash2 className="h-3 w-3" />
+              )}
+            </button>
+          )}
         </div>
       ))}
     </div>

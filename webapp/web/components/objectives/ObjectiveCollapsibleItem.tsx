@@ -13,13 +13,14 @@ import { useState } from 'react';
 import type { ObjectiveDto } from '../../../shared/contract.ts';
 import { getAgentIcon } from '../../lib/helpers/agent-icons.ts';
 import { useCopyToClipboard } from '../../lib/hooks/use-copy-to-clipboard.ts';
-import { useAgentCatalog, useUpdateObjective } from '../../lib/queries.ts';
+import { useAgentCatalog, useObjectiveAttachments, useUpdateObjective } from '../../lib/queries.ts';
 import { cn } from '../../lib/utils.ts';
 import { InlineEditField } from '../InlineEditField.tsx';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible.tsx';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip.tsx';
 
 import { AgentIcon } from './AgentIcon.tsx';
+import { ObjectiveAttachmentList } from './ObjectiveAttachments.tsx';
 import { ObjectiveMenuButton } from './ObjectiveMenuButton.tsx';
 
 /**
@@ -41,6 +42,7 @@ export function ObjectiveCollapsibleItem({
   const { copied, copy } = useCopyToClipboard();
   const [open, setOpen] = useState(false);
   const catalogQuery = useAgentCatalog();
+  const { data: attachments = [] } = useObjectiveAttachments(objective.id, { enabled: open });
 
   const isExecuting = objective.state === 'executing';
   const isPendingDelivery = objective.state === 'pending_delivery';
@@ -165,6 +167,9 @@ export function ObjectiveCollapsibleItem({
               }
             />
           </div>
+          {attachments.length > 0 ? (
+            <ObjectiveAttachmentList attachments={attachments} readOnly className="mt-1 -ml-2" />
+          ) : null}
         </CollapsibleContent>
       </div>
     </Collapsible>

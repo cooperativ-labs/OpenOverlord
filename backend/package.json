@@ -14,7 +14,7 @@
     "start": "tsx index.ts",
     "start:bundle": "node dist-server/index.cjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test load-repo-env.test.ts project-resources.test.ts title-automation.test.ts mission-ref.test.ts workspace-settings.test.ts workspaces.test.ts workspaces.postgres-conformance.test.ts my-missions.test.ts objectives.test.ts launch.test.ts branch-planning.test.ts branch-prepared.test.ts branch-status.test.ts branch-actions.test.ts branch-selection-worktrees.test.ts local-target-capability.test.ts local-target-invoke.test.ts mission-worktree-preference.test.ts generate-commit-message.test.ts storage-backends.test.ts storage.test.ts serve-spa.test.ts"
+    "test": "node --import tsx --test load-repo-env.test.ts project-resources.test.ts title-automation.test.ts mission-ref.test.ts workspace-settings.test.ts workspaces.test.ts workspaces.postgres-conformance.test.ts my-missions.test.ts objectives.test.ts launch.test.ts branch-planning.test.ts branch-prepared.test.ts branch-status.test.ts branch-actions.test.ts branch-selection-worktrees.test.ts local-target-capability.test.ts local-target-invoke.test.ts mission-worktree-preference.test.ts generate-commit-message.test.ts storage-backends.test.ts storage.test.ts serve-spa.test.ts account-deletion.test.ts email-templates/confirm-email.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1075.0",
@@ -29,7 +29,8 @@
     "better-sqlite3": "^12.11.1",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "resend": "^6.16.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

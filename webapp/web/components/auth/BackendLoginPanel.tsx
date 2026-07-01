@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 
 type BackendProfileRow = {
   id: string;
@@ -19,7 +20,16 @@ type BackendProfileRow = {
   backendUrl: string;
 };
 
-export function BackendLoginPanel() {
+type BackendLoginPanelProps = {
+  /**
+   * When true, the panel renders as a bare section without its own card chrome,
+   * so it can sit inside a larger surface (e.g. the auth card) alongside the
+   * credentials form instead of floating as a separate card.
+   */
+  embedded?: boolean;
+};
+
+export function BackendLoginPanel({ embedded = false }: BackendLoginPanelProps) {
   const bridge = typeof window === 'undefined' ? undefined : window.overlord;
   const [profiles, setProfiles] = useState<BackendProfileRow[]>([]);
   const [activeId, setActiveId] = useState<string>('local');
@@ -79,7 +89,7 @@ export function BackendLoginPanel() {
   }
 
   return (
-    <div className="mb-5 space-y-3 rounded-lg border bg-card p-4">
+    <div className={cn('space-y-3', embedded ? '' : 'mb-5 rounded-lg border bg-card p-4')}>
       <div className="space-y-1">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Backend</p>
         <p className="text-sm text-muted-foreground">Sign in to this Overlord instance.</p>

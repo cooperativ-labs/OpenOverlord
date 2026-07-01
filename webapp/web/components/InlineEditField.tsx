@@ -193,7 +193,10 @@ export function InlineEditField({
     <Input
       autoFocus
       value={draft}
-      className={cn('h-full border-none bg-transparent hover:bg-transparent', inputClassName)}
+      className={cn(
+        'h-full max-h-[360px] border-none bg-transparent hover:bg-transparent',
+        inputClassName
+      )}
       aria-label={ariaLabel}
       onChange={event => updateDraft(event.target.value)}
       onBlur={commit}

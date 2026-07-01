@@ -137,6 +137,8 @@ components:
       - 'permission check interface'
       - 'audit log attribution fields'
       - 'Better Auth implementation tables: user, session, account, verification, apikey'
+      - 'self-service account deletion trigger (user.deleteUser), delegating the cascade to a backend-supplied callback'
+      - 'sign-up/sign-in email verification via an optional backend-supplied sendVerificationEmail callback (Resend-backed, RESEND_API_KEY, notifications.cooperativ.io); disabled by default when unset'
     dependsOn:
       - database
     interactionSurfaces:
@@ -277,7 +279,8 @@ interactionSurfaces:
       - 'Auth tables (user, session, account, verification, apikey) are auth-internal; no other component reads them directly'
       - 'Identity bridge reads workspace_users and profiles where profiles.id matches the Better Auth user id'
       - 'Role resolution reads role_assignments by workspace_user_id and workspace_id'
-      - 'Auth Layer must not write to core domain tables (missions, projects, etc.)'
+      - 'Auth Layer must not write to core domain tables (missions, projects, etc.) itself'
+      - 'Exception: the deleteUser beforeDelete hook invokes a backend-supplied onDeleteUser(userId) callback (see backend/account-deletion.ts) to hard-purge the RESTRICT children of profiles and workspace_users (workspace_users, user_tokens, user_images, role_assignments, workspace_user_execution_targets, project_user_preferences) before the auth user row is hard-deleted; the write happens in the caller-supplied callback, not in Auth Layer code, mirroring the serviceToAutomations delegation pattern'
 
   serviceToAutomations:
     description: 'Service-layer callers invoke automations through exported functions; persistence via injected callbacks only'

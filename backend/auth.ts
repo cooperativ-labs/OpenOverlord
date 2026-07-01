@@ -5,6 +5,7 @@ import type { NextFunction, Request, Response } from 'express';
 
 import { createAuth } from '../auth/src/auth/config.ts';
 
+import { cascadeDeleteAccount } from './account-deletion.ts';
 import { resolveAllowedBrowserOrigins } from './browser-origins.ts';
 import { clientDeviceFromRequest } from './client-device.ts';
 import {
@@ -21,6 +22,7 @@ import {
   withRequestContextAsync,
   WORKSPACE
 } from './db.ts';
+import { verificationEmailSenderFromEnv } from './email-verification.ts';
 import { grantWorkspaceAdminRole } from './workspaces.ts';
 
 const authBaseHost =
@@ -50,7 +52,9 @@ export const auth = createAuth({
             schema: authAdapter.schema
           }
         : { type: 'postgres', connectionString: authAdapter.connectionString },
-  trustedOrigins: getAllowedBrowserOrigins()
+  trustedOrigins: getAllowedBrowserOrigins(),
+  onDeleteUser: cascadeDeleteAccount,
+  sendVerificationEmail: verificationEmailSenderFromEnv()
 });
 export const authNodeHandler = toNodeHandler(auth);
 
