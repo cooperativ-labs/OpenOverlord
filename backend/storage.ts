@@ -18,6 +18,7 @@
  * and `attachments` can reuse them with their own writers later.
  */
 
+import type { DatabaseClient } from '@overlord/database';
 import type { Response } from 'express';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
@@ -238,9 +239,18 @@ interface ObjectiveScopeRow {
   mission_id: string;
 }
 
-/** Resolve the objective's workspace/project/mission scope, or 404 if absent. */
-async function resolveObjectiveScope(objectiveId: string): Promise<ObjectiveScopeRow> {
-  const row = await requireDatabaseClient().get<ObjectiveScopeRow>(
+/**
+ * Resolve the objective's workspace/project/mission scope, or 404 if absent.
+ * Accepts an explicit client so callers inside a transaction can pass the
+ * transaction-scoped client instead of `requireDatabaseClient()`'s top-level
+ * one — reusing the top-level client here would re-enter the same mutex the
+ * enclosing `transaction()` call already holds and deadlock.
+ */
+async function resolveObjectiveScope(
+  objectiveId: string,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<ObjectiveScopeRow> {
+  const row = await client.get<ObjectiveScopeRow>(
     `SELECT workspace_id, project_id, mission_id FROM objectives
       WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
     [objectiveId, WORKSPACE.id]
@@ -415,7 +425,7 @@ export async function deleteObjectiveAttachment(
   attachmentId: string
 ): Promise<ObjectiveAttachmentDto[]> {
   const { remaining, cleanup } = await requireDatabaseClient().transaction(async tx => {
-    const scope = await resolveObjectiveScope(objectiveId);
+    const scope = await resolveObjectiveScope(objectiveId, tx);
     const row = await tx.get<{
       id: string;
       revision: number;
