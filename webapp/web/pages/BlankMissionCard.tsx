@@ -103,7 +103,7 @@ export function BlankMissionCard({
   const cardRef = useRef<HTMLDivElement | null>(null);
   const overlayOwnerId = inputId;
   const valueRef = useRef(value);
-  const handleDismissRef = useRef<(currentValue: string) => Promise<void>>(async () => {});
+  const handleDismissRef = useRef<(currentValue: string) => Promise<void>>(async () => { });
 
   valueRef.current = value;
 
@@ -285,7 +285,7 @@ export function BlankMissionCard({
           placeholder="What needs to be done?"
           disabled={isCreating}
           onKeyDown={handleKeyDown}
-          className="min-h-[156px] resize-none border-0 p-1 text-sm shadow-none focus-visible:ring-0"
+          className="min-h-[156px] resize-none border-0 p-1 bg-transparent text-sm shadow-none focus-visible:ring-0"
           rows={7}
         />
         <div
@@ -323,7 +323,7 @@ export function BlankMissionCard({
                       borderColor: selectedProject?.color ?? undefined
                     }}
                   />
-                  <span className="max-w-[8rem] truncate">
+                  <span className="max-w-32 truncate">
                     {selectedProject?.name ?? 'Project'}
                   </span>
                   <ChevronDown className="h-3 w-3 opacity-60" />

@@ -1,5 +1,5 @@
 import { useParams } from '@tanstack/react-router';
-import { Plus, RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw, TicketPlus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { NewMissionModal } from '@/components/NewMissionModal.tsx';
@@ -104,13 +104,15 @@ export function NavHeader() {
             render={
               <Button
                 type="button"
-                variant="outline"
+                variant="default"
                 size="sm"
+                className="h-8 shrink-0 px-0 md:w-auto md:px-2.5"
                 onClick={() => setIsNewMissionOpen(true)}
                 disabled={!hasProjects}
+                aria-label="New mission"
               >
-                <Plus />
-                New mission
+                <TicketPlus />
+                <span className="hidden md:inline">New Mission</span>
               </Button>
             }
           />

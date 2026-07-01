@@ -1,4 +1,4 @@
-import type { MissionDto, WorkspaceMemberDto } from '../../shared/contract.ts';
+import type { MissionDto, WorkspaceMemberDto, WorkspaceStatusDto } from '../../shared/contract.ts';
 
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
 export const BOARD_VIEW_STORAGE_PREFIX = 'overlord:project-board-view:';
@@ -33,6 +33,17 @@ export function getTagFilterLabel(
     return tagOptions.find(tag => tag.id === selectedTagIds[0])?.label ?? 'Tag';
   }
   return `${selectedTagIds.length} tags`;
+}
+
+export function getStatusFilterLabel(
+  selectedStatusIds: string[],
+  statuses: WorkspaceStatusDto[]
+): string {
+  if (selectedStatusIds.length === 0) return 'All';
+  if (selectedStatusIds.length === 1) {
+    return statuses.find(status => status.id === selectedStatusIds[0])?.name ?? 'Status';
+  }
+  return `${selectedStatusIds.length} statuses`;
 }
 
 export function readStoredBoardView(projectId: string): BoardView {

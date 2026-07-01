@@ -67,18 +67,16 @@ export function MissionListStatusGroup({
   const canAdd = Boolean(onCreateMission);
 
   return (
-    <section
-      className={cn('bg-card transition-colors', isOver && 'ring-1 ring-inset ring-primary/30')}
-    >
+    <section className={cn(' transition-colors', isOver && 'ring-1 ring-inset ring-primary/30')}>
       <div className="group/header flex items-center gap-2 px-1.5 py-1.5">
         <span
           className={cn(
-            'flex h-5 w-5 shrink-0 items-center justify-center rounded',
+            'flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded',
             style.bg,
             style.text
           )}
         >
-          <Icon className="h-3.5 w-3.5" />
+          <Icon className="h-3 w-3" />
         </span>
         <button
           type="button"
@@ -92,7 +90,7 @@ export function MissionListStatusGroup({
         <button
           type="button"
           onClick={() => onToggleCollapse(status.id)}
-          className={cn('shrink-0 text-xs font-semibold uppercase tracking-wider', style.text)}
+          className={cn('shrink-0 text-[10px] font-semibold uppercase tracking-wider', style.text)}
         >
           {status.name}
         </button>

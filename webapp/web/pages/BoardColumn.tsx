@@ -107,17 +107,19 @@ export function BoardColumn({
         );
       })}
       {isAddingBottom ? (
-        <BlankMissionCard
-          inputId={inputId}
-          statusId={status.id}
-          position="bottom"
-          projectId={projectId}
-          onCreateMission={onCreateMission}
-          onCreateAndOpenMission={onCreateAndOpenMission}
-          onClose={handleCloseBlankCard}
-          onSubmitted={() => setFocusEditorCount(c => c + 1)}
-          focusTrigger={focusEditorCount}
-        />
+        <div className="pb-0.52">
+          <BlankMissionCard
+            inputId={inputId}
+            statusId={status.id}
+            position="bottom"
+            projectId={projectId}
+            onCreateMission={onCreateMission}
+            onCreateAndOpenMission={onCreateAndOpenMission}
+            onClose={handleCloseBlankCard}
+            onSubmitted={() => setFocusEditorCount(c => c + 1)}
+            focusTrigger={focusEditorCount}
+          />
+        </div>
       ) : (
         <button
           type="button"
@@ -152,6 +154,7 @@ export function BoardColumn({
       </div>
       {draggable ? (
         <SortableContext items={missions.map(t => t.id)} strategy={verticalListSortingStrategy}>
+
           {content}
         </SortableContext>
       ) : (

@@ -1,10 +1,10 @@
-import { Loader2, LockKeyhole } from 'lucide-react';
+import { GalleryVerticalEnd } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 
 import { BackendLoginPanel } from '@/components/auth/BackendLoginPanel';
-import { Button } from '@/components/ui/button';
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { type ButtonLoadingState, LoadingButton } from '@/components/ui/loading-button';
 import { persistAuthSessionFromSignInResult } from '@/lib/api-base';
 import {
   authClient,
@@ -12,6 +12,7 @@ import {
   usernameToLocalEmail,
   validateLocalUsername
 } from '@/lib/auth-client';
+import { cn } from '@/lib/utils';
 
 type AuthMode = 'sign-in' | 'create-account';
 
@@ -32,7 +33,7 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitButtonState, setSubmitButtonState] = useState<ButtonLoadingState>('default');
 
   const isCreate = mode === 'create-account';
 
@@ -41,15 +42,17 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
     const usernameError = validateLocalUsername(username);
     if (usernameError) {
       setError(usernameError);
+      setSubmitButtonState('error');
       return;
     }
     if (password.length < 8) {
       setError('Password must be at least 8 characters.');
+      setSubmitButtonState('error');
       return;
     }
 
     setError(null);
-    setIsSubmitting(true);
+    setSubmitButtonState('loading');
     try {
       const normalizedUsername = normalizeLocalUsername(username);
       const email = usernameToLocalEmail(normalizedUsername);
@@ -63,96 +66,130 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
 
       if (result.error) {
         setError(result.error.message ?? 'Authentication failed.');
+        setSubmitButtonState('error');
         return;
       }
 
+      setSubmitButtonState('success');
       await persistAuthSessionFromSignInResult(result.data);
       await onAuthenticated();
     } catch (err) {
       setError(authErrorMessage(err));
-    } finally {
-      setIsSubmitting(false);
+      setSubmitButtonState('error');
     }
   }
 
+  function switchMode(nextMode: AuthMode) {
+    setMode(nextMode);
+    setError(null);
+    setSubmitButtonState('default');
+  }
+
   return (
-    <main className="grid min-h-dvh place-items-center bg-background px-4 py-8 text-foreground">
-      <section className="w-full max-w-[400px]">
-        <div className="mb-5 flex items-center gap-3">
-          <div className="grid size-10 place-items-center rounded-lg border bg-card">
-            <LockKeyhole className="size-5" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-xl font-semibold">Overlord</h1>
-            <p className="text-sm text-muted-foreground">Sign in to continue.</p>
-          </div>
-        </div>
+    <div className="flex min-h-dvh w-full flex-col items-center justify-center gap-8 overflow-hidden">
+      <div className="electron-drag-region shrink-0" />
+      <div className="flex flex-col items-center justify-center px-4 py-8">
+        <img
+          src="/images/256.png"
+          alt="Overlord"
+          className="h-32 w-32 rounded-4xl object-contain"
+          width={128}
+          height={128}
+        />
+      </div>
 
-        <BackendLoginPanel />
-
-        <div className="mb-4 grid grid-cols-2 rounded-lg border bg-muted p-1">
-          <Button
-            type="button"
-            variant={isCreate ? 'ghost' : 'secondary'}
-            size="sm"
-            className="h-8"
-            onClick={() => {
-              setMode('sign-in');
-              setError(null);
-            }}
-          >
-            Sign in
-          </Button>
-          <Button
-            type="button"
-            variant={isCreate ? 'secondary' : 'ghost'}
-            size="sm"
-            className="h-8"
-            onClick={() => {
-              setMode('create-account');
-              setError(null);
-            }}
-          >
-            Create
-          </Button>
-        </div>
-
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          <div className="space-y-2">
-            <Label htmlFor="auth-username">Username</Label>
-            <Input
-              id="auth-username"
-              autoComplete="username"
-              value={username}
-              onChange={event => setUsername(event.target.value)}
-              disabled={isSubmitting}
-              autoFocus
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="auth-password">Password</Label>
-            <Input
-              id="auth-password"
-              type="password"
-              autoComplete={isCreate ? 'new-password' : 'current-password'}
-              value={password}
-              onChange={event => setPassword(event.target.value)}
-              disabled={isSubmitting}
-            />
-          </div>
+      <main className="flex w-full items-center justify-center px-4 pb-8">
+        <div className="flex w-full max-w-md flex-col gap-6">
+          <BackendLoginPanel />
 
           {error ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
               {error}
             </div>
           ) : null}
 
-          <Button type="submit" className="w-full" size="lg" disabled={isSubmitting}>
-            {isSubmitting ? <Loader2 className="animate-spin" /> : null}
-            {isCreate ? 'Create account' : 'Sign in'}
-          </Button>
-        </form>
-      </section>
-    </main>
+          <form className={cn('flex flex-col gap-6')} onSubmit={handleSubmit}>
+            <FieldGroup>
+              <div className="flex flex-col items-center gap-2 text-center">
+                <div className="flex flex-col items-center gap-2 font-medium">
+                  <div className="flex size-8 items-center justify-center rounded-md">
+                    <GalleryVerticalEnd className="size-6" />
+                  </div>
+                  <span className="sr-only">Overlord</span>
+                </div>
+                <h1 className="text-xl font-bold">
+                  {isCreate ? 'Welcome to Overlord' : 'Welcome back'}
+                </h1>
+                <FieldDescription>
+                  {isCreate ? (
+                    <>
+                      Already have an account?{' '}
+                      <button
+                        type="button"
+                        className="underline underline-offset-4"
+                        onClick={() => switchMode('sign-in')}
+                      >
+                        Sign in
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      Don&apos;t have an account?{' '}
+                      <button
+                        type="button"
+                        className="underline underline-offset-4"
+                        onClick={() => switchMode('create-account')}
+                      >
+                        Create account
+                      </button>
+                    </>
+                  )}
+                </FieldDescription>
+              </div>
+
+              <Field>
+                <FieldLabel htmlFor="auth-username">Username</FieldLabel>
+                <Input
+                  id="auth-username"
+                  autoComplete="username"
+                  value={username}
+                  onChange={event => setUsername(event.target.value)}
+                  disabled={submitButtonState === 'loading'}
+                  autoFocus
+                  required
+                />
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="auth-password">Password</FieldLabel>
+                <Input
+                  id="auth-password"
+                  type="password"
+                  autoComplete={isCreate ? 'new-password' : 'current-password'}
+                  value={password}
+                  onChange={event => setPassword(event.target.value)}
+                  disabled={submitButtonState === 'loading'}
+                  required
+                  minLength={8}
+                />
+              </Field>
+
+              <Field>
+                <LoadingButton
+                  type="submit"
+                  className="w-full"
+                  buttonState={submitButtonState}
+                  setButtonState={setSubmitButtonState}
+                  text={isCreate ? 'Create Account' : 'Sign in'}
+                  loadingText={isCreate ? 'Creating account...' : 'Signing in...'}
+                  successText={isCreate ? 'Account created' : 'Signed in'}
+                  errorText={isCreate ? 'Sign up failed' : 'Sign in failed'}
+                />
+              </Field>
+            </FieldGroup>
+          </form>
+        </div>
+      </main>
+    </div>
   );
 }

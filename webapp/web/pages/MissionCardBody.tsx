@@ -48,7 +48,7 @@ export function MissionCardBody({
                         className={cn(
                           'pointer-events-auto flex h-5 min-w-5 items-center justify-center rounded-full text-[10px] font-medium tabular-nums ',
                           cardState.objectiveCountAlert
-                            ? 'bg-red-700 text-white'
+                            ? 'bg-red-700 dark:bg-red-900 text-white'
                             : 'bg-muted text-muted-foreground'
                         )}
                         onClick={e => e.stopPropagation()}

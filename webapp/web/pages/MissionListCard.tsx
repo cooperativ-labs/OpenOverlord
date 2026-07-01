@@ -1,14 +1,13 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useNavigate } from '@tanstack/react-router';
-import { GripVertical, Tag } from 'lucide-react';
+import { GripVertical } from 'lucide-react';
 
-import { Badge, priorityClasses } from '@/components/ui.tsx';
+import { MissionTimerCircleButton } from '@/components/everhour/MissionTimerButtons';
 import { cn } from '@/lib/utils';
 
 import type { MissionDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 
-import { getMissionTags } from './board-shared.ts';
 import { MissionAssigneeAvatar, MissionCompleteCheckbox } from './MissionCardPrimitives.tsx';
 
 export function MissionListCard({
@@ -32,8 +31,6 @@ export function MissionListCard({
   const navigate = useNavigate();
   const { listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
     useSortable({ id: mission.id, disabled: isDragOverlay });
-
-  const tags = getMissionTags(mission);
 
   const openMission = () =>
     navigate({
@@ -81,7 +78,7 @@ export function MissionListCard({
         onComplete={onComplete ? () => onComplete(mission.id) : undefined}
       />
 
-      {/* Title + tags */}
+      {/* Title */}
       <div className="min-w-0 flex-1">
         <span
           className={cn(
@@ -91,22 +88,6 @@ export function MissionListCard({
         >
           {mission.title}
         </span>
-        {tags.length > 0 ? (
-          <div className="mt-1 flex flex-wrap items-center gap-1">
-            {tags.map(tag => (
-              <span
-                key={tag.id}
-                className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
-                style={
-                  tag.color ? { backgroundColor: `${tag.color}22`, color: tag.color } : undefined
-                }
-              >
-                <Tag className="h-2.5 w-2.5" />
-                {tag.label}
-              </span>
-            ))}
-          </div>
-        ) : null}
       </div>
 
       {/* Right metadata row */}
@@ -119,15 +100,13 @@ export function MissionListCard({
         </span>
         {mission.objectiveCount > 0 ? (
           <span
-            className="hidden text-[11px] tabular-nums text-muted-foreground sm:inline"
+            className="border rounded-full px-1.5 py-0.5 hidden text-[9px] tabular-nums text-muted-foreground bg-muted sm:inline"
             title={`${mission.completedObjectiveCount} of ${mission.objectiveCount} objectives complete`}
           >
             {mission.completedObjectiveCount}/{mission.objectiveCount}
           </span>
         ) : null}
-        {mission.priority ? (
-          <Badge className={priorityClasses(mission.priority)}>{mission.priority}</Badge>
-        ) : null}
+        <MissionTimerCircleButton missionId={mission.id} />
         <MissionAssigneeAvatar assignee={assignee} />
       </div>
     </div>

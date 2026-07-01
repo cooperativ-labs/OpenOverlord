@@ -30,6 +30,7 @@ import {
 } from './board-shared.ts';
 import { BoardColumn } from './BoardColumn.tsx';
 import { MissionListView } from './MissionListView.tsx';
+import { MissionStatusFilterDropdown } from './MissionStatusFilterDropdown.tsx';
 import { MissionsViewToggle } from './MissionsViewToggle.tsx';
 import { MissionTagFilterDropdown } from './MissionTagFilterDropdown.tsx';
 import { SortableMissionCard } from './SortableMissionCard.tsx';
@@ -53,6 +54,7 @@ export function BoardPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [view, setView] = useState<BoardView>(() => readStoredBoardView(projectId));
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [selectedStatusIds, setSelectedStatusIds] = useState<string[]>([]);
 
   const statuses = useMemo(() => statusesQ.data ?? [], [statusesQ.data]);
   const missions = useMemo(() => missionsQ.data ?? [], [missionsQ.data]);
@@ -73,6 +75,7 @@ export function BoardPage() {
   useEffect(() => {
     setView(readStoredBoardView(projectId));
     setSelectedTagIds([]);
+    setSelectedStatusIds([]);
   }, [projectId]);
 
   const handleViewChange = (nextView: BoardView) => {
@@ -106,13 +109,33 @@ export function BoardPage() {
     if (next.length !== selectedTagIds.length) setSelectedTagIds(next);
   }, [selectedTagIds, tagOptions]);
 
+  useEffect(() => {
+    if (selectedStatusIds.length === 0) return;
+    const validIds = new Set(statuses.map(status => status.id));
+    const next = selectedStatusIds.filter(id => validIds.has(id));
+    if (next.length !== selectedStatusIds.length) setSelectedStatusIds(next);
+  }, [selectedStatusIds, statuses]);
+
   const selectedTagIdSet = useMemo(() => new Set(selectedTagIds), [selectedTagIds]);
+  const selectedStatusIdSet = useMemo(() => new Set(selectedStatusIds), [selectedStatusIds]);
   const filteredMissions = useMemo(() => {
-    if (selectedTagIds.length === 0) return missions;
-    return missions.filter(mission =>
-      getMissionTags(mission).some(tag => selectedTagIdSet.has(tag.id))
-    );
-  }, [selectedTagIdSet, selectedTagIds.length, missions]);
+    let result = missions;
+    if (selectedStatusIds.length > 0) {
+      result = result.filter(mission => selectedStatusIdSet.has(mission.statusId));
+    }
+    if (selectedTagIds.length > 0) {
+      result = result.filter(mission =>
+        getMissionTags(mission).some(tag => selectedTagIdSet.has(tag.id))
+      );
+    }
+    return result;
+  }, [
+    selectedStatusIdSet,
+    selectedStatusIds.length,
+    selectedTagIdSet,
+    selectedTagIds.length,
+    missions
+  ]);
 
   const baseColumns = useMemo<ColumnMap>(() => {
     const map: ColumnMap = {};
@@ -241,6 +264,23 @@ export function BoardPage() {
     [completeStatusId, setMissionStatus]
   );
 
+  const isTagFilterActive = selectedTagIds.length > 0;
+  const isStatusFilterActive = selectedStatusIds.length > 0;
+  const isFilterActive = isTagFilterActive || isStatusFilterActive;
+  const visibleStatuses = useMemo(
+    () =>
+      isStatusFilterActive
+        ? statuses.filter(status => selectedStatusIdSet.has(status.id))
+        : statuses,
+    [isStatusFilterActive, selectedStatusIdSet, statuses]
+  );
+  const visibleColumns = isFilterActive ? filteredColumns : displayColumns;
+
+  const clearFilters = useCallback(() => {
+    setSelectedTagIds([]);
+    setSelectedStatusIds([]);
+  }, []);
+
   if (project.isLoading || statusesQ.isLoading || missionsQ.isLoading) {
     return (
       <div className="p-8">
@@ -255,9 +295,6 @@ export function BoardPage() {
       </div>
     );
   }
-
-  const isTagFilterActive = selectedTagIds.length > 0;
-  const visibleColumns = isTagFilterActive ? filteredColumns : displayColumns;
 
   const activeMission = activeId ? missionById.get(activeId) : undefined;
   const activeAssignee = activeMission
@@ -275,7 +312,7 @@ export function BoardPage() {
   };
 
   const renderBoardColumns = (columnsDraggable: boolean) =>
-    statuses.map(status => {
+    visibleStatuses.map(status => {
       const colMissions = resolveColumnMissions(visibleColumns[status.id] ?? [], missionById);
       return (
         <BoardColumn
@@ -300,6 +337,18 @@ export function BoardPage() {
         <div className="flex flex-wrap items-center gap-2  border-(--color-border) px-5 mt-5">
           <div className="flex flex-wrap items-center gap-2">
             <MissionsViewToggle value={view} onChange={handleViewChange} />
+            <MissionStatusFilterDropdown
+              statuses={statuses}
+              selectedStatusIds={selectedStatusIds}
+              onClear={() => setSelectedStatusIds([])}
+              onToggle={statusId =>
+                setSelectedStatusIds(current =>
+                  current.includes(statusId)
+                    ? current.filter(id => id !== statusId)
+                    : [...current, statusId]
+                )
+              }
+            />
             <MissionTagFilterDropdown
               tagOptions={tagOptions}
               selectedTagIds={selectedTagIds}
@@ -328,14 +377,14 @@ export function BoardPage() {
         ) : filteredMissions.length === 0 ? (
           <EmptyState
             title="No missions match these filters"
-            hint="Clear the active tag filter to show every mission in this project."
+            hint="Clear the active filters to show every mission in this project."
             action={
-              <Button variant="secondary" onClick={() => setSelectedTagIds([])}>
+              <Button variant="secondary" onClick={clearFilters}>
                 Clear filters
               </Button>
             }
           />
-        ) : view === 'board' && isTagFilterActive ? (
+        ) : view === 'board' && isFilterActive ? (
           <div className="flex h-full min-h-0 items-stretch gap-4">{renderBoardColumns(false)}</div>
         ) : view === 'board' ? (
           <DndContext {...dndContextProps}>
@@ -358,7 +407,7 @@ export function BoardPage() {
           </DndContext>
         ) : (
           <MissionListView
-            statuses={statuses}
+            statuses={visibleStatuses}
             columns={visibleColumns}
             missionById={missionById}
             projectId={projectId}
@@ -366,7 +415,7 @@ export function BoardPage() {
             projectColor={projectColor}
             membersByWorkspaceUserId={membersByWorkspaceUserId}
             selectedMissionId={selectedMissionId}
-            draggable={!isTagFilterActive}
+            draggable={!isFilterActive}
             onCreateMission={handleCreateMissionFromColumn}
             onCreateAndOpenMission={handleCreateAndOpenMissionFromColumn}
             onCompleteMission={completeStatusId ? handleCompleteMission : undefined}

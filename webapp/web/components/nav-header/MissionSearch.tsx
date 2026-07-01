@@ -176,7 +176,7 @@ export function MissionSearch({ className }: MissionSearchProps) {
             onKeyDown={handleKeyDown}
           />
           {!isLoading && (
-            <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            <kbd className="pointer-events-none hidden md:block absolute right-2 top-1/2 -translate-y-1/2 rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
               {searchShortcutHint}
             </kbd>
           )}

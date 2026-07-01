@@ -1,10 +1,11 @@
 import {
   Ban,
   CheckCheck,
+  Circle,
   CircleSlash,
   Eye,
   type LucideIcon,
-  NotebookPen,
+  Pen,
   Play
 } from 'lucide-react';
 import {
@@ -44,7 +45,7 @@ export interface StatusStyle {
 export const STATUS_CONFIG: Record<StatusType, StatusStyle> = {
   draft: {
     label: 'Draft',
-    icon: NotebookPen,
+    icon: Circle,
     text: 'text-muted-foreground',
     bg: 'bg-muted',
     rail: 'border-l-border',
