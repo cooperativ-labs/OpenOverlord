@@ -69,7 +69,7 @@ export function ProjectSidebarMenuItem({
     <SidebarLinkMenuButton
       isActive={isActive}
       tooltip={project.name}
-      buttonClassName="group-data-[collapsible=icon]:flex-col items-center group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:pb-0"
+      buttonClassName="group-data-[collapsible=icon]:flex-col items-center font-semibold group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:pb-0"
       link={<Link to="/projects/$projectId" params={{ projectId: project.id }} />}
       menuLabel="Project options"
       menuOpen={menuOpen}
