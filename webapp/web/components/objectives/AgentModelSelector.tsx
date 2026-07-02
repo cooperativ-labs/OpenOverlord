@@ -1,5 +1,5 @@
-import { Check, User } from 'lucide-react';
-import { useCallback } from 'react';
+import { Check, Loader2, User } from 'lucide-react';
+import { useCallback, useState } from 'react';
 
 import type { AgentCatalogDto, AgentLaunchConfigDto } from '../../../shared/contract.ts';
 import { cn } from '../../lib/utils.ts';
@@ -28,9 +28,11 @@ type AgentModelSelectorProps = {
   /**
    * Called for every selection change. The hosting surface persists it —
    * typically to the objective's assigned agent/model and the project's
-   * launch preference (see useObjectiveAgentSelection).
+   * launch preference (see useObjectiveAgentSelection). May return a promise
+   * so the selector can show a per-button loading indicator until the
+   * persistence call settles.
    */
-  onChange: (selection: AgentModelSelection) => void;
+  onChange: (selection: AgentModelSelection) => void | Promise<void>;
   /**
    * Per-user launch mechanics keyed by agent (from `/api/launch-settings`,
    * i.e. the user's user_execution_target_preferences row). The footer seeds
@@ -79,27 +81,55 @@ export function AgentModelSelector({
   const reasoningOptions = selectedModel?.reasoningOptions ?? [];
   const launchConfig = agentConfigs[value.agent];
 
+  // Tracks which single button is awaiting its onChange to settle, so the
+  // loading indicator only appears next to the button the user clicked.
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+
+  const runChange = useCallback(
+    (key: string, selection: AgentModelSelection) => {
+      setPendingKey(key);
+      const result = onChange(selection);
+      if (result && typeof result.then === 'function') {
+        result.then(
+          () => setPendingKey(current => (current === key ? null : current)),
+          () => setPendingKey(current => (current === key ? null : current))
+        );
+      } else {
+        setPendingKey(current => (current === key ? null : current));
+      }
+    },
+    [onChange]
+  );
+
   const handleAgentChange = useCallback(
     (agentKey: string) => {
       if (agentKey === value.agent) return;
       // Model/reasoning are agent-specific; reset on agent change.
-      onChange({ agent: agentKey, model: null, reasoningEffort: null });
+      runChange(`agent:${agentKey}`, { agent: agentKey, model: null, reasoningEffort: null });
     },
-    [onChange, value.agent]
+    [runChange, value.agent]
   );
 
   const handleModelChange = useCallback(
     (modelId: string | null) => {
-      onChange({ agent: value.agent, model: modelId, reasoningEffort: null });
+      runChange(`model:${modelId ?? 'default'}`, {
+        agent: value.agent,
+        model: modelId,
+        reasoningEffort: null
+      });
     },
-    [onChange, value.agent]
+    [runChange, value.agent]
   );
 
   const handleReasoningChange = useCallback(
     (reasoningEffort: string | null) => {
-      onChange({ agent: value.agent, model: value.model, reasoningEffort });
+      runChange(`reasoning:${reasoningEffort ?? 'default'}`, {
+        agent: value.agent,
+        model: value.model,
+        reasoningEffort
+      });
     },
-    [onChange, value.agent, value.model]
+    [runChange, value.agent, value.model]
   );
 
   return (
@@ -112,6 +142,7 @@ export function AgentModelSelector({
           </p>
           {visibleAgents.map(agent => {
             const isSelected = value.agent === agent.key;
+            const isPending = pendingKey === `agent:${agent.key}`;
             return (
               <button
                 key={agent.key}
@@ -121,7 +152,11 @@ export function AgentModelSelector({
               >
                 <AgentIcon agentKey={agent.key} size={14} alt={agent.label} />
                 <span className="truncate">{agent.label}</span>
-                {isSelected && <Check className="ml-auto h-3 w-3 shrink-0" />}
+                {isPending ? (
+                  <Loader2 className="ml-auto h-3 w-3 shrink-0 animate-spin text-muted-foreground" />
+                ) : (
+                  isSelected && <Check className="ml-auto h-3 w-3 shrink-0" />
+                )}
               </button>
             );
           })}
@@ -132,7 +167,11 @@ export function AgentModelSelector({
           >
             <User className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             <span className="truncate">Manual</span>
-            {isManual && <Check className="ml-auto h-3 w-3 shrink-0" />}
+            {pendingKey === `agent:${MANUAL_AGENT_KEY}` ? (
+              <Loader2 className="ml-auto h-3 w-3 shrink-0 animate-spin text-muted-foreground" />
+            ) : (
+              isManual && <Check className="ml-auto h-3 w-3 shrink-0" />
+            )}
           </button>
           {visibleAgents.length === 0 ? (
             <p className="px-2 py-1.5 text-xs text-muted-foreground">No agents available</p>
@@ -152,12 +191,17 @@ export function AgentModelSelector({
               title="Let the agent use its own default model"
             >
               <span className="truncate text-muted-foreground">Default</span>
-              {value.model === null && <Check className="ml-auto h-3 w-3 shrink-0" />}
+              {pendingKey === 'model:default' ? (
+                <Loader2 className="ml-auto h-3 w-3 shrink-0 animate-spin text-muted-foreground" />
+              ) : (
+                value.model === null && <Check className="ml-auto h-3 w-3 shrink-0" />
+              )}
             </button>
             {models.length > 0 ? (
               <div className="max-h-[220px] overflow-y-auto">
                 {models.map(model => {
                   const isSelected = value.model === model.id;
+                  const isPending = pendingKey === `model:${model.id}`;
                   return (
                     <button
                       key={model.id}
@@ -166,7 +210,11 @@ export function AgentModelSelector({
                       className={optionButtonClasses(isSelected)}
                     >
                       <span className="truncate">{model.displayName}</span>
-                      {isSelected && <Check className="ml-auto h-3 w-3 shrink-0" />}
+                      {isPending ? (
+                        <Loader2 className="ml-auto h-3 w-3 shrink-0 animate-spin text-muted-foreground" />
+                      ) : (
+                        isSelected && <Check className="ml-auto h-3 w-3 shrink-0" />
+                      )}
                     </button>
                   );
                 })}
@@ -189,10 +237,15 @@ export function AgentModelSelector({
               className={optionButtonClasses(value.reasoningEffort === null)}
             >
               <span className="truncate text-muted-foreground">Default</span>
-              {value.reasoningEffort === null && <Check className="ml-auto h-3 w-3 shrink-0" />}
+              {pendingKey === 'reasoning:default' ? (
+                <Loader2 className="ml-auto h-3 w-3 shrink-0 animate-spin text-muted-foreground" />
+              ) : (
+                value.reasoningEffort === null && <Check className="ml-auto h-3 w-3 shrink-0" />
+              )}
             </button>
             {reasoningOptions.map(option => {
               const isSelected = value.reasoningEffort === option;
+              const isPending = pendingKey === `reasoning:${option}`;
               return (
                 <button
                   key={option}
@@ -201,7 +254,11 @@ export function AgentModelSelector({
                   className={cn(optionButtonClasses(isSelected), 'capitalize')}
                 >
                   <span className="truncate">{option}</span>
-                  {isSelected && <Check className="ml-auto h-3 w-3 shrink-0" />}
+                  {isPending ? (
+                    <Loader2 className="ml-auto h-3 w-3 shrink-0 animate-spin text-muted-foreground" />
+                  ) : (
+                    isSelected && <Check className="ml-auto h-3 w-3 shrink-0" />
+                  )}
                 </button>
               );
             })}

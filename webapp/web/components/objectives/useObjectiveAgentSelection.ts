@@ -62,19 +62,24 @@ export function useObjectiveAgentSelection(objective: ObjectiveDto) {
 
   const setSelection = useCallback(
     (next: AgentModelSelection) => {
-      updateObjective.mutate({
-        id: objective.id,
-        body: {
-          assignedAgent: next.agent,
-          model: next.model,
-          reasoningEffort: next.reasoningEffort
-        }
-      });
-      updatePreference.mutate({
-        selectedAgent: next.agent,
-        selectedModel: next.model,
-        selectedReasoningEffort: next.reasoningEffort
-      });
+      // Both persistence calls must succeed for the selector to treat the
+      // change as committed; either failing should surface to the caller so
+      // it can stop a per-button loading indicator.
+      return Promise.all([
+        updateObjective.mutateAsync({
+          id: objective.id,
+          body: {
+            assignedAgent: next.agent,
+            model: next.model,
+            reasoningEffort: next.reasoningEffort
+          }
+        }),
+        updatePreference.mutateAsync({
+          selectedAgent: next.agent,
+          selectedModel: next.model,
+          selectedReasoningEffort: next.reasoningEffort
+        })
+      ]).then(() => undefined);
     },
     [objective.id, updateObjective, updatePreference]
   );
