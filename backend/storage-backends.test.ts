@@ -169,7 +169,7 @@ test('hosted S3 seed is env-gated and idempotent', async () => {
       return rows.filter(row => row.bucket_key === bucketKey) as T[];
     },
     async run(_sql: string, params: ReadonlyArray<unknown> = []): Promise<RunResult> {
-      const [settingsJson, _updatedAt, id] = params;
+      const [settingsJson, , id] = params;
       const row = rows.find(candidate => candidate.id === id);
       if (!row) return { changes: 0 };
       row.storage_backend = 's3';
@@ -226,7 +226,7 @@ test('hosted S3 seed is env-gated and idempotent', async () => {
           bucketName: 'overlord-storage',
           region: 'eu-central-1',
           endpoint: 'http://minio.railway.internal:9000',
-          pathPrefix: 'prod/attachments'
+          pathPrefix: 'prod'
         }
       },
       {
@@ -236,7 +236,7 @@ test('hosted S3 seed is env-gated and idempotent', async () => {
           bucketName: 'overlord-storage',
           region: 'eu-central-1',
           endpoint: 'http://minio.railway.internal:9000',
-          pathPrefix: 'prod/user-images'
+          pathPrefix: 'prod'
         }
       },
       {
@@ -246,7 +246,7 @@ test('hosted S3 seed is env-gated and idempotent', async () => {
           bucketName: 'overlord-storage',
           region: 'eu-central-1',
           endpoint: 'http://minio.railway.internal:9000',
-          pathPrefix: 'prod/workspace-images'
+          pathPrefix: 'prod'
         }
       }
     ]

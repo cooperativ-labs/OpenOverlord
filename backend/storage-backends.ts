@@ -135,7 +135,9 @@ function createLocalFsBackend({
   return {
     async put({ key, bytes }) {
       if (!existsSync(root)) mkdirSync(root, { recursive: true });
-      writeFileSync(path.join(root, key), bytes);
+      const absolutePath = path.join(root, key);
+      mkdirSync(path.dirname(absolutePath), { recursive: true });
+      writeFileSync(absolutePath, bytes);
     },
     async getStream({ key }) {
       const absolutePath = path.join(root, key);

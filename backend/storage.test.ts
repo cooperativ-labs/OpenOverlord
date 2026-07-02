@@ -21,6 +21,7 @@ const {
   deleteObjectiveAttachment,
   resolveStoredObject,
   uploadObjectiveAttachment,
+  uploadUserImage,
   uploadWorkspaceImage
 } = await import('./storage.ts');
 const { createWorkspace } = await import('./workspaces.ts');
@@ -88,7 +89,7 @@ test('s3 attachment uploads record metadata, reads are gated, and tombstones del
         bucketName: 'overlord-storage',
         endpoint: `http://127.0.0.1:${address.port}`,
         region: 'us-east-1',
-        pathPrefix: 'hosted/attachments',
+        pathPrefix: 'hosted',
         presignReads: true,
         presignTtlSeconds: 120
       }),
@@ -113,7 +114,11 @@ test('s3 attachment uploads record metadata, reads are gated, and tombstones del
     assert.equal(attachment.contentType, 'text/plain');
     assert.equal(attachment.sizeBytes, 'attachment-bytes'.length);
     assert.equal(attachment.uploadStatus, 'available');
-    const storedPath = `/overlord-storage/hosted/attachments/${attachment.storageKey}`;
+    assert.match(
+      attachment.storageKey,
+      new RegExp(`^workspace-files/${WORKSPACE.id}/attachments/[a-z0-9-]+\\.txt$`)
+    );
+    const storedPath = `/overlord-storage/hosted/${attachment.storageKey}`;
     assert.deepEqual(objects.get(storedPath), Buffer.from('attachment-bytes'));
 
     await assert.rejects(
@@ -136,7 +141,10 @@ test('s3 attachment uploads record metadata, reads are gated, and tombstones del
     const resolved = await resolveStoredObject('attachments', attachment.storageKey);
     assert.equal(resolved.bodyStream, undefined);
     assert.match(resolved.presignedRedirectUrl ?? '', /X-Amz-Expires=120/);
-    assert.match(resolved.presignedRedirectUrl ?? '', /\/overlord-storage\/hosted\/attachments\//);
+    assert.match(
+      resolved.presignedRedirectUrl ?? '',
+      /\/overlord-storage\/hosted\/workspace-files\/local-workspace\/attachments\//
+    );
 
     await deleteObjectiveAttachment(objective.id, attachment.id);
     assert.equal(objects.has(storedPath), false);
@@ -152,7 +160,7 @@ test('s3 attachment uploads record metadata, reads are gated, and tombstones del
   }
 });
 
-test('uploadWorkspaceImage stores the logo under a folder keyed by workspace ID, is admin-gated, and is servable back', async () => {
+test('uploadWorkspaceImage stores the logo under workspace-files, is admin-gated, and is servable back', async () => {
   const pngBytes = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
     'base64'
@@ -169,23 +177,31 @@ test('uploadWorkspaceImage stores the logo under a folder keyed by workspace ID,
 
     assert.equal(stored.bucketKey, 'workspace-images');
     assert.equal(stored.contentType, 'image/png');
-    assert.equal(stored.url, `/api/storage/workspace-images/${stored.storageKey}`);
+    assert.match(
+      stored.storageKey,
+      new RegExp(`^workspace-files/${workspace.id}/images/[a-z0-9-]+\\.png$`)
+    );
+    assert.equal(
+      stored.url,
+      `/api/storage/workspace-images/${encodeURIComponent(stored.storageKey)}`
+    );
 
-    // The bucket row provisioned for this workspace roots bytes in a folder
-    // keyed by its own workspace ID, with an `images` subfolder inside.
+    // The bucket row provisioned for this workspace roots bytes at the shared
+    // storage directory; storage keys carry the workspace-files path.
     const bucketRow = db
       .prepare(
         `SELECT local_path FROM storage_buckets
            WHERE workspace_id = ? AND bucket_key = 'workspace-images' AND deleted_at IS NULL`
       )
       .get(workspace.id) as { local_path: string };
-    assert.equal(
-      bucketRow.local_path,
-      `database/.local/storage/workspace-images/${workspace.id}/images`
-    );
+    assert.equal(bucketRow.local_path, 'database/.local/storage');
 
     const resolved = await resolveStoredObject('workspace-images', stored.storageKey);
-    assert.ok(resolved.absolutePath?.endsWith(`${workspace.id}/images/${stored.storageKey}`));
+    assert.ok(
+      resolved.absolutePath?.endsWith(
+        `workspace-files/${workspace.id}/images/${path.basename(stored.storageKey)}`
+      )
+    );
 
     // A member without the workspace_image:create grant cannot upload a logo.
     setActiveTokenAuth({
@@ -198,6 +214,7 @@ test('uploadWorkspaceImage stores the logo under a folder keyed by workspace ID,
       (error: unknown) => error instanceof ApiError && error.status === 403
     );
   } finally {
+    await setActiveWorkspace('local-workspace');
     setActiveTokenAuth({
       workspaceUserId: harness.operatorWorkspaceUserId,
       tokenId: null,
@@ -205,4 +222,21 @@ test('uploadWorkspaceImage stores the logo under a folder keyed by workspace ID,
     });
     setActiveWorkspaceUser(harness.operatorWorkspaceUserId);
   }
+});
+
+test('uploadUserImage stores profile images under the user-images profile prefix', async () => {
+  const pngBytes = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64'
+  );
+
+  const stored = await uploadUserImage({
+    bytes: pngBytes,
+    filename: 'avatar.png',
+    contentType: 'image/png'
+  });
+
+  assert.equal(stored.bucketKey, 'user-images');
+  assert.match(stored.storageKey, /^user-images\/operator-user\/[a-z0-9-]+\.png$/);
+  assert.equal(stored.url, `/api/storage/user-images/${encodeURIComponent(stored.storageKey)}`);
 });

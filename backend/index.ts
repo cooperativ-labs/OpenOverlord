@@ -586,6 +586,12 @@ const UPLOAD_HANDLERS: Record<
   }
 };
 
+const STORAGE_READ_PERMISSIONS: Record<string, Permission> = {
+  'user-images': PERMISSIONS.USER_IMAGE_READ,
+  'workspace-images': PERMISSIONS.WORKSPACE_IMAGE_READ,
+  attachments: PERMISSIONS.ATTACHMENT_READ
+};
+
 app.post(
   '/api/uploads/:bucketKey',
   rawImageBody,
@@ -618,7 +624,11 @@ app.get(
   (req: Request, res: Response, next: NextFunction) => {
     void (async () => {
       try {
-        await requirePermission(PERMISSIONS.PROJECT_READ);
+        const permission = STORAGE_READ_PERMISSIONS[req.params.bucketKey];
+        if (!permission) {
+          throw new ApiError(404, `Serving is not configured for bucket '${req.params.bucketKey}'`);
+        }
+        await requirePermission(permission);
         const resolved = await resolveStoredObject(req.params.bucketKey, req.params.storageKey);
         res.type(resolved.contentType);
         if (resolved.presignedRedirectUrl) {

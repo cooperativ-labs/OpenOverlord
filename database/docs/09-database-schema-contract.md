@@ -952,11 +952,17 @@ Indexes:
 
 ### `storage_buckets`
 
-Workspace-scoped storage backend configuration for durable objects. Buckets describe where bytes live; object tables below store metadata and backend keys only.
+Workspace-scoped storage backend configuration for durable objects. `bucket_key` is a stable Overlord logical storage location, not necessarily a physical provider bucket. Hosted deployments may map every logical location to one object-store bucket/container such as `overlord-storage`; object tables below store metadata and canonical backend keys only.
 
 SQLite/local deployments may use `local_fs` buckets rooted on the local device. PostgreSQL/shared deployments should use a managed storage provider such as Supabase Storage, S3-compatible storage, or a Railway volume. Credentials must not be stored in this table; use deployment secrets and store only non-secret provider metadata.
 
-`workspace-images` is provisioned with one row per workspace (`backend/workspaces.ts` `seedWorkspaceStorageBucket`, run when a workspace is created), rooted at a folder keyed by workspace ID with an `images` subfolder inside (`local_path`/`settings_json.pathPrefix` = `workspace-images/<workspaceId>/images`). This isolates each workspace's images to their own folder/prefix so access can be scoped per workspace rather than sharing one flat directory.
+The canonical provider object-key layout is:
+
+- `user-images/<user-id>/<image-id>.<ext>` for user/profile images.
+- `workspace-files/<workspace-id>/images/<image-id>.<ext>` for workspace images.
+- `workspace-files/<workspace-id>/attachments/<attachment-id>.<ext>` for attachments.
+
+`workspace-images`, `user-images`, and `attachments` are provisioned with one row per workspace (`backend/workspaces.ts`), but local rows use the shared `database/.local/storage` root and hosted S3-compatible rows use `settings_json.bucketName` for the physical bucket (for example `overlord-storage`) plus an optional deployment `pathPrefix`. Workspace isolation is expressed by the canonical `storage_key` and by RBAC/metadata lookup, not by exposing provider paths to clients.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
@@ -987,7 +993,7 @@ Publicly readable image metadata owned by a workspace. Administrators, or equiva
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `storage_bucket_id` | Id | yes | FK to `storage_buckets`. |
-| `storage_key` | text | yes | Backend key/path, unique within the bucket for active rows. |
+| `storage_key` | text | yes | Canonical backend key/path: `workspace-files/<workspace-id>/images/<image-id>.<ext>`, unique within the bucket for active rows. |
 | `filename` | text | yes | Original/display filename. |
 | `content_type` | text | yes | Must be an image media type. |
 | `size_bytes` | BigCount | no |  |
@@ -1018,7 +1024,7 @@ Publicly readable image metadata associated with a user. The associated user, or
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `profile_id` | Id | yes | FK to `profiles`. |
 | `storage_bucket_id` | Id | yes | FK to `storage_buckets`. |
-| `storage_key` | text | yes | Backend key/path, unique within the bucket for active rows. |
+| `storage_key` | text | yes | Canonical backend key/path: `user-images/<user-id>/<image-id>.<ext>`, unique within the bucket for active rows. |
 | `filename` | text | yes | Original/display filename. |
 | `content_type` | text | yes | Must be an image media type. |
 | `size_bytes` | BigCount | no |  |
@@ -1051,7 +1057,7 @@ Workspace attachment metadata for files that are not limited to a single objecti
 | `mission_id` | Id | no | FK to `missions` for mission-scoped attachments. |
 | `objective_id` | Id | no | FK to `objectives` for objective-scoped attachments. |
 | `storage_bucket_id` | Id | yes | FK to `storage_buckets`. |
-| `storage_key` | text | yes | Backend key/path, unique within the bucket for active rows. |
+| `storage_key` | text | yes | Canonical backend key/path: `workspace-files/<workspace-id>/attachments/<attachment-id>.<ext>`, unique within the bucket for active rows. |
 | `filename` | text | yes | Original/display filename. |
 | `content_type` | text | no |  |
 | `size_bytes` | BigCount | no |  |
@@ -1774,7 +1780,7 @@ Recommended boundary:
 - `/workspace/my-missions` (read: missions assigned to the active actor across the active workspace, with personal `my_mission_positions` ordering) and `/workspace/my-missions/order` (persist a personal column reorder; a cross-column drag is a real mission status change validated by the `(workspace_id, status_id)` composite FK).
 - `/protocol/*` endpoints mirroring `ovld protocol`.
 - `/execution-requests` for runner queue operations.
-- `/uploads/:bucketKey` (core upload service) accepts raw image bytes, persists them to the `storage_buckets` backend, records the matching object table row (e.g. `user_images`), and returns the stored descriptor; `/storage/:bucketKey/:storageKey` serves the bytes for a recorded object.
+- `/uploads/:bucketKey` (core upload service) accepts raw image bytes, persists them to the `storage_buckets` backend, records the matching object table row (e.g. `user_images`), and returns the stored descriptor; `/storage/:bucketKey/:storageKey` first authorizes by the logical storage location (`user_image:read`, `workspace_image:read`, or `attachment:read`), then serves bytes only after an exact active metadata lookup for `(storage_bucket_id, storage_key)`.
 - `/sync/changes?after=<seq>` for realtime catch-up and local DB sync, returning `SyncChangesDto { changes, cursor, hasMore }` in ascending `entity_changes.seq` order.
 - `/realtime` SSE/WebSocket endpoint backed by `entity_changes` (with compatibility alias `/api/stream`); compact change DTOs include `changedFields: string[]` parsed from `entity_changes.changed_fields_json`.
 

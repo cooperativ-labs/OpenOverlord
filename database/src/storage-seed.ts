@@ -12,10 +12,11 @@ import { type DatabaseClient } from './client.js';
  *
  * This module flips the bucket rows to `storage_backend = 's3'` and records the
  * **non-secret** provider metadata in `settings_json` (`bucketName`, `region`,
- * `endpoint`, `pathPrefix`). Secrets (`S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY`)
- * stay in deployment environment variables and are only read at byte-I/O time by
- * `backend/storage-backends.ts`. The schema contract requires credentials
- * never live in `storage_buckets`, so they are deliberately not persisted here.
+ * `endpoint`, deployment `pathPrefix`). Secrets (`S3_ACCESS_KEY_ID` /
+ * `S3_SECRET_ACCESS_KEY`) stay in deployment environment variables and are only
+ * read at byte-I/O time by `backend/storage-backends.ts`. The schema contract
+ * requires credentials never live in `storage_buckets`, so they are deliberately
+ * not persisted here.
  *
  * The flip is **idempotent** and **opt-in by data**: it only runs when the S3
  * env vars are present and only updates rows whose backend/settings differ from
@@ -47,7 +48,7 @@ export interface HostedS3SeedResult {
  * present: `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT`, and a
  * bucket name (`S3_BUCKET` or `S3_BUCKET_NAME`). `S3_REGION` defaults to
  * `us-east-1` (MinIO ignores region but the SDK requires one). `S3_PATH_PREFIX`
- * is an optional base prefix applied under each logical bucket.
+ * is an optional deployment prefix prepended before canonical storage keys.
  *
  * The access key / secret are checked for presence only — they gate the flip
  * but are never written to the database.
@@ -66,16 +67,9 @@ export function resolveHostedS3SettingsFromEnv(
 
   return {
     settingsFor(bucketKey: string, workspaceId: string): S3BucketSettings {
-      // `workspace-images` is provisioned one row per workspace (see
-      // `backend/workspaces.ts` `seedWorkspaceStorageBucket`), so its S3 prefix
-      // is scoped by workspace ID too — mirroring the `local_fs` folder layout
-      // (`workspace-images/<workspaceId>/images`) and keeping access isolable
-      // per workspace. Other buckets keep a flat, bucket-key-only prefix.
-      const segments =
-        bucketKey === 'workspace-images'
-          ? [basePrefix, bucketKey, workspaceId]
-          : [basePrefix, bucketKey];
-      const pathPrefix = segments.filter(Boolean).join('/');
+      void bucketKey;
+      void workspaceId;
+      const pathPrefix = basePrefix;
       return { bucketName, region, endpoint, pathPrefix };
     }
   };

@@ -114,10 +114,23 @@ interface WrittenObject {
   publicUrl: string;
 }
 
+function userImageObjectKey(userId: string, imageId: string, ext: string): string {
+  return `user-images/${userId}/${imageId}${ext}`;
+}
+
+function workspaceImageObjectKey(workspaceId: string, imageId: string, ext: string): string {
+  return `workspace-files/${workspaceId}/images/${imageId}${ext}`;
+}
+
+function attachmentObjectKey(workspaceId: string, attachmentId: string, ext: string): string {
+  return `workspace-files/${workspaceId}/attachments/${attachmentId}${ext}`;
+}
+
 /** Validate image bytes, write them to the bucket backend, return metadata. */
 async function writeImageObject(
   bucket: StorageBucketRow,
-  input: UploadImageInput
+  input: UploadImageInput,
+  storageKeyFor: (id: string, ext: string) => string
 ): Promise<WrittenObject> {
   if (!input.bytes || input.bytes.length === 0) {
     throw new ApiError(400, 'No image data received');
@@ -129,7 +142,7 @@ async function writeImageObject(
   const ext = extensionForImage(contentType);
 
   const id = newId();
-  const storageKey = `${id}${ext}`;
+  const storageKey = storageKeyFor(id, ext);
   const backend = createStorageBackend({ bucket, repoRoot });
   await backend.put({ key: storageKey, bytes: input.bytes, contentType });
 
@@ -168,8 +181,10 @@ async function operatorUserId(): Promise<string> {
  */
 export async function uploadUserImage(input: UploadImageInput): Promise<StoredImageDto> {
   const bucket = await resolveBucket('user-images');
-  const written = await writeImageObject(bucket, input);
   const userId = await operatorUserId();
+  const written = await writeImageObject(bucket, input, (id, ext) =>
+    userImageObjectKey(userId, id, ext)
+  );
   const now = nowIso();
   const filename = input.filename.trim() || `image${path.extname(written.storageKey)}`;
 
@@ -233,7 +248,9 @@ export async function uploadUserImage(input: UploadImageInput): Promise<StoredIm
  */
 export async function uploadWorkspaceImage(input: UploadImageInput): Promise<StoredImageDto> {
   const bucket = await resolveBucket('workspace-images');
-  const written = await writeImageObject(bucket, input);
+  const written = await writeImageObject(bucket, input, (id, ext) =>
+    workspaceImageObjectKey(WORKSPACE.id, id, ext)
+  );
   const now = nowIso();
   const filename = input.filename.trim() || `image${path.extname(written.storageKey)}`;
 
@@ -393,7 +410,11 @@ export async function uploadObjectiveAttachment(
   const bucket = await resolveBucket(ATTACHMENTS_BUCKET_KEY);
 
   const id = newId();
-  const storageKey = `${id}${attachmentExtension(input.filename)}`;
+  const storageKey = attachmentObjectKey(
+    scope.workspace_id,
+    id,
+    attachmentExtension(input.filename)
+  );
   const now = nowIso();
   const contentType = input.contentType.split(';')[0].trim().toLowerCase() || null;
   const backend = createStorageBackend({ bucket, repoRoot });

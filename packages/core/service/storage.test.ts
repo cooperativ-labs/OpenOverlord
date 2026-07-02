@@ -95,7 +95,7 @@ describe('storage service', () => {
             bucketName: 'overlord-storage',
             region: 'us-east-1',
             endpoint: 'http://minio.railway.internal:9000',
-            pathPrefix: 'prod/attachments'
+            pathPrefix: 'prod'
           }),
           ctx.workspace.id
         ]

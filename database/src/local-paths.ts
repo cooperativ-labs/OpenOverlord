@@ -7,9 +7,9 @@ export const LOCAL_DATA_DIR = 'database/.local';
 export const LOCAL_STORAGE_DIR = `${LOCAL_DATA_DIR}/storage`;
 
 export const LOCAL_STORAGE_BUCKET_PATHS = {
-  attachments: `${LOCAL_STORAGE_DIR}/attachments`,
-  'user-images': `${LOCAL_STORAGE_DIR}/user-images`,
-  'workspace-images': `${LOCAL_STORAGE_DIR}/workspace-images`
+  attachments: LOCAL_STORAGE_DIR,
+  'user-images': LOCAL_STORAGE_DIR,
+  'workspace-images': LOCAL_STORAGE_DIR
 } as const;
 
 /** Directory name of the per-user global Overlord data directory (`~/.ovld`). */

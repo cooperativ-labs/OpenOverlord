@@ -357,14 +357,11 @@ async function seedWorkspaceStatuses({
 }
 
 /**
- * Provision the workspace's own `workspace-images` storage bucket, rooted at a
- * folder keyed by the workspace ID (with an `images` subfolder inside it) so
- * bytes and access are isolated per workspace — mirrors the row `004_storage.sql`
- * seeds for the first workspace. `resolveBucket` (`backend/storage.ts`) looks
- * bucket rows up by `(workspace_id, bucket_key)`, so every workspace needs its
- * own row before a logo can be uploaded to it.
+ * Provision the workspace's logical storage locations. Object keys carry the
+ * canonical `user-images/<user-id>` and `workspace-files/<workspace-id>` path,
+ * so local buckets share the storage root while RBAC stays workspace-scoped.
  */
-async function seedWorkspaceStorageBucket({
+async function seedWorkspaceStorageBuckets({
   workspaceId,
   createdByWorkspaceUserId,
   now,
@@ -375,20 +372,15 @@ async function seedWorkspaceStorageBucket({
   now: string;
   client: DatabaseClient;
 }): Promise<void> {
-  await client.run(
-    `INSERT INTO storage_buckets (
-       id, workspace_id, bucket_key, storage_backend, base_url, local_path, settings_json,
-       created_by_workspace_user_id, created_at, updated_at, revision
-     ) VALUES (?, ?, 'workspace-images', 'local_fs', NULL, ?, '{}', ?, ?, ?, 1)`,
-    [
-      newId(),
-      workspaceId,
-      `database/.local/storage/workspace-images/${workspaceId}/images`,
-      createdByWorkspaceUserId,
-      now,
-      now
-    ]
-  );
+  for (const bucketKey of ['workspace-images', 'user-images', 'attachments']) {
+    await client.run(
+      `INSERT INTO storage_buckets (
+         id, workspace_id, bucket_key, storage_backend, base_url, local_path, settings_json,
+         created_by_workspace_user_id, created_at, updated_at, revision
+       ) VALUES (?, ?, ?, 'local_fs', NULL, 'database/.local/storage', '{}', ?, ?, ?, 1)`,
+      [newId(), workspaceId, bucketKey, createdByWorkspaceUserId, now, now]
+    );
+  }
 }
 
 /** Create a workspace, add the local operator as an admin member, and make it active. */
@@ -424,7 +416,7 @@ export async function createWorkspace(body: CreateWorkspaceBody): Promise<Worksp
     await grantWorkspaceAdminRole({ workspaceId: nextWorkspaceId, workspaceUserId, client: tx });
 
     await seedWorkspaceStatuses({ workspaceId: nextWorkspaceId, now, client: tx });
-    await seedWorkspaceStorageBucket({
+    await seedWorkspaceStorageBuckets({
       workspaceId: nextWorkspaceId,
       createdByWorkspaceUserId: workspaceUserId,
       now,
