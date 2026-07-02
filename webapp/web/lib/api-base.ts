@@ -24,6 +24,7 @@ let userToken: string | null = null;
 let sessionToken: string | null = null;
 
 const BROWSER_SESSION_TOKEN_STORAGE_PREFIX = 'overlord:auth:session-token';
+const ACTIVE_WORKSPACE_STORAGE_PREFIX = 'overlord:active-workspace';
 
 function trimTrailingSlash(url: string): string {
   return url.replace(/\/+$/, '');
@@ -52,6 +53,11 @@ function browserSessionStorageKey(): string | null {
   return `${BROWSER_SESSION_TOKEN_STORAGE_PREFIX}:${activeBackend.id}:${getApiBaseUrl()}`;
 }
 
+function activeWorkspaceStorageKey(): string | null {
+  if (!activeBackend) return null;
+  return `${ACTIVE_WORKSPACE_STORAGE_PREFIX}:${activeBackend.id}:${getApiBaseUrl()}`;
+}
+
 function readBrowserSessionToken(): string | null {
   const key = browserSessionStorageKey();
   if (!key) return null;
@@ -74,6 +80,36 @@ function writeBrowserSessionToken(token: string): void {
 
 function clearBrowserSessionToken(): void {
   const key = browserSessionStorageKey();
+  if (!key) return;
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    /* localStorage may be unavailable in hardened browser contexts. */
+  }
+}
+
+function readActiveWorkspaceId(): string | null {
+  const key = activeWorkspaceStorageKey();
+  if (!key) return null;
+  try {
+    return window.localStorage.getItem(key)?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function persistActiveWorkspaceId(workspaceId: string): void {
+  const key = activeWorkspaceStorageKey();
+  if (!key) return;
+  try {
+    window.localStorage.setItem(key, workspaceId);
+  } catch {
+    /* localStorage may be unavailable in hardened browser contexts. */
+  }
+}
+
+function clearActiveWorkspaceId(): void {
+  const key = activeWorkspaceStorageKey();
   if (!key) return;
   try {
     window.localStorage.removeItem(key);
@@ -161,11 +197,14 @@ export function getDesktopSessionToken(): string {
 }
 
 export async function persistAuthSessionToken(token: string): Promise<void> {
+  const previous = sessionToken;
   sessionToken = token.trim();
   if (!sessionToken) {
     clearBrowserSessionToken();
+    clearActiveWorkspaceId();
     return;
   }
+  if (previous && previous !== sessionToken) clearActiveWorkspaceId();
   const bridge = window.overlord;
   if (!activeBackend) return;
   if (!bridge?.setSessionToken) {
@@ -181,7 +220,9 @@ export async function persistDesktopSessionToken(token: string): Promise<void> {
 }
 
 export async function persistDesktopBearerToken(token: string): Promise<void> {
+  const previous = userToken;
   userToken = token.trim();
+  if (previous && previous !== userToken) clearActiveWorkspaceId();
   const bridge = window.overlord;
   if (!activeBackend || !bridge?.setBearerToken) return;
   await bridge.setBearerToken({ profileId: activeBackend.id, token: userToken });
@@ -203,8 +244,9 @@ export async function clearAuthTokens(): Promise<void> {
   userToken = null;
   sessionToken = null;
   const bridge = window.overlord;
-  if (!activeBackend) return;
   clearBrowserSessionToken();
+  clearActiveWorkspaceId();
+  if (!activeBackend) return;
   if (bridge?.clearBearerToken) await bridge.clearBearerToken(activeBackend.id);
   if (bridge?.clearSessionToken) await bridge.clearSessionToken(activeBackend.id);
 }
@@ -218,10 +260,18 @@ export function apiFetchCredentials(): RequestCredentials {
   return resolveAuthorizationToken() ? 'omit' : 'include';
 }
 
+export function getActiveWorkspaceHeader(): Record<string, string> | undefined {
+  if (!resolveAuthorizationToken()) return undefined;
+  const workspaceId = readActiveWorkspaceId();
+  if (!workspaceId) return undefined;
+  return { 'X-Overlord-Active-Workspace': workspaceId };
+}
+
 export function clearInMemoryAuthTokens(): void {
   userToken = null;
   sessionToken = null;
   clearBrowserSessionToken();
+  clearActiveWorkspaceId();
 }
 
 export function captureAuthTokenFromResponse(response: Response): void {

@@ -8,7 +8,8 @@ export function MissionCard({
   projectName,
   projectColor,
   assignee,
-  selected
+  selected,
+  onOpen
 }: {
   mission: MissionDto;
   projectId: string;
@@ -16,6 +17,7 @@ export function MissionCard({
   projectColor: string | null;
   assignee?: WorkspaceMemberDto | null;
   selected?: boolean;
+  onOpen?: () => void;
 }) {
   return (
     <MissionCardSurface
@@ -27,6 +29,7 @@ export function MissionCard({
       selected={selected}
       size="sm"
       className="cursor-pointer"
+      onOpen={onOpen}
     />
   );
 }

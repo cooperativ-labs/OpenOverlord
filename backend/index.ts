@@ -247,6 +247,7 @@ app.use(
       'Authorization',
       'Content-Type',
       'X-Upload-Filename',
+      'X-Overlord-Active-Workspace',
       'X-Overlord-Device-Fingerprint',
       'X-Overlord-Device-Label',
       'X-Overlord-Device-Platform'

@@ -3,7 +3,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Plus } from 'lucide-react';
 import { useCallback, useState } from 'react';
 
-import { Badge, STATUS_CONFIG, statusClasses } from '@/components/ui.tsx';
+import { STATUS_CONFIG, statusClasses } from '@/components/ui.tsx';
 import { cn } from '@/lib/utils';
 
 import type { MissionDto, WorkspaceMemberDto, WorkspaceStatusDto } from '../../shared/contract.ts';
@@ -13,28 +13,30 @@ import { resolveAssignee } from './board-shared.ts';
 import { MissionCard } from './MissionCard.tsx';
 import { SortableMissionCard } from './SortableMissionCard.tsx';
 
-export function BoardColumn({
-  status,
-  missions,
-  count,
-  projectId,
-  projectName,
-  projectColor,
-  membersByWorkspaceUserId,
-  selectedMissionId,
-  draggable = true,
-  onCreateMission,
-  onCreateAndOpenMission
-}: {
-  status: WorkspaceStatusDto;
-  missions: MissionDto[];
+type BoardColumnStatus =
+  | Pick<WorkspaceStatusDto, 'id' | 'name' | 'type'>
+  | { id: string; name: string; type: null };
+
+type MissionCardContext = {
+  projectId: string;
+  projectName: string;
+  projectColor: string | null;
+  onOpen?: () => void;
+};
+
+type BoardColumnProps<TMission extends MissionDto> = {
+  status: BoardColumnStatus;
+  missions: TMission[];
   count: number;
   projectId: string;
   projectName: string;
   projectColor: string | null;
+  createProjectId?: string;
+  createStatusScope?: 'project' | 'workspace';
   membersByWorkspaceUserId: Map<string, WorkspaceMemberDto>;
   selectedMissionId?: string;
   draggable?: boolean;
+  getMissionCardContext?: (mission: TMission) => MissionCardContext;
   onCreateMission: (
     statusId: string,
     objective: string,
@@ -47,15 +49,34 @@ export function BoardColumn({
     position: 'top' | 'bottom',
     options?: BlankMissionCreateOptions
   ) => Promise<void> | void;
-}) {
+};
+
+export function BoardColumn<TMission extends MissionDto = MissionDto>({
+  status,
+  missions,
+  count,
+  projectId,
+  projectName,
+  projectColor,
+  createProjectId = projectId,
+  createStatusScope = 'project',
+  membersByWorkspaceUserId,
+  selectedMissionId,
+  draggable = true,
+  getMissionCardContext,
+  onCreateMission,
+  onCreateAndOpenMission
+}: BoardColumnProps<TMission>) {
   const { setNodeRef, isOver } = useDroppable({ id: status.id });
-  const StatusIcon = STATUS_CONFIG[status.type].icon;
+  const statusType = status.type;
+  const StatusIcon = statusType ? STATUS_CONFIG[statusType].icon : null;
   const [isAddingBottom, setIsAddingBottom] = useState(false);
   const [isAddingTop, setIsAddingTop] = useState(false);
   const [focusEditorCount, setFocusEditorCount] = useState(0);
   const [topFocusEditorCount, setTopFocusEditorCount] = useState(0);
   const inputId = `board-column-input-${status.id}`;
   const topInputId = `board-column-input-top-${status.id}`;
+  const canCreateMission = Boolean(statusType && createProjectId);
 
   // The BlankMissionCard scrolls itself into view once it mounts (see its
   // scroll-into-view effect), so opening here only needs to reveal the card.
@@ -75,12 +96,13 @@ export function BoardColumn({
         isOver ? 'bg-muted/40 ring-1 ring-inset ring-accent/30' : ''
       )}
     >
-      {isAddingTop ? (
+      {canCreateMission && isAddingTop ? (
         <BlankMissionCard
           inputId={topInputId}
           statusId={status.id}
           position="top"
-          projectId={projectId}
+          projectId={createProjectId}
+          statusScope={createStatusScope}
           onCreateMission={onCreateMission}
           onCreateAndOpenMission={onCreateAndOpenMission}
           onClose={handleCloseTopBlankCard}
@@ -91,13 +113,19 @@ export function BoardColumn({
       {missions.map(mission => {
         const assignee = resolveAssignee(mission, membersByWorkspaceUserId);
         const selected = mission.id === selectedMissionId;
-        const cardProps = {
-          mission,
+        const cardContext = getMissionCardContext?.(mission) ?? {
           projectId,
           projectName,
-          projectColor,
+          projectColor
+        };
+        const cardProps = {
+          mission,
+          projectId: cardContext.projectId,
+          projectName: cardContext.projectName,
+          projectColor: cardContext.projectColor,
           assignee,
-          selected
+          selected,
+          onOpen: cardContext.onOpen
         };
 
         return draggable ? (
@@ -106,13 +134,14 @@ export function BoardColumn({
           <MissionCard key={mission.id} {...cardProps} />
         );
       })}
-      {isAddingBottom ? (
+      {canCreateMission && isAddingBottom ? (
         <div className="pb-0.52">
           <BlankMissionCard
             inputId={inputId}
             statusId={status.id}
             position="bottom"
-            projectId={projectId}
+            projectId={createProjectId}
+            statusScope={createStatusScope}
             onCreateMission={onCreateMission}
             onCreateAndOpenMission={onCreateAndOpenMission}
             onClose={handleCloseBlankCard}
@@ -120,7 +149,7 @@ export function BoardColumn({
             focusTrigger={focusEditorCount}
           />
         </div>
-      ) : (
+      ) : canCreateMission ? (
         <button
           type="button"
           onClick={handleStartAddingBottom}
@@ -129,7 +158,7 @@ export function BoardColumn({
           <Plus className="h-3 w-3" />
           Add mission
         </button>
-      )}
+      ) : null}
     </div>
   );
 
@@ -137,19 +166,23 @@ export function BoardColumn({
     <div className="flex h-full min-h-0 w-72 shrink-0 flex-col bg-muted/40 dark:bg-muted/20 rounded-t-lg px-2 pt-4 pb-0">
       <div className="mb-3 flex shrink-0 items-center justify-between px-1">
         <div className="flex items-center gap-1 text-xs uppercase font-semibold text-muted-foreground/90 tracking-wide">
-          <StatusIcon className={cn('mr-1.5 h-3.5 w-3.5', statusClasses(status.type))} />{' '}
+          {StatusIcon && statusType ? (
+            <StatusIcon className={cn('mr-1.5 h-3.5 w-3.5', statusClasses(statusType))} />
+          ) : null}{' '}
           {status.name}
         </div>
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-(--color-ink-dim)">{count}</span>
-          <button
-            type="button"
-            onClick={handleStartAddingTop}
-            aria-label="Add mission to top of column"
-            className="rounded-md p-0.5 text-gray-900/60 dark:text-gray-100/60 font-bold transition-colors hover:bg-muted hover:text-muted-foreground"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
+          {canCreateMission ? (
+            <button
+              type="button"
+              onClick={handleStartAddingTop}
+              aria-label="Add mission to top of column"
+              className="rounded-md p-0.5 text-gray-900/60 dark:text-gray-100/60 font-bold transition-colors hover:bg-muted hover:text-muted-foreground"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
         </div>
       </div>
       {draggable ? (

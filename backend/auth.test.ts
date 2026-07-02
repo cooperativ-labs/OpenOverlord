@@ -11,6 +11,7 @@ const dbModule = await import('./db.ts');
 const { db, initDatabase, setActiveWorkspaceUser } = dbModule;
 await initDatabase();
 const { ensureWorkspaceUser } = await import('./auth.ts');
+const { getRequestedWorkspaceId } = await import('./auth.ts');
 const { seedAuthenticatedOperator } = await import('./test-helpers.ts');
 const { createWorkspace } = await import('./workspaces.ts');
 
@@ -73,6 +74,28 @@ test('ensureWorkspaceUser resolves an explicitly requested workspace the profile
   const membership = await ensureWorkspaceUser('multi-workspace-user', second.id);
   assert.equal(membership?.workspaceUserId, 'multi-workspace-user-membership');
   assert.equal(membership?.workspace.id, second.id);
+});
+
+test('getRequestedWorkspaceId accepts the bearer-client header before the browser cookie', () => {
+  const req = {
+    headers: { cookie: 'overlord_active_workspace=cookie-workspace' },
+    header(name: string) {
+      return name.toLowerCase() === 'x-overlord-active-workspace' ? 'header-workspace' : undefined;
+    }
+  };
+
+  assert.equal(getRequestedWorkspaceId(req as never), 'header-workspace');
+});
+
+test('getRequestedWorkspaceId falls back to the browser cookie', () => {
+  const req = {
+    headers: { cookie: 'overlord_active_workspace=cookie-workspace' },
+    header() {
+      return undefined;
+    }
+  };
+
+  assert.equal(getRequestedWorkspaceId(req as never), 'cookie-workspace');
 });
 
 test('ensureWorkspaceUser rejects a requested workspace the profile is not a member of', async () => {

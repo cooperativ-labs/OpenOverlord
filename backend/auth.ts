@@ -36,6 +36,7 @@ import { grantWorkspaceAdminRole } from './workspaces.ts';
  * the request is rejected with 403 rather than silently falling back.
  */
 export const ACTIVE_WORKSPACE_COOKIE = 'overlord_active_workspace';
+export const ACTIVE_WORKSPACE_HEADER = 'x-overlord-active-workspace';
 
 function getCookieValue(req: Request, name: string): string | null {
   const header = req.headers.cookie;
@@ -52,6 +53,12 @@ function getCookieValue(req: Request, name: string): string | null {
     }
   }
   return null;
+}
+
+export function getRequestedWorkspaceId(req: Request): string | null {
+  const headerValue = req.header(ACTIVE_WORKSPACE_HEADER)?.trim();
+  if (headerValue) return headerValue;
+  return getCookieValue(req, ACTIVE_WORKSPACE_COOKIE);
 }
 
 const authBaseHost =
@@ -235,7 +242,7 @@ export async function requireAuthenticatedSession(
           // treat a null actor as having no roles. A mismatched
           // `requestedWorkspaceId` (the client asked for a workspace it isn't
           // a member of) throws `ApiError(403)` instead of falling through.
-          const requestedWorkspaceId = getCookieValue(req, ACTIVE_WORKSPACE_COOKIE);
+          const requestedWorkspaceId = getRequestedWorkspaceId(req);
           const membership = await ensureWorkspaceUser(session.user.id, requestedWorkspaceId);
           if (membership) {
             setActiveWorkspaceContext(membership.workspace);

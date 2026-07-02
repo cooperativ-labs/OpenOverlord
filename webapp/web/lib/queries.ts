@@ -42,6 +42,7 @@ import type {
   UpdateWorkspaceMemberRoleBody,
   UpdateWorkspaceStatusBody,
   UpdateWorktreeBranchAutomationBody,
+  WorkspaceDto,
   WorkspaceStatusDto
 } from '../../shared/contract.ts';
 
@@ -49,7 +50,8 @@ import { api } from './api.ts';
 import {
   clearAuthTokens,
   clearDesktopBearerToken,
-  isCurrentDesktopBearerTokenPrefix
+  isCurrentDesktopBearerTokenPrefix,
+  persistActiveWorkspaceId
 } from './api-base.ts';
 import { authClient, normalizeEmail } from './auth-client.ts';
 import {
@@ -107,6 +109,11 @@ export const keys = {
 // instantly; the realtime feed later reconciles the scoped query keys it can map.
 function invalidateAll(qc: QueryClient) {
   void qc.invalidateQueries();
+}
+
+function persistActiveWorkspaceFromList(workspaces: WorkspaceDto[]) {
+  const active = workspaces.find(workspace => workspace.isActive);
+  if (active) persistActiveWorkspaceId(active.id);
 }
 
 // ---- Queries -------------------------------------------------------------
@@ -415,7 +422,10 @@ export function useCompleteSetup() {
     mutationFn: (body: CompleteInitialSetupBody) => api.completeSetup(body),
     // Setup renames the active workspace and changes its slug, which feed
     // `/api/meta`, the sidebar identity, and future mission identifiers.
-    onSuccess: () => invalidateAll(qc)
+    onSuccess: data => {
+      persistActiveWorkspaceId(data.id);
+      invalidateAll(qc);
+    }
   });
 }
 
@@ -424,7 +434,10 @@ export function useCreateWorkspace() {
   return useMutation({
     mutationFn: (body: CreateWorkspaceBody) => api.createWorkspace(body),
     // Creating a workspace also makes it active, so the whole cache is stale.
-    onSuccess: () => invalidateAll(qc)
+    onSuccess: data => {
+      persistActiveWorkspaceId(data.id);
+      invalidateAll(qc);
+    }
   });
 }
 
@@ -433,7 +446,10 @@ export function useActivateWorkspace() {
   return useMutation({
     mutationFn: (id: string) => api.activateWorkspace(id),
     // Switching workspace changes what every scoped query returns.
-    onSuccess: () => invalidateAll(qc)
+    onSuccess: data => {
+      persistActiveWorkspaceFromList(data);
+      invalidateAll(qc);
+    }
   });
 }
 
@@ -452,7 +468,10 @@ export function useDeleteWorkspace() {
   return useMutation({
     mutationFn: (id: string) => api.deleteWorkspace(id),
     // Deleting may switch the active workspace, so the whole cache is stale.
-    onSuccess: () => invalidateAll(qc)
+    onSuccess: data => {
+      persistActiveWorkspaceFromList(data);
+      invalidateAll(qc);
+    }
   });
 }
 
@@ -500,7 +519,10 @@ export function useAcceptWorkspaceInvitation() {
   return useMutation({
     mutationFn: (body: AcceptWorkspaceInvitationBody) => api.acceptWorkspaceInvitation(body),
     // Accepting grants a brand-new workspace membership, so the whole cache is stale.
-    onSuccess: () => invalidateAll(qc)
+    onSuccess: data => {
+      persistActiveWorkspaceId(data.id);
+      invalidateAll(qc);
+    }
   });
 }
 

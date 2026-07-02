@@ -10,13 +10,17 @@ import type {
 } from '../../shared/contract.ts';
 import { EmptyState, Spinner } from '../components/ui.tsx';
 import { ApiRequestError } from '../lib/api.ts';
+import { readLastUsedProjectId, writeLastUsedProjectId } from '../lib/last-used-project.ts';
 import {
+  useCreateMission,
   useMeta,
+  useProjects,
   useWorkspaceMembers,
   useWorkspaceMyMissions,
   useWorkspaceStatuses
 } from '../lib/queries.ts';
 
+import type { BlankMissionCreateOptions } from './BlankMissionCard.tsx';
 import { type BoardView, type ColumnMap, resolveColumnMissions } from './board-shared.ts';
 import { MissionsViewToggle } from './MissionsViewToggle.tsx';
 import { MyMissionsColumn } from './MyMissionsColumn.tsx';
@@ -59,6 +63,8 @@ export function MyMissionsPage() {
   const meta = useMeta();
   const statusesQ = useWorkspaceStatuses();
   const myMissionsQ = useWorkspaceMyMissions();
+  const projectsQ = useProjects();
+  const createMission = useCreateMission();
 
   const missionMatch = useMatch({ from: '/workspace/missions/$missionId', shouldThrow: false });
   const selectedMissionId = missionMatch?.params.missionId;
@@ -72,6 +78,7 @@ export function MyMissionsPage() {
 
   const statuses = useMemo(() => statusesQ.data ?? [], [statusesQ.data]);
   const missions = useMemo(() => myMissionsQ.data?.missions ?? [], [myMissionsQ.data]);
+  const projects = useMemo(() => projectsQ.data ?? [], [projectsQ.data]);
 
   const membersByWorkspaceUserId = useMemo(() => {
     const map = new Map<string, WorkspaceMemberDto>();
@@ -99,6 +106,14 @@ export function MyMissionsPage() {
     }
     return { baseColumns: cols, uncategorized: unmatched };
   }, [statuses, missions]);
+
+  const defaultCreateProjectId = useMemo(() => {
+    const lastUsedProjectId = readLastUsedProjectId();
+    if (lastUsedProjectId && projects.some(project => project.id === lastUsedProjectId)) {
+      return lastUsedProjectId;
+    }
+    return projects[0]?.id ?? missions[0]?.projectId ?? '';
+  }, [missions, projects]);
 
   const columnsForDnd = useMemo<ColumnMap>(() => {
     const cols: ColumnMap = { ...baseColumns };
@@ -131,6 +146,53 @@ export function MyMissionsPage() {
     [navigate]
   );
 
+  const createMissionInColumn = useCallback(
+    async (
+      statusId: string,
+      objective: string,
+      options?: BlankMissionCreateOptions
+    ): Promise<{ missionId: string }> => {
+      const targetProjectId = options?.projectId ?? defaultCreateProjectId;
+      if (!targetProjectId) throw new Error('Choose a project before creating a mission.');
+
+      const tagIds = options?.tagIds ?? [];
+      const detail = await createMission.mutateAsync({
+        projectId: targetProjectId,
+        firstObjective: objective,
+        ...(statusId ? { statusId } : {}),
+        ...(tagIds.length > 0 ? { tagIds } : {})
+      });
+      writeLastUsedProjectId(targetProjectId);
+      return { missionId: detail.id };
+    },
+    [createMission, defaultCreateProjectId]
+  );
+
+  const handleCreateMissionFromColumn = useCallback(
+    async (
+      statusId: string,
+      objective: string,
+      _position: 'top' | 'bottom',
+      options?: BlankMissionCreateOptions
+    ) => {
+      await createMissionInColumn(statusId, objective, options);
+    },
+    [createMissionInColumn]
+  );
+
+  const handleCreateAndOpenMissionFromColumn = useCallback(
+    async (
+      statusId: string,
+      objective: string,
+      _position: 'top' | 'bottom',
+      options?: BlankMissionCreateOptions
+    ) => {
+      const { missionId } = await createMissionInColumn(statusId, objective, options);
+      void navigate({ to: '/workspace/missions/$missionId', params: { missionId } });
+    },
+    [createMissionInColumn, navigate]
+  );
+
   // Drop a stale alert once the underlying data refetches.
   useEffect(() => {
     if (!alert) return;
@@ -138,7 +200,7 @@ export function MyMissionsPage() {
     return () => window.clearTimeout(timer);
   }, [alert]);
 
-  if (statusesQ.isLoading || myMissionsQ.isLoading) {
+  if (statusesQ.isLoading || myMissionsQ.isLoading || projectsQ.isLoading) {
     return (
       <div className="p-8">
         <Spinner />
@@ -167,10 +229,13 @@ export function MyMissionsPage() {
             type={status.type}
             missions={colMissions}
             count={colMissions.length}
+            defaultProjectId={defaultCreateProjectId}
             membersByWorkspaceUserId={membersByWorkspaceUserId}
             selectedMissionId={selectedMissionId}
             draggable={draggable}
             onOpenMission={openMission}
+            onCreateMission={handleCreateMissionFromColumn}
+            onCreateAndOpenMission={handleCreateAndOpenMissionFromColumn}
           />
         );
       })}
@@ -181,10 +246,13 @@ export function MyMissionsPage() {
           type={null}
           missions={resolveColumnMissions(displayColumns[UNCATEGORIZED_ID] ?? [], missionById)}
           count={(displayColumns[UNCATEGORIZED_ID] ?? []).length}
+          defaultProjectId={defaultCreateProjectId}
           membersByWorkspaceUserId={membersByWorkspaceUserId}
           selectedMissionId={selectedMissionId}
           draggable={draggable}
           onOpenMission={openMission}
+          onCreateMission={handleCreateMissionFromColumn}
+          onCreateAndOpenMission={handleCreateAndOpenMissionFromColumn}
         />
       ) : null}
     </>
@@ -220,7 +288,7 @@ export function MyMissionsPage() {
           />
         ) : view === 'board' ? (
           <DndContext {...dndContextProps}>
-            <div className="flex h-full min-h-0 items-stretch gap-2">{renderColumns(true)}</div>
+            <div className="flex h-full min-h-0 items-stretch gap-4">{renderColumns(true)}</div>
             <DragOverlay>
               {activeMission ? (
                 <SortableMissionCard

@@ -278,6 +278,7 @@ interactionSurfaces:
     rules:
       - 'Auth tables (user, session, account, verification, apikey) are auth-internal; no other component reads them directly'
       - 'Identity bridge reads workspace_users and profiles where profiles.id matches the Better Auth user id'
+      - 'Active workspace preferences from the overlord_active_workspace cookie or X-Overlord-Active-Workspace header are accepted only after validating the authenticated profile has an active workspace_users membership'
       - 'Role resolution reads role_assignments by workspace_user_id and workspace_id'
       - 'Auth Layer must not write to core domain tables (missions, projects, etc.) itself'
       - 'Exception: the deleteUser beforeDelete hook invokes a backend-supplied onDeleteUser(userId) callback (see backend/account-deletion.ts) to hard-purge the RESTRICT children of profiles and workspace_users (workspace_users, user_tokens, user_images, role_assignments, workspace_user_execution_targets, project_user_preferences) before the auth user row is hard-deleted; the write happens in the caller-supplied callback, not in Auth Layer code, mirroring the serviceToAutomations delegation pattern'
@@ -314,7 +315,7 @@ interactionSurfaces:
     rules:
       - 'The shell must not fork or modify the SPA'
       - 'Local mode: Better Auth session cookies work natively on the shared loopback origin; the shell injects no headers and stores no tokens for in-app requests'
-      - 'Remote mode (cross-origin): a per-backend bearer token (safeStorage/keychain) is injected into the SPA API client instead of cross-site cookies, unifying with the CLI USER_TOKEN model'
+      - 'Remote mode (cross-origin): a per-backend bearer token (safeStorage/keychain) is injected into the SPA API client instead of cross-site cookies, unifying with the CLI USER_TOKEN model; the SPA may send X-Overlord-Active-Workspace for the selected workspace, which the backend validates against workspace_users before scoping the request'
       - 'Navigation stays scoped to the shell origin in both modes; the remote REST + wss origins are added to CSP connect-src per the active profile'
       - 'Desktop-only affordances are exposed only via the feature-detected window.overlord preload bridge'
 

@@ -68,6 +68,7 @@ type BlankMissionCardProps = {
   statusId: string;
   position: 'top' | 'bottom';
   projectId: string;
+  statusScope?: 'project' | 'workspace';
   onCreateMission: (
     statusId: string,
     objective: string,
@@ -90,6 +91,7 @@ export function BlankMissionCard({
   statusId,
   position,
   projectId,
+  statusScope = 'project',
   onCreateMission,
   onCreateAndOpenMission,
   onClose,
@@ -121,11 +123,11 @@ export function BlankMissionCard({
   const optionsRef = useRef<BlankMissionCreateOptions>({ projectId, tagIds: [] });
   optionsRef.current = { projectId: selectedProjectId, tagIds: selectedTagIds };
 
-  // A mission created in another project can't keep this board column's status
-  // (it belongs to the board's project), so only forward the status id when the
-  // selection matches the board; otherwise the server falls back to the target
-  // project's default status.
-  const statusForSelection = selectedProjectId === projectId ? statusId : '';
+  // Project boards can only keep their column status when the selected project
+  // matches the board. Workspace boards use workspace-scoped statuses, so they
+  // can preserve the column status across project selections.
+  const statusForSelection =
+    statusScope === 'workspace' || selectedProjectId === projectId ? statusId : '';
 
   // Tags are project-scoped: clear the selection whenever the project changes.
   useEffect(() => {
