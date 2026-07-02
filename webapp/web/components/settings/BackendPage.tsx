@@ -1,9 +1,43 @@
-import { Cloud, Loader2, Plus, Server, Trash2 } from 'lucide-react';
+import { Check, Cloud, Copy, Loader2, Plus, Server, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useCopyToClipboard } from '@/lib/hooks/use-copy-to-clipboard';
+
+function cliConfigCommand({ mode, backendUrl }: { mode: 'local' | 'remote'; backendUrl: string }) {
+  const configMode = mode === 'local' ? 'local' : 'cloud';
+  return `ovld config set ${configMode} ${backendUrl}`;
+}
+
+function CliConfigCopy({ mode, backendUrl }: { mode: 'local' | 'remote'; backendUrl: string }) {
+  const { copied, copy } = useCopyToClipboard();
+  const command = cliConfigCommand({ mode, backendUrl });
+
+  return (
+    <div className="space-y-1.5 pt-2">
+      <p className="text-xs text-muted-foreground">
+        {mode === 'local' ? 'Point the CLI at this database:' : 'Point the CLI at this backend:'}
+      </p>
+      <div className="flex items-center gap-2">
+        <code className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1.5 font-mono text-xs">
+          {command}
+        </code>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 shrink-0"
+          onClick={() => void copy(command)}
+        >
+          {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+          {copied ? 'Copied' : 'Copy'}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 type BackendProfileRow = {
   id: string;
@@ -121,6 +155,7 @@ export function BackendPage() {
                 <p className="truncate text-xs text-muted-foreground" title={profile.backendUrl}>
                   {profile.backendUrl}
                 </p>
+                <CliConfigCopy mode={profile.mode} backendUrl={profile.backendUrl} />
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {!isActive ? (

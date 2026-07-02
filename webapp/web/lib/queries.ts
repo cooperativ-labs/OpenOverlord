@@ -667,7 +667,10 @@ export function useUpdateMission(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: UpdateMissionBody) => api.updateMission(id, body),
-    onSuccess: () => invalidateAll(qc)
+    onSuccess: data => {
+      qc.setQueryData(keys.mission(id), data);
+      invalidateAll(qc);
+    }
   });
 }
 

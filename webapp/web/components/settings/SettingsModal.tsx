@@ -3,7 +3,6 @@ import {
   Cloud,
   Code2,
   GitBranch,
-  Info,
   Keyboard,
   KeyRound,
   MonitorDown,
@@ -16,7 +15,6 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 
 import { RealtimeStatus } from '@/components/RealtimeStatus';
-import { AboutPage } from '@/components/settings/AboutPage';
 import { AccountPage } from '@/components/settings/AccountPage';
 import { ApplicationPage } from '@/components/settings/ApplicationPage';
 import { BackendPage } from '@/components/settings/BackendPage';
@@ -53,8 +51,7 @@ const appNavItems: SettingsNavItem[] = [
   { name: 'Application', icon: Palette },
   { name: 'Hotkeys', icon: Keyboard },
   { name: 'Integrations', icon: Plug },
-  { name: 'Notifications', icon: Bell },
-  { name: 'About', icon: Info }
+  { name: 'Notifications', icon: Bell }
 ];
 
 const desktopNavItems: SettingsNavItem[] = [
@@ -153,7 +150,6 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
           onNavigateToExecutionTargets={() => setActiveNav('Execution Targets')}
         />
       )}
-      {activeNav === 'About' && <AboutPage open={open} />}
     </SettingsDialogShell>
   );
 }

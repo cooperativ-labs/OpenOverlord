@@ -96,6 +96,7 @@ export interface Meta {
   /** True while the seeded first workspace still needs its initial setup step. */
   needsSetup: boolean;
   databasePath: string;
+  backendMode: 'local' | 'cloud';
   web: { host: string; port: number; url: string };
   sqlStudio: { enabled: boolean; url: string | null };
   capabilities: MetaCapabilities;

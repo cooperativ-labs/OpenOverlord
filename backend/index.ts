@@ -331,6 +331,7 @@ app.get(
       // the one-time initial setup step until `POST /api/setup` completes.
       needsSetup: await needsInitialSetup(),
       databasePath: DATABASE_PATH,
+      backendMode: config.backendMode,
       web: {
         host: bindHost,
         port: bindPort,

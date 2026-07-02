@@ -88,7 +88,13 @@ function missionWorkflowKeys(change: EntityChangeDto): QueryKey[] | null {
 function routeChange(change: EntityChangeDto): QueryKey[] | null {
   switch (change.entityType) {
     case 'mission': {
-      return missionWorkflowKeys(change);
+      const workflowKeys = missionWorkflowKeys(change);
+      if (change.changedFields.includes('project_id')) {
+        return workflowKeys
+          ? [...workflowKeys, allProjectScopedQueries()]
+          : [allProjectScopedQueries(), keys.myMissions];
+      }
+      return workflowKeys;
     }
     case 'objective': {
       const objectiveId = objectiveIdFor(change);

@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import {
   Select,
   SelectContent,
@@ -7,6 +9,8 @@ import {
 } from '@/components/ui/select';
 import { useProject, useProjects, useUpdateMission } from '@/lib/queries.ts';
 import { cn } from '@/lib/utils';
+
+import type { ProjectDto } from '../../shared/contract.ts';
 
 type MissionProjectSelectProps = {
   missionId: string;
@@ -24,6 +28,15 @@ function ProjectColorDot({ color }: { color: string | null }) {
   );
 }
 
+function ProjectOptionLabel({ project }: { project: ProjectDto }) {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5">
+      <ProjectColorDot color={project.color} />
+      <span className="truncate">{project.name}</span>
+    </span>
+  );
+}
+
 export function MissionProjectSelect({
   missionId,
   projectId,
@@ -32,22 +45,35 @@ export function MissionProjectSelect({
   const projectsQ = useProjects();
   const currentProjectQ = useProject(projectId);
   const update = useUpdateMission(missionId);
+  const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
 
   const projects = (projectsQ.data ?? []).filter(project => project.status === 'active');
-  const currentProject = projects.find(project => project.id === projectId) ?? currentProjectQ.data;
+  const selectedProjectId = pendingProjectId ?? projectId;
+  const currentProject =
+    projects.find(project => project.id === selectedProjectId) ??
+    (selectedProjectId === projectId ? currentProjectQ.data : undefined);
 
   function handleChange(nextProjectId: string | null) {
-    if (!nextProjectId || nextProjectId === projectId) return;
+    if (!nextProjectId || nextProjectId === selectedProjectId) return;
+    setPendingProjectId(nextProjectId);
     update.mutate(
       { projectId: nextProjectId },
       {
-        onSuccess: () => onProjectChanged?.(nextProjectId)
+        onSuccess: () => {
+          setPendingProjectId(null);
+          onProjectChanged?.(nextProjectId);
+        },
+        onError: () => setPendingProjectId(null)
       }
     );
   }
 
   return (
-    <Select value={projectId} disabled={update.isPending} onValueChange={handleChange}>
+    <Select
+      value={selectedProjectId}
+      disabled={update.isPending}
+      onValueChange={handleChange}
+    >
       <SelectTrigger
         id="mission-project-select"
         aria-label="Select project"
@@ -57,19 +83,17 @@ export function MissionProjectSelect({
         )}
       >
         <SelectValue>
-          <span className="inline-flex min-w-0 items-center gap-1.5">
-            <ProjectColorDot color={currentProject?.color ?? null} />
-            <span className="truncate">{currentProject?.name ?? 'Project'}</span>
-          </span>
+          {currentProject ? (
+            <ProjectOptionLabel project={currentProject} />
+          ) : (
+            <span className="truncate">Project</span>
+          )}
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {projects.map(project => (
           <SelectItem key={project.id} value={project.id}>
-            <span className="inline-flex items-center gap-1.5">
-              <ProjectColorDot color={project.color} />
-              <span className="truncate">{project.name}</span>
-            </span>
+            <ProjectOptionLabel project={project} />
           </SelectItem>
         ))}
       </SelectContent>
