@@ -85,6 +85,7 @@ Owns:
 - Extension table naming rules (`ext_<name>_`)
 - Logical types and their adapter mappings
 - The async `DatabaseClient` adapter that owns the underlying handle/pool and serves every read/write on both editions through `?`-placeholder SQL (including the SQLite-only `sqliteDataVersion()` external-write probe); production callers never hold a raw synchronous `better-sqlite3` handle
+- Ambient transactions: while a root `DatabaseClient`'s `transaction(async tx => ...)` callback is running, any query issued through that same root client from inside that async context automatically joins the open transaction (via `AsyncLocalStorage`, scoped per root instance) instead of deadlocking (SQLite) or executing outside the transaction on another pooled connection (Postgres); a transaction-scoped client captured and reused after its transaction has committed or rolled back throws `TransactionClosedError`
 
 Does NOT own:
 

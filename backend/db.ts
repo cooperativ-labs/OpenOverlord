@@ -154,6 +154,32 @@ async function oldestWorkspaceRowFromClient(
   );
 }
 
+/**
+ * The canonical "is this profile an active member of this workspace" lookup:
+ * the profile's oldest active `workspace_users` row in `workspaceId`, or
+ * `null`. Membership rows are not tombstoned when their workspace is
+ * soft-deleted, so this joins live workspaces — a membership in a deleted
+ * workspace is not a membership. Every membership/authorization check that
+ * starts from a profile (auth resolution, workspace guards, actor
+ * attribution) goes through this one query so the definition of "active
+ * membership" cannot drift.
+ */
+export async function findActiveMembershipId(
+  workspaceId: string,
+  profileId: string,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<string | null> {
+  const row = await client.get<{ id: string }>(
+    `SELECT wu.id FROM workspace_users wu
+       JOIN workspaces w ON w.id = wu.workspace_id AND w.deleted_at IS NULL
+      WHERE wu.workspace_id = ? AND wu.profile_id = ?
+        AND wu.status = 'active' AND wu.deleted_at IS NULL
+      ORDER BY wu.created_at ASC LIMIT 1`,
+    [workspaceId, profileId]
+  );
+  return row?.id ?? null;
+}
+
 /** Resolve the workspace user that changes in `workspaceId` are attributed to. */
 export async function resolveActorForWorkspace(
   workspaceId: string,
@@ -200,13 +226,7 @@ async function resolveRequestActorForWorkspace(
   }
   if (!profileId) return null;
 
-  const row = await client.get<{ id: string }>(
-    `SELECT id FROM workspace_users
-       WHERE workspace_id = ? AND profile_id = ? AND status = 'active' AND deleted_at IS NULL
-       ORDER BY created_at ASC LIMIT 1`,
-    [workspaceId, profileId]
-  );
-  return row?.id ?? null;
+  return findActiveMembershipId(workspaceId, profileId, client);
 }
 
 export interface ActiveWorkspace {

@@ -1,8 +1,5 @@
 import { BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron';
-import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-
-import type { LocalTargetBridgeCall } from '../../packages/core/service/local-target/desktop-bridge.ts';
 
 import {
   addRemoteBackend,
@@ -32,8 +29,6 @@ import {
   setQuickTaskWindowSize
 } from './quick-task-window.js';
 import type { DesktopUpdater } from './updater.js';
-
-const PROJECT_JSON_VERSION = 1;
 
 /**
  * The minimal, audited IPC surface exposed to the renderer through the
@@ -76,10 +71,10 @@ export function registerIpc({
     if (!call || typeof call !== 'object' || !('capability' in call) || !('input' in call)) {
       throw new Error('A local-target capability call is required.');
     }
-    return invokeDesktopLocalTarget(call as LocalTargetBridgeCall);
+    return invokeDesktopLocalTarget(call as Parameters<typeof invokeDesktopLocalTarget>[0]);
   });
 
-  ipcMain.handle('overlord:write-project-metadata', (_event, payload: unknown) => {
+  ipcMain.handle('overlord:write-project-metadata', async (_event, payload: unknown) => {
     if (!payload || typeof payload !== 'object') {
       throw new Error('Project metadata payload is required.');
     }
@@ -101,24 +96,13 @@ export function registerIpc({
       throw new Error('Valid directoryPath, projectId, resourceId, and isPrimary are required.');
     }
 
-    const overlordDir = path.join(directoryPath, '.overlord');
-    mkdirSync(overlordDir, { recursive: true });
-    mkdirSync(path.join(overlordDir, 'tmp'), { recursive: true });
-    mkdirSync(path.join(overlordDir, 'logs'), { recursive: true });
-    writeFileSync(
-      path.join(overlordDir, 'project.json'),
-      `${JSON.stringify(
-        {
-          version: PROJECT_JSON_VERSION,
-          projectId,
-          resourceId,
-          isPrimary,
-          linkedAt: new Date().toISOString()
-        },
-        null,
-        2
-      )}\n`
-    );
+    const result = await invokeDesktopLocalTarget({
+      capability: 'writeProjectMetadata',
+      input: { directoryPath, projectId, resourceId, isPrimary }
+    });
+    if (!result.ok) {
+      throw new Error(result.message);
+    }
     return true;
   });
 

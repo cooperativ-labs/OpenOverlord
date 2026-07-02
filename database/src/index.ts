@@ -20,7 +20,8 @@ export {
   type RunResult,
   sqlBoolLiteral,
   type SqlDialect,
-  toPostgresPlaceholders
+  toPostgresPlaceholders,
+  TransactionClosedError
 } from './client.js';
 export {
   fixupLocalStoragePaths,

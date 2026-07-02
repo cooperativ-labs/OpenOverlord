@@ -12,6 +12,7 @@ import {
   type ActiveWorkspace,
   authDomainDatabase,
   DATABASE_PATH,
+  findActiveMembershipId,
   getActiveWorkspaceId,
   loadWorkspaceRow,
   requireDatabaseClient,
@@ -137,18 +138,6 @@ export interface WorkspaceMembership {
   workspace: ActiveWorkspace;
 }
 
-async function activeMembership(
-  profileId: string,
-  workspaceId: string
-): Promise<{ id: string } | undefined> {
-  return requireDatabaseClient().get<{ id: string }>(
-    `SELECT id FROM workspace_users
-       WHERE workspace_id = ? AND profile_id = ? AND status = 'active' AND deleted_at IS NULL
-       LIMIT 1`,
-    [workspaceId, profileId]
-  );
-}
-
 async function profileIdForWorkspaceUser(workspaceUserId: string): Promise<string | null> {
   const row = await requireDatabaseClient().get<{ profile_id: string }>(
     `SELECT profile_id FROM workspace_users
@@ -161,16 +150,12 @@ async function profileIdForWorkspaceUser(workspaceUserId: string): Promise<strin
 
 async function resolveMembership(
   workspaceUserId: string,
-  workspaceId: string
+  workspace: { id: string; slug: string; name: string; kind: string }
 ): Promise<WorkspaceMembership> {
   // Every active member keeps at least one role; this only ever creates a row
   // for a legacy/edge-case membership with none (see `grantWorkspaceAdminRole`),
   // it never re-grants ADMIN to a member who already has some role assigned.
-  await grantWorkspaceAdminRole({ workspaceId, workspaceUserId });
-  const workspace = await loadWorkspaceRow(workspaceId);
-  if (!workspace) {
-    throw new ApiError(500, 'Workspace membership references a missing workspace');
-  }
+  await grantWorkspaceAdminRole({ workspaceId: workspace.id, workspaceUserId });
   return {
     workspaceUserId,
     workspace: {
@@ -186,37 +171,50 @@ async function resolveMembership(
  * Resolve the logged-in profile's active workspace for this request. There is
  * no auto-join: a profile only ever resolves to workspaces it already has an
  * active `workspace_users` row in. Membership is created solely via an
- * explicit workspace creation or (future) invitation-acceptance flow.
+ * explicit workspace creation or invitation-acceptance flow.
  *
- * `requestedWorkspaceId` (from `ACTIVE_WORKSPACE_COOKIE`) lets a profile with
- * more than one membership pick which workspace this request targets; it must
- * match an active membership or the request is rejected with 403 — this is
- * the IDOR guard that stops a crafted workspace id from scoping a request to
- * a workspace the caller does not belong to. With no requested id, the
- * profile's oldest active membership is used as the default. Returns `null`
- * when the profile has no active workspace membership at all.
+ * `requestedWorkspaceId` (from `ACTIVE_WORKSPACE_COOKIE` /
+ * `X-Overlord-Active-Workspace`) lets a profile with more than one membership
+ * pick which workspace this request targets. When it points at a *live*
+ * workspace, the caller must hold an active membership there or the request
+ * is rejected with 403 — the IDOR guard that stops a crafted workspace id
+ * from scoping a request to a workspace the caller does not belong to. When
+ * it points at a workspace that no longer exists (deleted or re-keyed after
+ * the preference was persisted), it is a stale preference, not an attack:
+ * fall back to the default membership instead of wedging every request from
+ * that session. With no requested id, the profile's oldest active membership
+ * in a live workspace is used. Returns `null` when the profile has no active
+ * workspace membership at all.
  */
 export async function ensureWorkspaceUser(
   profileId: string,
   requestedWorkspaceId?: string | null
 ): Promise<WorkspaceMembership | null> {
   if (requestedWorkspaceId) {
-    const membership = await activeMembership(profileId, requestedWorkspaceId);
-    if (!membership) {
-      throw new ApiError(403, 'Not an active member of the requested workspace');
+    const workspace = await loadWorkspaceRow(requestedWorkspaceId);
+    if (workspace) {
+      const membershipId = await findActiveMembershipId(requestedWorkspaceId, profileId);
+      if (!membershipId) {
+        throw new ApiError(403, 'Not an active member of the requested workspace');
+      }
+      return resolveMembership(membershipId, workspace);
     }
-    return resolveMembership(membership.id, requestedWorkspaceId);
   }
 
   const defaultMembership = await requireDatabaseClient().get<{ id: string; workspace_id: string }>(
-    `SELECT id, workspace_id FROM workspace_users
-       WHERE profile_id = ? AND status = 'active' AND deleted_at IS NULL
-       ORDER BY created_at ASC LIMIT 1`,
+    `SELECT wu.id, wu.workspace_id FROM workspace_users wu
+       JOIN workspaces w ON w.id = wu.workspace_id AND w.deleted_at IS NULL
+      WHERE wu.profile_id = ? AND wu.status = 'active' AND wu.deleted_at IS NULL
+      ORDER BY wu.created_at ASC LIMIT 1`,
     [profileId]
   );
   if (!defaultMembership) return null;
 
-  return resolveMembership(defaultMembership.id, defaultMembership.workspace_id);
+  const workspace = await loadWorkspaceRow(defaultMembership.workspace_id);
+  if (!workspace) {
+    throw new ApiError(500, 'Workspace membership references a missing workspace');
+  }
+  return resolveMembership(defaultMembership.id, workspace);
 }
 
 export async function requireAuthenticatedSession(

@@ -26,9 +26,12 @@ const { seedAuthenticatedOperator } = await import('./test-helpers.ts');
 const {
   completeInitialSetup,
   createWorkspace,
+  deleteWorkspace,
   exportWorkspaceObjectivesCsv,
+  listWorkspaceMembers,
   listWorkspaces,
-  needsInitialSetup
+  needsInitialSetup,
+  updateWorkspace
 } = await import('./workspaces.ts');
 
 const operatorWorkspaceUserId = seedAuthenticatedOperator({ db });
@@ -187,6 +190,98 @@ test('exportWorkspaceObjectivesCsv checks admin access on the requested workspac
   await setActiveWorkspace(target.id);
   setActiveWorkspaceUser('viewer-workspace-user');
   await assert.rejects(exportWorkspaceObjectivesCsv(target.id), /Admin role required/);
+});
+
+test('workspace mutations and member lists are gated on the target workspace, not the active one', async () => {
+  const target = await createWorkspace({ name: 'Tenancy Gate Target' });
+
+  // An admin of their *own* workspace is still an outsider to `target`.
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO "user" ("id", "name", "email", "emailVerified", "image", "createdAt", "updatedAt")
+     VALUES (?, ?, ?, 1, NULL, ?, ?)`
+  ).run('outsider-user', 'outsider-user', 'outsider@overlord.local', now, now);
+
+  await withRequestContextAsync(async () => {
+    setActiveProfileId('outsider-user');
+    setActiveWorkspaceContext(null);
+    setActiveWorkspaceUser(null);
+    await createWorkspace({ name: 'Outsider Workspace' });
+
+    await assert.rejects(
+      updateWorkspace(target.id, { name: 'Hijacked' }),
+      /no active membership/,
+      'an outsider must not be able to rename another tenant'
+    );
+    await assert.rejects(
+      deleteWorkspace(target.id),
+      /no active membership/,
+      'an outsider must not be able to delete another tenant'
+    );
+    await assert.rejects(
+      listWorkspaceMembers(target.id),
+      /no active membership/,
+      "an outsider must not be able to enumerate another tenant's members"
+    );
+  });
+
+  // A plain MEMBER of the target may list its members but not administer it.
+  db.prepare(
+    `INSERT INTO "user" ("id", "name", "email", "emailVerified", "image", "createdAt", "updatedAt")
+     VALUES (?, ?, ?, 1, NULL, ?, ?)`
+  ).run('gate-member-user', 'gate-member-user', 'gate-member@overlord.local', now, now);
+  db.prepare(
+    `INSERT INTO workspace_users
+       (id, workspace_id, profile_id, member_key, status, metadata_json,
+        created_at, updated_at, revision)
+     VALUES (?, ?, 'gate-member-user', 'auth:gate-member-user', 'active', '{}', ?, ?, 1)`
+  ).run('gate-member-membership', target.id, now, now);
+  db.prepare(
+    `INSERT INTO role_assignments
+       (id, workspace_id, workspace_user_id, role_key, resource_type, resource_id,
+        assigned_by_workspace_user_id, created_at, updated_at, revision)
+     VALUES (?, ?, 'gate-member-membership', 'MEMBER', '', '', 'gate-member-membership', ?, ?, 1)`
+  ).run('gate-member-membership-role', target.id, now, now);
+
+  await withRequestContextAsync(async () => {
+    setActiveProfileId('gate-member-user');
+    await setActiveWorkspace(target.id);
+
+    const members = await listWorkspaceMembers(target.id);
+    const self = members.find(member => member.workspaceUserId === 'gate-member-membership');
+    assert.ok(self, 'a member sees their own workspace member list');
+    assert.equal(self.isOperator, true, 'isOperator marks the calling profile');
+
+    await assert.rejects(
+      updateWorkspace(target.id, { name: 'Renamed By Member' }),
+      /Admin role required/
+    );
+    await assert.rejects(deleteWorkspace(target.id), /Admin role required/);
+  });
+
+  const row = db.prepare(`SELECT name, deleted_at FROM workspaces WHERE id = ?`).get(target.id) as {
+    name: string;
+    deleted_at: string | null;
+  };
+  assert.equal(row.name, 'Tenancy Gate Target');
+  assert.equal(row.deleted_at, null);
+});
+
+test('deleteWorkspace tombstones the workspace and activates the oldest remaining one', async () => {
+  const doomed = await createWorkspace({ name: 'Doomed Workspace' });
+  assert.equal(dbModule.WORKSPACE.id, doomed.id, 'creation makes the new workspace active');
+
+  const list = await deleteWorkspace(doomed.id);
+
+  assert.ok(
+    list.every(workspace => workspace.id !== doomed.id),
+    'the deleted workspace disappears from the list'
+  );
+  const row = db.prepare(`SELECT deleted_at FROM workspaces WHERE id = ?`).get(doomed.id) as {
+    deleted_at: string | null;
+  };
+  assert.ok(row.deleted_at, 'the workspace row is tombstoned, not removed');
+  assert.notEqual(dbModule.WORKSPACE.id, doomed.id, 'the active workspace moved off the tombstone');
 });
 
 test.after(async () => {

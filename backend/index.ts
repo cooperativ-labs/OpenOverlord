@@ -421,9 +421,13 @@ app.patch(
 app.delete(
   '/api/workspaces/:id',
   handle(
-    async req => {
+    async (req, res) => {
       const result = await deleteWorkspace(req.params.id);
-      // Deleting may switch the active workspace; resync all subscribers.
+      // Deleting may switch the active workspace: re-point this session's
+      // preference cookie so it never keeps referencing the deleted workspace.
+      const active = result.find(workspace => workspace.isActive);
+      if (active) setActiveWorkspaceCookie(res, active.id);
+      // Resync all subscribers.
       realtime.refreshAll();
       return result;
     },

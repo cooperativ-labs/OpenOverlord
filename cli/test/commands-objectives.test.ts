@@ -115,11 +115,13 @@ test('ovld add-cwd writes local project metadata after resource creation', async
   const projectJsonPath = path.join(directory, '.overlord', 'project.json');
   assert.equal(existsSync(projectJsonPath), true);
   const projectJson = JSON.parse(readFileSync(projectJsonPath, 'utf8')) as {
+    _warning: string;
     version: number;
     projectId: string;
     resourceId: string;
     isPrimary: boolean;
   };
+  assert.match(projectJson._warning, /managed by Overlord/i);
   assert.equal(projectJson.version, 1);
   assert.equal(projectJson.projectId, 'project-1');
   assert.equal(projectJson.resourceId, 'resource-1');

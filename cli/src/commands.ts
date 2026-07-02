@@ -1,8 +1,9 @@
+import { writeProjectJson } from '@overlord/core/service/local-target/project-metadata';
 import {
   executeLocalTargetMutation,
   parseMutationFromMetadata
 } from '@overlord/core/service/local-target-mutation-runner';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import {
@@ -58,39 +59,6 @@ type SkipRationaleEntry = {
   reason?: string;
   [key: string]: unknown;
 };
-
-const PROJECT_JSON_VERSION = 1;
-
-function writeProjectJson({
-  directoryPath,
-  projectId,
-  resourceId,
-  isPrimary
-}: {
-  directoryPath: string;
-  projectId: string;
-  resourceId: string;
-  isPrimary: boolean;
-}): void {
-  const overlordDir = path.join(directoryPath, '.overlord');
-  mkdirSync(overlordDir, { recursive: true });
-  mkdirSync(path.join(overlordDir, 'tmp'), { recursive: true });
-  mkdirSync(path.join(overlordDir, 'logs'), { recursive: true });
-  writeFileSync(
-    path.join(overlordDir, 'project.json'),
-    `${JSON.stringify(
-      {
-        version: PROJECT_JSON_VERSION,
-        projectId,
-        resourceId,
-        isPrimary,
-        linkedAt: new Date().toISOString()
-      },
-      null,
-      2
-    )}\n`
-  );
-}
 
 function writeProjectJsonFromResource({
   directory,

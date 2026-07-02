@@ -100,6 +100,16 @@ In index notes, "active" means `deleted_at IS NULL`. SQLite and Postgres adapter
 
 Adapter conformance tests must cover required tables, columns, indexes, foreign keys, active unique constraints, optimistic concurrency, soft delete visibility, queue claiming, and change-feed behavior.
 
+### Ambient Transactions
+
+The async `DatabaseClient`'s `transaction(async tx => ...)` is ambient: while the callback is running, any query issued through the *root* `DatabaseClient` (the instance `transaction()` was called on, not just the `tx` parameter) from within that same async context automatically joins the open transaction, on both adapters. This is implemented with a per-root-instance `AsyncLocalStorage`, never a module-level one, so unrelated `DatabaseClient` instances (e.g. separate adapters under test in the same process) never cross-contaminate each other's ambient transaction. A transaction/session-scoped client (the `tx` argument, or any SAVEPOINT-nested client) never consults the ambient store itself — it always operates directly on its own connection.
+
+This closes a bug class where a helper queried through the root client from inside a transaction callback: on SQLite, `SqliteClient.transaction()` holds a process-wide mutex, so a root-client call inside the callback queued on that mutex forever and froze the process; on Postgres, the same mistake silently ran the query on a different pooled connection outside the transaction (non-atomic writes, reads that missed uncommitted state). Ambient join makes both adapters do the correct thing without requiring every call site to thread `tx` through by hand — though passing `tx` explicitly remains correct and preferred for readability.
+
+A query or nested `transaction()` call issued outside the callback's async context (e.g. concurrent work started before/after the `transaction()` call, not awaited from inside it) does **not** join — it runs against the root client normally: serialized after the transaction commits on SQLite (mutex), or genuinely concurrently on a separate connection on Postgres.
+
+Once a transaction-scoped client's `transaction()` callback has resolved (committed or rolled back), any further query issued through that specific captured client throws `TransactionClosedError` — this is a safety net for fire-and-forget/detached async work spawned inside a callback that outlives it (e.g. an unawaited realtime-poll trigger), so a stale connection reference fails loudly instead of silently reusing a released/committed connection.
+
 Postgres foreign keys on workspace-scoped tables, including composite foreign
 keys whose child columns include `workspace_id`, must be `DEFERRABLE INITIALLY
 IMMEDIATE`. Services may temporarily defer them inside a transaction when moving

@@ -1,4 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 import { type AdapterConfig } from './adapter.js';
 import { openDatabase } from './connection.js';
@@ -23,8 +24,30 @@ import { openDatabase } from './connection.js';
  * Placeholders stay `?` everywhere; the Postgres client rewrites them to
  * `$1..$n`. Genuinely dialect-specific SQL (e.g. `FOR UPDATE SKIP LOCKED` on the
  * queue-claim path) is gated on `client.dialect`.
+ *
+ * Transactions are ambient: while a root client's `transaction(async tx => ...)`
+ * callback is running, any query issued through that same root client from
+ * within that async context automatically joins the open transaction instead of
+ * deadlocking (SQLite) or running outside the transaction on another pooled
+ * connection (Postgres). See `TransactionClosedError` and the "Ambient
+ * Transactions" section of the database schema contract for details.
  */
 export type SqlDialect = 'sqlite' | 'postgres';
+
+/**
+ * Thrown when a query is issued through a transaction-scoped `DatabaseClient`
+ * (the `tx` passed to a `transaction()` callback) after that transaction has
+ * already committed or rolled back. This mainly guards against detached
+ * fire-and-forget work spawned inside a callback (e.g. an unawaited realtime
+ * poll trigger) that captured `tx` and outlives it — such code fails loudly
+ * instead of silently reusing a released/committed connection.
+ */
+export class TransactionClosedError extends Error {
+  constructor(message = 'DatabaseClient used after its transaction committed or rolled back') {
+    super(message);
+    this.name = 'TransactionClosedError';
+  }
+}
 
 /** Bind a boolean for a `?` placeholder — Postgres expects `boolean`, SQLite `0|1`. */
 export function bindBool(dialect: SqlDialect, value: boolean): boolean | number {
@@ -76,6 +99,11 @@ export interface DatabaseClient {
    * Run `fn` inside a transaction, passing a transaction-scoped client. The
    * transaction commits when `fn` resolves and rolls back if it throws. Nested
    * calls use SAVEPOINTs so composing transactional service functions is safe.
+   *
+   * Ambient join: while `fn` runs, queries issued through the root client
+   * (not just the `tx` argument) automatically join this transaction — see the
+   * module doc comment. Passing `tx` explicitly is still correct and preferred
+   * for readability; the ambient behavior is a safety net, not a replacement.
    */
   transaction<T>(fn: (tx: DatabaseClient) => Promise<T>): Promise<T>;
   /**
@@ -153,8 +181,17 @@ class SqliteClient implements DatabaseClient {
   readonly dialect = 'sqlite' as const;
   readonly #db: BetterSqlite3.Database;
   readonly #mutex: Mutex;
-  #inTransaction: boolean;
+  readonly #inTransaction: boolean;
+  /**
+   * Ambient-transaction store, owned only by root (non-tx) instances — never a
+   * module-level singleton, so unrelated `SqliteClient` instances (e.g. two
+   * adapters under test in the same process) never cross-contaminate each
+   * other's open transaction. A tx/savepoint client always has this `undefined`
+   * and must never consult it; it already runs directly against `#db`.
+   */
+  readonly #als: AsyncLocalStorage<SqliteClient> | undefined;
   #savepointDepth = 0;
+  #closed = false;
 
   constructor(
     db: BetterSqlite3.Database,
@@ -163,6 +200,16 @@ class SqliteClient implements DatabaseClient {
     this.#db = db;
     this.#mutex = options.mutex ?? new Mutex();
     this.#inTransaction = options.inTransaction ?? false;
+    this.#als = this.#inTransaction ? undefined : new AsyncLocalStorage<SqliteClient>();
+  }
+
+  /** The open transaction client for this root client's current async context, if any. */
+  #ambientTx(): SqliteClient | undefined {
+    return this.#als?.getStore();
+  }
+
+  #checkClosed(): void {
+    if (this.#closed) throw new TransactionClosedError();
   }
 
   #guard<T>(fn: () => T): Promise<T> {
@@ -176,6 +223,9 @@ class SqliteClient implements DatabaseClient {
     sql: string,
     params: ReadonlyArray<unknown> = []
   ): Promise<T | undefined> {
+    this.#checkClosed();
+    const ambient = this.#ambientTx();
+    if (ambient) return ambient.get<T>(sql, params);
     return this.#guard(() => this.#db.prepare(sql).get(...params) as T | undefined);
   }
 
@@ -183,10 +233,16 @@ class SqliteClient implements DatabaseClient {
     sql: string,
     params: ReadonlyArray<unknown> = []
   ): Promise<T[]> {
+    this.#checkClosed();
+    const ambient = this.#ambientTx();
+    if (ambient) return ambient.all<T>(sql, params);
     return this.#guard(() => this.#db.prepare(sql).all(...params) as T[]);
   }
 
   async run(sql: string, params: ReadonlyArray<unknown> = []): Promise<RunResult> {
+    this.#checkClosed();
+    const ambient = this.#ambientTx();
+    if (ambient) return ambient.run(sql, params);
     return this.#guard(() => {
       const result = this.#db.prepare(sql).run(...params);
       return { changes: result.changes, lastInsertRowid: result.lastInsertRowid };
@@ -194,10 +250,14 @@ class SqliteClient implements DatabaseClient {
   }
 
   async exec(sql: string): Promise<void> {
+    this.#checkClosed();
+    const ambient = this.#ambientTx();
+    if (ambient) return ambient.exec(sql);
     await this.#guard(() => this.#db.exec(sql));
   }
 
   async transaction<T>(fn: (tx: DatabaseClient) => Promise<T>): Promise<T> {
+    this.#checkClosed();
     if (this.#inTransaction) {
       // Nested transaction → SAVEPOINT on the same handle (mutex already held).
       const name = `ovld_sp_${this.#savepointDepth++}`;
@@ -215,21 +275,33 @@ class SqliteClient implements DatabaseClient {
       }
     }
 
+    // Already inside an ambient transaction on this root client (e.g. a helper
+    // called the root client's `transaction()` instead of threading `tx`
+    // through) → join it as a nested SAVEPOINT instead of taking the mutex
+    // again, which would deadlock.
+    const ambient = this.#ambientTx();
+    if (ambient) return ambient.transaction(fn);
+
     return this.#mutex.runExclusive(async () => {
       const tx = new SqliteClient(this.#db, { mutex: this.#mutex, inTransaction: true });
       this.#db.exec('BEGIN');
       try {
-        const out = await fn(tx);
+        const out = await this.#als!.run(tx, () => fn(tx));
         this.#db.exec('COMMIT');
         return out;
       } catch (error) {
         this.#db.exec('ROLLBACK');
         throw error;
+      } finally {
+        tx.#closed = true;
       }
     });
   }
 
   async sqliteDataVersion(): Promise<number | null> {
+    this.#checkClosed();
+    const ambient = this.#ambientTx();
+    if (ambient) return ambient.sqliteDataVersion();
     return this.#guard(() => {
       const value = this.#db.pragma('data_version', { simple: true });
       return typeof value === 'number' ? value : Number(value);
@@ -309,7 +381,10 @@ class PostgresClient implements DatabaseClient {
   readonly #conn: PgQueryable;
   readonly #ownsPool: boolean;
   readonly #inTransaction: boolean;
+  /** See {@link SqliteClient}'s `#als` — same per-root-instance rule applies here. */
+  readonly #als: AsyncLocalStorage<PostgresClient> | undefined;
   #savepointDepth = 0;
+  #closed = false;
 
   constructor(
     options: { pool: PgPool; ownsPool?: boolean } | { client: PgQueryable; inTransaction?: boolean }
@@ -325,12 +400,25 @@ class PostgresClient implements DatabaseClient {
       this.#ownsPool = false;
       this.#inTransaction = options.inTransaction ?? false;
     }
+    this.#als = this.#inTransaction ? undefined : new AsyncLocalStorage<PostgresClient>();
+  }
+
+  /** The open transaction client for this root client's current async context, if any. */
+  #ambientTx(): PostgresClient | undefined {
+    return this.#als?.getStore();
+  }
+
+  #checkClosed(): void {
+    if (this.#closed) throw new TransactionClosedError();
   }
 
   async get<T = Record<string, unknown>>(
     sql: string,
     params: ReadonlyArray<unknown> = []
   ): Promise<T | undefined> {
+    this.#checkClosed();
+    const ambient = this.#ambientTx();
+    if (ambient) return ambient.get<T>(sql, params);
     await ensurePgTypeParsers();
     const result = await this.#conn.query(toPostgresPlaceholders(sql), params as unknown[]);
     return result.rows[0] as T | undefined;
@@ -340,40 +428,60 @@ class PostgresClient implements DatabaseClient {
     sql: string,
     params: ReadonlyArray<unknown> = []
   ): Promise<T[]> {
+    this.#checkClosed();
+    const ambient = this.#ambientTx();
+    if (ambient) return ambient.all<T>(sql, params);
     await ensurePgTypeParsers();
     const result = await this.#conn.query(toPostgresPlaceholders(sql), params as unknown[]);
     return result.rows as T[];
   }
 
   async run(sql: string, params: ReadonlyArray<unknown> = []): Promise<RunResult> {
+    this.#checkClosed();
+    const ambient = this.#ambientTx();
+    if (ambient) return ambient.run(sql, params);
     await ensurePgTypeParsers();
     const result = await this.#conn.query(toPostgresPlaceholders(sql), params as unknown[]);
     return { changes: result.rowCount ?? 0 };
   }
 
   async exec(sql: string): Promise<void> {
+    this.#checkClosed();
+    const ambient = this.#ambientTx();
+    if (ambient) return ambient.exec(sql);
     await ensurePgTypeParsers();
     await this.#conn.query(sql);
   }
 
   async transaction<T>(fn: (tx: DatabaseClient) => Promise<T>): Promise<T> {
+    this.#checkClosed();
     if (!this.#pool) {
       if (!this.#inTransaction) {
+        // Already inside an ambient transaction on this root client → join it
+        // as a nested SAVEPOINT on the same session connection.
+        const ambient = this.#ambientTx();
+        if (ambient) return ambient.transaction(fn);
+
         await this.#conn.query('BEGIN');
+        let tx: PostgresClient | undefined;
         try {
-          const out = await fn(new PostgresClient({ client: this.#conn, inTransaction: true }));
+          tx = new PostgresClient({ client: this.#conn, inTransaction: true });
+          const out = await this.#als!.run(tx, () => fn(tx!));
           await this.#conn.query('COMMIT');
           return out;
         } catch (error) {
           await this.#conn.query('ROLLBACK');
           throw error;
+        } finally {
+          if (tx) tx.#closed = true;
         }
       }
 
       const name = `ovld_sp_${this.#savepointDepth++}`;
       await this.#conn.query(`SAVEPOINT ${name}`);
+      const tx = new PostgresClient({ client: this.#conn, inTransaction: true });
       try {
-        const out = await fn(new PostgresClient({ client: this.#conn, inTransaction: true }));
+        const out = await fn(tx);
         await this.#conn.query(`RELEASE SAVEPOINT ${name}`);
         return out;
       } catch (error) {
@@ -381,19 +489,30 @@ class PostgresClient implements DatabaseClient {
         throw error;
       } finally {
         this.#savepointDepth--;
+        tx.#closed = true;
       }
     }
 
+    // Pool-backed root: joining the ambient transaction (rather than checking
+    // out a second pooled connection) is what fixes the out-of-transaction bug
+    // — without it, a root-client query inside the callback would silently run
+    // on a different connection than the one holding BEGIN.
+    const ambient = this.#ambientTx();
+    if (ambient) return ambient.transaction(fn);
+
     const client = await this.#pool.connect();
+    let tx: PostgresClient | undefined;
     try {
       await client.query('BEGIN');
-      const out = await fn(new PostgresClient({ client, inTransaction: true }));
+      tx = new PostgresClient({ client, inTransaction: true });
+      const out = await this.#als!.run(tx, () => fn(tx!));
       await client.query('COMMIT');
       return out;
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
     } finally {
+      if (tx) tx.#closed = true;
       client.release();
     }
   }

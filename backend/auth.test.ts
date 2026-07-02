@@ -99,14 +99,34 @@ test('getRequestedWorkspaceId falls back to the browser cookie', () => {
 });
 
 test('ensureWorkspaceUser rejects a requested workspace the profile is not a member of', async () => {
+  // A live workspace the operator does not belong to: the IDOR guard 403s.
+  insertUnaffiliatedProfile('other-tenant-user');
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO workspaces (id, slug, name, kind, settings_json, created_at, updated_at, revision)
+     VALUES ('other-tenant-workspace', 'other-tenant', 'Other Tenant', 'local', '{}', ?, ?, 1)`
+  ).run(now, now);
+  db.prepare(
+    `INSERT INTO workspace_users
+       (id, workspace_id, profile_id, member_key, status, metadata_json, created_at, updated_at, revision)
+     VALUES (?, 'other-tenant-workspace', 'other-tenant-user', 'auth:other-tenant-user', 'active', '{}', ?, ?, 1)`
+  ).run('other-tenant-membership', now, now);
+
   await assert.rejects(
-    () => ensureWorkspaceUser('operator-user', 'some-workspace-operator-never-joined'),
+    () => ensureWorkspaceUser('operator-user', 'other-tenant-workspace'),
     (err: unknown) => {
       assert.ok(err instanceof Error);
       assert.equal((err as { status?: number }).status, 403);
       return true;
     }
   );
+});
+
+test('ensureWorkspaceUser treats a requested workspace that no longer exists as a stale preference', async () => {
+  // A deleted/re-keyed workspace id in the cookie must not wedge the session:
+  // it falls back to the profile's default membership instead of erroring.
+  const membership = await ensureWorkspaceUser('operator-user', 'some-workspace-that-was-deleted');
+  assert.equal(membership?.workspace.id, 'local-workspace');
 });
 
 test('a request with no active workspace cleanly 403s through requirePermission instead of throwing', async () => {

@@ -16,6 +16,7 @@ import type {
 
 import {
   DATABASE_DIALECT,
+  findActiveMembershipId,
   getActiveProfileId,
   getActiveWorkspaceId,
   getActiveWorkspaceIdOrNull,
@@ -30,11 +31,13 @@ import {
 } from './db.ts';
 import { invitationEmailSenderFromEnv, inviteAcceptUrl } from './email-invitation.ts';
 import { ApiError } from './errors.ts';
-import { actorIsAdmin, requireAdmin } from './rbac.ts';
+import { actorIsAdmin } from './rbac.ts';
 import { syncSqlStudioForWorkspace } from './sql-studio-manager.ts';
 import {
+  logoUrlFromSettingsJson,
   readSqlStudioEnabled,
   readWorkspaceLogoUrl,
+  sqlStudioEnabledFromSettingsJson,
   writeSqlStudioEnabled,
   writeWorkspaceLogoUrl
 } from './workspace-settings.ts';
@@ -47,21 +50,22 @@ interface WorkspaceListRow {
   name: string;
   kind: string;
   created_at: string;
+  settings_json: string;
   project_count: number;
   member_count: number;
 }
 
-async function toWorkspaceDto(r: WorkspaceListRow): Promise<WorkspaceDto> {
+function toWorkspaceDto(r: WorkspaceListRow): WorkspaceDto {
   return {
     id: r.id,
     slug: r.slug,
     name: r.name,
     kind: r.kind,
-    isActive: r.id === getActiveWorkspaceId(),
+    isActive: r.id === getActiveWorkspaceIdOrNull(),
     projectCount: r.project_count,
     memberCount: r.member_count,
-    sqlStudioEnabled: await readSqlStudioEnabled({ workspaceId: r.id }),
-    logoUrl: await readWorkspaceLogoUrl({ workspaceId: r.id }),
+    sqlStudioEnabled: sqlStudioEnabledFromSettingsJson(r.settings_json),
+    logoUrl: logoUrlFromSettingsJson(r.settings_json),
     createdAt: r.created_at
   };
 }
@@ -75,12 +79,8 @@ function slugify(input: string): string {
   return base.length > 0 ? base : 'workspace';
 }
 
-function workspaceIdFromInput(input: string): string {
-  return slugify(input);
-}
-
 function desiredWorkspaceId(bodyId: string | undefined, name: string): string {
-  return bodyId?.trim() ? workspaceIdFromInput(bodyId) : workspaceIdFromInput(name);
+  return slugify(bodyId?.trim() ? bodyId : name);
 }
 
 async function ensureWorkspaceIdAvailable({
@@ -208,18 +208,21 @@ async function uniqueWorkspaceSlug({
 }
 
 /**
- * The local operator profile that new workspace memberships are attached to.
- * We reuse the profile behind the active workspace's actor so the operator
- * becomes a member of every workspace they create; failing that, the oldest
- * active human profile in the database.
+ * The profile acting in this request: the authenticated session/token profile,
+ * else the profile behind the currently-attributed workspace_user, else (the
+ * single-operator bootstrap path, where nothing is authenticated yet) the
+ * oldest active human profile in the database.
  */
-async function resolveLocalUserId(
+async function resolveCurrentProfileId(
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<string> {
-  if (getActorWorkspaceUserId()) {
+  const activeProfileId = getActiveProfileId();
+  if (activeProfileId) return activeProfileId;
+  const actorWorkspaceUserId = getActorWorkspaceUserId();
+  if (actorWorkspaceUserId) {
     const row = await client.get<{ profile_id: string }>(
       `SELECT profile_id FROM workspace_users WHERE id = ?`,
-      [getActorWorkspaceUserId()]
+      [actorWorkspaceUserId]
     );
     if (row) return row.profile_id;
   }
@@ -228,33 +231,30 @@ async function resolveLocalUserId(
        WHERE kind = 'human' AND status = 'active' AND deleted_at IS NULL
        ORDER BY created_at ASC LIMIT 1`
   );
-  if (!fallback) throw new ApiError(409, 'No local user exists to own the workspace');
+  if (!fallback) throw new ApiError(409, 'No local user profile exists');
   return fallback.id;
 }
 
-async function resolveCurrentProfileId(
-  client: DatabaseClient = requireDatabaseClient()
-): Promise<string> {
-  const activeProfileId = getActiveProfileId();
-  if (activeProfileId) return activeProfileId;
-  if (getActorWorkspaceUserId()) {
-    const row = await client.get<{ profile_id: string }>(
-      `SELECT profile_id FROM workspace_users WHERE id = ?`,
-      [getActorWorkspaceUserId()]
-    );
-    if (row) return row.profile_id;
+/**
+ * Require the calling profile to be an active member of `workspaceId` and
+ * return their workspace_user id there. Non-members get the same 404 as a
+ * nonexistent workspace so probing ids can't reveal which workspaces exist.
+ * This is the tenancy gate every workspace-scoped operation that takes a
+ * workspace id from the client must pass first — the route-level RBAC gate
+ * only checks roles in the caller's *active* workspace, not the target.
+ */
+async function requireWorkspaceMember(workspaceId: string): Promise<string> {
+  const membershipId = await findActiveMembershipId(workspaceId, await resolveCurrentProfileId());
+  if (!membershipId) {
+    throw new ApiError(404, 'Workspace not found or no active membership');
   }
-  return resolveLocalUserId(client);
+  return membershipId;
 }
 
+/** `requireWorkspaceMember`, plus an ADMIN role in that workspace. */
 async function requireWorkspaceAdmin(workspaceId: string): Promise<void> {
-  const membership = await requireDatabaseClient().get<{ id: string }>(
-    `SELECT id FROM workspace_users
-       WHERE workspace_id = ? AND profile_id = ? AND status = 'active' AND deleted_at IS NULL
-       ORDER BY created_at ASC LIMIT 1`,
-    [workspaceId, await resolveCurrentProfileId()]
-  );
-  if (!membership || !(await actorIsAdmin({ workspaceId, workspaceUserId: membership.id }))) {
+  const workspaceUserId = await requireWorkspaceMember(workspaceId);
+  if (!(await actorIsAdmin({ workspaceId, workspaceUserId }))) {
     throw new ApiError(403, 'Admin role required');
   }
 }
@@ -306,7 +306,7 @@ export async function grantWorkspaceAdminRole({
 export async function listWorkspaces(): Promise<WorkspaceDto[]> {
   const localUserId = await resolveCurrentProfileId();
   const rows = await requireDatabaseClient().all<WorkspaceListRow>(
-    `SELECT w.id, w.slug, w.name, w.kind, w.created_at,
+    `SELECT w.id, w.slug, w.name, w.kind, w.created_at, w.settings_json,
             (SELECT COUNT(*) FROM projects p
                WHERE p.workspace_id = w.id AND p.deleted_at IS NULL) AS project_count,
             (SELECT COUNT(*) FROM workspace_users m
@@ -320,7 +320,7 @@ export async function listWorkspaces(): Promise<WorkspaceDto[]> {
       ORDER BY w.created_at ASC`,
     [localUserId]
   );
-  return Promise.all(rows.map(toWorkspaceDto));
+  return rows.map(toWorkspaceDto);
 }
 
 /** Seed the workspace-level card statuses every new workspace starts with. */
@@ -597,11 +597,12 @@ interface WorkspaceRevisionRow {
   revision: number;
 }
 
-/** Update a workspace (rename) and return its refreshed DTO. */
+/** Update a workspace (rename, settings). Target-workspace ADMIN only. */
 export async function updateWorkspace(
   id: string,
   body: UpdateWorkspaceBody
 ): Promise<WorkspaceDto> {
+  await requireWorkspaceAdmin(id);
   await requireDatabaseClient().transaction(async tx => {
     const existing = await tx.get<WorkspaceRevisionRow>(
       `SELECT id, name, revision FROM workspaces WHERE id = ? AND deleted_at IS NULL`,
@@ -624,10 +625,13 @@ export async function updateWorkspace(
     }
 
     if (body.sqlStudioEnabled !== undefined) {
-      await requireAdmin();
-      const current = await readSqlStudioEnabled({ workspaceId: id });
+      const current = await readSqlStudioEnabled({ workspaceId: id, client: tx });
       if (body.sqlStudioEnabled !== current) {
-        await writeSqlStudioEnabled({ workspaceId: id, enabled: body.sqlStudioEnabled });
+        await writeSqlStudioEnabled({
+          workspaceId: id,
+          enabled: body.sqlStudioEnabled,
+          client: tx
+        });
         changed.push('settings_json');
         if (id === getActiveWorkspaceId()) {
           syncSqlStudioForWorkspace({ enabled: body.sqlStudioEnabled });
@@ -636,16 +640,15 @@ export async function updateWorkspace(
     }
 
     if (body.logoUrl !== undefined) {
-      await requireAdmin();
       const logoUrl = body.logoUrl?.trim() || null;
       // Accept absolute http(s) URLs or a server-relative path (e.g. an image
       // uploaded through the core upload service: `/api/storage/workspace-images/…`).
       if (logoUrl && !/^(https?:\/\/|\/)/i.test(logoUrl)) {
         throw new ApiError(400, 'Logo URL must be an http(s) URL or an uploaded image path');
       }
-      const current = await readWorkspaceLogoUrl({ workspaceId: id });
+      const current = await readWorkspaceLogoUrl({ workspaceId: id, client: tx });
       if (logoUrl !== current) {
-        await writeWorkspaceLogoUrl({ workspaceId: id, logoUrl });
+        await writeWorkspaceLogoUrl({ workspaceId: id, logoUrl, client: tx });
         if (!changed.includes('settings_json')) changed.push('settings_json');
       }
     }
@@ -683,9 +686,12 @@ export async function updateWorkspace(
  * Soft-delete a workspace (tombstone via `deleted_at`; projects and missions
  * inside it are preserved but unreachable until restored). The last remaining
  * workspace cannot be deleted. Deleting the active workspace activates the
- * oldest remaining one. Returns the refreshed workspace list.
+ * oldest remaining one. Target-workspace ADMIN only. Returns the refreshed
+ * workspace list.
  */
 export async function deleteWorkspace(id: string): Promise<WorkspaceDto[]> {
+  await requireWorkspaceAdmin(id);
+  const profileId = await resolveCurrentProfileId();
   await requireDatabaseClient().transaction(async tx => {
     const existing = await tx.get<WorkspaceRevisionRow>(
       `SELECT id, name, revision FROM workspaces WHERE id = ? AND deleted_at IS NULL`,
@@ -693,8 +699,19 @@ export async function deleteWorkspace(id: string): Promise<WorkspaceDto[]> {
     );
     if (!existing) throw new ApiError(404, 'Workspace not found');
 
-    const remaining = (await listWorkspaces()).filter(w => w.id !== id);
-    if (remaining.length === 0) {
+    // The caller must keep at least one workspace. Counted with `tx` — a call
+    // back into the root client (e.g. `listWorkspaces()`) would deadlock on
+    // the SQLite client's transaction mutex.
+    const remaining = await tx.get<{ count: number }>(
+      `SELECT COUNT(*) AS count
+         FROM workspaces w
+         JOIN workspace_users wu
+           ON wu.workspace_id = w.id AND wu.profile_id = ?
+          AND wu.status = 'active' AND wu.deleted_at IS NULL
+        WHERE w.deleted_at IS NULL AND w.id <> ?`,
+      [profileId, id]
+    );
+    if ((remaining?.count ?? 0) === 0) {
       throw new ApiError(409, 'Cannot delete the only workspace');
     }
 
@@ -754,15 +771,11 @@ async function listMemberRoleKeys({
   return rows.map(row => row.role_key);
 }
 
-/** Active members of a workspace (`workspace_users` joined to `profiles`). */
+/** Active members of a workspace (`workspace_users` joined to `profiles`). Members only. */
 export async function listWorkspaceMembers(workspaceId: string): Promise<WorkspaceMemberDto[]> {
-  const workspace = await requireDatabaseClient().get<{ id: string }>(
-    `SELECT id FROM workspaces WHERE id = ? AND deleted_at IS NULL`,
-    [workspaceId]
-  );
-  if (!workspace) throw new ApiError(404, 'Workspace not found');
+  await requireWorkspaceMember(workspaceId);
 
-  const localUserId = await resolveLocalUserId();
+  const currentProfileId = await resolveCurrentProfileId();
   const rows = await requireDatabaseClient().all<WorkspaceMemberRow>(
     `SELECT wu.id AS workspace_user_id, wu.profile_id,
             wu.created_at AS joined_at,
@@ -798,7 +811,7 @@ export async function listWorkspaceMembers(workspaceId: string): Promise<Workspa
         kind: r.kind,
         roleKeys,
         isAdmin: roleKeys.includes('ADMIN'),
-        isOperator: r.profile_id === localUserId,
+        isOperator: r.profile_id === currentProfileId,
         joinedAt: r.joined_at,
         avatarUrl
       };
@@ -1162,15 +1175,15 @@ export async function acceptWorkspaceInvitation(
       throw new ApiError(403, 'This invitation was sent to a different email address');
     }
 
-    const existingMembership = await tx.get<{ id: string }>(
-      `SELECT id FROM workspace_users
-         WHERE workspace_id = ? AND profile_id = ? AND status = 'active' AND deleted_at IS NULL`,
-      [invitation.workspace_id, profileId]
+    const existingMembershipId = await findActiveMembershipId(
+      invitation.workspace_id,
+      profileId,
+      tx
     );
 
     let workspaceUserId: string;
-    if (existingMembership) {
-      workspaceUserId = existingMembership.id;
+    if (existingMembershipId) {
+      workspaceUserId = existingMembershipId;
     } else {
       workspaceUserId = newId();
       await tx.run(
@@ -1432,15 +1445,7 @@ export async function activateWorkspace(id: string): Promise<WorkspaceDto[]> {
   // caller's own active workspace (this request's context, persisted for
   // future requests via the route's `ACTIVE_WORKSPACE_COOKIE`), never a
   // process-wide default that would affect other tenants' sessions.
-  const membership = await requireDatabaseClient().get<{ id: string }>(
-    `SELECT id FROM workspace_users
-       WHERE workspace_id = ? AND profile_id = ? AND status = 'active' AND deleted_at IS NULL
-       LIMIT 1`,
-    [id, await resolveCurrentProfileId()]
-  );
-  if (!membership) {
-    throw new ApiError(404, 'Workspace not found or no active membership');
-  }
+  await requireWorkspaceMember(id);
   if (!(await setActiveWorkspace(id))) throw new ApiError(404, 'Workspace not found');
   syncSqlStudioForWorkspace({ enabled: await readSqlStudioEnabled({ workspaceId: id }) });
   return listWorkspaces();
