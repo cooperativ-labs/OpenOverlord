@@ -947,6 +947,8 @@ Workspace-scoped storage backend configuration for durable objects. Buckets desc
 
 SQLite/local deployments may use `local_fs` buckets rooted on the local device. PostgreSQL/shared deployments should use a managed storage provider such as Supabase Storage, S3-compatible storage, or a Railway volume. Credentials must not be stored in this table; use deployment secrets and store only non-secret provider metadata.
 
+`workspace-images` is provisioned with one row per workspace (`backend/workspaces.ts` `seedWorkspaceStorageBucket`, run when a workspace is created), rooted at a folder keyed by workspace ID with an `images` subfolder inside (`local_path`/`settings_json.pathPrefix` = `workspace-images/<workspaceId>/images`). This isolates each workspace's images to their own folder/prefix so access can be scoped per workspace rather than sharing one flat directory.
+
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | Id | yes |  |

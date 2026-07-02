@@ -352,6 +352,22 @@ export function useUploadAvatar() {
   });
 }
 
+/**
+ * Upload an image to the `workspace-images` bucket via the core upload service
+ * and set it as the given workspace's logo in one step. Admin-only on the
+ * server side. Returns the updated workspace.
+ */
+export function useUploadWorkspaceLogo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ workspaceId, file }: { workspaceId: string; file: File }) => {
+      const stored = await api.uploadImage('workspace-images', file);
+      return api.updateWorkspace(workspaceId, { logoUrl: stored.url });
+    },
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
 export function useCreateUserToken() {
   const qc = useQueryClient();
   return useMutation({

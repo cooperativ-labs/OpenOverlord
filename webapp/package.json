@@ -1,11 +1,11 @@
 {
   "name": "@overlord/webapp",
-  "version": "0.2607021100.0",
+  "version": "0.2607021149.0",
   "private": true,
   "type": "module",
   "description": "Overlord React SPA that consumes the Overlord backend REST and realtime API.",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "scripts": {
     "dev": "concurrently -k -n server,web -c blue,magenta \"yarn dev:server\" \"yarn dev:web\"",

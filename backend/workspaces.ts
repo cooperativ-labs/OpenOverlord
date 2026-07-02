@@ -32,7 +32,12 @@ import { invitationEmailSenderFromEnv, inviteAcceptUrl } from './email-invitatio
 import { ApiError } from './errors.ts';
 import { actorIsAdmin, requireAdmin } from './rbac.ts';
 import { syncSqlStudioForWorkspace } from './sql-studio-manager.ts';
-import { readSqlStudioEnabled, writeSqlStudioEnabled } from './workspace-settings.ts';
+import {
+  readSqlStudioEnabled,
+  readWorkspaceLogoUrl,
+  writeSqlStudioEnabled,
+  writeWorkspaceLogoUrl
+} from './workspace-settings.ts';
 
 // ---- row shapes ----------------------------------------------------------
 
@@ -56,6 +61,7 @@ async function toWorkspaceDto(r: WorkspaceListRow): Promise<WorkspaceDto> {
     projectCount: r.project_count,
     memberCount: r.member_count,
     sqlStudioEnabled: await readSqlStudioEnabled({ workspaceId: r.id }),
+    logoUrl: await readWorkspaceLogoUrl({ workspaceId: r.id }),
     createdAt: r.created_at
   };
 }
@@ -350,6 +356,41 @@ async function seedWorkspaceStatuses({
   }
 }
 
+/**
+ * Provision the workspace's own `workspace-images` storage bucket, rooted at a
+ * folder keyed by the workspace ID (with an `images` subfolder inside it) so
+ * bytes and access are isolated per workspace — mirrors the row `004_storage.sql`
+ * seeds for the first workspace. `resolveBucket` (`backend/storage.ts`) looks
+ * bucket rows up by `(workspace_id, bucket_key)`, so every workspace needs its
+ * own row before a logo can be uploaded to it.
+ */
+async function seedWorkspaceStorageBucket({
+  workspaceId,
+  createdByWorkspaceUserId,
+  now,
+  client
+}: {
+  workspaceId: string;
+  createdByWorkspaceUserId: string;
+  now: string;
+  client: DatabaseClient;
+}): Promise<void> {
+  await client.run(
+    `INSERT INTO storage_buckets (
+       id, workspace_id, bucket_key, storage_backend, base_url, local_path, settings_json,
+       created_by_workspace_user_id, created_at, updated_at, revision
+     ) VALUES (?, ?, 'workspace-images', 'local_fs', NULL, ?, '{}', ?, ?, ?, 1)`,
+    [
+      newId(),
+      workspaceId,
+      `database/.local/storage/workspace-images/${workspaceId}/images`,
+      createdByWorkspaceUserId,
+      now,
+      now
+    ]
+  );
+}
+
 /** Create a workspace, add the local operator as an admin member, and make it active. */
 export async function createWorkspace(body: CreateWorkspaceBody): Promise<WorkspaceDto> {
   const creatorProfileId = await resolveCurrentProfileId();
@@ -383,6 +424,12 @@ export async function createWorkspace(body: CreateWorkspaceBody): Promise<Worksp
     await grantWorkspaceAdminRole({ workspaceId: nextWorkspaceId, workspaceUserId, client: tx });
 
     await seedWorkspaceStatuses({ workspaceId: nextWorkspaceId, now, client: tx });
+    await seedWorkspaceStorageBucket({
+      workspaceId: nextWorkspaceId,
+      createdByWorkspaceUserId: workspaceUserId,
+      now,
+      client: tx
+    });
 
     await recordChange(
       {
@@ -593,6 +640,21 @@ export async function updateWorkspace(
         if (id === getActiveWorkspaceId()) {
           syncSqlStudioForWorkspace({ enabled: body.sqlStudioEnabled });
         }
+      }
+    }
+
+    if (body.logoUrl !== undefined) {
+      await requireAdmin();
+      const logoUrl = body.logoUrl?.trim() || null;
+      // Accept absolute http(s) URLs or a server-relative path (e.g. an image
+      // uploaded through the core upload service: `/api/storage/workspace-images/…`).
+      if (logoUrl && !/^(https?:\/\/|\/)/i.test(logoUrl)) {
+        throw new ApiError(400, 'Logo URL must be an http(s) URL or an uploaded image path');
+      }
+      const current = await readWorkspaceLogoUrl({ workspaceId: id });
+      if (logoUrl !== current) {
+        await writeWorkspaceLogoUrl({ workspaceId: id, logoUrl });
+        if (!changed.includes('settings_json')) changed.push('settings_json');
       }
     }
 

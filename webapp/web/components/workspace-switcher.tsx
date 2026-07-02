@@ -58,6 +58,7 @@ export function WorkspaceSwitcher() {
           projectCount: 0,
           memberCount: 0,
           sqlStudioEnabled: false,
+          logoUrl: null,
           createdAt: ''
         }
       : null);

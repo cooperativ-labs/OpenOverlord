@@ -12,12 +12,18 @@ const harness = await bootstrapIntegrationTestDb({
   sqlitePath: path.join(tempDir, 'webapp.sqlite')
 });
 
-const { db, setActiveTokenAuth, setActiveWorkspaceUser, WORKSPACE } = await import('./db.ts');
+const { db, setActiveTokenAuth, setActiveWorkspace, setActiveWorkspaceUser, WORKSPACE } =
+  await import('./db.ts');
 const { ApiError } = await import('./errors.ts');
 const { requirePermission } = await import('./rbac.ts');
 const { createMission, createProject } = await import('./repository.ts');
-const { deleteObjectiveAttachment, resolveStoredObject, uploadObjectiveAttachment } =
-  await import('./storage.ts');
+const {
+  deleteObjectiveAttachment,
+  resolveStoredObject,
+  uploadObjectiveAttachment,
+  uploadWorkspaceImage
+} = await import('./storage.ts');
+const { createWorkspace } = await import('./workspaces.ts');
 
 function readRequestBody(req: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
@@ -143,5 +149,60 @@ test('s3 attachment uploads record metadata, reads are gated, and tombstones del
     await new Promise<void>((resolve, reject) =>
       server.close(error => (error ? reject(error) : resolve()))
     );
+  }
+});
+
+test('uploadWorkspaceImage stores the logo under a folder keyed by workspace ID, is admin-gated, and is servable back', async () => {
+  const pngBytes = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64'
+  );
+
+  try {
+    const workspace = await createWorkspace({ name: 'Storage Test Workspace' });
+
+    const stored = await uploadWorkspaceImage({
+      bytes: pngBytes,
+      filename: 'logo.png',
+      contentType: 'image/png'
+    });
+
+    assert.equal(stored.bucketKey, 'workspace-images');
+    assert.equal(stored.contentType, 'image/png');
+    assert.equal(stored.url, `/api/storage/workspace-images/${stored.storageKey}`);
+
+    // The bucket row provisioned for this workspace roots bytes in a folder
+    // keyed by its own workspace ID, with an `images` subfolder inside.
+    const bucketRow = db
+      .prepare(
+        `SELECT local_path FROM storage_buckets
+           WHERE workspace_id = ? AND bucket_key = 'workspace-images' AND deleted_at IS NULL`
+      )
+      .get(workspace.id) as { local_path: string };
+    assert.equal(
+      bucketRow.local_path,
+      `database/.local/storage/workspace-images/${workspace.id}/images`
+    );
+
+    const resolved = await resolveStoredObject('workspace-images', stored.storageKey);
+    assert.ok(resolved.absolutePath?.endsWith(`${workspace.id}/images/${stored.storageKey}`));
+
+    // A member without the workspace_image:create grant cannot upload a logo.
+    setActiveTokenAuth({
+      workspaceUserId: harness.operatorWorkspaceUserId,
+      tokenId: 'workspace-image-read-only-token',
+      scopeGrants: ['workspace_image:read']
+    });
+    await assert.rejects(
+      async () => await requirePermission(PERMISSIONS.WORKSPACE_IMAGE_CREATE),
+      (error: unknown) => error instanceof ApiError && error.status === 403
+    );
+  } finally {
+    setActiveTokenAuth({
+      workspaceUserId: harness.operatorWorkspaceUserId,
+      tokenId: null,
+      scopeGrants: null
+    });
+    setActiveWorkspaceUser(harness.operatorWorkspaceUserId);
   }
 });

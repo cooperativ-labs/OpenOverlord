@@ -54,7 +54,7 @@ export interface HostedS3SeedResult {
  */
 export function resolveHostedS3SettingsFromEnv(
   env: NodeJS.ProcessEnv = process.env
-): { settingsFor: (bucketKey: string) => S3BucketSettings } | null {
+): { settingsFor: (bucketKey: string, workspaceId: string) => S3BucketSettings } | null {
   const accessKeyId = env.S3_ACCESS_KEY_ID?.trim();
   const secretAccessKey = env.S3_SECRET_ACCESS_KEY?.trim();
   const endpoint = env.S3_ENDPOINT?.trim();
@@ -65,8 +65,17 @@ export function resolveHostedS3SettingsFromEnv(
   if (!accessKeyId || !secretAccessKey || !endpoint || !bucketName) return null;
 
   return {
-    settingsFor(bucketKey: string): S3BucketSettings {
-      const pathPrefix = basePrefix ? `${basePrefix}/${bucketKey}` : bucketKey;
+    settingsFor(bucketKey: string, workspaceId: string): S3BucketSettings {
+      // `workspace-images` is provisioned one row per workspace (see
+      // `backend/workspaces.ts` `seedWorkspaceStorageBucket`), so its S3 prefix
+      // is scoped by workspace ID too — mirroring the `local_fs` folder layout
+      // (`workspace-images/<workspaceId>/images`) and keeping access isolable
+      // per workspace. Other buckets keep a flat, bucket-key-only prefix.
+      const segments =
+        bucketKey === 'workspace-images'
+          ? [basePrefix, bucketKey, workspaceId]
+          : [basePrefix, bucketKey];
+      const pathPrefix = segments.filter(Boolean).join('/');
       return { bucketName, region, endpoint, pathPrefix };
     }
   };
@@ -116,18 +125,19 @@ export async function applyHostedS3StorageBackend(
   let updated = 0;
 
   for (const bucketKey of HOSTED_S3_BUCKET_KEYS) {
-    const desired = resolved.settingsFor(bucketKey);
     const rows = await client.all<{
       id: string;
+      workspace_id: string;
       storage_backend: string;
       settings_json: unknown;
     }>(
-      `SELECT id, storage_backend, settings_json FROM storage_buckets
+      `SELECT id, workspace_id, storage_backend, settings_json FROM storage_buckets
          WHERE bucket_key = ? AND deleted_at IS NULL`,
       [bucketKey]
     );
 
     for (const row of rows) {
+      const desired = resolved.settingsFor(bucketKey, row.workspace_id);
       const alreadyS3 = row.storage_backend === 's3';
       if (alreadyS3 && settingsMatch(parseSettings(row.settings_json), desired)) continue;
       await client.run(

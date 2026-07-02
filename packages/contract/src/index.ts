@@ -49,6 +49,8 @@ export interface WorkspaceDto {
   memberCount: number;
   /** Whether SQL Studio is enabled for this workspace (admin-managed). */
   sqlStudioEnabled: boolean;
+  /** URL of the workspace's logo image (admin-managed), or `null` when unset. */
+  logoUrl: string | null;
   createdAt: string;
 }
 
@@ -65,6 +67,12 @@ export interface UpdateWorkspaceBody {
   name?: string;
   /** Admin-only: enable or disable SQL Studio for this workspace. */
   sqlStudioEnabled?: boolean;
+  /**
+   * Admin-only: set or clear (`null`) the workspace logo. Must be an uploaded
+   * image path from the `workspace-images` bucket (`/api/storage/workspace-images/…`)
+   * or an absolute http(s) URL.
+   */
+  logoUrl?: string | null;
 }
 
 /**

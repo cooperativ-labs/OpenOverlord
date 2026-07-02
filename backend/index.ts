@@ -10,6 +10,7 @@ import { loadConfig } from '../cli/src/config.ts';
 import { isExplicitRuntimeEnv, resolveLayeredEnv } from '../cli/src/env.ts';
 import { ServiceError } from '../packages/core/service/errors.ts';
 import type { LocalTargetBridgeCall } from '../packages/core/service/local-target/desktop-bridge.ts';
+import type { StoredImageDto } from '../webapp/shared/contract.ts';
 
 import {
   ACTIVE_WORKSPACE_COOKIE,
@@ -137,8 +138,10 @@ import {
   MAX_IMAGE_BYTES,
   resolveStoredObject,
   serveStoredObject,
+  type UploadImageInput,
   uploadObjectiveAttachment,
-  uploadUserImage
+  uploadUserImage,
+  uploadWorkspaceImage
 } from './storage.ts';
 import { postExecutionTargetObservations } from './target-resource-observations.ts';
 import { readSqlStudioEnabled } from './workspace-settings.ts';
@@ -559,31 +562,47 @@ app.post(
 // The core upload service. `POST /api/uploads/:bucketKey` accepts raw image
 // bytes (the SPA streams a single File as the request body), persists them to
 // the bucket's storage backend, records provider-neutral metadata, and returns
-// a descriptor whose `url` serves the bytes back. Only the `user-images` bucket
-// is wired today; the surface is generic so other image buckets can reuse it.
+// a descriptor whose `url` serves the bytes back. `user-images` and
+// `workspace-images` are wired today; the surface is generic so other image
+// buckets can reuse it. Each bucket key requires its own permission (checked
+// inside the handler, since `requires` on `handle()` is fixed per route), so
+// e.g. only workspace admins can upload a workspace logo.
 //
 // The body is parsed as a raw Buffer here (overriding the global JSON parser for
 // this route) with the same ceiling the service enforces.
 
 const rawImageBody = express.raw({ type: () => true, limit: MAX_IMAGE_BYTES });
 
+const UPLOAD_HANDLERS: Record<
+  string,
+  { permission: Permission; upload: (input: UploadImageInput) => Promise<StoredImageDto> }
+> = {
+  'user-images': { permission: PERMISSIONS.USER_IMAGE_SELF_CREATE, upload: uploadUserImage },
+  'workspace-images': {
+    permission: PERMISSIONS.WORKSPACE_IMAGE_CREATE,
+    upload: uploadWorkspaceImage
+  }
+};
+
 app.post(
   '/api/uploads/:bucketKey',
   rawImageBody,
   handle(
-    req => {
-      if (req.params.bucketKey !== 'user-images') {
+    async req => {
+      const uploadHandler = UPLOAD_HANDLERS[req.params.bucketKey];
+      if (!uploadHandler) {
         throw new ApiError(404, `Uploads are not configured for bucket '${req.params.bucketKey}'`);
       }
+      await requirePermission(uploadHandler.permission);
       const headerName = req.header('x-upload-filename');
       const filename = headerName ? decodeURIComponent(headerName) : 'upload';
-      return uploadUserImage({
+      return uploadHandler.upload({
         bytes: Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0),
         filename,
         contentType: req.header('content-type') ?? ''
       });
     },
-    { mutates: true, requires: PERMISSIONS.USER_IMAGE_SELF_CREATE }
+    { mutates: true }
   )
 );
 

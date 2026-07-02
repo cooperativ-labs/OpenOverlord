@@ -13,9 +13,9 @@
  * deployments); the database holds metadata and backend keys only — see
  * database/docs/09-database-schema-contract.md (`storage_buckets`, `user_images`).
  *
- * Only the seeded `user-images` bucket is wired through a metadata writer today;
- * the bucket lookup, byte I/O, and serve path are generic so `workspace-images`
- * and `attachments` can reuse them with their own writers later.
+ * `user-images`, `workspace-images`, and `attachments` are each wired through
+ * their own metadata writer; the bucket lookup, byte I/O, and serve path are
+ * generic and shared across all three.
  */
 
 import type { DatabaseClient } from '@overlord/database';
@@ -204,6 +204,69 @@ export async function uploadUserImage(input: UploadImageInput): Promise<StoredIm
     await recordChange(
       {
         entityType: 'user_image',
+        entityId: written.id,
+        operation: 'insert',
+        entityRevision: 1
+      },
+      tx
+    );
+
+    return {
+      id: written.id,
+      bucketKey: bucket.bucket_key,
+      storageKey: written.storageKey,
+      filename,
+      contentType: written.contentType,
+      sizeBytes: written.sizeBytes,
+      url: written.publicUrl,
+      createdAt: now
+    };
+  });
+}
+
+/**
+ * Upload an image to the workspace's `workspace-images` bucket and record it
+ * as a workspace-owned image (e.g. a workspace logo). The bucket is resolved
+ * per active workspace (`resolveBucket` scopes by `WORKSPACE.id`), so each
+ * workspace's bytes live under their own `storage_buckets` row/folder —
+ * callers gate this to workspace admins (`PERMISSIONS.WORKSPACE_IMAGE_CREATE`).
+ */
+export async function uploadWorkspaceImage(input: UploadImageInput): Promise<StoredImageDto> {
+  const bucket = await resolveBucket('workspace-images');
+  const written = await writeImageObject(bucket, input);
+  const now = nowIso();
+  const filename = input.filename.trim() || `image${path.extname(written.storageKey)}`;
+
+  return requireDatabaseClient().transaction(async tx => {
+    await tx.run(
+      `INSERT INTO workspace_images (
+         id, workspace_id, storage_bucket_id, storage_key,
+         filename, content_type, size_bytes, checksum_sha256, public_url, metadata_json,
+         created_by_workspace_user_id, created_at, updated_at, revision
+       ) VALUES (
+         ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, '{}',
+         ?, ?, ?, 1
+       )`,
+      [
+        written.id,
+        WORKSPACE.id,
+        bucket.id,
+        written.storageKey,
+        filename,
+        written.contentType,
+        written.sizeBytes,
+        written.checksum,
+        written.publicUrl,
+        getActorWorkspaceUserId(),
+        now,
+        now
+      ]
+    );
+
+    await recordChange(
+      {
+        entityType: 'workspace_image',
         entityId: written.id,
         operation: 'insert',
         entityRevision: 1
@@ -518,6 +581,7 @@ export interface ResolvedStoredObject {
 /** Bucket → metadata table for buckets whose objects can be served back. */
 const SERVABLE_OBJECT_TABLES: Record<string, string> = {
   'user-images': 'user_images',
+  'workspace-images': 'workspace_images',
   attachments: 'attachments'
 };
 
