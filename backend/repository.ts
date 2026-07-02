@@ -11,6 +11,14 @@ import {
   loadMissionBranchObservationsForMissions,
   mergeMissionBranchObservation
 } from '../packages/core/service/mission-branch-observations.ts';
+import {
+  buildMissionSearchMatch,
+  missionSearchDocScoreExpr,
+  missionSearchFromClause,
+  missionSearchMatchPredicate,
+  missionSearchMissionIdColumn,
+  missionSearchWorkspaceParams
+} from '../packages/core/service/mission-search-sql.ts';
 import { resolveProjectExecutionTargetForLaunch } from '../packages/core/service/project-execution-target.ts';
 import {
   loadTargetResourceObservations,
@@ -2346,25 +2354,6 @@ export async function listMissions(projectId: string): Promise<MissionDto[]> {
   return rows.map(row => toMissionDto(row, tagsByMission.get(row.id) ?? []));
 }
 
-/**
- * Turn free-form input into an FTS5 MATCH expression: lowercase alphanumeric
- * runs become OR-combined prefix tokens. Lowercasing also neutralises FTS5's
- * uppercase boolean keywords, and stripping to alphanumeric runs keeps the
- * expression injection-safe. Returns null when there is nothing to match.
- */
-function buildMissionSearchMatch(query: string): string | null {
-  const terms = query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
-  if (terms.length === 0) return null;
-  return terms.map(term => `${term}*`).join(' OR ');
-}
-
-/**
- * Full-text mission search ranked across mission titles, objective text, and
- * mission-event summaries via the `search_documents` FTS index. Every matched
- * document is scored (title column and mission-kind weighted highest), then the
- * scores are summed per mission. Mirrors the CLI/protocol `searchMissions` service
- * so both surfaces rank identically. An empty query lists recent missions.
- */
 export async function searchMissions({
   query,
   projectId,
@@ -2374,7 +2363,10 @@ export async function searchMissions({
   projectId?: string | null;
   limit?: number;
 }): Promise<MissionDto[]> {
-  const match = query?.trim() ? buildMissionSearchMatch(query.trim()) : null;
+  const client = requireDatabaseClient();
+  const match = query?.trim()
+    ? buildMissionSearchMatch({ dialect: client.dialect, query: query.trim() })
+    : null;
 
   if (!match) {
     const sql = projectId
@@ -2389,7 +2381,8 @@ export async function searchMissions({
   }
 
   const projectFilter = projectId ? ' AND t.project_id = ?' : '';
-  const rows = (await requireDatabaseClient().all(
+  const missionIdColumn = missionSearchMissionIdColumn(client.dialect);
+  const rows = (await client.all(
     `SELECT t.id, t.workspace_id, t.project_id, t.display_id, t.sequence_number, t.title,
               t.status_id, t.status_type, t.board_position, t.priority,
               t.assigned_workspace_user_id,
@@ -2410,14 +2403,25 @@ export async function searchMissions({
                  WHERE o.mission_id = t.id AND o.deleted_at IS NULL
                    AND o.state IN ('draft', 'future') AND TRIM(o.instruction_text) != '')
                  AS has_pending_objective_with_instructions,
-              (CASE search_documents_fts.entity_type
-                 WHEN 'mission' THEN 3.0 WHEN 'objective' THEN 2.0 ELSE 1.0 END)
-                * (-bm25(search_documents_fts, 10.0, 1.0)) AS doc_score
-         FROM search_documents_fts
-         JOIN missions t ON t.id = search_documents_fts.mission_id
+              ${missionSearchDocScoreExpr(client.dialect)} AS doc_score
+         FROM ${missionSearchFromClause(client.dialect)}
+         JOIN missions t ON t.id = ${missionIdColumn}
            AND t.workspace_id = ? AND t.deleted_at IS NULL${projectFilter}
-        WHERE search_documents_fts MATCH ?`,
-    projectId ? [getActiveWorkspaceId(), projectId, match] : [getActiveWorkspaceId(), match]
+        WHERE ${missionSearchMatchPredicate(client.dialect)}`,
+    projectId
+      ? [
+          ...missionSearchWorkspaceParams({
+            dialect: client.dialect,
+            workspaceId: getActiveWorkspaceId(),
+            match
+          }),
+          projectId
+        ]
+      : missionSearchWorkspaceParams({
+          dialect: client.dialect,
+          workspaceId: getActiveWorkspaceId(),
+          match
+        })
   )) as Array<MissionRow & { doc_score: number }>;
 
   // Aggregate per-document scores into one relevance per mission, then rank.

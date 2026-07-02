@@ -4,6 +4,14 @@ import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import { resolveMissionId, resolveProjectId } from './context.js';
 import { ServiceError } from './errors.js';
+import {
+  buildMissionSearchMatch,
+  missionSearchDocScoreExpr,
+  missionSearchFromClause,
+  missionSearchMatchPredicate,
+  missionSearchMissionIdColumn,
+  missionSearchWorkspaceParams
+} from './mission-search-sql.js';
 import { initialTitleFromInstruction, newId, nowIso } from './util.js';
 
 export type ObjectiveSummary = {
@@ -626,22 +634,6 @@ export async function listMissions({
   }));
 }
 
-/**
- * Build an FTS5 MATCH expression from free-form user input.
- *
- * Each run of letters/digits becomes a lowercase prefix token (`term*`) so
- * partial words match, and tokens are OR-combined for recall — a mission surfaces
- * when any of its indexed documents (title, objective, or event) contains any
- * term, and ranking decides ordering. Lowercasing also neutralises the
- * uppercase-only FTS5 boolean keywords (`AND`/`OR`/`NOT`), and stripping to
- * alphanumeric runs keeps the expression injection-safe.
- */
-function buildFtsMatch(query: string): string | null {
-  const terms = query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
-  if (terms.length === 0) return null;
-  return terms.map(term => `${term}*`).join(' OR ');
-}
-
 export async function searchMissions({
   ctx,
   query,
@@ -656,7 +648,9 @@ export async function searchMissions({
   limit?: number;
 }): Promise<MissionSummary[]> {
   const trimmed = query?.trim();
-  const match = trimmed ? buildFtsMatch(trimmed) : null;
+  const match = trimmed
+    ? buildMissionSearchMatch({ dialect: ctx.db.dialect, query: trimmed })
+    : null;
 
   // No usable search terms → fall back to a recency-ordered browse of the same
   // filtered set rather than running an empty full-text query.
@@ -670,23 +664,23 @@ export async function searchMissions({
   }
 
   // Score every matching source document, then aggregate per mission below.
-  // Per-document relevance weights the title column above the body (bm25 column
-  // weights) and the source kind by importance (mission title > objective >
-  // event). bm25() returns smaller values for better matches, so we negate it to
-  // accumulate a higher-is-better score. The score is computed in a single
-  // full-text query without GROUP BY or a join back to `search_documents`,
-  // because either would move bm25() out of the context FTS5 allows it in.
-  const params: Array<string | number> = [ctx.workspace.id, match];
+  // Per-document relevance weights the title column above the body and the
+  // source kind by importance (mission title > objective > event). SQLite uses
+  // FTS5 bm25() (negated so higher is better); PostgreSQL uses ts_rank().
+  const params: Array<string | number> = missionSearchWorkspaceParams({
+    dialect: ctx.db.dialect,
+    workspaceId: ctx.workspace.id,
+    match
+  });
+  const missionIdColumn = missionSearchMissionIdColumn(ctx.db.dialect);
   let sql = `SELECT t.id, t.display_id, t.project_id, t.title, t.status_type, t.status_id,
                     t.priority, t.created_at, t.updated_at,
                     (SELECT COUNT(*) FROM objectives o WHERE o.mission_id = t.id AND o.deleted_at IS NULL) AS objective_count,
-                    (CASE search_documents_fts.entity_type
-                       WHEN 'mission' THEN 3.0 WHEN 'objective' THEN 2.0 ELSE 1.0 END)
-                      * (-bm25(search_documents_fts, 10.0, 1.0)) AS doc_score
-             FROM search_documents_fts
-             JOIN missions t ON t.id = search_documents_fts.mission_id
+                    ${missionSearchDocScoreExpr(ctx.db.dialect)} AS doc_score
+             FROM ${missionSearchFromClause(ctx.db.dialect)}
+             JOIN missions t ON t.id = ${missionIdColumn}
                AND t.workspace_id = ? AND t.deleted_at IS NULL
-             WHERE search_documents_fts MATCH ?`;
+             WHERE ${missionSearchMatchPredicate(ctx.db.dialect)}`;
 
   if (projectId) {
     sql += ' AND t.project_id = ?';
