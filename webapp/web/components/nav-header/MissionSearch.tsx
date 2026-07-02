@@ -190,7 +190,7 @@ export function MissionSearch({ className }: MissionSearchProps) {
           <ul
             role="listbox"
             id={listboxId}
-            className="absolute left-0 top-full z-20 mt-2 w-full overflow-hidden rounded-xl border border-border bg-card shadow-xl"
+            className="absolute left-0 top-full z-20 mt-2 w-full max-h-[80vh] overflow-y-auto rounded-xl border border-border bg-card shadow-xl"
           >
             {results.map((mission, index) => {
               const isActive = index === activeIndex;
