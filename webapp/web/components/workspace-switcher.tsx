@@ -20,11 +20,22 @@ import {
 import { WorkspaceCreatorModal } from '@/components/workspaces/WorkspaceCreatorModal';
 import { WorkspaceSettingsModal } from '@/components/workspaces/WorkspaceSettingsModal';
 import { useActivateWorkspace, useMeta, useWorkspaces } from '@/lib/queries';
+import { useAuthenticatedMediaUrl } from '@/lib/use-authenticated-media-url.ts';
 
 import type { WorkspaceDto } from '../../shared/contract.ts';
 
 function WorkspaceGlyph({ workspace }: { workspace: WorkspaceDto | null }) {
   const initial = workspace?.name.trim().charAt(0).toUpperCase();
+  const logoUrl = useAuthenticatedMediaUrl(workspace?.logoUrl);
+
+  if (logoUrl) {
+    return (
+      <div className="flex aspect-square size-8 items-center justify-center overflow-hidden rounded-lg bg-sidebar-primary">
+        <img src={logoUrl} alt="" className="size-full object-cover" />
+      </div>
+    );
+  }
+
   return (
     <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
       {initial ? (
