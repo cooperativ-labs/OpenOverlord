@@ -8,7 +8,7 @@ import type {
   WorkspaceMemberDto,
   WorkspaceStatusDto
 } from '../../shared/contract.ts';
-import { EmptyState, Spinner } from '../components/ui.tsx';
+import { Button, EmptyState, Spinner } from '../components/ui.tsx';
 import { ApiRequestError } from '../lib/api.ts';
 import { readLastUsedProjectId, writeLastUsedProjectId } from '../lib/last-used-project.ts';
 import {
@@ -22,10 +22,17 @@ import {
 } from '../lib/queries.ts';
 
 import type { BlankMissionCreateOptions } from './BlankMissionCard.tsx';
-import { type BoardView, type ColumnMap, resolveColumnMissions } from './board-shared.ts';
+import {
+  type BoardView,
+  type ColumnMap,
+  getMissionTags,
+  resolveColumnMissions
+} from './board-shared.ts';
 import type { BoardColumnStatus } from './BoardColumn.tsx';
 import { MissionListView } from './MissionListView.tsx';
+import { MissionStatusFilterDropdown } from './MissionStatusFilterDropdown.tsx';
 import { MissionsViewToggle } from './MissionsViewToggle.tsx';
+import { MissionTagFilterDropdown } from './MissionTagFilterDropdown.tsx';
 import { MyMissionsColumn } from './MyMissionsColumn.tsx';
 import { SortableMissionCard } from './SortableMissionCard.tsx';
 import { useMyMissionsDnd } from './useMyMissionsDnd.ts';
@@ -78,6 +85,8 @@ export function MyMissionsPage() {
   const membersQ = useWorkspaceMembers(workspaceId);
 
   const [view, setView] = useState<BoardView>(() => readStoredView());
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [selectedStatusIds, setSelectedStatusIds] = useState<string[]>([]);
   const [alert, setAlert] = useState<string | null>(null);
 
   const statuses = useMemo(() => statusesQ.data ?? [], [statusesQ.data]);
@@ -95,6 +104,67 @@ export function MyMissionsPage() {
     for (const t of missions) map.set(t.id, t);
     return map;
   }, [missions]);
+
+  const tagOptions = useMemo(() => {
+    const byId = new Map<string, { id: string; label: string; color: string | null }>();
+    for (const mission of missions) {
+      for (const tag of getMissionTags(mission)) {
+        if (!byId.has(tag.id)) byId.set(tag.id, tag);
+      }
+    }
+    return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [missions]);
+
+  useEffect(() => {
+    if (selectedTagIds.length === 0) return;
+    const validIds = new Set(tagOptions.map(tag => tag.id));
+    const next = selectedTagIds.filter(id => validIds.has(id));
+    if (next.length !== selectedTagIds.length) setSelectedTagIds(next);
+  }, [selectedTagIds, tagOptions]);
+
+  useEffect(() => {
+    if (selectedStatusIds.length === 0) return;
+    const validIds = new Set(statuses.map(status => status.id));
+    const next = selectedStatusIds.filter(id => validIds.has(id));
+    if (next.length !== selectedStatusIds.length) setSelectedStatusIds(next);
+  }, [selectedStatusIds, statuses]);
+
+  const selectedTagIdSet = useMemo(() => new Set(selectedTagIds), [selectedTagIds]);
+  const selectedStatusIdSet = useMemo(() => new Set(selectedStatusIds), [selectedStatusIds]);
+  const filteredMissions = useMemo(() => {
+    let result = missions;
+    if (selectedStatusIds.length > 0) {
+      result = result.filter(mission => selectedStatusIdSet.has(mission.statusId));
+    }
+    if (selectedTagIds.length > 0) {
+      result = result.filter(mission =>
+        getMissionTags(mission).some(tag => selectedTagIdSet.has(tag.id))
+      );
+    }
+    return result;
+  }, [
+    selectedStatusIdSet,
+    selectedStatusIds.length,
+    selectedTagIdSet,
+    selectedTagIds.length,
+    missions
+  ]);
+
+  const isTagFilterActive = selectedTagIds.length > 0;
+  const isStatusFilterActive = selectedStatusIds.length > 0;
+  const isFilterActive = isTagFilterActive || isStatusFilterActive;
+  const visibleStatuses = useMemo(
+    () =>
+      isStatusFilterActive
+        ? statuses.filter(status => selectedStatusIdSet.has(status.id))
+        : statuses,
+    [isStatusFilterActive, selectedStatusIdSet, statuses]
+  );
+
+  const clearFilters = useCallback(() => {
+    setSelectedTagIds([]);
+    setSelectedStatusIds([]);
+  }, []);
 
   // Server returns merge order (positioned first, then fallback); preserve it per
   // column. Any mission whose status is no longer an active workspace column falls
@@ -125,6 +195,19 @@ export function MyMissionsPage() {
     return cols;
   }, [baseColumns, uncategorized]);
 
+  const filteredColumns = useMemo<ColumnMap>(() => {
+    const visibleMissionIds = new Set(filteredMissions.map(mission => mission.id));
+    const map: ColumnMap = {};
+    for (const status of statuses) {
+      map[status.id] = (baseColumns[status.id] ?? []).filter(id => visibleMissionIds.has(id));
+    }
+    const filteredUncategorized = uncategorized.filter(id => visibleMissionIds.has(id));
+    if (filteredUncategorized.length > 0) {
+      map[UNCATEGORIZED_ID] = filteredUncategorized;
+    }
+    return map;
+  }, [baseColumns, filteredMissions, statuses, uncategorized]);
+
   const onReorderError = useCallback(
     (status: WorkspaceStatusDto, error: unknown) => {
       setAlert(describeReorderError(status, error, workspaceName));
@@ -138,16 +221,24 @@ export function MyMissionsPage() {
     onReorderError
   });
   const { activeId, displayColumns, dndContextProps } = myMissionsDnd;
+  const visibleColumns = isFilterActive ? filteredColumns : displayColumns;
+
+  const listDnd = useMyMissionsDnd({
+    columns: visibleColumns,
+    statuses: visibleStatuses,
+    onReorderError,
+    draggable: !isFilterActive
+  });
 
   // The list view groups by the same workspace statuses as the board, plus the
   // Uncategorized bucket when any mission's status isn't an active column.
   const listStatuses = useMemo<BoardColumnStatus[]>(() => {
-    const items: BoardColumnStatus[] = [...statuses];
-    if (uncategorized.length > 0) {
+    const items: BoardColumnStatus[] = [...visibleStatuses];
+    if (!isStatusFilterActive && (visibleColumns[UNCATEGORIZED_ID] ?? []).length > 0) {
       items.push({ id: UNCATEGORIZED_ID, name: 'Uncategorized', type: null });
     }
     return items;
-  }, [statuses, uncategorized.length]);
+  }, [isStatusFilterActive, visibleColumns, visibleStatuses]);
 
   const handleViewChange = (next: BoardView) => {
     setView(next);
@@ -259,8 +350,8 @@ export function MyMissionsPage() {
 
   const renderColumns = (draggable: boolean) => (
     <>
-      {statuses.map(status => {
-        const colMissions = resolveColumnMissions(displayColumns[status.id] ?? [], missionById);
+      {visibleStatuses.map(status => {
+        const colMissions = resolveColumnMissions(visibleColumns[status.id] ?? [], missionById);
         return (
           <MyMissionsColumn
             key={status.id}
@@ -279,13 +370,13 @@ export function MyMissionsPage() {
           />
         );
       })}
-      {uncategorized.length > 0 ? (
+      {!isStatusFilterActive && (visibleColumns[UNCATEGORIZED_ID] ?? []).length > 0 ? (
         <MyMissionsColumn
           droppableId={UNCATEGORIZED_ID}
           title="Uncategorized"
           type={null}
-          missions={resolveColumnMissions(displayColumns[UNCATEGORIZED_ID] ?? [], missionById)}
-          count={(displayColumns[UNCATEGORIZED_ID] ?? []).length}
+          missions={resolveColumnMissions(visibleColumns[UNCATEGORIZED_ID] ?? [], missionById)}
+          count={(visibleColumns[UNCATEGORIZED_ID] ?? []).length}
           defaultProjectId={defaultCreateProjectId}
           membersByWorkspaceUserId={membersByWorkspaceUserId}
           selectedMissionId={selectedMissionId}
@@ -301,9 +392,35 @@ export function MyMissionsPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <header className="shrink-0 min-w-0">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--color-border) px-5 py-3">
+        <div className="border-b border-(--color-border) px-5 py-3">
           <h1 className="text-sm font-semibold">My Missions</h1>
-          <MissionsViewToggle value={view} onChange={handleViewChange} />
+        </div>
+        <div className="flex flex-wrap items-center gap-2 border-(--color-border) px-5 mt-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <MissionsViewToggle value={view} onChange={handleViewChange} />
+            <MissionStatusFilterDropdown
+              statuses={statuses}
+              selectedStatusIds={selectedStatusIds}
+              onClear={() => setSelectedStatusIds([])}
+              onToggle={statusId =>
+                setSelectedStatusIds(current =>
+                  current.includes(statusId)
+                    ? current.filter(id => id !== statusId)
+                    : [...current, statusId]
+                )
+              }
+            />
+            <MissionTagFilterDropdown
+              tagOptions={tagOptions}
+              selectedTagIds={selectedTagIds}
+              onClear={() => setSelectedTagIds([])}
+              onToggle={tagId =>
+                setSelectedTagIds(current =>
+                  current.includes(tagId) ? current.filter(id => id !== tagId) : [...current, tagId]
+                )
+              }
+            />
+          </div>
         </div>
         {alert ? (
           <div className="flex items-start justify-between gap-3 border-b border-amber-500/30 bg-amber-500/10 px-5 py-2 text-sm text-amber-700 dark:text-amber-300">
@@ -320,12 +437,24 @@ export function MyMissionsPage() {
         ) : null}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-auto p-3 px-5">
+      <div className="min-h-0 flex-1 overflow-auto pt-3 px-5">
         {missions.length === 0 ? (
           <EmptyState
             title="No missions are assigned to you"
             hint="Missions assigned to you across this workspace's projects show up here, grouped by status."
           />
+        ) : filteredMissions.length === 0 ? (
+          <EmptyState
+            title="No missions match these filters"
+            hint="Clear the active filters to show every mission assigned to you."
+            action={
+              <Button variant="secondary" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            }
+          />
+        ) : view === 'board' && isFilterActive ? (
+          <div className="flex h-full min-h-0 items-stretch gap-2">{renderColumns(false)}</div>
         ) : view === 'board' ? (
           <DndContext {...dndContextProps}>
             <div className="flex h-full min-h-0 items-stretch gap-4">{renderColumns(true)}</div>
@@ -350,7 +479,7 @@ export function MyMissionsPage() {
         ) : (
           <MissionListView
             statuses={listStatuses}
-            dnd={myMissionsDnd}
+            dnd={listDnd}
             missionById={missionById}
             projectId={defaultCreateProjectId}
             projectName=""

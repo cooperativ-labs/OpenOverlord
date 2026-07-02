@@ -28,11 +28,13 @@ import { type BoardDndResult, type ColumnMap, columnMapsEqual } from './board-sh
 export function useMyMissionsDnd({
   columns,
   statuses,
-  onReorderError
+  onReorderError,
+  draggable = true
 }: {
   columns: ColumnMap;
   statuses: WorkspaceStatusDto[];
   onReorderError: (status: WorkspaceStatusDto, error: unknown) => void;
+  draggable?: boolean;
 }): BoardDndResult {
   const reorder = useReorderMyMissions();
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -45,10 +47,12 @@ export function useMyMissionsDnd({
     }
   }, [activeId, override, columns]);
 
-  const sensors = useSensors(
+  const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
+  const noSensors = useSensors();
+  const sensors = draggable ? dndSensors : noSensors;
 
   const collisionDetection = useCallback((...args: Parameters<typeof pointerWithin>) => {
     const hits = pointerWithin(...args);
