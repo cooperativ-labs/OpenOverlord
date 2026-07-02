@@ -276,6 +276,16 @@ export function BoardPage() {
   );
   const visibleColumns = isFilterActive ? filteredColumns : displayColumns;
 
+  // The list view keeps its own drag instance (fed the filtered/visible subset,
+  // with dragging disabled while a filter hides part of the true column order)
+  // separate from the board view's unfiltered instance above.
+  const listDnd = useBoardColumnDnd({
+    columns: visibleColumns,
+    statuses: visibleStatuses,
+    projectId,
+    draggable: !isFilterActive
+  });
+
   const clearFilters = useCallback(() => {
     setSelectedTagIds([]);
     setSelectedStatusIds([]);
@@ -408,14 +418,13 @@ export function BoardPage() {
         ) : (
           <MissionListView
             statuses={visibleStatuses}
-            columns={visibleColumns}
+            dnd={listDnd}
             missionById={missionById}
             projectId={projectId}
             projectName={projectName}
             projectColor={projectColor}
             membersByWorkspaceUserId={membersByWorkspaceUserId}
             selectedMissionId={selectedMissionId}
-            draggable={!isFilterActive}
             onCreateMission={handleCreateMissionFromColumn}
             onCreateAndOpenMission={handleCreateAndOpenMissionFromColumn}
             onCompleteMission={completeStatusId ? handleCompleteMission : undefined}

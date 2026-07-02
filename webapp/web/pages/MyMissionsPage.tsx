@@ -15,6 +15,7 @@ import {
   useCreateMission,
   useMeta,
   useProjects,
+  useSetMissionStatus,
   useWorkspaceMembers,
   useWorkspaceMyMissions,
   useWorkspaceStatuses
@@ -22,6 +23,8 @@ import {
 
 import type { BlankMissionCreateOptions } from './BlankMissionCard.tsx';
 import { type BoardView, type ColumnMap, resolveColumnMissions } from './board-shared.ts';
+import type { BoardColumnStatus } from './BoardColumn.tsx';
+import { MissionListView } from './MissionListView.tsx';
 import { MissionsViewToggle } from './MissionsViewToggle.tsx';
 import { MyMissionsColumn } from './MyMissionsColumn.tsx';
 import { SortableMissionCard } from './SortableMissionCard.tsx';
@@ -65,6 +68,7 @@ export function MyMissionsPage() {
   const myMissionsQ = useWorkspaceMyMissions();
   const projectsQ = useProjects();
   const createMission = useCreateMission();
+  const setMissionStatus = useSetMissionStatus();
 
   const missionMatch = useMatch({ from: '/workspace/missions/$missionId', shouldThrow: false });
   const selectedMissionId = missionMatch?.params.missionId;
@@ -128,11 +132,22 @@ export function MyMissionsPage() {
     [workspaceName]
   );
 
-  const { activeId, displayColumns, dndContextProps } = useMyMissionsDnd({
+  const myMissionsDnd = useMyMissionsDnd({
     columns: columnsForDnd,
     statuses,
     onReorderError
   });
+  const { activeId, displayColumns, dndContextProps } = myMissionsDnd;
+
+  // The list view groups by the same workspace statuses as the board, plus the
+  // Uncategorized bucket when any mission's status isn't an active column.
+  const listStatuses = useMemo<BoardColumnStatus[]>(() => {
+    const items: BoardColumnStatus[] = [...statuses];
+    if (uncategorized.length > 0) {
+      items.push({ id: UNCATEGORIZED_ID, name: 'Uncategorized', type: null });
+    }
+    return items;
+  }, [statuses, uncategorized.length]);
 
   const handleViewChange = (next: BoardView) => {
     setView(next);
@@ -144,6 +159,31 @@ export function MyMissionsPage() {
       void navigate({ to: '/workspace/missions/$missionId', params: { missionId } });
     },
     [navigate]
+  );
+
+  // The list-row checkbox marks a mission complete by moving it into the
+  // workspace status whose type is `complete`, mirroring the project board.
+  const completeStatusId = useMemo(
+    () => statuses.find(status => status.type === 'complete')?.id ?? null,
+    [statuses]
+  );
+
+  const handleCompleteMission = useCallback(
+    (missionId: string) => {
+      if (!completeStatusId) return;
+      void setMissionStatus.mutateAsync({ missionId, statusId: completeStatusId });
+    },
+    [completeStatusId, setMissionStatus]
+  );
+
+  const getMissionCardContext = useCallback(
+    (mission: MyMissionDto) => ({
+      projectId: mission.projectId,
+      projectName: mission.projectName,
+      projectColor: mission.projectColor,
+      onOpen: () => openMission(mission.id)
+    }),
+    [openMission]
   );
 
   const createMissionInColumn = useCallback(
@@ -308,7 +348,22 @@ export function MyMissionsPage() {
             </DragOverlay>
           </DndContext>
         ) : (
-          <div className="flex flex-col gap-6">{renderColumns(false)}</div>
+          <MissionListView
+            statuses={listStatuses}
+            dnd={myMissionsDnd}
+            missionById={missionById}
+            projectId={defaultCreateProjectId}
+            projectName=""
+            projectColor={null}
+            createProjectId={defaultCreateProjectId}
+            createStatusScope="workspace"
+            membersByWorkspaceUserId={membersByWorkspaceUserId}
+            selectedMissionId={selectedMissionId}
+            getMissionCardContext={getMissionCardContext}
+            onCreateMission={handleCreateMissionFromColumn}
+            onCreateAndOpenMission={handleCreateAndOpenMissionFromColumn}
+            onCompleteMission={completeStatusId ? handleCompleteMission : undefined}
+          />
         )}
       </div>
     </div>

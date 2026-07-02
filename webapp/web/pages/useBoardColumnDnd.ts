@@ -15,16 +15,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { WorkspaceStatusDto } from '../../shared/contract.ts';
 import { useReorderBoardColumn } from '../lib/queries.ts';
 
-import { type ColumnMap, columnMapsEqual } from './board-shared.ts';
-
-type DndContextProps = {
-  sensors: ReturnType<typeof useSensors>;
-  collisionDetection: typeof closestCenter;
-  onDragStart: (event: DragStartEvent) => void;
-  onDragOver: (event: DragOverEvent) => void;
-  onDragEnd: (event: DragEndEvent) => void;
-  onDragCancel: () => void;
-};
+import { type BoardDndResult, type ColumnMap, columnMapsEqual } from './board-shared.ts';
 
 /**
  * Shared drag-and-drop state machine for the project board's columns. Both the
@@ -46,14 +37,10 @@ export function useBoardColumnDnd({
   draggable = true
 }: {
   columns: ColumnMap;
-  statuses: WorkspaceStatusDto[];
+  statuses: Pick<WorkspaceStatusDto, 'id' | 'type'>[];
   projectId: string;
   draggable?: boolean;
-}): {
-  activeId: string | null;
-  displayColumns: ColumnMap;
-  dndContextProps: DndContextProps;
-} {
+}): BoardDndResult {
   const reorder = useReorderBoardColumn();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [override, setOverride] = useState<ColumnMap | null>(null);

@@ -15,16 +15,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { WorkspaceStatusDto } from '../../shared/contract.ts';
 import { useReorderMyMissions } from '../lib/queries.ts';
 
-import { type ColumnMap, columnMapsEqual } from './board-shared.ts';
-
-type DndContextProps = {
-  sensors: ReturnType<typeof useSensors>;
-  collisionDetection: typeof closestCenter;
-  onDragStart: (event: DragStartEvent) => void;
-  onDragOver: (event: DragOverEvent) => void;
-  onDragEnd: (event: DragEndEvent) => void;
-  onDragCancel: () => void;
-};
+import { type BoardDndResult, type ColumnMap, columnMapsEqual } from './board-shared.ts';
 
 /**
  * Drag-and-drop state machine for the My Missions aggregate board. Mirrors the
@@ -42,11 +33,7 @@ export function useMyMissionsDnd({
   columns: ColumnMap;
   statuses: WorkspaceStatusDto[];
   onReorderError: (status: WorkspaceStatusDto, error: unknown) => void;
-}): {
-  activeId: string | null;
-  displayColumns: ColumnMap;
-  dndContextProps: DndContextProps;
-} {
+}): BoardDndResult {
   const reorder = useReorderMyMissions();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [override, setOverride] = useState<ColumnMap | null>(null);

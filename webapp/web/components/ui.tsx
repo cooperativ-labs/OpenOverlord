@@ -93,6 +93,16 @@ export const STATUS_CONFIG: Record<StatusType, StatusStyle> = {
   }
 };
 
+/** Style for pseudo-status groups with no `StatusType` (e.g. My Missions' Uncategorized bucket). */
+export const UNCATEGORIZED_STATUS_STYLE: StatusStyle = {
+  label: 'Uncategorized',
+  icon: CircleSlash,
+  text: 'text-muted-foreground',
+  bg: 'bg-muted',
+  rail: 'border-l-border',
+  rule: 'bg-border'
+};
+
 export const STATUS_LABEL: Record<StatusType, string> = Object.fromEntries(
   Object.entries(STATUS_CONFIG).map(([type, style]) => [type, style.label])
 ) as Record<StatusType, string>;

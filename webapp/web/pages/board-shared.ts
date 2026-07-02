@@ -1,3 +1,11 @@
+import type {
+  closestCenter,
+  DragEndEvent,
+  DragOverEvent,
+  DragStartEvent,
+  useSensors
+} from '@dnd-kit/core';
+
 import type { MissionDto, WorkspaceMemberDto, WorkspaceStatusDto } from '../../shared/contract.ts';
 
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
@@ -5,6 +13,26 @@ export const BOARD_VIEW_STORAGE_PREFIX = 'overlord:project-board-view:';
 
 export type BoardView = 'board' | 'list';
 export type ColumnMap = Record<string, string[]>;
+
+/**
+ * Shared shape returned by the board/column drag-and-drop hooks
+ * (`useBoardColumnDnd`, `useMyMissionsDnd`). Both the project board and My
+ * Missions own their hook instance at the page level — since each persists
+ * reordering through a different mutation (project- vs workspace-scoped) —
+ * and pass the resulting state down to the presentational `MissionListView`.
+ */
+export type BoardDndResult = {
+  activeId: string | null;
+  displayColumns: ColumnMap;
+  dndContextProps: {
+    sensors: ReturnType<typeof useSensors>;
+    collisionDetection: typeof closestCenter;
+    onDragStart: (event: DragStartEvent) => void;
+    onDragOver: (event: DragOverEvent) => void;
+    onDragEnd: (event: DragEndEvent) => void;
+    onDragCancel: () => void;
+  };
+};
 
 export type MissionTagFilterOption = { id: string; label: string; color: string | null };
 

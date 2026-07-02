@@ -1,39 +1,48 @@
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { useCallback, useMemo, useState } from 'react';
 
-import { STATUS_CONFIG } from '@/components/ui.tsx';
+import { STATUS_CONFIG, UNCATEGORIZED_STATUS_STYLE } from '@/components/ui.tsx';
 
-import type { MissionDto, WorkspaceMemberDto, WorkspaceStatusDto } from '../../shared/contract.ts';
+import type { MissionDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 
 import { type BlankMissionCreateOptions } from './BlankMissionCard.tsx';
-import { type ColumnMap, resolveAssignee, resolveColumnMissions } from './board-shared.ts';
+import { type BoardDndResult, resolveAssignee, resolveColumnMissions } from './board-shared.ts';
+import type { BoardColumnStatus, MissionCardContext } from './BoardColumn.tsx';
 import { MissionListCard } from './MissionListCard.tsx';
 import { MissionListStatusGroup } from './MissionListStatusGroup.tsx';
-import { useBoardColumnDnd } from './useBoardColumnDnd.ts';
 
-export function MissionListView({
+export function MissionListView<TMission extends MissionDto = MissionDto>({
   statuses,
-  columns,
+  dnd,
   missionById,
   projectId,
   projectName,
   projectColor,
+  createProjectId = projectId,
+  createStatusScope = 'project',
   membersByWorkspaceUserId,
   selectedMissionId,
-  draggable = true,
+  getMissionCardContext,
   onCreateMission,
   onCreateAndOpenMission,
   onCompleteMission
 }: {
-  statuses: WorkspaceStatusDto[];
-  columns: ColumnMap;
-  missionById: Map<string, MissionDto>;
+  statuses: BoardColumnStatus[];
+  /**
+   * Drag state owned by the page, from `useBoardColumnDnd` (project board,
+   * project-scoped reorder) or `useMyMissionsDnd` (My Missions, workspace-scoped
+   * reorder across projects) — see `BoardDndResult`.
+   */
+  dnd: BoardDndResult;
+  missionById: Map<string, TMission>;
   projectId: string;
   projectName: string;
   projectColor: string | null;
+  createProjectId?: string;
+  createStatusScope?: 'project' | 'workspace';
   membersByWorkspaceUserId: Map<string, WorkspaceMemberDto>;
   selectedMissionId?: string;
-  draggable?: boolean;
+  getMissionCardContext?: (mission: TMission) => MissionCardContext;
   onCreateMission?: (
     statusId: string,
     objective: string,
@@ -49,12 +58,7 @@ export function MissionListView({
   onCompleteMission?: (missionId: string) => void;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
-  const { activeId, displayColumns, dndContextProps } = useBoardColumnDnd({
-    columns,
-    statuses,
-    projectId,
-    draggable
-  });
+  const { activeId, displayColumns, dndContextProps } = dnd;
 
   const toggleCollapse = useCallback((statusId: string) => {
     setCollapsed(prev => {
@@ -79,6 +83,10 @@ export function MissionListView({
     [statuses, displayColumns, missionById]
   );
 
+  const activeCardContext = activeMission
+    ? (getMissionCardContext?.(activeMission) ?? { projectId, projectName, projectColor })
+    : undefined;
+
   return (
     <DndContext {...dndContextProps}>
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-3">
@@ -86,15 +94,18 @@ export function MissionListView({
           <MissionListStatusGroup
             key={status.id}
             status={status}
-            style={STATUS_CONFIG[status.type]}
+            style={status.type ? STATUS_CONFIG[status.type] : UNCATEGORIZED_STATUS_STYLE}
             missions={missions}
             projectId={projectId}
             projectName={projectName}
             projectColor={projectColor}
+            createProjectId={createProjectId}
+            createStatusScope={createStatusScope}
             membersByWorkspaceUserId={membersByWorkspaceUserId}
             selectedMissionId={selectedMissionId}
             isCollapsed={collapsed.has(status.id)}
             onToggleCollapse={toggleCollapse}
+            getMissionCardContext={getMissionCardContext}
             onCreateMission={onCreateMission}
             onCreateAndOpenMission={onCreateAndOpenMission}
             onCompleteMission={onCompleteMission}
@@ -102,12 +113,12 @@ export function MissionListView({
         ))}
       </div>
       <DragOverlay>
-        {activeMission ? (
+        {activeMission && activeCardContext ? (
           <MissionListCard
             mission={activeMission}
-            projectId={projectId}
-            projectName={projectName}
-            projectColor={projectColor}
+            projectId={activeCardContext.projectId}
+            projectName={activeCardContext.projectName}
+            projectColor={activeCardContext.projectColor}
             assignee={activeAssignee}
             selected={activeMission.id === selectedMissionId}
             isDragOverlay

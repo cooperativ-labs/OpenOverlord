@@ -13,11 +13,11 @@ import { resolveAssignee } from './board-shared.ts';
 import { MissionCard } from './MissionCard.tsx';
 import { SortableMissionCard } from './SortableMissionCard.tsx';
 
-type BoardColumnStatus =
+export type BoardColumnStatus =
   | Pick<WorkspaceStatusDto, 'id' | 'name' | 'type'>
   | { id: string; name: string; type: null };
 
-type MissionCardContext = {
+export type MissionCardContext = {
   projectId: string;
   projectName: string;
   projectColor: string | null;

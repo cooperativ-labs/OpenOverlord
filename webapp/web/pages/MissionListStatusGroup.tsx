@@ -6,37 +6,44 @@ import { useCallback, useState } from 'react';
 import { type StatusStyle } from '@/components/ui.tsx';
 import { cn } from '@/lib/utils';
 
-import type { MissionDto, WorkspaceMemberDto, WorkspaceStatusDto } from '../../shared/contract.ts';
+import type { MissionDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 
 import { BlankMissionCard, type BlankMissionCreateOptions } from './BlankMissionCard.tsx';
 import { resolveAssignee } from './board-shared.ts';
+import type { BoardColumnStatus, MissionCardContext } from './BoardColumn.tsx';
 import { MissionListCard } from './MissionListCard.tsx';
 
-export function MissionListStatusGroup({
+export function MissionListStatusGroup<TMission extends MissionDto = MissionDto>({
   status,
   style,
   missions,
   projectId,
   projectName,
   projectColor,
+  createProjectId = projectId,
+  createStatusScope = 'project',
   membersByWorkspaceUserId,
   selectedMissionId,
   isCollapsed,
   onToggleCollapse,
+  getMissionCardContext,
   onCreateMission,
   onCreateAndOpenMission,
   onCompleteMission
 }: {
-  status: WorkspaceStatusDto;
+  status: BoardColumnStatus;
   style: StatusStyle;
-  missions: MissionDto[];
+  missions: TMission[];
   projectId: string;
   projectName: string;
   projectColor: string | null;
+  createProjectId?: string;
+  createStatusScope?: 'project' | 'workspace';
   membersByWorkspaceUserId: Map<string, WorkspaceMemberDto>;
   selectedMissionId?: string;
   isCollapsed: boolean;
   onToggleCollapse: (statusId: string) => void;
+  getMissionCardContext?: (mission: TMission) => MissionCardContext;
   onCompleteMission?: (missionId: string) => void;
   onCreateMission?: (
     statusId: string,
@@ -64,7 +71,7 @@ export function MissionListStatusGroup({
 
   const handleCloseBlankCard = useCallback(() => setIsAdding(false), []);
 
-  const canAdd = Boolean(onCreateMission);
+  const canAdd = Boolean(onCreateMission && status.type && createProjectId);
 
   return (
     <section className={cn(' transition-colors', isOver && 'ring-1 ring-inset ring-primary/30')}>
@@ -122,12 +129,13 @@ export function MissionListStatusGroup({
             isOver && 'bg-muted/30'
           )}
         >
-          {isAdding && onCreateMission ? (
+          {canAdd && isAdding && onCreateMission ? (
             <BlankMissionCard
               inputId={inputId}
               statusId={status.id}
               position="top"
-              projectId={projectId}
+              projectId={createProjectId}
+              statusScope={createStatusScope}
               onCreateMission={onCreateMission}
               onCreateAndOpenMission={onCreateAndOpenMission}
               onClose={handleCloseBlankCard}
@@ -153,18 +161,26 @@ export function MissionListStatusGroup({
                 </button>
               )
             ) : (
-              missions.map(mission => (
-                <MissionListCard
-                  key={mission.id}
-                  mission={mission}
-                  projectId={projectId}
-                  projectName={projectName}
-                  projectColor={projectColor}
-                  assignee={resolveAssignee(mission, membersByWorkspaceUserId)}
-                  selected={mission.id === selectedMissionId}
-                  onComplete={onCompleteMission}
-                />
-              ))
+              missions.map(mission => {
+                const cardContext = getMissionCardContext?.(mission) ?? {
+                  projectId,
+                  projectName,
+                  projectColor
+                };
+                return (
+                  <MissionListCard
+                    key={mission.id}
+                    mission={mission}
+                    projectId={cardContext.projectId}
+                    projectName={cardContext.projectName}
+                    projectColor={cardContext.projectColor}
+                    assignee={resolveAssignee(mission, membersByWorkspaceUserId)}
+                    selected={mission.id === selectedMissionId}
+                    onComplete={onCompleteMission}
+                    onOpen={cardContext.onOpen}
+                  />
+                );
+              })
             )}
           </SortableContext>
         </div>
