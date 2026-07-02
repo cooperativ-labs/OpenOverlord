@@ -363,7 +363,7 @@ export function BoardPage() {
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-auto p-3 px-5">
+      <div className="min-h-0 flex-1 overflow-auto pt-3 px-5">
         {missions.length === 0 ? (
           <EmptyState
             title="No missions in this project"
@@ -389,7 +389,7 @@ export function BoardPage() {
         ) : view === 'board' ? (
           <DndContext {...dndContextProps}>
             <div className="flex h-full min-h-0 items-stretch gap-4">
-              2{renderBoardColumns(true)}
+              {renderBoardColumns(true)}
             </div>
             <DragOverlay>
               {activeMission ? (

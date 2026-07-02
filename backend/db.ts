@@ -116,12 +116,15 @@ export function newId(): string {
 
 // ---- Workspace / actor resolution ---------------------------------------
 //
-// A single Overlord database can hold many workspaces, and the local operator
-// can be a member of more than one. The web server tracks one *active*
-// workspace at a time; every read/write below scopes to it. `WORKSPACE` and
-// `ACTOR_WORKSPACE_USER_ID` are exported as live `let` bindings so switching the
-// active workspace at runtime (see `setActiveWorkspace`) is observed by every
-// module that imports them without any further wiring.
+// A single Overlord database can hold many workspaces, and any number of
+// tenants/profiles can be members of one. Each authenticated web request
+// tracks its own *active* workspace via `AsyncLocalStorage`
+// (`requestContextStorage` below); every read/write below scopes to that
+// request-local value through `WORKSPACE`/`getActiveWorkspaceId()`. Only code
+// running with no request context (bootstrap, the loopback CLI surface,
+// tests) reads/writes the process-wide `defaultWorkspace`/
+// `ACTOR_WORKSPACE_USER_ID` fallback `let` bindings — no per-request switch
+// (see `setActiveWorkspace`) may leak into them.
 
 export interface WorkspaceRow {
   id: string;
@@ -167,6 +170,45 @@ export async function resolveActorForWorkspace(
 
 export const resolveActorForWorkspaceAsync = resolveActorForWorkspace;
 
+/**
+ * Resolve the workspace_user row the *current request's authenticated caller*
+ * owns in `workspaceId` — their own membership, not the workspace's oldest
+ * member. Returns `null` when there is no request-scoped caller to attribute to
+ * (the process-default/loopback path) or when the caller has no active
+ * membership in the target workspace. Used by `setActiveWorkspace` so a
+ * request-scoped switch never clobbers the acting user's attribution with an
+ * oldest-member heuristic (e.g. an invitee accepting into a workspace whose
+ * oldest member is someone else).
+ */
+async function resolveRequestActorForWorkspace(
+  workspaceId: string,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<string | null> {
+  const context = requestContextStorage.getStore();
+  if (!context) return null;
+
+  // Prefer the profile the request authenticated as; fall back to the profile
+  // behind the currently-attributed workspace_user (a different workspace's
+  // membership row) so token/session auth that only set the actor still resolves.
+  let profileId = context.activeProfileId;
+  if (!profileId && context.actorWorkspaceUserId) {
+    const actorRow = await client.get<{ profile_id: string }>(
+      `SELECT profile_id FROM workspace_users WHERE id = ?`,
+      [context.actorWorkspaceUserId]
+    );
+    profileId = actorRow?.profile_id ?? null;
+  }
+  if (!profileId) return null;
+
+  const row = await client.get<{ id: string }>(
+    `SELECT id FROM workspace_users
+       WHERE workspace_id = ? AND profile_id = ? AND status = 'active' AND deleted_at IS NULL
+       ORDER BY created_at ASC LIMIT 1`,
+    [workspaceId, profileId]
+  );
+  return row?.id ?? null;
+}
+
 export interface ActiveWorkspace {
   id: string;
   slug: string;
@@ -181,7 +223,12 @@ export interface ActiveWorkspace {
  * Every *authenticated web request* overrides this with the caller's own
  * resolved workspace via `setActiveWorkspaceContext` — see
  * `requireAuthenticatedSession` (`backend/auth.ts`) — so this default is never
- * consulted for a browser session's tenant-scoped reads.
+ * consulted for a browser session's tenant-scoped reads. Only
+ * `refreshActiveWorkspaceFromClient`/`bindDatabaseClient` (bootstrap/test
+ * harness) and `mutateRequestContext`'s no-request-context fallback write to
+ * this binding; a request-scoped `setActiveWorkspace` call (from
+ * `backend/workspaces.ts`) never does, so one tenant's workspace switch can
+ * never leak into another request's or the loopback surface's default.
  */
 let defaultWorkspace: ActiveWorkspace = {
   id: 'pending-workspace',
@@ -356,29 +403,65 @@ export function buildWebappServiceContext(
 }
 
 /**
- * Switch the active workspace: updates the process-wide fallback (self-hosted
- * single-operator mode, the CLI loopback surface, and any code running outside
- * a request context) and, when called from inside a request, the calling
- * request's own tenant scoping too — so e.g. `createWorkspace` immediately sees
- * the workspace it just created as active for the rest of that same response.
- * It never touches *other* concurrent requests' contexts: each browser session
- * resolves its own workspace from its memberships in `requireAuthenticatedSession`,
- * independent of this fallback. Returns the new workspace row, or `null` if `id`
- * does not resolve to an existing (non-deleted) workspace.
+ * Set the process-wide fallback workspace/actor pair directly. This — plus
+ * `refreshActiveWorkspaceFromClient`/`bindDatabaseClient` at bootstrap — is the
+ * *only* writer of `defaultWorkspace`/`ACTOR_WORKSPACE_USER_ID`. It is not
+ * exported: the sole caller is `setActiveWorkspace`'s no-request-context
+ * branch below (the single-operator/loopback/bootstrap/test path). No
+ * request-scoped call site may reach this — an authenticated multi-user
+ * request always has a request context, so it always takes the other branch.
+ */
+function setProcessDefaultWorkspace(
+  workspace: ActiveWorkspace,
+  actorWorkspaceUserId: string | null
+): void {
+  defaultWorkspace = workspace;
+  ACTOR_WORKSPACE_USER_ID = actorWorkspaceUserId;
+}
+
+/**
+ * Switch the active workspace scoped to the *caller's own context*.
+ *
+ * - **Request-scoped** (called from inside a request — every authenticated
+ *   `/api/*` handler runs inside `withRequestContextAsync`, so this covers
+ *   `createWorkspace`/`acceptWorkspaceInvitation`/`switchWorkspace`/etc. in
+ *   `backend/workspaces.ts`): mutates *only* that request's own tenant scoping
+ *   via `mutateRequestContext`, and attributes subsequent changes to the
+ *   *acting caller's own* membership in the target workspace
+ *   (`resolveRequestActorForWorkspace`), never the workspace's oldest member.
+ *   This is what makes `acceptInvitation` attribute the join to the invitee,
+ *   not to whoever created the workspace first. It never touches the
+ *   process-wide globals, so one tenant's workspace switch can never leak
+ *   into another concurrent request's default or the loopback CLI surface's
+ *   default — each browser session resolves its own workspace from its own
+ *   memberships in `requireAuthenticatedSession` regardless of this fallback.
+ * - **No request context** (bootstrap/tests/loopback — no production request
+ *   handler ever runs outside one): there is no authenticated caller to
+ *   attribute to, so it falls back to the workspace's oldest active member
+ *   (`resolveActorForWorkspace`) and writes the process-wide fallback via
+ *   `setProcessDefaultWorkspace`.
+ *
+ * Returns the new workspace row, or `null` if `id` does not resolve to an
+ * existing (non-deleted) workspace.
  */
 export async function setActiveWorkspace(id: string): Promise<WorkspaceRow | null> {
   const row = await loadWorkspaceRowAsync(id);
   if (!row) return null;
-  const actorWorkspaceUserId = await resolveActorForWorkspace(row.id);
-  defaultWorkspace = { id: row.id, slug: row.slug, name: row.name, kind: row.kind };
-  ACTOR_WORKSPACE_USER_ID = actorWorkspaceUserId;
-  if (requestContextStorage.getStore()) {
-    mutateRequestContext({
-      ...requestContext(),
-      activeWorkspace: defaultWorkspace,
-      actorWorkspaceUserId
-    });
+  const workspace: ActiveWorkspace = { id: row.id, slug: row.slug, name: row.name, kind: row.kind };
+
+  if (!requestContextStorage.getStore()) {
+    const actorWorkspaceUserId = await resolveActorForWorkspace(row.id);
+    setProcessDefaultWorkspace(workspace, actorWorkspaceUserId);
+    return row;
   }
+
+  const actorWorkspaceUserId =
+    (await resolveRequestActorForWorkspace(row.id)) ?? (await resolveActorForWorkspace(row.id));
+  mutateRequestContext({
+    ...requestContext(),
+    activeWorkspace: workspace,
+    actorWorkspaceUserId
+  });
   return row;
 }
 
@@ -401,8 +484,10 @@ async function refreshActiveWorkspaceFromClient(client: DatabaseClient): Promise
   if (!row) {
     throw new Error('No workspace found in the database. Re-run migrations to seed it.');
   }
-  defaultWorkspace = { id: row.id, slug: row.slug, name: row.name, kind: row.kind };
-  ACTOR_WORKSPACE_USER_ID = await resolveActorForWorkspace(row.id, client);
+  setProcessDefaultWorkspace(
+    { id: row.id, slug: row.slug, name: row.name, kind: row.kind },
+    await resolveActorForWorkspace(row.id, client)
+  );
 }
 
 /**

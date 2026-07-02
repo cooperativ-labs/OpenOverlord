@@ -1,3 +1,4 @@
+import { serwist } from '@serwist/vite';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
@@ -23,7 +24,18 @@ const API_TARGET = process.env.OVERLORD_API_TARGET ?? `http://${apiHost}:${apiPo
 const devPort = Number(process.env.OVERLORD_WEB_DEV_PORT ?? '5173');
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    serwist({
+      swSrc: 'web/sw.ts',
+      swDest: 'sw.js',
+      globDirectory: 'dist',
+      injectionPoint: 'self.__SW_MANIFEST',
+      rollupFormat: 'iife',
+      disable: process.env.NODE_ENV === 'test'
+    })
+  ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'web')

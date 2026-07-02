@@ -134,7 +134,7 @@ export function BoardColumn({
   );
 
   return (
-    <div className="flex h-full min-h-0 w-72 shrink-0 flex-col bg-muted/40 dark:bg-muted/20 rounded-lg p-2 py-4">
+    <div className="flex h-full min-h-0 w-72 shrink-0 flex-col bg-muted/40 dark:bg-muted/20 rounded-t-lg px-2 pt-4 pb-0">
       <div className="mb-3 flex shrink-0 items-center justify-between px-1">
         <div className="flex items-center gap-1 text-xs uppercase font-semibold text-muted-foreground/90 tracking-wide">
           <StatusIcon className={cn('mr-1.5 h-3.5 w-3.5', statusClasses(status.type))} />{' '}

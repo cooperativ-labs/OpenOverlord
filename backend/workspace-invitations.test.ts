@@ -11,6 +11,8 @@ delete process.env.RESEND_API_KEY;
 const dbModule = await import('./db.ts');
 const {
   db,
+  getActiveWorkspaceId,
+  getActorWorkspaceUserId,
   initDatabase,
   setActiveProfileId,
   setActiveWorkspaceContext,
@@ -114,6 +116,105 @@ test('admin can invite an email and the invitee joins only that workspace with t
     otherWorkspaceMembers,
     [],
     'accepting must not leak into an uninvited workspace'
+  );
+});
+
+test('accepting an invitation attributes subsequent request changes to the invitee, not the oldest member', async () => {
+  // `local-workspace` already has an older member (the seeded operator) plus the
+  // invitees other tests joined earlier — so the workspace's *oldest* active
+  // member is emphatically not this invitee. Before the fix, `setActiveWorkspace`
+  // resolved that oldest member and wrote it into the request context, so any
+  // change recorded after `acceptWorkspaceInvitation` returned was misattributed.
+  const invite = await inviteWorkspaceMember('local-workspace', {
+    email: 'attribution-invitee@cooperativ.io',
+    roleKey: 'MEMBER'
+  });
+  insertProfile('attribution-invitee-user', 'attribution-invitee@cooperativ.io');
+
+  await withRequestContextAsync(async () => {
+    setActiveProfileId('attribution-invitee-user');
+    setActiveWorkspaceContext(null);
+    setActiveWorkspaceUser(null);
+
+    await acceptWorkspaceInvitation({ token: tokenFromAcceptUrl(invite.acceptUrl!) });
+
+    const inviteeWorkspaceUserId = (
+      db
+        .prepare(
+          `SELECT id FROM workspace_users
+             WHERE workspace_id = 'local-workspace' AND profile_id = 'attribution-invitee-user'
+               AND status = 'active' AND deleted_at IS NULL`
+        )
+        .get() as { id: string }
+    ).id;
+
+    const oldestMember = db
+      .prepare(
+        `SELECT id FROM workspace_users
+           WHERE workspace_id = 'local-workspace' AND status = 'active' AND deleted_at IS NULL
+           ORDER BY created_at ASC LIMIT 1`
+      )
+      .get() as { id: string };
+    assert.notEqual(
+      oldestMember.id,
+      inviteeWorkspaceUserId,
+      'sanity: the invitee must not be the oldest member, or the test proves nothing'
+    );
+
+    assert.equal(
+      getActiveWorkspaceId(),
+      'local-workspace',
+      'accepting should drop the invitee into the joined workspace'
+    );
+    assert.equal(
+      getActorWorkspaceUserId(),
+      inviteeWorkspaceUserId,
+      'changes after accepting must be attributed to the invitee, not the workspace oldest member'
+    );
+  });
+});
+
+test('accepting an invitation never leaks into the process-wide default workspace/actor', async () => {
+  // `createWorkspace` here runs with no request context (like the rest of this
+  // file's top-level setup), so it legitimately updates the process-wide
+  // fallback itself — that's the bootstrap/loopback path, not what this test
+  // is checking. Snapshot the fallback *after* creation, immediately before
+  // the request-scoped accept, which must leave it untouched.
+  const otherWorkspace = await createWorkspace({ name: 'Leak Check Workspace' });
+  const defaultWorkspaceIdBefore = dbModule.WORKSPACE.id;
+  const defaultActorBefore = dbModule.ACTOR_WORKSPACE_USER_ID;
+
+  const invite = await inviteWorkspaceMember(otherWorkspace.id, {
+    email: 'no-leak-invitee@cooperativ.io',
+    roleKey: 'MEMBER'
+  });
+  insertProfile('no-leak-invitee-user', 'no-leak-invitee@cooperativ.io');
+
+  await withRequestContextAsync(async () => {
+    setActiveProfileId('no-leak-invitee-user');
+    setActiveWorkspaceContext(null);
+    setActiveWorkspaceUser(null);
+
+    await acceptWorkspaceInvitation({ token: tokenFromAcceptUrl(invite.acceptUrl!) });
+
+    assert.equal(
+      getActiveWorkspaceId(),
+      otherWorkspace.id,
+      'this request must see the newly-joined workspace as active'
+    );
+  });
+
+  // Outside the request, the process-wide fallback must be exactly what it
+  // was before — the request-scoped switch must never have mutated it.
+  assert.equal(
+    dbModule.WORKSPACE.id,
+    defaultWorkspaceIdBefore,
+    'a request-scoped workspace switch must not leak into the process-wide default workspace'
+  );
+  assert.equal(
+    dbModule.ACTOR_WORKSPACE_USER_ID,
+    defaultActorBefore,
+    'a request-scoped workspace switch must not leak into the process-wide default actor'
   );
 });
 

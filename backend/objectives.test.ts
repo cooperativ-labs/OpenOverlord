@@ -329,6 +329,64 @@ test('promoting a future objective splices it into the draft slot and cascades p
   );
 });
 
+test('promoting the second-from-last future objective demotes the draft to first future', async () => {
+  const project = await createProject({ name: 'Promote Second From Last' });
+  const mission = await createMission({ projectId: project.id, firstObjective: 'Draft objective' });
+  const draftId = mission.objectives[0]!.id;
+
+  const futureIds: string[] = [];
+  for (let index = 1; index <= 4; index += 1) {
+    const objective = await createObjective({
+      missionId: mission.id,
+      instructionText: `Future ${index}`
+    });
+    futureIds.push(objective.id);
+  }
+
+  const [firstFutureId, secondFutureId, thirdFutureId, fourthFutureId] = futureIds;
+  const promoteId = thirdFutureId;
+
+  db.prepare(`UPDATE objectives SET state = 'draft', position = 0 WHERE id = ?`).run(draftId);
+  db.prepare(`UPDATE objectives SET state = 'future', position = 1 WHERE id = ?`).run(
+    firstFutureId
+  );
+  db.prepare(`UPDATE objectives SET state = 'future', position = 2 WHERE id = ?`).run(
+    secondFutureId
+  );
+  db.prepare(`UPDATE objectives SET state = 'future', position = 3 WHERE id = ?`).run(
+    thirdFutureId
+  );
+  db.prepare(`UPDATE objectives SET state = 'future', position = 4 WHERE id = ?`).run(
+    fourthFutureId
+  );
+
+  await updateObjective(promoteId, { state: 'draft' });
+
+  const rows = db
+    .prepare(
+      `SELECT instruction_text, state, position
+       FROM objectives
+       WHERE mission_id = ? AND deleted_at IS NULL
+       ORDER BY position ASC`
+    )
+    .all(mission.id) as Array<{ instruction_text: string; state: string; position: number }>;
+
+  assert.deepEqual(
+    rows.map(row => ({
+      text: row.instruction_text,
+      state: row.state,
+      position: row.position
+    })),
+    [
+      { text: 'Future 3', state: 'draft', position: 0 },
+      { text: 'Draft objective', state: 'future', position: 1 },
+      { text: 'Future 1', state: 'future', position: 2 },
+      { text: 'Future 2', state: 'future', position: 3 },
+      { text: 'Future 4', state: 'future', position: 4 }
+    ]
+  );
+});
+
 test.after(() => {
   db.close();
   rmSync(tempDir, { recursive: true, force: true });

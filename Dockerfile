@@ -16,7 +16,7 @@
 # See private-docs/deployment-overlord-cloud.md for the operator runbook.
 
 # ---- Builder -------------------------------------------------------------
-FROM node:20-bookworm-slim AS builder
+FROM node:24-bookworm-slim AS builder
 
 WORKDIR /app
 ENV YARN_ENABLE_SCRIPTS=1
@@ -58,7 +58,7 @@ RUN repo-yarn db:build:prod \
   && repo-yarn workspaces focus --production @overlord/automations
 
 # ---- Runtime -------------------------------------------------------------
-FROM node:20-bookworm-slim AS runtime
+FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     OVERLORD_WEB_HOST=0.0.0.0 \

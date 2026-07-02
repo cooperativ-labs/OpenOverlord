@@ -4105,7 +4105,6 @@ async function updateObjectiveTx(
 
     const now = nowIso();
     const revision = existing.revision + 1;
-    let promotedDraftSlotPosition: number | null = null;
     if (body.state === 'draft') {
       const otherDrafts = (await tx.all(
         `SELECT id, revision, position FROM objectives
@@ -4140,7 +4139,6 @@ async function updateObjectiveTx(
       if (existing.state === 'future' && otherDrafts.length > 0) {
         const draftSlotPosition = Math.min(...otherDrafts.map(draft => draft.position));
         if (existing.position > draftSlotPosition) {
-          promotedDraftSlotPosition = draftSlotPosition;
           const missionRows = (await tx.all(
             `SELECT * FROM objectives
                WHERE mission_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
@@ -4148,7 +4146,10 @@ async function updateObjectiveTx(
           )) as ObjectiveRow[];
           const positionById = new Map<string, number>();
           for (const row of missionRows) {
-            if (row.id === id) continue;
+            if (row.id === id) {
+              positionById.set(row.id, draftSlotPosition);
+              continue;
+            }
             if (row.position >= draftSlotPosition && row.position < existing.position) {
               positionById.set(row.id, row.position + 1);
             }
@@ -4162,16 +4163,6 @@ async function updateObjectiveTx(
           });
         }
       }
-    }
-
-    if (
-      promotedDraftSlotPosition !== null &&
-      body.position === undefined &&
-      !changed.includes('position')
-    ) {
-      fields.push('position = ?');
-      setParams.push(promotedDraftSlotPosition);
-      changed.push('position');
     }
 
     await tx.run(

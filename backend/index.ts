@@ -168,9 +168,22 @@ const distDir = process.env.OVERLORD_WEBAPP_DIST
   ? path.resolve(process.env.OVERLORD_WEBAPP_DIST)
   : path.resolve(here, '..', 'dist');
 
+const MIN_BACKEND_NODE_MAJOR = 24;
+
+function assertSupportedBackendNodeVersion(): void {
+  const major = Number.parseInt(process.versions.node.split('.')[0] ?? '', 10);
+
+  if (Number.isNaN(major) || major < MIN_BACKEND_NODE_MAJOR) {
+    throw new Error(
+      `Overlord backend requires Node.js ${MIN_BACKEND_NODE_MAJOR} or newer. Found ${process.version}.`
+    );
+  }
+}
+
 // Source-server development reads `.env.local` only; the bundled production server
 // reads `.env.prod` only (shared detection in `./env-profile.ts`). Explicit shell
 // exports win over both.
+assertSupportedBackendNodeVersion();
 loadRepoEnvForProfile(REPO_ROOT, ENV_PROFILE);
 
 const config = loadConfig(undefined, ENV_PROFILE);

@@ -13,7 +13,7 @@
     "allowArbitraryExtensions": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": false,
-    "types": ["node"],
+    "types": ["node", "@serwist/vite/typings"],
     "paths": {
       "@/*": ["./web/*"]
     }

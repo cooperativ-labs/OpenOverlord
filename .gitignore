@@ -19,6 +19,15 @@ node_modules/
 dist/
 **/dist/
 *.tgz
+
+# Serwist generated workers
+public/sw*
+public/swe-worker*
+webapp/public/sw*
+webapp/public/swe-worker*
+webapp/dist/sw*
+webapp/dist/swe-worker*
+
 .yarn/*
 !.yarn/releases
 !.yarn/releases/**

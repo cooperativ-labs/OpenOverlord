@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Overlord REST, protocol, runner, and realtime control-plane backend.",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "scripts": {
     "dev": "tsx watch index.ts",
