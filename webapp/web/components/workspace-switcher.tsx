@@ -30,7 +30,7 @@ function WorkspaceGlyph({ workspace }: { workspace: WorkspaceDto | null }) {
 
   if (logoUrl) {
     return (
-      <div className="flex aspect-square size-8 items-center justify-center overflow-hidden rounded-lg bg-sidebar-primary">
+      <div className="flex aspect-square size-8 items-center justify-center overflow-hidden rounded-lg bg-muted">
         <img src={logoUrl} alt="" className="size-full object-cover" />
       </div>
     );
@@ -61,17 +61,17 @@ export function WorkspaceSwitcher() {
     items.find(w => w.isActive) ??
     (meta.data?.workspace
       ? {
-          id: meta.data.workspace.id,
-          slug: meta.data.workspace.slug,
-          name: meta.data.workspace.name,
-          kind: 'local',
-          isActive: true,
-          projectCount: 0,
-          memberCount: 0,
-          sqlStudioEnabled: false,
-          logoUrl: null,
-          createdAt: ''
-        }
+        id: meta.data.workspace.id,
+        slug: meta.data.workspace.slug,
+        name: meta.data.workspace.name,
+        kind: 'local',
+        isActive: true,
+        projectCount: 0,
+        memberCount: 0,
+        sqlStudioEnabled: false,
+        logoUrl: null,
+        createdAt: ''
+      }
       : null);
 
   function handleSelect(workspace: WorkspaceDto) {
