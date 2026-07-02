@@ -1,4 +1,4 @@
-import { ChevronDown, Tag, X } from 'lucide-react';
+import { ChevronDown, Tag } from 'lucide-react';
 import { useMemo } from 'react';
 
 import {
@@ -15,37 +15,13 @@ import { cn } from '@/lib/utils.ts';
 
 import type { ProjectTagDto } from '../../shared/contract.ts';
 
+import { MissionTagPill } from './MissionTagPill.tsx';
+
 type MissionTagSelectProps = {
   missionId: string;
   projectId: string;
   assignedTags: ProjectTagDto[];
 };
-
-function AssignedTagPill({
-  tag,
-  disabled,
-  onRemove
-}: {
-  tag: ProjectTagDto;
-  disabled: boolean;
-  onRemove: () => void;
-}) {
-  return (
-    <span className="inline-flex h-7 items-center gap-1.5 rounded-full bg-muted/80 px-2.5 text-xs font-semibold text-foreground">
-      <Tag className="h-3 w-3 shrink-0 stroke-[1.75]" aria-hidden />
-      <span className="truncate">{tag.label}</span>
-      <button
-        type="button"
-        className="inline-flex shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
-        aria-label={`Remove ${tag.label} tag`}
-        disabled={disabled}
-        onClick={onRemove}
-      >
-        <X className="h-3 w-3" />
-      </button>
-    </span>
-  );
-}
 
 export function MissionTagSelect({ missionId, projectId, assignedTags }: MissionTagSelectProps) {
   const tagsQ = useProjectTags(projectId);
@@ -70,9 +46,9 @@ export function MissionTagSelect({ missionId, projectId, assignedTags }: Mission
   return (
     <div className="flex flex-wrap items-center gap-2">
       {assignedTags.map(tag => (
-        <AssignedTagPill
+        <MissionTagPill
           key={tag.id}
-          tag={tag}
+          label={tag.label}
           disabled={update.isPending}
           onRemove={() => toggleTag(tag.id)}
         />

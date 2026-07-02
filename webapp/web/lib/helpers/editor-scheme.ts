@@ -61,6 +61,34 @@ export function getEditorSchemeLabel(value: string | null | undefined): string {
   return value?.trim() ?? 'VS Code';
 }
 
+/** Brand icon metadata for a supported editor scheme. */
+export interface EditorSchemeIconMeta {
+  /** Public asset path served from `webapp/public`. */
+  src: string;
+  /** Whether the icon should be inverted in dark mode (monochrome marks). */
+  invertDark: boolean;
+}
+
+const EDITOR_SCHEME_ICONS: Partial<Record<EditorSchemeValue, EditorSchemeIconMeta>> = {
+  vscode: { src: '/images/icons/vscode-logo.webp', invertDark: false },
+  cursor: { src: '/images/icons/cursor.svg', invertDark: true },
+  windsurf: { src: '/images/icons/windsurf-logo.png', invertDark: true }
+};
+
+function normalizeEditorSchemeKey(value?: string | null): EditorSchemeValue {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized && isEditorSchemeValue(normalized)) {
+    return normalized;
+  }
+  return DEFAULT_EDITOR_SCHEME;
+}
+
+/** Resolve an editor scheme's icon metadata. Returns null when no icon is mapped. */
+export function getEditorSchemeIcon(value?: string | null): EditorSchemeIconMeta | null {
+  const key = normalizeEditorSchemeKey(value);
+  return EDITOR_SCHEME_ICONS[key] ?? null;
+}
+
 function toUriPath(absolutePath: string): string {
   const normalized = absolutePath.replace(/\\/g, '/');
   return /^[A-Za-z]:\//.test(normalized) ? `/${normalized}` : normalized;

@@ -1,4 +1,4 @@
-import { Code2, Settings } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import {
@@ -15,7 +15,12 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
-import { buildEditorFileHref, getEditorSchemeLabel } from '@/lib/helpers/editor-scheme';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  buildEditorFileHref,
+  getEditorSchemeIcon,
+  getEditorSchemeLabel
+} from '@/lib/helpers/editor-scheme';
 import { useProfile, useUpdateProject } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
@@ -109,6 +114,8 @@ export function ProjectSettingsSection({
   const editorScheme = profileQ.data?.editorScheme ?? null;
   const ideHref = rootPath ? buildEditorFileHref(rootPath, editorScheme) : null;
   const ideLabel = getEditorSchemeLabel(editorScheme);
+  const ideIcon = getEditorSchemeIcon(editorScheme);
+  const openInIdeLabel = `Open in ${ideLabel}`;
 
   return (
     <section className="border-b border-[var(--color-border)] px-5 py-2">
@@ -171,17 +178,33 @@ export function ProjectSettingsSection({
               </Button>
             ) : null}
             {ideHref ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="shrink-0 gap-1.5"
-                onClick={() => window.open(ideHref, '_blank', 'noopener,noreferrer')}
-                aria-label={`Open in ${ideLabel}`}
-              >
-                <Code2 className="h-3.5 w-3.5" />
-                Open in {ideLabel}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size={ideIcon ? 'icon-sm' : 'sm'}
+                      className={cn('shrink-0', !ideIcon && 'gap-1.5')}
+                      onClick={() => window.open(ideHref, '_blank', 'noopener,noreferrer')}
+                      aria-label={openInIdeLabel}
+                    >
+                      {ideIcon ? (
+                        <img
+                          src={ideIcon.src}
+                          alt=""
+                          width={14}
+                          height={14}
+                          className={cn('shrink-0', ideIcon.invertDark ? 'dark:invert' : '')}
+                        />
+                      ) : (
+                        <>Open in {ideLabel}</>
+                      )}
+                    </Button>
+                  }
+                />
+                <TooltipContent>{openInIdeLabel}</TooltipContent>
+              </Tooltip>
             ) : null}
           </div>
         </div>

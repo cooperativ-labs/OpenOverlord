@@ -1,3 +1,4 @@
+import { MissionTagPill } from '@/components/MissionTagPill.tsx';
 import { CardContent } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils.ts';
@@ -34,7 +35,15 @@ export function MissionCardBody({
             {mission.title}
           </h4>
 
-          <div className="mt-4 flex items-end justify-between gap-2">
+          {tags.length > 0 ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {tags.map(tag => (
+                <MissionTagPill key={tag.id} label={tag.label} />
+              ))}
+            </div>
+          ) : null}
+
+          <div className={cn('flex items-end justify-between gap-2', tags.length > 0 ? 'mt-2' : 'mt-4')}>
             <div className="flex min-w-0 items-center gap-1.5">
               <ProjectColorDot color={projectColor} name={projectName} />
               <span className="truncate text-[11px] text-muted-foreground">{projectName}</span>
