@@ -142,7 +142,7 @@ export function AppSidebar() {
             </SidebarMenuItem>
           </SidebarMenu>
 
-          <SidebarSeparator className="mx-0" />
+
           <NavUser onOpenSettings={openSettings} />
         </SidebarFooter>
         <SidebarRail />
