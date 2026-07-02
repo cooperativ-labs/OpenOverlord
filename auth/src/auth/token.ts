@@ -63,6 +63,7 @@ export interface CreateTokenParams {
 export interface UserTokenMeta {
   id: string;
   workspaceId: string;
+  userId: string;
   workspaceUserId: string;
   label: string;
   tokenPrefix: string;
@@ -140,6 +141,7 @@ export async function createUserToken(
   const meta: UserTokenMeta = {
     id: params.id,
     workspaceId: params.workspaceId,
+    userId: params.userId,
     workspaceUserId: params.workspaceUserId,
     label: params.label,
     tokenPrefix,
@@ -152,15 +154,15 @@ export async function createUserToken(
   return { meta, rawToken };
 }
 
-/** List non-deleted token metadata for a workspace user (no hashes returned). */
+/** List non-deleted token metadata for a user profile (no hashes returned). */
 export async function listUserTokens(
   db: AuthDomainDatabase,
-  workspaceUserId: string,
-  workspaceId: string
+  profileId: string
 ): Promise<UserTokenMeta[]> {
   const rows = await queryAll<{
     id: string;
     workspace_id: string;
+    profile_id: string;
     workspace_user_id: string;
     label: string;
     token_prefix: string;
@@ -170,19 +172,19 @@ export async function listUserTokens(
     created_at: Date | string;
   }>(
     db,
-    `SELECT id, workspace_id, workspace_user_id, label, token_prefix,
+    `SELECT id, workspace_id, profile_id, workspace_user_id, label, token_prefix,
             status, expires_at, last_used_at, created_at
      FROM user_tokens
-     WHERE workspace_user_id = ?
-       AND workspace_id = ?
+     WHERE profile_id = ?
        AND deleted_at IS NULL
      ORDER BY created_at DESC`,
-    [workspaceUserId, workspaceId]
+    [profileId]
   );
 
   return rows.map(r => ({
     id: r.id,
     workspaceId: r.workspace_id,
+    userId: r.profile_id,
     workspaceUserId: r.workspace_user_id,
     label: r.label,
     tokenPrefix: r.token_prefix,
@@ -216,13 +218,32 @@ export async function revokeUserToken(
 }
 
 /**
- * Resolve which workspace a raw USER_TOKEN belongs to, from the token alone
- * (no workspace id required up front). Tokens are looked up by the SHA-256
- * hash of a 256-bit random secret, so a hash collision across workspaces is
- * not a practical concern even without a DB-level uniqueness constraint on
- * `token_hash` alone. Callers pass the resolved id back into `verifyUserToken`
- * to do the real (workspace-scoped) validation. Returns `null` if no active,
- * non-deleted token matches.
+ * Resolve which user profile owns a raw USER_TOKEN from the token alone. Tokens
+ * are looked up by the SHA-256 hash of a 256-bit random secret, so a hash
+ * collision across profiles/workspaces is not a practical concern even without
+ * a DB-level uniqueness constraint on `token_hash` alone. Workspace membership
+ * is resolved separately at request time.
+ */
+export async function resolveUserTokenProfileId(
+  db: AuthDomainDatabase,
+  rawToken: string
+): Promise<string | null> {
+  const tokenHash = hashToken(rawToken);
+  const row = await queryOne<{ profile_id: string }>(
+    db,
+    `SELECT profile_id FROM user_tokens
+     WHERE token_hash = ?
+       AND status = 'active'
+       AND deleted_at IS NULL
+     LIMIT 1`,
+    [tokenHash]
+  );
+  return row?.profile_id ?? null;
+}
+
+/**
+ * Legacy helper retained for older internal callers. The returned workspace is
+ * only the token's issuance workspace; it is not the authorization scope.
  */
 export async function resolveUserTokenWorkspaceId(
   db: AuthDomainDatabase,
@@ -244,6 +265,7 @@ export async function resolveUserTokenWorkspaceId(
 interface VerifiedToken {
   id: string;
   workspaceId: string;
+  profileId: string;
   workspaceUserId: string;
   status: string;
   expiresAt: string | null;
@@ -255,8 +277,7 @@ interface VerifiedToken {
  */
 export async function verifyUserToken(
   db: AuthDomainDatabase,
-  rawToken: string,
-  workspaceId: string
+  rawToken: string
 ): Promise<VerifiedToken | null> {
   const tokenHash = hashToken(rawToken);
   const now = isoNow();
@@ -264,19 +285,19 @@ export async function verifyUserToken(
   const row = await queryOne<{
     id: string;
     workspace_id: string;
+    profile_id: string;
     workspace_user_id: string;
     status: string;
     expires_at: Date | string | null;
   }>(
     db,
-    `SELECT id, workspace_id, workspace_user_id, status, expires_at
+    `SELECT id, workspace_id, profile_id, workspace_user_id, status, expires_at
      FROM user_tokens
      WHERE token_hash = ?
-       AND workspace_id = ?
        AND status = 'active'
        AND deleted_at IS NULL
      LIMIT 1`,
-    [tokenHash, workspaceId]
+    [tokenHash]
   );
 
   if (!row) return null;
@@ -296,6 +317,7 @@ export async function verifyUserToken(
   return {
     id: row.id,
     workspaceId: row.workspace_id,
+    profileId: row.profile_id,
     workspaceUserId: row.workspace_user_id,
     status: row.status,
     expiresAt
@@ -303,16 +325,30 @@ export async function verifyUserToken(
 }
 
 /**
- * Verify a token and resolve it to an Actor by loading the workspace user's
- * current role assignments. Returns null if the token is invalid.
+ * Verify a token and resolve it to an Actor by loading the token owner's active
+ * membership and role assignments in the requested workspace. Returns null if
+ * the token is invalid or the owner is not an active member of that workspace.
  */
 export async function getActorForToken(
   db: AuthDomainDatabase,
   rawToken: string,
   workspaceId: string
 ): Promise<Actor | null> {
-  const verified = await verifyUserToken(db, rawToken, workspaceId);
+  const verified = await verifyUserToken(db, rawToken);
   if (!verified) return null;
+
+  const membership = await queryOne<{ id: string }>(
+    db,
+    `SELECT id
+     FROM workspace_users
+     WHERE workspace_id = ?
+       AND profile_id = ?
+       AND status = 'active'
+       AND deleted_at IS NULL
+     LIMIT 1`,
+    [workspaceId, verified.profileId]
+  );
+  if (!membership) return null;
 
   const roleRows = await queryAll<{ role_key: string }>(
     db,
@@ -321,9 +357,9 @@ export async function getActorForToken(
      WHERE workspace_user_id = ?
        AND workspace_id = ?
        AND deleted_at IS NULL`,
-    [verified.workspaceUserId, workspaceId]
+    [membership.id, workspaceId]
   );
 
   const roles = roleRows.map(r => r.role_key as Role);
-  return makeActor(verified.workspaceUserId, roles);
+  return makeActor(membership.id, roles);
 }

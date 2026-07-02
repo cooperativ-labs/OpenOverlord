@@ -1061,7 +1061,7 @@ export type UserTokenStatus = 'active' | 'revoked' | 'expired' | 'rotated';
 export type TokenScope = 'full' | 'mission_lifecycle';
 /**
  * A `USER_TOKEN` as surfaced to the settings UI. Derived from the `user_tokens`
- * row owned by the local operator; the raw secret and its hash are never
+ * row owned by the authenticated user account; the raw secret and its hash are never
  * included — only the non-secret display prefix.
  */
 export interface UserTokenDto {
@@ -1082,7 +1082,7 @@ export interface UserTokenDto {
     revokedAt: string | null;
     createdAt: string;
 }
-/** Create a new `USER_TOKEN` for the local operator. */
+/** Create a new `USER_TOKEN` for the authenticated user account. */
 export interface CreateUserTokenBody {
     label: string;
     /**

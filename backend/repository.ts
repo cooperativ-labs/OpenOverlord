@@ -4507,11 +4507,13 @@ export async function updateProfile(body: UpdateProfileBody): Promise<ProfileDto
 
 // ---- User tokens ---------------------------------------------------------
 //
-// `USER_TOKEN`s are long-lived credentials the local operator can mint for CLI,
-// agent, runner, and future API use (see auth/docs/07-user-token-authentication.md).
-// In this single-trusted-user build a token confers the operator's identity. We
-// store only a hash of the secret plus a non-secret display prefix; the raw
-// secret is returned exactly once at creation and never persisted or shown again.
+// `USER_TOKEN`s are long-lived credentials an authenticated user can mint for
+// CLI, agent, runner, and future API use (see
+// auth/docs/07-user-token-authentication.md). A token authenticates the user
+// profile across workspaces; authorization is resolved from the active workspace
+// membership on each request. We store only a hash of the secret plus a
+// non-secret display prefix; the raw secret is returned exactly once at creation
+// and never persisted or shown again.
 
 /** Recognizable scheme for Overlord user tokens: `out_…`. */
 const USER_TOKEN_SCHEME = 'out';
@@ -4554,9 +4556,9 @@ interface OperatorIdentity {
 async function loadTokenScopeGrants(db: DatabaseClient, tokenId: string): Promise<string[]> {
   const rows = (await db.all(
     `SELECT permission FROM user_token_scopes
-         WHERE token_id = ? AND workspace_id = ? AND deleted_at IS NULL
+         WHERE token_id = ? AND deleted_at IS NULL
          ORDER BY permission ASC`,
-    [tokenId, getActiveWorkspaceId()]
+    [tokenId]
   )) as Array<{ permission: string }>;
   return rows.map(r => r.permission);
 }
@@ -4578,8 +4580,8 @@ async function toUserTokenDto(db: DatabaseClient, row: UserTokenRow): Promise<Us
 }
 
 /**
- * Resolve both the global user id and the active-workspace membership id the
- * token is owned by. The membership records whose permissions the token inherits.
+ * Resolve the global user id that owns tokens plus the caller's active
+ * workspace membership for audit attribution.
  */
 async function loadOperatorIdentity(db: DatabaseClient): Promise<OperatorIdentity> {
   const user = await loadOperatorUserRow(db);
@@ -4590,7 +4592,7 @@ async function loadOperatorIdentity(db: DatabaseClient): Promise<OperatorIdentit
     [getActiveWorkspaceId(), user.id]
   )) as { id: string } | undefined;
   if (!membership) {
-    throw new ApiError(409, 'No workspace membership for the local operator');
+    throw new ApiError(409, 'No active workspace membership for the authenticated user');
   }
   return { userId: user.id, workspaceUserId: membership.id };
 }
@@ -4611,10 +4613,11 @@ async function loadUserTokenForUpdate(
   db: DatabaseClient,
   id: string
 ): Promise<UserTokenMutableRow> {
+  const { userId } = await loadOperatorIdentity(db);
   const row = (await db.get(
     `SELECT id, status, revision FROM user_tokens
-         WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [id, getActiveWorkspaceId()]
+         WHERE id = ? AND profile_id = ? AND deleted_at IS NULL`,
+    [id, userId]
   )) as UserTokenMutableRow | undefined;
   if (!row) throw new ApiError(404, 'Token not found');
   return row;
@@ -4628,11 +4631,12 @@ async function reloadUserToken(db: DatabaseClient, id: string): Promise<UserToke
 
 export async function listUserTokens(): Promise<UserTokenDto[]> {
   const client = requireDatabaseClient();
+  const { userId } = await loadOperatorIdentity(client);
   const rows = (await client.all(
     `SELECT ${USER_TOKEN_COLUMNS} FROM user_tokens
-         WHERE workspace_id = ? AND deleted_at IS NULL
+         WHERE profile_id = ? AND deleted_at IS NULL
          ORDER BY created_at DESC`,
-    [getActiveWorkspaceId()]
+    [userId]
   )) as UserTokenRow[];
   return Promise.all(rows.map(row => toUserTokenDto(client, row)));
 }
@@ -4665,13 +4669,14 @@ export async function createUserToken(
 
     const { userId, workspaceUserId } = await loadOperatorIdentity(tx);
 
-    // The (workspace_id, token_prefix) index is unique; retry on the rare clash.
+    // Token prefixes are display/lookup metadata owned by the profile; retry on
+    // the rare per-user clash.
     let generated: ReturnType<typeof generateUserTokenSecret> | null = null;
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const candidate = generateUserTokenSecret();
       const clash = await tx.get(
-        'SELECT 1 FROM user_tokens WHERE workspace_id = ? AND token_prefix = ?',
-        [getActiveWorkspaceId(), candidate.prefix]
+        'SELECT 1 FROM user_tokens WHERE profile_id = ? AND token_prefix = ?',
+        [userId, candidate.prefix]
       );
       if (!clash) {
         generated = candidate;
@@ -4746,8 +4751,8 @@ export async function renameUserToken(
     const revision = existing.revision + 1;
     await tx.run(
       `UPDATE user_tokens SET label = ?, updated_at = ?, revision = ?
-         WHERE id = ? AND workspace_id = ?`,
-      [label, now, revision, id, getActiveWorkspaceId()]
+         WHERE id = ? AND profile_id = ?`,
+      [label, now, revision, id, (await loadOperatorIdentity(tx)).userId]
     );
 
     await recordChange(
@@ -4771,7 +4776,7 @@ export async function revokeUserToken(id: string): Promise<UserTokenDto> {
     // Revocation is idempotent: revoking an already-revoked token is a no-op.
     if (existing.status === 'revoked') return toUserTokenDto(tx, await reloadUserToken(tx, id));
 
-    const { workspaceUserId } = await loadOperatorIdentity(tx);
+    const { userId, workspaceUserId } = await loadOperatorIdentity(tx);
     const now = nowIso();
     const revision = existing.revision + 1;
     await tx.run(
@@ -4779,8 +4784,8 @@ export async function revokeUserToken(id: string): Promise<UserTokenDto> {
         SET status = 'revoked', revoked_at = ?,
             revoked_by_workspace_user_id = ?,
             updated_at = ?, revision = ?
-      WHERE id = ? AND workspace_id = ?`,
-      [now, workspaceUserId, now, revision, id, getActiveWorkspaceId()]
+      WHERE id = ? AND profile_id = ?`,
+      [now, workspaceUserId, now, revision, id, userId]
     );
 
     await recordChange(

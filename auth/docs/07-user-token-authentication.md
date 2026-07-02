@@ -22,16 +22,17 @@ Requirements:
 Initial behavior:
 
 - A `USER_TOKEN` confers all permissions of the user who created it.
-- Authorization checks should resolve the token to its creating user, then evaluate the same permissions that user would have.
+- Authorization checks should resolve the token to its creating user, then evaluate the same permissions that user would have in the request's active workspace.
 - The token itself does not have independent permission scope in the first implementation.
 - When role-based access control is enabled, token requests should pass through the same authorization provider as interactive user requests.
+- Tokens are workspace-agnostic authentication credentials: they are owned by the creating user account, visible/manageable only to that user, and usable across any workspace where that user has active membership. Workspace authorization remains per-workspace through RBAC.
 
 Future behavior:
 
 - Extensions may allow users to specify which permissions a token includes.
 - Scoped tokens should be additive constraints on top of the creating user's current permissions, not a way to exceed them.
 - A token should become less powerful if the creating user's permissions are reduced.
-- A token should stop working if the creating user is disabled, removed from a workspace, or otherwise loses access.
+- A token should stop working for a workspace if the creating user is disabled, removed from that workspace, or otherwise loses access there.
 
 Schema-planning implication:
 
@@ -67,9 +68,10 @@ ovld user-token create --label "ci runner" --expires-in 90d
 
 Requirements:
 
-- User can list their tokens from the CLI.
+- User can list their own tokens from the CLI, independent of the currently active workspace.
 - Output must never reveal raw token secrets.
 - Show identifier/prefix, label, created time, last used time, expiration, revoked status, and coarse use/context metadata when available.
+- Other users in the same workspace must not see or manage these tokens unless they are also the token owner.
 
 Suggested command:
 
@@ -154,6 +156,7 @@ Requirements:
 
 - Protocol requests should authenticate with a `USER_TOKEN` when no local interactive session is available.
 - Token authentication must resolve to a user identity before permission checks.
+- Token authentication must not derive authorization scope from the token's issuance workspace. The request's active workspace preference is validated against the token owner's current memberships before RBAC runs.
 - Protocol event history should attribute actions to the resolved user and, where useful, the token identifier.
 - Token lifecycle operations should be available through CLI first and can later be exposed as local/web API endpoints.
 - Token lifecycle operations must never return raw token secrets except from create/rotate responses.
@@ -190,12 +193,14 @@ Token scopes are now implemented. A token is created with a `scope`:
   and excludes project/user/role/connector administration and `user_token:self:*` (a scoped token
   cannot mint further tokens).
 
-At authentication time the backend resolves an `Actor` and computes effective permissions as the
-token's creating-user role grants **intersected with** its scope grants (`grantCoversAction` over
-the scope patterns). Absence of scope rows means "no token-level restriction". Scopes can only
-restrict, never exceed, the user's current role — if the user's role is reduced, the token becomes
-less powerful automatically. Revocation and expiry are checked before scope evaluation. The
-`requirePermission` gate enforces this uniformly across REST, protocol, and runner routes.
+At authentication time the backend resolves the token to its creating `profile_id`, validates the
+request's active workspace against that profile's current memberships, and then computes effective
+permissions as the owner's role grants in that workspace **intersected with** the token's scope
+grants (`grantCoversAction` over the scope patterns). Absence of scope rows means "no token-level
+restriction". Scopes can only restrict, never exceed, the user's current role — if the user's role
+is reduced in a workspace, the token becomes less powerful there automatically. Revocation and
+expiry are checked before scope evaluation. The `requirePermission` gate enforces this uniformly
+across REST, protocol, and runner routes.
 
 The `ovld user-token create --scope full|mission-lifecycle` CLI flag and the webapp settings token
 form both surface these two presets.
@@ -226,6 +231,6 @@ Requirements for future readiness:
 
 - The feature plan uses `USER_TOKEN` consistently.
 - A user can create, list, rotate, rename, and revoke tokens from the CLI once auth is implemented.
-- A `USER_TOKEN` initially confers exactly the creating user's current permissions.
+- A `USER_TOKEN` initially confers exactly the creating user's current permissions in each active workspace where that user remains a member.
 - The design leaves room for future token-level scopes without changing the user/token ownership model.
 - Raw token secrets are never persisted or displayed after create/rotate.

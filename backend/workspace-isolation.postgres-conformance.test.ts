@@ -224,10 +224,11 @@ for (const adapter of adapters) {
       }
     });
 
-    it("a USER_TOKEN resolves only the workspace it was issued in, never another tenant's", async () => {
+    it('a USER_TOKEN authenticates the user and authorizes only active workspace memberships', async () => {
       const { client, teardown } = await adapter.create();
       try {
-        const { resolveUserTokenWorkspaceId, verifyUserToken } = await import('@overlord/auth');
+        const { getActorForToken, resolveUserTokenProfileId, verifyUserToken } =
+          await import('@overlord/auth');
         const dbModule = await import('./db.ts');
         const { createUserToken } = await import('./repository.ts');
 
@@ -242,8 +243,15 @@ for (const adapter of adapters) {
           workspaceId: 'tenant-b-token',
           slug: 'tenant-b-token',
           name: 'Tenant B Token',
-          profileId: 'user-b-token',
+          profileId: 'user-a-token',
           workspaceUserId: 'tenant-b-token-user'
+        });
+        await seedTenant(client, {
+          workspaceId: 'tenant-c-token',
+          slug: 'tenant-c-token',
+          name: 'Tenant C Token',
+          profileId: 'user-c-token',
+          workspaceUserId: 'tenant-c-token-user'
         });
 
         async function runAsTenant<T>(tenant: Tenant, fn: () => Promise<T>): Promise<T> {
@@ -257,20 +265,15 @@ for (const adapter of adapters) {
         const tokenA = await runAsTenant(tenantA, () =>
           createUserToken({ label: 'tenant-a-token' })
         );
-        const tokenB = await runAsTenant(tenantB, () =>
-          createUserToken({ label: 'tenant-b-token' })
-        );
 
-        const resolvedA = await resolveUserTokenWorkspaceId(client, tokenA.secret);
-        const resolvedB = await resolveUserTokenWorkspaceId(client, tokenB.secret);
-        assert.equal(resolvedA, 'tenant-a-token');
-        assert.equal(resolvedB, 'tenant-b-token');
+        assert.equal(await resolveUserTokenProfileId(client, tokenA.secret), 'user-a-token');
+        const verified = await verifyUserToken(client, tokenA.secret);
+        assert.equal(verified?.profileId, 'user-a-token');
 
-        // The workspace-scoped verification (what `requireAuthenticatedSession`
-        // actually calls) must also refuse a token presented against the wrong
-        // workspace id, even though the token itself is valid.
-        assert.equal(await verifyUserToken(client, tokenA.secret, 'tenant-b-token'), null);
-        assert.ok(await verifyUserToken(client, tokenA.secret, resolvedA!));
+        // The same token can act in another workspace where its owning profile
+        // is a member, but cannot cross into a workspace owned by another user.
+        assert.ok(await getActorForToken(client, tokenA.secret, tenantB.workspaceId));
+        assert.equal(await getActorForToken(client, tokenA.secret, 'tenant-c-token'), null);
       } finally {
         await teardown();
       }

@@ -13,6 +13,7 @@ export {
   getActorForSession,
   getActorForToken,
   listUserTokens,
+  resolveUserTokenProfileId,
   resolveUserTokenWorkspaceId,
   revokeUserToken,
   verifyUserToken

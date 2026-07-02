@@ -213,10 +213,10 @@ RBAC should integrate with the existing `USER_TOKEN` plan.
 
 Requirements:
 
-- A `USER_TOKEN` initially confers the current permissions of the creating user.
+- A `USER_TOKEN` initially confers the current permissions of the creating user in the request's active workspace.
 - Token authentication should resolve both user identity and token identity before authorization.
 - Future token scopes should further restrict the creating user's effective permissions, never expand them.
-- Revocation, expiration, disabled-user state, and removed-user state must be evaluated before permission grants.
+- Revocation and expiration must be evaluated before permission grants. Disabled-user state and removed-workspace-membership state must be evaluated against the requested workspace, not the token's issuance workspace.
 - Token-scoped permissions should reuse the same canonical permission names as RBAC roles.
 
 ## Acceptance Criteria

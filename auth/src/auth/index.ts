@@ -7,6 +7,7 @@ export {
   createUserToken,
   getActorForToken,
   listUserTokens,
+  resolveUserTokenProfileId,
   resolveUserTokenWorkspaceId,
   revokeUserToken,
   verifyUserToken

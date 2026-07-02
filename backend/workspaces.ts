@@ -1112,8 +1112,8 @@ export async function revokeWorkspaceInvitation(
  * Accept an invitation by its raw token. Binds the authenticated caller's
  * profile to the invitation's workspace with the invited role, and makes that
  * workspace active for the caller. The token is looked up by hash alone (no
- * workspace id required up front, mirroring `resolveUserTokenWorkspaceId`);
- * the email on the accepting profile must match the invited email exactly.
+ * workspace id required up front), then the email on the accepting profile must
+ * match the invited email exactly.
  */
 export async function acceptWorkspaceInvitation(
   body: AcceptWorkspaceInvitationBody

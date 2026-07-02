@@ -528,9 +528,10 @@ app.patch(
 
 // ---- User tokens ---------------------------------------------------------
 //
-// Long-lived `USER_TOKEN` credentials owned by the local operator. Raw secrets
-// are returned only from create; list/rename/revoke never expose them. Revoke
-// is a soft state change (the row is retained for audit), not a deletion.
+// Long-lived `USER_TOKEN` credentials owned by the authenticated user account,
+// independent of workspace. Raw secrets are returned only from create;
+// list/rename/revoke never expose them. Revoke is a soft state change (the row
+// is retained for audit), not a deletion.
 
 app.get(
   '/api/user-tokens',

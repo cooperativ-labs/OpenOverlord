@@ -281,14 +281,19 @@ Indexes:
 
 ### `user_tokens`
 
-Stores `USER_TOKEN` metadata and hashes only.
+Stores `USER_TOKEN` metadata and hashes only. A token is owned by `profile_id`
+and authenticates that user account across workspaces. Workspace fields on this
+table record the issuance/revocation context for audit and backwards
+compatibility; they are not the authorization boundary. At request time, the
+Auth Layer resolves the token to `profile_id`, validates the requested active
+workspace against `workspace_users`, and then applies RBAC for that workspace.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | Id | yes | Token identifier. |
-| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `workspace_id` | Id | yes | Issuance workspace FK to `workspaces`; not the token's authorization scope. |
 | `profile_id` | Id | yes | Profile that owns the token. |
-| `workspace_user_id` | Id | yes | Workspace membership whose permissions the token inherits. |
+| `workspace_user_id` | Id | yes | Issuing workspace membership for audit. Runtime permissions come from the owner's active membership in the requested workspace. |
 | `label` | text | yes | User supplied. |
 | `token_prefix` | text | yes | Non-secret lookup/display prefix. |
 | `token_hash` | SecretHash | yes | Hash of raw secret. |
@@ -311,6 +316,8 @@ Indexes:
 - Unique `(workspace_id, token_prefix)`.
 - `(workspace_id, workspace_user_id, status)`.
 - `(profile_id, status)`.
+- `(profile_id, token_prefix)` for per-user token management.
+- `(token_hash)` for hash-only authentication before workspace authorization.
 - `(workspace_id, expires_at)`.
 
 Token rotation stores `predecessor_token_id` only. The successor is derived by querying rows whose predecessor points at the current token, which avoids maintaining two linked-list directions in one transaction.
@@ -333,12 +340,14 @@ These tables are created by each adapter's migration `001_better_auth.sql`. They
 
 ### `user_token_scopes`
 
-Reserved for future token-level restrictions.
+Token-level restrictions that apply to the token independently of workspace.
+The grant patterns are intersected with the owner's workspace-specific RBAC
+grants after the requested workspace membership is resolved.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | Id | yes |  |
-| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `workspace_id` | Id | yes | Issuance workspace FK to `workspaces`; not used to bind the scope to one workspace. |
 | `token_id` | Id | yes | FK to `user_tokens`. |
 | `permission` | text | yes | Same canonical permission names as RBAC. |
 | `resource_type` | text | no | Optional scope. |

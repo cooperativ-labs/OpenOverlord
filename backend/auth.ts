@@ -1,4 +1,4 @@
-import { resolveUserTokenWorkspaceId, verifyUserToken } from '@overlord/auth';
+import { verifyUserToken } from '@overlord/auth';
 import { resolveAdapter } from '@overlord/database';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
 import type { NextFunction, Request, Response } from 'express';
@@ -123,11 +123,11 @@ function isLoopbackRequest(req: Request): boolean {
 }
 
 /** Active scope grant patterns for a token (empty = `full`, no restriction). */
-async function loadTokenScopeGrants(tokenId: string, workspaceId: string): Promise<string[]> {
+async function loadTokenScopeGrants(tokenId: string): Promise<string[]> {
   const rows = await requireDatabaseClient().all<{ permission: string }>(
     `SELECT permission FROM user_token_scopes
-       WHERE token_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [tokenId, workspaceId]
+       WHERE token_id = ? AND deleted_at IS NULL`,
+    [tokenId]
   );
   return rows.map(r => r.permission);
 }
@@ -256,25 +256,29 @@ export async function requireAuthenticatedSession(
         }
       }
 
-      // 2. USER_TOKEN bearer auth (any surface). Tokens are workspace-scoped
-      //    (`user_tokens.workspace_id`), so the token itself resolves the
-      //    tenant for this request — no global/default needed. Resolve the
-      //    token's scope grants so the `requirePermission` gate can intersect
-      //    them with the user's role.
+      // 2. USER_TOKEN bearer auth (any surface). Tokens authenticate the owning
+      //    profile, not a workspace. The request's active workspace preference
+      //    is then validated against that profile's memberships, and RBAC for
+      //    the resolved workspace supplies the authorization boundary.
       const bearerToken = extractBearerToken(req);
       if (bearerToken?.startsWith('out_')) {
-        const tokenWorkspaceId = await resolveUserTokenWorkspaceId(
-          authDomainDatabase(),
-          bearerToken
-        );
-        const workspace = tokenWorkspaceId ? await loadWorkspaceRow(tokenWorkspaceId) : undefined;
-        if (!tokenWorkspaceId || !workspace) {
+        const verified = await verifyUserToken(authDomainDatabase(), bearerToken);
+        if (!verified) {
           res.status(401).json({ error: 'Invalid or expired USER_TOKEN' });
           return;
         }
-        const verified = await verifyUserToken(authDomainDatabase(), bearerToken, tokenWorkspaceId);
-        if (!verified) {
-          res.status(401).json({ error: 'Invalid or expired USER_TOKEN' });
+        setActiveProfileId(verified.profileId);
+        const membership = await ensureWorkspaceUser(
+          verified.profileId,
+          getRequestedWorkspaceId(req)
+        );
+        if (!membership) {
+          res.status(403).json({ error: 'No active workspace membership for USER_TOKEN' });
+          return;
+        }
+        const workspace = await loadWorkspaceRow(membership.workspace.id);
+        if (!workspace) {
+          res.status(403).json({ error: 'No active workspace membership for USER_TOKEN' });
           return;
         }
         setActiveWorkspaceContext({
@@ -283,10 +287,9 @@ export async function requireAuthenticatedSession(
           name: workspace.name,
           kind: workspace.kind
         });
-        setActiveProfileId(await profileIdForWorkspaceUser(verified.workspaceUserId));
-        const scopeGrants = await loadTokenScopeGrants(verified.id, tokenWorkspaceId);
+        const scopeGrants = await loadTokenScopeGrants(verified.id);
         setActiveTokenAuth({
-          workspaceUserId: verified.workspaceUserId,
+          workspaceUserId: membership.workspaceUserId,
           tokenId: verified.id,
           scopeGrants: scopeGrants.length > 0 ? scopeGrants : null
         });
