@@ -97,7 +97,7 @@ export function AppSidebar() {
               <span className="sr-only">New project</span>
             </SidebarGroupAction>
             <SidebarGroupContent>
-              <SidebarMenu>
+              <SidebarMenu className="gap-1">
                 {activeProjects.map(project => (
                   <ProjectSidebarMenuItem
                     key={project.id}
