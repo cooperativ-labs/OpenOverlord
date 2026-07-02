@@ -1,8 +1,21 @@
 import { type AdapterConfig, loadBetterSqlite3, resolveAdapter } from '@overlord/database';
 import { betterAuth, type User } from 'better-auth';
-import { bearer } from 'better-auth/plugins';
+import { bearer, emailOTP } from 'better-auth/plugins';
 import { Kysely, PostgresDialect } from 'kysely';
 import { Pool } from 'pg';
+
+/**
+ * The transactional-email OTP flows Better Auth's `emailOTP` plugin can drive.
+ * `email-verification` is minted alongside the sign-up confirmation link so the
+ * same email carries both a clickable link and a typed 6-digit code; the others
+ * back the passwordless sign-in and password-reset surfaces.
+ */
+export type EmailOTPType = 'sign-in' | 'email-verification' | 'forget-password' | 'change-email';
+
+/** How long an emailed OTP stays valid — matches the "expires in 1 hour" email copy. */
+const EMAIL_OTP_EXPIRES_IN_SECONDS = 60 * 60;
+/** Numeric OTP length; the code block in the email templates is styled for six digits. */
+const EMAIL_OTP_LENGTH = 6;
 
 /**
  * Better Auth database configuration.
@@ -43,7 +56,29 @@ export interface CreateAuthOptions {
    * accounts are never email-verified, matching prior behavior (the default
    * for offline/local editions with no configured email-sending provider).
    */
-  sendVerificationEmail?: (params: { user: User; url: string; token: string }) => Promise<void>;
+  sendVerificationEmail?: (params: {
+    user: User;
+    url: string;
+    token: string;
+    /**
+     * Real 6-digit OTP minted alongside the verification link (see
+     * `emailOTP` plugin below). Present only when `sendEmailOTP` is also
+     * configured; the sender shows this in the email's "OR USE CODE" block
+     * instead of the long, untypable verification `token`.
+     */
+    otp?: string;
+  }) => Promise<void>;
+  /**
+   * Delivers a standalone one-time code for the `emailOTP` plugin's own flows
+   * (passwordless sign-in and password reset), backend-supplied the same way as
+   * `sendVerificationEmail`. When provided, the `emailOTP` plugin is enabled so
+   * numeric OTPs are generated and verifiable via `/api/auth/email-otp/*`; when
+   * omitted, the plugin is left off and behavior is unchanged. Sign-up
+   * confirmation continues to flow through `sendVerificationEmail` (which then
+   * also carries a minted `otp`), so this callback fires only for the
+   * sign-in / forget-password code emails.
+   */
+  sendEmailOTP?: (params: { email: string; otp: string; type: EmailOTPType }) => Promise<void>;
 }
 
 function postgresSearchPath(schema: string | undefined): string | undefined {
@@ -105,7 +140,34 @@ export function createAuth(dbPathOrOptions?: string | CreateAuthOptions) {
         ? { database: { type: 'sqlite' as const, path: dbPathOrOptions } }
         : dbPathOrOptions;
 
-  return betterAuth({
+  // The `emailVerification.sendVerificationEmail` wrapper needs to call back
+  // into the constructed instance (`auth.api.createVerificationOTP`) to mint the
+  // OTP shown beside the link. Better Auth runs that callback only at request
+  // time — long after construction — so a mutable holder safely breaks the
+  // otherwise-circular reference to `auth`.
+  let authInstance: Auth | undefined;
+
+  const otpEnabled = Boolean(options.sendEmailOTP);
+
+  /**
+   * Mint a real 6-digit OTP for `email` tied to the sign-up verification flow,
+   * stored by the `emailOTP` plugin and verifiable via `/email-otp/verify-email`.
+   * Returns `undefined` when the plugin is disabled or minting fails, so the
+   * verification email still sends (just without a usable code) rather than
+   * blocking sign-up.
+   */
+  async function mintEmailVerificationOTP(email: string): Promise<string | undefined> {
+    if (!otpEnabled || !authInstance) return undefined;
+    try {
+      return await authInstance.api.createVerificationOTP({
+        body: { email, type: 'email-verification' }
+      });
+    } catch {
+      return undefined;
+    }
+  }
+
+  const auth = betterAuth({
     database: createBetterAuthDatabase(options.database),
     ...(options.trustedOrigins ? { trustedOrigins: options.trustedOrigins } : {}),
     // `requireEmailVerification` also gates sign-in for unverified accounts,
@@ -127,7 +189,15 @@ export function createAuth(dbPathOrOptions?: string | CreateAuthOptions) {
               user: User;
               url: string;
               token: string;
-            }) => options.sendVerificationEmail!({ user, url, token }),
+            }) => {
+              const otp = await mintEmailVerificationOTP(user.email);
+              await options.sendVerificationEmail!({
+                user,
+                url,
+                token,
+                ...(otp ? { otp } : {})
+              });
+            },
             sendOnSignUp: true,
             sendOnSignIn: true,
             autoSignInAfterVerification: true
@@ -151,8 +221,24 @@ export function createAuth(dbPathOrOptions?: string | CreateAuthOptions) {
           }
         : {})
     },
-    plugins: [bearer()]
+    plugins: [
+      bearer(),
+      ...(options.sendEmailOTP
+        ? [
+            emailOTP({
+              otpLength: EMAIL_OTP_LENGTH,
+              expiresIn: EMAIL_OTP_EXPIRES_IN_SECONDS,
+              sendVerificationOTP: async ({ email, otp, type }) => {
+                await options.sendEmailOTP!({ email, otp, type });
+              }
+            })
+          ]
+        : [])
+    ]
   });
+
+  authInstance = auth;
+  return auth;
 }
 
 export type Auth = ReturnType<typeof createAuth>;

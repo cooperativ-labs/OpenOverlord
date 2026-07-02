@@ -14,6 +14,13 @@ export const DEFAULT_ROLE_DEFINITIONS: Readonly<Record<Role, RoleDefinition>> = 
     description: 'Standard user or persistent agent account',
     grants: [
       'workspace:read',
+      // Switching the caller's own active workspace. `activateWorkspace`
+      // independently validates the caller is an active member of the *target*
+      // workspace, so this only lets a member move between workspaces they
+      // already belong to — never join one they don't. Without it, an invited
+      // MEMBER can never switch into (or back out of) a workspace via the
+      // gated `/api/workspaces/:id/activate` route.
+      'workspace:activate',
       'profile:self:*',
       'launch:*',
       'project:read',

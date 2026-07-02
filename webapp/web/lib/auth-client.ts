@@ -1,3 +1,4 @@
+import { emailOTPClient } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
 
 import {
@@ -19,6 +20,9 @@ const remoteFetchOptions = isRemoteBackend()
 export const authClient = createAuthClient({
   baseURL: getAuthBaseUrl(),
   basePath: '/api/auth',
+  // Enables `authClient.emailOtp.*` (e.g. verifyEmail) for the typed 6-digit
+  // code flow; pairs with the `emailOTP` server plugin in auth/src/auth/config.ts.
+  plugins: [emailOTPClient()],
   fetchOptions: {
     credentials: isRemoteBackend() ? 'omit' : 'include',
     ...remoteFetchOptions,

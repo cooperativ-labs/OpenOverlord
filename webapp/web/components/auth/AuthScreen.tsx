@@ -30,6 +30,8 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
   const [submitButtonState, setSubmitButtonState] = useState<ButtonLoadingState>('default');
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
   const [resendButtonState, setResendButtonState] = useState<ButtonLoadingState>('default');
+  const [otpCode, setOtpCode] = useState('');
+  const [verifyButtonState, setVerifyButtonState] = useState<ButtonLoadingState>('default');
 
   const isCreate = mode === 'create-account';
   // The backend chooser only exists in the desktop shell (Electron preload bridge).
@@ -94,6 +96,46 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
     }
   }
 
+  async function handleVerifyOtp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!pendingVerificationEmail) return;
+    const code = otpCode.trim();
+    if (!/^\d{6}$/.test(code)) {
+      setError('Enter the 6-digit code from your email.');
+      setVerifyButtonState('error');
+      return;
+    }
+
+    setError(null);
+    setVerifyButtonState('loading');
+    try {
+      const result = await authClient.emailOtp.verifyEmail({
+        email: pendingVerificationEmail,
+        otp: code
+      });
+      if (result.error) {
+        setError(result.error.message ?? 'That code is invalid or expired.');
+        setVerifyButtonState('error');
+        return;
+      }
+
+      // With autoSignInAfterVerification, a successful verify returns a session
+      // token; enter the app exactly like a password sign-in.
+      if (!result.data?.token) {
+        setError('Verified, but sign-in did not complete. Try signing in.');
+        setVerifyButtonState('error');
+        return;
+      }
+
+      setVerifyButtonState('success');
+      await persistAuthSessionFromSignInResult(result.data);
+      await onAuthenticated();
+    } catch (err) {
+      setError(authErrorMessage(err));
+      setVerifyButtonState('error');
+    }
+  }
+
   async function handleResendVerification() {
     if (!pendingVerificationEmail) return;
     setResendButtonState('loading');
@@ -114,6 +156,8 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
     setSubmitButtonState('default');
     setPendingVerificationEmail(null);
     setResendButtonState('default');
+    setOtpCode('');
+    setVerifyButtonState('default');
   }
 
   return (
@@ -173,11 +217,53 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
           )}
 
           {pendingVerificationEmail ? (
-            <div className="flex flex-col gap-4 text-center">
-              <p className="text-sm text-muted-foreground">
-                We sent a verification link to <strong>{pendingVerificationEmail}</strong>. Follow
-                the link to finish signing in.
+            <div className="flex flex-col gap-4">
+              <p className="text-center text-sm text-muted-foreground">
+                We sent a verification email to <strong>{pendingVerificationEmail}</strong>. Follow
+                the link, or enter the 6-digit code below to finish signing in.
               </p>
+
+              {error ? (
+                <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  {error}
+                </div>
+              ) : null}
+
+              <form onSubmit={handleVerifyOtp}>
+                <FieldGroup className="gap-4">
+                  <Field>
+                    <FieldLabel htmlFor="auth-otp">Verification code</FieldLabel>
+                    <Input
+                      id="auth-otp"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      pattern="[0-9]*"
+                      maxLength={6}
+                      placeholder="000000"
+                      className="text-center tracking-[0.5em]"
+                      value={otpCode}
+                      onChange={event =>
+                        setOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))
+                      }
+                      disabled={verifyButtonState === 'loading'}
+                      autoFocus
+                    />
+                  </Field>
+                  <Field>
+                    <LoadingButton
+                      type="submit"
+                      className="w-full"
+                      buttonState={verifyButtonState}
+                      setButtonState={setVerifyButtonState}
+                      text="Verify code"
+                      loadingText="Verifying..."
+                      successText="Verified"
+                      errorText="Verification failed"
+                    />
+                  </Field>
+                </FieldGroup>
+              </form>
+
               <LoadingButton
                 type="button"
                 variant="outline"

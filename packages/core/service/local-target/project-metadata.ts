@@ -39,6 +39,8 @@ export function writeProjectJson({
     projectJsonPath,
     `${JSON.stringify(
       {
+        _warning:
+          'This file is managed by Overlord and is regenerated automatically when this folder is linked as a project resource. Do not edit it manually — manual changes will be overwritten.',
         version: PROJECT_JSON_VERSION,
         projectId,
         resourceId,

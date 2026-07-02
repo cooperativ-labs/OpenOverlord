@@ -18,7 +18,8 @@ const {
   withRequestContextAsync
 } = dbModule;
 await initDatabase();
-const { loadActorRoles } = await import('./rbac.ts');
+const { loadActorRoles, actorCan } = await import('./rbac.ts');
+const { PERMISSIONS } = await import('@overlord/auth');
 const { seedAuthenticatedOperator } = await import('./test-helpers.ts');
 const {
   acceptWorkspaceInvitation,
@@ -346,6 +347,63 @@ test('admins can promote and demote members, but cannot remove or demote the las
       return true;
     }
   );
+});
+
+test('an invited MEMBER can switch (activate) between the workspaces they belong to', async () => {
+  // Regression: the `/api/workspaces/:id/activate` route is gated by
+  // `WORKSPACE_ACTIVATE`. Before the fix the default MEMBER role lacked that
+  // grant, so an invited member could see a workspace in their switcher but
+  // every activate call 403'd — the switch appeared to fail and they were left
+  // on (bounced back to) their default workspace.
+  const invite = await inviteWorkspaceMember('local-workspace', {
+    email: 'switcher@cooperativ.io',
+    roleKey: 'MEMBER'
+  });
+  insertProfile('switcher-user', 'switcher@cooperativ.io');
+
+  // The member owns their own workspace and accepts the invite to a second one.
+  let ownWorkspaceId = '';
+  let jakeMemberId = '';
+  await withRequestContextAsync(async () => {
+    setActiveProfileId('switcher-user');
+    setActiveWorkspaceContext(null);
+    setActiveWorkspaceUser(null);
+    ownWorkspaceId = (await createWorkspace({ name: 'Switcher Own' })).id;
+    await acceptWorkspaceInvitation({ token: tokenFromAcceptUrl(invite.acceptUrl!) });
+  });
+
+  jakeMemberId = (
+    db
+      .prepare(
+        `SELECT id FROM workspace_users
+           WHERE workspace_id = 'local-workspace' AND profile_id = 'switcher-user'
+             AND status = 'active'`
+      )
+      .get() as { id: string }
+  ).id;
+  assert.deepEqual(
+    await loadActorRoles({ workspaceId: 'local-workspace', workspaceUserId: jakeMemberId }),
+    ['MEMBER'],
+    'the invitee joins the invited workspace as a plain MEMBER'
+  );
+
+  // Acting as that MEMBER inside the invited workspace, the activate route gate
+  // (evaluated in the current workspace context) must permit switching.
+  await withRequestContextAsync(async () => {
+    setActiveProfileId('switcher-user');
+    setActiveWorkspaceContext({
+      id: 'local-workspace',
+      slug: 'local',
+      name: 'Local',
+      kind: 'user'
+    });
+    setActiveWorkspaceUser(jakeMemberId);
+    assert.ok(
+      await actorCan(PERMISSIONS.WORKSPACE_ACTIVATE),
+      'a MEMBER must be able to activate/switch their workspace'
+    );
+  });
+  assert.ok(ownWorkspaceId, 'sanity: the member also owns their onboarding workspace');
 });
 
 test.after(async () => {

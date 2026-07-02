@@ -2,32 +2,42 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { inviteUserHtml, inviteUserSubject } from './invite-user.ts';
+import {
+  assertEscapesUrlInjection,
+  assertIncludesSiteUrl,
+  assertSubjectNonEmpty,
+  assertValidEmailDocument,
+  INJECTION_SCRIPT,
+  TEST_EMAIL,
+  TEST_SITE_URL,
+  testConfirmationUrl,
+  testInjectionConfirmationUrl
+} from './test-fixtures.ts';
 
 test('inviteUserHtml interpolates the email, confirmation URL, and site URL', () => {
+  const confirmationUrl = testConfirmationUrl({ path: '/invite' });
   const html = inviteUserHtml({
-    email: 'new.user@example.com',
-    confirmationUrl: 'https://ovld.ai/invite?token=abc123',
-    siteUrl: 'https://ovld.ai'
+    email: TEST_EMAIL,
+    confirmationUrl,
+    siteUrl: TEST_SITE_URL
   });
 
-  assert.match(html, /<!doctype html>/i);
-  assert.ok(html.includes('href="https://ovld.ai/invite?token=abc123"'));
-  assert.ok(html.includes('new.user@example.com'));
-  assert.ok(html.includes('href="https://ovld.ai"'));
+  assertValidEmailDocument(html);
+  assert.ok(html.includes(`href="${confirmationUrl}"`));
+  assert.ok(html.includes(TEST_EMAIL));
+  assertIncludesSiteUrl(html);
 });
 
 test('inviteUserHtml escapes values to prevent attribute/markup injection', () => {
   const html = inviteUserHtml({
-    email: '"><script>x</script>',
-    confirmationUrl: 'https://ovld.ai/invite?a=1&b="><script>x</script>',
-    siteUrl: 'https://ovld.ai'
+    email: INJECTION_SCRIPT,
+    confirmationUrl: testInjectionConfirmationUrl({ path: '/invite' }),
+    siteUrl: TEST_SITE_URL
   });
 
-  assert.ok(!html.includes('"><script>x</script>'));
-  assert.ok(html.includes('a=1&amp;b=&quot;&gt;&lt;script&gt;'));
+  assertEscapesUrlInjection(html);
 });
 
 test('inviteUserSubject is a non-empty string', () => {
-  assert.equal(typeof inviteUserSubject(), 'string');
-  assert.ok(inviteUserSubject().length > 0);
+  assertSubjectNonEmpty(inviteUserSubject);
 });

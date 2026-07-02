@@ -2,36 +2,49 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { magicLinkHtml, magicLinkSubject } from './magic-link.ts';
+import {
+  assertEscapesTokenMarkup,
+  assertEscapesUrlInjection,
+  assertIncludesSiteUrl,
+  assertSubjectNonEmpty,
+  assertValidEmailDocument,
+  INJECTION_SCRIPT,
+  INJECTION_TOKEN,
+  TEST_EMAIL,
+  TEST_SITE_URL,
+  TEST_TOKEN,
+  testConfirmationUrl,
+  testInjectionConfirmationUrl
+} from './test-fixtures.ts';
 
 test('magicLinkHtml interpolates the email, confirmation URL, token, and site URL', () => {
+  const confirmationUrl = testConfirmationUrl({ path: '/verify' });
   const html = magicLinkHtml({
-    email: 'user@example.com',
-    confirmationUrl: 'https://ovld.ai/verify?token=abc123',
-    token: '482913',
-    siteUrl: 'https://ovld.ai'
+    email: TEST_EMAIL,
+    confirmationUrl,
+    token: TEST_TOKEN,
+    siteUrl: TEST_SITE_URL
   });
 
-  assert.match(html, /<!doctype html>/i);
-  assert.ok(html.includes('href="https://ovld.ai/verify?token=abc123"'));
-  assert.ok(html.includes('482913'));
-  assert.ok(html.includes('user@example.com'));
-  assert.ok(html.includes('href="https://ovld.ai"'));
+  assertValidEmailDocument(html);
+  assert.ok(html.includes(`href="${confirmationUrl}"`));
+  assert.ok(html.includes(TEST_TOKEN));
+  assert.ok(html.includes(TEST_EMAIL));
+  assertIncludesSiteUrl(html);
 });
 
 test('magicLinkHtml escapes values to prevent attribute/markup injection', () => {
   const html = magicLinkHtml({
-    email: '"><script>x</script>',
-    confirmationUrl: 'https://ovld.ai/verify?a=1&b="><script>x</script>',
-    token: '<b>1</b>',
-    siteUrl: 'https://ovld.ai'
+    email: INJECTION_SCRIPT,
+    confirmationUrl: testInjectionConfirmationUrl({ path: '/verify' }),
+    token: INJECTION_TOKEN,
+    siteUrl: TEST_SITE_URL
   });
 
-  assert.ok(!html.includes('"><script>x</script>'));
-  assert.ok(html.includes('a=1&amp;b=&quot;&gt;&lt;script&gt;'));
-  assert.ok(html.includes('&lt;b&gt;1&lt;/b&gt;'));
+  assertEscapesUrlInjection(html);
+  assertEscapesTokenMarkup(html);
 });
 
 test('magicLinkSubject is a non-empty string', () => {
-  assert.equal(typeof magicLinkSubject(), 'string');
-  assert.ok(magicLinkSubject().length > 0);
+  assertSubjectNonEmpty(magicLinkSubject);
 });

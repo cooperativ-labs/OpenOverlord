@@ -2,39 +2,44 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { confirmEmailHtml, confirmEmailSubject } from './confirm-email.ts';
+import {
+  assertEscapesTokenMarkup,
+  assertEscapesUrlInjection,
+  assertIncludesSiteUrl,
+  assertSubjectNonEmpty,
+  assertValidEmailDocument,
+  INJECTION_TOKEN,
+  TEST_SITE_URL,
+  TEST_TOKEN,
+  testConfirmationUrl,
+  testInjectionConfirmationUrl
+} from './test-fixtures.ts';
 
 test('confirmEmailHtml interpolates the confirmation URL, token, and site URL', () => {
+  const confirmationUrl = testConfirmationUrl({ path: '/verify' });
   const html = confirmEmailHtml({
-    confirmationUrl: 'https://ovld.ai/verify?token=abc123',
-    token: '482913',
-    siteUrl: 'https://ovld.ai'
+    confirmationUrl,
+    token: TEST_TOKEN,
+    siteUrl: TEST_SITE_URL
   });
 
-  assert.match(html, /<!doctype html>/i);
-  // CTA button and fallback link both point at the confirmation URL.
-  assert.ok(html.includes('href="https://ovld.ai/verify?token=abc123"'));
-  // One-time code is rendered.
-  assert.ok(html.includes('482913'));
-  // Footer brand link uses the site URL.
-  assert.ok(html.includes('href="https://ovld.ai"'));
+  assertValidEmailDocument(html);
+  assert.ok(html.includes(`href="${confirmationUrl}"`));
+  assert.ok(html.includes(TEST_TOKEN));
+  assertIncludesSiteUrl(html);
 });
 
 test('confirmEmailHtml escapes values to prevent attribute/markup injection', () => {
   const html = confirmEmailHtml({
-    confirmationUrl: 'https://ovld.ai/verify?a=1&b="><script>x</script>',
-    token: '<b>1</b>',
-    siteUrl: 'https://ovld.ai'
+    confirmationUrl: testInjectionConfirmationUrl({ path: '/verify' }),
+    token: INJECTION_TOKEN,
+    siteUrl: TEST_SITE_URL
   });
 
-  // Raw injection payload must not appear verbatim.
-  assert.ok(!html.includes('"><script>x</script>'));
-  // Ampersand and quote in the URL are entity-encoded.
-  assert.ok(html.includes('a=1&amp;b=&quot;&gt;&lt;script&gt;'));
-  // Token markup is escaped in element content.
-  assert.ok(html.includes('&lt;b&gt;1&lt;/b&gt;'));
+  assertEscapesUrlInjection(html);
+  assertEscapesTokenMarkup(html);
 });
 
 test('confirmEmailSubject is a non-empty string', () => {
-  assert.equal(typeof confirmEmailSubject(), 'string');
-  assert.ok(confirmEmailSubject().length > 0);
+  assertSubjectNonEmpty(confirmEmailSubject);
 });

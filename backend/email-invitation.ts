@@ -14,7 +14,7 @@ import { inviteUserHtml, inviteUserSubject } from './email-templates/index.ts';
 const FROM_ADDRESS = 'Overlord <verify@notifications.cooperativ.io>';
 
 /** Public site URL used for branded links in transactional emails. */
-const SITE_URL = process.env.OVERLORD_SITE_URL ?? 'https://ovld.ai';
+const SITE_URL = process.env.OVERLORD_SITE_URL ?? 'https://app.ovld.ai';
 
 let resendClient: Resend | null = null;
 

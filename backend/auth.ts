@@ -23,7 +23,7 @@ import {
   setClientDeviceIdentity,
   withRequestContextAsync
 } from './db.ts';
-import { verificationEmailSenderFromEnv } from './email-verification.ts';
+import { emailOTPSenderFromEnv, verificationEmailSenderFromEnv } from './email-verification.ts';
 import { ApiError } from './errors.ts';
 import { grantWorkspaceAdminRole } from './workspaces.ts';
 
@@ -83,7 +83,8 @@ export const auth = createAuth({
         : { type: 'postgres', connectionString: authAdapter.connectionString },
   trustedOrigins: getAllowedBrowserOrigins(),
   onDeleteUser: cascadeDeleteAccount,
-  sendVerificationEmail: verificationEmailSenderFromEnv()
+  sendVerificationEmail: verificationEmailSenderFromEnv(),
+  sendEmailOTP: emailOTPSenderFromEnv()
 });
 export const authNodeHandler = toNodeHandler(auth);
 
