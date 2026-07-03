@@ -100,6 +100,7 @@ graph LR
         O2["Objective 2"]
         O3["Objective 3"]
         SC["📝 Shared Context"]
+        O1 --> O2 --> O3 --> SC
     end
 
     S1["🤖 Agent Session 1"]
