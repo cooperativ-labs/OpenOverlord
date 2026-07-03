@@ -8,7 +8,11 @@ import { cn } from '@/lib/utils';
 
 import type { MissionDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 
-import { MissionAssigneeAvatar, MissionCompleteCheckbox } from './MissionCardPrimitives.tsx';
+import {
+  MissionAssigneeAvatar,
+  MissionCompleteCheckbox,
+  MissionDueDateBadge
+} from './MissionCardPrimitives.tsx';
 
 export function MissionListCard({
   mission,
@@ -103,6 +107,7 @@ export function MissionListCard({
         >
           {mission.displayId}
         </span>
+        <MissionDueDateBadge dueDatetime={mission.dueDatetime} />
         {mission.objectiveCount > 0 ? (
           <span
             className="border rounded-full px-1.5 py-0.5 hidden text-[9px] tabular-nums text-muted-foreground bg-muted sm:inline"

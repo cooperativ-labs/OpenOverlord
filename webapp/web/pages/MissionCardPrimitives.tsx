@@ -1,9 +1,55 @@
 import { Check } from 'lucide-react';
 
+import { formatDueDatetimeLabel } from '@/components/scheduling/schedule-utils.ts';
 import { AuthenticatedAvatarImage, Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 import type { WorkspaceMemberDto } from '../../shared/contract.ts';
+
+function formatOrdinalDayOfMonth({ date }: { date: Date }): string {
+  const day = date.getDate();
+  const mod100 = day % 100;
+  if (mod100 >= 11 && mod100 <= 13) {
+    return `${day}th`;
+  }
+  switch (day % 10) {
+    case 1:
+      return `${day}st`;
+    case 2:
+      return `${day}nd`;
+    case 3:
+      return `${day}rd`;
+    default:
+      return `${day}th`;
+  }
+}
+
+export function MissionDueDateBadge({ dueDatetime }: { dueDatetime: string | null }) {
+  if (!dueDatetime) return null;
+
+  const parsed = new Date(dueDatetime);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  const ordinalDay = formatOrdinalDayOfMonth({ date: parsed });
+  const fullDateLabel = formatDueDatetimeLabel(dueDatetime);
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className="inline-flex shrink-0 items-center rounded-full border bg-muted px-1.5 py-0.5 text-[9px] font-medium tabular-nums text-muted-foreground"
+            onClick={event => event.stopPropagation()}
+          >
+            {ordinalDay}
+          </span>
+        }
+      />
+      <TooltipContent>{fullDateLabel ? `Due ${fullDateLabel}` : 'Due date'}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   const value = hex.trim().replace('#', '');
