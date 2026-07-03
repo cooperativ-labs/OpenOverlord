@@ -13,6 +13,23 @@ const DAY_LABELS_FULL = [
 
 const ORDINAL_LABELS = ['1st', '2nd', '3rd'] as const;
 
+const PERIOD_INTERVAL_NAMES: Record<PeriodType, { singular: string; plural: string }> = {
+  d: { singular: 'day', plural: 'days' },
+  w: { singular: 'week', plural: 'weeks' },
+  m: { singular: 'month', plural: 'months' }
+};
+
+export function getPeriodIntervalName({
+  periodType,
+  periodInterval
+}: {
+  periodType: PeriodType;
+  periodInterval: number;
+}): string {
+  const names = PERIOD_INTERVAL_NAMES[periodType];
+  return periodInterval === 1 ? names.singular : names.plural;
+}
+
 export function getDayLabel(dayNum: number, full = false): string {
   return full ? (DAY_LABELS_FULL[dayNum] ?? '') : (DAY_LABELS[dayNum] ?? '');
 }

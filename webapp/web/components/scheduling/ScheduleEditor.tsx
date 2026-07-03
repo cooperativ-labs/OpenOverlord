@@ -39,7 +39,11 @@ import {
   type ScheduleState,
   stateToInput
 } from './schedule-editor-helpers.ts';
-import { formatDueDatetimeLabel, summarizeSchedule } from './schedule-utils.ts';
+import {
+  formatDueDatetimeLabel,
+  getPeriodIntervalName,
+  summarizeSchedule
+} from './schedule-utils.ts';
 import { DayToggles, MonthDayToggles, WeekOfMonthToggles } from './ScheduleToggles.tsx';
 
 export type { ScheduleEditorInitialSchedule } from './schedule-editor-helpers.ts';
@@ -436,18 +440,30 @@ export function ScheduleEditor({
                   >
                     <SelectTrigger className="h-8 w-auto min-w-[100px] text-xs">
                       <SelectValue>
-                        {schedule.periodInterval === 1 ? 'day' : 'days'}
+                        {getPeriodIntervalName({
+                          periodType: schedule.periodType,
+                          periodInterval: schedule.periodInterval
+                        })}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="d">
-                        {schedule.periodInterval === 1 ? 'day' : 'days'}
+                        {getPeriodIntervalName({
+                          periodType: 'd',
+                          periodInterval: schedule.periodInterval
+                        })}
                       </SelectItem>
                       <SelectItem value="w">
-                        {schedule.periodInterval === 1 ? 'week' : 'weeks'}
+                        {getPeriodIntervalName({
+                          periodType: 'w',
+                          periodInterval: schedule.periodInterval
+                        })}
                       </SelectItem>
                       <SelectItem value="m">
-                        {schedule.periodInterval === 1 ? 'month' : 'months'}
+                        {getPeriodIntervalName({
+                          periodType: 'm',
+                          periodInterval: schedule.periodInterval
+                        })}
                       </SelectItem>
                     </SelectContent>
                   </Select>
