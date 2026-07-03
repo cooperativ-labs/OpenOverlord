@@ -118,7 +118,7 @@ export function ProjectSettingsSection({
   const openInIdeLabel = `Open in ${ideLabel}`;
 
   return (
-    <section className="border-b border-[var(--color-border)] px-5 py-2">
+    <section className="border-b border-(--color-border) px-5 py-2">
       <div className="flex flex-wrap items-center gap-2">
         <DropdownMenu open={colorMenuOpen} onOpenChange={setColorMenuOpen}>
           <DropdownMenuTrigger
@@ -183,7 +183,7 @@ export function ProjectSettingsSection({
                   render={
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="outline"
                       size={ideIcon ? 'icon-sm' : 'sm'}
                       className={cn('shrink-0', !ideIcon && 'gap-1.5')}
                       onClick={() => window.open(ideHref, '_blank', 'noopener,noreferrer')}
