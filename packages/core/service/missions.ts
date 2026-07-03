@@ -13,6 +13,7 @@ import {
   missionSearchWorkspaceParams
 } from './mission-search-sql.js';
 import { initialTitleFromInstruction, newId, nowIso } from './util.js';
+import { enqueueWebhookEvent } from './webhook-events.js';
 
 export type ObjectiveSummary = {
   id: string;
@@ -1043,6 +1044,11 @@ export async function moveMissionToReview({
     missionId: mission.id,
     changedFields: ['status_id', 'status_type', 'board_position']
   });
+  await enqueueWebhookEvent(ctx, {
+    type: 'mission.status_changed',
+    projectId: mission.projectId,
+    entity: { missionId: mission.id }
+  });
 }
 
 export async function moveMissionToExecute({
@@ -1076,6 +1082,11 @@ export async function moveMissionToExecute({
     projectId: mission.projectId,
     missionId: mission.id,
     changedFields: ['status_id', 'status_type', 'board_position']
+  });
+  await enqueueWebhookEvent(ctx, {
+    type: 'mission.status_changed',
+    projectId: mission.projectId,
+    entity: { missionId: mission.id }
   });
 }
 

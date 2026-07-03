@@ -29,6 +29,7 @@ import { loadAgentInstructionsForWorkspaceUser } from './profiles.js';
 import { resolveLaunchConfig, resolveLaunchExecutionTarget } from './project-execution-target.js';
 import { discoverProject } from './projects.js';
 import { generateSessionKey, hashSessionKey, newId, nowIso } from './util.js';
+import { enqueueWebhookEvent } from './webhook-events.js';
 
 export type SessionSummary = {
   id: string;
@@ -267,7 +268,7 @@ function assemblePromptContext({
   return [
     `# Overlord Agent Instructions`,
     `You are an AI coding agent working on mission **${mission.displayId}** via Overlord.`,
-    `Complete the Objective described below. Use the Overlord skill. Follow the required protocol workflow.`,
+    `Begin and complete the Objective described below. Use the Overlord skill. Follow the required protocol workflow.`,
     ``,
     `Required protocol workflow:`,
     PROTOCOL_WORKFLOW,
@@ -1200,6 +1201,11 @@ export async function askQuestion({
       missionId: mission.id,
       objectiveId: session.objective_id
     });
+    await enqueueWebhookEvent(txCtx, {
+      type: 'mission.blocked',
+      projectId: mission.projectId,
+      entity: { missionId: mission.id, objectiveId: session.objective_id, sessionId: session.id }
+    });
 
     await moveMissionToReview({ ctx: txCtx, missionId: mission.id });
   });
@@ -1548,6 +1554,16 @@ export async function deliverSession({
       missionId: mission.id,
       objectiveId: session.objective_id
     });
+    await enqueueWebhookEvent(txCtx, {
+      type: 'mission.delivered',
+      projectId: mission.projectId,
+      entity: {
+        missionId: mission.id,
+        objectiveId: session.objective_id,
+        sessionId: session.id,
+        deliveryId
+      }
+    });
 
     await txCtx.db.run(
       `UPDATE objectives SET state = 'complete', completed_at = ?, updated_at = ?, revision = revision + 1
@@ -1569,6 +1585,16 @@ export async function deliverSession({
       missionId: mission.id,
       objectiveId: session.objective_id,
       changedFields: ['state', 'completed_at']
+    });
+    await enqueueWebhookEvent(txCtx, {
+      type: 'objective.completed',
+      projectId: mission.projectId,
+      entity: {
+        missionId: mission.id,
+        objectiveId: session.objective_id,
+        sessionId: session.id,
+        deliveryId
+      }
     });
 
     await txCtx.db.run(
@@ -1956,6 +1982,16 @@ export async function recordWork({
         now
       ]
     );
+    await enqueueWebhookEvent(txCtx, {
+      type: 'mission.delivered',
+      projectId: resolvedProjectId,
+      entity: { missionId: created.mission.id, objectiveId, deliveryId }
+    });
+    await enqueueWebhookEvent(txCtx, {
+      type: 'objective.completed',
+      projectId: resolvedProjectId,
+      entity: { missionId: created.mission.id, objectiveId, deliveryId }
+    });
   });
   return { mission: created.mission, deliveryId };
 }

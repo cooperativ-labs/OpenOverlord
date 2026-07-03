@@ -4,19 +4,12 @@
   "description": "Overlord mission protocol workflow for Claude Code — attach/update/ask/deliver, slash commands, and hook-driven activity capture.",
   "author": {
     "name": "Cooperativ",
-    "url": "https://github.com/cooperativ"
+    "url": "https://github.com/cooperativ-labs"
   },
   "homepage": "https://www.ovld.ai",
-  "repository": "https://github.com/cooperativ/overlord",
+  "repository": "https://github.com/cooperativ-labs/openoverlord",
   "license": "UNLICENSED",
-  "keywords": [
-    "overlord",
-    "tickets",
-    "agents",
-    "workflow",
-    "protocol",
-    "claude-code"
-  ],
+  "keywords": ["overlord", "tickets", "agents", "workflow", "protocol", "claude-code"],
   "userConfig": {
     "overlord_url": {
       "type": "string",

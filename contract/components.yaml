@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '0'
+contractVersion: '1'
 
 components:
   protocol:
@@ -119,6 +119,8 @@ components:
       - 'REST auth integration points'
       - 'SSE/WebSocket realtime endpoint (GET /realtime, compatibility GET /api/stream) and GET /sync/changes?after=<seq> catch-up read'
       - 'SQL Studio launch metadata exposed through /api/meta'
+      - 'webhook subscription management (/api/webhooks*: list/create, update/soft-delete, rotate-secret, test, deliveries, redeliver), gated by webhook:* permissions'
+      - 'in-process webhook dispatcher (backend/webhook-dispatcher.ts), a RealtimeHub-style singleton polling loop claiming outbox_messages rows and delivering HMAC-signed HTTP POSTs; SSRF guards (https-only, private-network block) apply to external endpoints, with an OVERLORD_WEBHOOK_INTERNAL_HOSTS allowlist (plus implicit localhost in Local edition) exempting colocated consumers'
     dependsOn:
       - database
       - auth
@@ -220,6 +222,7 @@ interactionSurfaces:
       - 'All mutations in ACID transactions'
       - 'Optimistic concurrency: revision compare-and-set; zero-row update = 409'
       - 'entity_changes appended in same transaction as domain mutation'
+      - 'enqueueWebhookEvent() (packages/core/service/webhook-events.ts) appends matching outbox_messages rows in the same transaction as the domain mutation, called from both the protocol service core and the REST data layer — a second shared-single-writer rule alongside insertEntityChange'
       - 'Protocol-scope idempotency keys in idempotency_keys table'
 
   cliToRest:

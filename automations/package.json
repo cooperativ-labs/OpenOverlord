@@ -24,7 +24,8 @@
     "test": "tsx --test 'src/**/*.test.ts'"
   },
   "dependencies": {
-    "@google/genai": "^2.8.0"
+    "@google/genai": "^2.8.0",
+    "zod": "^4.4.1"
   },
   "license": "MIT"
 }

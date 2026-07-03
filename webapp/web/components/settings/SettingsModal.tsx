@@ -10,7 +10,8 @@ import {
   Plug,
   ShieldCheck,
   Terminal,
-  User
+  User,
+  Webhook
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -31,9 +32,10 @@ import {
 } from '@/components/settings/SettingsDialogShell';
 import { UserProfilePage } from '@/components/settings/UserProfilePage';
 import { UserTokensPage } from '@/components/settings/UserTokensPage';
+import { WebhooksPage } from '@/components/settings/WebhooksPage';
 import { WorktreesPage } from '@/components/settings/WorktreesPage';
 import { useLocalTargetUnavailable } from '@/lib/local-target-client.ts';
-import { useMeta } from '@/lib/queries';
+import { useMeta, useProfile } from '@/lib/queries';
 
 type SettingsModalProps = {
   open: boolean;
@@ -54,6 +56,10 @@ const appNavItems: SettingsNavItem[] = [
   { name: 'Notifications', icon: Bell }
 ];
 
+// Admin-only: hidden from navGroups/navItems for non-admins (see isAdmin below);
+// the underlying /api/webhooks* routes are also RBAC-gated server-side.
+const adminAppNavItems: SettingsNavItem[] = [{ name: 'Webhooks', icon: Webhook }];
+
 const desktopNavItems: SettingsNavItem[] = [
   { name: 'Backend', icon: Cloud },
   { name: 'Desktop', icon: MonitorDown }
@@ -68,22 +74,29 @@ const userNavItems: SettingsNavItem[] = [
 export type SettingsNavSection =
   | (typeof workflowNavItems)[number]['name']
   | (typeof appNavItems)[number]['name']
+  | (typeof adminAppNavItems)[number]['name']
   | (typeof desktopNavItems)[number]['name']
   | (typeof userNavItems)[number]['name'];
 
 export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalProps) {
   const [activeNav, setActiveNav] = useState<SettingsNavSection>('Profile');
   const meta = useMeta();
+  const profile = useProfile();
+  const isAdmin = (profile.data?.roles ?? []).includes('ADMIN');
   const localTargetUnavailable = useLocalTargetUnavailable();
   const isDesktop = typeof window !== 'undefined' && window.overlord?.isDesktop === true;
+  const resolvedAppNavItems = useMemo<SettingsNavItem[]>(
+    () => [...appNavItems, ...(isAdmin ? adminAppNavItems : [])],
+    [isAdmin]
+  );
   const navItems = useMemo<SettingsNavItem[]>(
     () => [
       ...workflowNavItems.filter(item => !(localTargetUnavailable && item.name === 'Worktrees')),
       ...userNavItems,
-      ...appNavItems,
+      ...resolvedAppNavItems,
       ...(isDesktop ? desktopNavItems : [])
     ],
-    [isDesktop, localTargetUnavailable]
+    [isDesktop, localTargetUnavailable, resolvedAppNavItems]
   );
   const navGroups = useMemo<SettingsNavGroup[]>(
     () => [
@@ -91,10 +104,10 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
       { label: 'User', items: userNavItems },
       {
         label: 'Application',
-        items: isDesktop ? [...appNavItems, ...desktopNavItems] : appNavItems
+        items: isDesktop ? [...resolvedAppNavItems, ...desktopNavItems] : resolvedAppNavItems
       }
     ],
-    [isDesktop]
+    [isDesktop, resolvedAppNavItems]
   );
   const availableNavItems = useMemo(() => navGroups.flatMap(group => group.items), [navGroups]);
 
@@ -135,6 +148,7 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
     >
       {activeNav === 'Application' && <ApplicationPage />}
       {activeNav === 'Integrations' && <IntegrationsPage />}
+      {activeNav === 'Webhooks' && <WebhooksPage open={open} />}
       {activeNav === 'Notifications' && <NotificationsPage />}
       {activeNav === 'Execution Targets' && <ExecutionTargetsPage />}
       {activeNav === 'Worktrees' && <WorktreesPage />}

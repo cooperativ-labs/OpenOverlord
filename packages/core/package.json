@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@overlord/auth": "workspace:*",
+    "@overlord/automations": "workspace:*",
     "@overlord/database": "workspace:*",
     "kysely": "^0.29.2"
   },

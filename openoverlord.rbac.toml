@@ -85,3 +85,12 @@ grants = [
   "attachment:update",
   "attachment:delete",
 ]
+
+[permission_groups.webhook_management]
+description = "Webhook subscription management. ADMIN has this via the wildcard grant; add it to MEMBER's grants list to let non-admins manage webhooks."
+grants = [
+  "webhook:create",
+  "webhook:read",
+  "webhook:update",
+  "webhook:delete",
+]

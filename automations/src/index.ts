@@ -41,6 +41,16 @@ export {
   registerTypedAutomation
 } from './registry.js';
 export type {
+  NormalizedSchedule,
+  PeriodType,
+  ScheduleLike,
+  WeekDayType
+} from './scheduling-engine/index.js';
+export {
+  generateDateFromFailureRepeatSeconds,
+  generateDateFromSchedule
+} from './scheduling-engine/index.js';
+export type {
   GeminiConfig,
   GenerateAndSetObjectiveTitleParams,
   GenerateObjectiveTitleParams,

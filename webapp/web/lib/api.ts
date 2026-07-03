@@ -14,6 +14,8 @@ import type {
   CreateProjectTagBody,
   CreateUserTokenBody,
   CreateUserTokenResultDto,
+  CreateWebhookSubscriptionBody,
+  CreateWebhookSubscriptionResultDto,
   CreateWorkspaceBody,
   CreateWorkspaceStatusBody,
   EverhourIntegrationDto,
@@ -32,11 +34,13 @@ import type {
   MissionDto,
   MissionEventDto,
   MissionEverhourStateDto,
+  MissionScheduleDto,
   MyMissionReorderRequest,
   MyMissionsResponse,
   ObjectiveAttachmentDto,
   ObjectiveDto,
   ObjectivePromptDto,
+  PreviewScheduleBody,
   ProfileDto,
   ProjectDto,
   ProjectExecutionTargetDto,
@@ -53,6 +57,8 @@ import type {
   ReorderBoardColumnBody,
   ReorderFutureObjectivesBody,
   ReorderWorkspaceStatusesBody,
+  RotateWebhookSecretResultDto,
+  ScheduleInput,
   StoredImageDto,
   UpdateAgentLaunchConfigBody,
   UpdateEverhourTimeBody,
@@ -66,11 +72,14 @@ import type {
   UpdateProjectTagBody,
   UpdateTerminalProfileBody,
   UpdateUserTokenBody,
+  UpdateWebhookSubscriptionBody,
   UpdateWorkspaceBody,
   UpdateWorkspaceMemberRoleBody,
   UpdateWorkspaceStatusBody,
   UpdateWorktreeBranchAutomationBody,
   UserTokenDto,
+  WebhookDeliveryAttemptsPageDto,
+  WebhookSubscriptionDto,
   WorkspaceDto,
   WorkspaceInvitationDto,
   WorkspaceMemberDto,
@@ -218,6 +227,24 @@ export const api = {
     request<UserTokenDto>('PATCH', `/api/user-tokens/${id}`, body),
   revokeUserToken: (id: string) => request<UserTokenDto>('POST', `/api/user-tokens/${id}/revoke`),
 
+  listWebhookSubscriptions: () => request<WebhookSubscriptionDto[]>('GET', '/api/webhooks'),
+  createWebhookSubscription: (body: CreateWebhookSubscriptionBody) =>
+    request<CreateWebhookSubscriptionResultDto>('POST', '/api/webhooks', body),
+  updateWebhookSubscription: (id: string, body: UpdateWebhookSubscriptionBody) =>
+    request<WebhookSubscriptionDto>('PATCH', `/api/webhooks/${id}`, body),
+  deleteWebhookSubscription: (id: string) => request<{ ok: true }>('DELETE', `/api/webhooks/${id}`),
+  rotateWebhookSecret: (id: string) =>
+    request<RotateWebhookSecretResultDto>('POST', `/api/webhooks/${id}/rotate-secret`),
+  testWebhookSubscription: (id: string) =>
+    request<{ ok: true; responseStatus: number | null }>('POST', `/api/webhooks/${id}/test`),
+  listWebhookDeliveries: (id: string, before?: string | null) =>
+    request<WebhookDeliveryAttemptsPageDto>(
+      'GET',
+      `/api/webhooks/${id}/deliveries${before ? `?before=${encodeURIComponent(before)}` : ''}`
+    ),
+  redeliverWebhookDelivery: (id: string, outboxId: string) =>
+    request<{ ok: true }>('POST', `/api/webhooks/${id}/deliveries/${outboxId}/redeliver`),
+
   listWorkspaces: () => request<WorkspaceDto[]>('GET', '/api/workspaces'),
   createWorkspace: (body: CreateWorkspaceBody) =>
     request<WorkspaceDto>('POST', '/api/workspaces', body),
@@ -331,6 +358,14 @@ export const api = {
     request<MissionDetailDto>('POST', '/api/missions', body),
   updateMission: (id: string, body: UpdateMissionBody) =>
     request<MissionDetailDto>('PATCH', `/api/missions/${id}`, body),
+  getMissionSchedule: (id: string) =>
+    request<MissionScheduleDto>('GET', `/api/missions/${id}/schedule`),
+  upsertMissionSchedule: (id: string, body: ScheduleInput) =>
+    request<MissionScheduleDto>('PUT', `/api/missions/${id}/schedule`, body),
+  clearMissionSchedule: (id: string) =>
+    request<{ ok: true }>('DELETE', `/api/missions/${id}/schedule`),
+  previewMissionSchedule: (body: PreviewScheduleBody) =>
+    request<{ dueDatetime: string }>('POST', '/api/missions/schedule/preview', body),
   deleteMission: (id: string) => request<{ ok: true }>('DELETE', `/api/missions/${id}`),
   generateMissionTitle: (id: string) =>
     request<MissionDetailDto>('POST', `/api/missions/${id}/generate-title`),

@@ -11,6 +11,7 @@ import type {
   CreateProjectResourceBody,
   CreateProjectTagBody,
   CreateUserTokenBody,
+  CreateWebhookSubscriptionBody,
   CreateWorkspaceBody,
   CreateWorkspaceStatusBody,
   InviteWorkspaceMemberBody,
@@ -19,12 +20,15 @@ import type {
   LinkProjectEverhourBody,
   MissionDetailDto,
   MissionDto,
+  MissionScheduleDto,
   MyMissionsResponse,
   ObjectiveAttachmentDto,
+  PreviewScheduleBody,
   ProjectTagDto,
   RemoveWorktreeBody,
   ReorderFutureObjectivesBody,
   ReorderWorkspaceStatusesBody,
+  ScheduleInput,
   StatusType,
   UpdateAgentLaunchConfigBody,
   UpdateEverhourTimeBody,
@@ -38,6 +42,7 @@ import type {
   UpdateProjectTagBody,
   UpdateTerminalProfileBody,
   UpdateUserTokenBody,
+  UpdateWebhookSubscriptionBody,
   UpdateWorkspaceBody,
   UpdateWorkspaceMemberRoleBody,
   UpdateWorkspaceStatusBody,
@@ -77,6 +82,8 @@ export const keys = {
   meta: ['meta'] as const,
   profile: ['profile'] as const,
   userTokens: ['user-tokens'] as const,
+  webhookSubscriptions: ['webhooks'] as const,
+  webhookDeliveries: (id: string) => ['webhooks', id, 'deliveries'] as const,
   workspaces: ['workspaces'] as const,
   workspaceMembers: (id: string) => ['workspace', id, 'members'] as const,
   workspaceInvitations: (id: string) => ['workspace', id, 'invitations'] as const,
@@ -90,6 +97,7 @@ export const keys = {
   missions: (projectId: string) => ['project', projectId, 'missions'] as const,
   myMissions: ['workspace', 'my-missions'] as const,
   mission: (id: string) => ['mission', id] as const,
+  missionSchedule: (id: string) => ['mission', id, 'schedule'] as const,
   missionBranches: (id: string) => ['mission', id, 'branches'] as const,
   worktrees: ['worktrees'] as const,
   missionEvents: (id: string) => ['mission', id, 'events'] as const,
@@ -124,6 +132,16 @@ export const useProfile = () => useQuery({ queryKey: keys.profile, queryFn: api.
 
 export const useUserTokens = () =>
   useQuery({ queryKey: keys.userTokens, queryFn: api.listUserTokens });
+
+export const useWebhookSubscriptions = () =>
+  useQuery({ queryKey: keys.webhookSubscriptions, queryFn: api.listWebhookSubscriptions });
+
+export const useWebhookDeliveries = (id: string, enabled: boolean) =>
+  useQuery({
+    queryKey: keys.webhookDeliveries(id),
+    queryFn: () => api.listWebhookDeliveries(id),
+    enabled
+  });
 
 export const useWorkspaces = () =>
   useQuery({ queryKey: keys.workspaces, queryFn: api.listWorkspaces });
@@ -405,6 +423,57 @@ export function useRevokeUserToken() {
   });
 }
 
+export function useCreateWebhookSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateWebhookSubscriptionBody) => api.createWebhookSubscription(body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.webhookSubscriptions })
+  });
+}
+
+export function useUpdateWebhookSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateWebhookSubscriptionBody }) =>
+      api.updateWebhookSubscription(id, body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.webhookSubscriptions })
+  });
+}
+
+export function useDeleteWebhookSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteWebhookSubscription(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.webhookSubscriptions })
+  });
+}
+
+export function useRotateWebhookSecret() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.rotateWebhookSecret(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.webhookSubscriptions })
+  });
+}
+
+export function useTestWebhookSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.testWebhookSubscription(id),
+    onSuccess: (_result, id) => void qc.invalidateQueries({ queryKey: keys.webhookDeliveries(id) })
+  });
+}
+
+export function useRedeliverWebhookDelivery() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, outboxId }: { id: string; outboxId: string }) =>
+      api.redeliverWebhookDelivery(id, outboxId),
+    onSuccess: (_result, { id }) =>
+      void qc.invalidateQueries({ queryKey: keys.webhookDeliveries(id) })
+  });
+}
+
 export function useUpdateWorktreeBranchAutomation() {
   const qc = useQueryClient();
   return useMutation({
@@ -671,6 +740,47 @@ export function useUpdateMission(id: string) {
       qc.setQueryData(keys.mission(id), data);
       invalidateAll(qc);
     }
+  });
+}
+
+export function useMissionSchedule(missionId: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: keys.missionSchedule(missionId),
+    queryFn: () => api.getMissionSchedule(missionId),
+    enabled: options?.enabled ?? true
+  });
+}
+
+export function useUpsertMissionSchedule(missionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ScheduleInput) => api.upsertMissionSchedule(missionId, body),
+    onSuccess: data => {
+      qc.setQueryData(keys.missionSchedule(missionId), data);
+      void qc.invalidateQueries({ queryKey: keys.mission(missionId) });
+      invalidateAll(qc);
+    }
+  });
+}
+
+export function useClearMissionSchedule(missionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.clearMissionSchedule(missionId),
+    onSuccess: () => {
+      qc.setQueryData(keys.missionSchedule(missionId), {
+        dueDatetime: null,
+        schedule: null
+      } satisfies MissionScheduleDto);
+      void qc.invalidateQueries({ queryKey: keys.mission(missionId) });
+      invalidateAll(qc);
+    }
+  });
+}
+
+export function usePreviewScheduleDueDatetime() {
+  return useMutation({
+    mutationFn: (body: PreviewScheduleBody) => api.previewMissionSchedule(body)
   });
 }
 

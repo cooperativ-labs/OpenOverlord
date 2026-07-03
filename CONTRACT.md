@@ -1,6 +1,6 @@
 # Overlord Component Interaction Contract
 
-Contract Version: `0`
+Contract Version: `1`
 
 ## Purpose
 
@@ -33,13 +33,14 @@ where a surface differs by edition this document calls it out explicitly.
 
 ## Contract Version
 
-Current version: `0`
+Current version: `1`
 
 The contract version is incremented when any stable interface changes. All conformance manifests must declare the contract version they were validated against.
 
 | Version | Changes |
 | ------- | ------- |
 | `0` | Initial public release baseline. Describes the full component registry, interaction surfaces, stable interfaces, extension points, and controlled vocabularies as shipped in Open Overlord v0. |
+| `1` | Implements `outbox_messages` (previously contracted, unbuilt) and adds `webhook_subscriptions` and `webhook_delivery_attempts` to the Database Layer. Adds the REST Layer's webhook management API (`/api/webhooks*`) and in-process dispatcher (mirroring `RealtimeHub`). Adds the `webhook:create`/`webhook:read`/`webhook:update`/`webhook:delete` open-vocabulary RBAC permissions (ADMIN by default). Adds the webhook event-type catalog (`mission.delivered`, `mission.status_changed`, `objective.completed`, `mission.blocked`) as a new open, namespaced vocabulary distinct from the closed `mission_events.type` enum. Declares the `webhook.deliver.v1` `outbox_messages.topic` value. Adds the webhook-enqueue helper (`packages/core/service/webhook-events.ts`) as a second shared-single-writer rule alongside `insertEntityChange` on the Protocol → Database surface. No closed vocabularies changed; no breaking changes to any existing interface. See `planning/feature-plans/mission-data-webhooks-api.md`. |
 
 ---
 
@@ -163,6 +164,7 @@ Owns:
 - REST auth integration points
 - SSE/WebSocket realtime endpoint
 - SQL Studio launch metadata in `/api/meta` when the optional external SQL Studio process is enabled
+- Webhook subscription management (`/api/webhooks*`: list/create, update/delete, rotate-secret, test, deliveries, redeliver) and the in-process webhook dispatcher (`backend/webhook-dispatcher.ts`, a `RealtimeHub`-style singleton polling loop that claims `outbox_messages` rows and delivers HMAC-signed HTTP POSTs). SSRF guards (HTTPS-only, private-network block) apply to external endpoints; hosts matching the `OVERLORD_WEBHOOK_INTERNAL_HOSTS` env allowlist (plus implicit `localhost` in Local edition) are treated as internal — exempt from the SSRF block and the HTTPS requirement, and default to the `full` payload mode
 
 Does NOT own:
 
@@ -282,6 +284,7 @@ These are the **only sanctioned paths** between components. Bypassing these surf
 - **Rule**: No direct table writes from protocol handlers; use the service layer
 - **Concurrency**: Optimistic compare-and-set via `revision`; zero-row update = `409` conflict
 - **Change feed**: `entity_changes` appended in same transaction as domain mutation
+- **Effect queue**: `enqueueWebhookEvent()` (`packages/core/service/webhook-events.ts`) appends matching `outbox_messages` rows in the same transaction as the domain mutation — a second shared-single-writer rule alongside `insertEntityChange`, called from both the protocol service core and the REST data layer so no origin path silently skips webhook delivery
 - **Idempotency**: Protocol-scope idempotency keys in `idempotency_keys`
 
 ### CLI → REST (Backend Client Surface)

@@ -67,6 +67,7 @@ import { requirePermission } from './rbac.ts';
 import { readChangesAfter, realtime } from './realtime.ts';
 import {
   ApiError,
+  clearMissionSchedule,
   createMission,
   createObjective,
   createProject,
@@ -83,6 +84,7 @@ import {
   generateCommitMessage,
   generateMissionTitle,
   getMissionDetail,
+  getMissionSchedule,
   getProfile,
   getProject,
   getProjectRepository,
@@ -100,6 +102,7 @@ import {
   listWorkspaceStatuses,
   listWorktrees,
   performBranchAction,
+  previewMissionSchedule,
   purgeMergedWorktrees,
   removeWorktree,
   renameUserToken,
@@ -115,7 +118,8 @@ import {
   updateProject,
   updateProjectResource,
   updateProjectTag,
-  updateWorkspaceStatus
+  updateWorkspaceStatus,
+  upsertMissionSchedule
 } from './repository.ts';
 import {
   claimRunnerRequest,
@@ -144,6 +148,17 @@ import {
   uploadWorkspaceImage
 } from './storage.ts';
 import { postExecutionTargetObservations } from './target-resource-observations.ts';
+import { webhookDispatcher } from './webhook-dispatcher.ts';
+import {
+  createWebhookSubscription,
+  deleteWebhookSubscription,
+  listWebhookDeliveries,
+  listWebhookSubscriptions,
+  redeliverWebhookDelivery,
+  rotateWebhookSecret,
+  testWebhookSubscription,
+  updateWebhookSubscription
+} from './webhooks.ts';
 import { readSqlStudioEnabled } from './workspace-settings.ts';
 import {
   acceptWorkspaceInvitation,
@@ -305,7 +320,10 @@ function handle(
       try {
         if (options.requires) await requirePermission(options.requires);
         const result = await Promise.resolve(fn(req, res));
-        if (options.mutates) realtime.pollNow();
+        if (options.mutates) {
+          realtime.pollNow();
+          webhookDispatcher.pollNow();
+        }
         if (!res.headersSent) res.json(result ?? { ok: true });
       } catch (err) {
         next(err);
@@ -561,6 +579,71 @@ app.post(
   handle(req => revokeUserToken(req.params.id), {
     mutates: true,
     requires: PERMISSIONS.USER_TOKEN_SELF_REVOKE
+  })
+);
+
+// ---- Webhooks (coo:115) ---------------------------------------------------
+//
+// Workspace-scoped webhook subscription management. ADMIN-gated by default
+// (see openoverlord.rbac.toml -> permission_groups.webhook_management).
+// Deliveries themselves are dispatched by the in-process worker in
+// backend/webhook-dispatcher.ts, not from these handlers.
+
+app.get(
+  '/api/webhooks',
+  handle(() => listWebhookSubscriptions(), { requires: PERMISSIONS.WEBHOOK_READ })
+);
+app.post(
+  '/api/webhooks',
+  handle(req => createWebhookSubscription(req.body), {
+    mutates: true,
+    requires: PERMISSIONS.WEBHOOK_CREATE
+  })
+);
+app.patch(
+  '/api/webhooks/:id',
+  handle(req => updateWebhookSubscription(req.params.id, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.WEBHOOK_UPDATE
+  })
+);
+app.delete(
+  '/api/webhooks/:id',
+  handle(req => deleteWebhookSubscription(req.params.id), {
+    mutates: true,
+    requires: PERMISSIONS.WEBHOOK_DELETE
+  })
+);
+app.post(
+  '/api/webhooks/:id/rotate-secret',
+  handle(req => rotateWebhookSecret(req.params.id), {
+    mutates: true,
+    requires: PERMISSIONS.WEBHOOK_UPDATE
+  })
+);
+app.post(
+  '/api/webhooks/:id/test',
+  handle(req => testWebhookSubscription(req.params.id), {
+    mutates: true,
+    requires: PERMISSIONS.WEBHOOK_UPDATE
+  })
+);
+app.get(
+  '/api/webhooks/:id/deliveries',
+  handle(
+    req =>
+      listWebhookDeliveries(req.params.id, {
+        before: typeof req.query.before === 'string' ? req.query.before : null,
+        limit: typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined
+      }),
+    { requires: PERMISSIONS.WEBHOOK_READ }
+  )
+);
+app.post(
+  '/api/webhooks/:id/deliveries/:outboxId/redeliver',
+  handle(req => redeliverWebhookDelivery(req.params.id, req.params.outboxId), {
+    mutates: true,
+    requires: PERMISSIONS.WEBHOOK_UPDATE
   })
 );
 
@@ -1035,6 +1118,28 @@ app.get(
   '/api/missions/:id/file-changes',
   handle(req => listMissionFileChanges(req.params.id), { requires: PERMISSIONS.MISSION_READ })
 );
+app.post(
+  '/api/missions/schedule/preview',
+  handle(req => previewMissionSchedule(req.body), { requires: PERMISSIONS.MISSION_READ })
+);
+app.get(
+  '/api/missions/:id/schedule',
+  handle(req => getMissionSchedule(req.params.id), { requires: PERMISSIONS.MISSION_READ })
+);
+app.put(
+  '/api/missions/:id/schedule',
+  handle(req => upsertMissionSchedule(req.params.id, req.body), {
+    mutates: true,
+    requires: PERMISSIONS.MISSION_UPDATE
+  })
+);
+app.delete(
+  '/api/missions/:id/schedule',
+  handle(req => clearMissionSchedule(req.params.id), {
+    mutates: true,
+    requires: PERMISSIONS.MISSION_UPDATE
+  })
+);
 
 // ---- Objectives ----------------------------------------------------------
 
@@ -1387,6 +1492,7 @@ async function start(): Promise<void> {
   }
 
   realtime.start();
+  webhookDispatcher.start();
 
   const server = app.listen(bindPort, bindHost, () => {
     const databaseLabel =

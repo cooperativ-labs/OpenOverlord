@@ -352,6 +352,10 @@ export interface MissionDto {
   acceptanceCriteria: string | null;
   /** Tool names available to the agent working on this mission. */
   availableTools: string[];
+  /** `schedules.id` this mission repeats on, or `null` when unscheduled. */
+  scheduleId: string | null;
+  /** Computed next due date/time (ISO-8601), or `null` when unscheduled. */
+  dueDatetime: string | null;
   createdAt: string;
   updatedAt: string;
   revision: number;
@@ -432,6 +436,75 @@ export interface MissionDetailDto extends MissionDto {
   executionRequests: ExecutionRequestDto[];
   /** Read-only branch/worktree metadata derived from `missions.active_branch`. */
   branch: MissionBranchDto | null;
+}
+
+// ---- Mission scheduling ----------------------------------------------------
+//
+// A `schedules` row is a repeating recurrence rule computed by the
+// SchedulingEngine (`@overlord/automations`). A mission with a `scheduleId`
+// carries a computed `dueDatetime`; when the mission reaches a `complete`-type
+// status, the server spawns a duplicate mission with the next occurrence (see
+// `planning/feature-plans/mission-scheduling-engine.md`).
+
+export type SchedulePeriodType = 'd' | 'w' | 'm';
+
+export interface ScheduleWeekDayDto {
+  /** 0 (Sunday) through 6 (Saturday). */
+  dayNum: number;
+  /** `HH:mm` or `HH:mm:ss`, local to `timezone`. */
+  times: string[];
+}
+
+export interface ScheduleDto {
+  id: string;
+  workspaceId: string;
+  name: string | null;
+  periodType: SchedulePeriodType;
+  /** Recur every N periods (days/weeks/months), N >= 1. */
+  periodInterval: number;
+  /** Monthly-by-week rule: 1-5 (used with `daysOfWeek`). */
+  weeksOfMonth: number[];
+  /** Monthly-by-day rule: 1-31, or 32 meaning "last day of month". */
+  daysOfMonth: number[];
+  daysOfWeek: ScheduleWeekDayDto[];
+  /** IANA timezone (e.g. `America/Los_Angeles`); defaults from the browser at creation. */
+  timezone: string;
+  /** Optional recurrence anchor (ISO-8601); becomes the primary anchor when set. */
+  startDate: string | null;
+  /**
+   * Workspace status the duplicate mission lands in on regeneration. `null`
+   * falls back to the workspace default/next-up status.
+   */
+  nextStatusId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+}
+
+/** Request body for creating/updating a mission's schedule; mirrors `ScheduleDto` minus server-assigned fields. */
+export interface ScheduleInput {
+  name?: string | null;
+  periodType: SchedulePeriodType;
+  periodInterval: number;
+  weeksOfMonth?: number[];
+  daysOfMonth?: number[];
+  daysOfWeek?: ScheduleWeekDayDto[];
+  timezone: string;
+  startDate?: string | null;
+  nextStatusId?: string | null;
+}
+
+/** `GET /api/missions/:id/schedule` and the `upsert`/`preview` response shape. */
+export interface MissionScheduleDto {
+  dueDatetime: string | null;
+  schedule: ScheduleDto | null;
+}
+
+/** `POST /api/missions/schedule/preview` request body. */
+export interface PreviewScheduleBody {
+  schedule: ScheduleInput;
+  /** Current due date to use as the recurrence anchor, when previewing a re-schedule. */
+  itemDueDatetime?: string | null;
 }
 
 // `pending`         — no branch prepared yet (planner-predicted name shown).
@@ -1071,6 +1144,11 @@ export interface UpdateMissionBody {
    * Every id must belong to the mission's project. Pass `[]` to clear all tags.
    */
   tagIds?: string[];
+  /**
+   * Override the computed next due date (ISO-8601) without changing the linked
+   * schedule, or `null` to clear the due date.
+   */
+  dueDatetime?: string | null;
 }
 
 /**
@@ -1356,4 +1434,87 @@ export interface UpdateUserTokenBody {
 export interface ApiError {
   error: string;
   detail?: string;
+}
+
+// ---- Webhooks (coo:115) ----------------------------------------------------
+
+export type WebhookPayloadMode = 'thin' | 'full';
+export type WebhookDisabledReason = 'manual' | 'failures' | 'owner_revoked';
+
+/**
+ * Namespaced, versioned webhook event vocabulary (open, distinct from the
+ * closed `mission_events.type` enum) -- see database schema contract ->
+ * Controlled Vocabularies -> "Webhook event catalog".
+ */
+export type WebhookEventType =
+  | 'mission.delivered'
+  | 'mission.status_changed'
+  | 'objective.completed'
+  | 'mission.blocked';
+
+export interface WebhookSubscriptionDto {
+  id: string;
+  projectId: string | null;
+  name: string;
+  endpointUrl: string;
+  /** Whether `endpointUrl`'s host matches the operator's `OVERLORD_WEBHOOK_INTERNAL_HOSTS` allowlist (or is implicit localhost in Local edition). */
+  isInternal: boolean;
+  eventTypes: WebhookEventType[];
+  payloadMode: WebhookPayloadMode;
+  enabled: boolean;
+  disabledReason: WebhookDisabledReason | null;
+  consecutiveFailures: number;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  createdByWorkspaceUserId: string;
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+}
+
+export interface CreateWebhookSubscriptionBody {
+  name: string;
+  endpointUrl: string;
+  projectId?: string | null;
+  eventTypes: WebhookEventType[];
+  /** Defaults to `full` for internal endpoints, `thin` for external ones, when omitted. */
+  payloadMode?: WebhookPayloadMode;
+}
+
+export interface UpdateWebhookSubscriptionBody {
+  name?: string;
+  endpointUrl?: string;
+  projectId?: string | null;
+  eventTypes?: WebhookEventType[];
+  payloadMode?: WebhookPayloadMode;
+  enabled?: boolean;
+}
+
+/** The raw secret (`whsec_...`) is returned exactly once, on creation, and is never retrievable again afterwards. */
+export interface CreateWebhookSubscriptionResultDto {
+  subscription: WebhookSubscriptionDto;
+  secret: string;
+}
+
+/** Returned by rotate-secret; the previous secret stops verifying immediately. */
+export interface RotateWebhookSecretResultDto {
+  subscription: WebhookSubscriptionDto;
+  secret: string;
+}
+
+export interface WebhookDeliveryAttemptDto {
+  id: string;
+  outboxMessageId: string;
+  eventType: string;
+  attemptNumber: number;
+  responseStatus: number | null;
+  responseSnippet: string | null;
+  error: string | null;
+  durationMs: number | null;
+  attemptedAt: string;
+}
+
+export interface WebhookDeliveryAttemptsPageDto {
+  attempts: WebhookDeliveryAttemptDto[];
+  hasMore: boolean;
 }

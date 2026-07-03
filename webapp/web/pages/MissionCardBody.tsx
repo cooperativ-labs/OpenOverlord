@@ -43,7 +43,12 @@ export function MissionCardBody({
             </div>
           ) : null}
 
-          <div className={cn('flex items-end justify-between gap-2', tags.length > 0 ? 'mt-2' : 'mt-4')}>
+          <div
+            className={cn(
+              'flex items-end justify-between gap-2',
+              tags.length > 0 ? 'mt-2' : 'mt-4'
+            )}
+          >
             <div className="flex min-w-0 items-center gap-1.5">
               <ProjectColorDot color={projectColor} name={projectName} />
               <span className="truncate text-[11px] text-muted-foreground">{projectName}</span>

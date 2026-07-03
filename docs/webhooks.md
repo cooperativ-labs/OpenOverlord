@@ -1,0 +1,208 @@
+# Mission Data Webhooks
+
+Webhooks let independent software react to mission activity in your Overlord workspace —
+without living inside this repository or its runtime. Each time a mission is delivered, changes
+status, has an objective complete, or gets blocked on a question, Overlord can send a signed HTTP
+`POST` to an endpoint you control. From there you can feed an LLM to draft a changelog/feed post,
+write to a memory system, trigger a test run against the new code, page a human, or anything else.
+
+**What you'll have by the end:** a webhook subscription receiving signed deliveries, verified in
+your own service, with a path to pull anything the push payload left out.
+
+---
+
+## 1. Concepts
+
+- **Subscription** — a workspace-scoped configuration: an endpoint URL, the event types you want,
+  an optional project filter, and a payload mode (`thin` or `full`). Managed in **Settings →
+  Webhooks** or via `POST /api/webhooks`.
+- **Delivery** — one signed HTTP `POST` to your endpoint per matching event. Deliveries are
+  at-least-once: your endpoint must tolerate and de-duplicate retries.
+- **Payload mode** — `thin` sends only identifiers and links; `full` sends the mission/objective/
+  delivery snapshot inline, so you don't have to make a second request to read it.
+- **Pull path** — anything a `thin` payload omits (or `full` truncates) is available over the
+  normal REST API using a `USER_TOKEN`, following the `links` in the payload.
+
+## 2. Creating a webhook
+
+1. Open **Settings → Webhooks** (workspace admins only) and click **New webhook**.
+2. Enter a **name**, the **endpoint URL** (must be `https://` unless the host is on your
+   instance's internal allowlist — see [§6](#6-internal-endpoints)), which **project** it applies
+   to (or all projects), which **event types** to receive, and the **payload mode**.
+3. Click **Create webhook**. The signing **secret** (`whsec_…`) is shown exactly once — copy it
+   now. If you lose it, rotate it from the same dialog; the previous secret stops working
+   immediately.
+4. Click **Send test delivery** to confirm your endpoint is reachable and your signature
+   verification passes before relying on it.
+
+Equivalently, via the REST API with an admin `USER_TOKEN`:
+
+```bash
+curl -X POST "$OVERLORD_BACKEND_URL/api/webhooks" \
+  -H "Authorization: Bearer $OVERLORD_USER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Feed post generator",
+    "endpointUrl": "https://example.com/webhooks/overlord",
+    "eventTypes": ["mission.delivered"],
+    "payloadMode": "full"
+  }'
+```
+
+The response's `secret` field is the only time the raw secret is returned.
+
+## 3. Event catalog
+
+| Event type | Fires when |
+| --- | --- |
+| `mission.delivered` | An agent delivers work for review (`ovld protocol deliver` or `record-work`). |
+| `mission.status_changed` | A mission moves between workspace statuses, including board drags in the web UI. |
+| `objective.completed` | An objective reaches `complete`. |
+| `mission.blocked` | An agent posts a blocking question (`ovld protocol ask`) — use this to page a human. |
+
+This is a namespaced, open vocabulary (see `CONTRACT.md`) — forks and extensions may add their own
+`acme:custom.event` values without a contract change. Namespaced values won't appear in a
+subscription's event-type picker unless you add them yourself.
+
+## 4. The payload envelope
+
+Every delivery has the same envelope shape; `type` tells you which event it is.
+
+```jsonc
+{
+  "id": "5b1e...",                       // stable delivery id — dedupe retries on this
+  "apiVersion": "2026-07-01",
+  "type": "mission.delivered",
+  "occurredAt": "2026-07-03T18:04:11.000Z",
+  "workspace": { "id": "…", "name": "Cooperativ" },     // name present in `full` mode only
+  "project": { "id": "…", "name": "OpenOverlord" },      // name present in `full` mode only
+  "mission": {
+    "id": "…", "displayId": "coo:115",
+    "title": "Develop Mission Data Webhooks/API",         // full mode only
+    "status": { "id": "…", "type": "review", "label": "In review" }, // full mode only
+    "priority": "normal", "createdAt": "…"                 // full mode only
+  },
+  "objective": { "id": "…", "position": 1, "title": "…", "state": "complete" },
+  "session": { "id": "…", "agentIdentifier": "claude-code", "modelIdentifier": "claude-sonnet-5" },
+  "delivery": {
+    "id": "…",
+    "summary": "…",                       // full mode only
+    "artifacts": [{ "type": "next_steps", "label": "…", "content": "…" }]
+  },
+  "changedFiles": [{ "filePath": "lib/api.ts", "vcsStatus": "modified" }],
+  "changeRationales": [{ "filePath": "lib/api.ts", "label": "…", "summary": "…", "why": "…", "impact": "…" }],
+  "missionEvents": [{ "id": "…", "type": "update", "summary": "…", "createdAt": "…" }],
+  "links": {
+    "mission": "/api/missions/6f0fc5b0-…",
+    "events": "/api/missions/6f0fc5b0-…/events",
+    "fileChanges": "/api/missions/6f0fc5b0-…/file-changes",
+    "artifacts": "/api/missions/6f0fc5b0-…/artifacts"
+  }
+}
+```
+
+- **`thin` mode** sends only ids and `links` — the fields marked "full mode only" above, plus
+  `changedFiles`/`changeRationales`/`missionEvents`, are omitted entirely. Nothing about a mission
+  ever rests on a third-party endpoint unless it pulls with a valid token.
+- **`full` mode** sends the snapshot above. Long arrays are capped (currently 50 entries) with a
+  `"truncated": true` marker; use the pull path (§5) for the rest.
+- `objective`/`session`/`delivery` are present only when the firing event carries them (e.g.
+  `mission.status_changed` has no `delivery`).
+
+## 5. Pulling the rest
+
+Every `links` entry is a normal, RBAC-checked REST endpoint. Mint a `USER_TOKEN` for the consumer
+(**Settings → Tokens**, or `ovld auth login`/`POST /api/user-tokens`), ideally scoped narrowly, and
+call it like any other API client:
+
+```bash
+curl "$OVERLORD_BACKEND_URL/api/missions/6f0fc5b0-…" \
+  -H "Authorization: Bearer $OVERLORD_USER_TOKEN"
+```
+
+The consumer can only read what that token's owner can read — the same RBAC as the web UI and
+CLI. A `thin` subscription is really just this pull path plus a trigger; a `full` subscription
+saves the round trip when the endpoint is trusted with the content.
+
+## 6. Internal endpoints
+
+If your consumer runs next to the Overlord backend — another service in the same private network,
+or a local process alongside a Local-edition instance — round-tripping through `thin` mode buys no
+extra security, since the payload never leaves your own deployment. The operator declares these
+hosts with an environment variable on the **backend**:
+
+```bash
+# Comma-separated host suffixes; supports a `*.` wildcard prefix.
+OVERLORD_WEBHOOK_INTERNAL_HOSTS=*.railway.internal,feed-gen.internal
+```
+
+A matching endpoint is exempt from the HTTPS requirement (so `http://feed-gen.railway.internal`
+works over an unencrypted private mesh) and from the SSRF private-network block, and defaults to
+`full` payloads in the create dialog. Local edition implicitly treats `localhost`/`127.0.0.1` as
+internal — no configuration needed. This is an environment variable, not a workspace setting, on
+purpose: which services share a network is a deployment fact, not something a compromised admin
+account should be able to grant itself by re-labeling a host.
+
+## 7. Verifying signatures
+
+Every delivery carries:
+
+```
+X-Overlord-Signature: t=1751567051,v1=5257a869e...
+X-Overlord-Event: mission.delivered
+X-Overlord-Delivery: 5b1e...
+X-Overlord-Workspace: 6f0fc5b0-...
+```
+
+`v1` is `hex(hmac_sha256(secret, "<t>.<raw request body>"))`. Verify it before trusting the body,
+and reject anything with `|now - t| > 300` seconds to bound replay:
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+function verifyOverlordSignature(secret, rawBody, signatureHeader) {
+  const parts = Object.fromEntries(signatureHeader.split(',').map(p => p.split('=')));
+  const t = Number(parts.t);
+  if (!Number.isFinite(t) || Math.abs(Date.now() / 1000 - t) > 300) return false;
+
+  const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
+  const a = Buffer.from(expected, 'hex');
+  const b = Buffer.from(parts.v1 ?? '', 'hex');
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+```
+
+Use the **raw** request body (before any JSON parsing/re-serialization) — signing is byte-exact.
+
+## 8. Delivery semantics
+
+- **At-least-once.** Retries use `X-Overlord-Delivery` as the idempotency key; dedupe on it.
+- **Backoff schedule** on non-2xx responses or timeouts: 30s, 2m, 10m, 1h, 6h, 24h, then the
+  delivery is marked `failed` and stops retrying.
+- **Timeout**: 10 seconds per attempt. Redirects are not followed — point the URL at its final
+  destination.
+- **Auto-disable**: after 20 consecutive failed deliveries, the subscription disables itself
+  (`disabledReason: "failures"`) and a system notification links to the delivery log. Re-enable it
+  from **Settings → Webhooks** once the endpoint is fixed.
+- **Per-subscription ordering is best-effort**, not guaranteed globally. Consumers that need a
+  strict order should sort by `occurredAt`/mission revision rather than assuming delivery order.
+- **Test deliveries** (`webhook.ping`, via **Send test delivery**) are sent synchronously and
+  logged, but never retried or counted toward auto-disable.
+
+## 9. Example: rebuilding a feed-post generator
+
+`examples/webhook-consumers/feed-post-generator/` is a complete, runnable ~100-line Express
+service showing the whole pattern: verify the signature, read the `full` envelope (or pull it via
+`links` for a `thin` subscription), send it to an LLM, and post the result somewhere else — the
+same shape as the upstream `generate-feed-post` pipeline this feature was designed to replace,
+built as ordinary external software. See that directory's own README for setup.
+
+## 10. Troubleshooting
+
+| Symptom | Likely cause |
+| --- | --- |
+| Endpoint URL rejected at save time | Not `https://`, or resolves to a private/loopback address and isn't on `OVERLORD_WEBHOOK_INTERNAL_HOSTS`. |
+| Subscription shows "Failing" | Check the delivery log drawer for the response status/error on recent attempts. |
+| Subscription auto-disabled | 20 consecutive failures — fix the endpoint, then re-enable it. |
+| Signature never verifies | Confirm you're hashing the raw, unparsed body, and using the `t` from the header (not your own clock) in the signed string. |
+| `full` payload missing fields you expected | The subscription owner may no longer have `mission:read` in that workspace — payloads are always built with the *creator's* permissions, never more. |

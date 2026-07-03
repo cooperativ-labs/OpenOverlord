@@ -1,4 +1,5 @@
 import { scopeGrantsForPreset } from '@overlord/auth';
+import { generateDateFromSchedule, type ScheduleLike } from '@overlord/automations';
 import { bindBool, type DatabaseClient } from '@overlord/database';
 import { createHash, randomBytes } from 'node:crypto';
 import os from 'node:os';
@@ -42,11 +43,13 @@ import type {
   MissionDetailDto,
   MissionDto,
   MissionEventDto,
+  MissionScheduleDto,
   MissionWorktreePreference,
   MyMissionDto,
   MyMissionReorderRequest,
   MyMissionsResponse,
   ObjectiveDto,
+  PreviewScheduleBody,
   ProfileDto,
   ProjectDto,
   ProjectRepositoryDto,
@@ -57,6 +60,8 @@ import type {
   ReorderBoardColumnBody,
   ReorderFutureObjectivesBody,
   ReorderWorkspaceStatusesBody,
+  ScheduleDto,
+  ScheduleInput,
   StatusType,
   TokenScope,
   UpdateMissionBody,
@@ -77,6 +82,7 @@ import { generateCommitMessageFromDiff } from './commit-message-automation.ts';
 import {
   buildWebappServiceContext,
   DATABASE_DIALECT,
+  enqueueWebhookEventRest,
   getActiveWorkspace,
   getActiveWorkspaceId,
   getActorWorkspaceUserId,
@@ -378,6 +384,8 @@ interface MissionRow {
   assigned_workspace_user_id: string | null;
   acceptance_criteria_text: string | null;
   available_tools_json: string;
+  schedule_id: string | null;
+  due_datetime: string | null;
   created_at: string;
   updated_at: string;
   revision: number;
@@ -661,6 +669,8 @@ function toMissionDto(r: MissionRow, tags: ProjectTagDto[] = []): MissionDto {
     assignedWorkspaceUserId: r.assigned_workspace_user_id,
     acceptanceCriteria: r.acceptance_criteria_text,
     availableTools: parseAvailableTools(r.available_tools_json),
+    scheduleId: r.schedule_id,
+    dueDatetime: r.due_datetime,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     revision: r.revision,
@@ -2320,6 +2330,7 @@ const selectMissionsSql = `
          t.status_id, t.status_type, t.board_position, t.priority,
          t.assigned_workspace_user_id,
          t.acceptance_criteria_text, t.available_tools_json,
+         t.schedule_id, t.due_datetime,
          t.created_at, t.updated_at, t.revision, t.active_branch, t.branch_override,
          t.worktree_preference,
          (SELECT COUNT(*) FROM objectives o
@@ -2387,6 +2398,7 @@ export async function searchMissions({
               t.status_id, t.status_type, t.board_position, t.priority,
               t.assigned_workspace_user_id,
               t.acceptance_criteria_text, t.available_tools_json,
+              t.schedule_id, t.due_datetime,
               t.created_at, t.updated_at, t.revision,
               (SELECT COUNT(*) FROM objectives o
                  WHERE o.mission_id = t.id AND o.deleted_at IS NULL) AS objective_count,
@@ -3070,6 +3082,7 @@ async function patchMissionFieldsTx(id: string, body: UpdateMissionBody): Promis
       setParams.push(await resolveAssignedWorkspaceUserId(tx, body.assignedWorkspaceUserId));
       changed.push('assigned_workspace_user_id');
     }
+    let scheduleTriggerStatusType: StatusType | null = null;
     if (body.statusId !== undefined) {
       const statusRow = await getWorkspaceStatus(tx, body.statusId);
       fields.push('status_id = ?', 'status_type = ?');
@@ -3079,6 +3092,9 @@ async function patchMissionFieldsTx(id: string, body: UpdateMissionBody): Promis
         fields.push('board_position = ?');
         setParams.push(await topBoardPosition(tx, existing.project_id, statusRow.id, id));
         changed.push('board_position');
+        // Only an actual transition into this status should spawn a scheduled
+        // duplicate — re-saving the same status (e.g. a no-op PATCH) must not.
+        scheduleTriggerStatusType = statusRow.type as StatusType;
       }
     }
     if (body.acceptanceCriteria !== undefined) {
@@ -3108,6 +3124,14 @@ async function patchMissionFieldsTx(id: string, body: UpdateMissionBody): Promis
       fields.push('worktree_preference = ?');
       setParams.push(preference);
       changed.push('worktree_preference');
+    }
+    if (body.dueDatetime !== undefined) {
+      if (body.dueDatetime !== null && Number.isNaN(Date.parse(body.dueDatetime))) {
+        throw new ApiError(400, 'dueDatetime must be a valid ISO-8601 datetime or null');
+      }
+      fields.push('due_datetime = ?');
+      setParams.push(body.dueDatetime);
+      changed.push('due_datetime');
     }
 
     const now = nowIso();
@@ -3150,6 +3174,10 @@ async function patchMissionFieldsTx(id: string, body: UpdateMissionBody): Promis
       },
       tx
     );
+
+    if (scheduleTriggerStatusType) {
+      await createScheduledDuplicateIfNeeded(tx, existing, scheduleTriggerStatusType);
+    }
   });
 }
 
@@ -3381,10 +3409,414 @@ export async function reorderBoardColumn(
         },
         tx
       );
+
+      if (statusChanged) {
+        await enqueueWebhookEventRest(
+          { type: 'mission.status_changed', projectId, entity: { missionId } },
+          tx
+        );
+        await createScheduledDuplicateIfNeeded(tx, existing, statusRow.type as StatusType);
+      }
     }
   });
 
   return (await listMissions(projectId)).filter(t => t.statusId === statusId);
+}
+
+// ---- Mission scheduling (coo:124) -----------------------------------------
+//
+// A `schedules` row is a repeating recurrence rule computed by the
+// SchedulingEngine (`@overlord/automations`). A mission with a `schedule_id`
+// carries a computed `due_datetime`; when the mission reaches a `complete`-type
+// status, `createScheduledDuplicateIfNeeded` below spawns a duplicate mission
+// with the next occurrence. See
+// planning/feature-plans/mission-scheduling-engine.md and
+// automations/src/scheduling-engine/schedulingEngine.md.
+
+interface ScheduleRow {
+  id: string;
+  workspace_id: string;
+  name: string | null;
+  period_type: string;
+  period_interval: number;
+  weeks_of_month_json: string;
+  days_of_month_json: string;
+  days_of_week_json: string;
+  timezone: string;
+  start_date: string | null;
+  next_status_id: string | null;
+  created_at: string;
+  updated_at: string;
+  revision: number;
+}
+
+function parseScheduleJsonArray(json: string): unknown[] {
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function toScheduleDto(row: ScheduleRow): ScheduleDto {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    name: row.name,
+    periodType: row.period_type as ScheduleDto['periodType'],
+    periodInterval: row.period_interval,
+    weeksOfMonth: parseScheduleJsonArray(row.weeks_of_month_json) as number[],
+    daysOfMonth: parseScheduleJsonArray(row.days_of_month_json) as number[],
+    daysOfWeek: parseScheduleJsonArray(row.days_of_week_json) as ScheduleDto['daysOfWeek'],
+    timezone: row.timezone,
+    startDate: row.start_date,
+    nextStatusId: row.next_status_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    revision: row.revision
+  };
+}
+
+function toScheduleLike(input: ScheduleInput): ScheduleLike {
+  return {
+    name: input.name ?? undefined,
+    periodType: input.periodType,
+    periodInterval: input.periodInterval,
+    weeksOfMonth: input.weeksOfMonth ?? undefined,
+    daysOfMonth: input.daysOfMonth ?? undefined,
+    daysOfWeek: input.daysOfWeek ?? undefined,
+    timezone: input.timezone,
+    startDate: input.startDate ?? undefined
+  };
+}
+
+function scheduleRowToInput(row: ScheduleRow): ScheduleInput {
+  const dto = toScheduleDto(row);
+  return {
+    name: dto.name,
+    periodType: dto.periodType,
+    periodInterval: dto.periodInterval,
+    weeksOfMonth: dto.weeksOfMonth,
+    daysOfMonth: dto.daysOfMonth,
+    daysOfWeek: dto.daysOfWeek,
+    timezone: dto.timezone,
+    startDate: dto.startDate,
+    nextStatusId: dto.nextStatusId
+  };
+}
+
+async function getScheduleRow(
+  db: DatabaseClient,
+  scheduleId: string
+): Promise<ScheduleRow | undefined> {
+  return (await db.get(
+    `SELECT id, workspace_id, name, period_type, period_interval, weeks_of_month_json,
+            days_of_month_json, days_of_week_json, timezone, start_date, next_status_id,
+            created_at, updated_at, revision
+       FROM schedules WHERE id = ? AND workspace_id = ?`,
+    [scheduleId, getActiveWorkspaceId()]
+  )) as ScheduleRow | undefined;
+}
+
+/**
+ * Validates and computes the next due datetime without persisting anything.
+ * Powers the ScheduleEditor live preview and the completion trigger below.
+ * Validation is delegated to the SchedulingEngine's zod schema
+ * (automations/src/scheduling-engine); this layer only translates the thrown
+ * validation `Error` into an `ApiError`.
+ */
+function previewScheduleDueDatetime(input: ScheduleInput, itemDueDatetime?: string | null): string {
+  try {
+    const result = generateDateFromSchedule({
+      schedule: toScheduleLike(input),
+      itemDueDatetime: itemDueDatetime ? new Date(itemDueDatetime) : null
+    });
+    return result.toISOString();
+  } catch (err) {
+    throw new ApiError(400, err instanceof Error ? err.message : 'Invalid schedule.');
+  }
+}
+
+/** POST /api/missions/schedule/preview */
+export function previewMissionSchedule(body: PreviewScheduleBody): { dueDatetime: string } {
+  if (!body?.schedule) throw new ApiError(400, 'schedule is required');
+  return { dueDatetime: previewScheduleDueDatetime(body.schedule, body.itemDueDatetime) };
+}
+
+/** GET /api/missions/:id/schedule */
+export async function getMissionSchedule(missionRef: string): Promise<MissionScheduleDto> {
+  const mission = await getMissionRow(missionRef);
+  if (!mission.schedule_id) {
+    return { dueDatetime: mission.due_datetime, schedule: null };
+  }
+  const scheduleRow = await getScheduleRow(requireDatabaseClient(), mission.schedule_id);
+  return {
+    dueDatetime: mission.due_datetime,
+    schedule: scheduleRow ? toScheduleDto(scheduleRow) : null
+  };
+}
+
+/** PUT /api/missions/:id/schedule — create or update the linked schedule and recompute due_datetime. */
+export async function upsertMissionSchedule(
+  missionRef: string,
+  input: ScheduleInput
+): Promise<MissionScheduleDto> {
+  if (!input) throw new ApiError(400, 'schedule is required');
+  if (input.nextStatusId) {
+    await getWorkspaceStatus(requireDatabaseClient(), input.nextStatusId);
+  }
+
+  return requireDatabaseClient().transaction(async tx => {
+    const existing = await getMissionRow(missionRef, tx);
+    const dueDatetime = previewScheduleDueDatetime(input, existing.due_datetime);
+    const now = nowIso();
+    const scheduleId = existing.schedule_id ?? newId();
+
+    if (existing.schedule_id) {
+      await tx.run(
+        `UPDATE schedules
+           SET name = ?, period_type = ?, period_interval = ?, weeks_of_month_json = ?,
+               days_of_month_json = ?, days_of_week_json = ?, timezone = ?, start_date = ?,
+               next_status_id = ?, updated_at = ?, revision = revision + 1
+         WHERE id = ? AND workspace_id = ?`,
+        [
+          input.name?.trim() || null,
+          input.periodType,
+          input.periodInterval,
+          JSON.stringify(input.weeksOfMonth ?? []),
+          JSON.stringify(input.daysOfMonth ?? []),
+          JSON.stringify(input.daysOfWeek ?? []),
+          input.timezone,
+          input.startDate ?? null,
+          input.nextStatusId ?? null,
+          now,
+          existing.schedule_id,
+          getActiveWorkspaceId()
+        ]
+      );
+    } else {
+      await tx.run(
+        `INSERT INTO schedules
+           (id, workspace_id, name, period_type, period_interval, weeks_of_month_json,
+            days_of_month_json, days_of_week_json, timezone, start_date, next_status_id,
+            created_at, updated_at, revision)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        [
+          scheduleId,
+          getActiveWorkspaceId(),
+          input.name?.trim() || null,
+          input.periodType,
+          input.periodInterval,
+          JSON.stringify(input.weeksOfMonth ?? []),
+          JSON.stringify(input.daysOfMonth ?? []),
+          JSON.stringify(input.daysOfWeek ?? []),
+          input.timezone,
+          input.startDate ?? null,
+          input.nextStatusId ?? null,
+          now,
+          now
+        ]
+      );
+    }
+
+    const revision = existing.revision + 1;
+    await tx.run(
+      `UPDATE missions SET schedule_id = ?, due_datetime = ?, updated_at = ?, revision = ?
+         WHERE id = ? AND workspace_id = ?`,
+      [scheduleId, dueDatetime, now, revision, existing.id, getActiveWorkspaceId()]
+    );
+
+    await recordChange(
+      {
+        entityType: 'mission',
+        entityId: existing.id,
+        operation: 'update',
+        entityRevision: revision,
+        projectId: existing.project_id,
+        missionId: existing.id,
+        changedFields: ['schedule_id', 'due_datetime']
+      },
+      tx
+    );
+
+    const scheduleRow = await getScheduleRow(tx, scheduleId);
+    if (!scheduleRow) throw new ApiError(500, 'Schedule not found after upsert');
+    return { dueDatetime, schedule: toScheduleDto(scheduleRow) };
+  });
+}
+
+/** DELETE /api/missions/:id/schedule — unlink and delete the schedule if unreferenced. */
+export async function clearMissionSchedule(missionRef: string): Promise<void> {
+  await requireDatabaseClient().transaction(async tx => {
+    const existing = await getMissionRow(missionRef, tx);
+    if (!existing.schedule_id) return;
+
+    const now = nowIso();
+    const revision = existing.revision + 1;
+    await tx.run(
+      `UPDATE missions SET schedule_id = NULL, due_datetime = NULL, updated_at = ?, revision = ?
+         WHERE id = ? AND workspace_id = ?`,
+      [now, revision, existing.id, getActiveWorkspaceId()]
+    );
+
+    await recordChange(
+      {
+        entityType: 'mission',
+        entityId: existing.id,
+        operation: 'update',
+        entityRevision: revision,
+        projectId: existing.project_id,
+        missionId: existing.id,
+        changedFields: ['schedule_id', 'due_datetime']
+      },
+      tx
+    );
+
+    const stillReferenced = await tx.get(
+      `SELECT id FROM missions WHERE schedule_id = ? AND workspace_id = ? LIMIT 1`,
+      [existing.schedule_id, getActiveWorkspaceId()]
+    );
+    if (!stillReferenced) {
+      await tx.run(`DELETE FROM schedules WHERE id = ? AND workspace_id = ?`, [
+        existing.schedule_id,
+        getActiveWorkspaceId()
+      ]);
+    }
+  });
+}
+
+/**
+ * Resolves the workspace status a scheduled duplicate lands in: the schedule's
+ * configured `nextStatusId` when it still names a real, non-deleted workspace
+ * status, else the workspace default.
+ */
+async function resolveScheduleDuplicateStatus(
+  db: DatabaseClient,
+  nextStatusId: string | null
+): Promise<WorkspaceStatusRow> {
+  if (nextStatusId) {
+    const configured = (await db.get(
+      `SELECT * FROM workspace_statuses WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+      [nextStatusId, getActiveWorkspaceId()]
+    )) as WorkspaceStatusRow | undefined;
+    if (configured) return configured;
+  }
+
+  const defaultStatus = (await db.get(
+    `SELECT * FROM workspace_statuses
+       WHERE workspace_id = ? AND is_default = ? AND deleted_at IS NULL LIMIT 1`,
+    [getActiveWorkspaceId(), bindBool(DATABASE_DIALECT, true)]
+  )) as WorkspaceStatusRow | undefined;
+  if (!defaultStatus) throw new ApiError(409, 'Workspace has no default status');
+  return defaultStatus;
+}
+
+/**
+ * Mission-completion recurrence hook (coo:124): when a scheduled mission is moved
+ * into a `complete`-type status (`complete` or `cancelled` — see
+ * `isTerminalStatusType`), spawns a duplicate mission with the next computed due
+ * date. Skips `cancelled`: the ticket-scheduling behavior this was ported from
+ * explicitly does not regenerate cancelled work. Must run inside the same
+ * transaction as the status change so the duplicate and the status update land
+ * atomically. Callers must only invoke this on an actual transition into
+ * `newStatusType` (not a same-status no-op PATCH), or every redundant save would
+ * spawn another duplicate.
+ */
+async function createScheduledDuplicateIfNeeded(
+  tx: DatabaseClient,
+  mission: MissionRow,
+  newStatusType: StatusType
+): Promise<void> {
+  if (!isTerminalStatusType(newStatusType) || !mission.schedule_id) return;
+  if (newStatusType === 'cancelled') return;
+
+  const scheduleRow = await getScheduleRow(tx, mission.schedule_id);
+  if (!scheduleRow) return;
+
+  let nextDueDatetime: string;
+  try {
+    nextDueDatetime = previewScheduleDueDatetime(
+      scheduleRowToInput(scheduleRow),
+      mission.due_datetime
+    );
+  } catch {
+    // The schedule became invalid since it was saved (e.g. edited elsewhere into
+    // an unreachable rule); don't block the status change that triggered this.
+    return;
+  }
+
+  const targetStatus = await resolveScheduleDuplicateStatus(tx, scheduleRow.next_status_id);
+
+  const now = nowIso();
+  const newMissionId = newId();
+  const sequence = await nextMissionSequence(tx);
+  const displayId = `${getActiveWorkspace().slug}:${sequence}`;
+  const boardPosition = await topBoardPosition(tx, mission.project_id, targetStatus.id);
+
+  await tx.run(
+    `INSERT INTO missions
+       (id, workspace_id, project_id, display_id, sequence_number, title,
+        status_id, status_type, board_position, priority, assigned_workspace_user_id,
+        acceptance_criteria_text, available_tools_json, execution_target_intent_json,
+        metadata_json, schedule_id, due_datetime, created_at, updated_at, revision)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', '{}', ?, ?, ?, ?, 1)`,
+    [
+      newMissionId,
+      getActiveWorkspaceId(),
+      mission.project_id,
+      displayId,
+      sequence,
+      mission.title,
+      targetStatus.id,
+      targetStatus.type,
+      boardPosition,
+      mission.priority ?? 'normal',
+      mission.assigned_workspace_user_id,
+      mission.acceptance_criteria_text,
+      mission.available_tools_json,
+      mission.schedule_id,
+      nextDueDatetime,
+      now,
+      now
+    ]
+  );
+
+  await recordChange(
+    {
+      entityType: 'mission',
+      entityId: newMissionId,
+      operation: 'insert',
+      entityRevision: 1,
+      projectId: mission.project_id,
+      missionId: newMissionId
+    },
+    tx
+  );
+
+  const tagRows = (await tx.all(`SELECT tag_id FROM mission_tags WHERE mission_id = ?`, [
+    mission.id
+  ])) as { tag_id: string }[];
+  if (tagRows.length > 0) {
+    await assignMissionTags(tx, {
+      missionId: newMissionId,
+      projectId: mission.project_id,
+      tagIds: tagRows.map(row => row.tag_id),
+      now
+    });
+  }
+
+  const latestObjective = (await tx.get(
+    `SELECT instruction_text FROM objectives
+       WHERE mission_id = ? AND deleted_at IS NULL AND TRIM(instruction_text) != ''
+       ORDER BY position DESC LIMIT 1`,
+    [mission.id]
+  )) as { instruction_text: string } | undefined;
+
+  await insertObjective(tx, {
+    missionId: newMissionId,
+    instructionText: latestObjective?.instruction_text ?? ''
+  });
 }
 
 // ---- My Missions (selected-workspace aggregate) ---------------------------
@@ -3422,6 +3854,7 @@ const selectMyMissionsSql = `
          t.status_id, t.status_type, t.board_position, t.priority,
          t.assigned_workspace_user_id,
          t.acceptance_criteria_text, t.available_tools_json,
+         t.schedule_id, t.due_datetime,
          t.created_at, t.updated_at, t.revision,
          p.name AS project_name, p.settings_json AS project_settings_json,
          mtp.position AS my_position,

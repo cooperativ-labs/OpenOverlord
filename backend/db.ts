@@ -25,6 +25,11 @@ import { loadEnvDefaults } from '../cli/src/env.ts';
 import { insertEntityChange } from '../packages/core/service/change-feed.ts';
 import type { ServiceContext } from '../packages/core/service/context.ts';
 import type { ClientDeviceIdentity } from '../packages/core/service/device-identity.ts';
+import {
+  enqueueWebhookEvent,
+  type WebhookEntityRefs,
+  type WebhookEventType
+} from '../packages/core/service/webhook-events.ts';
 import type { ChangeOperation } from '../webapp/shared/contract.ts';
 
 import { ENV_PROFILE, REPO_ROOT } from './env-profile.ts';
@@ -647,6 +652,42 @@ export async function recordChange(
         : getActorWorkspaceUserId(),
     actorTokenId: getActiveTokenId(),
     source: 'webapp'
+  });
+}
+
+// ---- webhook outbox enqueue ----------------------------------------------
+
+export interface EnqueueWebhookEventInput {
+  type: WebhookEventType;
+  projectId: string | null;
+  entity: WebhookEntityRefs;
+  /** Override the workspace the event is attributed to (defaults to the active one). */
+  workspaceId?: string | null;
+}
+
+/**
+ * REST-layer counterpart to `recordChange`: matches active `webhook_subscriptions`
+ * and appends `outbox_messages` rows in the same transaction as the domain
+ * mutation. Must be called from every REST-originated status/delivery choke
+ * point that the protocol/service core also covers (see
+ * `packages/core/service/webhook-events.ts`), so no origin path silently skips
+ * webhook delivery.
+ */
+export async function enqueueWebhookEventRest(
+  input: EnqueueWebhookEventInput,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<void> {
+  const workspaceId = input.workspaceId ?? getActiveWorkspaceId();
+  const ctx: ServiceContext = {
+    db: client,
+    workspace: { id: workspaceId, slug: '', name: '' },
+    actorWorkspaceUserId: getActorWorkspaceUserId(),
+    source: 'webapp'
+  };
+  await enqueueWebhookEvent(ctx, {
+    type: input.type,
+    projectId: input.projectId,
+    entity: input.entity
   });
 }
 

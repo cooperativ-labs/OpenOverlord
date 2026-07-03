@@ -9,7 +9,7 @@
 # IMPORTANT: Adding a new capability flag, extension point, or vocabulary change
 # requires a contract version update in CONTRACT.md and components.yaml.
 
-contractVersion: "0"
+contractVersion: "1"
 
 # Sanctioned extension points — the only ways to extend Overlord
 extensionPoints:
@@ -233,7 +233,8 @@ openVocabularies:
   - mission_events.source       # e.g. cli, api, hook, runner, web, or namespaced extension
   - entity_changes.entity_type # e.g. mission, objective, session, or namespaced extension
   - entity_changes.source      # e.g. cli, api, runner, worker, hook, migration, or namespaced extension
-  - outbox_messages.topic      # e.g. attachment.delete_blob, or namespaced extension
+  - outbox_messages.topic      # e.g. attachment.delete_blob, webhook.deliver.v1, or namespaced extension
   - worker_jobs.type           # job kind; namespaced extension
   - rbac.permission_names      # RBAC capability/permission names; namespaced extension
   - connector.agent_identifiers # e.g. codex, claude, cursor, or custom connector key
+  - webhook_subscriptions.event_types_json # e.g. mission.delivered, mission.status_changed, objective.completed, mission.blocked, or namespaced extension

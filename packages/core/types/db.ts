@@ -295,6 +295,7 @@ export interface Missions {
   created_by_workspace_user_id: string | null;
   deleted_at: string | null;
   display_id: string;
+  due_datetime: string | null;
   everhour_task_id: string | null;
   execution_target_intent_json: Generated<string>;
   id: string | null;
@@ -303,6 +304,7 @@ export interface Missions {
   priority: string | null;
   project_id: string;
   revision: Generated<number>;
+  schedule_id: string | null;
   sequence_number: number;
   status_id: string;
   status_type: string;
@@ -383,6 +385,19 @@ export interface Objectives {
   revision: Generated<number>;
   state: string;
   title: string | null;
+  updated_at: string;
+  workspace_id: string;
+}
+
+export interface OutboxMessages {
+  attempt_count: Generated<number>;
+  available_at: string;
+  created_at: string;
+  id: string | null;
+  last_error: string | null;
+  payload_json: string;
+  status: Generated<string>;
+  topic: string;
   updated_at: string;
   workspace_id: string;
 }
@@ -470,6 +485,23 @@ export interface RoleAssignments {
   updated_at: string;
   workspace_id: string;
   workspace_user_id: string;
+}
+
+export interface Schedules {
+  created_at: string;
+  days_of_month_json: Generated<string>;
+  days_of_week_json: Generated<string>;
+  id: string | null;
+  name: string | null;
+  next_status_id: string | null;
+  period_interval: Generated<number>;
+  period_type: Generated<string>;
+  revision: Generated<number>;
+  start_date: string | null;
+  timezone: string;
+  updated_at: string;
+  weeks_of_month_json: Generated<string>;
+  workspace_id: string;
 }
 
 export interface SchemaMigrations {
@@ -671,6 +703,41 @@ export interface Verification {
   value: string;
 }
 
+export interface WebhookDeliveryAttempts {
+  attempt_number: number;
+  attempted_at: string;
+  duration_ms: number | null;
+  error: string | null;
+  event_type: string;
+  id: string | null;
+  outbox_message_id: string;
+  response_snippet: string | null;
+  response_status: number | null;
+  subscription_id: string;
+  workspace_id: string;
+}
+
+export interface WebhookSubscriptions {
+  consecutive_failures: Generated<number>;
+  created_at: string;
+  created_by_workspace_user_id: string;
+  deleted_at: string | null;
+  disabled_reason: string | null;
+  enabled: Generated<number>;
+  endpoint_url: string;
+  event_types_json: string;
+  id: string | null;
+  last_failure_at: string | null;
+  last_success_at: string | null;
+  name: string;
+  payload_mode: Generated<string>;
+  project_id: string | null;
+  revision: Generated<number>;
+  secret: string;
+  updated_at: string;
+  workspace_id: string;
+}
+
 export interface WorkspaceImages {
   alt_text: string | null;
   checksum_sha256: string | null;
@@ -788,12 +855,14 @@ export interface DB {
   my_mission_positions: MyMissionPositions;
   objective_attachments: ObjectiveAttachments;
   objectives: Objectives;
+  outbox_messages: OutboxMessages;
   profiles: Profiles;
   project_resources: ProjectResources;
   project_tags: ProjectTags;
   project_user_preferences: ProjectUserPreferences;
   projects: Projects;
   role_assignments: RoleAssignments;
+  schedules: Schedules;
   schema_migrations: SchemaMigrations;
   search_documents: SearchDocuments;
   search_documents_fts: SearchDocumentsFts;
@@ -811,6 +880,8 @@ export interface DB {
   user_token_scopes: UserTokenScopes;
   user_tokens: UserTokens;
   verification: Verification;
+  webhook_delivery_attempts: WebhookDeliveryAttempts;
+  webhook_subscriptions: WebhookSubscriptions;
   workspace_images: WorkspaceImages;
   workspace_invitations: WorkspaceInvitations;
   workspace_statuses: WorkspaceStatuses;

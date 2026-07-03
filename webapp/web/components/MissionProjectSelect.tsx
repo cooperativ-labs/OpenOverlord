@@ -69,11 +69,7 @@ export function MissionProjectSelect({
   }
 
   return (
-    <Select
-      value={selectedProjectId}
-      disabled={update.isPending}
-      onValueChange={handleChange}
-    >
+    <Select value={selectedProjectId} disabled={update.isPending} onValueChange={handleChange}>
       <SelectTrigger
         id="mission-project-select"
         aria-label="Select project"

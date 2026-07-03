@@ -1,6 +1,6 @@
 # Database Schema Contract
 
-Contract Version: `0`
+Contract Version: `1`
 
 ## Goal
 
@@ -59,7 +59,7 @@ This choice does not change the logical schema. It does affect implementation de
 - Stable IDs should be UUIDv7 or ULID strings. Integer primary keys are not part of the portable contract.
 - `revision` starts at `1` for inserted mutable rows and increments by exactly one for each service-layer mutation.
 - `metadata_json` and `settings_json` are extension space, but extension keys must be namespaced. Use reverse-DNS or package-style keys such as `com.example.plugin`, with a nested `schemaVersion` where the extension stores structured data.
-- Tables without `created_at`, `updated_at`, `deleted_at`, and `revision` are intentional operational or append-only tables. Current exemptions are `mission_sequences`, `mission_events`, `shared_context_tags`, `entity_changes`, `sync_cursors`, `outbox_messages`, `search_documents`, `audit_log`, and `schema_migrations`.
+- Tables without `created_at`, `updated_at`, `deleted_at`, and `revision` are intentional operational or append-only tables. Current exemptions are `mission_sequences`, `mission_events`, `shared_context_tags`, `entity_changes`, `sync_cursors`, `outbox_messages`, `search_documents`, `audit_log`, `schema_migrations`, and `webhook_delivery_attempts`.
 - Columns named `position` (and the mission board ordering column `board_position`) must use a reorder strategy that does not violate active uniqueness mid-transaction. Services should use gap-based integer positions by default, for example `100`, `200`, `300`; compacting positions is a maintenance operation. `board_position` is not uniqueness-constrained, so services may renumber a whole board column densely on each reorder.
 
 ## Logical Types
@@ -698,6 +698,8 @@ Durable work unit and review record.
 | `branch_override` | text | no | User-pinned branch chosen in the mission panel to override the planner's default; consumed (and cleared) by the runner at the next branch preparation. Null means automatic selection. |
 | `worktree_preference` | text | no | Per-mission override of the workspace `worktreeBranchAutomationEnabled` setting. `null` inherits the workspace setting; `'worktree'` forces a branch + worktree for this mission even when automation is off; `'branch'` forces a branch without a dedicated worktree (checked out in the project's primary repo). Persistent (not cleared by the runner). App-validated open set (no DB CHECK). |
 | `everhour_task_id` | text | no | Everhour task this mission is linked to for time tracking, written when a user first starts a timer or links the mission from the mission panel. Everhour task IDs are platform-prefixed strings (for example `ev:3000010034`), so this is text. Null until the mission is linked. The workspace Everhour API key lives in `workspaces.settings_json` and the linked Everhour project id/name/section live in `projects.settings_json`. |
+| `schedule_id` | Id | no | FK to `schedules`. Null means the mission does not repeat. On SQLite this is a plain (non-composite) FK added via `ALTER TABLE`, since SQLite cannot add a table-level composite FK without a full table rebuild; Postgres adds the org-scoped composite `(workspace_id, schedule_id)` FK. Every read/write path still scopes by `workspace_id` in application code regardless of dialect. |
+| `due_datetime` | TimestampUTC | no | Computed next occurrence for a scheduled mission; null when unscheduled. Recomputed by the SchedulingEngine (`@overlord/automations`) whenever the schedule is created/updated, and again for the duplicate mission spawned when a scheduled mission reaches a `complete`-type status (see `createScheduledDuplicateIfNeeded` in `backend/repository.ts`). |
 | `created_by_workspace_user_id` | Id | no | FK to `workspace_users`. |
 | `assigned_workspace_user_id` | Id | no | FK to `workspace_users`. |
 | `created_at` | TimestampUTC | yes |  |
@@ -714,6 +716,34 @@ Indexes:
 - `(workspace_id, created_by_workspace_user_id, updated_at)`.
 
 The default human ID format is workspace-scoped, for example `1:1204`, and `sequence_number` uniqueness must match that scope. If a future deployment introduces project-scoped display IDs, it must add a new `mission_sequences.scope_type = 'project'` migration and adjust the unique index at the same time.
+
+### `schedules`
+
+A repeating recurrence rule for mission due dates, computed by the SchedulingEngine (`@overlord/automations`, ported from `automations/src/scheduling-engine`). A mission links to at most one schedule via `missions.schedule_id`; the schedule itself carries no back-reference (deletion happens from the mission side — see `clearMissionSchedule` in `backend/repository.ts` and `packages/core/service/mission-schedules.ts`).
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes | Stable schedule ID. |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `name` | text | no | Optional display label. |
+| `period_type` | text | yes | `d` (daily), `w` (weekly), or `m` (monthly). |
+| `period_interval` | integer | yes | Recur every N periods; `>= 1`. |
+| `weeks_of_month_json` | Json | yes | Array of week numbers (1-5) for the monthly-by-week rule; used with `days_of_week_json`. |
+| `days_of_month_json` | Json | yes | Array of day-of-month numbers (1-31, or 32 meaning "last day of month") for the monthly-by-day rule. |
+| `days_of_week_json` | Json | yes | Array of `{ dayNum: 0-6, times: string[] }`; `times` are `HH:mm` or `HH:mm:ss` local to `timezone`. |
+| `start_date` | TimestampUTC | no | Optional recurrence anchor; becomes the primary anchor when present. |
+| `timezone` | text | yes | IANA timezone (validated against `Intl.DateTimeFormat`); defaults from the browser at creation. |
+| `next_status_id` | Id | no | FK to `workspace_statuses`. Workspace status the duplicate mission lands in on regeneration. Null (or a since-deleted status) falls back to the workspace default status. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `revision` | integer | yes |  |
+
+Indexes:
+
+- Unique `(workspace_id, id)` — supports the org-scoped composite FK from `missions.schedule_id` (Postgres only; see the `missions.schedule_id` note).
+- `(workspace_id, next_status_id)`.
+
+Validation (`periodType`/`periodInterval`/`timezone`/day-of-week-and-month shape rules) happens in the SchedulingEngine's zod schema (`automations/src/scheduling-engine/helpers/scheduleSchema.ts`), not as DB-level CHECK constraints beyond the closed `period_type` enum and `period_interval >= 1`. When a scheduled mission reaches a `complete`-type status (see `workspace_statuses.type` controlled vocabulary; `cancelled` is explicitly excluded), the REST layer spawns a duplicate mission carrying `schedule_id` forward and computes its `due_datetime` from the schedule.
 
 ### `objectives`
 
@@ -1580,6 +1610,61 @@ Indexes:
 - `(workspace_id, status, available_at)`.
 - `(topic, created_at)`.
 
+Implemented as of contract version `1`. `topic = 'webhook.deliver.v1'` is the first consumer: one row per `(event × matching webhook_subscription)`, `payload_json = { subscriptionId, eventType, envelope }`.
+
+### `webhook_subscriptions`
+
+Workspace-scoped webhook subscription: which events an external endpoint receives, with what payload mode, signed with a per-subscription secret. Management is REST-only (`/api/webhooks*`); the enqueue helper reads active subscriptions when a matching event fires (see `Realtime Strategy` and `packages/core/service/webhook-events.ts`).
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `project_id` | Id | no | FK to `projects`. `NULL` = all projects in the workspace. |
+| `name` | text | yes |  |
+| `endpoint_url` | text | yes | `https://` required unless the host matches the operator's internal-host allowlist (`OVERLORD_WEBHOOK_INTERNAL_HOSTS`; `localhost`/`127.0.0.1` implicit in Local edition). |
+| `secret` | text | yes | `whsec_…`, stored raw (HMAC signing needs it back); revealed to the caller only at creation and on rotation. |
+| `event_types_json` | Json | yes | Array of webhook event-type strings (open vocabulary, see below). |
+| `payload_mode` | text | yes | `thin`, `full`. |
+| `created_by_workspace_user_id` | Id | yes | FK to `workspace_users`. Payloads are hydrated through this actor's permissions — a subscription can never out-read its creator. |
+| `enabled` | boolean | yes |  |
+| `disabled_reason` | text | no | `manual`, `failures`, `owner_revoked`. |
+| `consecutive_failures` | integer | yes |  |
+| `last_success_at` | TimestampUTC | no |  |
+| `last_failure_at` | TimestampUTC | no |  |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `deleted_at` | TimestampUTC | no | Tombstone. |
+| `revision` | integer | yes |  |
+
+Indexes:
+
+- `(workspace_id, enabled)`.
+- `(workspace_id, project_id)`.
+
+### `webhook_delivery_attempts`
+
+Per-attempt delivery log consumed by the management UI's delivery-log drawer. Append-only; not soft-deleted.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `subscription_id` | Id | yes | FK to `webhook_subscriptions`. |
+| `outbox_message_id` | Id | yes | FK to `outbox_messages`. |
+| `event_type` | text | yes |  |
+| `attempt_number` | integer | yes |  |
+| `response_status` | integer | no |  |
+| `response_snippet` | text | no | First ~1KB of the response body, secret-redacted. |
+| `error` | text | no |  |
+| `duration_ms` | integer | no |  |
+| `attempted_at` | TimestampUTC | yes |  |
+
+Indexes:
+
+- `(subscription_id, attempted_at)`.
+- `(outbox_message_id)`.
+
 ## Search
 
 ### `search_documents`
@@ -1693,8 +1778,21 @@ Closed values:
 
 Open extension values:
 
-- `workspaces.kind`, `profiles.kind`, `execution_targets.type`, `project_resources.type`, `storage_buckets.storage_backend`, `artifacts.type`, `mission_events.source`, `entity_changes.entity_type`, `entity_changes.source`, `outbox_messages.topic`, `worker_jobs.type`, RBAC permission names, and connector identifiers.
+- `workspaces.kind`, `profiles.kind`, `execution_targets.type`, `project_resources.type`, `storage_buckets.storage_backend`, `artifacts.type`, `mission_events.source`, `entity_changes.entity_type`, `entity_changes.source`, `outbox_messages.topic`, `worker_jobs.type`, RBAC permission names, connector identifiers, and `webhook_subscriptions.event_types_json` values (the webhook event catalog).
 - Extension values must be namespaced unless they are accepted into core documentation.
+
+### Webhook event catalog
+
+`webhook_subscriptions.event_types_json` draws from a namespaced, versioned event vocabulary that is deliberately **separate** from the closed `mission_events.type` enum, so new webhook event types never require a contract version bump for the *value* itself (only for the table/endpoint machinery, which already shipped in version `1`). Core-documented values as of version `1`:
+
+| Event type | Fires when |
+| --- | --- |
+| `mission.delivered` | `deliverSession()` commits (also `record-work`). |
+| `mission.status_changed` | A mission moves between `workspace_statuses`, including REST-driven board moves. |
+| `objective.completed` | An objective reaches `complete`, including manual completion. |
+| `mission.blocked` | An agent posts an `ask`. |
+
+Namespaced extension values (e.g. `acme:custom.event`) may be added without a contract change. New **core** event types should be documented here.
 
 State transition rules:
 
@@ -1793,6 +1891,7 @@ Recommended boundary:
 - `/uploads/:bucketKey` (core upload service) accepts raw image bytes, persists them to the `storage_buckets` backend, records the matching object table row (e.g. `user_images`), and returns the stored descriptor; `/storage/:bucketKey/:storageKey` first authorizes by the logical storage location (`user_image:read`, `workspace_image:read`, or `attachment:read`), then serves bytes only after an exact active metadata lookup for `(storage_bucket_id, storage_key)`.
 - `/sync/changes?after=<seq>` for realtime catch-up and local DB sync, returning `SyncChangesDto { changes, cursor, hasMore }` in ascending `entity_changes.seq` order.
 - `/realtime` SSE/WebSocket endpoint backed by `entity_changes` (with compatibility alias `/api/stream`); compact change DTOs include `changedFields: string[]` parsed from `entity_changes.changed_fields_json`.
+- `/api/webhooks` (list/create), `/api/webhooks/:id` (update/soft-delete), `/api/webhooks/:id/rotate-secret`, `/api/webhooks/:id/test`, `/api/webhooks/:id/deliveries` (paginated attempt log), `/api/webhooks/:id/deliveries/:outboxId/redeliver` — workspace-scoped webhook subscription management, gated by `webhook:*` permissions.
 
 REST handlers should:
 

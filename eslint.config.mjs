@@ -42,6 +42,7 @@ export default [
         __filename: 'readonly',
         console: 'readonly',
         exports: 'readonly',
+        fetch: 'readonly',
         global: 'readonly',
         module: 'readonly',
         process: 'readonly',

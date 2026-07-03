@@ -95,7 +95,13 @@ export const PERMISSIONS = {
   MEMBER_INVITE: 'member:invite',
   MEMBER_REMOVE: 'member:remove',
   INVITATION_READ: 'invitation:read',
-  INVITATION_REVOKE: 'invitation:revoke'
+  INVITATION_REVOKE: 'invitation:revoke',
+
+  // Webhook subscription management (ADMIN-only by default)
+  WEBHOOK_CREATE: 'webhook:create',
+  WEBHOOK_READ: 'webhook:read',
+  WEBHOOK_UPDATE: 'webhook:update',
+  WEBHOOK_DELETE: 'webhook:delete'
 } as const;
 
 export type KnownPermission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

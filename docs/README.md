@@ -36,6 +36,9 @@ Install, set up, and operate an Overlord instance — in [`docs/`](.):
   agents in a downstream fork.
 - [Adopting Upstream Changes](upstream-adoption.md) — the contract-first
   workflow for pulling upstream changes into a customized instance.
+- [Mission Data Webhooks](webhooks.md) — send signed HTTP deliveries to
+  independent software on mission events (delivery, status change, blocked),
+  with a pull path over the REST API for anything the payload omits.
 
 ### 3. Architecture series (how the system works, in order)
 

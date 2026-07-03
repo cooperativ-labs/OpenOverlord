@@ -1,0 +1,16 @@
+{
+  "name": "overlord-feed-post-generator-example",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reference Overlord webhook consumer: verifies a mission.delivered delivery, hydrates the full mission context, drafts a feed post, and appends it to a local file. Not part of the Overlord yarn workspace -- run standalone.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
