@@ -387,11 +387,13 @@ Absence of scope rows means "no token-level restriction" in v1.
 | `updated_at` | TimestampUTC | yes |  |
 | `deleted_at` | TimestampUTC | no | Tombstone. |
 | `revision` | integer | yes |  |
+| `position` | integer | no | 1-based sidebar/board ordering, unique within the workspace among active rows. Nullable only because SQLite's `ALTER TABLE ADD COLUMN` cannot backfill a per-row unique value without a table rebuild (matching this repo's precedent, e.g. `missions.schedule_id`); every non-deleted project has a value in practice, assigned at creation (`MAX(position)+1`) and renumbered densely by `reorderProjects`. |
 
 Indexes:
 
 - Unique `(workspace_id, slug)` among active rows (`deleted_at IS NULL`). Soft-deleted projects release their slug for reuse.
 - `(workspace_id, status, updated_at)`.
+- Unique `(workspace_id, position)` among active rows (`deleted_at IS NULL`).
 
 ### `project_statuses`
 

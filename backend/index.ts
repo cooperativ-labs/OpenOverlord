@@ -108,6 +108,7 @@ import {
   renameUserToken,
   reorderBoardColumn,
   reorderFutureObjectives,
+  reorderProjects,
   reorderWorkspaceMyMissions,
   reorderWorkspaceStatuses,
   revokeUserToken,
@@ -803,6 +804,13 @@ app.get(
 app.post(
   '/api/projects',
   handle(req => createProject(req.body), { mutates: true, requires: PERMISSIONS.PROJECT_CREATE })
+);
+app.patch(
+  '/api/projects/reorder',
+  handle(req => reorderProjects(req.body), {
+    mutates: true,
+    requires: PERMISSIONS.PROJECT_UPDATE
+  })
 );
 app.get(
   '/api/projects/:id',

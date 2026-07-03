@@ -90,11 +90,17 @@ export async function createProject({
 
   await ctx.db.transaction(async tx => {
     const txCtx = { ...ctx, db: tx };
+    const maxPosition = (await tx.get(
+      `SELECT COALESCE(MAX(position), 0) AS max_position FROM projects
+          WHERE workspace_id = ? AND deleted_at IS NULL`,
+      [ctx.workspace.id]
+    )) as { max_position: number };
+    const position = maxPosition.max_position + 1;
     await txCtx.db.run(
       `INSERT INTO projects
            (id, workspace_id, slug, name, description, status, settings_json,
-            created_by_workspace_user_id, created_at, updated_at, revision)
-         VALUES (?, ?, ?, ?, ?, 'active', '{}', ?, ?, ?, 1)`,
+            created_by_workspace_user_id, created_at, updated_at, revision, position)
+         VALUES (?, ?, ?, ?, ?, 'active', '{}', ?, ?, ?, 1, ?)`,
       [
         id,
         ctx.workspace.id,
@@ -103,7 +109,8 @@ export async function createProject({
         description?.trim() || null,
         ctx.actorWorkspaceUserId,
         now,
-        now
+        now,
+        position
       ]
     );
 

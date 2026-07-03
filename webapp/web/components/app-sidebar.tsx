@@ -1,6 +1,21 @@
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable';
 import { Link, useParams, useRouterState } from '@tanstack/react-router';
 import { Archive, FolderKanban, Inbox, Plus, Settings } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { NavUser } from '@/components/nav-user';
 import { ProjectCreatorModal } from '@/components/projects/ProjectCreatorModal';
@@ -24,15 +39,19 @@ import {
 } from '@/components/ui/sidebar';
 import { WorkspaceSwitcher } from '@/components/workspace-switcher';
 import { DRAG_REGION, getDesktopChrome, NO_DRAG_REGION } from '@/lib/desktop-chrome';
-import { useProjects } from '@/lib/queries';
+import { useProjects, useReorderProjects } from '@/lib/queries';
+
+import type { ProjectDto } from '../../shared/contract.ts';
 
 export function AppSidebar() {
   const projects = useProjects();
+  const reorderProjects = useReorderProjects();
   const params = useParams({ strict: false }) as { projectId?: string };
   const [projectCreatorOpen, setProjectCreatorOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialNav, setSettingsInitialNav] = useState<SettingsNavSection | undefined>();
   const [projectSettingsId, setProjectSettingsId] = useState<string | null>(null);
+  const [reorderError, setReorderError] = useState<string | null>(null);
 
   const openSettings = (section?: SettingsNavSection) => {
     setSettingsInitialNav(section);
@@ -42,10 +61,70 @@ export function AppSidebar() {
   const { activeProjects, archivedProjects } = useMemo(() => {
     const all = projects.data ?? [];
     return {
-      activeProjects: all.filter(project => project.status === 'active'),
-      archivedProjects: all.filter(project => project.status === 'archived')
+      activeProjects: [...all.filter(project => project.status === 'active')].sort(
+        (a, b) => a.position - b.position
+      ),
+      archivedProjects: [...all.filter(project => project.status === 'archived')].sort(
+        (a, b) => a.position - b.position
+      )
     };
   }, [projects.data]);
+
+  // Optimistic local order for the sidebar's active projects, kept in sync
+  // with the server order and overridden immediately on drop (mirrors the
+  // same pattern used for card statuses in StatusesPage).
+  const [activeOrder, setActiveOrder] = useState<string[]>(() =>
+    activeProjects.map(project => project.id)
+  );
+
+  useEffect(() => {
+    const incomingIds = activeProjects.map(project => project.id);
+    setActiveOrder(previous => {
+      const previousSet = new Set(previous);
+      const incomingSet = new Set(incomingIds);
+      const sameMembership =
+        previous.length === incomingIds.length && previous.every(id => incomingSet.has(id));
+      if (sameMembership) return previous;
+      const kept = previous.filter(id => incomingSet.has(id));
+      const additions = incomingIds.filter(id => !previousSet.has(id));
+      return [...kept, ...additions];
+    });
+  }, [activeProjects]);
+
+  const orderedActiveProjects = useMemo(() => {
+    const byId = new Map(activeProjects.map(project => [project.id, project]));
+    return activeOrder
+      .map(id => byId.get(id))
+      .filter((project): project is ProjectDto => Boolean(project));
+  }, [activeProjects, activeOrder]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = activeOrder.indexOf(String(active.id));
+    const newIndex = activeOrder.indexOf(String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const nextOrder = arrayMove(activeOrder, oldIndex, newIndex);
+    setActiveOrder(nextOrder);
+    setReorderError(null);
+
+    reorderProjects.mutate(
+      { orderedProjectIds: [...nextOrder, ...archivedProjects.map(project => project.id)] },
+      {
+        onError: error => {
+          setActiveOrder(activeProjects.map(project => project.id));
+          setReorderError(error instanceof Error ? error.message : 'Failed to reorder projects.');
+        }
+      }
+    );
+  }
 
   const projectForSettings = useMemo(
     () => (projectSettingsId ? (projects.data ?? []).find(p => p.id === projectSettingsId) : null),
@@ -98,14 +177,23 @@ export function AppSidebar() {
             </SidebarGroupAction>
             <SidebarGroupContent>
               <SidebarMenu className="gap-1">
-                {activeProjects.map(project => (
-                  <ProjectSidebarMenuItem
-                    key={project.id}
-                    project={project}
-                    isActive={params.projectId === project.id}
-                    onOpenSettings={setProjectSettingsId}
-                  />
-                ))}
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext items={activeOrder} strategy={verticalListSortingStrategy}>
+                    {orderedActiveProjects.map(project => (
+                      <ProjectSidebarMenuItem
+                        key={project.id}
+                        project={project}
+                        isActive={params.projectId === project.id}
+                        onOpenSettings={setProjectSettingsId}
+                        dragDisabled={reorderProjects.isPending}
+                      />
+                    ))}
+                  </SortableContext>
+                </DndContext>
                 {activeProjects.length === 0 && (
                   <SidebarMenuItem>
                     <SidebarMenuButton
@@ -129,6 +217,9 @@ export function AppSidebar() {
                   </SidebarMenuItem>
                 )}
               </SidebarMenu>
+              {reorderError ? (
+                <p className="px-2 pt-1 text-xs text-destructive">{reorderError}</p>
+              ) : null}
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>

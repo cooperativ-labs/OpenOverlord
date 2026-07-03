@@ -189,6 +189,21 @@ export interface ProjectDto {
   revision: number;
   /** Count of non-deleted missions (read-side aggregate). */
   missionCount: number;
+  /**
+   * 1-based sidebar ordering, unique within the workspace. Renumbered
+   * densely (1, 2, 3, …) whenever the workspace's projects are reordered.
+   */
+  position: number;
+}
+
+/**
+ * Reorders every non-deleted project in the workspace (active and archived
+ * alike, so archived projects keep a stable position if reactivated).
+ * `orderedProjectIds` lists project ids top-to-bottom after the move and
+ * must include every non-deleted project exactly once.
+ */
+export interface ReorderProjectsBody {
+  orderedProjectIds: string[];
 }
 
 export interface WorkspaceStatusDto {

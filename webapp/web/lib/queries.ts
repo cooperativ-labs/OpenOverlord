@@ -27,6 +27,7 @@ import type {
   ProjectTagDto,
   RemoveWorktreeBody,
   ReorderFutureObjectivesBody,
+  ReorderProjectsBody,
   ReorderWorkspaceStatusesBody,
   ScheduleInput,
   StatusType,
@@ -616,6 +617,17 @@ export function useDeleteProject() {
   return useMutation({
     mutationFn: (id: string) => api.deleteProject(id),
     onSuccess: () => invalidateAll(qc)
+  });
+}
+
+export function useReorderProjects() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ReorderProjectsBody) => api.reorderProjects(body),
+    onSuccess: data => {
+      qc.setQueryData(keys.projects, data);
+      void qc.invalidateQueries({ queryKey: keys.projects });
+    }
   });
 }
 

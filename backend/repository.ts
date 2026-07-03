@@ -59,6 +59,7 @@ import type {
   RemoveWorktreeBody,
   ReorderBoardColumnBody,
   ReorderFutureObjectivesBody,
+  ReorderProjectsBody,
   ReorderWorkspaceStatusesBody,
   ScheduleDto,
   ScheduleInput,
@@ -151,6 +152,7 @@ interface ProjectRow {
   updated_at: string;
   revision: number;
   mission_count: number;
+  position: number | null;
 }
 
 const PROJECT_COLOR_SETTINGS_KEY = 'overlord.color';
@@ -440,7 +442,8 @@ function toProjectDto(r: ProjectRow): ProjectDto {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     revision: r.revision,
-    missionCount: r.mission_count
+    missionCount: r.mission_count,
+    position: r.position ?? 0
   };
 }
 
@@ -1418,9 +1421,11 @@ const selectProjectsSql = `
   WHERE p.workspace_id = ? AND p.deleted_at IS NULL
 `;
 
-export async function listProjects(): Promise<ProjectDto[]> {
-  const rows = (await requireDatabaseClient().all(
-    `${selectProjectsSql} ORDER BY p.status ASC, p.created_at ASC`,
+export async function listProjects(
+  db: DatabaseClient = requireDatabaseClient()
+): Promise<ProjectDto[]> {
+  const rows = (await db.all(
+    `${selectProjectsSql} ORDER BY p.status ASC, p.position ASC, p.created_at ASC`,
     [getActiveWorkspaceId()]
   )) as ProjectRow[];
   return rows.map(toProjectDto);
@@ -1435,6 +1440,52 @@ export async function getProject(
     | undefined;
   if (!row) throw new ApiError(404, 'Project not found');
   return toProjectDto(row);
+}
+
+export async function reorderProjects(body: ReorderProjectsBody): Promise<ProjectDto[]> {
+  return requireDatabaseClient().transaction(async tx => {
+    const orderedIds = body.orderedProjectIds;
+    if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+      throw new ApiError(400, 'orderedProjectIds is required');
+    }
+
+    const current = (await tx.all(
+      `SELECT id FROM projects WHERE workspace_id = ? AND deleted_at IS NULL`,
+      [getActiveWorkspaceId()]
+    )) as { id: string }[];
+    if (orderedIds.length !== current.length) {
+      throw new ApiError(400, 'orderedProjectIds must include every project');
+    }
+
+    const currentIds = new Set(current.map(project => project.id));
+    for (const id of orderedIds) {
+      if (!currentIds.has(id)) {
+        throw new ApiError(400, 'Unknown project in reorder list');
+      }
+    }
+
+    const now = nowIso();
+    for (const [index, id] of orderedIds.entries()) {
+      await tx.run(
+        `UPDATE projects
+            SET position = ?, updated_at = ?, revision = revision + 1
+          WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+        [index + 1, now, id, getActiveWorkspaceId()]
+      );
+      await recordChange(
+        {
+          entityType: 'project',
+          entityId: id,
+          operation: 'update',
+          changedFields: ['position'],
+          projectId: id
+        },
+        tx
+      );
+    }
+
+    return listProjects(tx);
+  });
 }
 
 export async function listWorkspaceStatuses(
@@ -2139,12 +2190,18 @@ export async function createProject(body: CreateProjectBody): Promise<ProjectDto
     const id = newId();
     const slug = body.slug?.trim() ? slugify(body.slug) : slugify(name);
     const settingsJson = buildProjectSettingsJson({ color: color ?? undefined });
+    const maxPosition = (await tx.get(
+      `SELECT COALESCE(MAX(position), 0) AS max_position FROM projects
+          WHERE workspace_id = ? AND deleted_at IS NULL`,
+      [getActiveWorkspaceId()]
+    )) as { max_position: number };
+    const position = maxPosition.max_position + 1;
 
     await tx.run(
       `INSERT INTO projects
        (id, workspace_id, slug, name, description, status, settings_json,
-        created_by_workspace_user_id, created_at, updated_at, revision)
-     VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, 1)`,
+        created_by_workspace_user_id, created_at, updated_at, revision, position)
+     VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, 1, ?)`,
       [
         id,
         getActiveWorkspaceId(),
@@ -2154,7 +2211,8 @@ export async function createProject(body: CreateProjectBody): Promise<ProjectDto
         settingsJson,
         getActorWorkspaceUserId(),
         now,
-        now
+        now,
+        position
       ]
     );
 

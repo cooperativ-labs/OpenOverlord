@@ -56,6 +56,7 @@ import type {
   RemoveWorktreeBody,
   ReorderBoardColumnBody,
   ReorderFutureObjectivesBody,
+  ReorderProjectsBody,
   ReorderWorkspaceStatusesBody,
   RotateWebhookSecretResultDto,
   ScheduleInput,
@@ -284,6 +285,8 @@ export const api = {
   updateProject: (id: string, body: UpdateProjectBody) =>
     request<ProjectDto>('PATCH', `/api/projects/${id}`, body),
   deleteProject: (id: string) => request<{ ok: true }>('DELETE', `/api/projects/${id}`),
+  reorderProjects: (body: ReorderProjectsBody) =>
+    request<ProjectDto[]>('PATCH', `/api/projects/reorder`, body),
   listWorkspaceStatuses: () => request<WorkspaceStatusDto[]>('GET', `/api/workspace/statuses`),
   createWorkspaceStatus: (body: CreateWorkspaceStatusBody) =>
     request<WorkspaceStatusDto>('POST', `/api/workspace/statuses`, body),

@@ -1,3 +1,5 @@
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { Archive, Settings } from 'lucide-react';
 import { useState } from 'react';
@@ -27,18 +29,31 @@ type ProjectSidebarMenuItemProps = {
   project: ProjectDto;
   isActive: boolean;
   onOpenSettings: (projectId: string) => void;
+  /** Disable drag reordering, e.g. while a reorder mutation is in flight. */
+  dragDisabled?: boolean;
 };
 
 export function ProjectSidebarMenuItem({
   project,
   isActive,
-  onOpenSettings
+  onOpenSettings,
+  dragDisabled = false
 }: ProjectSidebarMenuItemProps) {
   const updateProject = useUpdateProject(project.id);
   const navigate = useNavigate();
   const params = useParams({ strict: false }) as { projectId?: string };
   const [menuOpen, setMenuOpen] = useState(false);
   const savedColor = project.color ?? DEFAULT_PROJECT_COLOR;
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: project.id, disabled: dragDisabled });
 
   async function handleChangeColor(nextColor: string) {
     if (nextColor.toLowerCase() === savedColor.toLowerCase() || updateProject.isPending) {
@@ -75,6 +90,16 @@ export function ProjectSidebarMenuItem({
       menuOpen={menuOpen}
       onMenuOpenChange={setMenuOpen}
       menuDisabled={updateProject.isPending}
+      itemRef={setNodeRef}
+      itemStyle={{ transform: CSS.Transform.toString(transform), transition }}
+      isDragging={isDragging}
+      dragHandle={{
+        ref: setActivatorNodeRef,
+        attributes,
+        listeners,
+        label: `Reorder ${project.name}`,
+        disabled: dragDisabled
+      }}
       menuContent={
         <>
           <div className="p-1">
