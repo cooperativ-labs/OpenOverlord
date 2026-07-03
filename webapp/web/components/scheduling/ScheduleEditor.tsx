@@ -349,6 +349,9 @@ export function ScheduleEditor({
       weeksOfMonth: schedule.weeksOfMonth
     })
     : null;
+  const selectedNextStatus = schedule?.nextStatusId
+    ? statuses.find(status => status.id === schedule.nextStatusId)
+    : null;
 
   return (
     <>
@@ -372,7 +375,7 @@ export function ScheduleEditor({
           ) : optimisticHasSchedule && summaryText ? (
             <span className="max-w-[200px] truncate">{summaryText}</span>
           ) : (
-            <span>Add schedule</span>
+            <span>Set repeat</span>
           )}
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[360px] p-0">
@@ -549,7 +552,9 @@ export function ScheduleEditor({
                     }
                   >
                     <SelectTrigger className="h-8 w-full text-xs">
-                      <SelectValue placeholder="Workspace default" />
+                      <SelectValue placeholder="Workspace default">
+                        {selectedNextStatus?.name ?? 'Workspace default'}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__default__">Workspace default</SelectItem>
