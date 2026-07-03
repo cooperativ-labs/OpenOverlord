@@ -1,9 +1,18 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs';
 import path from 'node:path';
 
 import { resolveGlobalDataDir } from './config.js';
+import { readActiveSessions } from './vcs-sessions.js';
 
 /**
  * Client-side VCS change capture.
@@ -19,9 +28,14 @@ import { resolveGlobalDataDir } from './config.js';
  * this session attached has no baseline entry, so the worktree delta alone would
  * wrongly attribute it here. To stay accurate the CLI also consumes a per-session
  * "touched files" log written by the agent's PostToolUse edit hook (the exact set
- * of files this agent edited). When that log exists, the run-attributable set is
- * the worktree delta INTERSECT the agent-edited paths — so files this agent never
- * touched are never reported, even if they are dirty for unrelated reasons.
+ * of files this agent edited, including files changed via `Bash` — see
+ * `recordBashObservedChanges`). When that log exists, the run-attributable set is
+ * still every path whose worktree state changed since baseline — completeness
+ * comes first — but each entry is classified as `'mine'` (named in my log),
+ * `'claimed'` (named only in another live session's log), or `'unclaimed'`
+ * (dirty, but nobody's log confirms it), so callers can exclude concurrent work
+ * while still surfacing anything ambiguous for review. A tool-call log is
+ * reliable positive evidence but unreliable negative evidence.
  *
  * Finally, a repo may carry an optional `.overlordignore` file at its root listing
  * gitignore-style patterns (e.g. generated artifacts like `install-state.gz`). Any
@@ -33,7 +47,21 @@ import { resolveGlobalDataDir } from './config.js';
  * a git repository (or when git is unavailable) we infer nothing.
  */
 
-export type ChangedFile = { filePath: string; vcsStatus: string };
+export type ChangedFile = {
+  filePath: string;
+  vcsStatus: string;
+  /**
+   * Set only when a touched-files log exists for this session. `'mine'` means the
+   * edit hook recorded this path for the current mission. `'claimed'` means only
+   * another live session's touched-files log recorded it, so callers can exclude
+   * that concurrent work. `'unclaimed'` means the worktree delta includes it but
+   * nobody's log confirms it (e.g. a Bash-mediated change the hook's git-status
+   * diff hasn't caught up with yet). Completeness first: callers must still report
+   * `'unclaimed'` paths, just flagged for review rather than silently dropped.
+   */
+  attribution?: 'mine' | 'claimed' | 'unclaimed';
+  claimedByMissionIds?: string[];
+};
 
 export type RationaleNoteInput = {
   filePath: string;
@@ -67,12 +95,25 @@ type BaselineFile = {
 };
 
 type BaselineSnapshot = {
+  workingDirectory?: string;
+  missionId?: string;
   capturedAt: string;
   files: BaselineFile[];
 };
 
+type TouchedLog = {
+  workingDirectory?: string;
+  missionId?: string;
+  updatedAt?: string;
+  paths: string[];
+};
+
 function normalizePath(filePath: string): string {
   return filePath.replace(/\\/g, '/').trim();
+}
+
+function sameWorkingDirectory(left: string | undefined, right: string): boolean {
+  return typeof left === 'string' && path.resolve(left) === path.resolve(right);
 }
 
 /** Parse one `git status --porcelain` line into a changed-file record. */
@@ -191,6 +232,122 @@ function rationaleNotesPath({
 }
 
 /**
+ * Last-seen `git status` snapshot for this session, stored beside the touched-files
+ * log. Used only to detect *newly* dirty/re-hashed paths after a `Bash` tool call,
+ * so a long-running session doesn't re-record the same Bash-visible change on every
+ * subsequent Bash invocation.
+ */
+function bashSnapshotPath({
+  workingDirectory,
+  missionId
+}: {
+  workingDirectory: string;
+  missionId: string;
+}): string {
+  return path.join(
+    resolveGlobalDataDir(),
+    'vcs-touched',
+    `${sessionKeyHash({ workingDirectory, missionId })}.bash-snapshot.json`
+  );
+}
+
+function readBashSnapshot({
+  workingDirectory,
+  missionId
+}: {
+  workingDirectory: string;
+  missionId: string;
+}): Map<string, { vcsStatus: string; contentHash: string | null }> {
+  try {
+    const target = bashSnapshotPath({ workingDirectory, missionId });
+    if (!existsSync(target)) return new Map();
+    const raw = JSON.parse(readFileSync(target, 'utf8')) as { files?: unknown };
+    const byPath = new Map<string, { vcsStatus: string; contentHash: string | null }>();
+    if (Array.isArray(raw.files)) {
+      for (const entry of raw.files) {
+        if (
+          typeof entry === 'object' &&
+          entry !== null &&
+          typeof (entry as BaselineFile).filePath === 'string'
+        ) {
+          const file = entry as BaselineFile;
+          byPath.set(file.filePath, {
+            vcsStatus: typeof file.vcsStatus === 'string' ? file.vcsStatus : 'changed',
+            contentHash: typeof file.contentHash === 'string' ? file.contentHash : null
+          });
+        }
+      }
+    }
+    return byPath;
+  } catch {
+    return new Map();
+  }
+}
+
+function writeBashSnapshot({
+  workingDirectory,
+  missionId,
+  files
+}: {
+  workingDirectory: string;
+  missionId: string;
+  files: BaselineFile[];
+}): void {
+  try {
+    const target = bashSnapshotPath({ workingDirectory, missionId });
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, JSON.stringify({ updatedAt: new Date().toISOString(), files }));
+  } catch {
+    // Best-effort: worst case a future Bash call re-records an already-touched path.
+  }
+}
+
+/**
+ * Close the Bash gap in the touched-files log. Files changed via `Bash` (codegen,
+ * package managers, migration runners, `git mv`, build scripts) never fire Claude's
+ * native file-editing tools, so the edit hook never sees them directly. Called after
+ * every `Bash` tool invocation, this diffs the current `git status --porcelain`
+ * output against the last-seen snapshot for this session and appends any
+ * newly-changed or newly-re-hashed path to the touched-files log, so the deliver-time
+ * intersection treats Bash-mediated edits the same as direct tool edits.
+ */
+export function recordBashObservedChanges({
+  workingDirectory,
+  missionId
+}: {
+  workingDirectory: string;
+  missionId: string;
+}): { addedCount: number } {
+  try {
+    const current = readChangedFiles(workingDirectory);
+    const currentSnapshot = snapshotBaselineFiles({ workingDirectory, files: current });
+    const previous = readBashSnapshot({ workingDirectory, missionId });
+
+    const newlyChanged = currentSnapshot.filter(entry => {
+      const prior = previous.get(entry.filePath);
+      if (!prior) return true;
+      if (entry.contentHash === null || prior.contentHash === null) {
+        return entry.vcsStatus !== prior.vcsStatus;
+      }
+      return entry.contentHash !== prior.contentHash;
+    });
+
+    writeBashSnapshot({ workingDirectory, missionId, files: currentSnapshot });
+
+    if (newlyChanged.length === 0) return { addedCount: 0 };
+
+    recordTouchedFiles({
+      workingDirectory,
+      missionId,
+      files: newlyChanged.map(entry => entry.filePath)
+    });
+    return { addedCount: newlyChanged.length };
+  } catch {
+    return { addedCount: 0 };
+  }
+}
+
+/**
  * Absolute, symlink-resolved, slash-normalized path for cross-checking VCS and
  * touched entries. Resolving symlinks is what keeps both sides comparable: the
  * touched log records paths against the agent's working directory, while the
@@ -243,8 +400,12 @@ export function resetTouchedFiles({
   missionId: string;
 }): void {
   try {
-    const target = touchedFilesPath({ workingDirectory, missionId });
-    if (existsSync(target)) rmSync(target);
+    for (const target of [
+      touchedFilesPath({ workingDirectory, missionId }),
+      bashSnapshotPath({ workingDirectory, missionId })
+    ]) {
+      if (existsSync(target)) rmSync(target);
+    }
   } catch {
     // Best-effort: a stale log at worst keeps prior edits in scope; the worktree
     // delta still gates what is reported.
@@ -390,11 +551,16 @@ export function recordTouchedFiles({
     if (additions.length === 0) return;
     const target = touchedFilesPath({ workingDirectory, missionId });
     mkdirSync(path.dirname(target), { recursive: true });
-    const existing = readTouchedPaths({ workingDirectory, missionId }) ?? new Set<string>();
+    const existing = readTouchedLog({ workingDirectory, missionId })?.paths ?? new Set<string>();
     for (const filePath of additions) existing.add(filePath);
     writeFileSync(
       target,
-      JSON.stringify({ updatedAt: new Date().toISOString(), paths: Array.from(existing) })
+      JSON.stringify({
+        workingDirectory: path.resolve(workingDirectory),
+        missionId,
+        updatedAt: new Date().toISOString(),
+        paths: Array.from(existing)
+      })
     );
   } catch {
     // Best-effort: a failed write just means deliver falls back to the worktree
@@ -402,29 +568,44 @@ export function recordTouchedFiles({
   }
 }
 
-/**
- * Absolute paths this agent edited this session, or `null` when no log exists
- * (i.e. the connector has no edit hook). `null` disables the intersection so
- * hookless agents keep the legacy worktree-baseline behavior.
- */
-function readTouchedPaths({
+/** Whether a touched-files log exists for this session (used for deliver-time diagnostics). */
+export function hasTouchedFilesLog({
   workingDirectory,
   missionId
 }: {
   workingDirectory: string;
   missionId: string;
-}): Set<string> | null {
+}): boolean {
+  return existsSync(touchedFilesPath({ workingDirectory, missionId }));
+}
+
+/**
+ * Absolute paths this agent edited this session, or `null` when no log exists
+ * (i.e. the connector has no edit hook). `null` disables the intersection so
+ * hookless agents keep the legacy worktree-baseline behavior.
+ */
+function readTouchedLog({
+  workingDirectory,
+  missionId
+}: {
+  workingDirectory: string;
+  missionId: string;
+}): { paths: Set<string>; workingDirectory?: string; missionId?: string } | null {
   try {
     const target = touchedFilesPath({ workingDirectory, missionId });
     if (!existsSync(target)) return null;
-    const raw = JSON.parse(readFileSync(target, 'utf8')) as { paths?: unknown };
+    const raw = JSON.parse(readFileSync(target, 'utf8')) as TouchedLog;
     const result = new Set<string>();
     if (Array.isArray(raw.paths)) {
       for (const entry of raw.paths) {
         if (typeof entry === 'string' && entry.trim()) result.add(normalizeAbsolute(entry));
       }
     }
-    return result;
+    return {
+      paths: result,
+      workingDirectory: typeof raw.workingDirectory === 'string' ? raw.workingDirectory : undefined,
+      missionId: typeof raw.missionId === 'string' ? raw.missionId : undefined
+    };
   } catch {
     return null;
   }
@@ -458,6 +639,8 @@ export function writeBaseline({
     const target = baselineFilePath({ workingDirectory, missionId });
     mkdirSync(path.dirname(target), { recursive: true });
     const snapshot: BaselineSnapshot = {
+      workingDirectory: path.resolve(workingDirectory),
+      missionId,
       capturedAt: new Date().toISOString(),
       files: snapshotBaselineFiles({ workingDirectory, files })
     };
@@ -466,6 +649,55 @@ export function writeBaseline({
     // Best-effort: a missing baseline just means deliver treats every dirty path
     // as run-attributable, which is safe (errs toward completeness).
   }
+}
+
+type PeerClaim = {
+  missionId: string;
+  paths: Set<string>;
+};
+
+function readPeerTouchedClaims({
+  workingDirectory,
+  missionId
+}: {
+  workingDirectory: string;
+  missionId: string;
+}): PeerClaim[] {
+  const activeMissionIds = new Set(
+    readActiveSessions(workingDirectory)
+      .map(entry => entry.missionId.trim())
+      .filter(Boolean)
+  );
+  if (activeMissionIds.size === 0) return [];
+
+  const directory = path.join(resolveGlobalDataDir(), 'vcs-touched');
+  if (!existsSync(directory)) return [];
+
+  const claims: PeerClaim[] = [];
+  for (const name of readdirSync(directory)) {
+    if (!name.endsWith('.json') || name.endsWith('.bash-snapshot.json')) continue;
+    try {
+      const raw = JSON.parse(readFileSync(path.join(directory, name), 'utf8')) as TouchedLog;
+      const candidateMissionId =
+        typeof raw.missionId === 'string' && raw.missionId.trim() ? raw.missionId.trim() : null;
+      if (!candidateMissionId || candidateMissionId === missionId) continue;
+      if (!activeMissionIds.has(candidateMissionId)) continue;
+      if (!sameWorkingDirectory(raw.workingDirectory, workingDirectory)) continue;
+
+      const paths = new Set<string>();
+      if (Array.isArray(raw.paths)) {
+        for (const entry of raw.paths) {
+          if (typeof entry === 'string' && entry.trim()) paths.add(normalizeAbsolute(entry));
+        }
+      }
+      if (paths.size === 0) continue;
+      claims.push({ missionId: candidateMissionId, paths });
+    } catch {
+      continue;
+    }
+  }
+
+  return claims;
 }
 
 function readBaselineSnapshot({
@@ -638,15 +870,21 @@ function isIgnoredPath(rules: IgnoreRule[], relativePath: string): boolean {
 }
 
 /**
- * Keep only paths this run is responsible for.
+ * Keep only paths this run is responsible for, classifying each by whether the
+ * agent's own touched-files log confirms it.
  *
- * A path qualifies when its worktree state differs from the session baseline AND
- * — when the connector's edit hook recorded a touched-files log — this agent
- * actually edited it. The intersection is what makes attribution exact under
- * concurrency: a file dirtied by another mission *after* this session attached has
- * no baseline entry (so it passes the `!base` check) but is absent from the
- * touched-files log, so it is excluded here. Hookless connectors get `null` from
- * `readTouchedPaths` and fall back to the baseline-only behavior.
+ * A path qualifies when its worktree state differs from the session baseline.
+ * When the connector's edit hook recorded a touched-files log, paths it names are
+ * marked `attribution: 'mine'`. Paths only other live sessions claim are marked
+ * `'claimed'`, so callers can exclude them from this mission's report and, at
+ * deliver, attach truthful skip entries if stale server-side rows still demand
+ * coverage. Paths nobody claims are marked `'unclaimed'` and are still returned
+ * rather than dropped: a tool-call log is reliable positive evidence but
+ * unreliable negative evidence (a hook outage, an unmatched tool, or a Bash call
+ * the hook hasn't diffed yet all look identical to "not mine"), and completeness
+ * is the first priority. Hookless connectors get `null` from `readTouchedLog` and
+ * every entry is returned with no attribution marker (legacy baseline-only
+ * behavior).
  *
  * `git status --porcelain` paths are repo-root-relative, so we resolve them
  * against the repo root before comparing with the absolute touched paths.
@@ -664,19 +902,47 @@ export function filterRunAttributableChanges({
   files: ChangedFile[];
 }): ChangedFile[] {
   const baseline = readBaselineSnapshot({ workingDirectory, missionId });
-  const touched = readTouchedPaths({ workingDirectory, missionId });
+  const touched = readTouchedLog({ workingDirectory, missionId });
   const repoRoot = gitRepoRoot(workingDirectory) ?? workingDirectory;
   const ignoreRules = loadIgnoreRules(repoRoot);
-  return files.filter(entry => {
-    if (!isRunAttributableChange({ workingDirectory, entry, baseline })) return false;
-    if (touched) {
-      const absolute = normalizeAbsolute(path.resolve(repoRoot, entry.filePath));
-      if (!touched.has(absolute)) return false;
-    }
+  const peerClaims = touched ? readPeerTouchedClaims({ workingDirectory, missionId }) : [];
+  return files.flatMap(entry => {
+    if (!isRunAttributableChange({ workingDirectory, entry, baseline })) return [];
     if (ignoreRules.length > 0 && isIgnoredPath(ignoreRules, normalizePath(entry.filePath))) {
-      return false;
+      return [];
     }
-    return true;
+    if (!touched) return [{ filePath: entry.filePath, vcsStatus: entry.vcsStatus }];
+    const absolute = normalizeAbsolute(path.resolve(repoRoot, entry.filePath));
+    if (touched.paths.has(absolute)) {
+      return [
+        {
+          filePath: entry.filePath,
+          vcsStatus: entry.vcsStatus,
+          attribution: 'mine'
+        }
+      ];
+    }
+    const claimedByMissionIds = peerClaims
+      .filter(claim => claim.paths.has(absolute))
+      .map(claim => claim.missionId)
+      .sort();
+    if (claimedByMissionIds.length > 0) {
+      return [
+        {
+          filePath: entry.filePath,
+          vcsStatus: entry.vcsStatus,
+          attribution: 'claimed',
+          claimedByMissionIds
+        }
+      ];
+    }
+    return [
+      {
+        filePath: entry.filePath,
+        vcsStatus: entry.vcsStatus,
+        attribution: 'unclaimed'
+      }
+    ];
   });
 }
 

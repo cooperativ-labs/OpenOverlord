@@ -6,6 +6,7 @@ export const SUPPORTED_PROTOCOL_SUBCOMMANDS = [
   'attachment-download-url',
   'attachment-list',
   'auth-status',
+  'changes',
   'connect',
   'create',
   'deliver',
@@ -87,6 +88,10 @@ Subcommands:
   deliver                Finish work, send artifacts, and move the mission to review
   resume-follow-up       Reopen a completed objective for post-delivery follow-up work
   hook-event             Record a connector lifecycle hook (e.g. UserPromptSubmit)
+  record-touched         Local-only: append an edit hook's touched files to the session log
+  changes                Local-only: preflight — print classified mine/claimed/unclaimed
+                         paths and drafted rationales before delivering; run this instead
+                         of hand-triaging \`git status\`
   read-context           Read shared persistent context for this mission
   write-context          Write shared persistent context for future sessions
   attachment-list        List all attachments for the mission
@@ -306,6 +311,21 @@ deliver:
     implementation after delivery without explicit follow-up.
     Inline --*-json values larger than ~8 KB are rejected; use --change-rationales-file -
     (or --payload-file -) and stream JSON on stdin. Keep --summary inline.
+    Run \`${primaryCommand} protocol changes --mission-id <id>\` first instead of hand-
+    triaging \`git status\` — it prints the same mine/claimed/unclaimed classification
+    deliver uses, plus drafted rationales. If deliver still rejects with
+    missing_rationale, the error includes a per-path classification and a ready-to-use
+    --skip-rationale-for-json value for every non-'mine' path — one mechanical retry.
+
+changes:
+  Purpose:
+    Local-only preflight: print every currently dirty path classified as 'mine'
+    (confirmed by this session's touched-files log), 'claimed' (confirmed by another
+    active session's log), or 'unclaimed' (dirty, but confirmed by nobody), plus
+    draft rationales from local edit notes and ready-to-use --skip-rationale-for-json
+    entries for 'claimed' paths. Makes no backend call; safe to run at any time.
+  Required:
+    --mission-id <id>
 
 resume-follow-up:
   Purpose:

@@ -194,7 +194,8 @@ Supported event types:
 - `summary`
 - `artifacts`
 - `changeRationales`
-- `changed-files-json` / `changed-files-file` (normally auto-injected by the CLI from the run-attributable VCS delta)
+- `changed-files-json` / `changed-files-file` (normally auto-injected by the CLI from the run-attributable VCS delta; each entry may carry an optional `attribution` of `mine`/`claimed`/`unclaimed` and `claimedByMissionIds`, computed client-side and never persisted — used only to enrich a `missing_rationale` error)
+- `observed-dirty-paths-json` (optional; the full current dirty worktree, auto-injected by the CLI — see **Server-Side Reconciliation** below)
 - `no-file-changes` (assert this run changed no files; skips rationale-coverage enforcement)
 - `skip-rationale-for-json` / `skip-rationale-for-file` (per-file rationale overrides for changes the agent did not make)
 - `payload-json`
@@ -211,6 +212,13 @@ Delivery rules:
 - Delivery moves the mission to review unless another explicit status is requested later.
 - Delivery may trigger auto-advance for the next objective.
 - After delivery, implementation work must not continue until follow-up execution is explicitly started.
+
+### Server-Side Reconciliation And Self-Servicing Errors
+
+- `deliver` accepts an optional `observedDirtyPaths` (every path the client currently observes as dirty — the full worktree, not just the run-attributable delta). When present, `changed_files` rows for the objective that are `present` but whose path is absent from `observedDirtyPaths` are reconciled to `current_diff_state = 'resolved'` before rationale coverage is computed. This un-poisons coverage from a past over-attribution (e.g. a file recorded while an edit hook was inert and never dirty again) instead of permanently demanding a rationale for it. Omitting the field skips reconciliation (older clients behave exactly as before).
+- A `resolved` row is excluded from rationale-coverage enforcement and is reported in review as coverage state `resolved`, distinct from `covered`, `missing_rationale`, `skipped`, and `unassigned`.
+- A `missing_rationale` failure carries a structured `details.missingRationales` array, one entry per outstanding path: `{ filePath, classification: 'mine' | 'claimed' | 'unclaimed', suggestedSkip: { filePath, reason } | null }`. `suggestedSkip` is `null` for `'mine'` (a real rationale is owed, not a skip) and a ready-to-use `--skip-rationale-for-json` entry otherwise, so a rejected `deliver` needs exactly one mechanical retry instead of an investigation. Classification comes from the `attribution` the client attached to each `changed-files-json` entry.
+- `ovld protocol changes --mission-id <id>` is a local-only, read-only preflight (no backend call) that prints this same mine/claimed/unclaimed classification plus draft rationales ahead of time, so an agent never has to hand-triage `git status` before delivering.
 
 ## Record-Work Requirements
 

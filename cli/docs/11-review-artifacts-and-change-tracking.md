@@ -99,6 +99,14 @@ changed. The client CLI captures changes from VCS automatically:
 - VCS is read **on the client only**; the CLI persists only metadata (normalized path and status), never full diffs, patch bodies, or file contents. The touched-files log likewise stores only normalized absolute paths.
 - An agent that genuinely changed no files passes `--no-file-changes` at deliver to skip rationale-coverage enforcement. If the CLI still observes a non-empty delta, it warns.
 - An agent that did change files but sees unrelated dirty paths in the run delta passes `--skip-rationale-for-json` / `--skip-rationale-for-file` with one `{ file_path, reason }` entry per path it did not change.
+- Run `ovld protocol changes --mission-id <id>` before delivering instead of hand-triaging `git status`: a local-only, read-only preflight that prints the same mine/claimed/unclaimed classification `deliver` computes, plus draft rationales from local edit notes and ready-to-use `--skip-rationale-for-json` entries for `claimed` paths.
+
+## Server-Side Reconciliation And Self-Servicing Errors
+
+- `deliver` accepts an optional `observedDirtyPaths`: the full set of paths the client currently observes as dirty (not just the run-attributable delta), auto-injected by the CLI. When present, the server reconciles `changed_files` rows for the objective that are `present` but no longer named in `observedDirtyPaths` to `current_diff_state = 'resolved'` before computing rationale coverage — un-poisoning coverage from a past over-attribution (e.g. a row recorded while an edit hook was inert) instead of permanently demanding a rationale for a file that is no longer dirty. Omitting the field skips reconciliation; existing clients are unaffected.
+- A `resolved` row never requires a rationale and surfaces in review as its own coverage state, distinct from `covered`, `missing_rationale`, `skipped`, and `unassigned`.
+- `--changed-files-json` / `--changed-files-file` entries may carry an optional `attribution` (`mine` / `claimed` / `unclaimed`) and `claimedByMissionIds`, computed client-side from the touched-files log and peer sessions' claims. This is never persisted; it only classifies a residual `missing_rationale` failure.
+- A `missing_rationale` error is structured: `details.missingRationales` is an array of `{ filePath, classification, suggestedSkip }`, where `suggestedSkip` is a ready-to-use `{ filePath, reason }` for every non-`'mine'` path (`null` for `'mine'`, since a real rationale is owed there, not a skip). A rejected `deliver` therefore needs exactly one mechanical retry, never an investigation.
 
 ## Update-Time Changed File Tracking
 
@@ -125,6 +133,7 @@ CLI-first requirements:
 - `ovld protocol deliver` rejects delivery when run-attributable tracked changes lack rationales, unless `--no-file-changes` is passed; coverage is aggregated per objective across all sessions.
 - Diffs should be annotated with recorded rationale labels and hunk headers when available.
 - Changes that cannot be associated with a specific objective should be shown as unassigned/current workspace changes, not silently attached to the wrong objective.
+- `ovld protocol changes --mission-id <id>` is a distinct, local-only preflight (no backend call): it classifies the current worktree's dirty paths as `mine`/`claimed`/`unclaimed` against this session's and peer sessions' touched-files logs and prints draft rationales, ahead of running `ovld changes status`/`rationales` (the server-backed review views above) or calling `deliver`.
 
 Future web/desktop requirements are documented in [web-app.md](../../webapp/docs/web-app.md).
 

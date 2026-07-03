@@ -199,7 +199,12 @@ type ArtifactInput = {
   url?: string | null;
 };
 
-type ChangedFileInput = { filePath: string; vcsStatus?: string | null };
+type ChangedFileInput = {
+  filePath: string;
+  vcsStatus?: string | null;
+  attribution?: 'mine' | 'claimed' | 'unclaimed';
+  claimedByMissionIds?: string[];
+};
 
 type Handler = (ctx: ServiceContext, body: ProtocolRequestBody) => unknown;
 
@@ -289,6 +294,11 @@ const handlers: Record<string, Handler> = {
           '--skip-rationale-for-json',
           '--skip-rationale-for-file'
         ) ?? [],
+      observedDirtyPaths: parseJsonInput<string[]>(
+        body,
+        '--observed-dirty-paths-json',
+        '--observed-dirty-paths-file'
+      ),
       payloadJson: parseJsonInput<Record<string, unknown>>(
         body,
         '--payload-json',

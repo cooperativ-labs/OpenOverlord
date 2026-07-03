@@ -9,12 +9,14 @@ import {
   computeRunDelta,
   draftChangeRationalesFromNotes,
   readChangedFiles,
+  recordBashObservedChanges,
   recordRationaleNotes,
   recordTouchedFiles,
   resetRationaleNotes,
   resetTouchedFiles,
   writeBaseline
 } from '../src/vcs.ts';
+import { writeActiveSession } from '../src/vcs-sessions.ts';
 
 const MISSION_ID = 'coo:9';
 
@@ -42,7 +44,21 @@ function paths(repo: string): string[] {
     .sort();
 }
 
-test('computeRunDelta reports only files this agent touched, excluding concurrent edits', () => {
+function classified(repo: string): {
+  filePath: string;
+  attribution?: string;
+  claimedByMissionIds?: string[];
+}[] {
+  return computeRunDelta({ workingDirectory: repo, missionId: MISSION_ID })
+    .map(entry => ({
+      filePath: entry.filePath,
+      attribution: entry.attribution,
+      claimedByMissionIds: entry.claimedByMissionIds
+    }))
+    .sort((left, right) => left.filePath.localeCompare(right.filePath));
+}
+
+test('computeRunDelta reports both mine and unclaimed delta paths, classifying each (completeness first)', () => {
   const repo = makeRepo();
   writeBaseline({ workingDirectory: repo, missionId: MISSION_ID, files: readChangedFiles(repo) });
   resetTouchedFiles({ workingDirectory: repo, missionId: MISSION_ID });
@@ -51,10 +67,14 @@ test('computeRunDelta reports only files this agent touched, excluding concurren
   writeFileSync(mine, 'export const mine = 1;\n');
   recordTouchedFiles({ workingDirectory: repo, missionId: MISSION_ID, files: [mine] });
 
-  // Concurrent mission dirties another file; NOT recorded as touched here.
+  // Concurrent mission dirties another file; NOT recorded as touched here, but the
+  // worktree delta still surfaces it — flagged, not silently dropped.
   writeFileSync(path.join(repo, 'concurrent.ts'), 'export const other = 2;\n');
 
-  assert.deepEqual(paths(repo), ['mine.ts']);
+  assert.deepEqual(classified(repo), [
+    { filePath: 'concurrent.ts', attribution: 'unclaimed', claimedByMissionIds: undefined },
+    { filePath: 'mine.ts', attribution: 'mine', claimedByMissionIds: undefined }
+  ]);
 });
 
 test('a touched file already dirty (committed) earlier is still reported', () => {
@@ -138,7 +158,7 @@ test('.overlordignore negation (!) re-includes a previously ignored file', () =>
   assert.deepEqual(paths(repo), ['keep.gz']);
 });
 
-test('resetTouchedFiles clears a prior session log so its edits are not re-attributed to the next session', () => {
+test('resetTouchedFiles clears a prior session log so its edits are no longer confirmed by the next session', () => {
   const repo = makeRepo();
   writeBaseline({ workingDirectory: repo, missionId: MISSION_ID, files: readChangedFiles(repo) });
 
@@ -146,7 +166,9 @@ test('resetTouchedFiles clears a prior session log so its edits are not re-attri
   const stale = path.join(repo, 'stale.ts');
   writeFileSync(stale, 'stale\n');
   recordTouchedFiles({ workingDirectory: repo, missionId: MISSION_ID, files: [stale] });
-  assert.deepEqual(paths(repo), ['stale.ts']);
+  assert.deepEqual(classified(repo), [
+    { filePath: 'stale.ts', attribution: 'mine', claimedByMissionIds: undefined }
+  ]);
 
   // Session B (re)attaches — reset clears A's log — then edits only mine.ts.
   resetTouchedFiles({ workingDirectory: repo, missionId: MISSION_ID });
@@ -154,8 +176,105 @@ test('resetTouchedFiles clears a prior session log so its edits are not re-attri
   writeFileSync(mine, 'mine\n');
   recordTouchedFiles({ workingDirectory: repo, missionId: MISSION_ID, files: [mine] });
 
-  // stale.ts is still dirty but belongs to the prior session, so it is excluded.
-  assert.deepEqual(paths(repo), ['mine.ts']);
+  // stale.ts is still dirty and belongs to the prior session, so B's log no longer
+  // confirms it — but the worktree delta still reports it, flagged for review.
+  assert.deepEqual(classified(repo), [
+    { filePath: 'mine.ts', attribution: 'mine', claimedByMissionIds: undefined },
+    { filePath: 'stale.ts', attribution: 'unclaimed', claimedByMissionIds: undefined }
+  ]);
+});
+
+test('recordBashObservedChanges folds newly-dirty paths into the touched-files log', () => {
+  const repo = makeRepo();
+  writeBaseline({ workingDirectory: repo, missionId: MISSION_ID, files: readChangedFiles(repo) });
+  resetTouchedFiles({ workingDirectory: repo, missionId: MISSION_ID });
+
+  // A Bash call (e.g. codegen) writes a file with no matching native edit-tool call.
+  writeFileSync(path.join(repo, 'generated.ts'), 'export const generated = 1;\n');
+  const first = recordBashObservedChanges({ workingDirectory: repo, missionId: MISSION_ID });
+  assert.equal(first.addedCount, 1);
+  assert.deepEqual(classified(repo), [
+    { filePath: 'generated.ts', attribution: 'mine', claimedByMissionIds: undefined }
+  ]);
+
+  // A second Bash call with no further changes should not re-record the same path.
+  const second = recordBashObservedChanges({ workingDirectory: repo, missionId: MISSION_ID });
+  assert.equal(second.addedCount, 0);
+
+  // A third Bash call that further edits the same file re-records it (new content hash).
+  writeFileSync(path.join(repo, 'generated.ts'), 'export const generated = 2;\n');
+  const third = recordBashObservedChanges({ workingDirectory: repo, missionId: MISSION_ID });
+  assert.equal(third.addedCount, 1);
+});
+
+test('git mv performed via Bash is captured by the snapshot diff (rename shows as the new path)', () => {
+  const repo = makeRepo();
+  writeBaseline({ workingDirectory: repo, missionId: MISSION_ID, files: readChangedFiles(repo) });
+  resetTouchedFiles({ workingDirectory: repo, missionId: MISSION_ID });
+
+  git(repo, ['mv', 'committed.txt', 'renamed.txt']);
+  const result = recordBashObservedChanges({ workingDirectory: repo, missionId: MISSION_ID });
+  assert.equal(result.addedCount, 1);
+  assert.deepEqual(classified(repo), [
+    { filePath: 'renamed.txt', attribution: 'mine', claimedByMissionIds: undefined }
+  ]);
+});
+
+test('computeRunDelta classifies files claimed by another active mission so deliver can exclude them', () => {
+  const repo = makeRepo();
+  const otherMissionId = 'coo:10';
+  writeBaseline({ workingDirectory: repo, missionId: MISSION_ID, files: readChangedFiles(repo) });
+  resetTouchedFiles({ workingDirectory: repo, missionId: MISSION_ID });
+  writeActiveSession({ workingDirectory: repo, missionId: MISSION_ID, sessionKey: 'sess_me' });
+  writeActiveSession({
+    workingDirectory: repo,
+    missionId: otherMissionId,
+    sessionKey: 'sess_other'
+  });
+
+  const mine = path.join(repo, 'mine.ts');
+  const claimed = path.join(repo, 'claimed.ts');
+  const unclaimed = path.join(repo, 'unclaimed.ts');
+  writeFileSync(mine, 'mine\n');
+  writeFileSync(claimed, 'claimed\n');
+  writeFileSync(unclaimed, 'unclaimed\n');
+
+  recordTouchedFiles({ workingDirectory: repo, missionId: MISSION_ID, files: [mine] });
+  recordTouchedFiles({ workingDirectory: repo, missionId: otherMissionId, files: [claimed] });
+
+  assert.deepEqual(classified(repo), [
+    {
+      filePath: 'claimed.ts',
+      attribution: 'claimed',
+      claimedByMissionIds: [otherMissionId]
+    },
+    { filePath: 'mine.ts', attribution: 'mine', claimedByMissionIds: undefined },
+    {
+      filePath: 'unclaimed.ts',
+      attribution: 'unclaimed',
+      claimedByMissionIds: undefined
+    }
+  ]);
+});
+
+test('without my touched log, peer claims do not suppress baseline-delta reporting', () => {
+  const repo = makeRepo();
+  const otherMissionId = 'coo:10';
+  writeBaseline({ workingDirectory: repo, missionId: MISSION_ID, files: readChangedFiles(repo) });
+  resetTouchedFiles({ workingDirectory: repo, missionId: MISSION_ID });
+  writeActiveSession({
+    workingDirectory: repo,
+    missionId: otherMissionId,
+    sessionKey: 'sess_other'
+  });
+
+  const claimed = path.join(repo, 'claimed.ts');
+  writeFileSync(claimed, 'claimed\n');
+  recordTouchedFiles({ workingDirectory: repo, missionId: otherMissionId, files: [claimed] });
+
+  assert.deepEqual(classified(repo), [
+    { filePath: 'claimed.ts', attribution: undefined, claimedByMissionIds: undefined }
+  ]);
 });
 
 test('draftChangeRationalesFromNotes drafts rationales for changed files with edit notes', () => {

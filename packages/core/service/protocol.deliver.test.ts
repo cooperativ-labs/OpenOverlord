@@ -7,6 +7,7 @@ import { describe, it } from 'node:test';
 
 import { listChangedFilesForReview } from './changes.js';
 import { createServiceContext } from './context.js';
+import { ServiceError } from './errors.js';
 import { createMissionWithObjectives, insertObjective } from './missions.js';
 import { addProjectResource, createProject } from './projects.js';
 import {
@@ -518,6 +519,106 @@ describe('deliverSession mechanical change capture', () => {
           summary: 'Deliver objective'
         }),
       /Missing change rationale for src\/shared\.ts/
+    );
+
+    await db.close();
+  });
+
+  it('reconciles a stale changed_files row to resolved once observedDirtyPaths no longer includes it', async () => {
+    const { db, ctx } = await setup();
+    const { mission } = await submittedMission(ctx, 'Reconcile Stale');
+    const attached = await attachSession({ ctx, missionId: mission.displayId });
+
+    // First delivery: an over-attributed file (e.g. recorded while an edit hook
+    // was inert) gets a real rationale so delivery succeeds.
+    await deliverSession({
+      ctx,
+      missionId: mission.displayId,
+      sessionKey: attached.sessionKey,
+      summary: 'First delivery',
+      changedFiles: [{ filePath: 'src/leftover.ts', vcsStatus: 'M' }],
+      changeRationales: [
+        {
+          file_path: 'src/leftover.ts',
+          label: 'Leftover',
+          summary: 'Touched leftover.',
+          why: 'Needed then.',
+          impact: 'Ships.'
+        }
+      ]
+    });
+
+    // Follow-up: the file is no longer dirty. observedDirtyPaths reflects the
+    // current (clean) worktree, so the stale row should be reconciled to
+    // 'resolved' and never demand a rationale again.
+    const resumed = await resumeFollowUp({ ctx, missionId: mission.displayId });
+    const result = await deliverSession({
+      ctx,
+      missionId: mission.displayId,
+      sessionKey: resumed.sessionKey,
+      summary: 'Follow-up delivery with a clean tree',
+      observedDirtyPaths: []
+    });
+    assert.ok(result.deliveryId);
+
+    const row = (await ctx.db.get(
+      `SELECT current_diff_state FROM changed_files WHERE file_path = ? AND deleted_at IS NULL`,
+      ['src/leftover.ts']
+    )) as { current_diff_state: string } | undefined;
+    assert.equal(row?.current_diff_state, 'resolved');
+
+    const files = await listChangedFilesForReview({
+      ctx,
+      missionId: mission.displayId,
+      includeCurrent: false
+    });
+    assert.equal(files.find(file => file.filePath === 'src/leftover.ts')?.coverage, 'resolved');
+
+    await db.close();
+  });
+
+  it('structures a missing_rationale error with per-path classification and a ready-to-use skip', async () => {
+    const { db, ctx } = await setup();
+    const { mission } = await submittedMission(ctx, 'Structured Error');
+    const attached = await attachSession({ ctx, missionId: mission.displayId });
+
+    await assert.rejects(
+      async () =>
+        await deliverSession({
+          ctx,
+          missionId: mission.displayId,
+          sessionKey: attached.sessionKey,
+          summary: 'Deliver without rationale',
+          changedFiles: [
+            { filePath: 'src/mine.ts', vcsStatus: 'M', attribution: 'mine' },
+            {
+              filePath: 'src/theirs.ts',
+              vcsStatus: 'M',
+              attribution: 'claimed',
+              claimedByMissionIds: ['coo:999']
+            },
+            { filePath: 'src/ambiguous.ts', vcsStatus: 'M', attribution: 'unclaimed' }
+          ]
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ServiceError);
+        assert.equal(error.code, 'missing_rationale');
+        const details = error.details as {
+          missingRationales: Array<{
+            filePath: string;
+            classification: string;
+            suggestedSkip: { filePath: string; reason: string } | null;
+          }>;
+        };
+        const byPath = new Map(details.missingRationales.map(entry => [entry.filePath, entry]));
+        assert.equal(byPath.get('src/mine.ts')?.classification, 'mine');
+        assert.equal(byPath.get('src/mine.ts')?.suggestedSkip, null);
+        assert.equal(byPath.get('src/theirs.ts')?.classification, 'claimed');
+        assert.match(byPath.get('src/theirs.ts')?.suggestedSkip?.reason ?? '', /coo:999/);
+        assert.equal(byPath.get('src/ambiguous.ts')?.classification, 'unclaimed');
+        assert.ok(byPath.get('src/ambiguous.ts')?.suggestedSkip);
+        return true;
+      }
     );
 
     await db.close();

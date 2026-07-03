@@ -214,6 +214,13 @@ Recommendation: state that delivery coverage aggregates `changed_files` across a
 sessions, and define how `current_diff_state` (`present`/`resolved`/`unavailable`) is reconciled when
 multiple sessions disagree.
 
+**Resolved (coo:127 Layer 4):** `deliverSession` (`packages/core/service/protocol.ts`) now reconciles this.
+An optional `observedDirtyPaths` deliver field (the client's full current dirty-worktree snapshot) lets the
+server mark any `present` row for the objective whose path is no longer dirty as `resolved` before rationale
+coverage is computed, regardless of which session originally recorded it. See
+`planning/feature-plans/agent-change-attribution-optimization.md` and CONTRACT.md's contract-version-2
+changelog entry.
+
 ### M8. `objectives` reordering vs `UNIQUE active (mission_id, position)`
 A unique constraint on `(mission_id, position)` makes naive reordering (swap two positions in two UPDATEs)
 violate uniqueness mid-operation; SQLite has no easy deferred unique constraints.

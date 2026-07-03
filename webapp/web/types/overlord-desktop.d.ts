@@ -74,6 +74,7 @@ declare global {
       directoryPath: string;
       projectId: string;
       resourceId: string;
+      executionTargetId?: string | null;
       isPrimary: boolean;
     }) => Promise<boolean>;
     openExternal: (url: string) => Promise<boolean>;

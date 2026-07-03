@@ -161,6 +161,22 @@ EOF
 
 If `heartbeat` succeeds but `deliver` or `update` fails, the session is likely fine — retry with large JSON on stdin instead of inline `--*-json`.
 
+### Preflight: check your changes before delivering
+
+Never hand-triage `git status` to figure out which dirty files are yours. Run the preflight first:
+
+```bash
+ovld protocol changes --mission-id $MISSION_ID
+```
+
+This is local-only (no backend call) and prints every currently dirty path already classified exactly the way `deliver` will:
+
+- `mine` — confirmed by this session's own touched-files log; report these with a real `changeRationales` entry.
+- `claimed` — confirmed by another active session's touched-files log; exclude these, or use the `suggestedSkipRationaleFor` entries it prints verbatim.
+- `unclaimed` — dirty, but confirmed by nobody's log (e.g. a `.overlordignore`-eligible file, or a Bash-mediated change the hook hasn't caught up with yet); still report these for completeness, but confirm or `--skip-rationale-for-*` them explicitly.
+
+It also prints `draftRationales` prefilled from local edit notes for `mine`/`unclaimed` paths — reuse these instead of re-deriving a rationale from scratch when they already describe the change accurately.
+
 ### Shared worktree safety (critical)
 
 The working tree may contain file changes from **other agents, missions, or objectives** running concurrently in the same checkout or worktree. Those changes are **not yours to undo**.
@@ -175,7 +191,8 @@ If `deliver` fails with `missing_rationale` for a file you did not change, or `g
 
 1. **Do not** touch those files — leave concurrent work intact.
 2. **Do not** fabricate rationales for work you did not do.
-3. Re-deliver with `--skip-rationale-for-json` (or `--skip-rationale-for-file -`) listing each unrelated path and a truthful `reason`. Use `ovld protocol ask` only when you cannot tell whether a dirty file belongs to this mission.
+3. Run `ovld protocol changes --mission-id $MISSION_ID` (see **Preflight** above) rather than reasoning about `git status` by hand — it already excludes/classifies concurrent work.
+4. Re-deliver with `--skip-rationale-for-json` (or `--skip-rationale-for-file -`) listing each unrelated path and a truthful `reason`. A rejected `deliver` also returns this same classification plus ready-to-use skip entries in its error `details.missingRationales` — paste them into the retry instead of re-deriving. Use `ovld protocol ask` only when you still cannot tell whether a dirty file belongs to this mission.
 
 ```bash
 ovld protocol deliver --session-key <sessionKey> --mission-id $MISSION_ID \
@@ -330,8 +347,9 @@ Always include `changeRationales` when delivering; optionally on updates during 
 
 - Rationales only for meaningful behavioral changes you made for this mission; skip formatting-only noise. Do not send `file_changes` as an artifact.
 - Do not include unrelated worktree changes in the delivery report, payload, artifacts, or rationales — even to label them pre-existing.
+- Run `ovld protocol changes --mission-id $MISSION_ID` before writing rationales by hand (see **Preflight** under **Deliver**) — it drafts rationales from local edit notes for files you touched.
 - **Never revert, restore, or delete file changes from other agents or missions** to satisfy delivery. Use `--skip-rationale-for-*` for paths you did not change (see **Shared worktree safety** under **Deliver**).
-- If `deliver` rejects with `missing_rationale` for a file you did not change, do not invent a rationale and do not revert the file; re-deliver with `--skip-rationale-for-*` and a truthful reason.
+- If `deliver` rejects with `missing_rationale` for a file you did not change, do not invent a rationale and do not revert the file; re-deliver with `--skip-rationale-for-*` and a truthful reason — the error's `details.missingRationales` already names which paths are safe to skip.
 - Read-only runs: `--no-file-changes` (see **Deliver** above).
 
 Field shape, inline vs stdin piping, and `record-change-rationales` syntax are in **Deliver** and **Record Change Rationales** in **CLI Command Reference** above.
@@ -364,4 +382,4 @@ Field shape, inline vs stdin piping, and `record-change-rationales` syntax are i
 - [reference/context.md](reference/context.md) — Shared state, attachments, and large artifact policy
 - [reference/shell-escaping.md](reference/shell-escaping.md) — Heredoc stdin piping for special characters in summaries and payloads
 
-<!-- version: 0.5.15 -->
+<!-- version: 0.5.16 -->

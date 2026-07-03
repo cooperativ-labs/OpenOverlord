@@ -37,7 +37,11 @@ export { FakeLocalTargetProvider } from './fake-provider.ts';
 export { runGit, runGitResult } from './git-run.ts';
 export { readGitStatusPorcelain } from './git-status.ts';
 export { InProcessProvider } from './in-process-provider.ts';
-export { PROJECT_JSON_VERSION, writeProjectJson } from './project-metadata.ts';
+export {
+  PROJECT_JSON_VERSION,
+  readProjectJsonLink,
+  writeProjectJson
+} from './project-metadata.ts';
 export * from './registry.ts';
 export {
   deriveResourceStatus,

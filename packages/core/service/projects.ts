@@ -1,10 +1,10 @@
 import { bindBool } from '@overlord/database';
-import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import {
   deriveResourceStatus,
   isCoLocatedBackend,
+  readProjectJsonLink,
   resolveBackendResourceProvider
 } from './local-target/index.ts';
 import { recordChange } from './change-feed.js';
@@ -67,6 +67,18 @@ export type ProjectDiscovery = {
   resourcePath: string | null;
   isPrimary: boolean;
 };
+
+async function preferredExecutionTargetIdForDiscovery({
+  ctx
+}: {
+  ctx: ServiceContext;
+}): Promise<string | null> {
+  try {
+    return (await ensureActingDeviceTarget({ ctx })).executionTargetId;
+  } catch {
+    return null;
+  }
+}
 
 export async function createProject({
   ctx,
@@ -254,6 +266,7 @@ export async function addProjectResource({
     directoryPath: resolvedPath,
     projectId: resolvedProjectId,
     resourceId: id,
+    executionTargetId,
     isPrimary
   });
 
@@ -448,11 +461,12 @@ export async function discoverProject({
 
   const cwd = path.resolve(workingDirectory ?? process.cwd());
   let current = cwd;
+  const preferredExecutionTargetId = await preferredExecutionTargetIdForDiscovery({ ctx });
 
   while (true) {
     const projectJsonPath = path.join(current, '.overlord', 'project.json');
     try {
-      const raw = readProjectJsonFile(projectJsonPath);
+      const raw = readProjectJsonLink(projectJsonPath, { preferredExecutionTargetId });
       if (raw) {
         const project = await getProject({ ctx, projectId: raw.projectId });
         const resource = (await ctx.db.get(
@@ -483,25 +497,6 @@ export async function discoverProject({
     'project_not_found',
     404
   );
-}
-
-function readProjectJsonFile(projectJsonPath: string): {
-  projectId: string;
-  resourceId: string;
-  isPrimary: boolean;
-} | null {
-  if (!existsSync(projectJsonPath)) return null;
-  const parsed = JSON.parse(readFileSync(projectJsonPath, 'utf8')) as {
-    projectId?: string;
-    resourceId?: string;
-    isPrimary?: boolean;
-  };
-  if (!parsed.projectId || !parsed.resourceId) return null;
-  return {
-    projectId: parsed.projectId,
-    resourceId: parsed.resourceId,
-    isPrimary: parsed.isPrimary ?? false
-  };
 }
 
 export function listOrganizations({ ctx }: { ctx: ServiceContext }): Array<{

@@ -92,6 +92,7 @@ export interface WriteProjectMetadataInput {
   directoryPath: string;
   projectId: string;
   resourceId: string;
+  executionTargetId?: string | null;
   isPrimary: boolean;
 }
 export interface WriteProjectMetadataResult {

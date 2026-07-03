@@ -387,7 +387,7 @@ Absence of scope rows means "no token-level restriction" in v1.
 | `updated_at` | TimestampUTC | yes |  |
 | `deleted_at` | TimestampUTC | no | Tombstone. |
 | `revision` | integer | yes |  |
-| `position` | integer | no | 1-based sidebar/board ordering, unique within the workspace among active rows. Nullable only because SQLite's `ALTER TABLE ADD COLUMN` cannot backfill a per-row unique value without a table rebuild (matching this repo's precedent, e.g. `missions.schedule_id`); every non-deleted project has a value in practice, assigned at creation (`MAX(position)+1`) and renumbered densely by `reorderProjects`. |
+| `position` | integer | no | 1-based sidebar/board ordering, unique within the workspace among active rows. Nullable only because SQLite's `ALTER TABLE ADD COLUMN` cannot backfill a per-row unique value without a table rebuild (matching this repo's precedent, e.g. `missions.schedule_id`); every non-deleted project has a value in practice, assigned at creation (`MAX(position)+1`). `reorderProjects` may compact the final sequence densely, but must move changed rows out of range first so the unique index is never violated mid-transaction. |
 
 Indexes:
 
@@ -1216,6 +1216,8 @@ Indexes:
 When an update-time changed-file record omits `objective_id`, services should apply the same objective auto-association rule as `mission_events`.
 
 Delivery coverage is objective-scoped. Validators must aggregate `changed_files` across every session for the objective, plus any null-session `record-work` records. If multiple sessions observed the same file, `present` wins over `unknown`/`unavailable`, and `resolved` removes the file from final coverage only when the final local workspace state no longer contains a meaningful change.
+
+`deliverSession` (`packages/core/service/protocol.ts`) performs this `present`→`resolved` transition when the client supplies the optional `observedDirtyPaths` deliver field: any `present` row for the objective whose path is absent from that set is marked `resolved` before rationale coverage is computed, regardless of which session originally recorded it (coo:127 Layer 4).
 
 ### `change_rationales`
 

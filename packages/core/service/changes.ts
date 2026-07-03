@@ -18,7 +18,7 @@ export type ChangedFileReview = {
   rationaleCount: number;
   finalRationaleCount: number;
   rationaleLabels: string[];
-  coverage: 'covered' | 'missing_rationale' | 'skipped' | 'unassigned';
+  coverage: 'covered' | 'missing_rationale' | 'skipped' | 'unassigned' | 'resolved';
 };
 
 export type RationaleReview = {
@@ -117,9 +117,11 @@ export async function listChangedFilesForReview({
     const coverage =
       metadata.rationaleSkipped === true
         ? 'skipped'
-        : finalRationaleCount > 0 || rationaleCount > 0
-          ? 'covered'
-          : 'missing_rationale';
+        : row.current_diff_state === 'resolved'
+          ? 'resolved'
+          : finalRationaleCount > 0 || rationaleCount > 0
+            ? 'covered'
+            : 'missing_rationale';
     byPath.set(row.file_path, {
       filePath: row.file_path,
       vcsStatus: row.vcs_status,

@@ -1,31 +1,35 @@
 import type { ProjectDto } from '@overlord/contract';
+import { readProjectJsonLink } from '@overlord/core/service/local-target/project-metadata';
 import type { ProjectDiscovery } from '@overlord/core/service/projects';
-import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import type { BackendClient } from './backend-client.js';
 import { CliError } from './errors.js';
 
-function readProjectJsonFile(projectJsonPath: string): {
-  projectId: string;
-  resourceId: string;
-  isPrimary: boolean;
-} | null {
-  if (!existsSync(projectJsonPath)) return null;
-  const parsed = JSON.parse(readFileSync(projectJsonPath, 'utf8')) as {
-    projectId?: string;
-    resourceId?: string;
-    isPrimary?: boolean;
-  };
-  if (!parsed.projectId || !parsed.resourceId) return null;
-  return {
-    projectId: parsed.projectId,
-    resourceId: parsed.resourceId,
-    isPrimary: parsed.isPrimary ?? false
-  };
+async function resolvePreferredExecutionTargetId({
+  backend
+}: {
+  backend: BackendClient;
+}): Promise<string | null> {
+  try {
+    const launchSettings = await backend.get<{ executionTargetId?: string | null }>(
+      '/api/launch-settings'
+    );
+    return typeof launchSettings.executionTargetId === 'string'
+      ? launchSettings.executionTargetId
+      : null;
+  } catch {
+    return null;
+  }
 }
 
-function discoverProjectJsonFromFilesystem({ workingDirectory }: { workingDirectory: string }): {
+function discoverProjectJsonFromFilesystem({
+  workingDirectory,
+  preferredExecutionTargetId
+}: {
+  workingDirectory: string;
+  preferredExecutionTargetId?: string | null;
+}): {
   projectId: string;
   resourceId: string;
   resourcePath: string;
@@ -35,7 +39,7 @@ function discoverProjectJsonFromFilesystem({ workingDirectory }: { workingDirect
 
   while (true) {
     const projectJsonPath = path.join(current, '.overlord', 'project.json');
-    const raw = readProjectJsonFile(projectJsonPath);
+    const raw = readProjectJsonLink(projectJsonPath, { preferredExecutionTargetId });
     if (raw) {
       return {
         projectId: raw.projectId,
@@ -96,19 +100,25 @@ export async function discoverProjectOnClient({
     };
   }
 
+  const preferredExecutionTargetId = await resolvePreferredExecutionTargetId({ backend });
   const local = discoverProjectJsonFromFilesystem({ workingDirectory });
-  if (!local) {
+  const localWithTarget = discoverProjectJsonFromFilesystem({
+    workingDirectory,
+    preferredExecutionTargetId
+  });
+  const resolvedLocal = localWithTarget ?? local;
+  if (!resolvedLocal) {
     throw new CliError({
       message: `No linked Overlord project found for ${path.resolve(workingDirectory)}. Run \`ovld add-cwd\` or \`ovld create-project\`.`
     });
   }
 
-  const project = await resolveProjectByIdOrName({ backend, projectRef: local.projectId });
+  const project = await resolveProjectByIdOrName({ backend, projectRef: resolvedLocal.projectId });
   return {
     projectId: project.id,
     projectName: project.name,
-    resourceId: local.resourceId,
-    resourcePath: local.resourcePath,
-    isPrimary: local.isPrimary
+    resourceId: resolvedLocal.resourceId,
+    resourcePath: resolvedLocal.resourcePath,
+    isPrimary: resolvedLocal.isPrimary
   };
 }

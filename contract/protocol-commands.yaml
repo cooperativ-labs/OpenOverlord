@@ -6,8 +6,13 @@
 #
 # IMPORTANT: Any addition, rename, or flag change to a command in this file requires
 # a contract version update in CONTRACT.md and components.yaml.
+#
+# Local-only `ovld protocol <subcommand>` commands that never cross the CLI -> backend
+# HTTP surface (no POST /api/protocol/<subcommand>, no backend handler, no permission
+# entry) are intentionally not listed here: `record-touched` and `changes`. See
+# CONTRACT.md's contract-version-2 changelog entry for the precedent.
 
-contractVersion: "0"
+contractVersion: "2"
 referenceSpec: "cli/docs/03-agent-protocol.md"
 
 # Transport-level shape shared by every protocol command, independent of subcommand.
@@ -28,6 +33,17 @@ requestEnvelope:
       - impact
     fieldAliases:
       filePath: "Accepted as an alias for file_path and normalized to the canonical snake_case shape, so an entry keyed by the camelCase changed-files casing no longer fails validation. file_path is the documented canonical form."
+    backwardCompatible: true
+  changedFileInput:
+    description: "Shape of each --changed-files entry on deliver and update."
+    requiredFields:
+      - filePath
+    optionalFields:
+      - vcsStatus
+      - attribution
+      - claimedByMissionIds
+    notes:
+      - "attribution ('mine' | 'claimed' | 'unclaimed') and claimedByMissionIds are computed client-side from the touched-files log and peer sessions' claims (cli/src/vcs.ts). Never persisted server-side; used only to classify a residual missing_rationale error (coo:127 Layer 4)."
     backwardCompatible: true
 
 sessionLifecycle:
@@ -165,6 +181,7 @@ sessionLifecycle:
       - --change-rationales-file
       - --changed-files-json
       - --changed-files-file
+      - --observed-dirty-paths-json
       - --no-file-changes
       - --skip-rationale-for-json
       - --skip-rationale-for-file
@@ -174,11 +191,14 @@ sessionLifecycle:
       - --follow-up-notes
     clientCapture:
       - "The client CLI auto-injects --changed-files-json at deliver from the run-attributable VCS delta (current changed paths minus the baseline captured at attach/resume-follow-up). VCS is read on the client only."
+      - "The client CLI auto-injects --observed-dirty-paths-json at deliver: the full current dirty worktree (not just the run-attributable delta), used only for server-side coverage reconciliation (see reconciliation rule below). Additive/optional — omitted by older clients."
     validationRules:
       - "Meaningful tracked changed files require rationales"
       - "Rationale coverage is objective-scoped: aggregated across all sessions for the objective (and no-session record-work records)"
       - "--no-file-changes asserts this run changed no files and skips rationale-coverage enforcement"
       - "--skip-rationale-for-json / --skip-rationale-for-file lists per-file rationale overrides for changes the agent did not make; each entry requires file_path (filePath alias accepted) and a non-empty reason string"
+      - "When --observed-dirty-paths-json is present, changed_files rows for the objective that are current_diff_state='present' but whose path is absent from it are reconciled to current_diff_state='resolved' before coverage is computed, un-poisoning coverage from a past over-attribution (coo:127 Layer 4). 'resolved' is an existing changed_files vocabulary value (database/docs/09-database-schema-contract.md), not a new one."
+      - "A missing_rationale failure (code missing_rationale, HTTP 400) carries a structured details.missingRationales array: [{ filePath, classification: 'mine'|'claimed'|'unclaimed', suggestedSkip: { filePath, reason } | null }]. classification is derived from the attribution attached to the corresponding --changed-files-json entry (default 'unclaimed' when absent); suggestedSkip is null for 'mine' (a rationale is owed, not a skip)."
       - "Delivery is the final work boundary — no implementation after delivery without explicit follow-up"
     skipRationaleForInput:
       description: "Shape of each --skip-rationale-for entry on deliver."
@@ -190,6 +210,7 @@ sessionLifecycle:
       backwardCompatible: true
     sideEffects:
       - upserts-changed-files-by-session-objective-path
+      - reconciles-stale-changed-files-to-resolved-when-observed-dirty-paths-provided
       - stores-delivery-record
       - objective-state-to-complete
       - mission-status-to-review

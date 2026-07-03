@@ -1279,6 +1279,14 @@ function normalizeSkipRationaleFor(
   }));
 }
 
+/** Per-path classification attached to a missing-rationale error so a retry is mechanical. */
+export type MissingRationaleDetail = {
+  filePath: string;
+  classification: 'mine' | 'claimed' | 'unclaimed';
+  /** Ready-to-use `--skip-rationale-for-json` entry; null for `'mine'` (a real rationale is owed, not a skip). */
+  suggestedSkip: { filePath: string; reason: string } | null;
+};
+
 export async function deliverSession({
   ctx,
   missionId,
@@ -1289,6 +1297,7 @@ export async function deliverSession({
   changedFiles,
   noFileChanges = false,
   skipRationaleFor = [],
+  observedDirtyPaths,
   payloadJson,
   verificationSummary,
   followUpNotes
@@ -1299,12 +1308,29 @@ export async function deliverSession({
   summary: string;
   artifacts?: Array<{ type: string; label: string; content?: string | null; url?: string | null }>;
   changeRationales?: ChangeRationaleInput[];
-  /** Mechanically observed changes for this run (client-side VCS delta). */
-  changedFiles?: Array<{ filePath: string; vcsStatus?: string | null }> | null;
+  /**
+   * Mechanically observed changes for this run (client-side VCS delta). May carry an
+   * optional `attribution` classification (from the client's touched-files/claims
+   * comparison) used only to enrich a `missing_rationale` error — never persisted.
+   */
+  changedFiles?: Array<{
+    filePath: string;
+    vcsStatus?: string | null;
+    attribution?: 'mine' | 'claimed' | 'unclaimed';
+    claimedByMissionIds?: string[];
+  }> | null;
   /** Agent's explicit assertion that this run changed no files. */
   noFileChanges?: boolean;
   /** Per-file rationale overrides for changes the agent did not make. */
   skipRationaleFor?: SkipRationaleForInput[];
+  /**
+   * Every path the client currently observes as dirty (full worktree, not just the
+   * run-attributable delta). When provided, `changed_files` rows for this objective
+   * that are no longer dirty are reconciled to `current_diff_state = 'resolved'`
+   * before rationale coverage is computed, so a past over-attribution stops
+   * permanently demanding a rationale. Additive/optional: omitted skips reconciliation.
+   */
+  observedDirtyPaths?: string[] | null;
   payloadJson?: Record<string, unknown> | null;
   verificationSummary?: string | null;
   followUpNotes?: string | null;
@@ -1379,7 +1405,7 @@ export async function deliverSession({
 
     // Coverage is objective-scoped: aggregate observed changes across every
     // session for the objective (and no-session record-work records).
-    const objectiveChangedFiles = (await txCtx.db.all(
+    let objectiveChangedFiles = (await txCtx.db.all(
       `SELECT id, file_path, current_diff_state FROM changed_files
          WHERE objective_id = ? AND deleted_at IS NULL`,
       [session.objective_id]
@@ -1388,23 +1414,76 @@ export async function deliverSession({
       file_path: string;
       current_diff_state: string | null;
     }>;
+
+    // Reconcile stale coverage: a `present` row whose path this client no longer
+    // observes as dirty is marked `resolved`, un-poisoning coverage from a past
+    // over-attribution (e.g. recorded while an edit hook was inert). Additive:
+    // omitting observedDirtyPaths (older clients) skips reconciliation entirely.
+    if (observedDirtyPaths) {
+      const dirtySet = new Set(observedDirtyPaths.map(p => p.replace(/\\/g, '/')));
+      const staleRows = objectiveChangedFiles.filter(
+        file => file.current_diff_state === 'present' && !dirtySet.has(file.file_path)
+      );
+      for (const row of staleRows) {
+        await txCtx.db.run(
+          `UPDATE changed_files SET current_diff_state = 'resolved', updated_at = ?, revision = revision + 1
+             WHERE id = ?`,
+          [now, row.id]
+        );
+      }
+      if (staleRows.length > 0) {
+        const resolvedIds = new Set(staleRows.map(row => row.id));
+        objectiveChangedFiles = objectiveChangedFiles.map(file =>
+          resolvedIds.has(file.id) ? { ...file, current_diff_state: 'resolved' } : file
+        );
+      }
+    }
+
     changedFileIdByPath = new Map(objectiveChangedFiles.map(row => [row.file_path, row.id]));
+
+    // Per-call attribution classification (client-computed, never persisted) used
+    // only to enrich a missing_rationale error with a ready-to-use skip suggestion.
+    const attributionByFilePath = new Map(
+      (changedFiles ?? [])
+        .filter(file => file.attribution)
+        .map(file => [
+          file.filePath.replace(/\\/g, '/'),
+          { attribution: file.attribution as 'mine' | 'claimed' | 'unclaimed', claimedByMissionIds: file.claimedByMissionIds }
+        ])
+    );
 
     if (!noFileChanges) {
       const meaningfulFiles = objectiveChangedFiles.filter(
         file => file.current_diff_state === 'present' && !file.file_path.includes('package-lock')
       );
+      const missingRationales: MissingRationaleDetail[] = [];
       for (const file of meaningfulFiles) {
         if (skipPathSet.has(file.file_path)) {
           continue;
         }
         const rationale = normalizedRationales.find(r => r.filePath === file.file_path);
         if (!rationale) {
-          throw new ServiceError(
-            `Missing change rationale for ${file.file_path}. Every meaningful tracked file change requires a rationale.`,
-            'missing_rationale',
-            400
-          );
+          const attribution = attributionByFilePath.get(file.file_path);
+          const classification = attribution?.attribution ?? 'unclaimed';
+          missingRationales.push({
+            filePath: file.file_path,
+            classification,
+            suggestedSkip:
+              classification === 'mine'
+                ? null
+                : {
+                    filePath: file.file_path,
+                    reason:
+                      classification === 'claimed'
+                        ? `Changed by concurrent mission ${
+                            attribution?.claimedByMissionIds?.length
+                              ? attribution.claimedByMissionIds.join(', ')
+                              : 'another active mission'
+                          }; excluded from this delivery report.`
+                        : `Not confirmed by this session's tracked edits; confirm this is a meaningful change and add a rationale, or skip it if unintentional.`
+                  }
+          });
+          continue;
         }
         for (const field of ['label', 'summary', 'why', 'impact'] as const) {
           if (!rationale[field]?.trim()) {
@@ -1415,6 +1494,14 @@ export async function deliverSession({
             );
           }
         }
+      }
+      if (missingRationales.length > 0) {
+        throw new ServiceError(
+          `Missing change rationale for ${missingRationales.map(m => m.filePath).join(', ')}. Every meaningful tracked file change requires a rationale.`,
+          'missing_rationale',
+          400,
+          { missingRationales }
+        );
       }
     }
 

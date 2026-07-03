@@ -26,7 +26,7 @@ export const BUNDLED_AGENT_CATALOG: Record<string, CatalogAgent> = {
       {
         id: 'claude-sonnet-5',
         displayName: 'Sonnet 5',
-        reasoningOptions: ['low', 'medium', 'high', 'max']
+        reasoningOptions: ['low', 'medium', 'high', 'xhigh', 'max', 'ultracode']
       },
       {
         id: 'claude-sonnet-4-6',

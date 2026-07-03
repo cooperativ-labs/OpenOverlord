@@ -1448,11 +1448,16 @@ export async function reorderProjects(body: ReorderProjectsBody): Promise<Projec
     if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
       throw new ApiError(400, 'orderedProjectIds is required');
     }
+    if (new Set(orderedIds).size !== orderedIds.length) {
+      throw new ApiError(400, 'orderedProjectIds contains duplicates');
+    }
 
     const current = (await tx.all(
-      `SELECT id FROM projects WHERE workspace_id = ? AND deleted_at IS NULL`,
+      `SELECT id, position, revision
+         FROM projects
+        WHERE workspace_id = ? AND deleted_at IS NULL`,
       [getActiveWorkspaceId()]
-    )) as { id: string }[];
+    )) as Array<{ id: string; position: number | null; revision: number }>;
     if (orderedIds.length !== current.length) {
       throw new ApiError(400, 'orderedProjectIds must include every project');
     }
@@ -1464,19 +1469,53 @@ export async function reorderProjects(body: ReorderProjectsBody): Promise<Projec
       }
     }
 
+    const currentById = new Map(current.map(project => [project.id, project]));
+    const updates = orderedIds
+      .map((id, index) => {
+        const existing = currentById.get(id);
+        if (!existing) {
+          throw new ApiError(400, 'Unknown project in reorder list');
+        }
+        return {
+          id,
+          position: index + 1,
+          existing
+        };
+      })
+      .filter(({ existing, position }) => existing.position !== position);
+    if (updates.length === 0) {
+      return listProjects(tx);
+    }
+
     const now = nowIso();
-    for (const [index, id] of orderedIds.entries()) {
+    const maxPosition = Math.max(...current.map(project => project.position ?? 0), 0);
+    const tempBase = maxPosition + updates.length + 1;
+
+    // Move changed rows out of the active range first so swaps never collide
+    // with the workspace+position unique index mid-transaction.
+    for (const [index, { id }] of updates.entries()) {
       await tx.run(
         `UPDATE projects
-            SET position = ?, updated_at = ?, revision = revision + 1
+            SET position = ?, updated_at = ?
           WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-        [index + 1, now, id, getActiveWorkspaceId()]
+        [tempBase + index, now, id, getActiveWorkspaceId()]
+      );
+    }
+
+    for (const { id, position, existing } of updates) {
+      const revision = existing.revision + 1;
+      await tx.run(
+        `UPDATE projects
+            SET position = ?, updated_at = ?, revision = ?
+          WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+        [position, now, revision, id, getActiveWorkspaceId()]
       );
       await recordChange(
         {
           entityType: 'project',
           entityId: id,
           operation: 'update',
+          entityRevision: revision,
           changedFields: ['position'],
           projectId: id
         },

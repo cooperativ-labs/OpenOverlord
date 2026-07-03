@@ -214,6 +214,7 @@ async function insertChangedFile(
     filePath: string;
     vcsStatus?: string;
     observedMetadataJson?: string;
+    currentDiffState?: string;
   }
 ): Promise<string> {
   const id = `cf_${randomUUID()}`;
@@ -223,7 +224,7 @@ async function insertChangedFile(
        (id, workspace_id, project_id, mission_id, objective_id, file_path, vcs_status,
         current_diff_state, first_observed_at, last_observed_at, observed_metadata_json,
         created_at, updated_at, revision)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'present', ?, ?, ?, ?, ?, 1)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
     [
       id,
       WORKSPACE_ID,
@@ -232,6 +233,7 @@ async function insertChangedFile(
       input.objectiveId,
       input.filePath,
       input.vcsStatus ?? 'M',
+      input.currentDiffState ?? 'present',
       now,
       now,
       input.observedMetadataJson ?? '{}',
@@ -727,6 +729,38 @@ for (const adapter of adapters) {
         assert.equal(byPath.get('src/covered.ts')?.coverage, 'covered');
         assert.equal(byPath.get('src/missing.ts')?.coverage, 'missing_rationale');
         assert.equal(byPath.get('src/skipped.ts')?.coverage, 'skipped');
+      } finally {
+        await teardown();
+      }
+    });
+
+    // coo:127 Layer 4: deliverSession reconciles a changed_files row no longer
+    // present in the client's observedDirtyPaths to current_diff_state='resolved'
+    // (see protocol.ts), un-poisoning coverage from a past over-attribution. This
+    // pins the review-side classification of that state across both adapters.
+    it('classifies a resolved changed_files row without demanding a rationale', async () => {
+      const { client, teardown } = await adapter.create();
+      try {
+        const graph = await seedGraph(client);
+        const ctx = await createServiceContext({ db: client, source: 'webapp' });
+
+        await insertChangedFile(client, {
+          missionId: graph.missionId,
+          objectiveId: graph.objectiveId,
+          projectId: graph.projectId,
+          filePath: 'src/resolved.ts',
+          currentDiffState: 'resolved'
+        });
+
+        const files = await listChangedFilesForReview({
+          ctx,
+          missionId: graph.missionId,
+          includeCurrent: false
+        });
+
+        assert.equal(files.length, 1);
+        assert.equal(files[0]?.filePath, 'src/resolved.ts');
+        assert.equal(files[0]?.coverage, 'resolved');
       } finally {
         await teardown();
       }

@@ -50,6 +50,49 @@ async function readResponseJson(response: Response): Promise<unknown> {
   }
 }
 
+type MissingRationaleDetail = {
+  filePath: string;
+  classification: 'mine' | 'claimed' | 'unclaimed';
+  suggestedSkip: { filePath: string; reason: string } | null;
+};
+
+/**
+ * A `missing_rationale` error carries a structured `details.missingRationales`
+ * payload so the retry is mechanical: paths needing a real rationale (`mine`) are
+ * named, and every other path gets a ready-to-use `--skip-rationale-for-json`
+ * entry the agent can paste verbatim instead of re-deriving attribution by hand.
+ */
+function formatMissingRationaleDetails(details: unknown): string | null {
+  if (!details || typeof details !== 'object') return null;
+  const list = (details as Record<string, unknown>).missingRationales;
+  if (!Array.isArray(list) || list.length === 0) return null;
+
+  const entries = list as MissingRationaleDetail[];
+  const lines = entries.map(entry => `  - ${entry.filePath} [${entry.classification}]`);
+  const skips = entries
+    .map(entry => entry.suggestedSkip)
+    .filter((skip): skip is { filePath: string; reason: string } => skip !== null)
+    .map(skip => ({ file_path: skip.filePath, reason: skip.reason }));
+
+  const parts = [`Per-path classification:`, ...lines];
+  if (skips.length > 0) {
+    parts.push(
+      `Ready-to-use skip JSON for non-'mine' paths (add --skip-rationale-for-json '${JSON.stringify(
+        skips
+      )}' to retry):`
+    );
+  }
+  const mineOnly = entries.filter(entry => entry.classification === 'mine');
+  if (mineOnly.length > 0) {
+    parts.push(
+      `Paths classified 'mine' need a real --change-rationales-json entry, not a skip: ${mineOnly
+        .map(entry => entry.filePath)
+        .join(', ')}`
+    );
+  }
+  return parts.join('\n');
+}
+
 function errorMessageFromJson(value: unknown): string | null {
   if (!value || typeof value !== 'object') return null;
   const record = value as Record<string, unknown>;
@@ -66,6 +109,10 @@ function errorMessageFromJson(value: unknown): string | null {
   if (detail && detail !== error) parts.push(detail);
   const code = typeof record.code === 'string' ? record.code.trim() : '';
   if (code) parts.push(`(${code})`);
+  if (code === 'missing_rationale') {
+    const structured = formatMissingRationaleDetails(record.details);
+    if (structured) parts.push(`\n${structured}`);
+  }
   return parts.join(' — ');
 }
 

@@ -3,7 +3,8 @@ import {
   executeLocalTargetMutation,
   parseMutationFromMetadata
 } from '@overlord/core/service/local-target-mutation-runner';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import {
@@ -23,6 +24,7 @@ import { resolveNativeSessionId } from './native-session.js';
 import { printJson, printKeyValue } from './output.js';
 import { pruneStaleProjectTmp } from './project-tmp.js';
 import { printProtocolHelp } from './protocol-help.js';
+import { recordTouchedFromPayload } from './record-touched.js';
 import { reportRunnerResourceObservations } from './resource-observations.js';
 import type { CliRuntime } from './runtime.js';
 import { promptForProject } from './select-prompt.js';
@@ -37,13 +39,20 @@ import {
   computeRunDelta,
   draftChangeRationalesFromNotes,
   filterRunAttributableChanges,
+  hasTouchedFilesLog,
   readChangedFiles,
   resetRationaleNotes,
   resetTouchedFiles,
   writeBaseline
 } from './vcs.js';
+import { removeActiveSession, writeActiveSession } from './vcs-sessions.js';
 
-type ChangedFileEntry = { filePath: string; vcsStatus?: string | null };
+type ChangedFileEntry = {
+  filePath: string;
+  vcsStatus?: string | null;
+  attribution?: 'mine' | 'claimed' | 'unclaimed';
+  claimedByMissionIds?: string[];
+};
 type ChangeRationaleEntry = {
   file_path?: string;
   filePath?: string;
@@ -75,6 +84,8 @@ function writeProjectJsonFromResource({
     directoryPath: directory,
     projectId,
     resourceId: record.id,
+    executionTargetId:
+      typeof record.executionTargetId === 'string' ? record.executionTargetId : undefined,
     isPrimary: record.isPrimary !== false
   });
 }
@@ -131,6 +142,24 @@ function writeFilteredChangedFilesToFlags({
     return;
   }
   flags['--changed-files-json'] = JSON.stringify(files);
+}
+
+function writeSkipRationaleForToFlags({
+  flags,
+  fileInputs,
+  entries
+}: {
+  flags: Record<string, string | true>;
+  fileInputs: Record<string, string>;
+  entries: SkipRationaleEntry[];
+}): void {
+  if (typeof flags['--skip-rationale-for-file'] === 'string') {
+    fileInputs['--skip-rationale-for-file'] = JSON.stringify(entries, null, 2);
+    delete flags['--skip-rationale-for-json'];
+    return;
+  }
+  flags['--skip-rationale-for-json'] = JSON.stringify(entries);
+  delete flags['--skip-rationale-for-file'];
 }
 
 function parseJsonArray(value: unknown): unknown[] {
@@ -256,6 +285,16 @@ function applySessionChangedFiles({
     (flags['--no-file-changes'] === true || flags['--no-file-changes'] === 'true');
   const delta = computeRunDelta({ workingDirectory, missionId });
 
+  // Full current dirty tree (not just the run-attributable delta), sent so the
+  // server can reconcile changed_files rows that are no longer dirty to
+  // 'resolved' — un-poisoning coverage from a past over-attribution. Sent even
+  // for --no-file-changes so a leftover stale row still gets cleared.
+  if (subcommand === 'deliver') {
+    flags['--observed-dirty-paths-json'] = JSON.stringify(
+      readChangedFiles(workingDirectory).map(entry => entry.filePath)
+    );
+  }
+
   if (noFileChanges) {
     if (delta.length > 0) {
       console.error(
@@ -279,26 +318,94 @@ function applySessionChangedFiles({
           (entry, index, all) => all.findIndex(item => item.filePath === entry.filePath) === index
         )
       : explicit;
-  const attributable = filterRunAttributableChanges({
+  const classified = filterRunAttributableChanges({
     workingDirectory,
     missionId,
     files: merged.map(entry => ({
       filePath: entry.filePath,
       vcsStatus: entry.vcsStatus ?? 'changed'
     }))
-  }).map(entry => ({
-    filePath: entry.filePath,
-    vcsStatus: entry.vcsStatus
-  }));
+  });
 
-  const skipPaths =
+  const claimedElsewhere = classified.filter(entry => entry.attribution === 'claimed');
+  const unclaimedFlagged = classified.filter(entry => entry.attribution === 'unclaimed');
+
+  if (subcommand === 'deliver' && claimedElsewhere.length > 0) {
+    console.error(
+      `[overlord] excluded ${claimedElsewhere.length} changed file(s) claimed by concurrent mission logs: ` +
+        `${claimedElsewhere
+          .map(entry =>
+            entry.claimedByMissionIds?.length
+              ? `${entry.filePath} (${entry.claimedByMissionIds.join(', ')})`
+              : entry.filePath
+          )
+          .join(', ')}`
+    );
+  }
+
+  if (subcommand === 'deliver' && unclaimedFlagged.length > 0) {
+    console.error(
+      `[overlord] ${unclaimedFlagged.length} changed file(s) are not claimed by any edit-tracking log ` +
+        `and are included for completeness — please confirm or --skip-rationale-for- them: ` +
+        `${unclaimedFlagged.map(entry => entry.filePath).join(', ')}`
+    );
+  }
+
+  // Attribution/claimedByMissionIds ride along to the backend (never persisted)
+  // so a residual missing_rationale error can classify each path without the
+  // server re-deriving touched-log state it has no access to.
+  const attributable = classified
+    .filter(entry => entry.attribution !== 'claimed')
+    .map(entry => ({
+      filePath: entry.filePath,
+      vcsStatus: entry.vcsStatus,
+      ...(entry.attribution ? { attribution: entry.attribution } : {}),
+      ...(entry.claimedByMissionIds?.length
+        ? { claimedByMissionIds: entry.claimedByMissionIds }
+        : {})
+    }));
+
+  const skipEntries =
+    subcommand === 'deliver' ? readSkipRationaleForFromFlags({ flags, fileInputs }) : [];
+  const rationalePaths =
     subcommand === 'deliver'
       ? new Set(
-          readSkipRationaleForFromFlags({ flags, fileInputs })
-            .map(skipRationalePath)
-            .filter(Boolean)
+          readChangeRationalesFromFlags({ flags, fileInputs }).map(rationalePath).filter(Boolean)
         )
       : new Set<string>();
+  const skipByPath = new Map<string, SkipRationaleEntry>();
+  if (subcommand === 'deliver') {
+    for (const entry of skipEntries) {
+      const filePath = skipRationalePath(entry);
+      if (!filePath) continue;
+      skipByPath.set(filePath, entry);
+    }
+  }
+  if (subcommand === 'deliver') {
+    for (const entry of claimedElsewhere) {
+      const filePath = entry.filePath;
+      if (rationalePaths.has(filePath)) continue;
+      if (skipByPath.has(filePath)) continue;
+      const missionLabel =
+        entry.claimedByMissionIds && entry.claimedByMissionIds.length > 0
+          ? entry.claimedByMissionIds.join(', ')
+          : 'another active mission';
+      skipByPath.set(filePath, {
+        file_path: filePath,
+        reason: `Changed by concurrent mission ${missionLabel}; excluded from this delivery report.`
+      });
+    }
+    if (skipByPath.size > 0) {
+      writeSkipRationaleForToFlags({
+        flags,
+        fileInputs,
+        entries: Array.from(skipByPath.values())
+      });
+    }
+  }
+
+  const skipPaths =
+    subcommand === 'deliver' ? new Set(Array.from(skipByPath.keys()).filter(Boolean)) : new Set<string>();
   const filtered =
     skipPaths.size > 0
       ? attributable.filter(entry => !skipPaths.has(entry.filePath))
@@ -586,6 +693,63 @@ export async function runProtocolCommand({
     stdin
   });
 
+  // Local-only: append this hook invocation's edited files to the resolved
+  // mission's touched-files log. No backend call — an adapter's edit hook pipes
+  // its native hook JSON on stdin and gets the same bookkeeping cli/src/vcs.ts
+  // already does for the Claude hook, without needing MISSION_ID in env.
+  if (subcommand === 'record-touched') {
+    const missionOverride =
+      flagValue(parsed.flags, '--mission-id') ??
+      process.env.MISSION_ID ??
+      process.env.OVERLORD_MISSION_ID;
+    // The hook payload arrives as raw piped stdin, not a --*-file flag, so read
+    // fd 0 directly rather than going through resolveProtocolFileInputs (which
+    // only reads stdin when a --*-file flag is literally '-').
+    const rawPayload = stdin ?? (process.stdin.isTTY ? '' : readFileSync(0, 'utf8'));
+    const result = recordTouchedFromPayload({
+      rawPayload,
+      missionOverride,
+      fallbackCwd: workingDirectory
+    });
+    printJson(result);
+    return;
+  }
+
+  // Local-only preflight: classify every currently dirty path (mine/claimed/
+  // unclaimed) exactly the way deliver will, plus draft rationales from local
+  // edit notes. No backend call — this replaces hand-triaging `git status`
+  // before delivering with one read-only, ready-to-use report.
+  if (subcommand === 'changes') {
+    if (!missionId) {
+      throw new CliError({ message: 'Usage: ovld protocol changes --mission-id <id>' });
+    }
+    const classified = filterRunAttributableChanges({
+      workingDirectory,
+      missionId,
+      files: readChangedFiles(workingDirectory)
+    });
+    const mine = classified.filter(
+      entry => entry.attribution === 'mine' || entry.attribution === undefined
+    );
+    const claimed = classified.filter(entry => entry.attribution === 'claimed');
+    const unclaimed = classified.filter(entry => entry.attribution === 'unclaimed');
+    const draftRationales = draftChangeRationalesFromNotes({
+      workingDirectory,
+      missionId,
+      files: [...mine, ...unclaimed]
+    });
+    const suggestedSkipRationaleFor = claimed.map(entry => ({
+      file_path: entry.filePath,
+      reason: `Changed by concurrent mission ${
+        entry.claimedByMissionIds?.length
+          ? entry.claimedByMissionIds.join(', ')
+          : 'another active mission'
+      }; excluded from this delivery report.`
+    }));
+    printJson({ mine, claimed, unclaimed, draftRationales, suggestedSkipRationaleFor });
+    return;
+  }
+
   // Session-key cache: when a command that needs a session key is missing the
   // flag, fall back to the key cached at attach for this (workingDir, mission).
   // An explicit --session-key always wins.
@@ -671,12 +835,66 @@ export async function runProtocolCommand({
     // this (workingDir, mission) can auto-resolve it without --session-key.
     if (missionId) {
       writeCachedSessionKey({ missionId, workingDirectory, sessionKey: resultRecord.sessionKey });
+      // Also record this mission as "active in this cwd" so an edit hook that
+      // never sees MISSION_ID in its own environment (e.g. agent-pod sessions)
+      // can still resolve which mission's touched log to append to.
+      if (subcommand === 'attach' || subcommand === 'resume-follow-up') {
+        writeActiveSession({
+          workingDirectory,
+          missionId,
+          sessionKey: resultRecord.sessionKey
+        });
+      }
     }
   }
   // The session ends at deliver: drop the cached key so it can't bind to a later
   // session for the same working dir + mission.
   if (subcommand === 'deliver' && missionId) {
     clearCachedSessionKey({ missionId, workingDirectory });
+    removeActiveSession({ workingDirectory, missionId });
+
+    // Self-diagnosis: a connector that installs an edit hook (today: Claude Code,
+    // detected by the presence of ~/.claude) should always have a touched-files
+    // log by deliver time if the run touched any files. A missing log with a
+    // non-empty dirty tree means the hook silently failed to activate — the exact
+    // failure mode Layer 1 fixes for the common case. Surface it loudly instead of
+    // letting deliver quietly fall back to baseline-only attribution.
+    const connectorInstallsEditHook = existsSync(path.join(os.homedir(), '.claude'));
+    if (
+      connectorInstallsEditHook &&
+      !hasTouchedFilesLog({ workingDirectory, missionId }) &&
+      readChangedFiles(workingDirectory).length > 0
+    ) {
+      const warning =
+        `[overlord] warning: no touched-files log found at deliver for mission ${missionId} in ` +
+        `${workingDirectory}, even though this connector installs a PostToolUse edit hook. Deliver is ` +
+        `falling back to baseline-only attribution, which can misattribute concurrent sessions' edits. ` +
+        `Check ~/.ovld/logs/post-tool-use-hook.log for why the hook did not record any touched files.`;
+      console.error(warning);
+      const sessionKeyForAlert = typeof flags['--session-key'] === 'string' ? flags['--session-key'] : undefined;
+      if (sessionKeyForAlert) {
+        try {
+          await runtime.backend.post({
+            path: '/api/protocol/update',
+            body: {
+              args: [],
+              positional: [],
+              flags: {
+                '--mission-id': missionId,
+                '--session-key': sessionKeyForAlert,
+                '--event-type': 'alert',
+                '--summary': warning
+              },
+              stdin: undefined,
+              fileInputs: {}
+            }
+          });
+        } catch {
+          // Best-effort: the loud stderr warning above already surfaces the issue
+          // even if the telemetry POST fails.
+        }
+      }
+    }
   }
   if (typeof resultRecord.missionId === 'string') {
     printKeyValue({ MISSION_ID: resultRecord.missionId });
