@@ -39,7 +39,10 @@ export function MissionDueDateBadge({ dueDatetime }: { dueDatetime: string | nul
       <TooltipTrigger
         render={
           <span
-            className="inline-flex shrink-0 items-center rounded-full border bg-muted px-1.5 py-0.5 text-[9px] font-medium tabular-nums text-muted-foreground"
+            className={cn(
+              'inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[9px] font-medium tabular-nums',
+              'border-sky-400/40 text-sky-700 dark:border-sky-500/30 dark:text-sky-300'
+            )}
             onClick={event => event.stopPropagation()}
           >
             {ordinalDay}
