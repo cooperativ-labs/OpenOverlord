@@ -7,7 +7,11 @@ import type { MissionDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 
 import { getMissionTags } from './board-shared.ts';
 import { MissionCardHoverFooter } from './MissionCardHoverFooter.tsx';
-import { MissionAssigneeSummary, ProjectColorDot } from './MissionCardPrimitives.tsx';
+import {
+  MissionAssigneeSummary,
+  MissionDueDateBadge,
+  ProjectColorDot
+} from './MissionCardPrimitives.tsx';
 import { MissionCardState } from './missionCardState.ts';
 
 export function MissionCardBody({
@@ -54,6 +58,7 @@ export function MissionCardBody({
               <span className="truncate text-[11px] text-muted-foreground">{projectName}</span>
             </div>
             <div className="flex min-w-0 max-w-[55%] shrink items-center justify-end gap-2">
+              <MissionDueDateBadge dueDatetime={mission.dueDatetime} />
               {cardState.objectiveCount > 0 ? (
                 <Tooltip>
                   <TooltipTrigger
