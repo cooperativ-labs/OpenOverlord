@@ -63,7 +63,8 @@ export function ScheduleEditor({
 }: ScheduleEditorProps) {
   const upsert = useUpsertMissionSchedule(missionId);
   const clear = useClearMissionSchedule(missionId);
-  const preview = usePreviewScheduleDueDatetime();
+  const { mutateAsync: previewScheduleDueDatetime, isPending: isPreviewPending } =
+    usePreviewScheduleDueDatetime();
 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -177,18 +178,25 @@ export function ScheduleEditor({
     }
 
     const input = stateToInput(schedule);
+    let cancelled = false;
     const timeout = window.setTimeout(() => {
-      preview
-        .mutateAsync({
-          schedule: input,
-          itemDueDatetime: currentDueDatetime
+      previewScheduleDueDatetime({
+        schedule: input,
+        itemDueDatetime: currentDueDatetime
+      })
+        .then(result => {
+          if (!cancelled) setPreviewDueDatetime(result.dueDatetime);
         })
-        .then(result => setPreviewDueDatetime(result.dueDatetime))
-        .catch(() => setPreviewDueDatetime(null));
+        .catch(() => {
+          if (!cancelled) setPreviewDueDatetime(null);
+        });
     }, 300);
 
-    return () => window.clearTimeout(timeout);
-  }, [currentDueDatetime, open, preview, schedule]);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [currentDueDatetime, open, previewScheduleDueDatetime, schedule]);
 
   const handleOpenChange = useCallback((nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -219,9 +227,9 @@ export function ScheduleEditor({
       const next = existing
         ? { ...prev, daysOfWeek: prev.daysOfWeek.filter(d => d.dayNum !== day) }
         : {
-            ...prev,
-            daysOfWeek: [...prev.daysOfWeek, { dayNum: day, times: [prev.time || '09:00'] }]
-          };
+          ...prev,
+          daysOfWeek: [...prev.daysOfWeek, { dayNum: day, times: [prev.time || '09:00'] }]
+        };
       scheduleRef.current = next;
       return next;
     });
@@ -330,12 +338,12 @@ export function ScheduleEditor({
 
   const summaryText = schedule
     ? summarizeSchedule({
-        periodType: schedule.periodType,
-        periodInterval: schedule.periodInterval,
-        daysOfWeek: schedule.daysOfWeek,
-        daysOfMonth: schedule.daysOfMonth,
-        weeksOfMonth: schedule.weeksOfMonth
-      })
+      periodType: schedule.periodType,
+      periodInterval: schedule.periodInterval,
+      daysOfWeek: schedule.daysOfWeek,
+      daysOfMonth: schedule.daysOfMonth,
+      weeksOfMonth: schedule.weeksOfMonth
+    })
     : null;
 
   return (
@@ -427,7 +435,9 @@ export function ScheduleEditor({
                     }}
                   >
                     <SelectTrigger className="h-8 w-auto min-w-[100px] text-xs">
-                      <SelectValue />
+                      <SelectValue>
+                        {schedule.periodInterval === 1 ? 'day' : 'days'}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="d">
@@ -536,11 +546,11 @@ export function ScheduleEditor({
                   </Select>
                 </div>
 
-                {(previewDueDatetime || preview.isPending) && (
+                {(previewDueDatetime || isPreviewPending) && (
                   <p className="rounded-md bg-muted/60 px-2.5 py-2 text-xs text-muted-foreground">
-                    {preview.isPending
-                      ? 'Computing next due date…'
-                      : `Next due: ${formatDueDatetimeLabel(previewDueDatetime)}`}
+                    {previewDueDatetime
+                      ? `Next due: ${formatDueDatetimeLabel(previewDueDatetime)}`
+                      : 'Computing next due date…'}
                   </p>
                 )}
               </div>
