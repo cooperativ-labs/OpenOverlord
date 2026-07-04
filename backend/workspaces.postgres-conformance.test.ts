@@ -9,15 +9,17 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, describe, it } from 'node:test';
 
-import { bindWebappDatabaseClient } from './test-helpers.ts';
+import { bindWebappDatabaseClient, DEFAULT_TEST_ORGANIZATION_ID } from './test-helpers.ts';
 
 /**
- * Adapter conformance for workspace creation on the hosted-backend Postgres path.
+ * Adapter conformance for workspace/organization creation on the hosted-backend
+ * Postgres path.
  *
  * The same battery runs against SQLite (always) and PostgreSQL (when
- * `TEST_DATABASE_URL` points at a reachable Postgres). It pins the nullable
- * exclude-parameter queries that Postgres cannot type-infer during
- * `createWorkspace` and `completeInitialSetup`.
+ * `TEST_DATABASE_URL` points at a reachable Postgres). It covers `createWorkspace`'s
+ * org-scoped slug uniqueness (`UNIQUE (organization_id, slug) WHERE deleted_at IS
+ * NULL`, coo:135) — the same slug is rejected within one organization but allowed
+ * across two different ones.
  */
 
 interface AdapterHandle {
@@ -85,14 +87,18 @@ if (process.env.TEST_DATABASE_URL) {
 
 for (const adapter of adapters) {
   describe(`createWorkspace conformance [${adapter.label}]`, () => {
-    it('creates a workspace without nullable exclude parameters', async () => {
+    it('creates a workspace with a server-generated UUID id and a derived slug', async () => {
       const { teardown } = await adapter.create();
       try {
         const { createWorkspace } = await import('./workspaces.ts');
-        const created = await createWorkspace({ name: 'Conformance Workspace' });
+        const created = await createWorkspace({
+          organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+          name: 'Conformance Workspace'
+        });
 
         assert.equal(created.name, 'Conformance Workspace');
-        assert.equal(created.id, 'conformance-workspace');
+        assert.equal(created.organizationId, DEFAULT_TEST_ORGANIZATION_ID);
+        assert.match(created.id, /^[0-9a-f-]{36}$/i);
         assert.ok(created.slug.length > 0);
         assert.equal(created.isActive, true);
       } finally {
@@ -100,100 +106,78 @@ for (const adapter of adapters) {
       }
     });
 
-    it('rejects duplicate workspace IDs', async () => {
-      const { teardown } = await adapter.create();
+    it('rejects a duplicate slug within the same organization but allows it across organizations', async () => {
+      const { client, teardown } = await adapter.create();
       try {
         const { createWorkspace } = await import('./workspaces.ts');
 
-        await createWorkspace({ id: 'engineering-hq', name: 'Engineering HQ' });
-        await assert.rejects(
-          async () => await createWorkspace({ id: 'engineering-hq', name: 'Duplicate HQ' }),
-          /already exists/
-        );
-      } finally {
-        await teardown();
-      }
-    });
-
-    it('completes initial setup using excludeWorkspaceId slug/id checks', async () => {
-      const { teardown } = await adapter.create();
-      try {
-        const { completeInitialSetup, needsInitialSetup } = await import('./workspaces.ts');
-        const dbModule = await import('./db.ts');
-
-        assert.equal(await needsInitialSetup(), true);
-
-        const updated = await completeInitialSetup({
-          id: 'acme-operations',
-          name: 'Acme Operations',
-          slug: 'aco'
+        const first = await createWorkspace({
+          organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+          name: 'Engineering HQ',
+          slug: 'eng'
         });
+        assert.equal(first.slug, 'eng');
 
-        assert.equal(updated.id, 'acme-operations');
-        assert.equal(updated.slug, 'aco');
-        assert.equal(await needsInitialSetup(), false);
-        assert.equal(dbModule.WORKSPACE.id, 'acme-operations');
-      } finally {
-        await teardown();
-      }
-    });
-
-    it('rekeys initial setup with an attached agent session graph', async () => {
-      const { client, teardown } = await adapter.create();
-      try {
-        const { createMission, createProject } = await import('./repository.ts');
-        const { completeInitialSetup } = await import('./workspaces.ts');
-
-        const project = await createProject({ name: 'Session Rekey Project' });
-        const mission = await createMission({
-          projectId: project.id,
-          title: 'Session Rekey Mission',
-          objectives: [{ objective: 'Keep the agent session attached' }]
+        // Same organization, same requested slug: uniquified with a numeric suffix
+        // rather than colliding (createWorkspace never trips the unique index).
+        const second = await createWorkspace({
+          organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+          name: 'Duplicate HQ',
+          slug: 'eng'
         });
-        const objective = await client.get<{ id: string }>(
-          `SELECT id FROM objectives WHERE mission_id = ? AND workspace_id = ? LIMIT 1`,
-          [mission.id, 'local-workspace']
-        );
-        assert.ok(objective);
+        assert.equal(second.slug, 'eng-2');
 
+        // A second organization may reuse the exact same slug — uniqueness is
+        // per-organization (`idx_workspaces_organization_slug`), not instance-wide.
         const now = new Date().toISOString();
+        const otherOrganizationId = randomUUID();
         await client.run(
-          `INSERT INTO agent_sessions
-             (id, workspace_id, project_id, mission_id, objective_id,
-              session_key_prefix, session_key_hash, agent_identifier, connection_method,
-              phase, delivery_state, started_at, metadata_json, created_at, updated_at, revision)
-           VALUES (?, 'local-workspace', ?, ?, ?, ?, ?, 'codex', 'cli',
-                   'execute', 'not_delivered', ?, '{}', ?, ?, 1)`,
+          `INSERT INTO organizations (id, name, settings_json, created_at, updated_at, revision)
+           VALUES (?, ?, '{}', ?, ?, 1)`,
+          [otherOrganizationId, 'Other Organization', now, now]
+        );
+        // createWorkspace's org-admin gate requires an existing ADMIN membership;
+        // seed one directly for the operator in the new organization.
+        const otherWorkspaceId = randomUUID();
+        await client.run(
+          `INSERT INTO workspaces
+             (id, organization_id, slug, name, kind, settings_json, created_at, updated_at, revision)
+           VALUES (?, ?, 'placeholder', 'Placeholder', 'local', '{}', ?, ?, 1)`,
+          [otherWorkspaceId, otherOrganizationId, now, now]
+        );
+        const bootstrapWorkspaceUserId = randomUUID();
+        await client.run(
+          `INSERT INTO workspace_users
+             (id, workspace_id, profile_id, member_key, status, metadata_json,
+              created_at, updated_at, revision)
+           VALUES (?, ?, 'operator-user', 'auth:operator-user', 'active', '{}', ?, ?, 1)`,
+          [bootstrapWorkspaceUserId, otherWorkspaceId, now, now]
+        );
+        await client.run(
+          `INSERT INTO role_assignments
+             (id, workspace_id, workspace_user_id, role_key, resource_type, resource_id,
+              assigned_by_workspace_user_id, created_at, updated_at, revision)
+           VALUES (?, ?, ?, 'ADMIN', '', '', ?, ?, ?, 1)`,
           [
-            `session_${randomUUID()}`,
-            project.id,
-            mission.id,
-            objective.id,
-            `pfx_${randomUUID().slice(0, 8)}`,
-            `hash_${randomUUID()}`,
-            now,
+            randomUUID(),
+            otherWorkspaceId,
+            bootstrapWorkspaceUserId,
+            bootstrapWorkspaceUserId,
             now,
             now
           ]
         );
 
-        const updated = await completeInitialSetup({
-          id: 'session-rekey-workspace',
-          name: 'Session Rekey Workspace',
-          slug: 'srw'
+        const crossOrg = await createWorkspace({
+          organizationId: otherOrganizationId,
+          name: 'Cross-Org Engineering',
+          slug: 'eng'
         });
-
-        assert.equal(updated.id, 'session-rekey-workspace');
-        const staleSession = await client.get<{ id: string }>(
-          `SELECT id FROM agent_sessions WHERE workspace_id = ? LIMIT 1`,
-          ['local-workspace']
+        assert.equal(
+          crossOrg.slug,
+          'eng',
+          'a different organization may reuse a slug already taken in another organization'
         );
-        assert.equal(staleSession, undefined);
-        const movedSession = await client.get<{ id: string }>(
-          `SELECT id FROM agent_sessions WHERE workspace_id = ? LIMIT 1`,
-          ['session-rekey-workspace']
-        );
-        assert.ok(movedSession);
       } finally {
         await teardown();
       }

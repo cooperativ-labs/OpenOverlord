@@ -69,6 +69,16 @@ For behavioral specs and acceptance criteria, see the other docs in this folder.
 
 ---
 
+## Organizations
+
+| Command | Description | Positional args | Flags |
+| ------- | ----------- | --------------- | ----- |
+| `ovld org-setup` | One-time organization + first-workspace onboarding for an authenticated profile with zero workspace memberships. Shares `POST /api/onboarding` with the web onboarding screen, so the two can't drift. | — | `--org-name <name>` (required), `--workspace-name <name>` (default: `general`), `--workspace-slug <slug>`, `--logo <path>`, `--no-input`, `--if-needed`, `--json` |
+
+Prompts interactively for omitted fields on a TTY; `--no-input` fails fast instead. `--if-needed` exits `0` as a no-op once the caller already belongs to an organization, so pod/CI bootstrap scripts can call it unconditionally. A failed `--logo` upload is a warning, not a rollback — the organization is still created. Note: mission `displayId`s (`<slug>:<sequence>`) are unique per workspace, not globally, once more than one organization exists.
+
+---
+
 ## Projects
 
 | Command | Description | Positional args | Flags |
@@ -154,7 +164,7 @@ File-backed payloads: any `-*-json` flag has a paired `-*-file <path>` flag (use
 | ---------- | ----------- | --------------------- | -------------- |
 | `auth-status` | Machine-readable auth and backend readiness | — | — |
 | `discover-project` | Resolve project from working directory or explicit id | — | `--project-id <id-or-name>`, `--directory <path>` |
-| `list-organizations` | List workspaces visible to the backend | — | — |
+| `list-organizations` | Legacy name predating the organizations hierarchy; returns only the caller's current workspace context, not organization data | — | — |
 | `attach` | Start a mission session; returns full working context | `--mission-id <id>` | `--session-key <key>`, `--agent <id>`, `--model <id>`, `--execution-request-id <id>`, `--external-session-id <id>` |
 | `connect` | Lightweight session (session key only) | `--mission-id <id>` | `--agent <id>`, `--external-session-id <id>` |
 | `load-context` | Read mission context without creating a session | `--mission-id <id>` | — |

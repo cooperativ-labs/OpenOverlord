@@ -112,9 +112,9 @@ Once a transaction-scoped client's `transaction()` callback has resolved (commit
 
 Postgres foreign keys on workspace-scoped tables, including composite foreign
 keys whose child columns include `workspace_id`, must be `DEFERRABLE INITIALLY
-IMMEDIATE`. Services may temporarily defer them inside a transaction when moving
-an entire workspace graph, such as re-keying the seeded first workspace during
-initial setup. Constraints still validate at commit.
+IMMEDIATE`. Migrations may temporarily defer them inside a transaction when moving
+an entire workspace graph, such as the organization hierarchy UUID rekey.
+Constraints still validate at commit.
 
 Adapters should express conditional requirements with CHECK constraints where possible, including:
 

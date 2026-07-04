@@ -8,12 +8,18 @@ const tempDir = mkdtempSync(path.join(tmpdir(), 'overlord-webapp-account-deletio
 process.env.OVERLORD_SQLITE_PATH = path.join(tempDir, 'webapp.sqlite');
 
 const dbModule = await import('./db.ts');
-const { db, initDatabase, setActiveWorkspaceUser } = dbModule;
+const { db, initDatabase, setActiveWorkspace, setActiveWorkspaceUser } = dbModule;
 await initDatabase();
 const { seedAuthenticatedOperator } = await import('./test-helpers.ts');
 const { cascadeDeleteAccount } = await import('./account-deletion.ts');
 
 const operatorWorkspaceUserId = seedAuthenticatedOperator({ db });
+// `seedAuthenticatedOperator` only inserts rows; the organizations migration's
+// no-seed cleanup (coo:135, Q10) means a fresh database has zero workspaces
+// until something activates one, so `getActiveWorkspaceId()` calls below need
+// this explicit activation (previously implicit via the migration-seeded
+// `local-workspace` row).
+await setActiveWorkspace('local-workspace');
 setActiveWorkspaceUser(operatorWorkspaceUserId);
 
 function seedToken({
@@ -36,12 +42,23 @@ function seedToken({
 
 function seedImage({ id, profileId }: { id: string; profileId: string }): void {
   const now = new Date().toISOString();
+  // Bucket id matches the convention `seedAuthenticatedOperator` (test-helpers.ts)
+  // seeds with, now that the migration-seeded `local-storage-user-images` row no
+  // longer exists on a fresh install (coo:135 no-seed cleanup, Q10).
   db.prepare(
     `INSERT INTO user_images (
        id, workspace_id, profile_id, storage_bucket_id, storage_key,
        filename, content_type, created_at, updated_at, revision
-     ) VALUES (?, ?, ?, 'local-storage-user-images', ?, 'avatar.png', 'image/png', ?, ?, 1)`
-  ).run(id, dbModule.WORKSPACE.id, profileId, `${id}.png`, now, now);
+     ) VALUES (?, ?, ?, ?, ?, 'avatar.png', 'image/png', ?, ?, 1)`
+  ).run(
+    id,
+    dbModule.WORKSPACE.id,
+    profileId,
+    `${dbModule.WORKSPACE.id}-user-images`,
+    `${id}.png`,
+    now,
+    now
+  );
 }
 
 test('cascadeDeleteAccount purges workspace membership, tokens, and images so the auth user row can be hard-deleted', async () => {

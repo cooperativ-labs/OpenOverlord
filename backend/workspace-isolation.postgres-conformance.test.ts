@@ -96,6 +96,13 @@ interface Tenant {
   workspace: { id: string; slug: string; name: string; kind: string };
 }
 
+/**
+ * Each seeded "tenant" gets its own dedicated organization (rather than
+ * sharing one) — these tests are about cross-tenant isolation at the
+ * workspace level, which one organization per tenant preserves exactly as
+ * before the organizations layer (coo:135) landed: a fully separate
+ * `organization_id` in addition to a separate `workspace_id`.
+ */
 async function seedTenant(
   client: DatabaseClient,
   {
@@ -107,12 +114,25 @@ async function seedTenant(
   }: { workspaceId: string; slug: string; name: string; profileId: string; workspaceUserId: string }
 ): Promise<Tenant> {
   const now = new Date().toISOString();
+  const organizationId = `${workspaceId}-org`;
   await client.run(
-    `INSERT INTO workspaces (id, slug, name, kind, settings_json, created_at, updated_at, revision)
-     VALUES (?, ?, ?, 'local', '{}', ?, ?, 1)`,
-    [workspaceId, slug, name, now, now]
+    `INSERT INTO organizations (id, name, settings_json, created_at, updated_at, revision)
+     VALUES (?, ?, '{}', ?, ?, 1)`,
+    [organizationId, name, now, now]
   );
-  await seedAuthenticatedOperatorClient({ client, workspaceId, profileId, workspaceUserId });
+  await client.run(
+    `INSERT INTO workspaces
+       (id, organization_id, slug, name, kind, settings_json, created_at, updated_at, revision)
+     VALUES (?, ?, ?, ?, 'local', '{}', ?, ?, 1)`,
+    [workspaceId, organizationId, slug, name, now, now]
+  );
+  await seedAuthenticatedOperatorClient({
+    client,
+    organizationId,
+    workspaceId,
+    profileId,
+    workspaceUserId
+  });
   return {
     workspaceId,
     workspaceUserId,

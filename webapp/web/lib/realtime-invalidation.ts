@@ -118,7 +118,7 @@ function routeChange(change: EntityChangeDto): QueryKey[] | null {
     case 'project': {
       const projectId = projectIdFor(change);
       if (!projectId) return null;
-      return [keys.projects, keys.project(projectId), keys.missions(projectId), keys.myMissions];
+      return [['workspace'], keys.project(projectId), keys.missions(projectId), keys.myMissions];
     }
     case 'project_resource': {
       const projectId = projectIdFor(change);

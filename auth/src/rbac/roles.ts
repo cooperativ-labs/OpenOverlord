@@ -10,6 +10,36 @@ export const DEFAULT_ROLE_DEFINITIONS: Readonly<Record<Role, RoleDefinition>> = 
     description: 'Full instance administrator',
     grants: ['*']
   },
+  [Role.MANAGER]: {
+    description: 'Manages the workspace and its members/projects, short of full admin',
+    grants: [
+      'workspace:read',
+      'workspace:update',
+      'workspace:activate',
+      'member:invite',
+      'member:remove',
+      'invitation:read',
+      'invitation:revoke',
+      'profile:self:*',
+      'launch:*',
+      'project:*',
+      'mission:*',
+      'objective:*',
+      'session:*',
+      'event:create',
+      'event:read',
+      'artifact:*',
+      'workspace_image:read',
+      'organization_image:read',
+      'user_image:read',
+      'user_image:self:*',
+      'attachment:*',
+      'user_token:self:*',
+      'execution_request:create',
+      'execution_request:read',
+      'execution_request:claim'
+    ]
+  },
   [Role.MEMBER]: {
     description: 'Standard user or persistent agent account',
     grants: [
@@ -31,6 +61,7 @@ export const DEFAULT_ROLE_DEFINITIONS: Readonly<Record<Role, RoleDefinition>> = 
       'event:read',
       'artifact:*',
       'workspace_image:read',
+      'organization_image:read',
       'user_image:read',
       'user_image:self:*',
       'attachment:*',
@@ -42,6 +73,6 @@ export const DEFAULT_ROLE_DEFINITIONS: Readonly<Record<Role, RoleDefinition>> = 
   },
   [Role.PUBLIC]: {
     description: 'Unauthenticated public read access',
-    grants: ['workspace_image:read', 'user_image:read']
+    grants: ['workspace_image:read', 'organization_image:read', 'user_image:read']
   }
 };

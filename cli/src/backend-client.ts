@@ -10,6 +10,23 @@ export type BackendClient = {
   post: <T>({ path, body }: { path: string; body?: unknown }) => Promise<T>;
   patch: <T>({ path, body }: { path: string; body?: unknown }) => Promise<T>;
   delete: <T>(path: string) => Promise<T>;
+  /**
+   * Upload raw bytes (e.g. an image file), mirroring the web client's
+   * `api.uploadImage`: the body rides as-is (no JSON encoding) and the
+   * filename travels in a header since the server parses it without
+   * multipart support.
+   */
+  postRaw: <T>({
+    path,
+    body,
+    contentType,
+    filename
+  }: {
+    path: string;
+    body: Buffer;
+    contentType?: string;
+    filename: string;
+  }) => Promise<T>;
 };
 
 function normalizeBaseUrl(value: string): string {
@@ -123,11 +140,15 @@ export function createBackendClient(): BackendClient {
   async function request<T>({
     method,
     path,
-    body
+    body,
+    extraHeaders,
+    rawBody
   }: {
     method: string;
     path: string;
     body?: unknown;
+    extraHeaders?: Record<string, string>;
+    rawBody?: Buffer;
   }): Promise<T> {
     const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
     const auth = resolveAuthHeaders({ baseUrl });
@@ -137,13 +158,17 @@ export function createBackendClient(): BackendClient {
         method,
         headers: {
           Accept: 'application/json',
-          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          ...(rawBody === undefined && body !== undefined
+            ? { 'Content-Type': 'application/json' }
+            : {}),
           'x-overlord-device-fingerprint': clientDevice.deviceFingerprint,
           'x-overlord-device-label': clientDevice.deviceLabel,
           'x-overlord-device-platform': clientDevice.devicePlatform,
-          ...auth.headers
+          ...auth.headers,
+          ...extraHeaders
         },
-        body: body === undefined ? undefined : JSON.stringify(body)
+        body:
+          rawBody !== undefined ? rawBody : body === undefined ? undefined : JSON.stringify(body)
       });
     } catch (error) {
       throw new CliError({
@@ -185,6 +210,16 @@ export function createBackendClient(): BackendClient {
     get: path => request({ method: 'GET', path }),
     post: ({ path, body }) => request({ method: 'POST', path, body }),
     patch: ({ path, body }) => request({ method: 'PATCH', path, body }),
-    delete: path => request({ method: 'DELETE', path })
+    delete: path => request({ method: 'DELETE', path }),
+    postRaw: ({ path, body, contentType, filename }) =>
+      request({
+        method: 'POST',
+        path,
+        rawBody: body,
+        extraHeaders: {
+          'Content-Type': contentType || 'application/octet-stream',
+          'X-Upload-Filename': encodeURIComponent(filename)
+        }
+      })
   };
 }

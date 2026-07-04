@@ -27,9 +27,10 @@ import { useCreateProject, useLaunchSettings } from '@/lib/queries';
 type ProjectCreatorModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  workspaceId?: string;
 };
 
-export function ProjectCreatorModal({ open, onOpenChange }: ProjectCreatorModalProps) {
+export function ProjectCreatorModal({ open, onOpenChange, workspaceId }: ProjectCreatorModalProps) {
   const navigate = useNavigate();
   const createProjectMutation = useCreateProject();
   const launchSettingsQ = useLaunchSettings();
@@ -89,6 +90,10 @@ export function ProjectCreatorModal({ open, onOpenChange }: ProjectCreatorModalP
       const trimmedPrimaryResourcePath = primaryResourcePath.trim();
       if (trimmedPrimaryResourcePath && launchSettingsQ.isLoading) {
         throw new Error('Launch settings are still loading. Try again in a moment.');
+      }
+
+      if (workspaceId) {
+        await api.activateWorkspace(workspaceId);
       }
 
       const created = await createProjectMutation.mutateAsync({

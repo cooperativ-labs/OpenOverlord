@@ -453,6 +453,10 @@ const handlers: Record<string, Handler> = {
       workingDirectory: strFlag(body, '--directory') ?? null
     }),
 
+  // Predates the real `organizations` table/hierarchy (coo:135) — despite the
+  // name, this returns only the caller's current *workspace* context (never
+  // an organization row), kept as-is to avoid a breaking protocol rename.
+  // Use `GET /api/organizations` (web) for real organization data.
   'list-organizations': ctx => [
     { id: ctx.workspace.id, slug: ctx.workspace.slug, name: ctx.workspace.name }
   ]

@@ -13,7 +13,7 @@ import {
   authDomainDatabase,
   DATABASE_PATH,
   findActiveMembershipId,
-  getActiveWorkspaceId,
+  getActiveWorkspaceIdOrNull,
   loadWorkspaceRow,
   requireDatabaseClient,
   resolveActorForWorkspace,
@@ -257,7 +257,11 @@ export async function requireAuthenticatedSession(
       // 2. USER_TOKEN bearer auth (any surface). Tokens authenticate the owning
       //    profile, not a workspace. The request's active workspace preference
       //    is then validated against that profile's memberships, and RBAC for
-      //    the resolved workspace supplies the authorization boundary.
+      //    the resolved workspace supplies the authorization boundary. A
+      //    zero-membership profile (headless post-signup, pre-onboarding) is
+      //    not rejected here — it proceeds with no active workspace so it can
+      //    reach `/api/onboarding`; workspace-scoped routes reject it via RBAC
+      //    (a null actor has no roles) or their own explicit checks.
       const bearerToken = extractBearerToken(req);
       if (bearerToken?.startsWith('out_')) {
         const verified = await verifyUserToken(authDomainDatabase(), bearerToken);
@@ -270,8 +274,15 @@ export async function requireAuthenticatedSession(
           verified.profileId,
           getRequestedWorkspaceId(req)
         );
+        const scopeGrants = await loadTokenScopeGrants(verified.id);
         if (!membership) {
-          res.status(403).json({ error: 'No active workspace membership for USER_TOKEN' });
+          setActiveWorkspaceContext(null);
+          setActiveTokenAuth({
+            workspaceUserId: null,
+            tokenId: verified.id,
+            scopeGrants: scopeGrants.length > 0 ? scopeGrants : null
+          });
+          next();
           return;
         }
         const workspace = await loadWorkspaceRow(membership.workspace.id);
@@ -285,7 +296,6 @@ export async function requireAuthenticatedSession(
           name: workspace.name,
           kind: workspace.kind
         });
-        const scopeGrants = await loadTokenScopeGrants(verified.id);
         setActiveTokenAuth({
           workspaceUserId: membership.workspaceUserId,
           tokenId: verified.id,
@@ -301,9 +311,15 @@ export async function requireAuthenticatedSession(
       //    (self-hosted single-operator parity); on a fresh database, account
       //    creation must happen first so RBAC has a real actor to evaluate.
       //    Browser `/api` routes deliberately do NOT get this fallback,
-      //    preserving web login.
+      //    preserving web login. A zero-workspace boot (no organization/
+      //    workspace created yet) has no default workspace to resolve against;
+      //    proceed unauthenticated-actor rather than throwing, mirroring the
+      //    zero-membership USER_TOKEN branch above.
       if (nonBrowser && isLoopbackRequest(req)) {
-        const workspaceUserId = await resolveActorForWorkspace(getActiveWorkspaceId());
+        const defaultWorkspaceId = getActiveWorkspaceIdOrNull();
+        const workspaceUserId = defaultWorkspaceId
+          ? await resolveActorForWorkspace(defaultWorkspaceId)
+          : null;
         setActiveProfileId(
           workspaceUserId ? await profileIdForWorkspaceUser(workspaceUserId) : null
         );

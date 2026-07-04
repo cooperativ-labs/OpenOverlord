@@ -1,17 +1,12 @@
-import { Check, Copy } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { AuthenticatedAvatarImage, Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
-import { ImageDropzone } from '@/components/ui/image-dropzone';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
-import { useMeta, useProfile, useUpdateWorkspace, useUploadWorkspaceLogo } from '@/lib/queries';
-import { cn } from '@/lib/utils';
+import { useMeta, useUpdateWorkspace, useWorkspaceMembers } from '@/lib/queries';
 
 import type { WorkspaceDto } from '../../../../shared/contract.ts';
 
@@ -22,14 +17,14 @@ type GeneralPageProps = {
 
 export function GeneralPage({ open, workspace }: GeneralPageProps) {
   const updateWorkspace = useUpdateWorkspace();
-  const profile = useProfile();
+  const members = useWorkspaceMembers(workspace.id);
   const meta = useMeta();
-  const isAdmin = (profile.data?.roles ?? []).includes('ADMIN');
+  const operator = (members.data ?? []).find(member => member.isOperator);
+  const isAdmin = operator?.isAdmin ?? false;
   const [name, setName] = useState(workspace.name);
   const [savedName, setSavedName] = useState(workspace.name);
   const [nameSaveState, setNameSaveState] = useState<ButtonLoadingState>('default');
   const [nameError, setNameError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [sqlStudioEnabled, setSqlStudioEnabled] = useState(workspace.sqlStudioEnabled);
   const [sqlStudioError, setSqlStudioError] = useState<string | null>(null);
   const [sqlStudioPending, setSqlStudioPending] = useState(false);
@@ -40,7 +35,6 @@ export function GeneralPage({ open, workspace }: GeneralPageProps) {
     setSavedName(workspace.name);
     setNameSaveState('default');
     setNameError(null);
-    setCopied(false);
     setSqlStudioEnabled(workspace.sqlStudioEnabled);
     setSqlStudioError(null);
     setSqlStudioPending(false);
@@ -61,16 +55,6 @@ export function GeneralPage({ open, workspace }: GeneralPageProps) {
     } catch (error) {
       setNameSaveState('error');
       setNameError(error instanceof Error ? error.message : 'Failed to update name.');
-    }
-  }
-
-  async function handleCopyWorkspaceId() {
-    try {
-      await navigator.clipboard.writeText(workspace.id);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* clipboard unavailable */
     }
   }
 
@@ -97,10 +81,8 @@ export function GeneralPage({ open, workspace }: GeneralPageProps) {
     <div className="space-y-6">
       <div>
         <h2 className="text-base font-medium">General</h2>
-        <p className="text-sm text-muted-foreground">Workspace name and identifiers.</p>
+        <p className="text-sm text-muted-foreground">Workspace name and slug.</p>
       </div>
-
-      {isAdmin ? <WorkspaceLogoUploader workspace={workspace} /> : null}
 
       <div className="grid max-w-lg gap-2">
         <Label htmlFor="workspace-settings-name">Name</Label>
@@ -139,26 +121,6 @@ export function GeneralPage({ open, workspace }: GeneralPageProps) {
         <Input value={workspace.slug} readOnly className="h-8 font-mono text-xs" />
         <p className="text-xs text-muted-foreground">
           Stable human-readable key. Set when the workspace is created.
-        </p>
-      </div>
-
-      <div className="grid max-w-lg gap-2">
-        <Label>Workspace ID</Label>
-        <div className="flex items-center gap-2">
-          <Input value={workspace.id} readOnly className="h-8 font-mono text-xs" />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 shrink-0 gap-1.5"
-            onClick={handleCopyWorkspaceId}
-          >
-            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-            {copied ? 'Copied' : 'Copy'}
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Stable identifier used by the CLI and protocol surfaces.
         </p>
       </div>
 
@@ -204,63 +166,6 @@ export function GeneralPage({ open, workspace }: GeneralPageProps) {
           </div>
         </>
       ) : null}
-    </div>
-  );
-}
-
-/** Derive up-to-two-letter initials for the logo fallback. */
-function initialsFor(name: string): string {
-  const initials = name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(part => part.charAt(0).toUpperCase())
-    .join('');
-  return initials || 'OL';
-}
-
-/**
- * The logo shown in workspace settings, doubling as the drop target for the
- * core upload service. Dropping (or clicking to browse and selecting) an image
- * uploads it to the `workspace-images` bucket and sets it as the workspace's
- * logo. Admin-only (gated by the caller); the server also enforces this.
- */
-function WorkspaceLogoUploader({ workspace }: { workspace: WorkspaceDto }) {
-  const uploadLogo = useUploadWorkspaceLogo();
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSelect(file: File) {
-    setError(null);
-    try {
-      await uploadLogo.mutateAsync({ workspaceId: workspace.id, file });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to upload image.');
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-4">
-      <ImageDropzone
-        onSelect={handleSelect}
-        onError={setError}
-        disabled={uploadLogo.isPending}
-        label="Upload a workspace logo"
-      >
-        <Avatar size="lg" className="size-12">
-          {workspace.logoUrl ? (
-            <AuthenticatedAvatarImage src={workspace.logoUrl} alt={workspace.name} />
-          ) : null}
-          <AvatarFallback className="rounded-full">{initialsFor(workspace.name)}</AvatarFallback>
-        </Avatar>
-      </ImageDropzone>
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium">{workspace.name}</p>
-        <p className={cn('truncate text-xs', error ? 'text-destructive' : 'text-muted-foreground')}>
-          {uploadLogo.isPending
-            ? 'Uploading…'
-            : (error ?? 'Drag an image or click to upload a workspace logo.')}
-        </p>
-      </div>
     </div>
   );
 }

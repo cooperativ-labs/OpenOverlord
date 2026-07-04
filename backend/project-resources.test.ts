@@ -7,8 +7,10 @@ import test from 'node:test';
 const tempDir = mkdtempSync(path.join(tmpdir(), 'overlord-webapp-project-resources-'));
 process.env.OVERLORD_SQLITE_PATH = path.join(tempDir, 'webapp.sqlite');
 
-const { db, initDatabase } = await import('./db.ts');
-await initDatabase();
+const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
+const { db } = await bootstrapIntegrationTestDb({
+  sqlitePath: path.join(tempDir, 'webapp.sqlite')
+});
 const {
   createProject,
   createProjectResource,

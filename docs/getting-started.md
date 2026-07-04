@@ -83,7 +83,30 @@ ovld config list
 
 ---
 
-## Step 2 — Create a project and link it to your repo
+## Step 2 — Set up your organization and workspace
+
+A brand-new, authenticated profile with zero workspace memberships needs an
+**organization** (the grouping + identity layer, e.g. a company or team) and a
+first **workspace** (the RBAC layer projects live inside) before it can create
+projects. `ovld org-setup` drives the same onboarding endpoint the web app's
+onboarding screen uses, so the two can never drift:
+
+```bash
+ovld org-setup --org-name "Acme" --workspace-name "general"
+```
+
+Omit the flags on an interactive terminal and it prompts for them; pass
+`--no-input` in scripts to fail fast on anything missing. `--if-needed` exits
+`0` as a no-op once you already belong to an organization, so bootstrap
+scripts can call it unconditionally. See the command reference for the full
+flag list (including `--logo`).
+
+If you were invited to an existing workspace, skip this step — you already
+have a membership, and `org-setup` will tell you so.
+
+---
+
+## Step 3 — Create a project and link it to your repo
 
 A **project** is Overlord's container for missions. It knows which git repository
 holds the work and which local directory to use when launching an agent.
@@ -103,7 +126,7 @@ is linked on more than one execution target.
 
 ---
 
-## Step 3 — Configure Overlord
+## Step 4 — Configure Overlord
 
 Run the guided setup to choose a local or cloud backend, configure agent
 connectors, and pick the default terminal used for launched agents:
@@ -117,7 +140,7 @@ it prints the latest Desktop download URL before writing the local backend URL.
 
 ---
 
-## Step 4 — Install or repair an agent connector directly
+## Step 5 — Install or repair an agent connector directly
 
 Connectors let your AI harness (Claude Code, Codex, Cursor, …) speak the
 Overlord protocol and receive mission context automatically.
@@ -143,7 +166,7 @@ or updates it.
 
 ---
 
-## Step 5 — Create your first mission
+## Step 6 — Create your first mission
 
 A **mission** is a unit of work. It holds one or more sequential **objectives**,
 each of which maps to one agent session. Create a mission with a single
@@ -169,7 +192,7 @@ ovld missions list --status next-up,execute
 
 ---
 
-## Step 6 — Launch an agent on the mission
+## Step 7 — Launch an agent on the mission
 
 ```bash
 ovld launch claude --mission-id 1:1042
@@ -185,7 +208,7 @@ do the work, post progress updates, and deliver when done.
 
 ---
 
-## Step 7 — Review the results
+## Step 8 — Review the results
 
 Once the agent delivers, inspect what it produced:
 
@@ -208,7 +231,7 @@ trail that lives alongside the diff.
 
 ---
 
-## Step 8 — Open the web app (optional)
+## Step 9 — Open the web app (optional)
 
 ```bash
 yarn dev
@@ -259,7 +282,7 @@ when stale backend-host execution targets are reported.
 
 ---
 
-## Step 9 — Inspect the database with SQL Studio (optional)
+## Step 10 — Inspect the database with SQL Studio (optional)
 
 The local backend can launch [SQL Studio](https://github.com/frectonz/sql-studio),
 an external local database browser, alongside the web app so you can inspect

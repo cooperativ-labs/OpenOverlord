@@ -154,18 +154,6 @@ export interface MetaDto {
 }
 
 /**
- * Initial instance setup: names the seeded first workspace and picks its slug.
- * The slug prefixes mission identifiers (`<slug>:<sequence>`); when omitted it
- * is suggested from the first three letters of the name.
- */
-export interface CompleteInitialSetupBody {
-  /** Optional stable workspace ID; derived from the full name when omitted. */
-  id?: string;
-  name: string;
-  slug?: string;
-}
-
-/**
  * A workspace membership (`workspace_users` joined to `profiles`).
  */
 export interface WorkspaceMemberDto {

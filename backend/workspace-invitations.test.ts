@@ -22,9 +22,11 @@ const {
 await initDatabase();
 const { loadActorRoles, actorCan } = await import('./rbac.ts');
 const { PERMISSIONS } = await import('@overlord/auth');
-const { seedAuthenticatedOperator } = await import('./test-helpers.ts');
+const { DEFAULT_TEST_ORGANIZATION_ID, seedAuthenticatedOperator } =
+  await import('./test-helpers.ts');
 const {
   acceptWorkspaceInvitation,
+  createOrganizationOnboarding,
   createWorkspace,
   inviteWorkspaceMember,
   listWorkspaceInvitations,
@@ -55,7 +57,10 @@ function tokenFromAcceptUrl(acceptUrl: string): string {
 test('admin can invite an email and the invitee joins only that workspace with the granted role', async () => {
   // A second workspace the invitee is never invited to, so we can prove
   // acceptance does not leak membership into it.
-  const otherWorkspace = await createWorkspace({ name: 'Not Invited Here' });
+  const otherWorkspace = await createWorkspace({
+    organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+    name: 'Not Invited Here'
+  });
 
   const inviteResult = await inviteWorkspaceMember('local-workspace', {
     email: 'test@cooperativ.io',
@@ -180,7 +185,10 @@ test('accepting an invitation never leaks into the process-wide default workspac
   // fallback itself — that's the bootstrap/loopback path, not what this test
   // is checking. Snapshot the fallback *after* creation, immediately before
   // the request-scoped accept, which must leave it untouched.
-  const otherWorkspace = await createWorkspace({ name: 'Leak Check Workspace' });
+  const otherWorkspace = await createWorkspace({
+    organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+    name: 'Leak Check Workspace'
+  });
   const defaultWorkspaceIdBefore = dbModule.WORKSPACE.id;
   const defaultActorBefore = dbModule.ACTOR_WORKSPACE_USER_ID;
 
@@ -344,7 +352,10 @@ test('a non-admin member cannot invite anyone', async () => {
 test("an admin can remove a member, but not the workspace's only remaining member", async () => {
   // A dedicated workspace so its membership count isn't polluted by the
   // invitees other tests already accepted into 'local-workspace'.
-  const workspace = await createWorkspace({ name: 'Removal Guard Workspace' });
+  const workspace = await createWorkspace({
+    organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+    name: 'Removal Guard Workspace'
+  });
   const creatorWorkspaceUserId = (await listWorkspaceMembers(workspace.id))[0]?.workspaceUserId;
   assert.ok(creatorWorkspaceUserId);
 
@@ -389,7 +400,10 @@ test("an admin can remove a member, but not the workspace's only remaining membe
 });
 
 test('admins can promote and demote members, but cannot remove or demote the last admin', async () => {
-  const workspace = await createWorkspace({ name: 'Role Guard Workspace' });
+  const workspace = await createWorkspace({
+    organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+    name: 'Role Guard Workspace'
+  });
   const creatorWorkspaceUserId = (await listWorkspaceMembers(workspace.id))[0]?.workspaceUserId;
   assert.ok(creatorWorkspaceUserId);
 
@@ -469,7 +483,12 @@ test('an invited MEMBER can switch (activate) between the workspaces they belong
     setActiveProfileId('switcher-user');
     setActiveWorkspaceContext(null);
     setActiveWorkspaceUser(null);
-    ownWorkspaceId = (await createWorkspace({ name: 'Switcher Own' })).id;
+    ownWorkspaceId = (
+      await createOrganizationOnboarding({
+        organizationName: 'Switcher Org',
+        workspaceName: 'Switcher Own'
+      })
+    ).id;
     await acceptWorkspaceInvitation({ token: tokenFromAcceptUrl(invite.acceptUrl!) });
   });
 

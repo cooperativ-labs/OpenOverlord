@@ -84,6 +84,7 @@ import {
   buildWebappServiceContext,
   DATABASE_DIALECT,
   enqueueWebhookEventRest,
+  findActiveMembershipId,
   getActiveWorkspace,
   getActiveWorkspaceId,
   getActorWorkspaceUserId,
@@ -91,7 +92,8 @@ import {
   nowIso,
   recordChange,
   type RecordChangeInput,
-  requireDatabaseClient
+  requireDatabaseClient,
+  resolveActiveProfileId
 } from './db.ts';
 import { ApiError } from './errors.ts';
 import {
@@ -106,6 +108,7 @@ import {
   resolveMutationAnchorMissionId,
   resolveRemoteMutationTarget
 } from './local-target-mutation-queue.ts';
+import { getActiveOrganizationIdOrNull } from './organizations.ts';
 import { loadActorRoles } from './rbac.ts';
 import {
   generateMissionTitleNow,
@@ -1427,6 +1430,29 @@ export async function listProjects(
   const rows = (await db.all(
     `${selectProjectsSql} ORDER BY p.status ASC, p.position ASC, p.created_at ASC`,
     [getActiveWorkspaceId()]
+  )) as ProjectRow[];
+  return rows.map(toProjectDto);
+}
+
+/**
+ * Projects of an arbitrary (not necessarily active) workspace, for the
+ * sidebar rendering several workspaces of the active organization at once.
+ * Membership is validated per target workspace (coo:96 pattern) — the caller
+ * must be an active member of `workspaceId`, independent of which workspace
+ * happens to be their currently active one.
+ */
+export async function listProjectsForWorkspace(
+  workspaceId: string,
+  db: DatabaseClient = requireDatabaseClient()
+): Promise<ProjectDto[]> {
+  const profileId = await resolveActiveProfileId(db);
+  if (!profileId) throw new ApiError(401, 'Authentication required');
+  const membershipId = await findActiveMembershipId(workspaceId, profileId, db);
+  if (!membershipId) throw new ApiError(404, 'Workspace not found or no active membership');
+
+  const rows = (await db.all(
+    `${selectProjectsSql} ORDER BY p.status ASC, p.position ASC, p.created_at ASC`,
+    [workspaceId]
   )) as ProjectRow[];
   return rows.map(toProjectDto);
 }
@@ -3940,13 +3966,44 @@ function toMyMissionDto(r: MyMissionRow, tags: ProjectTagDto[]): MyMissionDto {
   };
 }
 
-// Missions assigned to the active operator across the active workspace, joined to
-// their (non-deleted) project for name/color and to the operator's personal
-// column position. The position only applies when its stored status_id still
-// matches the mission's current status, so a status change made on the project
-// board self-corrects (the mission falls back to the default order in its new
-// column).
-const selectMyMissionsSql = `
+/**
+ * The caller's active `(workspace_id, workspace_user_id)` memberships across
+ * every live workspace of the active organization — My Missions aggregates
+ * across all of them (Q5: v1 is a plain union of status columns per
+ * workspace; merging like-named statuses across workspaces is deferred).
+ * Empty pre-onboarding (no active organization) or with no active profile.
+ */
+async function callerMembershipsInActiveOrganization(
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<Array<{ workspaceId: string; workspaceUserId: string }>> {
+  const profileId = await resolveActiveProfileId(client);
+  const organizationId = await getActiveOrganizationIdOrNull(client);
+  if (!profileId || !organizationId) return [];
+  const rows = await client.all<{ workspace_id: string; workspace_user_id: string }>(
+    `SELECT wu.workspace_id, wu.id AS workspace_user_id
+       FROM workspace_users wu
+       JOIN workspaces w ON w.id = wu.workspace_id AND w.deleted_at IS NULL
+      WHERE w.organization_id = ? AND wu.profile_id = ?
+        AND wu.status = 'active' AND wu.deleted_at IS NULL`,
+    [organizationId, profileId]
+  );
+  return rows.map(row => ({
+    workspaceId: row.workspace_id,
+    workspaceUserId: row.workspace_user_id
+  }));
+}
+
+// Missions assigned to the caller across every workspace they belong to in the
+// active organization, joined to their (non-deleted) project for name/color and
+// to the caller's own personal column position in that mission's workspace. The
+// position only applies when its stored status_id still matches the mission's
+// current status, so a status change made on the project board self-corrects
+// (the mission falls back to the default order in its new column). Matched via
+// a `(workspace_id, assigned_workspace_user_id)` pair list rather than a single
+// workspace/actor pair, since the caller has a distinct `workspace_users.id` in
+// each workspace.
+function selectMyMissionsSql(pairPlaceholders: string): string {
+  return `
   SELECT t.id, t.workspace_id, t.project_id, t.display_id, t.sequence_number, t.title,
          t.status_id, t.status_type, t.board_position, t.priority,
          t.assigned_workspace_user_id,
@@ -3975,27 +4032,34 @@ const selectMyMissionsSql = `
       AND p.deleted_at IS NULL
     LEFT JOIN my_mission_positions mtp
       ON mtp.workspace_id = t.workspace_id AND mtp.mission_id = t.id
-        AND mtp.workspace_user_id = ? AND mtp.status_id = t.status_id
-   WHERE t.workspace_id = ? AND t.deleted_at IS NULL
-     AND t.assigned_workspace_user_id = ?
+        AND mtp.workspace_user_id = t.assigned_workspace_user_id AND mtp.status_id = t.status_id
+   WHERE t.deleted_at IS NULL
+     AND (t.workspace_id, t.assigned_workspace_user_id) IN (${pairPlaceholders})
 `;
+}
 
 /**
- * GET /api/workspace/my-missions — missions assigned to the active operator across
- * the active workspace. Read-time merge order: positioned missions first by their
- * personal position, then unpositioned missions by the approximate default
- * aggregate order (board_position, then recency, then a stable tiebreaker). The
- * client regroups by statusId, preserving this within-column order. If no actor
- * workspace-user resolves, returns an empty list rather than broadening.
+ * GET /api/workspace/my-missions — missions assigned to the caller across every
+ * workspace they belong to in the active organization (Q5). Read-time merge
+ * order: positioned missions first by their personal position, then
+ * unpositioned missions by the approximate default aggregate order
+ * (board_position, then recency, then a stable tiebreaker). The client
+ * regroups by statusId, preserving this within-column order. Returns an empty
+ * list rather than broadening when there is no active organization or no
+ * memberships in it.
  */
 export async function listWorkspaceMyMissions(): Promise<MyMissionsResponse> {
-  const actor = getActorWorkspaceUserId();
-  if (!actor) return { missions: [] };
+  const memberships = await callerMembershipsInActiveOrganization();
+  if (memberships.length === 0) return { missions: [] };
+
+  const pairPlaceholders = memberships.map(() => '(?, ?)').join(', ');
+  const pairParams = memberships.flatMap(m => [m.workspaceId, m.workspaceUserId]);
+
   const rows = (await requireDatabaseClient().all(
-    `${selectMyMissionsSql}
+    `${selectMyMissionsSql(pairPlaceholders)}
          ORDER BY (mtp.position IS NULL) ASC, mtp.position ASC,
                   t.board_position ASC, t.updated_at DESC, t.sequence_number DESC, t.id ASC`,
-    [actor, getActiveWorkspaceId(), actor]
+    pairParams
   )) as MyMissionRow[];
   const tagsByMission = await getTagsByMission(rows.map(row => row.id));
   return { missions: rows.map(row => toMyMissionDto(row, tagsByMission.get(row.id) ?? [])) };
@@ -4005,12 +4069,14 @@ export async function listWorkspaceMyMissions(): Promise<MyMissionsResponse> {
 async function upsertMyMissionPosition(
   db: DatabaseClient,
   {
+    workspaceId,
     missionId,
     statusId,
     position,
     actor,
     now
   }: {
+    workspaceId: string;
     missionId: string;
     statusId: string;
     position: number;
@@ -4021,7 +4087,7 @@ async function upsertMyMissionPosition(
   const existing = (await db.get(
     `SELECT id, revision FROM my_mission_positions
          WHERE workspace_id = ? AND workspace_user_id = ? AND mission_id = ?`,
-    [getActiveWorkspaceId(), actor, missionId]
+    [workspaceId, actor, missionId]
   )) as { id: string; revision: number } | undefined;
   if (existing) {
     await db.run(
@@ -4036,14 +4102,54 @@ async function upsertMyMissionPosition(
     `INSERT INTO my_mission_positions
        (id, workspace_id, workspace_user_id, mission_id, status_id, position, created_at, updated_at, revision)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-    [newId(), getActiveWorkspaceId(), actor, missionId, statusId, position, now, now]
+    [newId(), workspaceId, actor, missionId, statusId, position, now, now]
   );
 }
 
-async function reorderWorkspaceMyMissionsTx(body: MyMissionReorderRequest): Promise<void> {
-  const actor = getActorWorkspaceUserId();
-  if (!actor) throw new ApiError(403, 'No active workspace operator to reorder for');
+/**
+ * A status/mission reorder targets a specific `statusId`, which is owned by
+ * exactly one workspace (its composite FK). That workspace need not be the
+ * caller's currently *active* workspace now that My Missions aggregates
+ * across the whole organization — this resolves and authorizes it explicitly:
+ * the status's workspace must belong to the caller's active organization, and
+ * the caller must have an active membership there.
+ */
+async function requireStatusWorkspaceMembership(
+  tx: DatabaseClient,
+  statusId: string
+): Promise<{ statusRow: WorkspaceStatusRow; workspaceUserId: string }> {
+  const organizationId = await getActiveOrganizationIdOrNull(tx);
+  if (!organizationId) {
+    throw new ApiError(409, 'No active organization', undefined, STATUS_UNAVAILABLE_FOR_WORKSPACE);
+  }
 
+  const statusRow = (await tx.get(
+    `SELECT ws.* FROM workspace_statuses ws
+       JOIN workspaces w ON w.id = ws.workspace_id AND w.deleted_at IS NULL
+      WHERE ws.id = ? AND ws.deleted_at IS NULL AND w.organization_id = ?`,
+    [statusId, organizationId]
+  )) as WorkspaceStatusRow | undefined;
+  if (!statusRow) {
+    throw new ApiError(
+      409,
+      'That status is not available for missions in this organization',
+      undefined,
+      STATUS_UNAVAILABLE_FOR_WORKSPACE
+    );
+  }
+
+  const profileId = await resolveActiveProfileId(tx);
+  const membership = profileId
+    ? await findActiveMembershipId(statusRow.workspace_id, profileId, tx)
+    : null;
+  if (!membership) {
+    throw new ApiError(403, 'Not an active member of that mission’s workspace');
+  }
+
+  return { statusRow, workspaceUserId: membership };
+}
+
+async function reorderWorkspaceMyMissionsTx(body: MyMissionReorderRequest): Promise<void> {
   const statusId = body.statusId;
   const orderedIds = body.orderedMissionIds;
   if (!statusId) throw new ApiError(400, 'statusId is required');
@@ -4053,28 +4159,17 @@ async function reorderWorkspaceMyMissionsTx(body: MyMissionReorderRequest): Prom
   }
 
   await requireDatabaseClient().transaction(async tx => {
-    // Resolve the target column against the active workspace. A status the
-    // workspace doesn't own can never satisfy a mission's composite FK, so reject
-    // early with a typed, workspace-specific code the client renders as an alert.
-    const statusRow = (await tx.get(
-      `SELECT * FROM workspace_statuses WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [statusId, getActiveWorkspaceId()]
-    )) as WorkspaceStatusRow | undefined;
-    if (!statusRow) {
-      throw new ApiError(
-        409,
-        `That status is not available for missions in the ${getActiveWorkspace().name} workspace`,
-        undefined,
-        STATUS_UNAVAILABLE_FOR_WORKSPACE
-      );
-    }
-
+    const { statusRow, workspaceUserId: actor } = await requireStatusWorkspaceMembership(
+      tx,
+      statusId
+    );
+    const workspaceId = statusRow.workspace_id;
     const now = nowIso();
 
     for (const [index, missionId] of orderedIds.entries()) {
       const existing = (await tx.get(
         `SELECT * FROM missions WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-        [missionId, getActiveWorkspaceId()]
+        [missionId, workspaceId]
       )) as MissionRow | undefined;
       if (!existing) throw new ApiError(404, `Mission ${missionId} not found in workspace`);
       if (existing.assigned_workspace_user_id !== actor) {
@@ -4099,7 +4194,7 @@ async function reorderWorkspaceMyMissionsTx(body: MyMissionReorderRequest): Prom
             now,
             revision,
             missionId,
-            getActiveWorkspaceId()
+            workspaceId
           ]
         );
         await recordChange(
@@ -4110,6 +4205,7 @@ async function reorderWorkspaceMyMissionsTx(body: MyMissionReorderRequest): Prom
             entityRevision: revision,
             projectId: existing.project_id,
             missionId,
+            workspaceId,
             changedFields: ['status_id', 'status_type', 'board_position']
           },
           tx
@@ -4119,6 +4215,7 @@ async function reorderWorkspaceMyMissionsTx(body: MyMissionReorderRequest): Prom
       // Personal slot within the (operator, status) column. Writes only
       // my_mission_positions — never missions.board_position for a within-column move.
       await upsertMyMissionPosition(tx, {
+        workspaceId,
         missionId,
         statusId: statusRow.id,
         position: (index + 1) * MY_POSITION_STEP,

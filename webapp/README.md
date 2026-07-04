@@ -111,8 +111,10 @@ camelCase per the [REST API Boundary](../database/docs/09-database-schema-contra
 
 | Method & path | Purpose |
 | --- | --- |
-| `GET /api/meta` | Workspace + capability flags (what this build supports), plus `needsSetup` while the seeded first workspace is still unnamed |
-| `POST /api/setup` | One-time initial instance setup: names the first workspace and sets the slug that prefixes mission identifiers (`<slug>:<sequence>`) |
+| `GET /api/meta` | Active organization, organizations list, accessible workspaces in that organization, nullable default workspace, and capability flags |
+| `POST /api/onboarding` | Zero-membership onboarding: creates an organization, first workspace, membership, and admin role in one transaction |
+| `GET/PATCH /api/organizations/:id` | Organization identity and settings, including name and logo |
+| `GET/POST/DELETE /api/organizations/:id/admins` | Derived organization admin management (`ADMIN` in every constituent workspace) |
 | `GET /realtime` | Canonical SSE realtime feed of `entity_changes` deltas |
 | `GET /api/stream` | Compatibility alias for the SSE realtime feed |
 | `GET /sync/changes?after=<seq>` | Reconnect catch-up read backed by `entity_changes` |

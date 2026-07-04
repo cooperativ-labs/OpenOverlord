@@ -1,33 +1,15 @@
-import {
-  closestCenter,
-  DndContext,
-  type DragEndEvent,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy
-} from '@dnd-kit/sortable';
-import { Link, useParams, useRouterState } from '@tanstack/react-router';
-import { Archive, FolderKanban, Inbox, Plus, Settings } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Link, useRouterState } from '@tanstack/react-router';
+import { Inbox, Settings } from 'lucide-react';
+import { useState } from 'react';
 
 import { NavUser } from '@/components/nav-user';
-import { ProjectCreatorModal } from '@/components/projects/ProjectCreatorModal';
-import { ProjectSettingsModal } from '@/components/projects/ProjectSettingsModal';
-import { ProjectSidebarMenuItem } from '@/components/ProjectSidebarMenuItem';
+import { OrganizationSwitcher } from '@/components/organization-switcher';
 import { SettingsModal, type SettingsNavSection } from '@/components/settings/SettingsModal.tsx';
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
-  SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
@@ -37,106 +19,27 @@ import {
   SidebarRail,
   SidebarSeparator
 } from '@/components/ui/sidebar';
-import { WorkspaceSwitcher } from '@/components/workspace-switcher';
+import { WorkspaceSettingsModal } from '@/components/workspaces/WorkspaceSettingsModal';
+import { WorkspaceSidebarSection } from '@/components/WorkspaceSidebarSection';
 import { DRAG_REGION, getDesktopChrome, NO_DRAG_REGION } from '@/lib/desktop-chrome';
-import { useProjects, useReorderProjects } from '@/lib/queries';
-
-import type { ProjectDto } from '../../shared/contract.ts';
+import { useMeta } from '@/lib/queries';
 
 export function AppSidebar() {
-  const projects = useProjects();
-  const reorderProjects = useReorderProjects();
-  const params = useParams({ strict: false }) as { projectId?: string };
-  const [projectCreatorOpen, setProjectCreatorOpen] = useState(false);
+  const meta = useMeta();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialNav, setSettingsInitialNav] = useState<SettingsNavSection | undefined>();
-  const [projectSettingsId, setProjectSettingsId] = useState<string | null>(null);
-  const [reorderError, setReorderError] = useState<string | null>(null);
+  const [workspaceSettingsId, setWorkspaceSettingsId] = useState<string | null>(null);
+
+  const organizationId = meta.data?.organization?.id ?? null;
+  const workspaces = meta.data?.workspaces ?? [];
 
   const openSettings = (section?: SettingsNavSection) => {
     setSettingsInitialNav(section);
     setSettingsOpen(true);
   };
 
-  const { activeProjects, archivedProjects } = useMemo(() => {
-    const all = projects.data ?? [];
-    return {
-      activeProjects: [...all.filter(project => project.status === 'active')].sort(
-        (a, b) => a.position - b.position
-      ),
-      archivedProjects: [...all.filter(project => project.status === 'archived')].sort(
-        (a, b) => a.position - b.position
-      )
-    };
-  }, [projects.data]);
-
-  // Optimistic local order for the sidebar's active projects, kept in sync
-  // with the server order and overridden immediately on drop (mirrors the
-  // same pattern used for card statuses in StatusesPage).
-  const [activeOrder, setActiveOrder] = useState<string[]>(() =>
-    activeProjects.map(project => project.id)
-  );
-
-  useEffect(() => {
-    const incomingIds = activeProjects.map(project => project.id);
-    setActiveOrder(previous => {
-      const previousSet = new Set(previous);
-      const incomingSet = new Set(incomingIds);
-      const sameMembership =
-        previous.length === incomingIds.length && previous.every(id => incomingSet.has(id));
-      if (sameMembership) return previous;
-      const kept = previous.filter(id => incomingSet.has(id));
-      const additions = incomingIds.filter(id => !previousSet.has(id));
-      return [...kept, ...additions];
-    });
-  }, [activeProjects]);
-
-  const orderedActiveProjects = useMemo(() => {
-    const byId = new Map(activeProjects.map(project => [project.id, project]));
-    return activeOrder
-      .map(id => byId.get(id))
-      .filter((project): project is ProjectDto => Boolean(project));
-  }, [activeProjects, activeOrder]);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
-
-  function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const oldIndex = activeOrder.indexOf(String(active.id));
-    const newIndex = activeOrder.indexOf(String(over.id));
-    if (oldIndex === -1 || newIndex === -1) return;
-
-    const nextOrder = arrayMove(activeOrder, oldIndex, newIndex);
-    setActiveOrder(nextOrder);
-    setReorderError(null);
-
-    reorderProjects.mutate(
-      { orderedProjectIds: [...nextOrder, ...archivedProjects.map(project => project.id)] },
-      {
-        onError: error => {
-          setActiveOrder(activeProjects.map(project => project.id));
-          setReorderError(error instanceof Error ? error.message : 'Failed to reorder projects.');
-        }
-      }
-    );
-  }
-
-  const projectForSettings = useMemo(
-    () => (projectSettingsId ? (projects.data ?? []).find(p => p.id === projectSettingsId) : null),
-    [projectSettingsId, projects.data]
-  );
-
   const pathname = useRouterState({ select: state => state.location.pathname });
   const isMyMissionsActive = pathname === '/workspace' || pathname.startsWith('/workspace/');
-
-  // On macOS the shell insets the traffic lights at (14, 14), which sit over the
-  // top-left of the sidebar. Reserve vertical room for them and make the cleared
-  // strip a window-drag region (the WorkspaceSwitcher opts back out below).
   const { isMacDesktop } = getDesktopChrome();
 
   return (
@@ -147,12 +50,12 @@ export function AppSidebar() {
           style={isMacDesktop ? DRAG_REGION : undefined}
         >
           <div style={isMacDesktop ? NO_DRAG_REGION : undefined}>
-            <WorkspaceSwitcher />
+            <OrganizationSwitcher />
           </div>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+            <SidebarGroupLabel>Organization</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
@@ -169,59 +72,16 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
 
-          <SidebarGroup>
-            <SidebarGroupLabel>Projects</SidebarGroupLabel>
-            <SidebarGroupAction title="New project" onClick={() => setProjectCreatorOpen(true)}>
-              <Plus />
-              <span className="sr-only">New project</span>
-            </SidebarGroupAction>
-            <SidebarGroupContent>
-              <SidebarMenu className="gap-1">
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleDragEnd}
-                >
-                  <SortableContext items={activeOrder} strategy={verticalListSortingStrategy}>
-                    {orderedActiveProjects.map(project => (
-                      <ProjectSidebarMenuItem
-                        key={project.id}
-                        project={project}
-                        isActive={params.projectId === project.id}
-                        onOpenSettings={setProjectSettingsId}
-                        dragDisabled={reorderProjects.isPending}
-                      />
-                    ))}
-                  </SortableContext>
-                </DndContext>
-                {activeProjects.length === 0 && (
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      className="text-muted-foreground"
-                      onClick={() => setProjectCreatorOpen(true)}
-                    >
-                      <FolderKanban />
-                      <span>Create a project</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )}
-                {archivedProjects.length > 0 && (
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      render={<Link to="/projects" />}
-                      tooltip={`${archivedProjects.length} archived`}
-                    >
-                      <Archive />
-                      <span>{archivedProjects.length} archived</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )}
-              </SidebarMenu>
-              {reorderError ? (
-                <p className="px-2 pt-1 text-xs text-destructive">{reorderError}</p>
-              ) : null}
-            </SidebarGroupContent>
-          </SidebarGroup>
+          {organizationId
+            ? workspaces.map(workspace => (
+                <WorkspaceSidebarSection
+                  key={workspace.id}
+                  workspace={workspace}
+                  organizationId={organizationId}
+                  onOpenWorkspaceSettings={setWorkspaceSettingsId}
+                />
+              ))
+            : null}
         </SidebarContent>
         <SidebarFooter>
           <SidebarMenu>
@@ -239,16 +99,13 @@ export function AppSidebar() {
         <SidebarRail />
       </Sidebar>
 
-      <ProjectCreatorModal open={projectCreatorOpen} onOpenChange={setProjectCreatorOpen} />
-      {projectForSettings ? (
-        <ProjectSettingsModal
-          open={projectSettingsId !== null}
-          onOpenChange={nextOpen => {
-            if (!nextOpen) setProjectSettingsId(null);
-          }}
-          project={projectForSettings}
-        />
-      ) : null}
+      <WorkspaceSettingsModal
+        open={workspaceSettingsId !== null}
+        onOpenChange={nextOpen => {
+          if (!nextOpen) setWorkspaceSettingsId(null);
+        }}
+        workspaceId={workspaceSettingsId}
+      />
       <SettingsModal
         open={settingsOpen}
         onOpenChange={nextOpen => {

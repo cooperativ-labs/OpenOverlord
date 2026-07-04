@@ -12,7 +12,8 @@ const { db, initDatabase, setActiveWorkspaceUser } = dbModule;
 await initDatabase();
 const { ensureWorkspaceUser } = await import('./auth.ts');
 const { getRequestedWorkspaceId } = await import('./auth.ts');
-const { seedAuthenticatedOperator } = await import('./test-helpers.ts');
+const { DEFAULT_TEST_ORGANIZATION_ID, seedAuthenticatedOperator } =
+  await import('./test-helpers.ts');
 const { createWorkspace } = await import('./workspaces.ts');
 
 const operatorWorkspaceUserId = seedAuthenticatedOperator({ db });
@@ -35,7 +36,10 @@ test('ensureWorkspaceUser resolves an existing member without change', async () 
 test('ensureWorkspaceUser does not auto-join a second signed-up account into any workspace', async () => {
   // Simulate a second workspace already existing, so we can prove the new
   // signup is not folded into *any* of them, not just the active one.
-  await createWorkspace({ name: 'Second Workspace For Auth Test' });
+  await createWorkspace({
+    organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+    name: 'Second Workspace For Auth Test'
+  });
 
   insertUnaffiliatedProfile('test-user');
 
@@ -56,7 +60,10 @@ test('ensureWorkspaceUser does not auto-join a second signed-up account into any
 });
 
 test('ensureWorkspaceUser resolves an explicitly requested workspace the profile belongs to', async () => {
-  const second = await createWorkspace({ name: 'Explicit Request Workspace' });
+  const second = await createWorkspace({
+    organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+    name: 'Explicit Request Workspace'
+  });
   insertUnaffiliatedProfile('multi-workspace-user');
   db.prepare(
     `INSERT INTO workspace_users
@@ -103,9 +110,9 @@ test('ensureWorkspaceUser rejects a requested workspace the profile is not a mem
   insertUnaffiliatedProfile('other-tenant-user');
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO workspaces (id, slug, name, kind, settings_json, created_at, updated_at, revision)
-     VALUES ('other-tenant-workspace', 'other-tenant', 'Other Tenant', 'local', '{}', ?, ?, 1)`
-  ).run(now, now);
+    `INSERT INTO workspaces (id, organization_id, slug, name, kind, settings_json, created_at, updated_at, revision)
+     VALUES ('other-tenant-workspace', ?, 'other-tenant', 'Other Tenant', 'local', '{}', ?, ?, 1)`
+  ).run(DEFAULT_TEST_ORGANIZATION_ID, now, now);
   db.prepare(
     `INSERT INTO workspace_users
        (id, workspace_id, profile_id, member_key, status, metadata_json, created_at, updated_at, revision)

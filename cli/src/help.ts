@@ -34,6 +34,14 @@ Connectors:
                                                  Install/repair one connector (e.g. claude)
   ${primaryCommand} agent-setup all [--dry-run]  Install/repair all supported connectors
 
+Organizations:
+  ${primaryCommand} org-setup --org-name "<name>" [--workspace-name <name>] [--workspace-slug <slug>]
+                              [--logo <path>] [--no-input] [--if-needed] [--json]
+                                                 One-time org + first-workspace onboarding for a
+                                                 profile with zero workspace memberships. Prompts
+                                                 interactively on a TTY; --if-needed is a no-op (exit 0)
+                                                 once you already belong to an organization.
+
 Projects:
   ${primaryCommand} create-project --name "<name>" [--directory <path>|--no-directory]
   ${primaryCommand} add-cwd [--directory <path>] [--project-id <id>] [--primary true|false]

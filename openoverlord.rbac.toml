@@ -8,6 +8,37 @@
 description = "Full instance administrator"
 grants = ["*"]
 
+[roles.MANAGER]
+description = "Manages the workspace and its members/projects, short of full admin"
+grants = [
+  "workspace:read",
+  "workspace:update",
+  "workspace:activate",
+  "member:invite",
+  "member:remove",
+  "invitation:read",
+  "invitation:revoke",
+  "project:*",
+  "mission:*",
+  "objective:*",
+  "session:*",
+  "event:create",
+  "event:read",
+  "artifact:*",
+  "workspace_image:read",
+  "organization_image:read",
+  "user_image:read",
+  "user_image:self:*",
+  "attachment:*",
+  "user_token:self:*",
+  "execution_request:create",
+  "execution_request:read",
+  "execution_request:claim",
+]
+# MANAGER's member/invitation grants above are capped server-side (never by this
+# grant list alone): a MANAGER actor may neither grant ADMIN to another member
+# nor demote/remove an existing ADMIN. See backend/workspaces.ts.
+
 [roles.MEMBER]
 description = "Standard user or persistent agent account"
 grants = [
@@ -19,6 +50,7 @@ grants = [
   "event:read",
   "artifact:*",
   "workspace_image:read",
+  "organization_image:read",
   "user_image:read",
   "user_image:self:*",
   "attachment:*",
@@ -32,6 +64,7 @@ grants = [
 description = "Unauthenticated public read access"
 grants = [
   "workspace_image:read",
+  "organization_image:read",
   "user_image:read",
 ]
 

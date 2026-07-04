@@ -11,10 +11,10 @@ import { useState } from 'react';
 import { AppSidebar } from './components/app-sidebar.tsx';
 import { NavHeader } from './components/nav-header.tsx';
 import { ProjectCreatorModal } from './components/projects/ProjectCreatorModal.tsx';
-import { CreateWorkspaceOnboardingScreen } from './components/setup/CreateWorkspaceOnboardingScreen.tsx';
-import { InitialSetupScreen } from './components/setup/InitialSetupScreen.tsx';
+import { OrganizationOnboardingScreen } from './components/setup/OrganizationOnboardingScreen.tsx';
 import { SidebarInset, SidebarProvider } from './components/ui/sidebar.tsx';
 import { useMeta, useProjects, useWorkspaceMyMissions } from './lib/queries.ts';
+import { shouldShowOnboarding } from './lib/router-gates.ts';
 import { AcceptInvitePage } from './pages/AcceptInvitePage.tsx';
 import { MissionPanelRoute } from './pages/MissionPage.tsx';
 import { MyMissionsShell, WorkspaceMissionPanelRoute } from './pages/MyMissionsShell.tsx';
@@ -55,19 +55,14 @@ function RootLayout() {
     return <Outlet />;
   }
 
-  // An invitee may have zero workspace memberships until this page's accept
-  // call succeeds, so it must render before the needsSetup/no-workspace gates
-  // below (which would otherwise redirect it into onboarding).
   if (isAcceptInvite) {
     return <Outlet />;
   }
 
-  // A fresh instance must name its first workspace (and pick the mission-id
-  // slug) before anything else; hold rendering until we know which to show so
-  // the board never flashes behind the setup step.
   if (meta.isPending) return null;
-  if (meta.data?.needsSetup) return <InitialSetupScreen />;
-  if (meta.data && !meta.data.workspace) return <CreateWorkspaceOnboardingScreen />;
+  if (shouldShowOnboarding(meta.data)) {
+    return <OrganizationOnboardingScreen />;
+  }
 
   return (
     <SidebarProvider className="h-dvh min-h-0 overflow-hidden">

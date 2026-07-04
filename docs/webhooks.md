@@ -77,6 +77,11 @@ Every delivery has the same envelope shape; `type` tells you which event it is.
   "workspace": { "id": "…", "name": "Cooperativ" },     // name present in `full` mode only
   "project": { "id": "…", "name": "OpenOverlord" },      // name present in `full` mode only
   "mission": {
+    // displayId ("<slug>:<sequence>") is unique per workspace, not globally —
+    // a hosted instance can have several organizations, each with several
+    // workspaces, so two different missions can share a displayId if they're
+    // in different workspaces. Scope any lookup by `workspace.id` above, not
+    // `displayId` alone.
     "id": "…", "displayId": "coo:115",
     "title": "Develop Mission Data Webhooks/API",         // full mode only
     "status": { "id": "…", "type": "review", "label": "In review" }, // full mode only

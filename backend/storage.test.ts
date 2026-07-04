@@ -7,7 +7,8 @@ import path from 'node:path';
 import test from 'node:test';
 
 const tempDir = mkdtempSync(path.join(tmpdir(), 'overlord-webapp-storage-'));
-const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
+const { bootstrapIntegrationTestDb, DEFAULT_TEST_ORGANIZATION_ID } =
+  await import('./test-helpers.ts');
 const harness = await bootstrapIntegrationTestDb({
   sqlitePath: path.join(tempDir, 'webapp.sqlite')
 });
@@ -167,7 +168,10 @@ test('uploadWorkspaceImage stores the logo under workspace-files, is admin-gated
   );
 
   try {
-    const workspace = await createWorkspace({ name: 'Storage Test Workspace' });
+    const workspace = await createWorkspace({
+      organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+      name: 'Storage Test Workspace'
+    });
 
     const stored = await uploadWorkspaceImage({
       bytes: pngBytes,

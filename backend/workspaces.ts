@@ -3,7 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 
 import type {
   AcceptWorkspaceInvitationBody,
-  CompleteInitialSetupBody,
+  CreateOrganizationOnboardingBody,
   CreateWorkspaceBody,
   InviteWorkspaceMemberBody,
   InviteWorkspaceMemberResultDto,
@@ -15,10 +15,8 @@ import type {
 } from '../webapp/shared/contract.ts';
 
 import {
-  DATABASE_DIALECT,
   findActiveMembershipId,
   getActiveProfileId,
-  getActiveWorkspaceId,
   getActiveWorkspaceIdOrNull,
   getActorWorkspaceUserId,
   newId,
@@ -26,26 +24,28 @@ import {
   recordChange,
   reloadActiveWorkspace,
   requireDatabaseClient,
+  resolveActiveProfileId,
   resolveActorForWorkspace,
-  setActiveWorkspace
+  setActiveWorkspace,
+  setActiveWorkspaceContext,
+  setActiveWorkspaceUser
 } from './db.ts';
 import { invitationEmailSenderFromEnv, inviteAcceptUrl } from './email-invitation.ts';
 import { ApiError } from './errors.ts';
-import { actorIsAdmin } from './rbac.ts';
+import { deleteOrganizationIfEmpty } from './organizations.ts';
+import { actorIsAdmin, isOrganizationAdmin, listOrganizationAdminProfileIds } from './rbac.ts';
 import { syncSqlStudioForWorkspace } from './sql-studio-manager.ts';
 import {
-  logoUrlFromSettingsJson,
   readSqlStudioEnabled,
-  readWorkspaceLogoUrl,
   sqlStudioEnabledFromSettingsJson,
-  writeSqlStudioEnabled,
-  writeWorkspaceLogoUrl
+  writeSqlStudioEnabled
 } from './workspace-settings.ts';
 
 // ---- row shapes ----------------------------------------------------------
 
 interface WorkspaceListRow {
   id: string;
+  organization_id: string;
   slug: string;
   name: string;
   kind: string;
@@ -58,6 +58,7 @@ interface WorkspaceListRow {
 function toWorkspaceDto(r: WorkspaceListRow): WorkspaceDto {
   return {
     id: r.id,
+    organizationId: r.organization_id,
     slug: r.slug,
     name: r.name,
     kind: r.kind,
@@ -65,7 +66,6 @@ function toWorkspaceDto(r: WorkspaceListRow): WorkspaceDto {
     projectCount: r.project_count,
     memberCount: r.member_count,
     sqlStudioEnabled: sqlStudioEnabledFromSettingsJson(r.settings_json),
-    logoUrl: logoUrlFromSettingsJson(r.settings_json),
     createdAt: r.created_at
   };
 }
@@ -75,134 +75,57 @@ function slugify(input: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 48);
+    .slice(0, MAX_WORKSPACE_SLUG_LENGTH);
   return base.length > 0 ? base : 'workspace';
 }
 
-function desiredWorkspaceId(bodyId: string | undefined, name: string): string {
-  return slugify(bodyId?.trim() ? bodyId : name);
+const MAX_WORKSPACE_SLUG_LENGTH = 48;
+
+/** First three letters of the name as a slug, matching the onboarding UI's hint. */
+function suggestSlugFromName(name: string): string {
+  const letters = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .slice(0, 3);
+  return letters.length > 0 ? letters : 'workspace';
 }
 
-async function ensureWorkspaceIdAvailable({
-  workspaceId,
-  excludeWorkspaceId,
-  client = requireDatabaseClient()
-}: {
-  workspaceId: string;
-  excludeWorkspaceId?: string;
-  client?: DatabaseClient;
-}): Promise<void> {
-  const existing = excludeWorkspaceId
-    ? await client.get<{ id: string }>(
-        `SELECT id FROM workspaces
-           WHERE id = ? AND deleted_at IS NULL AND id <> ?
-           LIMIT 1`,
-        [workspaceId, excludeWorkspaceId]
-      )
-    : await client.get<{ id: string }>(
-        `SELECT id FROM workspaces
-           WHERE id = ? AND deleted_at IS NULL
-           LIMIT 1`,
-        [workspaceId]
-      );
-  if (existing) throw new ApiError(409, 'A workspace with this ID already exists');
-}
-
-function quoteIdentifier(value: string): string {
-  return `"${value.replaceAll('"', '""')}"`;
-}
-
-async function workspaceScopedTables(
-  client: DatabaseClient = requireDatabaseClient()
-): Promise<string[]> {
-  if (DATABASE_DIALECT === 'sqlite') {
-    const rows = await client.all<{ name: string }>(
-      `SELECT name FROM sqlite_master
-       WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND sql IS NOT NULL
-       ORDER BY name ASC`
-    );
-    const tables: string[] = [];
-    for (const row of rows) {
-      if (row.name === 'workspaces' || row.name === 'search_documents') continue;
-      const columns = await client.all<{ name: string }>(
-        `PRAGMA table_info(${quoteIdentifier(row.name)})`
-      );
-      if (columns.some(column => column.name === 'workspace_id')) {
-        tables.push(row.name);
-      }
-    }
-    return tables;
-  }
-
-  const rows = await client.all<{ table_name: string }>(
-    `SELECT c.table_name
-       FROM information_schema.columns c
-       JOIN information_schema.tables t
-         ON t.table_schema = c.table_schema AND t.table_name = c.table_name
-      WHERE c.table_schema = current_schema()
-        AND t.table_type = 'BASE TABLE'
-        AND c.column_name = 'workspace_id'
-        AND c.table_name NOT IN ('workspaces', 'search_documents')
-      ORDER BY c.table_name ASC`
-  );
-  return rows.map(row => row.table_name);
-}
-
-async function rekeyWorkspaceReferences({
-  oldWorkspaceId,
-  newWorkspaceId,
-  client
-}: {
-  oldWorkspaceId: string;
-  newWorkspaceId: string;
-  client: DatabaseClient;
-}): Promise<void> {
-  if (oldWorkspaceId === newWorkspaceId) return;
-  if (DATABASE_DIALECT === 'sqlite') {
-    await client.exec('PRAGMA defer_foreign_keys = ON');
-  } else {
-    await client.exec('SET CONSTRAINTS ALL DEFERRED');
-  }
-  await client.run(`DELETE FROM search_documents WHERE workspace_id = ?`, [oldWorkspaceId]);
-  for (const table of await workspaceScopedTables(client)) {
-    await client.run(
-      `UPDATE ${quoteIdentifier(table)}
-          SET workspace_id = ?
-        WHERE workspace_id = ?`,
-      [newWorkspaceId, oldWorkspaceId]
-    );
-  }
-  await client.run(
-    `UPDATE mission_sequences
-        SET scope_id = ?
-      WHERE scope_type = 'workspace' AND scope_id = ?`,
-    [newWorkspaceId, oldWorkspaceId]
-  );
-}
-
-// Workspace slugs are globally unique (idx_workspaces_slug). Append a numeric
-// suffix until we find a free slug so creation never trips the constraint.
-// `excludeWorkspaceId` lets re-slugging a workspace keep (or reuse) its own slug.
+/**
+ * Workspace slugs are unique **per organization** (`idx_workspaces_organization_slug`),
+ * not instance-wide — different organizations may reuse the same slug. Append a
+ * numeric suffix until a free slug is found within the organization so creation
+ * never trips the constraint. `excludeWorkspaceId` is unused today (workspaces
+ * no longer support re-slugging) but kept for symmetry with the uniqueness
+ * check callers might want against a specific row in the future.
+ */
 async function uniqueWorkspaceSlug({
   desired,
+  organizationId,
   excludeWorkspaceId,
   client = requireDatabaseClient()
 }: {
   desired: string;
+  organizationId: string;
   excludeWorkspaceId?: string;
   client?: DatabaseClient;
 }): Promise<string> {
   const taken = (
     excludeWorkspaceId
-      ? await client.all<{ slug: string }>(`SELECT slug FROM workspaces WHERE id <> ?`, [
-          excludeWorkspaceId
-        ])
-      : await client.all<{ slug: string }>(`SELECT slug FROM workspaces`)
+      ? await client.all<{ slug: string }>(
+          `SELECT slug FROM workspaces WHERE organization_id = ? AND id <> ?`,
+          [organizationId, excludeWorkspaceId]
+        )
+      : await client.all<{ slug: string }>(
+          `SELECT slug FROM workspaces WHERE organization_id = ?`,
+          [organizationId]
+        )
   ).map(r => r.slug);
   const set = new Set(taken);
   if (!set.has(desired)) return desired;
   for (let n = 2; ; n += 1) {
-    const candidate = `${desired}-${n}`.slice(0, 48);
+    const suffix = `-${n}`;
+    const base = desired.slice(0, MAX_WORKSPACE_SLUG_LENGTH - suffix.length);
+    const candidate = `${base}${suffix}`;
     if (!set.has(candidate)) return candidate;
   }
 }
@@ -216,16 +139,8 @@ async function uniqueWorkspaceSlug({
 async function resolveCurrentProfileId(
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<string> {
-  const activeProfileId = getActiveProfileId();
-  if (activeProfileId) return activeProfileId;
-  const actorWorkspaceUserId = getActorWorkspaceUserId();
-  if (actorWorkspaceUserId) {
-    const row = await client.get<{ profile_id: string }>(
-      `SELECT profile_id FROM workspace_users WHERE id = ?`,
-      [actorWorkspaceUserId]
-    );
-    if (row) return row.profile_id;
-  }
+  const resolved = await resolveActiveProfileId(client);
+  if (resolved) return resolved;
   const fallback = await client.get<{ id: string }>(
     `SELECT id FROM profiles
        WHERE kind = 'human' AND status = 'active' AND deleted_at IS NULL
@@ -257,6 +172,26 @@ async function requireWorkspaceAdmin(workspaceId: string): Promise<void> {
   if (!(await actorIsAdmin({ workspaceId, workspaceUserId }))) {
     throw new ApiError(403, 'Admin role required');
   }
+}
+
+/**
+ * `requireWorkspaceMember`, plus an ADMIN or MANAGER role in that workspace.
+ * Returns whether the actor is a full ADMIN so callers can enforce MANAGER's
+ * cap: a MANAGER may neither grant ADMIN nor demote/remove an existing ADMIN
+ * (R6) — every call site below that grants/changes/removes a role checks
+ * `isAdmin` itself; this helper only gates "may manage members/settings at
+ * all".
+ */
+async function requireWorkspaceManager(
+  workspaceId: string
+): Promise<{ workspaceUserId: string; isAdmin: boolean }> {
+  const workspaceUserId = await requireWorkspaceMember(workspaceId);
+  const roleKeys = await listMemberRoleKeys({ workspaceId, workspaceUserId });
+  const isAdmin = roleKeys.includes('ADMIN');
+  if (!isAdmin && !roleKeys.includes('MANAGER')) {
+    throw new ApiError(403, 'Manager role required');
+  }
+  return { workspaceUserId, isAdmin };
 }
 
 function csvCell(value: string | null | undefined): string {
@@ -302,16 +237,20 @@ export async function grantWorkspaceAdminRole({
 
 // ---- operations ----------------------------------------------------------
 
-/** Every workspace the local operator is an active member of. */
+const WORKSPACE_LIST_COLUMNS = `
+  w.id, w.organization_id, w.slug, w.name, w.kind, w.created_at, w.settings_json,
+  (SELECT COUNT(*) FROM projects p
+     WHERE p.workspace_id = w.id AND p.deleted_at IS NULL) AS project_count,
+  (SELECT COUNT(*) FROM workspace_users m
+     WHERE m.workspace_id = w.id AND m.status = 'active'
+       AND m.deleted_at IS NULL) AS member_count
+`;
+
+/** Every workspace the local operator is an active member of, across every organization. */
 export async function listWorkspaces(): Promise<WorkspaceDto[]> {
   const localUserId = await resolveCurrentProfileId();
   const rows = await requireDatabaseClient().all<WorkspaceListRow>(
-    `SELECT w.id, w.slug, w.name, w.kind, w.created_at, w.settings_json,
-            (SELECT COUNT(*) FROM projects p
-               WHERE p.workspace_id = w.id AND p.deleted_at IS NULL) AS project_count,
-            (SELECT COUNT(*) FROM workspace_users m
-               WHERE m.workspace_id = w.id AND m.status = 'active'
-                 AND m.deleted_at IS NULL) AS member_count
+    `SELECT ${WORKSPACE_LIST_COLUMNS}
        FROM workspaces w
        JOIN workspace_users wu
          ON wu.workspace_id = w.id AND wu.profile_id = ?
@@ -319,6 +258,28 @@ export async function listWorkspaces(): Promise<WorkspaceDto[]> {
       WHERE w.deleted_at IS NULL
       ORDER BY w.created_at ASC`,
     [localUserId]
+  );
+  return rows.map(toWorkspaceDto);
+}
+
+/**
+ * Every workspace of `organizationId` the local operator is an active member
+ * of. Used by `/api/meta` (the sidebar renders every accessible workspace of
+ * the active organization at once) and by onboarding.
+ */
+export async function listWorkspacesForOrganization(
+  organizationId: string
+): Promise<WorkspaceDto[]> {
+  const localUserId = await resolveCurrentProfileId();
+  const rows = await requireDatabaseClient().all<WorkspaceListRow>(
+    `SELECT ${WORKSPACE_LIST_COLUMNS}
+       FROM workspaces w
+       JOIN workspace_users wu
+         ON wu.workspace_id = w.id AND wu.profile_id = ?
+        AND wu.status = 'active' AND wu.deleted_at IS NULL
+      WHERE w.organization_id = ? AND w.deleted_at IS NULL
+      ORDER BY w.created_at ASC`,
+    [localUserId, organizationId]
   );
   return rows.map(toWorkspaceDto);
 }
@@ -383,26 +344,77 @@ async function seedWorkspaceStorageBuckets({
   }
 }
 
-/** Create a workspace, add the local operator as an admin member, and make it active. */
+/**
+ * Provision the organization's `organization-images` bucket. An organization
+ * logo must outlive any single member workspace, so it lives in its own
+ * bucket rather than a workspace's (R5) — created once, at organization
+ * creation time (onboarding); never re-created by `createWorkspace`.
+ */
+async function seedOrganizationStorageBucket({
+  organizationId,
+  createdByWorkspaceUserId,
+  now,
+  client
+}: {
+  organizationId: string;
+  createdByWorkspaceUserId: string;
+  now: string;
+  client: DatabaseClient;
+}): Promise<void> {
+  await client.run(
+    `INSERT INTO storage_buckets (
+       id, organization_id, bucket_key, storage_backend, base_url, local_path, settings_json,
+       created_by_workspace_user_id, created_at, updated_at, revision
+     ) VALUES (?, ?, 'organization-images', 'local_fs', NULL, 'database/.local/storage', '{}', ?, ?, ?, 1)`,
+    [newId(), organizationId, createdByWorkspaceUserId, now, now]
+  );
+}
+
+/**
+ * Create a workspace under an existing organization. Org-admin gated (Q3):
+ * only an admin of every constituent workspace may add another. Every
+ * *current* org admin is auto-granted ADMIN in the new workspace (joining
+ * them to it if needed) so the org-admin invariant survives creation.
+ */
 export async function createWorkspace(body: CreateWorkspaceBody): Promise<WorkspaceDto> {
   const creatorProfileId = await resolveCurrentProfileId();
+  const organizationId = (body.organizationId ?? '').trim();
+  if (!organizationId) throw new ApiError(400, 'organizationId is required');
+  if (!(await isOrganizationAdmin(creatorProfileId, organizationId))) {
+    throw new ApiError(403, 'Organization admin required');
+  }
+
   const workspaceId = await requireDatabaseClient().transaction(async tx => {
     const name = (body.name ?? '').trim();
     if (!name) throw new ApiError(400, 'Workspace name is required');
 
-    const nextWorkspaceId = desiredWorkspaceId(body.id, name);
-    await ensureWorkspaceIdAvailable({ workspaceId: nextWorkspaceId, client: tx });
+    const organization = await tx.get<{ id: string }>(
+      `SELECT id FROM organizations WHERE id = ? AND deleted_at IS NULL`,
+      [organizationId]
+    );
+    if (!organization) throw new ApiError(404, 'Organization not found');
+
+    // Snapshot the org's current admins *before* inserting the new workspace,
+    // so this query reflects "existing workspaces only" (the new one has no
+    // rows yet to affect the invariant computation).
+    const otherOrgAdminProfileIds = (
+      await listOrganizationAdminProfileIds(organizationId, tx)
+    ).filter(id => id !== creatorProfileId);
+
+    const nextWorkspaceId = newId();
     const slug = await uniqueWorkspaceSlug({
       desired: body.slug?.trim() ? slugify(body.slug) : suggestSlugFromName(name),
+      organizationId,
       client: tx
     });
     const now = nowIso();
     const workspaceUserId = newId();
 
     await tx.run(
-      `INSERT INTO workspaces (id, slug, name, kind, settings_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, 'local', '{}', ?, ?, 1)`,
-      [nextWorkspaceId, slug, name, now, now]
+      `INSERT INTO workspaces
+         (id, organization_id, slug, name, kind, settings_json, created_at, updated_at, revision)
+       VALUES (?, ?, ?, ?, 'local', '{}', ?, ?, 1)`,
+      [nextWorkspaceId, organizationId, slug, name, now, now]
     );
 
     await tx.run(
@@ -447,6 +459,34 @@ export async function createWorkspace(body: CreateWorkspaceBody): Promise<Worksp
       tx
     );
 
+    for (const adminProfileId of otherOrgAdminProfileIds) {
+      const adminWorkspaceUserId = newId();
+      await tx.run(
+        `INSERT INTO workspace_users
+           (id, workspace_id, profile_id, member_key, status, metadata_json,
+            created_at, updated_at, revision)
+         VALUES (?, ?, ?, ?, 'active', '{}', ?, ?, 1)`,
+        [adminWorkspaceUserId, nextWorkspaceId, adminProfileId, `auth:${adminProfileId}`, now, now]
+      );
+      await grantWorkspaceAdminRole({
+        workspaceId: nextWorkspaceId,
+        workspaceUserId: adminWorkspaceUserId,
+        assignedByWorkspaceUserId: workspaceUserId,
+        client: tx
+      });
+      await recordChange(
+        {
+          entityType: 'workspace_user',
+          entityId: adminWorkspaceUserId,
+          operation: 'insert',
+          entityRevision: 1,
+          workspaceId: nextWorkspaceId,
+          actorWorkspaceUserId: workspaceUserId
+        },
+        tx
+      );
+    }
+
     return nextWorkspaceId;
   });
 
@@ -458,123 +498,116 @@ export async function createWorkspace(body: CreateWorkspaceBody): Promise<Worksp
   return created;
 }
 
-// ---- initial instance setup ----------------------------------------------
-//
-// Migration 001 seeds every fresh instance with a placeholder first workspace.
-// Until the operator has named it (and picked the slug that prefixes mission
-// identifiers like `<slug>:42`), the web UI shows a one-time setup step.
-
-const SEED_WORKSPACE_ID = 'local-workspace';
-const SEED_WORKSPACE_NAME = 'Local Workspace';
-const SEED_WORKSPACE_SLUG = 'local';
-/** `settings_json` key set once the operator completes (or re-confirms) setup. */
-const SETUP_COMPLETED_KEY = 'initialSetupCompletedAt';
-
 /**
- * Whether the active workspace is still the untouched seeded placeholder. True
- * only while it keeps the exact seed identity and setup was never completed,
- * so existing instances that already renamed their workspace are never gated.
+ * Combined organization + first-workspace onboarding (Q10): for an
+ * authenticated profile with **zero** workspace memberships anywhere, creates
+ * an organization, a workspace (default name `general`), the caller's `ADMIN`
+ * membership, default statuses/buckets, and the organization's own
+ * `organization-images` bucket, all in one transaction. `POST /api/onboarding`
+ * shares this verbatim with the web onboarding screen and the future
+ * `ovld org-setup` CLI command, so validation/slug suggestion/the
+ * zero-membership gate cannot drift between the two.
  */
-export async function needsInitialSetup(
-  client: DatabaseClient = requireDatabaseClient()
-): Promise<boolean> {
-  if (getActiveWorkspaceIdOrNull() !== SEED_WORKSPACE_ID) return false;
-  const row = await client.get<{
-    name: string;
-    slug: string;
-    settings_json: string;
-  }>(`SELECT name, slug, settings_json FROM workspaces WHERE id = ? AND deleted_at IS NULL`, [
-    SEED_WORKSPACE_ID
-  ]);
-  if (!row) return false;
-  if (row.name !== SEED_WORKSPACE_NAME || row.slug !== SEED_WORKSPACE_SLUG) return false;
-  return !parseSettings(row.settings_json)[SETUP_COMPLETED_KEY];
-}
+export async function createOrganizationOnboarding(
+  body: CreateOrganizationOnboardingBody
+): Promise<WorkspaceDto> {
+  const profileId = await resolveCurrentProfileId();
 
-function parseSettings(raw: string): Record<string, unknown> {
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
-}
-
-/** First three letters of the name as a slug, matching the setup UI's hint. */
-function suggestSlugFromName(name: string): string {
-  const letters = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '')
-    .slice(0, 3);
-  return letters.length > 0 ? letters : 'workspace';
-}
-
-/**
- * Complete initial instance setup: name the seeded first workspace, set the
- * slug that prefixes mission identifiers, and mark setup done so the step never
- * reappears (even when the chosen values match the seed defaults).
- */
-export async function completeInitialSetup(body: CompleteInitialSetupBody): Promise<WorkspaceDto> {
   const workspaceId = await requireDatabaseClient().transaction(async tx => {
-    // Setup only ever names the untouched seeded workspace; once done (or after
-    // the operator has renamed/created workspaces) this endpoint must not rename
-    // whatever workspace happens to be active.
-    if (!(await needsInitialSetup(tx))) {
-      throw new ApiError(409, 'Initial setup is already complete');
+    const existingMembership = await tx.get<{ id: string }>(
+      `SELECT wu.id FROM workspace_users wu
+         JOIN workspaces w ON w.id = wu.workspace_id AND w.deleted_at IS NULL
+        WHERE wu.profile_id = ? AND wu.status = 'active' AND wu.deleted_at IS NULL
+        LIMIT 1`,
+      [profileId]
+    );
+    if (existingMembership) {
+      throw new ApiError(
+        409,
+        'Onboarding is only available before your first workspace membership'
+      );
     }
 
-    const name = (body.name ?? '').trim();
-    if (!name) throw new ApiError(400, 'Workspace name is required');
+    const organizationName = (body.organizationName ?? '').trim();
+    if (!organizationName) throw new ApiError(400, 'Organization name is required');
+    const workspaceName = (body.workspaceName ?? '').trim() || 'general';
 
-    const existing = await tx.get<{ id: string; settings_json: string; revision: number }>(
-      `SELECT id, settings_json, revision FROM workspaces WHERE id = ? AND deleted_at IS NULL`,
-      [getActiveWorkspaceId()]
-    );
-    if (!existing) throw new ApiError(404, 'Workspace not found');
-
-    const nextWorkspaceId = desiredWorkspaceId(body.id, name);
-    await ensureWorkspaceIdAvailable({
-      workspaceId: nextWorkspaceId,
-      excludeWorkspaceId: existing.id,
-      client: tx
-    });
-
-    // Default the slug to the first three letters of the name, mirroring the
-    // suggestion the setup UI shows.
-    const desiredSlug = body.slug?.trim() ? slugify(body.slug) : suggestSlugFromName(name);
-    const slug = await uniqueWorkspaceSlug({
-      desired: desiredSlug,
-      excludeWorkspaceId: existing.id,
-      client: tx
-    });
-
-    const settings = parseSettings(existing.settings_json);
-    settings[SETUP_COMPLETED_KEY] = nowIso();
-
-    await rekeyWorkspaceReferences({
-      oldWorkspaceId: existing.id,
-      newWorkspaceId: nextWorkspaceId,
-      client: tx
-    });
-
-    const revision = existing.revision + 1;
+    const now = nowIso();
+    const organizationId = newId();
     await tx.run(
-      `UPDATE workspaces
-          SET id = ?, name = ?, slug = ?, settings_json = ?,
-              updated_at = ?, revision = ?
-        WHERE id = ?`,
-      [nextWorkspaceId, name, slug, JSON.stringify(settings), nowIso(), revision, existing.id]
+      `INSERT INTO organizations (id, name, settings_json, created_at, updated_at, revision)
+       VALUES (?, ?, '{}', ?, ?, 1)`,
+      [organizationId, organizationName, now, now]
     );
 
+    const nextWorkspaceId = newId();
+    const slug = await uniqueWorkspaceSlug({
+      desired: body.workspaceSlug?.trim()
+        ? slugify(body.workspaceSlug)
+        : suggestSlugFromName(workspaceName),
+      organizationId,
+      client: tx
+    });
+    const workspaceUserId = newId();
+
+    await tx.run(
+      `INSERT INTO workspaces
+         (id, organization_id, slug, name, kind, settings_json, created_at, updated_at, revision)
+       VALUES (?, ?, ?, ?, 'local', '{}', ?, ?, 1)`,
+      [nextWorkspaceId, organizationId, slug, workspaceName, now, now]
+    );
+    await tx.run(
+      `INSERT INTO workspace_users
+         (id, workspace_id, profile_id, member_key, status, metadata_json,
+          created_at, updated_at, revision)
+       VALUES (?, ?, ?, ?, 'active', '{}', ?, ?, 1)`,
+      [workspaceUserId, nextWorkspaceId, profileId, `auth:${profileId}`, now, now]
+    );
+    await grantWorkspaceAdminRole({ workspaceId: nextWorkspaceId, workspaceUserId, client: tx });
+    await seedWorkspaceStatuses({ workspaceId: nextWorkspaceId, now, client: tx });
+    await seedWorkspaceStorageBuckets({
+      workspaceId: nextWorkspaceId,
+      createdByWorkspaceUserId: workspaceUserId,
+      now,
+      client: tx
+    });
+    await seedOrganizationStorageBucket({
+      organizationId,
+      createdByWorkspaceUserId: workspaceUserId,
+      now,
+      client: tx
+    });
+
+    await recordChange(
+      {
+        entityType: 'organization',
+        entityId: organizationId,
+        operation: 'insert',
+        entityRevision: 1,
+        workspaceId: nextWorkspaceId,
+        actorWorkspaceUserId: workspaceUserId
+      },
+      tx
+    );
     await recordChange(
       {
         entityType: 'workspace',
         entityId: nextWorkspaceId,
-        operation: 'update',
-        entityRevision: revision,
+        operation: 'insert',
+        entityRevision: 1,
         workspaceId: nextWorkspaceId,
-        actorWorkspaceUserId: await resolveActorForWorkspace(nextWorkspaceId, tx),
-        changedFields: nextWorkspaceId === existing.id ? ['name', 'slug'] : ['id', 'name', 'slug']
+        actorWorkspaceUserId: workspaceUserId
+      },
+      tx
+    );
+    await recordChange(
+      {
+        entityType: 'workspace_user',
+        entityId: workspaceUserId,
+        operation: 'insert',
+        entityRevision: 1,
+        workspaceId: nextWorkspaceId,
+        actorWorkspaceUserId: workspaceUserId
       },
       tx
     );
@@ -582,13 +615,10 @@ export async function completeInitialSetup(body: CompleteInitialSetupBody): Prom
     return nextWorkspaceId;
   });
 
-  // Initial setup may re-key the seeded workspace. Re-point the live workspace
-  // binding when that happens so `/api/meta` and mission display ids stay in sync.
-  if (workspaceId === getActiveWorkspaceId()) await reloadActiveWorkspace();
-  else await setActiveWorkspace(workspaceId);
-  const updated = (await listWorkspaces()).find(w => w.id === workspaceId);
-  if (!updated) throw new ApiError(500, 'Workspace was updated but could not be loaded');
-  return updated;
+  await setActiveWorkspace(workspaceId);
+  const created = (await listWorkspaces()).find(w => w.id === workspaceId);
+  if (!created) throw new ApiError(500, 'Workspace was created but could not be loaded');
+  return created;
 }
 
 interface WorkspaceRevisionRow {
@@ -597,12 +627,12 @@ interface WorkspaceRevisionRow {
   revision: number;
 }
 
-/** Update a workspace (rename, settings). Target-workspace ADMIN only. */
+/** Update a workspace (rename, settings). Target-workspace MANAGER or ADMIN. */
 export async function updateWorkspace(
   id: string,
   body: UpdateWorkspaceBody
 ): Promise<WorkspaceDto> {
-  await requireWorkspaceAdmin(id);
+  await requireWorkspaceManager(id);
   await requireDatabaseClient().transaction(async tx => {
     const existing = await tx.get<WorkspaceRevisionRow>(
       `SELECT id, name, revision FROM workspaces WHERE id = ? AND deleted_at IS NULL`,
@@ -633,23 +663,9 @@ export async function updateWorkspace(
           client: tx
         });
         changed.push('settings_json');
-        if (id === getActiveWorkspaceId()) {
+        if (id === getActiveWorkspaceIdOrNull()) {
           syncSqlStudioForWorkspace({ enabled: body.sqlStudioEnabled });
         }
-      }
-    }
-
-    if (body.logoUrl !== undefined) {
-      const logoUrl = body.logoUrl?.trim() || null;
-      // Accept absolute http(s) URLs or a server-relative path (e.g. an image
-      // uploaded through the core upload service: `/api/storage/workspace-images/…`).
-      if (logoUrl && !/^(https?:\/\/|\/)/i.test(logoUrl)) {
-        throw new ApiError(400, 'Logo URL must be an http(s) URL or an uploaded image path');
-      }
-      const current = await readWorkspaceLogoUrl({ workspaceId: id, client: tx });
-      if (logoUrl !== current) {
-        await writeWorkspaceLogoUrl({ workspaceId: id, logoUrl, client: tx });
-        if (!changed.includes('settings_json')) changed.push('settings_json');
       }
     }
 
@@ -676,7 +692,7 @@ export async function updateWorkspace(
 
   // Renaming the active workspace must be observed by the `WORKSPACE` live
   // binding so `/api/meta` and change attribution stay accurate.
-  if (id === getActiveWorkspaceId()) await reloadActiveWorkspace();
+  if (id === getActiveWorkspaceIdOrNull()) await reloadActiveWorkspace();
   const updated = (await listWorkspaces()).find(w => w.id === id);
   if (!updated) throw new ApiError(404, 'Workspace not found or no active membership');
   return updated;
@@ -684,36 +700,21 @@ export async function updateWorkspace(
 
 /**
  * Soft-delete a workspace (tombstone via `deleted_at`; projects and missions
- * inside it are preserved but unreachable until restored). The last remaining
- * workspace cannot be deleted. Deleting the active workspace activates the
- * oldest remaining one. Target-workspace ADMIN only. Returns the refreshed
- * workspace list.
+ * inside it are preserved but unreachable until restored). Deleting the last
+ * workspace of an organization is allowed (Q9) — it also tombstones the
+ * organization (`deleteOrganizationIfEmpty`). Deleting the active workspace
+ * activates the next remaining one, or clears to no active workspace when
+ * none remain. Target-workspace ADMIN only (unlike most workspace mutations,
+ * deletion is not extended to MANAGER). Returns the refreshed workspace list.
  */
 export async function deleteWorkspace(id: string): Promise<WorkspaceDto[]> {
   await requireWorkspaceAdmin(id);
-  const profileId = await resolveCurrentProfileId();
   await requireDatabaseClient().transaction(async tx => {
-    const existing = await tx.get<WorkspaceRevisionRow>(
-      `SELECT id, name, revision FROM workspaces WHERE id = ? AND deleted_at IS NULL`,
+    const existing = await tx.get<WorkspaceRevisionRow & { organization_id: string }>(
+      `SELECT id, name, organization_id, revision FROM workspaces WHERE id = ? AND deleted_at IS NULL`,
       [id]
     );
     if (!existing) throw new ApiError(404, 'Workspace not found');
-
-    // The caller must keep at least one workspace. Counted with `tx` — a call
-    // back into the root client (e.g. `listWorkspaces()`) would deadlock on
-    // the SQLite client's transaction mutex.
-    const remaining = await tx.get<{ count: number }>(
-      `SELECT COUNT(*) AS count
-         FROM workspaces w
-         JOIN workspace_users wu
-           ON wu.workspace_id = w.id AND wu.profile_id = ?
-          AND wu.status = 'active' AND wu.deleted_at IS NULL
-        WHERE w.deleted_at IS NULL AND w.id <> ?`,
-      [profileId, id]
-    );
-    if ((remaining?.count ?? 0) === 0) {
-      throw new ApiError(409, 'Cannot delete the only workspace');
-    }
 
     const revision = existing.revision + 1;
     await tx.run(
@@ -733,11 +734,18 @@ export async function deleteWorkspace(id: string): Promise<WorkspaceDto[]> {
       },
       tx
     );
+
+    await deleteOrganizationIfEmpty(existing.organization_id, tx);
   });
 
-  if (id === getActiveWorkspaceId()) {
+  if (id === getActiveWorkspaceIdOrNull()) {
     const next = (await listWorkspaces())[0];
-    if (next) await setActiveWorkspace(next.id);
+    if (next) {
+      await setActiveWorkspace(next.id);
+    } else {
+      setActiveWorkspaceContext(null);
+      setActiveWorkspaceUser(null);
+    }
   }
   return listWorkspaces();
 }
@@ -844,9 +852,13 @@ export async function exportWorkspaceObjectivesCsv(
   await requireWorkspaceAdmin(workspaceId);
 
   const projectOrder =
-    DATABASE_DIALECT === 'sqlite' ? 'p.name COLLATE NOCASE ASC' : 'LOWER(p.name) ASC';
+    requireDatabaseClient().dialect === 'sqlite'
+      ? 'p.name COLLATE NOCASE ASC'
+      : 'LOWER(p.name) ASC';
   const missionOrder =
-    DATABASE_DIALECT === 'sqlite' ? 'm.title COLLATE NOCASE ASC' : 'LOWER(m.title) ASC';
+    requireDatabaseClient().dialect === 'sqlite'
+      ? 'm.title COLLATE NOCASE ASC'
+      : 'LOWER(m.title) ASC';
 
   const rows = await requireDatabaseClient().all<WorkspaceObjectiveExportRow>(
     `SELECT m.title AS mission_title,
@@ -890,15 +902,16 @@ export async function exportWorkspaceObjectivesCsv(
 // ---- member invitations ---------------------------------------------------
 //
 // The only way to add another user to a workspace (Phase 3 of
-// planning/feature-plans/multitenancy-access-control.md). An ADMIN issues a
-// single-use, hashed token (mirroring `user_tokens`, 003_rbac.sql) tied to an
-// email address; accepting it creates the `workspace_users` row. Raw tokens
-// are returned to the caller once and never persisted.
+// planning/feature-plans/multitenancy-access-control.md). An ADMIN or MANAGER
+// issues a single-use, hashed token (mirroring `user_tokens`, 003_rbac.sql)
+// tied to an email address; accepting it creates the `workspace_users` row.
+// Raw tokens are returned to the caller once and never persisted. A MANAGER
+// actor is capped at inviting MANAGER/MEMBER — never ADMIN (R6).
 
 const INVITATION_TOKEN_SCHEME = 'inv';
 const INVITATION_HASH_ALGORITHM = 'sha256';
 const INVITATION_TTL_DAYS = 14;
-const WORKSPACE_ROLE_KEYS = new Set(['ADMIN', 'MEMBER']);
+const WORKSPACE_ROLE_KEYS = new Set(['ADMIN', 'MANAGER', 'MEMBER']);
 
 function generateInvitationSecret(): { secret: string; prefix: string; hash: string } {
   const prefix = `${INVITATION_TOKEN_SCHEME}_${randomBytes(4).toString('hex')}`;
@@ -939,20 +952,24 @@ function toWorkspaceInvitationDto(row: WorkspaceInvitationRow): WorkspaceInvitat
 
 /**
  * Invite an email address to join a workspace with a given role (defaults to
- * `MEMBER`). ADMIN-only. Re-inviting an email with an existing pending
- * invitation supersedes it (the settings "resend" action), so the unique
- * active `(workspace_id, email)` index is never tripped.
+ * `MEMBER`). ADMIN or MANAGER; a MANAGER may not issue an `ADMIN` invite
+ * (R6). Re-inviting an email with an existing pending invitation supersedes
+ * it (the settings "resend" action), so the unique active `(workspace_id,
+ * email)` index is never tripped.
  */
 export async function inviteWorkspaceMember(
   workspaceId: string,
   body: InviteWorkspaceMemberBody
 ): Promise<InviteWorkspaceMemberResultDto> {
-  await requireWorkspaceAdmin(workspaceId);
+  const { isAdmin } = await requireWorkspaceManager(workspaceId);
 
   const email = (body.email ?? '').trim().toLowerCase();
   if (!email || !email.includes('@')) throw new ApiError(400, 'A valid email is required');
   const roleKey = (body.roleKey ?? 'MEMBER').trim().toUpperCase();
   if (!WORKSPACE_ROLE_KEYS.has(roleKey)) throw new ApiError(400, `Unknown role: ${roleKey}`);
+  if (roleKey === 'ADMIN' && !isAdmin) {
+    throw new ApiError(403, 'A manager may not invite a new admin');
+  }
 
   const client = requireDatabaseClient();
   const workspace = await client.get<{ id: string }>(
@@ -971,7 +988,7 @@ export async function inviteWorkspaceMember(
   if (existingMember) throw new ApiError(409, 'This email already belongs to a member');
 
   const invitedByWorkspaceUserId = getActorWorkspaceUserId();
-  if (!invitedByWorkspaceUserId) throw new ApiError(403, 'Admin role required');
+  if (!invitedByWorkspaceUserId) throw new ApiError(403, 'Manager role required');
 
   const { invitation, rawToken } = await client.transaction(async tx => {
     const pending = await tx.get<{ id: string }>(
@@ -1062,11 +1079,11 @@ export async function inviteWorkspaceMember(
   return { invitation, acceptUrl };
 }
 
-/** List every non-deleted invitation for a workspace (pending and resolved). ADMIN-only. */
+/** List every non-deleted invitation for a workspace (pending and resolved). ADMIN or MANAGER. */
 export async function listWorkspaceInvitations(
   workspaceId: string
 ): Promise<WorkspaceInvitationDto[]> {
-  await requireWorkspaceAdmin(workspaceId);
+  await requireWorkspaceManager(workspaceId);
   const rows = await requireDatabaseClient().all<WorkspaceInvitationRow>(
     `SELECT ${INVITATION_COLUMNS} FROM workspace_invitations
        WHERE workspace_id = ? AND deleted_at IS NULL
@@ -1076,12 +1093,12 @@ export async function listWorkspaceInvitations(
   return rows.map(toWorkspaceInvitationDto);
 }
 
-/** Revoke a still-pending invitation. No-op if already accepted/revoked/expired. ADMIN-only. */
+/** Revoke a still-pending invitation. No-op if already accepted/revoked/expired. ADMIN or MANAGER. */
 export async function revokeWorkspaceInvitation(
   workspaceId: string,
   invitationId: string
 ): Promise<void> {
-  await requireWorkspaceAdmin(workspaceId);
+  await requireWorkspaceManager(workspaceId);
   await requireDatabaseClient().transaction(async tx => {
     const invitation = await tx.get<{ id: string; status: string; revision: number }>(
       `SELECT id, status, revision FROM workspace_invitations
@@ -1319,18 +1336,23 @@ async function assertNotLastWorkspaceAdmin({
 }
 
 /**
- * Set a member's workspace-level role. ADMIN-only. Replaces active role rows
- * with exactly the requested role and refuses to demote the final ADMIN.
+ * Set a member's workspace-level role. ADMIN or MANAGER; a MANAGER may
+ * neither grant `ADMIN` nor demote/remove an existing `ADMIN` (R6). Replaces
+ * active role rows with exactly the requested role and refuses to demote the
+ * final ADMIN.
  */
 export async function updateWorkspaceMemberRole(
   workspaceId: string,
   workspaceUserId: string,
   body: UpdateWorkspaceMemberRoleBody
 ): Promise<WorkspaceMemberDto> {
-  await requireWorkspaceAdmin(workspaceId);
+  const { isAdmin } = await requireWorkspaceManager(workspaceId);
 
   const roleKey = (body.roleKey ?? '').trim().toUpperCase();
   if (!WORKSPACE_ROLE_KEYS.has(roleKey)) throw new ApiError(400, `Unknown role: ${roleKey}`);
+  if (roleKey === 'ADMIN' && !isAdmin) {
+    throw new ApiError(403, 'A manager may not grant admin');
+  }
 
   await requireDatabaseClient().transaction(async tx => {
     const membership = await tx.get<{ id: string }>(
@@ -1340,11 +1362,15 @@ export async function updateWorkspaceMemberRole(
     );
     if (!membership) throw new ApiError(404, 'Member not found');
 
+    const existingRoles = await listMemberRoleKeys({ workspaceId, workspaceUserId, client: tx });
+    if (existingRoles.includes('ADMIN') && !isAdmin) {
+      throw new ApiError(403, 'A manager may not change an admin’s role');
+    }
+
     if (roleKey !== 'ADMIN') {
       await assertNotLastWorkspaceAdmin({ workspaceId, workspaceUserId, client: tx });
     }
 
-    const existingRoles = await listMemberRoleKeys({ workspaceId, workspaceUserId, client: tx });
     if (existingRoles.length === 1 && existingRoles[0] === roleKey) return;
 
     const now = nowIso();
@@ -1383,14 +1409,15 @@ export async function updateWorkspaceMemberRole(
 
 /**
  * Remove an active member from a workspace: soft-deletes their `workspace_users`
- * row and revokes their role rows. ADMIN-only. Refuses to remove the workspace's
- * only remaining active member and the final ADMIN.
+ * row and revokes their role rows. ADMIN or MANAGER; a MANAGER may not remove
+ * an existing ADMIN (R6). Refuses to remove the workspace's only remaining
+ * active member and the final ADMIN.
  */
 export async function removeWorkspaceMember(
   workspaceId: string,
   workspaceUserId: string
 ): Promise<void> {
-  await requireWorkspaceAdmin(workspaceId);
+  const { isAdmin } = await requireWorkspaceManager(workspaceId);
   await requireDatabaseClient().transaction(async tx => {
     const membership = await tx.get<{ id: string; revision: number }>(
       `SELECT id, revision FROM workspace_users
@@ -1398,6 +1425,11 @@ export async function removeWorkspaceMember(
       [workspaceUserId, workspaceId]
     );
     if (!membership) throw new ApiError(404, 'Member not found');
+
+    const existingRoles = await listMemberRoleKeys({ workspaceId, workspaceUserId, client: tx });
+    if (existingRoles.includes('ADMIN') && !isAdmin) {
+      throw new ApiError(403, 'A manager may not remove an admin');
+    }
 
     await assertNotLastWorkspaceAdmin({ workspaceId, workspaceUserId, client: tx });
 

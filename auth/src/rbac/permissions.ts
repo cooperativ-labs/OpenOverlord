@@ -97,6 +97,16 @@ export const PERMISSIONS = {
   INVITATION_READ: 'invitation:read',
   INVITATION_REVOKE: 'invitation:revoke',
 
+  // Organizations. Org-level mutations are gated by the derived org-admin
+  // invariant (`isOrganizationAdmin`), not a distinct role, so these permission
+  // constants exist for route-level documentation/consistency; the real gate
+  // runs inside the `backend/organizations.ts` service functions themselves.
+  ORGANIZATION_READ: 'organization:read',
+  ORGANIZATION_UPDATE: 'organization:update',
+  ORGANIZATION_ADMIN_MANAGE: 'organization:admin_manage',
+  ORGANIZATION_IMAGE_READ: 'organization_image:read',
+  ORGANIZATION_IMAGE_CREATE: 'organization_image:create',
+
   // Webhook subscription management (ADMIN-only by default)
   WEBHOOK_CREATE: 'webhook:create',
   WEBHOOK_READ: 'webhook:read',

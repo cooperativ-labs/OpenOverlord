@@ -27,6 +27,7 @@ const KNOWN_COMMANDS = new Set([
   ...DB_FREE_COMMANDS,
   'protocol',
   'create-project',
+  'org-setup',
   'add-cwd',
   'create',
   'prompt',

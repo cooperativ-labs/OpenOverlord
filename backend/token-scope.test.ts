@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { db, initDatabase, setActiveTokenAuth, setActiveWorkspaceUser } from './db.ts';
+import {
+  db,
+  initDatabase,
+  setActiveTokenAuth,
+  setActiveWorkspace,
+  setActiveWorkspaceUser
+} from './db.ts';
 import { ApiError } from './errors.ts';
 import { actorCan, requirePermission } from './rbac.ts';
 import { createUserToken, listUserTokens } from './repository.ts';
@@ -14,6 +20,12 @@ import { seedAuthenticatedOperator } from './test-helpers.ts';
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 await initDatabase();
 const operatorWorkspaceUserId = seedAuthenticatedOperator({ db });
+// `seedAuthenticatedOperator` only inserts rows; the organizations migration's
+// no-seed cleanup (coo:135, Q10) means a fresh database has zero workspaces
+// until something activates one, so `getActiveWorkspaceId()` calls below need
+// this explicit activation (previously implicit via the migration-seeded
+// `local-workspace` row).
+await setActiveWorkspace('local-workspace');
 setActiveWorkspaceUser(operatorWorkspaceUserId);
 
 test('createUserToken defaults to a ~90-day expiry when none is given', async () => {

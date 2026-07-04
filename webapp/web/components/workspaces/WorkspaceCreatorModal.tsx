@@ -10,11 +10,12 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { LoadingButton } from '@/components/ui/loading-button';
-import { WorkspaceCreationFields } from '@/components/workspaces/WorkspaceCreationFields';
-import { useWorkspaceCreationForm } from '@/lib/hooks/use-workspace-creation-form';
-import { useCreateWorkspace } from '@/lib/queries';
+import { useCreateWorkspace, useMeta } from '@/lib/queries';
+import { sanitizeWorkspaceSlugInput, suggestWorkspaceSlug } from '@/lib/workspace-slug';
 
 type WorkspaceCreatorModalProps = {
   open: boolean;
@@ -23,24 +24,23 @@ type WorkspaceCreatorModalProps = {
 
 export function WorkspaceCreatorModal({ open, onOpenChange }: WorkspaceCreatorModalProps) {
   const navigate = useNavigate();
+  const meta = useMeta();
   const createWorkspaceMutation = useCreateWorkspace();
-  const {
-    name,
-    setName,
-    workspaceId,
-    setWorkspaceIdFromInput,
-    slug,
-    setSlugFromInput,
-    exampleSlug,
-    reset,
-    getSubmitBody
-  } = useWorkspaceCreationForm();
+  const [name, setName] = useState('');
+  const [slug, setSlug] = useState('');
+  const [slugTouched, setSlugTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createButtonState, setCreateButtonState] = useState<ButtonLoadingState>('default');
 
+  const organizationId = meta.data?.organization?.id ?? null;
+  const suggestedSlug = suggestWorkspaceSlug(name);
+  const resolvedSlug = slugTouched ? slug : suggestedSlug;
+
   function handleOpenChange(next: boolean) {
     if (!next) {
-      reset();
+      setName('');
+      setSlug('');
+      setSlugTouched(false);
       setError(null);
       setCreateButtonState('default');
     }
@@ -52,16 +52,18 @@ export function WorkspaceCreatorModal({ open, onOpenChange }: WorkspaceCreatorMo
     setError(null);
 
     try {
-      const body = getSubmitBody();
-      if (!body.name) {
-        throw new Error('Workspace name is required.');
-      }
+      const trimmedName = name.trim();
+      if (!trimmedName) throw new Error('Workspace name is required.');
+      if (!organizationId) throw new Error('No active organization.');
 
-      await createWorkspaceMutation.mutateAsync(body);
+      await createWorkspaceMutation.mutateAsync({
+        organizationId,
+        name: trimmedName,
+        slug: resolvedSlug.trim() || undefined
+      });
 
       setCreateButtonState('success');
       handleOpenChange(false);
-      // A new workspace starts empty, so drop into its (empty) projects list.
       void navigate({ to: '/projects' });
     } catch (err) {
       setCreateButtonState('error');
@@ -75,27 +77,40 @@ export function WorkspaceCreatorModal({ open, onOpenChange }: WorkspaceCreatorMo
         <DialogHeader>
           <DialogTitle>New workspace</DialogTitle>
           <DialogDescription>
-            Workspaces keep their own projects, missions, and members. You&apos;ll be switched into
-            the new workspace.
+            Workspaces keep their own projects, missions, and members inside this organization.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          <WorkspaceCreationFields
-            name={name}
-            onNameChange={setName}
-            workspaceId={workspaceId}
-            onWorkspaceIdChange={setWorkspaceIdFromInput}
-            slug={slug}
-            onSlugChange={setSlugFromInput}
-            exampleSlug={exampleSlug}
-            nameInputId="workspace-name"
-            workspaceIdInputId="workspace-id"
-            slugInputId="workspace-slug"
-            onEnter={() => void handleCreate()}
-          />
+          <div className="space-y-2">
+            <Label htmlFor="workspace-name">Workspace name</Label>
+            <Input
+              id="workspace-name"
+              autoFocus
+              value={name}
+              onChange={event => setName(event.target.value)}
+              placeholder="e.g. Engineering"
+              onKeyDown={event => {
+                if (event.key === 'Enter') void handleCreate();
+              }}
+            />
+          </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          <div className="space-y-2">
+            <Label htmlFor="workspace-slug">Workspace slug</Label>
+            <Input
+              id="workspace-slug"
+              value={resolvedSlug}
+              onChange={event => {
+                setSlugTouched(true);
+                setSlug(sanitizeWorkspaceSlugInput(event.target.value));
+              }}
+              placeholder={suggestedSlug}
+              className="font-mono"
+            />
+          </div>
+
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </div>
 
         <DialogFooter>

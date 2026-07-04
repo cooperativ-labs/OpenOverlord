@@ -5,7 +5,8 @@ import path from 'node:path';
 import test from 'node:test';
 
 const tempDir = mkdtempSync(path.join(tmpdir(), 'overlord-webapp-my-missions-'));
-const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
+const { bootstrapIntegrationTestDb, DEFAULT_TEST_ORGANIZATION_ID } =
+  await import('./test-helpers.ts');
 await bootstrapIntegrationTestDb({ sqlitePath: path.join(tempDir, 'webapp.sqlite') });
 
 const {
@@ -168,9 +169,10 @@ test('different tenants only see their own My Missions entries', async () => {
      VALUES (?, ?, ?, 1, NULL, ?, ?)`
   ).run('tenant-b-user', 'tenant-b-user', 'tenant-b@overlord.local', now, now);
   db.prepare(
-    `INSERT INTO workspaces (id, slug, name, kind, settings_json, created_at, updated_at, revision)
-     VALUES ('tenant-b', 'tenant-b', 'Tenant B', 'local', '{}', ?, ?, 1)`
-  ).run(now, now);
+    `INSERT INTO workspaces
+       (id, organization_id, slug, name, kind, settings_json, created_at, updated_at, revision)
+     VALUES ('tenant-b', ?, 'tenant-b', 'Tenant B', 'local', '{}', ?, ?, 1)`
+  ).run(DEFAULT_TEST_ORGANIZATION_ID, now, now);
   db.prepare(
     `INSERT INTO workspace_users
        (id, workspace_id, profile_id, member_key, status, metadata_json, created_at, updated_at, revision)

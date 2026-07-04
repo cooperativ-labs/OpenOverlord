@@ -254,13 +254,13 @@ export interface ActiveWorkspace {
  * this binding; a request-scoped `setActiveWorkspace` call (from
  * `backend/workspaces.ts`) never does, so one tenant's workspace switch can
  * never leak into another request's or the loopback surface's default.
+ *
+ * `null` on a zero-workspace boot (no organization/workspace has been created
+ * yet — see `organization-workspace-hierarchy.md` Q10): every reader must go
+ * through `getActiveWorkspace()`/`getActiveWorkspaceId()` (which throw a clear
+ * error for that state) or the `OrNull` variants, never assume this is set.
  */
-let defaultWorkspace: ActiveWorkspace = {
-  id: 'pending-workspace',
-  slug: 'pending',
-  name: 'Pending Workspace',
-  kind: 'user'
-};
+let defaultWorkspace: ActiveWorkspace | null = null;
 
 /** The workspace user changes are attributed to, once a local account exists. */
 export let ACTOR_WORKSPACE_USER_ID: string | null = null;
@@ -334,6 +334,35 @@ export function setActiveProfileId(profileId: string | null): void {
 
 export function getActorWorkspaceUserId(): string | null {
   return requestContext().actorWorkspaceUserId;
+}
+
+/**
+ * Resolve the profile behind the current caller, robustly: the authenticated
+ * session/token profile (`getActiveProfileId()`) when set, else the profile
+ * behind the currently-attributed workspace_user. Unlike `activeWorkspace`,
+ * `activeProfileId` has no process-wide fallback `let` binding — code that
+ * runs outside `withRequestContextAsync` (bootstrap, the loopback/CLI
+ * surface, tests that call service functions directly) always sees it as
+ * `null`, even after `setActiveProfileId`. Every read-side function that needs
+ * "the current caller's profile" outside a guaranteed request context should
+ * go through this rather than `getActiveProfileId()` alone. Returns `null`
+ * when neither resolves (callers needing a hard requirement, e.g. workspace
+ * creation, add their own further fallback/throw).
+ */
+export async function resolveActiveProfileId(
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<string | null> {
+  const activeProfileId = getActiveProfileId();
+  if (activeProfileId) return activeProfileId;
+  const actorWorkspaceUserId = getActorWorkspaceUserId();
+  if (actorWorkspaceUserId) {
+    const row = await client.get<{ profile_id: string }>(
+      `SELECT profile_id FROM workspace_users WHERE id = ?`,
+      [actorWorkspaceUserId]
+    );
+    if (row) return row.profile_id;
+  }
+  return null;
 }
 
 /**
@@ -437,7 +466,7 @@ export function buildWebappServiceContext(
  * request always has a request context, so it always takes the other branch.
  */
 function setProcessDefaultWorkspace(
-  workspace: ActiveWorkspace,
+  workspace: ActiveWorkspace | null,
   actorWorkspaceUserId: string | null
 ): void {
   defaultWorkspace = workspace;
@@ -504,10 +533,18 @@ async function loadWorkspaceRowAsync(
 /** Resolve a workspace row by id. Exported for auth's per-request/per-token resolution. */
 export const loadWorkspaceRow = loadWorkspaceRowAsync;
 
+/**
+ * Refresh the process-wide fallback workspace from whatever the database
+ * currently holds. A fresh, unonboarded instance has **zero** workspaces
+ * (Q10) — that is not an error: the fallback becomes `null` and every reader
+ * of `getActiveWorkspace()`/`WORKSPACE` throws its normal clear error until
+ * onboarding creates the first organization + workspace.
+ */
 async function refreshActiveWorkspaceFromClient(client: DatabaseClient): Promise<void> {
   const row = await oldestWorkspaceRowFromClient(client);
   if (!row) {
-    throw new Error('No workspace found in the database. Re-run migrations to seed it.');
+    setProcessDefaultWorkspace(null, null);
+    return;
   }
   setProcessDefaultWorkspace(
     { id: row.id, slug: row.slug, name: row.name, kind: row.kind },
@@ -575,7 +612,7 @@ export async function reloadActiveWorkspace(): Promise<void> {
   const row = await loadWorkspaceRowAsync(id);
   if (!row) return;
   const refreshed: ActiveWorkspace = { id: row.id, slug: row.slug, name: row.name, kind: row.kind };
-  if (id === defaultWorkspace.id) defaultWorkspace = refreshed;
+  if (id === defaultWorkspace?.id) defaultWorkspace = refreshed;
   if (requestContextStorage.getStore()) setActiveWorkspaceContext(refreshed);
 }
 

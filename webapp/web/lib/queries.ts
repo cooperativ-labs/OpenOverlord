@@ -2,11 +2,12 @@ import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tansta
 
 import type {
   AcceptWorkspaceInvitationBody,
+  AddOrganizationAdminBody,
   BranchActionBody,
-  CompleteInitialSetupBody,
   CreateEverhourTimeBody,
   CreateMissionBody,
   CreateObjectiveBody,
+  CreateOrganizationOnboardingBody,
   CreateProjectBody,
   CreateProjectResourceBody,
   CreateProjectTagBody,
@@ -36,6 +37,7 @@ import type {
   UpdateLaunchPreferenceBody,
   UpdateMissionBody,
   UpdateObjectiveBody,
+  UpdateOrganizationBody,
   UpdateProfileBody,
   UpdateProjectBody,
   UpdateProjectExecutionTargetBody,
@@ -52,7 +54,7 @@ import type {
   WorkspaceStatusDto
 } from '../../shared/contract.ts';
 
-import { api } from './api.ts';
+import { api, type Meta } from './api.ts';
 import {
   clearAuthTokens,
   clearDesktopBearerToken,
@@ -78,6 +80,7 @@ import {
   isRemoteExecutionTargetSelected,
   useIsRemoteExecutionTargetForProject
 } from './local-target-remote.ts';
+import { persistActiveOrganizationId } from './org-preferences.ts';
 
 export const keys = {
   meta: ['meta'] as const,
@@ -85,10 +88,13 @@ export const keys = {
   userTokens: ['user-tokens'] as const,
   webhookSubscriptions: ['webhooks'] as const,
   webhookDeliveries: (id: string) => ['webhooks', id, 'deliveries'] as const,
+  organizations: ['organizations'] as const,
+  organizationAdmins: (id: string) => ['organization', id, 'admins'] as const,
   workspaces: ['workspaces'] as const,
   workspaceMembers: (id: string) => ['workspace', id, 'members'] as const,
   workspaceInvitations: (id: string) => ['workspace', id, 'invitations'] as const,
-  projects: ['projects'] as const,
+  projects: (workspaceId?: string) =>
+    workspaceId ? (['workspace', workspaceId, 'projects'] as const) : (['projects'] as const),
   project: (id: string) => ['project', id] as const,
   workspaceStatuses: ['workspace', 'statuses'] as const,
   projectResources: (id: string) => ['project', id, 'resources'] as const,
@@ -144,6 +150,21 @@ export const useWebhookDeliveries = (id: string, enabled: boolean) =>
     enabled
   });
 
+export const useOrganizations = () =>
+  useQuery({ queryKey: keys.organizations, queryFn: api.listOrganizations });
+
+export const useOrganizationAdmins = (id: string | null) =>
+  useQuery({
+    queryKey: keys.organizationAdmins(id ?? '__none__'),
+    queryFn: () => api.listOrganizationAdmins(id ?? ''),
+    enabled: Boolean(id)
+  });
+
+export const useAccessibleWorkspaces = () => {
+  const meta = useMeta();
+  return meta.data?.workspaces ?? [];
+};
+
 export const useWorkspaces = () =>
   useQuery({ queryKey: keys.workspaces, queryFn: api.listWorkspaces });
 
@@ -161,7 +182,19 @@ export const useWorkspaceInvitations = (id: string | null) =>
     enabled: Boolean(id)
   });
 
-export const useProjects = () => useQuery({ queryKey: keys.projects, queryFn: api.listProjects });
+export const useProjects = (workspaceId?: string) => {
+  const meta = useMeta();
+  const targetWorkspaceId = workspaceId ?? meta.data?.workspace?.id;
+
+  return useQuery({
+    queryKey: keys.projects(targetWorkspaceId),
+    queryFn: () => {
+      if (!targetWorkspaceId) return Promise.resolve([]);
+      return api.listProjectsForWorkspace(targetWorkspaceId);
+    },
+    enabled: Boolean(targetWorkspaceId)
+  });
+};
 
 export const useProject = (id: string) =>
   useQuery({ queryKey: keys.project(id), queryFn: () => api.getProject(id) });
@@ -379,18 +412,80 @@ export function useUploadAvatar() {
 }
 
 /**
- * Upload an image to the `workspace-images` bucket via the core upload service
- * and set it as the given workspace's logo in one step. Admin-only on the
- * server side. Returns the updated workspace.
+ * Upload an image to the `organization-images` bucket and set it as the given
+ * organization's logo. Org-admin-only on the server side.
  */
-export function useUploadWorkspaceLogo() {
+export function useUploadOrganizationLogo() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ workspaceId, file }: { workspaceId: string; file: File }) => {
-      const stored = await api.uploadImage('workspace-images', file);
-      return api.updateWorkspace(workspaceId, { logoUrl: stored.url });
+    mutationFn: async ({ organizationId, file }: { organizationId: string; file: File }) => {
+      const stored = await api.uploadImage('organization-images', file);
+      return api.updateOrganization(organizationId, { logoUrl: stored.url });
     },
     onSuccess: () => invalidateAll(qc)
+  });
+}
+
+export function useCreateOrganizationOnboarding() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateOrganizationOnboardingBody) => api.createOrganizationOnboarding(body),
+    onSuccess: data => {
+      if (data.organization) persistActiveOrganizationId(data.organization.id);
+      if (data.workspace) persistActiveWorkspaceId(data.workspace.id);
+      invalidateAll(qc);
+    }
+  });
+}
+
+export function useUpdateOrganization() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateOrganizationBody }) =>
+      api.updateOrganization(id, body),
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
+export function useActivateOrganization() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (organizationId: string) => {
+      persistActiveOrganizationId(organizationId);
+      const workspaces = await api.listWorkspaces();
+      const target =
+        workspaces.find(
+          workspace => workspace.organizationId === organizationId && workspace.isActive
+        ) ?? workspaces.find(workspace => workspace.organizationId === organizationId);
+      if (!target) throw new Error('No workspace found in this organization');
+      return api.activateWorkspace(target.id);
+    },
+    onSuccess: data => {
+      persistActiveWorkspaceFromList(data);
+      invalidateAll(qc);
+    }
+  });
+}
+
+export function useAddOrganizationAdmin(organizationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AddOrganizationAdminBody) => api.addOrganizationAdmin(organizationId, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.organizationAdmins(organizationId) });
+      invalidateAll(qc);
+    }
+  });
+}
+
+export function useRemoveOrganizationAdmin(organizationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => api.removeOrganizationAdmin(organizationId, userId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.organizationAdmins(organizationId) });
+      invalidateAll(qc);
+    }
   });
 }
 
@@ -486,24 +581,10 @@ export function useUpdateWorktreeBranchAutomation() {
   });
 }
 
-export function useCompleteSetup() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: CompleteInitialSetupBody) => api.completeSetup(body),
-    // Setup renames the active workspace and changes its slug, which feed
-    // `/api/meta`, the sidebar identity, and future mission identifiers.
-    onSuccess: data => {
-      persistActiveWorkspaceId(data.id);
-      invalidateAll(qc);
-    }
-  });
-}
-
 export function useCreateWorkspace() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateWorkspaceBody) => api.createWorkspace(body),
-    // Creating a workspace also makes it active, so the whole cache is stale.
     onSuccess: data => {
       persistActiveWorkspaceId(data.id);
       invalidateAll(qc);
@@ -620,13 +701,25 @@ export function useDeleteProject() {
   });
 }
 
-export function useReorderProjects() {
+export function useReorderProjects(workspaceId?: string) {
   const qc = useQueryClient();
+  const meta = useMeta();
+  const targetWorkspaceId = workspaceId ?? meta.data?.workspace?.id;
+
   return useMutation({
-    mutationFn: (body: ReorderProjectsBody) => api.reorderProjects(body),
+    mutationFn: async (body: ReorderProjectsBody) => {
+      const cachedMeta = qc.getQueryData<Meta>(keys.meta);
+      if (workspaceId && workspaceId !== cachedMeta?.workspace?.id) {
+        await api.activateWorkspace(workspaceId);
+      }
+      return api.reorderProjects(body);
+    },
     onSuccess: data => {
-      qc.setQueryData(keys.projects, data);
-      void qc.invalidateQueries({ queryKey: keys.projects });
+      if (targetWorkspaceId) {
+        qc.setQueryData(keys.projects(targetWorkspaceId), data);
+        void qc.invalidateQueries({ queryKey: keys.projects(targetWorkspaceId) });
+      }
+      invalidateAll(qc);
     }
   });
 }

@@ -34,9 +34,12 @@ import {
   nowIso,
   recordChange,
   requireDatabaseClient,
+  resolveActiveProfileId,
   WORKSPACE
 } from './db.ts';
 import { ApiError } from './errors.ts';
+import { getActiveOrganizationIdOrNull } from './organizations.ts';
+import { isOrganizationAdmin } from './rbac.ts';
 import { createStorageBackend, readStorageReadSettings } from './storage-backends.ts';
 
 // backend/storage.ts -> repo root is one level up from backend/.
@@ -85,6 +88,27 @@ async function resolveBucket(bucketKey: string): Promise<StorageBucketRow> {
   return row;
 }
 
+async function requireActiveOrganizationId(): Promise<string> {
+  const organizationId = await getActiveOrganizationIdOrNull();
+  if (!organizationId) throw new ApiError(404, 'No active organization');
+  return organizationId;
+}
+
+/** Resolve the active organization's bucket for `bucketKey`, or 404 if absent. */
+async function resolveOrganizationBucket(
+  organizationId: string,
+  bucketKey: string
+): Promise<StorageBucketRow> {
+  const row = await requireDatabaseClient().get<StorageBucketRow>(
+    `SELECT id, bucket_key, storage_backend, base_url, local_path, settings_json
+       FROM storage_buckets
+      WHERE organization_id = ? AND bucket_key = ? AND deleted_at IS NULL`,
+    [organizationId, bucketKey]
+  );
+  if (!row) throw new ApiError(404, `Unknown storage bucket '${bucketKey}'`);
+  return row;
+}
+
 /** Pick a safe extension and normalise the content type, or reject the upload. */
 function extensionForImage(contentType: string): string {
   const ext = IMAGE_EXTENSIONS[contentType.toLowerCase()];
@@ -120,6 +144,10 @@ function userImageObjectKey(userId: string, imageId: string, ext: string): strin
 
 function workspaceImageObjectKey(workspaceId: string, imageId: string, ext: string): string {
   return `workspace-files/${workspaceId}/images/${imageId}${ext}`;
+}
+
+function organizationImageObjectKey(organizationId: string, imageId: string, ext: string): string {
+  return `organization-files/${organizationId}/images/${imageId}${ext}`;
 }
 
 function attachmentObjectKey(workspaceId: string, attachmentId: string, ext: string): string {
@@ -302,6 +330,42 @@ export async function uploadWorkspaceImage(input: UploadImageInput): Promise<Sto
       createdAt: now
     };
   });
+}
+
+/**
+ * Upload an image to the active organization's `organization-images` bucket
+ * (the organization logo). Unlike `user-images`/`workspace-images` there is no
+ * per-object metadata table (an organization has exactly one current logo,
+ * tracked as a URL string in `organizations.settings_json` — see
+ * `resolveStoredObject`'s dedicated branch below, which derives content type
+ * from the storage key's extension instead of a metadata row). The route-level
+ * `PERMISSIONS.ORGANIZATION_IMAGE_CREATE` gate only checks the active
+ * workspace's role grants, so this additionally enforces the real org-admin
+ * invariant (Q2) itself, mirroring `updateOrganization`.
+ */
+export async function uploadOrganizationImage(input: UploadImageInput): Promise<StoredImageDto> {
+  const organizationId = await requireActiveOrganizationId();
+  const profileId = await resolveActiveProfileId();
+  if (!profileId || !(await isOrganizationAdmin(profileId, organizationId))) {
+    throw new ApiError(403, 'Organization admin required');
+  }
+
+  const bucket = await resolveOrganizationBucket(organizationId, 'organization-images');
+  const written = await writeImageObject(bucket, input, (id, ext) =>
+    organizationImageObjectKey(organizationId, id, ext)
+  );
+  const filename = input.filename.trim() || `image${path.extname(written.storageKey)}`;
+
+  return {
+    id: written.id,
+    bucketKey: bucket.bucket_key,
+    storageKey: written.storageKey,
+    filename,
+    contentType: written.contentType,
+    sizeBytes: written.sizeBytes,
+    url: written.publicUrl,
+    createdAt: nowIso()
+  };
 }
 
 // ---- Objective attachments (attachments bucket) --------------------------
@@ -606,42 +670,38 @@ const SERVABLE_OBJECT_TABLES: Record<string, string> = {
   attachments: 'attachments'
 };
 
-/**
- * Resolve a stored object's bytes for serving. Looks the object up by its exact
- * backend key so only recorded, non-deleted objects are served and path
- * traversal via `storageKey` is impossible. Attachments (arbitrary types) are
- * flagged for download so untrusted bytes are never rendered inline.
- */
-export async function resolveStoredObject(
-  bucketKey: string,
-  storageKey: string
-): Promise<ResolvedStoredObject> {
-  const bucket = await resolveBucket(bucketKey);
-  const table = SERVABLE_OBJECT_TABLES[bucketKey];
-  if (!table) throw new ApiError(404, `Serving is not configured for bucket '${bucketKey}'`);
+/** Reverse of `IMAGE_EXTENSIONS`, used to derive `organization-images` content type from its key. */
+const CONTENT_TYPE_BY_EXTENSION: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp'
+};
 
-  const row = await requireDatabaseClient().get<{
-    content_type: string | null;
-    filename: string;
-  }>(
-    `SELECT content_type, filename FROM ${table}
-      WHERE storage_bucket_id = ? AND storage_key = ? AND deleted_at IS NULL`,
-    [bucket.id, storageKey]
-  );
-  if (!row) throw new ApiError(404, 'File not found');
-
+/** Dispatch a resolved bucket + metadata to the bucket's storage backend. */
+async function finalizeStoredObject({
+  bucket,
+  storageKey,
+  contentType,
+  filename,
+  forceDownload
+}: {
+  bucket: StorageBucketRow;
+  storageKey: string;
+  contentType: string;
+  filename: string;
+  forceDownload: boolean;
+}): Promise<ResolvedStoredObject> {
   const backend = createStorageBackend({ bucket, repoRoot });
-  const contentType = row.content_type ?? 'application/octet-stream';
-  const forceDownload = bucketKey === ATTACHMENTS_BUCKET_KEY;
   const readSettings = readStorageReadSettings(bucket.settings_json);
 
   if (readSettings.presignReads && backend.presignGet) {
     const responseContentDisposition = forceDownload
-      ? `attachment; filename="${row.filename.replace(/"/g, '\\"')}"`
+      ? `attachment; filename="${filename.replace(/"/g, '\\"')}"`
       : undefined;
     return {
       contentType,
-      filename: row.filename,
+      filename,
       forceDownload,
       presignedRedirectUrl: await backend.presignGet({
         key: storageKey,
@@ -660,20 +720,66 @@ export async function resolveStoredObject(
       : path.resolve(repoRoot, bucket.local_path);
     const absolutePath = path.join(root, storageKey);
     if (!existsSync(absolutePath)) throw new ApiError(404, 'File not found');
-    return {
-      absolutePath,
-      contentType,
-      filename: row.filename,
-      forceDownload
-    };
+    return { absolutePath, contentType, filename, forceDownload };
   }
 
   return {
     bodyStream: await backend.getStream({ key: storageKey }),
     contentType,
-    filename: row.filename,
+    filename,
     forceDownload
   };
+}
+
+/**
+ * Resolve a stored object's bytes for serving. Looks the object up by its exact
+ * backend key so only recorded, non-deleted objects are served and path
+ * traversal via `storageKey` is impossible. Attachments (arbitrary types) are
+ * flagged for download so untrusted bytes are never rendered inline.
+ *
+ * `organization-images` is a dedicated branch: it has no per-object metadata
+ * table (see `uploadOrganizationImage`), so content type is derived from the
+ * storage key's extension instead of a database row, and the bucket is
+ * resolved against the caller's active organization rather than `WORKSPACE.id`.
+ */
+export async function resolveStoredObject(
+  bucketKey: string,
+  storageKey: string
+): Promise<ResolvedStoredObject> {
+  if (bucketKey === 'organization-images') {
+    const organizationId = await requireActiveOrganizationId();
+    const bucket = await resolveOrganizationBucket(organizationId, bucketKey);
+    const ext = path.extname(storageKey).toLowerCase();
+    return finalizeStoredObject({
+      bucket,
+      storageKey,
+      contentType: CONTENT_TYPE_BY_EXTENSION[ext] ?? 'application/octet-stream',
+      filename: `logo${ext}`,
+      forceDownload: false
+    });
+  }
+
+  const bucket = await resolveBucket(bucketKey);
+  const table = SERVABLE_OBJECT_TABLES[bucketKey];
+  if (!table) throw new ApiError(404, `Serving is not configured for bucket '${bucketKey}'`);
+
+  const row = await requireDatabaseClient().get<{
+    content_type: string | null;
+    filename: string;
+  }>(
+    `SELECT content_type, filename FROM ${table}
+      WHERE storage_bucket_id = ? AND storage_key = ? AND deleted_at IS NULL`,
+    [bucket.id, storageKey]
+  );
+  if (!row) throw new ApiError(404, 'File not found');
+
+  return finalizeStoredObject({
+    bucket,
+    storageKey,
+    contentType: row.content_type ?? 'application/octet-stream',
+    filename: row.filename,
+    forceDownload: bucketKey === ATTACHMENTS_BUCKET_KEY
+  });
 }
 
 /** Stream, send, or redirect a resolved stored object through an Express response. */

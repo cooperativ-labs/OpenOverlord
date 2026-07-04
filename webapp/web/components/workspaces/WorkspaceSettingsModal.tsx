@@ -10,7 +10,7 @@ import { ArchivedProjectsPage } from '@/components/workspaces/workspace-settings
 import { DangerZonePage } from '@/components/workspaces/workspace-settings/DangerZonePage.tsx';
 import { GeneralPage } from '@/components/workspaces/workspace-settings/GeneralPage.tsx';
 import { MembersPage } from '@/components/workspaces/workspace-settings/MembersPage.tsx';
-import { useWorkspaces } from '@/lib/queries';
+import { useMeta } from '@/lib/queries';
 
 const navItems: SettingsNavItem[] = [
   { name: 'General', icon: Settings },
@@ -40,7 +40,7 @@ export function WorkspaceSettingsModal({
   workspaceId,
   initialNav
 }: WorkspaceSettingsModalProps) {
-  const workspaces = useWorkspaces();
+  const meta = useMeta();
   const [activeNav, setActiveNav] = useState<WorkspaceSettingsNavSection>('General');
 
   useEffect(() => {
@@ -54,8 +54,8 @@ export function WorkspaceSettingsModal({
     setActiveNav('General');
   }, [open, initialNav]);
 
-  const workspace = (workspaces.data ?? []).find(w => w.id === workspaceId) ?? null;
-  const isOnlyWorkspace = (workspaces.data ?? []).length <= 1;
+  const workspace = (meta.data?.workspaces ?? []).find(w => w.id === workspaceId) ?? null;
+  const isOnlyWorkspace = (meta.data?.workspaces ?? []).length <= 1;
 
   return (
     <SettingsDialogShell
@@ -68,13 +68,11 @@ export function WorkspaceSettingsModal({
       activeNav={activeNav}
       onActiveNavChange={name => setActiveNav(name as WorkspaceSettingsNavSection)}
     >
-      {workspaces.isLoading ? (
+      {meta.isLoading ? (
         <p className="text-xs text-muted-foreground">Loading…</p>
-      ) : workspaces.isError ? (
+      ) : meta.isError ? (
         <p className="text-sm text-destructive">
-          {workspaces.error instanceof Error
-            ? workspaces.error.message
-            : 'Failed to load workspace.'}
+          {meta.error instanceof Error ? meta.error.message : 'Failed to load workspace.'}
         </p>
       ) : !workspace ? (
         <p className="text-xs text-muted-foreground">Workspace not found.</p>

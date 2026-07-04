@@ -2,13 +2,14 @@ import type { LocalTargetBridgeCall } from '../../../packages/core/service/local
 import type { CapabilityResult } from '../../../packages/core/service/local-target/types.ts';
 import type {
   AcceptWorkspaceInvitationBody,
+  AddOrganizationAdminBody,
   AgentCatalogDto,
   ArtifactDto,
   BranchActionBody,
-  CompleteInitialSetupBody,
   CreateEverhourTimeBody,
   CreateMissionBody,
   CreateObjectiveBody,
+  CreateOrganizationOnboardingBody,
   CreateProjectBody,
   CreateProjectResourceBody,
   CreateProjectTagBody,
@@ -29,6 +30,7 @@ import type {
   LaunchPreferenceDto,
   LaunchSettingsDto,
   LinkProjectEverhourBody,
+  MetaDto,
   MissionBranchListDto,
   MissionDetailDto,
   MissionDto,
@@ -40,6 +42,8 @@ import type {
   ObjectiveAttachmentDto,
   ObjectiveDto,
   ObjectivePromptDto,
+  OrganizationAdminDto,
+  OrganizationDto,
   PreviewScheduleBody,
   ProfileDto,
   ProjectDto,
@@ -66,6 +70,7 @@ import type {
   UpdateLaunchPreferenceBody,
   UpdateMissionBody,
   UpdateObjectiveBody,
+  UpdateOrganizationBody,
   UpdateProfileBody,
   UpdateProjectBody,
   UpdateProjectExecutionTargetBody,
@@ -101,10 +106,7 @@ export interface MetaCapabilities {
   localTarget: LocalTargetServerCapability;
 }
 
-export interface Meta {
-  workspace: { id: string; slug: string; name: string } | null;
-  /** True while the seeded first workspace still needs its initial setup step. */
-  needsSetup: boolean;
+export interface Meta extends MetaDto {
   databasePath: string;
   backendMode: 'local' | 'cloud';
   web: { host: string; port: number; url: string };
@@ -203,8 +205,21 @@ async function requestDownload(
 
 export const api = {
   meta: () => request<Meta>('GET', '/api/meta'),
-  completeSetup: (body: CompleteInitialSetupBody) =>
-    request<WorkspaceDto>('POST', '/api/setup', body),
+  createOrganizationOnboarding: (body: CreateOrganizationOnboardingBody) =>
+    request<Meta>('POST', '/api/onboarding', body),
+
+  listOrganizations: () => request<OrganizationDto[]>('GET', '/api/organizations'),
+  updateOrganization: (id: string, body: UpdateOrganizationBody) =>
+    request<OrganizationDto>('PATCH', `/api/organizations/${id}`, body),
+  listOrganizationAdmins: (id: string) =>
+    request<OrganizationAdminDto[]>('GET', `/api/organizations/${id}/admins`),
+  addOrganizationAdmin: (id: string, body: AddOrganizationAdminBody) =>
+    request<OrganizationAdminDto[]>('POST', `/api/organizations/${id}/admins`, body),
+  removeOrganizationAdmin: (id: string, userId: string) =>
+    request<OrganizationAdminDto[]>(
+      'DELETE',
+      `/api/organizations/${id}/admins/${encodeURIComponent(userId)}`
+    ),
 
   getProfile: () => request<ProfileDto>('GET', '/api/profile'),
   updateProfile: (body: UpdateProfileBody) => request<ProfileDto>('PATCH', '/api/profile', body),
@@ -280,6 +295,8 @@ export const api = {
     request<WorkspaceDto>('POST', '/api/invitations/accept', body),
 
   listProjects: () => request<ProjectDto[]>('GET', '/api/projects'),
+  listProjectsForWorkspace: (workspaceId: string) =>
+    request<ProjectDto[]>('GET', `/api/workspaces/${workspaceId}/projects`),
   getProject: (id: string) => request<ProjectDto>('GET', `/api/projects/${id}`),
   createProject: (body: CreateProjectBody) => request<ProjectDto>('POST', '/api/projects', body),
   updateProject: (id: string, body: UpdateProjectBody) =>

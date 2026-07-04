@@ -6,6 +6,7 @@ import {
   type Role as RoleType,
   tokenScopeAllows
 } from '@overlord/auth';
+import { type DatabaseClient } from '@overlord/database';
 
 import {
   getActiveTokenScopes,
@@ -86,4 +87,110 @@ export async function requirePermission(action: Permission): Promise<void> {
   if (!(await actorCan(action))) {
     throw new ApiError(403, `Permission denied: ${action}`);
   }
+}
+
+// ---- Organization admin (derived, not a stored role) ----------------------
+//
+// "Organization admin" has no row of its own: it is ADMIN of every live
+// constituent workspace of the organization (Q2 in
+// planning/feature-plans/organization-workspace-hierarchy.md). Any workspace
+// admin may *view* org settings; only a full org admin may mutate them —
+// otherwise a single-workspace ADMIN could add themselves as org admin and
+// escalate to every workspace in the org (R1).
+
+async function liveOrganizationWorkspaceIds(
+  organizationId: string,
+  client: DatabaseClient
+): Promise<string[]> {
+  const rows = await client.all<{ id: string }>(
+    `SELECT id FROM workspaces WHERE organization_id = ? AND deleted_at IS NULL`,
+    [organizationId]
+  );
+  return rows.map(row => row.id);
+}
+
+async function profileIsWorkspaceAdmin(
+  profileId: string,
+  workspaceId: string,
+  client: DatabaseClient
+): Promise<boolean> {
+  const row = await client.get<{ id: string }>(
+    `SELECT ra.id
+       FROM workspace_users wu
+       JOIN role_assignments ra
+         ON ra.workspace_id = wu.workspace_id AND ra.workspace_user_id = wu.id
+        AND ra.role_key = 'ADMIN' AND ra.deleted_at IS NULL
+      WHERE wu.workspace_id = ? AND wu.profile_id = ?
+        AND wu.status = 'active' AND wu.deleted_at IS NULL
+      LIMIT 1`,
+    [workspaceId, profileId]
+  );
+  return !!row;
+}
+
+/**
+ * Whether `profileId` is an "organization admin" of `organizationId`: an
+ * active `ADMIN` role assignment in **every** live constituent workspace.
+ * `false` for an organization with zero live workspaces (it should already be
+ * gone — see `deleteOrganizationIfEmpty`).
+ */
+export async function isOrganizationAdmin(
+  profileId: string,
+  organizationId: string,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<boolean> {
+  const workspaceIds = await liveOrganizationWorkspaceIds(organizationId, client);
+  if (workspaceIds.length === 0) return false;
+  for (const workspaceId of workspaceIds) {
+    if (!(await profileIsWorkspaceAdmin(profileId, workspaceId, client))) return false;
+  }
+  return true;
+}
+
+/**
+ * Whether `profileId` may *view* `organizationId`'s settings: an active
+ * `ADMIN` role assignment in at least one live constituent workspace. Viewing
+ * is intentionally broader than mutating (`isOrganizationAdmin`) so a
+ * partial-admin state (an artifact of a bug, or an org mid-repair) is still
+ * visible to someone who can help fix it.
+ */
+export async function canViewOrganizationSettings(
+  profileId: string,
+  organizationId: string,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<boolean> {
+  const workspaceIds = await liveOrganizationWorkspaceIds(organizationId, client);
+  for (const workspaceId of workspaceIds) {
+    if (await profileIsWorkspaceAdmin(profileId, workspaceId, client)) return true;
+  }
+  return false;
+}
+
+/**
+ * The full set of "organization admins" of `organizationId`: profile ids with
+ * an active `ADMIN` role assignment in **every** live constituent workspace.
+ * Shared by `backend/organizations.ts` (listing/adding/removing org admins)
+ * and `backend/workspaces.ts` (auto-granting `ADMIN` to every current org
+ * admin when a new workspace is created under the org, Q3) so both stay
+ * derived from the same invariant instead of drifting.
+ */
+export async function listOrganizationAdminProfileIds(
+  organizationId: string,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<string[]> {
+  const rows = await client.all<{ profile_id: string }>(
+    `SELECT wu.profile_id
+       FROM workspace_users wu
+       JOIN role_assignments ra
+         ON ra.workspace_id = wu.workspace_id AND ra.workspace_user_id = wu.id
+        AND ra.role_key = 'ADMIN' AND ra.deleted_at IS NULL
+       JOIN workspaces w ON w.id = wu.workspace_id AND w.deleted_at IS NULL
+      WHERE w.organization_id = ? AND wu.status = 'active' AND wu.deleted_at IS NULL
+      GROUP BY wu.profile_id
+     HAVING COUNT(DISTINCT wu.workspace_id) = (
+       SELECT COUNT(*) FROM workspaces WHERE organization_id = ? AND deleted_at IS NULL
+     )`,
+    [organizationId, organizationId]
+  );
+  return rows.map(row => row.profile_id);
 }

@@ -22,15 +22,15 @@ await initDatabase();
 const { actorCan, loadActorRoles } = await import('./rbac.ts');
 const { createMission, createObjective, createProject, listProjects } =
   await import('./repository.ts');
-const { seedAuthenticatedOperator } = await import('./test-helpers.ts');
+const { DEFAULT_TEST_ORGANIZATION_ID, seedAuthenticatedOperator } =
+  await import('./test-helpers.ts');
 const {
-  completeInitialSetup,
+  createOrganizationOnboarding,
   createWorkspace,
   deleteWorkspace,
   exportWorkspaceObjectivesCsv,
   listWorkspaceMembers,
   listWorkspaces,
-  needsInitialSetup,
   updateWorkspace
 } = await import('./workspaces.ts');
 
@@ -38,7 +38,10 @@ const operatorWorkspaceUserId = seedAuthenticatedOperator({ db });
 setActiveWorkspaceUser(operatorWorkspaceUserId);
 
 test('createWorkspace grants ADMIN to the creator so switching workspaces keeps permissions', async () => {
-  const created = await createWorkspace({ name: 'Second Workspace' });
+  const created = await createWorkspace({
+    organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+    name: 'Second Workspace'
+  });
   const workspaceUserId = await resolveActorForWorkspace(created.id);
   assert.ok(workspaceUserId, 'expected a workspace user for the new workspace');
 
@@ -49,7 +52,7 @@ test('createWorkspace grants ADMIN to the creator so switching workspaces keeps 
   assert.equal(await actorCan('workspace:update'), true);
 });
 
-test('brand-new authenticated user can create a private admin-owned workspace', async () => {
+test('a brand-new authenticated user onboards into their own organization and workspace', async () => {
   const now = new Date().toISOString();
   db.prepare(
     `INSERT INTO "user" ("id", "name", "email", "emailVerified", "image", "createdAt", "updatedAt")
@@ -61,7 +64,10 @@ test('brand-new authenticated user can create a private admin-owned workspace', 
     setActiveWorkspaceContext(null);
     setActiveWorkspaceUser(null);
 
-    const created = await createWorkspace({ name: 'Brand New User Workspace' });
+    const created = await createOrganizationOnboarding({
+      organizationName: 'Brand New Org',
+      workspaceName: 'Brand New User Workspace'
+    });
     const members = db
       .prepare(
         `SELECT id, profile_id FROM workspace_users
@@ -92,49 +98,65 @@ test('brand-new authenticated user can create a private admin-owned workspace', 
   });
 });
 
-test('createWorkspace accepts a custom workspace ID and rejects collisions', async () => {
-  const created = await createWorkspace({ id: 'engineering-hq', name: 'Engineering HQ' });
-  assert.equal(created.id, 'engineering-hq');
-
+test('onboarding refuses a profile that already has a workspace membership', async () => {
   await assert.rejects(
-    createWorkspace({ id: 'engineering-hq', name: 'Duplicate HQ' }),
-    /already exists/
+    createOrganizationOnboarding({ organizationName: 'Second Org For Same User' }),
+    /only available before your first workspace membership/
   );
 });
 
-test('createWorkspace defaults the workspace ID from the full name', async () => {
-  const created = await createWorkspace({ name: 'Client Success West' });
-  assert.equal(created.id, 'client-success-west');
+test('createWorkspace assigns a UUID id and derives the slug from the name', async () => {
+  const created = await createWorkspace({
+    organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+    name: 'Client Success West'
+  });
+  assert.match(created.id, /^[0-9a-f-]{36}$/i, 'workspace ids are now server-generated UUIDs');
+  assert.equal(created.slug, 'cli', 'the slug defaults to the first three letters of the name');
+  assert.equal(created.organizationId, DEFAULT_TEST_ORGANIZATION_ID);
 });
 
-test('completeInitialSetup can re-key the seeded first workspace', async () => {
-  await setActiveWorkspace('local-workspace');
-  setActiveWorkspaceUser(operatorWorkspaceUserId);
-  assert.equal(await needsInitialSetup(), true);
-
-  const updated = await completeInitialSetup({
-    id: 'acme-operations',
-    name: 'Acme Operations',
-    slug: 'aco'
+test('createWorkspace uniquifies max-length slug collisions without looping', async () => {
+  const slug = 'a'.repeat(48);
+  const first = await createWorkspace({
+    organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+    name: 'First Long Slug Workspace',
+    slug
+  });
+  const second = await createWorkspace({
+    organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+    name: 'Second Long Slug Workspace',
+    slug
   });
 
-  assert.equal(updated.id, 'acme-operations');
-  assert.equal(dbModule.WORKSPACE.id, 'acme-operations');
-  assert.equal(dbModule.WORKSPACE.slug, 'aco');
-  assert.equal(await needsInitialSetup(), false);
-  assert.equal(await resolveActorForWorkspace('acme-operations'), operatorWorkspaceUserId);
+  assert.equal(first.slug, slug);
+  assert.equal(second.slug, `${'a'.repeat(46)}-2`);
+  assert.equal(second.slug.length, 48);
+});
 
-  const missionSequence = db
-    .prepare(`SELECT workspace_id, scope_id FROM mission_sequences WHERE id = ?`)
-    .get('local-workspace-mission-sequence') as { workspace_id: string; scope_id: string };
-  assert.deepEqual(missionSequence, {
-    workspace_id: 'acme-operations',
-    scope_id: 'acme-operations'
+test('createWorkspace rejects a caller who is not an admin of the organization', async () => {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO "user" ("id", "name", "email", "emailVerified", "image", "createdAt", "updatedAt")
+     VALUES (?, ?, ?, 1, NULL, ?, ?)`
+  ).run('non-org-admin-user', 'non-org-admin-user', 'non-org-admin@overlord.local', now, now);
+
+  await withRequestContextAsync(async () => {
+    setActiveProfileId('non-org-admin-user');
+    setActiveWorkspaceContext(null);
+    setActiveWorkspaceUser(null);
+
+    await assert.rejects(
+      createWorkspace({ organizationId: DEFAULT_TEST_ORGANIZATION_ID, name: 'Should Not Exist' }),
+      /Organization admin required/
+    );
   });
 });
 
 test('exportWorkspaceObjectivesCsv exports the requested workspace objectives as CSV', async () => {
-  const workspace = await createWorkspace({ name: 'Export Target Workspace' });
+  const workspace = await createWorkspace({
+    organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+    name: 'Export Target Workspace'
+  });
   const workspaceUserId = await resolveActorForWorkspace(workspace.id);
   assert.ok(workspaceUserId, 'expected operator membership in the export workspace');
   setActiveWorkspaceUser(workspaceUserId);
@@ -163,12 +185,18 @@ test('exportWorkspaceObjectivesCsv exports the requested workspace objectives as
 });
 
 test('exportWorkspaceObjectivesCsv checks admin access on the requested workspace', async () => {
-  const target = await createWorkspace({ name: 'Export Access Target' });
+  const target = await createWorkspace({
+    organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+    name: 'Export Access Target'
+  });
   const targetWorkspaceUserId = await resolveActorForWorkspace(target.id);
   assert.ok(targetWorkspaceUserId, 'expected operator membership in the target workspace');
   setActiveWorkspaceUser(targetWorkspaceUserId);
 
-  const second = await createWorkspace({ name: 'Second Workspace Export Test' });
+  const second = await createWorkspace({
+    organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+    name: 'Second Workspace Export Test'
+  });
   const secondWorkspaceUserId = await resolveActorForWorkspace(second.id);
   assert.ok(secondWorkspaceUserId, 'expected operator membership in the second workspace');
   setActiveWorkspaceUser(secondWorkspaceUserId);
@@ -193,7 +221,13 @@ test('exportWorkspaceObjectivesCsv checks admin access on the requested workspac
 });
 
 test('workspace mutations and member lists are gated on the target workspace, not the active one', async () => {
-  const target = await createWorkspace({ name: 'Tenancy Gate Target' });
+  // Restore the org-admin actor: the previous test leaves the active actor as
+  // a plain viewer of one workspace, who is no longer an organization admin.
+  setActiveWorkspaceUser(operatorWorkspaceUserId);
+  const target = await createWorkspace({
+    organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+    name: 'Tenancy Gate Target'
+  });
 
   // An admin of their *own* workspace is still an outsider to `target`.
   const now = new Date().toISOString();
@@ -206,7 +240,10 @@ test('workspace mutations and member lists are gated on the target workspace, no
     setActiveProfileId('outsider-user');
     setActiveWorkspaceContext(null);
     setActiveWorkspaceUser(null);
-    await createWorkspace({ name: 'Outsider Workspace' });
+    await createOrganizationOnboarding({
+      organizationName: 'Outsider Org',
+      workspaceName: 'Outsider Workspace'
+    });
 
     await assert.rejects(
       updateWorkspace(target.id, { name: 'Hijacked' }),
@@ -254,7 +291,7 @@ test('workspace mutations and member lists are gated on the target workspace, no
 
     await assert.rejects(
       updateWorkspace(target.id, { name: 'Renamed By Member' }),
-      /Admin role required/
+      /Manager role required/
     );
     await assert.rejects(deleteWorkspace(target.id), /Admin role required/);
   });
@@ -268,7 +305,11 @@ test('workspace mutations and member lists are gated on the target workspace, no
 });
 
 test('deleteWorkspace tombstones the workspace and activates the oldest remaining one', async () => {
-  const doomed = await createWorkspace({ name: 'Doomed Workspace' });
+  setActiveWorkspaceUser(operatorWorkspaceUserId);
+  const doomed = await createWorkspace({
+    organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+    name: 'Doomed Workspace'
+  });
   assert.equal(dbModule.WORKSPACE.id, doomed.id, 'creation makes the new workspace active');
 
   const list = await deleteWorkspace(doomed.id);

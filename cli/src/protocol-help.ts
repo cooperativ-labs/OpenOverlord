@@ -72,7 +72,7 @@ Agent workflow (required):
 Subcommands:
   auth-status            Return machine-readable auth/backend readiness
   discover-project       Resolve a project from the working directory or explicit id
-  list-organizations     List workspaces visible to the current backend
+  list-organizations     Legacy name; returns only the caller's current workspace context (not organizations)
   attach                 Start a mission session and return full working context
   connect                Start a lightweight session without full context assembly
   load-context           Read mission context without creating a session
@@ -387,9 +387,11 @@ attachment-download-url:
 
 list-organizations:
   Purpose:
-    List workspaces visible to the configured backend (MVP: the active workspace).
+    Legacy name predating the real organizations hierarchy (coo:135) — despite the
+    name, returns only the caller's current *workspace* context, not organization
+    data. Kept as-is to avoid a breaking protocol rename.
   Returns:
-    JSON array of { id, slug, name }.
+    JSON array with a single { id, slug, name } entry for the active workspace.
 
 Supported subcommands: ${subcommands}
 Run \`${primaryCommand} help\` for management commands and \`${primaryCommand} protocol help\` for this reference.

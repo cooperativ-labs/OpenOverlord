@@ -21,6 +21,7 @@ import { discoverProjectOnClient } from './discover-project-local.js';
 import { CliError } from './errors.js';
 import { launchAgent } from './launch.js';
 import { resolveNativeSessionId } from './native-session.js';
+import { runOrgSetupCommand } from './org-setup.js';
 import { printJson, printKeyValue } from './output.js';
 import { pruneStaleProjectTmp } from './project-tmp.js';
 import { printProtocolHelp } from './protocol-help.js';
@@ -967,6 +968,10 @@ export async function runManagementCommand({
         console.log(
           `Created project ${asRecord(project).name ?? name} (${projectId ?? 'unknown'})`
         );
+      return;
+    }
+    case 'org-setup': {
+      await runOrgSetupCommand({ runtime, parsed });
       return;
     }
     case 'add-cwd': {

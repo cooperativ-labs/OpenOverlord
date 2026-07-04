@@ -22,6 +22,7 @@ import { isAllowedBrowserOrigin } from './browser-origins.ts';
 import {
   DATABASE_DIALECT,
   DATABASE_PATH,
+  getActiveProfileId,
   getActiveWorkspaceIdOrNull,
   getActorWorkspaceUserId,
   initDatabase,
@@ -57,7 +58,15 @@ import {
 import { loadRepoEnvForProfile } from './load-repo-env.ts';
 import { resolveLocalTargetServerCapability } from './local-target-capability.ts';
 import { invokeLocalTargetOnServer } from './local-target-invoke.ts';
+import { buildMeta } from './meta.ts';
 import { postMissionBranchObservations } from './mission-branch-observations.ts';
+import {
+  addOrganizationAdmin,
+  listOrganizationAdmins,
+  listOrganizationsForUser,
+  removeOrganizationAdmin,
+  updateOrganization
+} from './organizations.ts';
 import {
   getProjectExecutionTarget,
   updateProjectExecutionTarget
@@ -96,6 +105,7 @@ import {
   listObjectives,
   listProjectResources,
   listProjects,
+  listProjectsForWorkspace,
   listProjectTags,
   listUserTokens,
   listWorkspaceMyMissions,
@@ -145,6 +155,7 @@ import {
   serveStoredObject,
   type UploadImageInput,
   uploadObjectiveAttachment,
+  uploadOrganizationImage,
   uploadUserImage,
   uploadWorkspaceImage
 } from './storage.ts';
@@ -164,7 +175,7 @@ import { readSqlStudioEnabled } from './workspace-settings.ts';
 import {
   acceptWorkspaceInvitation,
   activateWorkspace,
-  completeInitialSetup,
+  createOrganizationOnboarding,
   createWorkspace,
   deleteWorkspace,
   exportWorkspaceObjectivesCsv,
@@ -172,7 +183,6 @@ import {
   listWorkspaceInvitations,
   listWorkspaceMembers,
   listWorkspaces,
-  needsInitialSetup,
   removeWorkspaceMember,
   revokeWorkspaceInvitation,
   updateWorkspace,
@@ -343,12 +353,7 @@ app.get(
   '/api/meta',
   handle(
     async () => ({
-      workspace: getActiveWorkspaceIdOrNull()
-        ? { id: WORKSPACE.id, slug: WORKSPACE.slug, name: WORKSPACE.name }
-        : null,
-      // True while the seeded first workspace is still unnamed; the web UI shows
-      // the one-time initial setup step until `POST /api/setup` completes.
-      needsSetup: await needsInitialSetup(),
+      ...(await buildMeta()),
       databasePath: DATABASE_PATH,
       backendMode: config.backendMode,
       web: {
@@ -382,22 +387,69 @@ app.get(
   })
 );
 
-// ---- Initial instance setup ----------------------------------------------
+// ---- Onboarding -----------------------------------------------------------
 //
-// Names the seeded first workspace and sets the slug that prefixes mission
-// identifiers (`<slug>:<sequence>`). Changing the slug rewrites what `/api/meta`
-// reports, so resync every subscriber.
+// Combined organization + first-workspace onboarding for an authenticated
+// profile with zero workspace memberships anywhere (Q10). Shared verbatim by
+// the web onboarding screen and the future `ovld org-setup` CLI command.
+// Deliberately carries no `requires` gate — it is the mechanism that grants
+// the caller's *first* membership, so there is nothing to check permission
+// against yet; `createOrganizationOnboarding` itself refuses a profile that
+// already has a membership.
 
 app.post(
-  '/api/setup',
+  '/api/onboarding',
+  handle(
+    async (req, res) => {
+      const result = await createOrganizationOnboarding(req.body);
+      setActiveWorkspaceCookie(res, result.id);
+      realtime.refreshAll();
+      return buildMeta();
+    },
+    { mutates: true }
+  )
+);
+
+// ---- Organizations --------------------------------------------------------
+//
+// The grouping + identity layer above workspaces. "Organization admin" is a
+// derived concept (ADMIN of every constituent workspace, see
+// backend/rbac.ts) rather than a stored role, so these routes carry no
+// `requires` gate — each service function in backend/organizations.ts
+// enforces its own org-admin (or org-admin-in-at-least-one-workspace) check.
+
+app.get(
+  '/api/organizations',
+  handle(async () => {
+    const profileId = getActiveProfileId();
+    if (!profileId) throw new ApiError(401, 'Authentication required');
+    return listOrganizationsForUser(profileId);
+  })
+);
+app.patch(
+  '/api/organizations/:id',
   handle(
     async req => {
-      const result = await completeInitialSetup(req.body);
+      const result = await updateOrganization(req.params.id, req.body);
       realtime.refreshAll();
       return result;
     },
-    { requires: PERMISSIONS.WORKSPACE_UPDATE }
+    { mutates: true }
   )
+);
+app.get(
+  '/api/organizations/:id/admins',
+  handle(req => listOrganizationAdmins(req.params.id))
+);
+app.post(
+  '/api/organizations/:id/admins',
+  handle(req => addOrganizationAdmin(req.params.id, req.body), { mutates: true })
+);
+app.delete(
+  '/api/organizations/:id/admins/:userId',
+  handle(req => removeOrganizationAdmin(req.params.id, { userId: req.params.userId }), {
+    mutates: true
+  })
 );
 
 // ---- Workspaces ----------------------------------------------------------
@@ -530,6 +582,14 @@ app.post(
     },
     { mutates: true, requires: PERMISSIONS.WORKSPACE_ACTIVATE }
   )
+);
+// Per-workspace project listing, now that the sidebar can render every
+// accessible workspace of the active organization at once. Membership is
+// validated against `req.params.id` specifically (not necessarily the
+// caller's currently active workspace) inside `listProjectsForWorkspace`.
+app.get(
+  '/api/workspaces/:id/projects',
+  handle(req => listProjectsForWorkspace(req.params.id))
 );
 
 // ---- Profile -------------------------------------------------------------
@@ -672,12 +732,17 @@ const UPLOAD_HANDLERS: Record<
   'workspace-images': {
     permission: PERMISSIONS.WORKSPACE_IMAGE_CREATE,
     upload: uploadWorkspaceImage
+  },
+  'organization-images': {
+    permission: PERMISSIONS.ORGANIZATION_IMAGE_CREATE,
+    upload: uploadOrganizationImage
   }
 };
 
 const STORAGE_READ_PERMISSIONS: Record<string, Permission> = {
   'user-images': PERMISSIONS.USER_IMAGE_READ,
   'workspace-images': PERMISSIONS.WORKSPACE_IMAGE_READ,
+  'organization-images': PERMISSIONS.ORGANIZATION_IMAGE_READ,
   attachments: PERMISSIONS.ATTACHMENT_READ
 };
 
@@ -1488,10 +1553,12 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 async function start(): Promise<void> {
   await initDatabase();
 
+  const bootWorkspaceId = getActiveWorkspaceIdOrNull();
   syncSqlStudioForWorkspace({
     enabled:
       DATABASE_DIALECT === 'sqlite' &&
-      (envSqlStudioEnabled ?? (await readSqlStudioEnabled({ workspaceId: WORKSPACE.id })))
+      bootWorkspaceId &&
+      (envSqlStudioEnabled ?? (await readSqlStudioEnabled({ workspaceId: bootWorkspaceId })))
         ? true
         : false
   });
@@ -1510,7 +1577,11 @@ async function start(): Promise<void> {
     const databaseLabel =
       DATABASE_DIALECT === 'postgres' ? 'postgres (DATABASE_URL)' : DATABASE_PATH;
     console.log(`[webapp] Overlord web server listening on ${bindHost}:${bindPort}`);
-    console.log(`[webapp] workspace: ${WORKSPACE.name} (${WORKSPACE.slug})`);
+    console.log(
+      bootWorkspaceId
+        ? `[webapp] workspace: ${WORKSPACE.name} (${WORKSPACE.slug})`
+        : '[webapp] no workspace yet — awaiting onboarding'
+    );
     console.log(`[webapp] database: ${databaseLabel} (${DATABASE_DIALECT})`);
   });
 

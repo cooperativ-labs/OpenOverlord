@@ -24,7 +24,6 @@ import {
 } from '@/components/ui/select';
 import {
   useInviteWorkspaceMember,
-  useProfile,
   useRemoveWorkspaceMember,
   useRevokeWorkspaceInvitation,
   useUpdateWorkspaceMemberRole,
@@ -32,20 +31,30 @@ import {
   useWorkspaceMembers
 } from '@/lib/queries';
 
+type WorkspaceRoleKey = 'ADMIN' | 'MANAGER' | 'MEMBER';
+
 type MembersPageProps = {
   workspaceId: string;
 };
 
 type PendingAction =
   | { type: 'remove-member'; workspaceUserId: string; label: string }
-  | { type: 'set-role'; workspaceUserId: string; label: string; roleKey: 'ADMIN' | 'MEMBER' }
+  | { type: 'set-role'; workspaceUserId: string; label: string; roleKey: WorkspaceRoleKey }
   | { type: 'revoke-invitation'; invitationId: string; label: string };
 
-export function MembersPage({ workspaceId }: MembersPageProps) {
-  const profile = useProfile();
-  const isAdmin = (profile.data?.roles ?? []).includes('ADMIN');
+function memberRoleLabel(member: { isAdmin: boolean; roleKeys: string[] }): string {
+  if (member.isAdmin) return 'Admin';
+  if (member.roleKeys.includes('MANAGER')) return 'Manager';
+  return 'Member';
+}
 
+export function MembersPage({ workspaceId }: MembersPageProps) {
   const members = useWorkspaceMembers(workspaceId);
+  const memberRows = members.data ?? [];
+  const operator = memberRows.find(member => member.isOperator);
+  const operatorIsAdmin = operator?.isAdmin ?? false;
+  const operatorIsManager = !operatorIsAdmin && (operator?.roleKeys.includes('MANAGER') ?? false);
+  const canManageMembers = operatorIsAdmin || operatorIsManager;
   const invitations = useWorkspaceInvitations(workspaceId);
   const inviteMember = useInviteWorkspaceMember(workspaceId);
   const revokeInvitation = useRevokeWorkspaceInvitation(workspaceId);
@@ -53,15 +62,26 @@ export function MembersPage({ workspaceId }: MembersPageProps) {
   const updateMemberRole = useUpdateWorkspaceMemberRole(workspaceId);
 
   const [email, setEmail] = useState('');
-  const [roleKey, setRoleKey] = useState<'MEMBER' | 'ADMIN'>('MEMBER');
+  const [roleKey, setRoleKey] = useState<WorkspaceRoleKey>('MEMBER');
   const [inviteState, setInviteState] = useState<ButtonLoadingState>('default');
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [manualAcceptUrl, setManualAcceptUrl] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const memberRows = members.data ?? [];
   const pendingInvitations = (invitations.data ?? []).filter(inv => inv.status === 'pending');
+
+  function canChangeMember(member: { isAdmin: boolean; roleKeys: string[]; isOperator: boolean }) {
+    if (!canManageMembers || member.isOperator) return false;
+    if (operatorIsManager && member.isAdmin) return false;
+    return true;
+  }
+
+  function nextRoleForMember(member: { isAdmin: boolean; roleKeys: string[] }): WorkspaceRoleKey {
+    if (member.isAdmin) return 'MEMBER';
+    if (member.roleKeys.includes('MANAGER')) return 'ADMIN';
+    return operatorIsManager ? 'MANAGER' : 'ADMIN';
+  }
 
   async function handleInvite() {
     const trimmed = email.trim();
@@ -122,7 +142,7 @@ export function MembersPage({ workspaceId }: MembersPageProps) {
         </p>
       </div>
 
-      {isAdmin ? (
+      {canManageMembers ? (
         <div className="max-w-lg space-y-3 rounded-lg border border-border bg-card p-4">
           <Label htmlFor="invite-member-email">Invite by email</Label>
           <div className="flex gap-2">
@@ -138,16 +158,14 @@ export function MembersPage({ workspaceId }: MembersPageProps) {
                 if (e.key === 'Enter') void handleInvite();
               }}
             />
-            <Select
-              value={roleKey}
-              onValueChange={value => setRoleKey(value as 'MEMBER' | 'ADMIN')}
-            >
+            <Select value={roleKey} onValueChange={value => setRoleKey(value as WorkspaceRoleKey)}>
               <SelectTrigger id="invite-member-role" className="h-8 w-28 shrink-0">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="MEMBER">Member</SelectItem>
-                <SelectItem value="ADMIN">Admin</SelectItem>
+                <SelectItem value="MANAGER">Manager</SelectItem>
+                {operatorIsAdmin ? <SelectItem value="ADMIN">Admin</SelectItem> : null}
               </SelectContent>
             </Select>
             <LoadingButton
@@ -204,7 +222,9 @@ export function MembersPage({ workspaceId }: MembersPageProps) {
                 <th className="px-3 py-2 text-left font-medium">Kind</th>
                 <th className="px-3 py-2 text-left font-medium">Role</th>
                 <th className="px-3 py-2 text-left font-medium">Joined</th>
-                {isAdmin ? <th className="px-3 py-2 text-right font-medium">&nbsp;</th> : null}
+                {canManageMembers ? (
+                  <th className="px-3 py-2 text-right font-medium">&nbsp;</th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
@@ -232,15 +252,15 @@ export function MembersPage({ workspaceId }: MembersPageProps) {
                   </td>
                   <td className="px-3 py-2">
                     <Badge variant={member.isAdmin ? 'default' : 'secondary'} className="text-xs">
-                      {member.isAdmin ? 'Admin' : 'Member'}
+                      {memberRoleLabel(member)}
                     </Badge>
                   </td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">
                     {new Date(member.joinedAt).toLocaleDateString()}
                   </td>
-                  {isAdmin ? (
+                  {canManageMembers ? (
                     <td className="px-3 py-2 text-right">
-                      {!member.isOperator ? (
+                      {canChangeMember(member) ? (
                         <div className="flex justify-end gap-1">
                           <Button
                             type="button"
@@ -252,7 +272,7 @@ export function MembersPage({ workspaceId }: MembersPageProps) {
                                 type: 'set-role',
                                 workspaceUserId: member.workspaceUserId,
                                 label: member.displayName,
-                                roleKey: member.isAdmin ? 'MEMBER' : 'ADMIN'
+                                roleKey: nextRoleForMember(member)
                               })
                             }
                           >
@@ -294,7 +314,7 @@ export function MembersPage({ workspaceId }: MembersPageProps) {
         <p className="text-xs text-muted-foreground">No members found.</p>
       ) : null}
 
-      {isAdmin && pendingInvitations.length > 0 ? (
+      {canManageMembers && pendingInvitations.length > 0 ? (
         <div className="space-y-2">
           <h3 className="text-sm font-medium">Pending invitations</h3>
           <div className="overflow-hidden rounded-md border">

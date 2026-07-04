@@ -25,6 +25,7 @@ let sessionToken: string | null = null;
 
 const BROWSER_SESSION_TOKEN_STORAGE_PREFIX = 'overlord:auth:session-token';
 const ACTIVE_WORKSPACE_STORAGE_PREFIX = 'overlord:active-workspace';
+const ACTIVE_BACKEND_KEY_STORAGE = 'overlord:active-backend-key';
 
 function trimTrailingSlash(url: string): string {
   return url.replace(/\/+$/, '');
@@ -160,15 +161,26 @@ function initHostedWebApiConfig(): void {
   };
 }
 
+function persistActiveBackendKey(): void {
+  if (!activeBackend || typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(ACTIVE_BACKEND_KEY_STORAGE, activeBackend.id);
+  } catch {
+    /* localStorage may be unavailable */
+  }
+}
+
 export async function initApiConfig(): Promise<void> {
   const bridge = typeof window === 'undefined' ? undefined : window.overlord;
   if (bridge?.getActiveBackend) {
     activeBackend = await bridge.getActiveBackend();
+    persistActiveBackendKey();
     await loadStoredTokensForActiveBackend();
     return;
   }
 
   initHostedWebApiConfig();
+  persistActiveBackendKey();
   await loadStoredTokensForActiveBackend();
 }
 
