@@ -92,12 +92,9 @@ export function ProjectCreatorModal({ open, onOpenChange, workspaceId }: Project
         throw new Error('Launch settings are still loading. Try again in a moment.');
       }
 
-      if (workspaceId) {
-        await api.activateWorkspace(workspaceId);
-      }
-
       const created = await createProjectMutation.mutateAsync({
         name: trimmedName,
+        workspaceId,
         color: hexColor,
         primaryResource: trimmedPrimaryResourcePath
           ? {

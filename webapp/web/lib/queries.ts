@@ -96,7 +96,10 @@ export const keys = {
   projects: (workspaceId?: string) =>
     workspaceId ? (['workspace', workspaceId, 'projects'] as const) : (['projects'] as const),
   project: (id: string) => ['project', id] as const,
-  workspaceStatuses: ['workspace', 'statuses'] as const,
+  workspaceStatuses: (workspaceId?: string | null) =>
+    workspaceId
+      ? (['workspace', workspaceId, 'statuses'] as const)
+      : (['workspace', 'statuses'] as const),
   projectResources: (id: string) => ['project', id, 'resources'] as const,
   projectTags: (id: string) => ['project', id, 'tags'] as const,
   projectRepository: (id: string, executionTargetId: string | null) =>
@@ -199,10 +202,14 @@ export const useProjects = (workspaceId?: string) => {
 export const useProject = (id: string) =>
   useQuery({ queryKey: keys.project(id), queryFn: () => api.getProject(id) });
 
-export const useWorkspaceStatuses = () =>
+export const useWorkspaceStatuses = (workspaceId?: string | null) =>
   useQuery({
-    queryKey: keys.workspaceStatuses,
-    queryFn: () => api.listWorkspaceStatuses()
+    queryKey: keys.workspaceStatuses(workspaceId),
+    queryFn: () =>
+      workspaceId
+        ? api.listWorkspaceStatusesForWorkspace(workspaceId)
+        : api.listWorkspaceStatuses(),
+    enabled: workspaceId !== null
   });
 
 export const useProjectResources = (id: string) =>
@@ -729,10 +736,10 @@ export function useCreateWorkspaceStatus() {
   return useMutation({
     mutationFn: (body: CreateWorkspaceStatusBody) => api.createWorkspaceStatus(body),
     onSuccess: data => {
-      qc.setQueryData(keys.workspaceStatuses, (prev: WorkspaceStatusDto[] | undefined) =>
+      qc.setQueryData(keys.workspaceStatuses(), (prev: WorkspaceStatusDto[] | undefined) =>
         prev ? [...prev, data].sort((a, b) => a.position - b.position) : [data]
       );
-      void qc.invalidateQueries({ queryKey: keys.workspaceStatuses });
+      void qc.invalidateQueries({ queryKey: ['workspace'] });
     }
   });
 }
@@ -759,8 +766,8 @@ export function useReorderWorkspaceStatuses() {
   return useMutation({
     mutationFn: (body: ReorderWorkspaceStatusesBody) => api.reorderWorkspaceStatuses(body),
     onSuccess: data => {
-      qc.setQueryData(keys.workspaceStatuses, data);
-      void qc.invalidateQueries({ queryKey: keys.workspaceStatuses });
+      qc.setQueryData(keys.workspaceStatuses(), data);
+      void qc.invalidateQueries({ queryKey: ['workspace'] });
     }
   });
 }

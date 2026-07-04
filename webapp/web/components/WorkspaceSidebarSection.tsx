@@ -14,7 +14,7 @@ import {
   verticalListSortingStrategy
 } from '@dnd-kit/sortable';
 import { useParams } from '@tanstack/react-router';
-import { ChevronDown, FolderKanban, Settings } from 'lucide-react';
+import { ChevronDown, Plus, Settings } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { ProjectCreatorModal } from '@/components/projects/ProjectCreatorModal';
@@ -26,10 +26,9 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem
+  SidebarMenu
 } from '@/components/ui/sidebar';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { isWorkspaceSectionExpanded, setWorkspaceSectionExpanded } from '@/lib/org-preferences';
 import { useMeta, useProjects, useReorderProjects } from '@/lib/queries';
 
@@ -146,6 +145,40 @@ export function WorkspaceSidebarSection({
               />
               <SidebarGroupLabel className="truncate p-0">{workspace.name}</SidebarGroupLabel>
             </CollapsibleTrigger>
+            <div className="flex shrink-0 items-center justify-end gap-0.5">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className="text-muted-foreground"
+                      onClick={() => onOpenWorkspaceSettings(workspace.id)}
+                    >
+                      <Settings className="size-3.5" />
+                    </Button>
+                  }
+                />
+                <TooltipContent side="top">Workspace settings</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className="text-muted-foreground"
+                      onClick={() => setProjectCreatorOpen(true)}
+                    >
+                      <Plus className="size-3.5" />
+                    </Button>
+                  }
+                />
+                <TooltipContent side="top">Add project</TooltipContent>
+              </Tooltip>
+            </div>
           </div>
           <CollapsibleContent>
             <SidebarGroupContent>
@@ -167,39 +200,7 @@ export function WorkspaceSidebarSection({
                     ))}
                   </SortableContext>
                 </DndContext>
-                {activeProjects.length === 0 ? (
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      className="text-muted-foreground"
-                      onClick={() => setProjectCreatorOpen(true)}
-                    >
-                      <FolderKanban />
-                      <span>Create a project</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ) : null}
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    className="text-muted-foreground"
-                    onClick={() => setProjectCreatorOpen(true)}
-                  >
-                    <FolderKanban />
-                    <span>New project</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
               </SidebarMenu>
-              <div className="px-2 pt-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-full justify-start gap-1.5 px-2 text-xs text-muted-foreground"
-                  onClick={() => onOpenWorkspaceSettings(workspace.id)}
-                >
-                  <Settings className="size-3.5" />
-                  Workspace settings
-                </Button>
-              </div>
               {reorderError ? (
                 <p className="px-2 pt-1 text-xs text-destructive">{reorderError}</p>
               ) : null}

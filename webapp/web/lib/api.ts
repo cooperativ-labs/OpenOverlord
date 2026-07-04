@@ -297,6 +297,8 @@ export const api = {
   listProjects: () => request<ProjectDto[]>('GET', '/api/projects'),
   listProjectsForWorkspace: (workspaceId: string) =>
     request<ProjectDto[]>('GET', `/api/workspaces/${workspaceId}/projects`),
+  listWorkspaceStatusesForWorkspace: (workspaceId: string) =>
+    request<WorkspaceStatusDto[]>('GET', `/api/workspaces/${workspaceId}/statuses`),
   getProject: (id: string) => request<ProjectDto>('GET', `/api/projects/${id}`),
   createProject: (body: CreateProjectBody) => request<ProjectDto>('POST', '/api/projects', body),
   updateProject: (id: string, body: UpdateProjectBody) =>

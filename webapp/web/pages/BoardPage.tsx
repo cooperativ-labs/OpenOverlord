@@ -45,7 +45,8 @@ export function BoardPage() {
   });
   const selectedMissionId = missionMatch?.params.missionId;
   const project = useProject(projectId);
-  const statusesQ = useWorkspaceStatuses();
+  const workspaceId = project.data?.workspaceId ?? null;
+  const statusesQ = useWorkspaceStatuses(workspaceId);
   const missionsQ = useMissions(projectId);
   const projectTagsQ = useProjectTags(projectId);
   const createMission = useCreateMission();
@@ -58,7 +59,6 @@ export function BoardPage() {
 
   const statuses = useMemo(() => statusesQ.data ?? [], [statusesQ.data]);
   const missions = useMemo(() => missionsQ.data ?? [], [missionsQ.data]);
-  const workspaceId = project.data?.workspaceId ?? null;
   const membersQ = useWorkspaceMembers(workspaceId);
 
   const membersByWorkspaceUserId = useMemo(() => {

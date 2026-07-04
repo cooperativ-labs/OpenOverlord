@@ -110,6 +110,7 @@ import {
   listUserTokens,
   listWorkspaceMyMissions,
   listWorkspaceStatuses,
+  listWorkspaceStatusesForWorkspace,
   listWorktrees,
   performBranchAction,
   previewMissionSchedule,
@@ -591,6 +592,10 @@ app.get(
   '/api/workspaces/:id/projects',
   handle(req => listProjectsForWorkspace(req.params.id))
 );
+app.get(
+  '/api/workspaces/:id/statuses',
+  handle(req => listWorkspaceStatusesForWorkspace(req.params.id))
+);
 
 // ---- Profile -------------------------------------------------------------
 //
@@ -868,7 +873,7 @@ app.get(
 );
 app.post(
   '/api/projects',
-  handle(req => createProject(req.body), { mutates: true, requires: PERMISSIONS.PROJECT_CREATE })
+  handle(req => createProject(req.body), { mutates: true })
 );
 app.patch(
   '/api/projects/reorder',
@@ -879,7 +884,7 @@ app.patch(
 );
 app.get(
   '/api/projects/:id',
-  handle(req => getProject(req.params.id), { requires: PERMISSIONS.PROJECT_READ })
+  handle(req => getProject(req.params.id))
 );
 app.patch(
   '/api/projects/:id',
@@ -946,7 +951,7 @@ app.patch(
 
 app.get(
   '/api/projects/:id/tags',
-  handle(req => listProjectTags(req.params.id), { requires: PERMISSIONS.PROJECT_READ })
+  handle(req => listProjectTags(req.params.id))
 );
 app.post(
   '/api/projects/:id/tags',
@@ -974,7 +979,7 @@ app.delete(
 );
 app.get(
   '/api/projects/:id/resources',
-  handle(req => listProjectResources(req.params.id), { requires: PERMISSIONS.PROJECT_READ })
+  handle(req => listProjectResources(req.params.id))
 );
 app.post(
   '/api/projects/:id/resources',
@@ -1031,7 +1036,7 @@ app.post(
 );
 app.get(
   '/api/projects/:id/missions',
-  handle(req => listMissions(req.params.id), { requires: PERMISSIONS.MISSION_READ })
+  handle(req => listMissions(req.params.id))
 );
 
 // ---- Everhour integration ------------------------------------------------

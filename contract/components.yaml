@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '6'
+contractVersion: '7'
 
 components:
   protocol:
@@ -124,6 +124,7 @@ components:
       - 'in-process webhook dispatcher (backend/webhook-dispatcher.ts), a RealtimeHub-style singleton polling loop claiming outbox_messages rows and delivering HMAC-signed HTTP POSTs; SSRF guards (https-only, private-network block) apply to external endpoints, with an OVERLORD_WEBHOOK_INTERNAL_HOSTS allowlist (plus implicit localhost in Local edition) exempting colocated consumers'
       - 'organization management endpoints: list organizations for the caller, update an organization (org-admin gated), list/add/remove organization admins (add/remove maintains the invariant that an org admin is ADMIN of every constituent workspace)'
       - 'shared onboarding endpoint (POST /api/onboarding, zero-membership users only): creates an organization, a default workspace, membership, and ADMIN role in one transaction; used verbatim by the web onboarding screen and the ovld org-setup CLI command'
+      - 'project APIs support explicit target workspace context for multi-workspace organization UIs: CreateProjectBody.workspaceId and GET /api/workspaces/:id/statuses'
       - 'storage routes for the organization-images bucket key (/api/storage/organization-images/…) with a PUBLIC organization_image:read grant'
     dependsOn:
       - database

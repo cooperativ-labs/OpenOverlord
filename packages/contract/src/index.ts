@@ -940,6 +940,8 @@ export type RealtimeEvent =
 
 export interface CreateProjectBody {
   name: string;
+  /** Optional target workspace. Defaults to the caller's active workspace. */
+  workspaceId?: string;
   slug?: string;
   description?: string | null;
   /** Optional 6-digit hex color (e.g. `#fecdd3`). */

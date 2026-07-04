@@ -1,4 +1,4 @@
-import { scopeGrantsForPreset } from '@overlord/auth';
+import { type Permission, PERMISSIONS, scopeGrantsForPreset } from '@overlord/auth';
 import { generateDateFromSchedule, type ScheduleLike } from '@overlord/automations';
 import { bindBool, type DatabaseClient } from '@overlord/database';
 import { createHash, randomBytes } from 'node:crypto';
@@ -109,7 +109,7 @@ import {
   resolveRemoteMutationTarget
 } from './local-target-mutation-queue.ts';
 import { getActiveOrganizationIdOrNull } from './organizations.ts';
-import { loadActorRoles } from './rbac.ts';
+import { actorCan, loadActorRoles } from './rbac.ts';
 import {
   generateMissionTitleNow,
   initialTitleFromInstruction,
@@ -1445,10 +1445,12 @@ export async function listProjectsForWorkspace(
   workspaceId: string,
   db: DatabaseClient = requireDatabaseClient()
 ): Promise<ProjectDto[]> {
-  const profileId = await resolveActiveProfileId(db);
-  if (!profileId) throw new ApiError(401, 'Authentication required');
-  const membershipId = await findActiveMembershipId(workspaceId, profileId, db);
-  if (!membershipId) throw new ApiError(404, 'Workspace not found or no active membership');
+  await requireWorkspacePermission({
+    workspaceId,
+    permission: PERMISSIONS.PROJECT_READ,
+    db,
+    notFoundMessage: 'Workspace not found or no active membership'
+  });
 
   const rows = (await db.all(
     `${selectProjectsSql} ORDER BY p.status ASC, p.position ASC, p.created_at ASC`,
@@ -1457,11 +1459,60 @@ export async function listProjectsForWorkspace(
   return rows.map(toProjectDto);
 }
 
+async function requireWorkspacePermission({
+  workspaceId,
+  permission,
+  db = requireDatabaseClient(),
+  notFoundMessage = 'Workspace not found'
+}: {
+  workspaceId: string;
+  permission: Permission;
+  db?: DatabaseClient;
+  notFoundMessage?: string;
+}): Promise<string> {
+  const profileId = await resolveActiveProfileId(db);
+  if (!profileId) throw new ApiError(401, 'Authentication required');
+  const membershipId = await findActiveMembershipId(workspaceId, profileId, db);
+  if (!membershipId) throw new ApiError(404, notFoundMessage);
+  if (!(await actorCan(permission, { workspaceId, workspaceUserId: membershipId }))) {
+    throw new ApiError(403, `Permission denied: ${permission}`);
+  }
+  return membershipId;
+}
+
+async function requireProjectPermission({
+  projectId,
+  permission,
+  db = requireDatabaseClient()
+}: {
+  projectId: string;
+  permission: Permission;
+  db?: DatabaseClient;
+}): Promise<{ workspaceId: string; workspaceUserId: string }> {
+  const project = (await db.get(
+    `SELECT workspace_id FROM projects WHERE id = ? AND deleted_at IS NULL`,
+    [projectId]
+  )) as { workspace_id: string } | undefined;
+  if (!project) throw new ApiError(404, 'Project not found');
+  const workspaceUserId = await requireWorkspacePermission({
+    workspaceId: project.workspace_id,
+    permission,
+    db,
+    notFoundMessage: 'Project not found'
+  });
+  return { workspaceId: project.workspace_id, workspaceUserId };
+}
+
 export async function getProject(
   id: string,
   db: DatabaseClient = requireDatabaseClient()
 ): Promise<ProjectDto> {
-  const row = (await db.get(`${selectProjectsSql} AND p.id = ?`, [getActiveWorkspaceId(), id])) as
+  const { workspaceId } = await requireProjectPermission({
+    projectId: id,
+    permission: PERMISSIONS.PROJECT_READ,
+    db
+  });
+  const row = (await db.get(`${selectProjectsSql} AND p.id = ?`, [workspaceId, id])) as
     | ProjectRow
     | undefined;
   if (!row) throw new ApiError(404, 'Project not found');
@@ -1556,14 +1607,34 @@ export async function reorderProjects(body: ReorderProjectsBody): Promise<Projec
 export async function listWorkspaceStatuses(
   db: DatabaseClient = requireDatabaseClient()
 ): Promise<WorkspaceStatusDto[]> {
+  return selectWorkspaceStatusesForWorkspace(getActiveWorkspaceId(), db);
+}
+
+async function selectWorkspaceStatusesForWorkspace(
+  workspaceId: string,
+  db: DatabaseClient = requireDatabaseClient()
+): Promise<WorkspaceStatusDto[]> {
   const rows = (await db.all(
     `SELECT id, workspace_id, key, name, type, position, is_default, is_terminal, revision
          FROM workspace_statuses
         WHERE workspace_id = ? AND deleted_at IS NULL
         ORDER BY position ASC`,
-    [getActiveWorkspaceId()]
+    [workspaceId]
   )) as WorkspaceStatusRow[];
   return rows.map(toStatusDto);
+}
+
+export async function listWorkspaceStatusesForWorkspace(
+  workspaceId: string,
+  db: DatabaseClient = requireDatabaseClient()
+): Promise<WorkspaceStatusDto[]> {
+  await requireWorkspacePermission({
+    workspaceId,
+    permission: PERMISSIONS.WORKSPACE_READ,
+    db,
+    notFoundMessage: 'Workspace not found or no active membership'
+  });
+  return selectWorkspaceStatusesForWorkspace(workspaceId, db);
 }
 
 export async function createWorkspaceStatus(
@@ -1789,23 +1860,23 @@ async function getProjectTagRow(
   projectId: string,
   tagId: string
 ): Promise<ProjectTagRow> {
-  await getProject(projectId, db);
+  const project = await getProject(projectId, db);
   const row = (await db.get(
     `SELECT ${selectProjectTagColumns} FROM project_tags
         WHERE id = ? AND project_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [tagId, projectId, getActiveWorkspaceId()]
+    [tagId, projectId, project.workspaceId]
   )) as ProjectTagRow | undefined;
   if (!row) throw new ApiError(404, 'Tag not found');
   return row;
 }
 
 export async function listProjectTags(projectId: string): Promise<ProjectTagDto[]> {
-  await getProject(projectId);
+  const project = await getProject(projectId);
   const rows = (await requireDatabaseClient().all(
     `SELECT ${selectProjectTagColumns} FROM project_tags
         WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL
         ORDER BY ${orderByLabelAsc('label')}`,
-    [projectId, getActiveWorkspaceId()]
+    [projectId, project.workspaceId]
   )) as ProjectTagRow[];
   return rows.map(toProjectTagDto);
 }
@@ -1970,7 +2041,8 @@ async function insertProjectResource(
   db: DatabaseClient,
   project: Pick<ProjectDto, 'id' | 'workspaceId'>,
   body: CreateProjectResourceBody & { path?: string },
-  pathRequiredMessage: string
+  pathRequiredMessage: string,
+  options: { actorWorkspaceUserId?: string | null } = {}
 ): Promise<string> {
   const resourcePath = (body.directoryPath ?? body.path ?? '').trim();
   if (!resourcePath) throw new ApiError(400, pathRequiredMessage);
@@ -2009,7 +2081,9 @@ async function insertProjectResource(
       operation: 'insert',
       entityRevision: 1,
       projectId: project.id,
-      changedFields: ['path', 'is_primary']
+      changedFields: ['path', 'is_primary'],
+      workspaceId: project.workspaceId,
+      actorWorkspaceUserId: options.actorWorkspaceUserId
     },
     db
   );
@@ -2246,6 +2320,14 @@ export async function createProject(body: CreateProjectBody): Promise<ProjectDto
     const name = (body.name ?? '').trim();
     if (!name) throw new ApiError(400, 'Project name is required');
 
+    const targetWorkspaceId = body.workspaceId?.trim() || getActiveWorkspaceId();
+    const targetWorkspaceUserId = await requireWorkspacePermission({
+      workspaceId: targetWorkspaceId,
+      permission: PERMISSIONS.PROJECT_CREATE,
+      db: tx,
+      notFoundMessage: 'Workspace not found or no active membership'
+    });
+
     const color = body.color ? normalizeHexColor(body.color) : null;
     if (body.color && !color) {
       throw new ApiError(400, 'Use a valid 6-digit hex color, like #d4d4d8.');
@@ -2258,7 +2340,7 @@ export async function createProject(body: CreateProjectBody): Promise<ProjectDto
     const maxPosition = (await tx.get(
       `SELECT COALESCE(MAX(position), 0) AS max_position FROM projects
           WHERE workspace_id = ? AND deleted_at IS NULL`,
-      [getActiveWorkspaceId()]
+      [targetWorkspaceId]
     )) as { max_position: number };
     const position = maxPosition.max_position + 1;
 
@@ -2269,12 +2351,12 @@ export async function createProject(body: CreateProjectBody): Promise<ProjectDto
      VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, 1, ?)`,
       [
         id,
-        getActiveWorkspaceId(),
+        targetWorkspaceId,
         slug,
         name,
         body.description?.trim() || null,
         settingsJson,
-        getActorWorkspaceUserId(),
+        targetWorkspaceUserId,
         now,
         now,
         position
@@ -2290,7 +2372,9 @@ export async function createProject(body: CreateProjectBody): Promise<ProjectDto
         entityId: id,
         operation: 'insert',
         entityRevision: 1,
-        projectId: id
+        projectId: id,
+        workspaceId: targetWorkspaceId,
+        actorWorkspaceUserId: targetWorkspaceUserId
       },
       tx
     );
@@ -2299,13 +2383,14 @@ export async function createProject(body: CreateProjectBody): Promise<ProjectDto
     if (primaryResourcePath) {
       await insertProjectResource(
         tx,
-        { id, workspaceId: getActiveWorkspaceId() },
+        { id, workspaceId: targetWorkspaceId },
         {
           directoryPath: primaryResourcePath,
           executionTargetId: body.primaryResource?.executionTargetId,
           isPrimary: true
         },
-        'primaryResource.directoryPath is required'
+        'primaryResource.directoryPath is required',
+        { actorWorkspaceUserId: targetWorkspaceUserId }
       );
     }
 
@@ -2476,13 +2561,17 @@ const selectMissionsSql = `
 `;
 
 export async function listMissions(projectId: string): Promise<MissionDto[]> {
+  const { workspaceId } = await requireProjectPermission({
+    projectId,
+    permission: PERMISSIONS.MISSION_READ
+  });
   // Board order: ascending board_position within each column, with
   // sequence_number DESC as a stable tiebreaker (e.g. brand-new missions that
   // share a position before the column is first reordered).
   const rows = (await requireDatabaseClient().all(
     `${selectMissionsSql} AND t.project_id = ?
          ORDER BY t.board_position ASC, t.sequence_number DESC`,
-    [getActiveWorkspaceId(), projectId]
+    [workspaceId, projectId]
   )) as MissionRow[];
   const tagsByMission = await getTagsByMission(rows.map(row => row.id));
   return rows.map(row => toMissionDto(row, tagsByMission.get(row.id) ?? []));

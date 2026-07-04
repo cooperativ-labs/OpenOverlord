@@ -15,7 +15,7 @@ Use this mode when the prompt already contains a mission ID or explicitly says t
 
 1. Attach first with `ovld protocol attach --mission-id <mission_id>`.
 2. The attach response prints JSON to stdout containing `session.sessionKey`. The CLI also persists this key automatically so subsequent `ovld protocol` commands in the same working directory resolve it without `--session-key`. If auto-resolution fails, pass `--session-key <sessionKey>` explicitly on every subsequent call.
-3. Treat the Overlord mission prompt as authoritative for the objective, constraints, and delivery target.
+3. Treat the Overlord mission prompt as authoritative for the objective, constraints, and delivery target. Begin implementing the objective immediately after attach. This differs from `connect` or `load-context`, which only retrieve mission context and never imply the agent should act.
 4. Post updates while working: `ovld protocol update --session-key <sessionKey> --mission-id <mission_id> --summary "..." --phase execute`.
    During long mechanical stretches with nothing meaningful to post, send `ovld protocol heartbeat --session-key <sessionKey> --mission-id <mission_id> [--phase execute] [--percent <0-100>] [--note "..."]` instead of an empty update.
 5. Follow-up messages after the initial mission are captured automatically by the installed `UserPromptSubmit` hook and stay in discussion intent while the mission is in review. Do not post `user_follow_up` manually unless the hook is unavailable.
@@ -357,6 +357,7 @@ Field shape, inline vs stdin piping, and `record-change-rationales` syntax are i
 ## Rules
 
 - Always attach first and always deliver last once you are on a mission.
+- `attach` is itself the go-ahead to start work — proceed with implementation immediately after attaching, without pausing to ask the user whether to continue. Only `connect` or `load-context` are for inspection without action; do not treat `attach` the same way.
 - Use `ovld protocol` commands and the connector's native commands/tools instead of ad hoc scripts.
 - Do not invent protocol subcommands. Use `ovld protocol help` when unsure.
 - Include at least one progress update before delivering.
