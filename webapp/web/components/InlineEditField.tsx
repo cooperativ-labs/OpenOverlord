@@ -141,7 +141,7 @@ export function InlineEditField({
     return (
       <span
         className={cn(
-          'rounded  max-h-[360px]',
+          'rounded',
           multilineMinRowsStyle && 'block',
           !disabled && 'cursor-default',
           className,
