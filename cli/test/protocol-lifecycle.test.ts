@@ -149,7 +149,7 @@ test('hook-event persists external session id on the active agent session', () =
   db.close();
 });
 
-test('attach response includes attach-response-v1 fields', () => {
+test('attach response includes attach-response-v2 fields', () => {
   const db = new Database(':memory:');
   db.pragma('foreign_keys = ON');
   migrateDatabase(db);
@@ -169,13 +169,15 @@ test('attach response includes attach-response-v1 fields', () => {
     'history',
     'artifacts',
     'attachments',
-    'objectives',
+    'previousObjectives',
+    'futureObjectives',
     'session',
     'sharedState',
     'promptContext'
   ] as const) {
     assert.ok(field in attached, `missing ${field}`);
   }
+  assert.ok(!('objectives' in attached), 'objectives field should be removed in v2');
   assert.ok(attached.session.sessionKey);
   assert.ok(attached.promptContext.includes('Required protocol workflow'));
 

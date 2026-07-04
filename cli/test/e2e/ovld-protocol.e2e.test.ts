@@ -18,7 +18,7 @@ function tempDatabaseEnv(): NodeJS.ProcessEnv {
   };
 }
 
-protocolE2e('ovld protocol attach returns attach-response-v1 JSON', async () => {
+protocolE2e('ovld protocol attach returns attach-response-v2 JSON', async () => {
   const env = tempDatabaseEnv();
   const init = await runOvld({ args: ['init', '--json'], env });
   assert.equal(init.exitCode, 0);
@@ -65,7 +65,8 @@ protocolE2e('ovld protocol attach returns attach-response-v1 JSON', async () => 
     'history',
     'artifacts',
     'attachments',
-    'objectives',
+    'previousObjectives',
+    'futureObjectives',
     'session',
     'sharedState',
     'promptContext'

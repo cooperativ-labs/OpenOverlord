@@ -8,7 +8,7 @@ ovld protocol attachment-upload-file --session-key <sessionKey> --objective-id <
 ovld protocol attachment-download-url --session-key <sessionKey> --attachment-id <attachment-id>
 ```
 
-The `attach` and `load-context` responses already include `attachments` and `objectives` arrays — use those for `<attachment-id>` and `<objective-id>` values. Run `attachment-list` mid-session if new files have been uploaded since attach. `--mission-id` is optional for attachment calls when `--objective-id` or `--attachment-id` lets the server derive the mission.
+The `attach` and `load-context` responses already include an `attachments` array plus `previousObjectives` and `futureObjectives` arrays — use those for `<attachment-id>` and `<objective-id>` values. The objective currently being executed is not repeated in those arrays; it is the top-level `objective`. `previousObjectives` are the objectives already worked (before the current one) and `futureObjectives` are the ones queued after it. Run `attachment-list` mid-session if new files have been uploaded since attach. `--mission-id` is optional for attachment calls when `--objective-id` or `--attachment-id` lets the server derive the mission.
 
 ## Large Artifacts
 

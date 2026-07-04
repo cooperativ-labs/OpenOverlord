@@ -44,7 +44,8 @@ export type SessionSummary = {
 export type AttachResponse = {
   mission: MissionSummary;
   objective: ObjectiveSummary;
-  objectives: ObjectiveSummary[];
+  previousObjectives: ObjectiveSummary[];
+  futureObjectives: ObjectiveSummary[];
   session: SessionSummary;
   history: MissionEventSummary[];
   artifacts: ArtifactSummary[];
@@ -218,6 +219,46 @@ function previousCompletedObjectives({
   );
 }
 
+/**
+ * Split a mission's objectives into the objectives before and after the current
+ * one. Both arrays exclude the current objective (which is surfaced separately as
+ * the top-level `objective`). `previousObjectives` are what has already been
+ * worked (positioned before the current objective) and `futureObjectives` are
+ * what is expected next (positioned after) — distinct from what the agent should
+ * operate on today.
+ */
+function splitObjectivesAroundCurrent({
+  objectives,
+  currentObjective
+}: {
+  objectives: ObjectiveSummary[];
+  currentObjective: ObjectiveSummary;
+}): { previousObjectives: ObjectiveSummary[]; futureObjectives: ObjectiveSummary[] } {
+  const previousObjectives = objectives.filter(
+    candidate =>
+      candidate.id !== currentObjective.id && candidate.position < currentObjective.position
+  );
+  const futureObjectives = objectives.filter(
+    candidate =>
+      candidate.id !== currentObjective.id && candidate.position > currentObjective.position
+  );
+  return { previousObjectives, futureObjectives };
+}
+
+/**
+ * Operational lifecycle event types that are excluded from the human-readable
+ * "Recent Activity" history rendered into the agent's prompt context. These are
+ * runner/orchestration status churn (e.g. "Runner claimed execution request")
+ * rather than substantive progress — only updates, deliveries, asks, alerts, and
+ * discussion events carry useful signal for the agent. The structured top-level
+ * `history` array is left intact for programmatic clients.
+ */
+const AGENT_HISTORY_EXCLUDED_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'status_change',
+  'execution_requested',
+  'awaiting_approval'
+]);
+
 function formatFileChangeLine(change: RationaleReview): string {
   return `- **${change.filePath}** (${change.label}): ${change.summary} — Why: ${change.why}. Impact: ${change.impact}`;
 }
@@ -253,6 +294,7 @@ function assemblePromptContext({
   agentInstructions: string | null;
 }): string {
   const recentHistory = history
+    .filter(event => !AGENT_HISTORY_EXCLUDED_EVENT_TYPES.has(event.type))
     .slice(-10)
     .map(event => `- [${event.type}] ${event.summary}`)
     .join('\n');
@@ -327,6 +369,10 @@ async function contextForObjective({
     objectives,
     currentObjective: objective
   });
+  const { previousObjectives, futureObjectives } = splitObjectivesAroundCurrent({
+    objectives,
+    currentObjective: objective
+  });
   const previousObjectiveIds = new Set(completedObjectives.map(entry => entry.id));
   const fileChanges = (await listRationalesForReview({ ctx, missionId: mission.id })).filter(
     change => previousObjectiveIds.has(change.objectiveId)
@@ -344,7 +390,8 @@ async function contextForObjective({
   return {
     mission,
     objective,
-    objectives,
+    previousObjectives,
+    futureObjectives,
     history,
     artifacts,
     attachments,
@@ -533,12 +580,17 @@ export async function attachSession({
     ...objective,
     state: 'executing'
   };
+  const refreshedSplit = splitObjectivesAroundCurrent({
+    objectives: refreshedObjectives,
+    currentObjective: refreshedObjective
+  });
 
   return {
     ...context,
     mission: refreshedMission,
     objective: refreshedObjective,
-    objectives: refreshedObjectives,
+    previousObjectives: refreshedSplit.previousObjectives,
+    futureObjectives: refreshedSplit.futureObjectives,
     session: {
       id: sessionId,
       sessionKey: rawKey,
