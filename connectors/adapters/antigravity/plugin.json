@@ -1,0 +1,22 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "overlord",
+  "version": "0.2.8",
+  "description": "Chat-driven access to Overlord mission protocol workflows with hook-driven activity capture.",
+  "author": {
+    "name": "Cooperativ",
+    "url": "https://github.com/cooperativ-labs"
+  },
+  "homepage": "https://www.ovld.ai",
+  "repository": "https://github.com/cooperativ-labs/openoverlord",
+  "license": "UNLICENSED",
+  "keywords": [
+    "overlord",
+    "tickets",
+    "agents",
+    "workflow",
+    "protocol",
+    "mcp",
+    "antigravity-plugin"
+  ]
+}

@@ -47,7 +47,7 @@ async function runProtocol(subcommand, args = {}) {
     const { stdout } = await execFileAsync(OVLD_BIN, ['protocol', subcommand, ...flags], {
       env: {
         ...process.env,
-        AGENT_IDENTIFIER: process.env.AGENT_IDENTIFIER ?? 'codex'
+        AGENT_IDENTIFIER: process.env.AGENT_IDENTIFIER ?? 'antigravity'
       },
       maxBuffer: 20 * 1024 * 1024
     });
@@ -69,7 +69,7 @@ process.stdin.on('data', async chunk => {
         result: {
           protocolVersion: PROTOCOL_VERSION,
           capabilities: { tools: { listChanged: false } },
-          serverInfo: { name: 'overlord-codex', version: '0.2.8' }
+          serverInfo: { name: 'overlord-antigravity', version: '0.2.8' }
         }
       });
       continue;

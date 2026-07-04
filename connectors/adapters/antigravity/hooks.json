@@ -1,0 +1,30 @@
+{
+  "overlord-follow-up-capture": {
+    "PreInvocation": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${ANTIGRAVITY_PLUGIN_ROOT}/scripts/pre-invocation-hook.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "overlord-permission-capture": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${ANTIGRAVITY_PLUGIN_ROOT}/scripts/pre-tool-use-hook.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

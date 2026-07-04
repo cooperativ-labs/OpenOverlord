@@ -1,0 +1,41 @@
+contractVersion: "0"
+componentType: connector
+componentKey: antigravity
+label: "Antigravity Connector"
+description: "Antigravity plugin adapter for the Overlord mission protocol workflow."
+
+connector:
+  agentIdentifier: antigravity
+  capabilities:
+    - followUpHook
+    - permissionHook
+    - contextFilePrompt
+    - slashCommands
+  hookTypes:
+    - UserPromptSubmit
+    - PermissionRequest
+  installPath: "~/.gemini/antigravity-cli/plugins/overlord"
+  managedFiles:
+    - "plugin.json"
+    - "mcp_config.json"
+    - "hooks.json"
+    - "README.md"
+    - "prompt-wrapper.md"
+    - "scripts/overlord-mcp.mjs"
+    - "scripts/pre-invocation-hook.sh"
+    - "scripts/pre-tool-use-hook.sh"
+    - "skills/attach.md"
+    - "skills/connect.md"
+    - "skills/create.md"
+    - "skills/prompt.md"
+    - "skills/discuss-objective.md"
+    - "skills/add-objectives.md"
+    - "skills/load.md"
+    - "skills/record-work.md"
+    - "skills/spawn.md"
+    - "skills/overlord-mission/SKILL.md"
+    - "skills/overlord-mission/reference/cli.md"
+    - "skills/overlord-mission/reference/context.md"
+    - "skills/overlord-mission/reference/devices.md"
+    - "skills/overlord-mission/reference/mcp.md"
+    - "skills/overlord-mission/reference/shell-escaping.md"

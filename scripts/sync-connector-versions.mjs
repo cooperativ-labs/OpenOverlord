@@ -21,7 +21,8 @@ const versionFile = resolve(root, 'connectors/VERSION');
 const PLUGIN_JSON_TARGETS = [
   'connectors/adapters/claude/.claude-plugin/plugin.json',
   'connectors/adapters/codex/.codex-plugin/plugin.json',
-  'connectors/adapters/cursor/.cursor-plugin/plugin.json'
+  'connectors/adapters/cursor/.cursor-plugin/plugin.json',
+  'connectors/adapters/antigravity/plugin.json'
 ];
 
 const MCP_SERVER_INFO_TARGETS = [
@@ -32,6 +33,10 @@ const MCP_SERVER_INFO_TARGETS = [
   {
     path: 'connectors/adapters/cursor/scripts/overlord-mcp.mjs',
     serverName: 'overlord-cursor'
+  },
+  {
+    path: 'connectors/adapters/antigravity/scripts/overlord-mcp.mjs',
+    serverName: 'overlord-antigravity'
   }
 ];
 
