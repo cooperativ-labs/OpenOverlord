@@ -101,8 +101,8 @@ function AgentInstructionsField({ value }: { value: string }) {
         ) : null}
       </div>
       <p className="text-xs text-muted-foreground">
-        These instructions are included in the Additional Instructions section of the prompt context
-        for every mission you attach to.
+        These instructions are included in the Additional Instructions section of the agent
+        instructions for every mission you attach to.
       </p>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>

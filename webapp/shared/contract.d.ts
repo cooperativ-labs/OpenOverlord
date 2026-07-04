@@ -964,8 +964,8 @@ export interface ProfileDto {
     /** Optional avatar image URL stored in `profiles.metadata_json.avatarUrl`. */
     avatarUrl: string | null;
     /**
-     * Optional custom agent instructions appended to every protocol `promptContext`
-     * for this user (`profiles.metadata_json.agentInstructions`).
+     * Optional custom agent instructions appended to every protocol `agentInstructions`
+     * field for this user (`profiles.metadata_json.agentInstructions`).
      */
     agentInstructions: string | null;
     /**

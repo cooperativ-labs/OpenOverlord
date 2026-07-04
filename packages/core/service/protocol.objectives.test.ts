@@ -269,7 +269,7 @@ describe('protocol objective creation', () => {
     await db.close();
   });
 
-  it('omits status_change events from the prompt context recent activity', async () => {
+  it('keeps history in structured fields instead of duplicating it in agent instructions', async () => {
     const db = createSqliteClient(openInMemoryDatabase());
     const ctx = await createServiceContext({ db, source: 'protocol' });
     const project = await createProject({ ctx, name: 'Attach History Filter' });
@@ -298,9 +298,17 @@ describe('protocol objective creation', () => {
       agentIdentifier: 'codex'
     });
 
-    assert.match(attached.promptContext, /Agent made meaningful progress/);
-    assert.doesNotMatch(attached.promptContext, /Runner claimed execution request/);
-    assert.doesNotMatch(attached.promptContext, /Queued execution for a runner/);
+    assert.deepEqual(
+      attached.history.map(event => event.summary),
+      [
+        'Runner claimed execution request',
+        'Queued execution for a runner',
+        'Agent made meaningful progress'
+      ]
+    );
+    assert.doesNotMatch(attached.agentInstructions, /Agent made meaningful progress/);
+    assert.doesNotMatch(attached.agentInstructions, /Runner claimed execution request/);
+    assert.doesNotMatch(attached.agentInstructions, /Queued execution for a runner/);
 
     await db.close();
   });

@@ -2,7 +2,6 @@ import { bindBool, UPDATE_EVENT_TYPES, UPDATE_PHASES } from '@overlord/database'
 import { createHash } from 'node:crypto';
 
 import { recordChange } from './change-feed.js';
-import { listRationalesForReview, type RationaleReview } from './changes.js';
 import type { ServiceContext } from './context.js';
 import { resolveMissionId, resolveProjectId } from './context.js';
 import { ServiceError } from './errors.js';
@@ -51,7 +50,7 @@ export type AttachResponse = {
   artifacts: ArtifactSummary[];
   attachments: AttachmentSummary[];
   sharedState: SharedContextEntry[];
-  promptContext: string;
+  agentInstructions: string;
 };
 
 type SessionRow = {
@@ -66,7 +65,7 @@ type SessionRow = {
 
 const PROTOCOL_WORKFLOW = `
 
-1. Attach first with \`ovld protocol attach --mission-id <id>\`.
+1. Read the current objective from the top-level \`objective\` field in this JSON response.
 2. Post progress with \`ovld protocol update\` or liveness with \`ovld protocol heartbeat\`.
 3. Ask blocking questions with \`ovld protocol ask\` and stop work.
 4. Deliver with \`ovld protocol deliver\` when work is complete, passing one change-rationale
@@ -207,18 +206,6 @@ async function persistExternalSessionId({
   });
 }
 
-function previousCompletedObjectives({
-  objectives,
-  currentObjective
-}: {
-  objectives: ObjectiveSummary[];
-  currentObjective: ObjectiveSummary;
-}): ObjectiveSummary[] {
-  return objectives.filter(
-    candidate => candidate.position < currentObjective.position && candidate.state === 'complete'
-  );
-}
-
 /**
  * Split a mission's objectives into the objectives before and after the current
  * one. Both arrays exclude the current objective (which is surfaced separately as
@@ -245,96 +232,35 @@ function splitObjectivesAroundCurrent({
   return { previousObjectives, futureObjectives };
 }
 
-/**
- * Operational lifecycle event types that are excluded from the human-readable
- * "Recent Activity" history rendered into the agent's prompt context. These are
- * runner/orchestration status churn (e.g. "Runner claimed execution request")
- * rather than substantive progress — only updates, deliveries, asks, alerts, and
- * discussion events carry useful signal for the agent. The structured top-level
- * `history` array is left intact for programmatic clients.
- */
-const AGENT_HISTORY_EXCLUDED_EVENT_TYPES: ReadonlySet<string> = new Set([
-  'status_change',
-  'execution_requested',
-  'awaiting_approval'
-]);
-
-function formatFileChangeLine(change: RationaleReview): string {
-  return `- **${change.filePath}** (${change.label}): ${change.summary} — Why: ${change.why}. Impact: ${change.impact}`;
-}
-
-function formatPreviousObjectiveLine(objective: ObjectiveSummary): string {
-  const heading = objective.title
-    ? `### ${objective.title}`
-    : `### Objective ${objective.position + 1}`;
-  return [heading, objective.objective].join('\n');
-}
-
-function assemblePromptContext({
+function assembleAgentInstructions({
   mission,
   objective,
   projectName,
-  history,
-  artifacts,
-  attachments,
-  sharedState,
-  fileChanges,
-  previousObjectives,
   agentInstructions
 }: {
   mission: MissionSummary;
   objective: ObjectiveSummary;
   projectName: string;
-  history: MissionEventSummary[];
-  artifacts: ArtifactSummary[];
-  attachments: AttachmentSummary[];
-  sharedState: SharedContextEntry[];
-  fileChanges: RationaleReview[];
-  previousObjectives: ObjectiveSummary[];
   agentInstructions: string | null;
 }): string {
-  const recentHistory = history
-    .filter(event => !AGENT_HISTORY_EXCLUDED_EVENT_TYPES.has(event.type))
-    .slice(-10)
-    .map(event => `- [${event.type}] ${event.summary}`)
-    .join('\n');
-
-  const artifactLines = artifacts.map(a => `- ${a.label} (${a.type})`).join('\n');
-  const attachmentLines = attachments.map(a => `- ${a.filename}`).join('\n');
-  const sharedLines = sharedState
-    .map(entry => `- ${entry.key}: ${JSON.stringify(entry.value)}`)
-    .join('\n');
-  const fileChangesLines = fileChanges.map(formatFileChangeLine).join('\n');
-  const previousObjectivesLines = previousObjectives.map(formatPreviousObjectiveLine).join('\n\n');
+  const objectiveLabel = objective.title?.trim() || `Objective ${objective.position + 1}`;
 
   return [
     `# Overlord Agent Instructions`,
-    `You are an AI coding agent working on mission **${mission.displayId}** via Overlord.`,
-    `Begin and complete the Objective described below. Use the Overlord skill. Follow the required protocol workflow.`,
+    `You are attached to mission **${mission.displayId}** via Overlord.`,
     ``,
-    `Required protocol workflow:`,
-    PROTOCOL_WORKFLOW,
-    '',
     `Mission ID: ${mission.displayId}`,
     `Objective ID: ${objective.id}`,
+    `Objective: ${objectiveLabel}`,
     `Project: ${projectName}`,
     '',
-    '## Objective',
-    objective.objective,
+    '## Context Location',
+    '- The current task body is in the top-level `objective.objective` field.',
+    '- Previous and future work are in `previousObjectives` and `futureObjectives`.',
+    '- History, attachments, artifacts, and shared context are in their structured top-level fields.',
     '',
-    '## Recent Activity',
-    recentHistory || '- (none)',
-    '',
-    attachments.length > 0 ? '## Attachments' : '',
-    attachments.length > 0 ? attachmentLines : '',
-    fileChanges.length > 0 ? '## Previous file Changes' : '',
-    fileChanges.length > 0 ? fileChangesLines : '',
-    artifacts.length > 0 ? '## Artifacts' : '',
-    artifacts.length > 0 ? artifactLines : '',
-    sharedState.length > 0 ? '## Shared Context' : '',
-    sharedState.length > 0 ? sharedLines : '',
-    previousObjectives.length > 0 ? '## Previous Objectives (already completed)' : '',
-    previousObjectives.length > 0 ? previousObjectivesLines : '',
+    `## Required Protocol Workflow`,
+    PROTOCOL_WORKFLOW,
     '',
     '## Important Notes',
     `- Other agents may be working on the same branch as you, so you may notice file changes that are not yours. EXCLUDE THESE FROM THE FILE CHANGES YOU REPORT.`,
@@ -365,18 +291,10 @@ async function contextForObjective({
     objectiveId: objective.id
   });
   const sharedState = await listSharedContext({ ctx, missionId: mission.id });
-  const completedObjectives = previousCompletedObjectives({
-    objectives,
-    currentObjective: objective
-  });
   const { previousObjectives, futureObjectives } = splitObjectivesAroundCurrent({
     objectives,
     currentObjective: objective
   });
-  const previousObjectiveIds = new Set(completedObjectives.map(entry => entry.id));
-  const fileChanges = (await listRationalesForReview({ ctx, missionId: mission.id })).filter(
-    change => previousObjectiveIds.has(change.objectiveId)
-  );
 
   const project = (await ctx.db.get(`SELECT name FROM projects WHERE id = ?`, [
     mission.projectId
@@ -396,16 +314,10 @@ async function contextForObjective({
     artifacts,
     attachments,
     sharedState,
-    promptContext: assemblePromptContext({
+    agentInstructions: assembleAgentInstructions({
       mission,
       objective,
       projectName: project.name,
-      history,
-      artifacts,
-      attachments,
-      sharedState,
-      fileChanges,
-      previousObjectives: completedObjectives,
       agentInstructions
     })
   };

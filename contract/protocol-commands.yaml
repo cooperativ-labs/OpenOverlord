@@ -49,14 +49,14 @@ requestEnvelope:
 sessionLifecycle:
 
   attach:
-    description: "Start a working session; return full mission context including prompt context"
+    description: "Start a working session; return full structured mission context plus agent instructions"
     requiredFlags:
       - --mission-id
     optionalFlags:
       - --session-key
       - --execution-request-id
     returnsSessionKey: true
-    responseShape: attach-response-v2
+    responseShape: attach-response-v3
     clientCapture:
       - "The client CLI records a VCS baseline (changed file paths from git status) for the working directory so deliver can compute the run-attributable changed-file delta. VCS is read on the client only; best-effort and skipped outside a git repo."
     sideEffects:
@@ -133,7 +133,7 @@ sessionLifecycle:
       - --summary
       - --summary-file
     returnsSessionKey: true
-    responseShape: attach-response-v2
+    responseShape: attach-response-v3
     sideEffects:
       - creates-agent-session
       - objective-state-complete-to-pending-delivery
@@ -417,4 +417,40 @@ responseShapes:
       - attachments
       - artifacts
       - shared context
+      - user custom agent instructions
+
+  attach-response-v3:
+    description: >-
+      Response shape returned by the attach and resume-follow-up commands.
+      Replaces the human-readable `promptContext` field from attach-response-v2
+      with `agentInstructions`. Mission context lives in the structured top-level
+      fields (`mission`, `objective`, `previousObjectives`, `futureObjectives`,
+      `history`, `attachments`, `artifacts`, and `sharedState`). `agentInstructions`
+      is intentionally concise workflow guidance for agents that attach without
+      a richer launch prompt.
+    requiredTopLevelFields:
+      - history
+      - artifacts
+      - attachments
+      - previousObjectives
+      - futureObjectives
+      - session
+      - sharedState
+      - agentInstructions
+    sessionRequiredFields:
+      - sessionKey
+      - state
+    objectivesRequiredFields:
+      - id
+      - objective
+      - state
+      - position
+    objectivesExcludeCurrent: true
+    agentInstructionsRequiredContent:
+      - mission ID
+      - objective ID
+      - objective title or fallback label
+      - location of objective details in the structured JSON
+      - required protocol workflow instructions
+    agentInstructionsOptionalContent:
       - user custom agent instructions

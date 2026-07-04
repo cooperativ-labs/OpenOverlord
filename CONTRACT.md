@@ -1,6 +1,6 @@
 # Overlord Component Interaction Contract
 
-Contract Version: `4`
+Contract Version: `6`
 
 ## Purpose
 
@@ -15,7 +15,7 @@ This is the normative specification for how Overlord's components interact. It d
 
 **Agents and developers MUST read this document before implementing any change that crosses module boundaries, and MUST update it before implementing any change that extends or conflicts with the current contract.**
 
-See `.claude/skills/component-contract.md` for the enforced agent workflow.
+See `.claude/skills/component-contract/SKILL.md` for the enforced agent workflow.
 
 ## Editions
 
@@ -33,7 +33,7 @@ where a surface differs by edition this document calls it out explicitly.
 
 ## Contract Version
 
-Current version: `3`
+Current version: `6`
 
 The contract version is incremented when any stable interface changes. All conformance manifests must declare the contract version they were validated against.
 
@@ -44,6 +44,8 @@ The contract version is incremented when any stable interface changes. All confo
 | `2` | Adds an additive, optional `observedDirtyPaths` field to `deliver` (the client's full current dirty-worktree snapshot). When present, `deliverSession` reconciles `changed_files` rows for the objective that are `present` but no longer named in `observedDirtyPaths` to the already-contracted `current_diff_state = 'resolved'` value (this closes the previously-unimplemented aggregation rule noted for `changed_files`; no new vocabulary value was added). A `missing_rationale` deliver error now carries a structured `details.missingRationales` array (`{ filePath, classification: 'mine'\|'claimed'\|'unclaimed', suggestedSkip }`) built from an optional `attribution`/`claimedByMissionIds` the client may attach to `changed-files-json` entries (client-computed, never persisted) — additive fields on `ServiceError` (`details`) and on the deliver changed-files DTO. Adds `ovld protocol changes --mission-id <id>`, a local-only/read-only CLI preflight (no backend call, no new backend handler or permission entry) that prints the same mine/claimed/unclaimed classification and drafted rationales ahead of `deliver`; follows the `record-touched` precedent of not requiring a `contract/protocol-commands.yaml` response-shape entry since it never crosses the CLI→backend surface. See `planning/feature-plans/agent-change-attribution-optimization.md` (coo:127, Layer 4). |
 | `3` | Extends the CLI-owned `.overlord/project.json` local link format for multi-target resource support. The legacy top-level `resourceId` remains required for backward compatibility, and an additive `resourceIdsByExecutionTarget` object may now map `execution_targets.id` to target-scoped `project_resources.id`. Readers must continue accepting the legacy single-id shape and prefer the target-specific id when the acting execution target is known. |
 | `4` | Restructures the attach/resume-follow-up response shape (`attach-response-v1` → `attach-response-v2`, a backward-incompatible change to a stable interface). The single `objectives` top-level array (which included the current objective) is replaced by two disjoint arrays that both **exclude** the current objective: `previousObjectives` (mission objectives positioned before the current one) and `futureObjectives` (positioned after). The current objective remains only in the top-level `objective` field. This reduces repetition and lets the agent distinguish completed work from upcoming work versus what it should act on now. Additionally, the human-readable "Recent Activity" history rendered into `promptContext` now excludes operational lifecycle event types (`status_change`, `execution_requested`, `awaiting_approval`) so the agent sees only substantive events (updates, deliveries, asks, alerts, discussion). The structured top-level `history` array is unchanged (still carries all event types for programmatic clients). No `mission_events.type` vocabulary values changed. See objective coo:139. |
+| `5` | Introduces an **organization** grouping layer above workspaces: `organization → workspace → project`, splitting the former workspace role in two while keeping **workspaces as the sole RBAC layer**. Adds `organizations` to the Database Layer (`id` uuid, `name`, `settings_json` incl. `logoUrl`, timestamps, `deleted_at`, `revision`) and a required `workspaces.organization_id` FK. Workspace IDs move from slugified names to opaque UUIDs (`newId()`), deleting the old rename-triggered `rekeyWorkspaceReferences` re-slug machinery; **slugs are now unique per organization** (`UNIQUE (organization_id, slug) WHERE deleted_at IS NULL`) instead of globally, so the `<slug>:<sequence>` mission display ID stays workspace-scoped and unique-per-org rather than instance-global — webhook consumers and other external readers that treated `displayId` as a global key must scope lookups by workspace/org. Adds `MANAGER` to the RBAC role vocabulary (workspace-scoped, between `MEMBER` and `ADMIN`: manages the workspace itself and can invite/remove/promote members up to `MANAGER` but never `ADMIN`, plus full project management), enforced server-side on both the invite and role-update paths. Adds the REST API Layer's organization endpoints (list/update organization, list/add/remove organization admins — "org admin" is a derived, invariant-maintained concept: `ADMIN` of *every* constituent workspace, not a new RBAC scope type) and a shared `POST /api/onboarding` endpoint (org + workspace + membership + ADMIN role in one transaction) used verbatim by both the web onboarding screen and the future `ovld org-setup` CLI command. Adds an `organization-images` storage bucket key: `storage_buckets` gains a nullable `organization_id` with a CHECK that exactly one of `workspace_id`/`organization_id` is set, since an org logo must outlive any single member workspace. `user_tokens.workspace_id` becomes nullable (it has been audit-only metadata since the `20260702103000` profile-scope change) so a zero-membership user can mint a token and complete onboarding headless. The instance now supports a **zero-workspace boot state**: fresh installs no longer seed a `local-workspace` (the organizations migration removes the pristine seed — untouched name/slug, no projects/missions — from previously-seeded databases too), the live active-workspace binding starts `null`, and `/api/meta` returns `organization`/`organizations[]`/`workspaces[]` for the active org with `workspace` nullable pre-onboarding; workspace-scoped routes return a clear "complete onboarding" error instead of assuming a workspace exists. `CreateWorkspaceBody` drops the client-chosen `id` field (superseded by server-generated UUIDs) and gains `organizationId`. Implemented across mission coo:135's phased objectives (schema/contract, RBAC + backend service, SPA, CLI/parity/tests); see `planning/feature-plans/organization-workspace-hierarchy.md`. |
+| `6` | Restructures the attach/resume-follow-up response shape (`attach-response-v2` → `attach-response-v3`, a backward-incompatible change to a stable interface). The human-readable `promptContext` top-level field is removed and replaced by `agentInstructions`. Attach responses still carry full structured mission context in `mission`, `objective`, `previousObjectives`, `futureObjectives`, `history`, `attachments`, `artifacts`, and `sharedState`; `agentInstructions` is intentionally limited to mission/objective identifiers, where to find the current objective in the JSON, required protocol workflow guidance, and optional user custom agent instructions. This avoids duplicating objective/history/artifact content already present in the structured response and in launcher-supplied prompts. |
 
 ---
 
@@ -83,6 +85,7 @@ Does NOT own:
 Owns:
 
 - Table definitions, column types, indexes, foreign keys, CHECK constraints
+- The `organizations` table (grouping layer above `workspaces`: `id` uuid, `name`, `settings_json` incl. `logoUrl`, timestamps, `deleted_at`, `revision`) and the required `workspaces.organization_id` FK; workspaces remain the sole RBAC layer, and slugs are unique per organization, not instance-wide
 - Controlled vocabularies (closed and open sets)
 - Soft-delete and revision semantics
 - Migration versioning via `schema_migrations`
@@ -168,6 +171,9 @@ Owns:
 - SSE/WebSocket realtime endpoint
 - SQL Studio launch metadata in `/api/meta` when the optional external SQL Studio process is enabled
 - Webhook subscription management (`/api/webhooks*`: list/create, update/delete, rotate-secret, test, deliveries, redeliver) and the in-process webhook dispatcher (`backend/webhook-dispatcher.ts`, a `RealtimeHub`-style singleton polling loop that claims `outbox_messages` rows and delivers HMAC-signed HTTP POSTs). SSRF guards (HTTPS-only, private-network block) apply to external endpoints; hosts matching the `OVERLORD_WEBHOOK_INTERNAL_HOSTS` env allowlist (plus implicit `localhost` in Local edition) are treated as internal — exempt from the SSRF block and the HTTPS requirement, and default to the `full` payload mode
+- Organization management endpoints: list organizations for the caller, update an organization (name/logo; org-admin gated), and list/add/remove organization admins (transactional invariant: an org admin is `ADMIN` of *every* constituent workspace)
+- The shared onboarding endpoint (`POST /api/onboarding`, zero-membership users only): creates an organization, a workspace (default `general`), the caller's membership, and the `ADMIN` role in one transaction, then returns `/api/meta` — used verbatim by both the web onboarding screen and the `ovld org-setup` CLI command so the two clients cannot drift
+- Storage routes for the `organization-images` bucket key (`/api/storage/organization-images/…`) with a `PUBLIC organization_image:read` grant, mirroring `workspace_image:read`
 
 Does NOT own:
 
@@ -432,6 +438,7 @@ See [`contract/extension-points.yaml`](contract/extension-points.yaml) for machi
 - `idempotency_keys.status`: `in_progress`, `completed`, `failed`
 - `audit_log.result`: `allowed`, `denied`, `failed`
 - `workspace_invitations.status`: `pending`, `accepted`, `revoked`, `expired`
+- RBAC role names (`role_assignments.role_key` core, non-extension values; enumerated in `auth/src/rbac/types.ts`'s `Role` enum and `openoverlord.rbac.toml`): `ADMIN`, `MANAGER`, `MEMBER`, `PUBLIC`
 
 ### Open (extensions may add namespaced values)
 

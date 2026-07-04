@@ -39,7 +39,9 @@ test('protocol lifecycle: attach → update → deliver', () => {
   assert.ok(attached.sessionKey);
   assert.equal(attached.mission.statusType, 'execute');
   assert.equal(attached.objective.state, 'executing');
-  assert.match(attached.promptContext, /Implement feature X/);
+  assert.equal(attached.objective.objective, 'Implement feature X');
+  assert.match(attached.agentInstructions, /objective\.objective/);
+  assert.doesNotMatch(attached.agentInstructions, /Implement feature X/);
 
   const sessionRow = ctx.db
     .prepare(`SELECT external_session_id FROM agent_sessions WHERE id = ?`)
@@ -149,7 +151,7 @@ test('hook-event persists external session id on the active agent session', () =
   db.close();
 });
 
-test('attach response includes attach-response-v2 fields', () => {
+test('attach response includes attach-response-v3 fields', () => {
   const db = new Database(':memory:');
   db.pragma('foreign_keys = ON');
   migrateDatabase(db);
@@ -173,13 +175,14 @@ test('attach response includes attach-response-v2 fields', () => {
     'futureObjectives',
     'session',
     'sharedState',
-    'promptContext'
+    'agentInstructions'
   ] as const) {
     assert.ok(field in attached, `missing ${field}`);
   }
-  assert.ok(!('objectives' in attached), 'objectives field should be removed in v2');
+  assert.ok(!('objectives' in attached), 'objectives field should be removed in v2+');
+  assert.ok(!('promptContext' in attached), 'promptContext field should be removed in v3');
   assert.ok(attached.session.sessionKey);
-  assert.ok(attached.promptContext.includes('Required protocol workflow'));
+  assert.ok(attached.agentInstructions.includes('Required Protocol Workflow'));
 
   db.close();
 });

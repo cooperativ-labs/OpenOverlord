@@ -101,24 +101,16 @@ forwards it as `--execution-request-id` during `attach` so the backend can link
 - Artifacts.
 - Attachments visible to the active objective.
 - Shared context.
-- Assembled `promptContext`.
+- Concise `agentInstructions` with workflow guidance and pointers to structured fields.
 - Pending objective information when relevant.
 
-The assembled prompt context should include:
+The agent instructions should include:
 
-- Task title.
 - Mission ID.
 - Objective ID.
+- Objective title or fallback label.
 - Project identifier/name.
-- Objective instruction.
-- Constraints.
-- Acceptance criteria.
-- Available tools.
-- Output format.
-- Recent activity/history.
-- Attachments.
-- Artifacts.
-- Shared context.
+- Where to find the objective body and related context in the structured JSON.
 - Required protocol workflow instructions.
 
 ## Update Requirements

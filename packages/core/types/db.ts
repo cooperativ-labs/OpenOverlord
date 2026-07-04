@@ -389,6 +389,16 @@ export interface Objectives {
   workspace_id: string;
 }
 
+export interface Organizations {
+  created_at: string;
+  deleted_at: string | null;
+  id: string | null;
+  name: string;
+  revision: Generated<number>;
+  settings_json: Generated<string>;
+  updated_at: string;
+}
+
 export interface OutboxMessages {
   attempt_count: Generated<number>;
   available_at: string;
@@ -440,6 +450,7 @@ export interface Projects {
   description: string | null;
   id: string | null;
   name: string;
+  position: number | null;
   revision: Generated<number>;
   settings_json: Generated<string>;
   slug: string;
@@ -592,11 +603,12 @@ export interface StorageBuckets {
   deleted_at: string | null;
   id: string | null;
   local_path: string | null;
+  organization_id: string | null;
   revision: Generated<number>;
   settings_json: Generated<string>;
   storage_backend: string;
   updated_at: string;
-  workspace_id: string;
+  workspace_id: string | null;
 }
 
 export interface TargetResourceObservations {
@@ -677,8 +689,8 @@ export interface UserTokens {
   token_hash: string;
   token_prefix: string;
   updated_at: string;
-  workspace_id: string;
-  workspace_user_id: string;
+  workspace_id: string | null;
+  workspace_user_id: string | null;
 }
 
 export interface UserTokenScopes {
@@ -785,6 +797,7 @@ export interface Workspaces {
   id: string | null;
   kind: string;
   name: string;
+  organization_id: string;
   revision: Generated<number>;
   settings_json: Generated<string>;
   slug: string;
@@ -855,6 +868,7 @@ export interface DB {
   my_mission_positions: MyMissionPositions;
   objective_attachments: ObjectiveAttachments;
   objectives: Objectives;
+  organizations: Organizations;
   outbox_messages: OutboxMessages;
   profiles: Profiles;
   project_resources: ProjectResources;

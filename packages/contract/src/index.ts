@@ -33,10 +33,78 @@ export type EntityType = 'project' | 'mission' | 'objective';
 
 export type ChangeOperation = 'insert' | 'update' | 'delete' | 'restore';
 
+// ---- Organization DTOs ----
+//
+// An organization is the grouping + identity layer above workspaces
+// (organization → workspace → project). Workspaces remain the sole RBAC layer;
+// an "organization admin" is a derived concept (ADMIN of every constituent
+// workspace), not a new RBAC scope type.
+
+export interface OrganizationDto {
+  id: string;
+  name: string;
+  /** URL of the organization's logo image, or `null` when unset. */
+  logoUrl: string | null;
+  /** Count of non-deleted workspaces in the organization (read-side aggregate). */
+  workspaceCount: number;
+  /** Whether this is the caller's currently active organization. */
+  isActive?: boolean;
+  createdAt: string;
+}
+
+/**
+ * Combined organization + first-workspace onboarding, submitted by an
+ * authenticated user with zero workspace memberships. No logo field: the
+ * organization's storage bucket doesn't exist until the organization does, so
+ * the logo is uploaded after creation and patched on via `UpdateOrganizationBody`.
+ * Shared verbatim by the web onboarding screen and `ovld org-setup`.
+ */
+export interface CreateOrganizationOnboardingBody {
+  organizationName: string;
+  /** Defaults to `"general"` when omitted. */
+  workspaceName?: string;
+  /** Optional; derived from `workspaceName` (and uniquified within the new organization) when omitted. */
+  workspaceSlug?: string;
+}
+
+/** Partial update of an organization. Omitted fields are left unchanged. */
+export interface UpdateOrganizationBody {
+  name?: string;
+  /**
+   * Org-admin-only: set or clear (`null`) the organization logo. Must be an
+   * uploaded image path from the `organization-images` bucket
+   * (`/api/storage/organization-images/…`) or an absolute http(s) URL.
+   */
+  logoUrl?: string | null;
+}
+
+/** An organization admin: a member with an active `ADMIN` role assignment in every constituent workspace. */
+export interface OrganizationAdminDto {
+  /** `profiles.id`. */
+  userId: string;
+  displayName: string;
+  handle: string | null;
+  email: string | null;
+  avatarUrl: string | null;
+}
+
+/** Grants `ADMIN` to `userId` in every constituent workspace of the organization. */
+export interface AddOrganizationAdminBody {
+  /** `profiles.id` of an existing member of at least one constituent workspace. */
+  userId: string;
+}
+
+/** Demotes `userId` to `MEMBER` in every constituent workspace of the organization. */
+export interface RemoveOrganizationAdminBody {
+  userId: string;
+}
+
 // ---- Resource DTOs ----
 
 export interface WorkspaceDto {
   id: string;
+  /** FK to the containing organization. */
+  organizationId: string;
   slug: string;
   name: string;
   /** Open vocabulary (`local`, `hosted`, …). Locally created workspaces are `local`. */
@@ -49,16 +117,14 @@ export interface WorkspaceDto {
   memberCount: number;
   /** Whether SQL Studio is enabled for this workspace (admin-managed). */
   sqlStudioEnabled: boolean;
-  /** URL of the workspace's logo image (admin-managed), or `null` when unset. */
-  logoUrl: string | null;
   createdAt: string;
 }
 
 export interface CreateWorkspaceBody {
-  /** Optional stable workspace ID; derived from the full name when omitted. */
-  id?: string;
+  /** The containing organization. Creation is org-admin gated. */
+  organizationId: string;
   name: string;
-  /** Optional slug; derived from the name (and uniquified) when omitted. */
+  /** Optional slug; derived from the name (and uniquified within the organization) when omitted. */
   slug?: string;
 }
 
@@ -67,12 +133,24 @@ export interface UpdateWorkspaceBody {
   name?: string;
   /** Admin-only: enable or disable SQL Studio for this workspace. */
   sqlStudioEnabled?: boolean;
-  /**
-   * Admin-only: set or clear (`null`) the workspace logo. Must be an uploaded
-   * image path from the `workspace-images` bucket (`/api/storage/workspace-images/…`)
-   * or an absolute http(s) URL.
-   */
-  logoUrl?: string | null;
+}
+
+/**
+ * `GET /api/meta` response shape. Workspaces no longer have a single "active"
+ * one from the UI's perspective — the sidebar renders every accessible
+ * workspace of the active organization at once (Q6/Q9) — but the server still
+ * tracks a default/preference-scoped workspace for protocol and CLI callers
+ * that need one implicit scope.
+ */
+export interface MetaDto {
+  /** The caller's active organization, or `null` before onboarding. */
+  organization: OrganizationDto | null;
+  /** Every organization the caller has at least one active workspace membership in. */
+  organizations: OrganizationDto[];
+  /** Every workspace of the active organization the caller can access, with project counts. */
+  workspaces: WorkspaceDto[];
+  /** The server's default-scope workspace (preference echo for protocol/CLI); `null` pre-onboarding. */
+  workspace: WorkspaceDto | null;
 }
 
 /**
@@ -101,7 +179,7 @@ export interface WorkspaceMemberDto {
   email: string | null;
   /** Open vocabulary (`human`, `service`). */
   kind: string;
-  /** Active workspace-level role keys assigned to this member. */
+  /** Active workspace-level role keys assigned to this member (`ADMIN`, `MANAGER`, `MEMBER`, …). */
   roleKeys: string[];
   /** Whether one of the active role assignments is `ADMIN`. */
   isAdmin: boolean;
@@ -131,7 +209,11 @@ export interface WorkspaceInvitationDto {
 
 export interface InviteWorkspaceMemberBody {
   email: string;
-  /** Defaults to `MEMBER` when omitted. */
+  /**
+   * Defaults to `MEMBER` when omitted. Free-form wire type, but a `MANAGER`
+   * actor is server-capped to inviting at most `MANAGER` — it may never grant
+   * `ADMIN`.
+   */
   roleKey?: string;
 }
 
@@ -152,8 +234,12 @@ export interface AcceptWorkspaceInvitationBody {
   token: string;
 }
 
+/**
+ * A `MANAGER` actor is server-capped to targets/roles at or below `MANAGER`: it
+ * may neither grant `ADMIN` nor demote/remove an existing `ADMIN`.
+ */
 export interface UpdateWorkspaceMemberRoleBody {
-  roleKey: 'ADMIN' | 'MEMBER';
+  roleKey: 'ADMIN' | 'MANAGER' | 'MEMBER';
 }
 
 export interface ProjectDto {
@@ -1292,8 +1378,8 @@ export interface ProfileDto {
   /** Optional avatar image URL stored in `profiles.metadata_json.avatarUrl`. */
   avatarUrl: string | null;
   /**
-   * Optional custom agent instructions appended to every protocol `promptContext`
-   * for this user (`profiles.metadata_json.agentInstructions`).
+   * Optional custom agent instructions appended to every protocol `agentInstructions`
+   * field for this user (`profiles.metadata_json.agentInstructions`).
    */
   agentInstructions: string | null;
   /**

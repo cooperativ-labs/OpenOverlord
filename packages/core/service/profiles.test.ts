@@ -23,8 +23,8 @@ describe('profile metadata helpers', () => {
   });
 });
 
-describe('promptContext custom agent instructions', () => {
-  it('includes saved user instructions in attach promptContext', async () => {
+describe('attach custom agent instructions', () => {
+  it('includes saved user instructions in attach agentInstructions', async () => {
     const db = createSqliteClient(openInMemoryDatabase());
     const workspaceUserId = await seedServiceOperator({ db });
     const ctx = await createServiceContext({ db, source: 'protocol' });
@@ -55,8 +55,8 @@ describe('promptContext custom agent instructions', () => {
     await ctx.db.run(`UPDATE objectives SET state = 'submitted' WHERE id = ?`, [objectives[0]?.id]);
 
     const attached = await attachSession({ ctx, missionId: mission.id });
-    assert.match(attached.promptContext, /## Additional Instructions/);
-    assert.match(attached.promptContext, /Prefer yarn over npm\./);
+    assert.match(attached.agentInstructions, /## Additional Instructions/);
+    assert.match(attached.agentInstructions, /Prefer yarn over npm\./);
 
     await db.close();
   });

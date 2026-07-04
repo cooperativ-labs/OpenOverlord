@@ -176,27 +176,60 @@ If the same idempotency scope/key is reused with a different `request_hash`, the
 
 ## Identity And Tenancy
 
-The local MVP can run as one authenticated local operator in one seeded workspace. The first human identity is created through the Auth Layer, and the schema should still reserve the future multi-user shape.
+The local MVP can run as one authenticated local operator in one workspace, created through onboarding. The first human identity is created through the Auth Layer, and the schema should still reserve the future multi-user shape.
 
-### `workspaces`
+### `organizations`
 
-Represents the local instance workspace now and a hosted organization/workspace later.
+The grouping + identity layer above `workspaces` (`organization → workspace →
+project`). Workspaces remain the **sole RBAC layer** — an organization is a
+name/logo shell (with room for future billing/plan metadata) that groups one
+or more workspaces, not a second permission boundary. An "organization admin"
+is a **derived** concept: a profile with an active `ADMIN` role assignment in
+*every* constituent (non-deleted) workspace of the organization, maintained by
+service-layer invariant (`addOrganizationAdmin`/`removeOrganizationAdmin`), not
+a separate RBAC scope type or table.
+
+An organization is created only through onboarding (`POST /api/onboarding`) or
+workspace creation under an existing organization; it is deleted implicitly
+when its last constituent workspace is deleted (no direct delete endpoint).
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `id` | Id | yes | Stable workspace ID. |
-| `slug` | text | yes | Unique human/config key. |
-| `name` | text | yes | Human-readable name from `overlord.toml` by default. |
-| `kind` | text | yes | `local`, `hosted`, or future adapter-defined kind. |
-| `settings_json` | Json | yes | Instance defaults, feature flags, and workspace default agent/model/harness catalog for the CLI-first MVP. |
+| `id` | Id | yes | Stable organization ID (UUID). |
+| `name` | text | yes |  |
+| `settings_json` | Json | yes | Currently just `logoUrl`; reserved for future billing/plan metadata. |
 | `created_at` | TimestampUTC | yes |  |
 | `updated_at` | TimestampUTC | yes |  |
-| `deleted_at` | TimestampUTC | no | Tombstone. |
+| `deleted_at` | TimestampUTC | no | Tombstone, set when the last constituent workspace is deleted. |
+| `revision` | integer | yes |  |
+
+Indexes: none beyond the primary key — organizations are reached through their constituent workspaces, never searched directly.
+
+### `workspaces`
+
+Represents a tenant and RBAC boundary inside an organization. IDs are opaque
+UUIDs (`newId()`), not derived from the name/slug — renaming a workspace is a
+plain `UPDATE`, it no longer re-keys `workspace_id` anywhere. Slugs are unique
+**per organization**, not instance-wide, and continue to prefix mission display
+IDs (`<slug>:<sequence>`); the same slug may exist in two different
+organizations.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes | Stable workspace ID (UUID). |
+| `organization_id` | Id | yes | FK to `organizations`. |
+| `slug` | text | yes | Human/config key, unique within the organization. |
+| `name` | text | yes | Human-readable name from `overlord.toml` by default. |
+| `kind` | text | yes | `local`, `hosted`, or future adapter-defined kind. |
+| `settings_json` | Json | yes | Instance defaults, feature flags, and workspace default agent/model/harness catalog for the CLI-first MVP. No longer carries `logoUrl` — the logo moved to the containing organization. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `deleted_at` | TimestampUTC | no | Tombstone. Deleting the last live workspace of an organization also tombstones the organization. |
 | `revision` | integer | yes | Increment on mutation. |
 
 Indexes:
 
-- Unique `slug`.
+- Unique active `(organization_id, slug)`.
 
 ### `profiles`
 
@@ -298,12 +331,17 @@ compatibility; they are not the authorization boundary. At request time, the
 Auth Layer resolves the token to `profile_id`, validates the requested active
 workspace against `workspace_users`, and then applies RBAC for that workspace.
 
+`workspace_id` and `workspace_user_id` are both nullable: a profile with zero
+workspace memberships (pre-onboarding) can still mint a token — needed for
+headless `ovld org-setup` bootstrap — with both fields `NULL` until the caller
+completes onboarding or joins a workspace.
+
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | Id | yes | Token identifier. |
-| `workspace_id` | Id | yes | Issuance workspace FK to `workspaces`; not the token's authorization scope. |
+| `workspace_id` | Id | no | Issuance workspace FK to `workspaces`; not the token's authorization scope. `NULL` for a token minted before the profile has any workspace membership. |
 | `profile_id` | Id | yes | Profile that owns the token. |
-| `workspace_user_id` | Id | yes | Issuing workspace membership for audit. Runtime permissions come from the owner's active membership in the requested workspace. |
+| `workspace_user_id` | Id | no | Issuing workspace membership for audit. Runtime permissions come from the owner's active membership in the requested workspace. `NULL` alongside `workspace_id` for a pre-onboarding token. |
 | `label` | text | yes | User supplied. |
 | `token_prefix` | text | yes | Non-secret lookup/display prefix. |
 | `token_hash` | SecretHash | yes | Hash of raw secret. |
@@ -994,7 +1032,7 @@ Indexes:
 
 ### `storage_buckets`
 
-Workspace-scoped storage backend configuration for durable objects. `bucket_key` is a stable Overlord logical storage location, not necessarily a physical provider bucket. Hosted deployments may map every logical location to one object-store bucket/container such as `overlord-storage`; object tables below store metadata and canonical backend keys only.
+Storage backend configuration for durable objects, scoped to either a workspace or an organization (never both). `bucket_key` is a stable Overlord logical storage location, not necessarily a physical provider bucket. Hosted deployments may map every logical location to one object-store bucket/container such as `overlord-storage`; object tables below store metadata and canonical backend keys only.
 
 SQLite/local deployments may use `local_fs` buckets rooted on the local device. PostgreSQL/shared deployments should use a managed storage provider such as Supabase Storage, S3-compatible storage, or a Railway volume. Credentials must not be stored in this table; use deployment secrets and store only non-secret provider metadata.
 
@@ -1003,14 +1041,16 @@ The canonical provider object-key layout is:
 - `user-images/<user-id>/<image-id>.<ext>` for user/profile images.
 - `workspace-files/<workspace-id>/images/<image-id>.<ext>` for workspace images.
 - `workspace-files/<workspace-id>/attachments/<attachment-id>.<ext>` for attachments.
+- `organization-files/<organization-id>/images/<image-id>.<ext>` for organization logos.
 
-`workspace-images`, `user-images`, and `attachments` are provisioned with one row per workspace (`backend/workspaces.ts`), but local rows use the shared `database/.local/storage` root and hosted S3-compatible rows use `settings_json.bucketName` for the physical bucket (for example `overlord-storage`) plus an optional deployment `pathPrefix`. Workspace isolation is expressed by the canonical `storage_key` and by RBAC/metadata lookup, not by exposing provider paths to clients.
+`workspace-images`, `user-images`, and `attachments` are provisioned with one row per workspace (`backend/workspaces.ts`); `organization-images` is provisioned with one row per organization (onboarding and `backend/organizations.ts`) since an organization logo must outlive any single member workspace and so cannot live in a workspace's bucket. Local rows use the shared `database/.local/storage` root and hosted S3-compatible rows use `settings_json.bucketName` for the physical bucket (for example `overlord-storage`) plus an optional deployment `pathPrefix`. Isolation is expressed by the canonical `storage_key` and by RBAC/metadata lookup, not by exposing provider paths to clients.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | Id | yes |  |
-| `workspace_id` | Id | yes | FK to `workspaces`. |
-| `bucket_key` | text | yes | Stable logical bucket key such as `workspace-images`, `user-images`, or `attachments`. |
+| `workspace_id` | Id | no | FK to `workspaces`. Exactly one of `workspace_id`/`organization_id` is set. |
+| `organization_id` | Id | no | FK to `organizations`. Exactly one of `workspace_id`/`organization_id` is set. |
+| `bucket_key` | text | yes | Stable logical bucket key such as `workspace-images`, `user-images`, `attachments`, or `organization-images`. |
 | `storage_backend` | text | yes | `local_fs`, `supabase`, `s3`, `railway_volume`, or adapter-defined. |
 | `base_url` | text | no | Public or signed URL origin when the provider exposes one; no credentials. |
 | `local_path` | Path | no | Local filesystem root for `local_fs` / volume-style backends. |
@@ -1021,9 +1061,12 @@ The canonical provider object-key layout is:
 | `deleted_at` | TimestampUTC | no | Tombstone. |
 | `revision` | integer | yes |  |
 
+CHECK: exactly one of `workspace_id`/`organization_id` is non-null.
+
 Indexes:
 
-- Unique active `(workspace_id, bucket_key)`.
+- Unique active `(workspace_id, bucket_key)` where `workspace_id IS NOT NULL`.
+- Unique active `(organization_id, bucket_key)` where `organization_id IS NOT NULL`.
 - `(workspace_id, storage_backend)`.
 
 ### `workspace_images`
@@ -1779,6 +1822,7 @@ Closed values:
 - `idempotency_keys.status`: `in_progress`, `completed`, `failed`.
 - `audit_log.result`: `allowed`, `denied`, `failed`.
 - `workspace_invitations.status`: `pending`, `accepted`, `revoked`, `expired`.
+- `role_assignments.role_key` (core, non-extension values; see `auth/src/rbac/types.ts` `Role` enum and `openoverlord.rbac.toml`): `ADMIN`, `MANAGER`, `MEMBER`, `PUBLIC`. `MANAGER` grants everything `MEMBER` does plus `workspace:update` and project management, and may invite/remove/promote other members up to (but not including) `ADMIN`; only `ADMIN` may grant or revoke `ADMIN` itself.
 
 Open extension values:
 
@@ -1896,6 +1940,7 @@ Recommended boundary:
 - `/sync/changes?after=<seq>` for realtime catch-up and local DB sync, returning `SyncChangesDto { changes, cursor, hasMore }` in ascending `entity_changes.seq` order.
 - `/realtime` SSE/WebSocket endpoint backed by `entity_changes` (with compatibility alias `/api/stream`); compact change DTOs include `changedFields: string[]` parsed from `entity_changes.changed_fields_json`.
 - `/api/webhooks` (list/create), `/api/webhooks/:id` (update/soft-delete), `/api/webhooks/:id/rotate-secret`, `/api/webhooks/:id/test`, `/api/webhooks/:id/deliveries` (paginated attempt log), `/api/webhooks/:id/deliveries/:outboxId/redeliver` — workspace-scoped webhook subscription management, gated by `webhook:*` permissions.
+- `/api/onboarding` (`POST`, zero-membership users only) — creates an organization, a default (`general`) workspace, the caller's membership, and the `ADMIN` role in one transaction; shared verbatim by the web onboarding screen and `ovld org-setup`. `/api/organizations` (list for caller), `/api/organizations/:id` (update, org-admin gated), `/api/organizations/:id/admins` (list/add/remove, org-admin gated) — "org admin" is derived (`ADMIN` in every constituent workspace), not a stored role. `/api/workspaces/:id/projects` (or `?workspaceId=`) for per-workspace project listing now that the sidebar can render several workspaces of one organization at once.
 
 REST handlers should:
 

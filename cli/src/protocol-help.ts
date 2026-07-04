@@ -142,7 +142,7 @@ attach:
     --external-session-id <id>  Native agent thread/session id for resume
   Returns:
     Full JSON including session.sessionKey, mission, history, artifacts, sharedState,
-    and promptContext with required workflow instructions.
+    and agentInstructions with required workflow instructions and structured-field pointers.
   Notes:
     The client CLI records a VCS baseline at attach so deliver can report the
     run-attributable changed-file delta automatically.
@@ -339,7 +339,7 @@ resume-follow-up:
     --summary or --summary-file <path|->
     --external-session-id <id>
   Returns:
-    attach-response-v1 JSON with a new session key.
+    attach-response-v3 JSON with a new session key.
 
 hook-event:
   Purpose:

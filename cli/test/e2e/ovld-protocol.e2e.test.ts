@@ -18,7 +18,7 @@ function tempDatabaseEnv(): NodeJS.ProcessEnv {
   };
 }
 
-protocolE2e('ovld protocol attach returns attach-response-v2 JSON', async () => {
+protocolE2e('ovld protocol attach returns attach-response-v3 JSON', async () => {
   const env = tempDatabaseEnv();
   const init = await runOvld({ args: ['init', '--json'], env });
   assert.equal(init.exitCode, 0);
@@ -69,10 +69,11 @@ protocolE2e('ovld protocol attach returns attach-response-v2 JSON', async () => 
     'futureObjectives',
     'session',
     'sharedState',
-    'promptContext'
+    'agentInstructions'
   ]) {
     assert.ok(field in payload, `missing ${field}`);
   }
+  assert.ok(!('promptContext' in payload), 'promptContext field should be removed in v3');
   assert.match(attached.stderr, /SESSION_KEY=/);
 });
 

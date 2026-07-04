@@ -56,4 +56,4 @@ Run `ovld contract check <manifest-file>` to validate (or use the equivalent val
 
 ### For agents
 
-See `.claude/skills/component-contract.md` for the enforced agent workflow. Invoke it before any cross-module change.
+See `.claude/skills/component-contract/SKILL.md` for the enforced agent workflow. Invoke it before any cross-module change.

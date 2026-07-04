@@ -71,16 +71,17 @@ shared with [Layer 3 §3.5](../../TEST_PLAN.md#35-protocol-command-surface-confo
   the documented "agent must stop" contract is representable (single question per
   call rejected if multiple).
 
-### B2. `attach` response shape (`attach-response-v1`)
+### B2. `attach` response shape (`attach-response-v3`)
 - Output contains every `requiredTopLevelFields`: `history`, `artifacts`,
-  `attachments`, `objectives`, `session`, `sharedState`, `promptContext`.
-- `session` has `sessionKey` + `state`; `objectives[]` each have
+  `attachments`, `previousObjectives`, `futureObjectives`, `session`,
+  `sharedState`, `agentInstructions`.
+- `session` has `sessionKey` + `state`; objective arrays each have
   `id`/`objective`/`state`/`position`.
-- `promptContext` contains every `promptContextRequiredContent` item: task title,
-  mission ID, objective ID, objective instruction text, recent activity/history,
-  and required protocol workflow instructions.
-- Optional content (constraints, acceptance criteria, available tools, output
-  format, attachments, artifacts, shared context) appears only when present.
+- `agentInstructions` contains every `agentInstructionsRequiredContent` item:
+  mission ID, objective ID, objective label, pointers to the structured JSON
+  fields, and required protocol workflow instructions.
+- Objective text, history, attachments, artifacts, and shared context remain in
+  their structured fields instead of being duplicated in `agentInstructions`.
 
 ### B3. Required flags and vocab enforcement
 - Each command rejects a call missing any `requiredFlags` entry.
@@ -178,7 +179,7 @@ A thin set of real-subprocess tests via `runOvld` confirming the wiring L2/L3
 proved is actually reachable at the binary boundary:
 
 - `ovld protocol attach` against a temp SQLite DB returns valid
-  `attach-response-v1` JSON on stdout, exit 0.
+  `attach-response-v3` JSON on stdout, exit 0.
 - A full happy path: `attach → update → deliver` over subprocess leaves the
   expected rows.
 - An error path (`update` without session key) exits non-zero with a clear message.

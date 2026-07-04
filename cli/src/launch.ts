@@ -45,7 +45,7 @@ type LaunchPlan = {
 type MissionContext = {
   displayId: string;
   title: string;
-  promptContext: string;
+  launchContext: string;
 };
 
 function overlordLaunchEnv({
@@ -71,8 +71,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 /**
  * Operational lifecycle event types excluded from the "Recent Activity" history
- * surfaced to the agent. Mirrors `promptContextHistoryExcludedEventTypes` for
- * attach-response-v2 (see contract/protocol-commands.yaml): the agent only cares
+ * surfaced to the agent. The agent only cares
  * about substantive events (updates, deliveries, asks, alerts, discussion), not
  * runner/orchestration status churn.
  */
@@ -123,7 +122,7 @@ async function loadMissionContext({
     })
   );
 
-  const promptContext = [
+  const launchContext = [
     `# Overlord Mission: ${displayId}: ${title}`,
     '',
     '## Instructions',
@@ -157,7 +156,7 @@ async function loadMissionContext({
     'Use `ovld protocol attach --mission-id <id>` before making changes, update during work, and ALWAYS deliver last.'
   ].join('\n');
 
-  return { displayId, title, promptContext };
+  return { displayId, title, launchContext };
 }
 
 function buildAgentCommand({
@@ -213,10 +212,10 @@ export async function buildLaunchPlan({
     tmpDir,
     `mission-${context.displayId.replace(/[^a-zA-Z0-9_-]/g, '-')}.md`
   );
-  const promptContext = options.executionRequestId
-    ? `${context.promptContext}\nExecution request: ${options.executionRequestId}`
-    : context.promptContext;
-  writeFileSync(contextFile, `${promptContext}\n`);
+  const launchContext = options.executionRequestId
+    ? `${context.launchContext}\nExecution request: ${options.executionRequestId}`
+    : context.launchContext;
+  writeFileSync(contextFile, `${launchContext}\n`);
   const launchEnv = overlordLaunchEnv({
     backendUrl: runtime.backend.baseUrl,
     missionId: context.displayId,
@@ -224,9 +223,9 @@ export async function buildLaunchPlan({
   });
 
   const prompt =
-    promptContext.length > 4000
+    launchContext.length > 4000
       ? `Use the Overlord context file at ${contextFile} and attach to mission ${context.displayId}.`
-      : promptContext;
+      : launchContext;
 
   const command = buildAgentCommand({
     agent: options.agent,
