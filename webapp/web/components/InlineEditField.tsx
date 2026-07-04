@@ -141,7 +141,7 @@ export function InlineEditField({
     return (
       <span
         className={cn(
-          'rounded',
+          'rounded  max-h-[360px]',
           multilineMinRowsStyle && 'block',
           !disabled && 'cursor-default',
           className,
@@ -194,7 +194,7 @@ export function InlineEditField({
       autoFocus
       value={draft}
       className={cn(
-        'h-full max-h-[360px] border-none bg-transparent hover:bg-transparent',
+        'h-full max-h-40 border-none bg-transparent hover:bg-transparent',
         inputClassName
       )}
       aria-label={ariaLabel}
