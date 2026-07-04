@@ -405,7 +405,9 @@ function applySessionChangedFiles({
   }
 
   const skipPaths =
-    subcommand === 'deliver' ? new Set(Array.from(skipByPath.keys()).filter(Boolean)) : new Set<string>();
+    subcommand === 'deliver'
+      ? new Set(Array.from(skipByPath.keys()).filter(Boolean))
+      : new Set<string>();
   const filtered =
     skipPaths.size > 0
       ? attributable.filter(entry => !skipPaths.has(entry.filePath))
@@ -871,7 +873,8 @@ export async function runProtocolCommand({
         `falling back to baseline-only attribution, which can misattribute concurrent sessions' edits. ` +
         `Check ~/.ovld/logs/post-tool-use-hook.log for why the hook did not record any touched files.`;
       console.error(warning);
-      const sessionKeyForAlert = typeof flags['--session-key'] === 'string' ? flags['--session-key'] : undefined;
+      const sessionKeyForAlert =
+        typeof flags['--session-key'] === 'string' ? flags['--session-key'] : undefined;
       if (sessionKeyForAlert) {
         try {
           await runtime.backend.post({

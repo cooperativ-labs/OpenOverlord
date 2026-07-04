@@ -7,7 +7,12 @@ import test from 'node:test';
 
 import { runProtocolCommand } from '../src/commands.ts';
 import type { CliRuntime } from '../src/runtime.ts';
-import { readChangedFiles, recordTouchedFiles, resetTouchedFiles, writeBaseline } from '../src/vcs.ts';
+import {
+  readChangedFiles,
+  recordTouchedFiles,
+  resetTouchedFiles,
+  writeBaseline
+} from '../src/vcs.ts';
 import { writeActiveSession } from '../src/vcs-sessions.ts';
 
 const MISSION_ID = 'coo:127';
@@ -87,7 +92,9 @@ test('deliver excludes concurrent claimed files and auto-attaches skip payloads 
   const payload = postedBody as {
     flags?: Record<string, string | true>;
   };
-  const changedFiles = JSON.parse(String(payload.flags?.['--changed-files-json'] ?? '[]')) as Array<{
+  const changedFiles = JSON.parse(
+    String(payload.flags?.['--changed-files-json'] ?? '[]')
+  ) as Array<{
     filePath: string;
     attribution?: string;
   }>;
@@ -98,10 +105,7 @@ test('deliver excludes concurrent claimed files and auto-attaches skip payloads 
     String(payload.flags?.['--observed-dirty-paths-json'] ?? '[]')
   ) as string[];
 
-  assert.deepEqual(
-    changedFiles.map(entry => entry.filePath).sort(),
-    ['mine.ts', 'unclaimed.ts']
-  );
+  assert.deepEqual(changedFiles.map(entry => entry.filePath).sort(), ['mine.ts', 'unclaimed.ts']);
   assert.deepEqual(skipEntries, [
     {
       file_path: 'claimed.ts',
@@ -118,10 +122,7 @@ test('deliver excludes concurrent claimed files and auto-attaches skip payloads 
   // Layer 4: the full current dirty tree is sent so the server can reconcile
   // stale changed_files rows to 'resolved', independent of run-attributable
   // filtering.
-  assert.deepEqual(
-    observedDirtyPaths.sort(),
-    ['claimed.ts', 'mine.ts', 'unclaimed.ts']
-  );
+  assert.deepEqual(observedDirtyPaths.sort(), ['claimed.ts', 'mine.ts', 'unclaimed.ts']);
 });
 
 test('ovld protocol changes prints classified paths without calling the backend', async () => {

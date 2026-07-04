@@ -1458,9 +1458,11 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   // Service-layer validation (invalid session, no active objective, missing
   // rationale, …) carries its own HTTP status and machine-readable code.
   if (err instanceof ServiceError) {
-    res
-      .status(err.status)
-      .json({ error: err.message, code: err.code, ...(err.details !== undefined ? { details: err.details } : {}) });
+    res.status(err.status).json({
+      error: err.message,
+      code: err.code,
+      ...(err.details !== undefined ? { details: err.details } : {})
+    });
     return;
   }
   const databaseError = apiErrorFromDatabaseError(err);

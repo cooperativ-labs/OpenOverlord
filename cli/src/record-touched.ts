@@ -73,7 +73,8 @@ function editIntent({
   editCount: number;
 }): string {
   if (toolName === 'Write') return 'wrote or replaced the file';
-  if (toolName === 'MultiEdit' || editCount > 1) return `applied ${editCount} targeted text edit(s)`;
+  if (toolName === 'MultiEdit' || editCount > 1)
+    return `applied ${editCount} targeted text edit(s)`;
   if (toolName === 'Edit') return 'replaced selected text';
   if (/notebook/i.test(filePath) || /notebook/i.test(toolName)) return 'edited notebook content';
   return `edited via ${toolName}`;
@@ -104,7 +105,11 @@ function recentAssistantContext(transcriptPath: unknown): string | null {
         texts.push(content);
       } else if (Array.isArray(content)) {
         for (const item of content) {
-          if (item && typeof item === 'object' && (item as Record<string, unknown>).type === 'text') {
+          if (
+            item &&
+            typeof item === 'object' &&
+            (item as Record<string, unknown>).type === 'text'
+          ) {
             const text = (item as Record<string, unknown>).text;
             if (typeof text === 'string') texts.push(text);
           }
@@ -149,9 +154,10 @@ export function recordTouchedFromPayload({
     toolInputRaw && typeof toolInputRaw === 'object'
       ? (toolInputRaw as Record<string, unknown>)
       : {};
-  const toolName = typeof payload.tool_name === 'string' && payload.tool_name.trim()
-    ? payload.tool_name.trim()
-    : 'file edit';
+  const toolName =
+    typeof payload.tool_name === 'string' && payload.tool_name.trim()
+      ? payload.tool_name.trim()
+      : 'file edit';
 
   const cwd =
     typeof payload.cwd === 'string' && payload.cwd.trim() ? payload.cwd.trim() : fallbackCwd;

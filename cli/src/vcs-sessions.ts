@@ -86,9 +86,7 @@ export function writeActiveSession({
   const trimmedMission = missionId.trim();
   const trimmedKey = sessionKey.trim();
   if (!trimmedMission || !trimmedKey) return;
-  const entries = readEntries(workingDirectory).filter(
-    entry => entry.missionId !== trimmedMission
-  );
+  const entries = readEntries(workingDirectory).filter(entry => entry.missionId !== trimmedMission);
   entries.push({
     missionId: trimmedMission,
     sessionKey: trimmedKey,

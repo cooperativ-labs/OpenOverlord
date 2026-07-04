@@ -1500,7 +1500,10 @@ export async function deliverSession({
         .filter(file => file.attribution)
         .map(file => [
           file.filePath.replace(/\\/g, '/'),
-          { attribution: file.attribution as 'mine' | 'claimed' | 'unclaimed', claimedByMissionIds: file.claimedByMissionIds }
+          {
+            attribution: file.attribution as 'mine' | 'claimed' | 'unclaimed',
+            claimedByMissionIds: file.claimedByMissionIds
+          }
         ])
     );
 

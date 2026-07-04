@@ -231,9 +231,9 @@ export function ScheduleEditor({
       const next = existing
         ? { ...prev, daysOfWeek: prev.daysOfWeek.filter(d => d.dayNum !== day) }
         : {
-          ...prev,
-          daysOfWeek: [...prev.daysOfWeek, { dayNum: day, times: [prev.time || '09:00'] }]
-        };
+            ...prev,
+            daysOfWeek: [...prev.daysOfWeek, { dayNum: day, times: [prev.time || '09:00'] }]
+          };
       scheduleRef.current = next;
       return next;
     });
@@ -342,12 +342,12 @@ export function ScheduleEditor({
 
   const summaryText = schedule
     ? summarizeSchedule({
-      periodType: schedule.periodType,
-      periodInterval: schedule.periodInterval,
-      daysOfWeek: schedule.daysOfWeek,
-      daysOfMonth: schedule.daysOfMonth,
-      weeksOfMonth: schedule.weeksOfMonth
-    })
+        periodType: schedule.periodType,
+        periodInterval: schedule.periodInterval,
+        daysOfWeek: schedule.daysOfWeek,
+        daysOfMonth: schedule.daysOfMonth,
+        weeksOfMonth: schedule.weeksOfMonth
+      })
     : null;
   const selectedNextStatus = schedule?.nextStatusId
     ? statuses.find(status => status.id === schedule.nextStatusId)
