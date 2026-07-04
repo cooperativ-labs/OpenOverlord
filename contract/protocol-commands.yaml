@@ -56,7 +56,7 @@ sessionLifecycle:
       - --session-key
       - --execution-request-id
     returnsSessionKey: true
-    responseShape: attach-response-v1
+    responseShape: attach-response-v2
     clientCapture:
       - "The client CLI records a VCS baseline (changed file paths from git status) for the working directory so deliver can compute the run-attributable changed-file delta. VCS is read on the client only; best-effort and skipped outside a git repo."
     sideEffects:
@@ -133,7 +133,7 @@ sessionLifecycle:
       - --summary
       - --summary-file
     returnsSessionKey: true
-    responseShape: attach-response-v1
+    responseShape: attach-response-v2
     sideEffects:
       - creates-agent-session
       - objective-state-complete-to-pending-delivery
@@ -331,8 +331,11 @@ authAndDiscovery:
 
 responseShapes:
 
+  # attach-response-v1 (superseded by v2 in contract version 4). Retained for
+  # historical reference. v1 exposed a single top-level `objectives` array that
+  # included the current objective.
   attach-response-v1:
-    description: "Response shape returned by the attach command"
+    description: "Response shape returned by the attach command (superseded by attach-response-v2)"
     requiredTopLevelFields:
       - history
       - artifacts
@@ -356,6 +359,56 @@ responseShapes:
       - objective instruction text
       - recent activity/history
       - required protocol workflow instructions
+    promptContextOptionalContent:
+      - constraints
+      - acceptance criteria
+      - available tools
+      - output format
+      - attachments
+      - artifacts
+      - shared context
+      - user custom agent instructions
+
+  attach-response-v2:
+    description: >-
+      Response shape returned by the attach and resume-follow-up commands.
+      Replaces the single `objectives` array with two disjoint arrays that both
+      exclude the current objective: `previousObjectives` (positioned before the
+      current objective) and `futureObjectives` (positioned after). The current
+      objective is carried only in the top-level `objective` field.
+    requiredTopLevelFields:
+      - history
+      - artifacts
+      - attachments
+      - previousObjectives
+      - futureObjectives
+      - session
+      - sharedState
+      - promptContext
+    sessionRequiredFields:
+      - sessionKey
+      - state
+    # Applies to entries in both previousObjectives and futureObjectives.
+    objectivesRequiredFields:
+      - id
+      - objective
+      - state
+      - position
+    # The current objective is excluded from previousObjectives and futureObjectives.
+    objectivesExcludeCurrent: true
+    promptContextRequiredContent:
+      - task title
+      - mission ID
+      - objective ID
+      - objective instruction text
+      - recent activity/history
+      - required protocol workflow instructions
+    # Recent activity/history rendered into promptContext excludes operational
+    # lifecycle event types so the agent sees only substantive events.
+    promptContextHistoryExcludedEventTypes:
+      - status_change
+      - execution_requested
+      - awaiting_approval
     promptContextOptionalContent:
       - constraints
       - acceptance criteria

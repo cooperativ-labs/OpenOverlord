@@ -69,6 +69,19 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
 }
 
+/**
+ * Operational lifecycle event types excluded from the "Recent Activity" history
+ * surfaced to the agent. Mirrors `promptContextHistoryExcludedEventTypes` for
+ * attach-response-v2 (see contract/protocol-commands.yaml): the agent only cares
+ * about substantive events (updates, deliveries, asks, alerts, discussion), not
+ * runner/orchestration status churn.
+ */
+const AGENT_HISTORY_EXCLUDED_EVENT_TYPES = new Set([
+  'status_change',
+  'execution_requested',
+  'awaiting_approval'
+]);
+
 async function loadMissionContext({
   runtime,
   missionId
@@ -131,7 +144,10 @@ async function loadMissionContext({
         ]
       : []),
     '## Recent Activity',
-    ...events.slice(-20).map(event => `- ${asRecord(event).summary ?? JSON.stringify(event)}`),
+    ...events
+      .filter(event => !AGENT_HISTORY_EXCLUDED_EVENT_TYPES.has(String(asRecord(event).type)))
+      .slice(-20)
+      .map(event => `- ${asRecord(event).summary ?? JSON.stringify(event)}`),
     '',
     '## Artifacts',
     ...artifacts.map(

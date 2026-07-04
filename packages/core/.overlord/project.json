@@ -1,0 +1,11 @@
+{
+  "_warning": "This file is managed by Overlord and is regenerated automatically when this folder is linked as a project resource. Do not edit it manually — manual changes will be overwritten.",
+  "version": 2,
+  "projectId": "71b4f42c-dc83-4995-bd27-11903bda6414",
+  "resourceId": "857b4844-5802-4655-9cd8-2ca0912410f7",
+  "resourceIdsByExecutionTarget": {
+    "91079862-7121-43a8-bcad-6f5e0f09f78b": "857b4844-5802-4655-9cd8-2ca0912410f7"
+  },
+  "isPrimary": true,
+  "linkedAt": "2026-07-04T09:00:49.008Z"
+}

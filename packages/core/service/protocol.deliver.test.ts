@@ -177,7 +177,7 @@ describe('deliverSession mechanical change capture', () => {
       objectives: [{ objective: 'Complete current objective' }]
     });
     const attached = await attachSession({ ctx, missionId: mission.displayId });
-    const placeholder = attached.objectives.find(objective => objective.state === 'draft');
+    const placeholder = attached.futureObjectives.find(objective => objective.state === 'draft');
     assert.ok(placeholder);
 
     const future = await insertObjective({
