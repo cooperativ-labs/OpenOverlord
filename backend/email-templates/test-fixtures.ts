@@ -26,9 +26,8 @@ export function assertIncludesSiteUrl(html: string): void {
   assert.ok(html.includes(`href="${TEST_SITE_URL}"`));
 }
 
-export function assertSubjectNonEmpty(subjectFn: () => string): void {
-  assert.equal(typeof subjectFn(), 'string');
-  assert.ok(subjectFn().length > 0);
+export function assertSubjectEquals(subjectFn: () => string, expected: string): void {
+  assert.equal(subjectFn(), expected, `subject line regressed; expected exactly "${expected}"`);
 }
 
 export function assertEscapesUrlInjection(html: string): void {

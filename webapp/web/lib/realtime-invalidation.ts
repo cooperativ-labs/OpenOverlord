@@ -1,11 +1,15 @@
 import type { EntityChangeDto } from '../../shared/contract.ts';
 
 import { keys } from './queries.ts';
+import { invalidateNonEverhourQueries } from './query-invalidation.ts';
 
 type QueryKey = readonly unknown[];
 
 interface QueryInvalidator {
-  invalidateQueries(filters?: { queryKey?: QueryKey }): unknown;
+  invalidateQueries(filters?: {
+    queryKey?: QueryKey;
+    predicate?: (query: { queryKey: QueryKey }) => boolean;
+  }): unknown;
 }
 
 export type RealtimeInvalidationMode = 'targeted' | 'full';
@@ -201,19 +205,19 @@ export function invalidateRealtimeChanges(
   changes: unknown
 ): RealtimeInvalidationMode {
   if (!Array.isArray(changes)) {
-    void queryClient.invalidateQueries();
+    invalidateNonEverhourQueries(queryClient);
     return 'full';
   }
 
   const queryKeys: QueryKey[] = [];
   for (const change of changes) {
     if (!isEntityChangeDto(change)) {
-      void queryClient.invalidateQueries();
+      invalidateNonEverhourQueries(queryClient);
       return 'full';
     }
     const routed = routeChange(change);
     if (!routed) {
-      void queryClient.invalidateQueries();
+      invalidateNonEverhourQueries(queryClient);
       return 'full';
     }
     queryKeys.push(...routed);

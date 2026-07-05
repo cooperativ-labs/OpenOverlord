@@ -16,6 +16,7 @@
  *   config → workspace default → empty) and snapshots it into
  *   `execution_requests.launch_flags_json` for the runner to consume verbatim.
  */
+import { type Permission, PERMISSIONS } from '@overlord/auth';
 import type { TerminalProfile } from '@overlord/core/service/terminal-profile-types';
 import type { DatabaseClient } from '@overlord/database';
 
@@ -61,15 +62,19 @@ import type {
 
 import {
   buildWebappServiceContext,
+  buildWebappServiceContextForWorkspace,
+  findActiveMembershipId,
   getActorWorkspaceUserId,
   newId,
   nowIso,
   recordChange,
   requireDatabaseClient,
+  resolveActiveProfileId,
   serviceDatabaseClient,
   WORKSPACE
 } from './db.ts';
 import { ApiError } from './errors.ts';
+import { actorCan } from './rbac.ts';
 
 // ---- Instance default catalog ----------------------------------------------
 //
@@ -362,25 +367,47 @@ export async function updateWorktreeBranchAutomation(
 
 const LAUNCH_PREFERENCE_KEY = 'launchPreference';
 
-async function requireProject(
+/**
+ * Resolves a project to its own workspace and the caller's membership there
+ * (coo:135), independent of the request's active workspace — a mission panel
+ * open on a secondary workspace still needs its project's launch preference to
+ * load. Checks `permission` against that resolved workspace, mirroring
+ * `requireObjectivePermission` in repository.ts.
+ */
+async function requireProjectWorkspaceAccess(
   projectId: string,
-  client: DatabaseClient = requireDatabaseClient()
-): Promise<void> {
-  const row = await client.get(
-    `SELECT id FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [projectId, WORKSPACE.id]
+  permission: Permission,
+  client: DatabaseClient
+): Promise<{ workspaceId: string; workspaceUserId: string }> {
+  const row = await client.get<{ workspace_id: string }>(
+    `SELECT workspace_id FROM projects WHERE id = ? AND deleted_at IS NULL`,
+    [projectId]
   );
   if (!row) throw new ApiError(404, 'Project not found');
+
+  const profileId = await resolveActiveProfileId(client);
+  const workspaceUserId = profileId
+    ? await findActiveMembershipId(row.workspace_id, profileId, client)
+    : null;
+  if (
+    !workspaceUserId ||
+    !(await actorCan(permission, { workspaceId: row.workspace_id, workspaceUserId }))
+  ) {
+    throw new ApiError(404, 'Project not found');
+  }
+  return { workspaceId: row.workspace_id, workspaceUserId };
 }
 
 function readPreferenceRow(
   projectId: string,
+  workspaceId: string,
+  workspaceUserId: string | null,
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<{ id: string; preferences: Record<string, unknown>; revision: number } | null> {
   return readProjectUserPreferenceRow({
     db: client,
-    workspaceId: WORKSPACE.id,
-    workspaceUserId: getActorWorkspaceUserId(),
+    workspaceId,
+    workspaceUserId,
     projectId
   });
 }
@@ -389,8 +416,12 @@ export async function getLaunchPreference(
   projectId: string,
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<LaunchPreferenceDto> {
-  await requireProject(projectId, client);
-  const row = await readPreferenceRow(projectId, client);
+  const { workspaceId, workspaceUserId } = await requireProjectWorkspaceAccess(
+    projectId,
+    PERMISSIONS.LAUNCH_READ,
+    client
+  );
+  const row = await readPreferenceRow(projectId, workspaceId, workspaceUserId, client);
   const stored = row?.preferences[LAUNCH_PREFERENCE_KEY] as
     | Partial<LaunchPreferenceDto>
     | undefined;
@@ -406,12 +437,13 @@ export async function updateLaunchPreference(
   body: UpdateLaunchPreferenceBody
 ): Promise<LaunchPreferenceDto> {
   return requireDatabaseClient().transaction(async tx => {
-    await requireProject(projectId, tx);
-    if (!getActorWorkspaceUserId()) {
-      throw new ApiError(409, 'No active workspace user to store preferences for');
-    }
+    const { workspaceId, workspaceUserId } = await requireProjectWorkspaceAccess(
+      projectId,
+      PERMISSIONS.LAUNCH_CONFIGURE,
+      tx
+    );
 
-    const row = await readPreferenceRow(projectId, tx);
+    const row = await readPreferenceRow(projectId, workspaceId, workspaceUserId, tx);
     const current = (row?.preferences[LAUNCH_PREFERENCE_KEY] ?? {}) as Partial<LaunchPreferenceDto>;
     const next: LaunchPreferenceDto = {
       selectedAgent:
@@ -441,9 +473,9 @@ export async function updateLaunchPreference(
          VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
         [
           newId(),
-          WORKSPACE.id,
+          workspaceId,
           projectId,
-          getActorWorkspaceUserId(),
+          workspaceUserId,
           JSON.stringify({ [LAUNCH_PREFERENCE_KEY]: next }),
           now,
           now
@@ -609,6 +641,8 @@ export async function dequeueObjective({
   objectiveId,
   projectId,
   missionId,
+  workspaceId,
+  workspaceUserId,
   reason,
   newState,
   now,
@@ -617,6 +651,9 @@ export async function dequeueObjective({
   objectiveId: string;
   projectId: string;
   missionId: string;
+  /** The objective's own workspace — not the caller's active one (coo:135). */
+  workspaceId: string;
+  workspaceUserId: string | null;
   /** Why the objective left the queue, for the audit event payload. */
   reason: 'completed' | 'disconnected' | 'deleted';
   /** New objective state, or null when the objective is being deleted. */
@@ -625,7 +662,10 @@ export async function dequeueObjective({
   tx?: DatabaseClient;
 }): Promise<{ clearedRequests: number; endedSessions: number }> {
   const { cleared } = await clearExecutionRequests({
-    ctx: { ...serviceContext(), db: tx },
+    ctx: {
+      ...(await buildWebappServiceContextForWorkspace(workspaceId, tx, workspaceUserId)),
+      db: tx
+    },
     objectiveId,
     now,
     emitEvents: false
@@ -638,7 +678,7 @@ export async function dequeueObjective({
     `SELECT id, revision FROM agent_sessions
         WHERE workspace_id = ? AND objective_id = ? AND deleted_at IS NULL
           AND ended_at IS NULL`,
-    [WORKSPACE.id, objectiveId]
+    [workspaceId, objectiveId]
   );
 
   for (const session of openSessions) {
@@ -647,7 +687,7 @@ export async function dequeueObjective({
       `UPDATE agent_sessions
          SET phase = ?, ended_at = ?, updated_at = ?, revision = ?
        WHERE id = ? AND workspace_id = ?`,
-      [sessionPhase, now, now, revision, session.id, WORKSPACE.id]
+      [sessionPhase, now, now, revision, session.id, workspaceId]
     );
     await recordChange(
       {
@@ -658,7 +698,9 @@ export async function dequeueObjective({
         projectId,
         missionId,
         objectiveId,
-        changedFields: ['phase', 'ended_at']
+        changedFields: ['phase', 'ended_at'],
+        workspaceId,
+        actorWorkspaceUserId: workspaceUserId
       },
       tx
     );
@@ -672,7 +714,7 @@ export async function dequeueObjective({
        VALUES (?, ?, ?, ?, ?, 'status_change', NULL, ?, ?, 'webapp', ?, ?)`,
       [
         newId(),
-        WORKSPACE.id,
+        workspaceId,
         projectId,
         missionId,
         objectiveId,
@@ -684,7 +726,7 @@ export async function dequeueObjective({
           clearedRequests: cleared,
           endedSessions: openSessions.length
         }),
-        getActorWorkspaceUserId(),
+        workspaceUserId,
         now
       ]
     );
@@ -712,10 +754,25 @@ export async function launchObjective(
       `SELECT id, workspace_id, project_id, mission_id, title, instruction_text, state,
                 assigned_agent, model, reasoning_effort, launch_config_json, revision
            FROM objectives
-          WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [objectiveId, WORKSPACE.id]
+          WHERE id = ? AND deleted_at IS NULL`,
+      [objectiveId]
     );
     if (!objective) throw new ApiError(404, 'Objective not found');
+
+    const profileId = await resolveActiveProfileId(tx);
+    const workspaceUserId = profileId
+      ? await findActiveMembershipId(objective.workspace_id, profileId, tx)
+      : null;
+    if (
+      !workspaceUserId ||
+      !(await actorCan(PERMISSIONS.EXECUTION_REQUEST_CREATE, {
+        workspaceId: objective.workspace_id,
+        workspaceUserId
+      }))
+    ) {
+      throw new ApiError(404, 'Objective not found');
+    }
+
     if (!LAUNCHABLE_STATES.includes(objective.state)) {
       throw new ApiError(
         409,
@@ -731,14 +788,24 @@ export async function launchObjective(
           WHERE mission_id = ? AND workspace_id = ? AND id <> ? AND deleted_at IS NULL
             AND state IN (${ACTIVE_SIBLING_OBJECTIVE_STATES.map(() => '?').join(', ')})
           LIMIT 1`,
-      [objective.mission_id, WORKSPACE.id, objective.id, ...ACTIVE_SIBLING_OBJECTIVE_STATES]
+      [
+        objective.mission_id,
+        objective.workspace_id,
+        objective.id,
+        ...ACTIVE_SIBLING_OBJECTIVE_STATES
+      ]
     );
     const activeSiblingRequest = await tx.get<{ id: string }>(
       `SELECT id FROM execution_requests
           WHERE mission_id = ? AND workspace_id = ? AND objective_id <> ? AND deleted_at IS NULL
             AND status IN (${ACTIVE_EXECUTION_REQUEST_STATUSES.map(() => '?').join(', ')})
           LIMIT 1`,
-      [objective.mission_id, WORKSPACE.id, objective.id, ...ACTIVE_EXECUTION_REQUEST_STATUSES]
+      [
+        objective.mission_id,
+        objective.workspace_id,
+        objective.id,
+        ...ACTIVE_EXECUTION_REQUEST_STATUSES
+      ]
     );
     if (activeSiblingObjective || activeSiblingRequest) {
       throw new ApiError(
@@ -747,15 +814,20 @@ export async function launchObjective(
       );
     }
 
+    const serviceCtx = await buildWebappServiceContextForWorkspace(
+      objective.workspace_id,
+      tx,
+      workspaceUserId
+    );
     const launchTarget = await resolveLaunchExecutionTarget({
-      ctx: serviceContext(tx),
+      ctx: serviceCtx,
       projectId: objective.project_id
     });
     const { executionTargetId, agentConfigs } = launchTarget;
     const now = nowIso();
 
     await assertPrimaryResourceConnected({
-      ctx: serviceContext(tx),
+      ctx: serviceCtx,
       projectId: objective.project_id,
       executionTargetId
     });
@@ -837,7 +909,7 @@ export async function launchObjective(
     }
 
     const resolved = await resolveLaunchConfig({
-      ctx: serviceContext(tx),
+      ctx: serviceCtx,
       objectiveLaunchConfigJson: launchConfigJson,
       executionTargetId,
       agentKey,
@@ -860,7 +932,7 @@ export async function launchObjective(
     }
 
     const request = await createExecutionRequest({
-      ctx: serviceContext(tx),
+      ctx: serviceCtx,
       missionId: objective.mission_id,
       objectiveId: objective.id,
       requestedAgent: agentKey,
@@ -890,22 +962,43 @@ export async function launchObjective(
  * objective, mission identity, and the protocol attach instruction.
  */
 export async function getObjectivePrompt(objectiveId: string): Promise<ObjectivePromptDto> {
-  const row = await requireDatabaseClient().get<{
+  const db = requireDatabaseClient();
+  // `objectives.id` is a globally-unique UUID, so this resolves independent of
+  // the caller's active workspace (coo:135) — the objective's own workspace,
+  // not necessarily the request's active one, since the caller may be viewing
+  // a secondary workspace's mission. Permission is then checked against that
+  // resolved workspace, mirroring `requireObjectivePermission` in repository.ts.
+  const row = await db.get<{
     id: string;
     mission_id: string;
     title: string | null;
     instruction_text: string;
     display_id: string;
     mission_title: string;
+    workspace_id: string;
   }>(
-    `SELECT o.id, o.mission_id, o.title, o.instruction_text,
+    `SELECT o.id, o.mission_id, o.title, o.instruction_text, o.workspace_id,
               t.display_id, t.title AS mission_title
          FROM objectives o
          JOIN missions t ON t.id = o.mission_id
-        WHERE o.id = ? AND o.workspace_id = ? AND o.deleted_at IS NULL`,
-    [objectiveId, WORKSPACE.id]
+        WHERE o.id = ? AND o.deleted_at IS NULL`,
+    [objectiveId]
   );
   if (!row) throw new ApiError(404, 'Objective not found');
+
+  const profileId = await resolveActiveProfileId(db);
+  const workspaceUserId = profileId
+    ? await findActiveMembershipId(row.workspace_id, profileId, db)
+    : null;
+  if (
+    !workspaceUserId ||
+    !(await actorCan(PERMISSIONS.OBJECTIVE_READ, {
+      workspaceId: row.workspace_id,
+      workspaceUserId
+    }))
+  ) {
+    throw new ApiError(404, 'Objective not found');
+  }
 
   const prompt = [
     `# Overlord Agent Instructions`,

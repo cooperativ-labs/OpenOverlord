@@ -507,9 +507,14 @@ app.delete(
     { mutates: true, requires: PERMISSIONS.WORKSPACE_DELETE }
   )
 );
+// `listWorkspaceMembers` validates active membership in the *target* workspace
+// itself (`requireWorkspaceMember`), so this route carries no route-level
+// `requires` gate — a route-level check would only validate the caller's
+// active workspace, which is wrong when e.g. the mission assignee selector
+// requests members of a secondary (non-active) workspace (coo:135).
 app.get(
   '/api/workspaces/:id/members',
-  handle(req => listWorkspaceMembers(req.params.id), { requires: PERMISSIONS.WORKSPACE_READ })
+  handle(req => listWorkspaceMembers(req.params.id))
 );
 app.delete(
   '/api/workspaces/:id/members/:workspaceUserId',
@@ -877,10 +882,7 @@ app.post(
 );
 app.patch(
   '/api/projects/reorder',
-  handle(req => reorderProjects(req.body), {
-    mutates: true,
-    requires: PERMISSIONS.PROJECT_UPDATE
-  })
+  handle(req => reorderProjects(req.body), { mutates: true })
 );
 app.get(
   '/api/projects/:id',
@@ -888,17 +890,11 @@ app.get(
 );
 app.patch(
   '/api/projects/:id',
-  handle(req => updateProject(req.params.id, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.PROJECT_UPDATE
-  })
+  handle(req => updateProject(req.params.id, req.body), { mutates: true })
 );
 app.delete(
   '/api/projects/:id',
-  handle(req => deleteProject(req.params.id), {
-    mutates: true,
-    requires: PERMISSIONS.PROJECT_DELETE
-  })
+  handle(req => deleteProject(req.params.id), { mutates: true })
 );
 app.get(
   '/api/workspace/statuses',
@@ -1138,63 +1134,55 @@ app.get(
     { requires: PERMISSIONS.MISSION_READ }
   )
 );
+// `createMission`/`getMissionDetail`/`updateMission`/`deleteMission` resolve and
+// authorize against the mission's (or target project's) own workspace
+// internally (coo:135) — mirroring `GET /api/projects/:id` above — so these
+// routes carry no route-level `requires` gate; a route-level check would only
+// ever validate the caller's *active* workspace, which is wrong for a
+// secondary-workspace mission.
 app.post(
   '/api/missions',
-  handle(req => createMission(req.body), { mutates: true, requires: PERMISSIONS.MISSION_CREATE })
+  handle(req => createMission(req.body), { mutates: true })
 );
 app.get(
   '/api/missions/:id',
-  handle(req => getMissionDetail(req.params.id), { requires: PERMISSIONS.MISSION_READ })
+  handle(req => getMissionDetail(req.params.id))
 );
 app.patch(
   '/api/missions/:id',
-  handle(req => updateMission(req.params.id, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.MISSION_UPDATE
-  })
+  handle(req => updateMission(req.params.id, req.body), { mutates: true })
 );
 app.delete(
   '/api/missions/:id',
-  handle(req => deleteMission(req.params.id), {
-    mutates: true,
-    requires: PERMISSIONS.MISSION_DELETE
-  })
+  handle(req => deleteMission(req.params.id), { mutates: true })
 );
 app.post(
   '/api/missions/:id/generate-title',
-  handle(req => generateMissionTitle(req.params.id), {
-    mutates: true,
-    requires: PERMISSIONS.MISSION_UPDATE
-  })
+  handle(req => generateMissionTitle(req.params.id), { mutates: true })
 );
 app.post(
   '/api/missions/:id/generate-commit-message',
-  handle(req => generateCommitMessage(req.params.id, req.body ?? {}), {
-    requires: PERMISSIONS.MISSION_UPDATE
-  })
+  handle(req => generateCommitMessage(req.params.id, req.body ?? {}))
 );
 app.get(
   '/api/missions/:id/objectives',
-  handle(req => listObjectives(req.params.id), { requires: PERMISSIONS.OBJECTIVE_READ })
+  handle(req => listObjectives(req.params.id))
 );
 app.patch(
   '/api/missions/:id/objectives/reorder',
-  handle(req => reorderFutureObjectives(req.params.id, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.OBJECTIVE_UPDATE
-  })
+  handle(req => reorderFutureObjectives(req.params.id, req.body), { mutates: true })
 );
 app.get(
   '/api/missions/:id/events',
-  handle(req => listMissionEvents(req.params.id), { requires: PERMISSIONS.EVENT_READ })
+  handle(req => listMissionEvents(req.params.id))
 );
 app.get(
   '/api/missions/:id/artifacts',
-  handle(req => listArtifacts(req.params.id), { requires: PERMISSIONS.ARTIFACT_READ })
+  handle(req => listArtifacts(req.params.id))
 );
 app.get(
   '/api/missions/:id/file-changes',
-  handle(req => listMissionFileChanges(req.params.id), { requires: PERMISSIONS.MISSION_READ })
+  handle(req => listMissionFileChanges(req.params.id))
 );
 app.post(
   '/api/missions/schedule/preview',
@@ -1202,56 +1190,42 @@ app.post(
 );
 app.get(
   '/api/missions/:id/schedule',
-  handle(req => getMissionSchedule(req.params.id), { requires: PERMISSIONS.MISSION_READ })
+  handle(req => getMissionSchedule(req.params.id))
 );
 app.put(
   '/api/missions/:id/schedule',
-  handle(req => upsertMissionSchedule(req.params.id, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.MISSION_UPDATE
-  })
+  handle(req => upsertMissionSchedule(req.params.id, req.body), { mutates: true })
 );
 app.delete(
   '/api/missions/:id/schedule',
-  handle(req => clearMissionSchedule(req.params.id), {
-    mutates: true,
-    requires: PERMISSIONS.MISSION_UPDATE
-  })
+  handle(req => clearMissionSchedule(req.params.id), { mutates: true })
 );
 
 // ---- Objectives ----------------------------------------------------------
+//
+// `createObjective`/`updateObjective`/`deleteObjective` resolve and authorize
+// against the mission's/objective's own workspace internally (coo:135), so
+// these routes carry no route-level `requires` gate either.
 
 app.post(
   '/api/objectives',
-  handle(req => createObjective(req.body), {
-    mutates: true,
-    requires: PERMISSIONS.OBJECTIVE_UPDATE
-  })
+  handle(req => createObjective(req.body), { mutates: true })
 );
 app.patch(
   '/api/objectives/:id',
-  handle(req => updateObjective(req.params.id, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.OBJECTIVE_UPDATE
-  })
+  handle(req => updateObjective(req.params.id, req.body), { mutates: true })
 );
 app.delete(
   '/api/objectives/:id',
-  handle(req => deleteObjective(req.params.id), {
-    mutates: true,
-    requires: PERMISSIONS.OBJECTIVE_UPDATE
-  })
+  handle(req => deleteObjective(req.params.id), { mutates: true })
 );
 app.post(
   '/api/objectives/:id/launch',
-  handle(req => launchObjective(req.params.id, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.EXECUTION_REQUEST_CREATE
-  })
+  handle(req => launchObjective(req.params.id, req.body), { mutates: true })
 );
 app.get(
   '/api/objectives/:id/prompt',
-  handle(req => getObjectivePrompt(req.params.id), { requires: PERMISSIONS.OBJECTIVE_READ })
+  handle(req => getObjectivePrompt(req.params.id))
 );
 
 // ---- Objective attachments -----------------------------------------------
@@ -1326,16 +1300,17 @@ app.patch(
     requires: PERMISSIONS.LAUNCH_CONFIGURE
   })
 );
+// `getLaunchPreference`/`updateLaunchPreference` resolve and authorize against
+// the project's own workspace internally (coo:135), so these routes carry no
+// route-level `requires` gate — a mission panel open on a secondary workspace
+// still needs its project's launch preference to load.
 app.get(
   '/api/projects/:id/launch-preference',
-  handle(req => getLaunchPreference(req.params.id), { requires: PERMISSIONS.LAUNCH_READ })
+  handle(req => getLaunchPreference(req.params.id))
 );
 app.put(
   '/api/projects/:id/launch-preference',
-  handle(req => updateLaunchPreference(req.params.id, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.LAUNCH_CONFIGURE
-  })
+  handle(req => updateLaunchPreference(req.params.id, req.body), { mutates: true })
 );
 app.get(
   '/api/projects/:id/execution-target',
@@ -1473,16 +1448,13 @@ app.post(
 // checkout; hosted backends return LOCAL_FILESYSTEM_UNAVAILABLE.
 app.post(
   '/api/missions/:id/branch/action',
-  handle(req => performBranchAction(req.params.id, req.body ?? {}), {
-    mutates: true,
-    requires: PERMISSIONS.MISSION_UPDATE
-  })
+  handle(req => performBranchAction(req.params.id, req.body ?? {}), { mutates: true })
 );
 // Available branches in the mission project's primary repo, for the branch selector.
 // Hosted backends return metadata-only branch choices.
 app.get(
   '/api/missions/:id/branches',
-  handle(req => listMissionBranches(req.params.id), { requires: PERMISSIONS.MISSION_READ })
+  handle(req => listMissionBranches(req.params.id))
 );
 
 // ---- Worktrees (Settings → Worktrees) ---------------------------------------

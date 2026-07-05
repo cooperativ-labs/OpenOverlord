@@ -81,6 +81,10 @@ import {
   useIsRemoteExecutionTargetForProject
 } from './local-target-remote.ts';
 import { persistActiveOrganizationId } from './org-preferences.ts';
+import {
+  invalidateMissionEverhourQueries,
+  invalidateNonEverhourQueries
+} from './query-invalidation.ts';
 
 export const keys = {
   meta: ['meta'] as const,
@@ -126,7 +130,7 @@ export const keys = {
 // Mutations still invalidate eagerly so the originating user sees their change
 // instantly; the realtime feed later reconciles the scoped query keys it can map.
 function invalidateAll(qc: QueryClient) {
-  void qc.invalidateQueries();
+  invalidateNonEverhourQueries(qc);
 }
 
 function persistActiveWorkspaceFromList(workspaces: WorkspaceDto[]) {
@@ -714,13 +718,7 @@ export function useReorderProjects(workspaceId?: string) {
   const targetWorkspaceId = workspaceId ?? meta.data?.workspace?.id;
 
   return useMutation({
-    mutationFn: async (body: ReorderProjectsBody) => {
-      const cachedMeta = qc.getQueryData<Meta>(keys.meta);
-      if (workspaceId && workspaceId !== cachedMeta?.workspace?.id) {
-        await api.activateWorkspace(workspaceId);
-      }
-      return api.reorderProjects(body);
-    },
+    mutationFn: (body: ReorderProjectsBody) => api.reorderProjects(body),
     onSuccess: data => {
       if (targetWorkspaceId) {
         qc.setQueryData(keys.projects(targetWorkspaceId), data);
@@ -1430,7 +1428,7 @@ export function useSetEverhourApiKey() {
     mutationFn: (apiKey: string) => api.setEverhourApiKey(apiKey),
     onSuccess: data => {
       qc.setQueryData(keys.everhourIntegration, data);
-      void qc.invalidateQueries();
+      invalidateMissionEverhourQueries(qc);
     }
   });
 }
@@ -1441,7 +1439,7 @@ export function useClearEverhourApiKey() {
     mutationFn: () => api.clearEverhourApiKey(),
     onSuccess: data => {
       qc.setQueryData(keys.everhourIntegration, data);
-      void qc.invalidateQueries();
+      invalidateMissionEverhourQueries(qc);
     }
   });
 }
@@ -1452,7 +1450,7 @@ export function useLinkProjectEverhour(projectId: string) {
     mutationFn: (body: LinkProjectEverhourBody) => api.linkProjectEverhour(projectId, body),
     onSuccess: data => {
       qc.setQueryData(keys.project(projectId), data);
-      void qc.invalidateQueries();
+      invalidateMissionEverhourQueries(qc);
     }
   });
 }
@@ -1470,6 +1468,7 @@ export const useMissionEverhour = (
     queryKey: keys.missionEverhour(id),
     queryFn: () => api.getMissionEverhour(id),
     enabled: options.enabled ?? true,
+    staleTime: options.poll ? 0 : 5 * 60_000,
     refetchInterval: options.poll ? 15_000 : false
   });
 

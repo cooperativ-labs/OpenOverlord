@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { runManagementCommand } from '../src/commands.ts';
+import { clientDeviceIdentity } from '../src/device-identity.ts';
 import { CliError } from '../src/errors.ts';
 import type { CliRuntime } from '../src/runtime.ts';
 
@@ -85,10 +86,11 @@ test('runner claim includes the local device fingerprint for hosted backends', a
     deviceLabel?: string;
     devicePlatform?: string;
   };
-  assert.equal(typeof body.deviceFingerprint, 'string');
-  assert.ok(body.deviceFingerprint && body.deviceFingerprint.length > 0);
-  assert.equal(typeof body.deviceLabel, 'string');
-  assert.equal(typeof body.devicePlatform, 'string');
+  // The claim must carry this machine's real device identity, not just any string.
+  const identity = clientDeviceIdentity();
+  assert.equal(body.deviceFingerprint, identity.deviceFingerprint);
+  assert.equal(body.deviceLabel, identity.deviceLabel);
+  assert.equal(body.devicePlatform, identity.devicePlatform);
 });
 
 test('attach reuses the agent already stored on the objective', async () => {

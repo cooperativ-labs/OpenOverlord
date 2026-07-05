@@ -265,18 +265,54 @@ function BranchSelector({ mission }: { mission: MissionDetailDto }) {
 /**
  * Shown when a mission would run directly off its base branch — i.e. worktree
  * automation is off (workspace-wide) and the mission has no per-mission opt-in
- * (coo:9). Lets the user opt this single mission into a dedicated branch, with a
- * checkbox choosing whether that branch gets its own worktree (default on). The
- * choice is persisted as the mission's `worktreePreference`; the runner prepares
- * the branch/worktree at the mission's next launch — no git side-effects here.
+ * (coo:9). Lets the user opt this single mission into either a brand-new branch
+ * (planner-generated name) or an existing one already in the repo — e.g.
+ * continuing a ticket on a branch started elsewhere. Either way, a checkbox
+ * chooses whether that branch gets its own worktree (default on for a new
+ * branch, off for an existing one, since "continue on that branch" usually
+ * means working in the primary checkout). The choice is persisted as the
+ * mission's `worktreePreference` (+ `branchOverride` when picking an existing
+ * branch); the runner prepares/checks out the branch at the mission's next
+ * launch — no git side-effects here.
  */
 function CreateBranchForm({ mission }: { mission: MissionDetailDto }) {
   const branch = mission.branch;
   const update = useUpdateMission(mission.id);
+  const localTargetUnavailable = useLocalTargetUnavailable();
+  const [mode, setMode] = useState<'new' | 'existing'>('new');
   const [useWorktree, setUseWorktree] = useState(true);
+  const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const branches = useMissionBranches({
+    missionId: mission.id,
+    projectId: mission.projectId,
+    current: null,
+    enabled: mode === 'existing' && pickerOpen
+  });
 
   if (!branch) return null;
   const base = branch.baseBranch ?? 'main';
+  const options = branches.data?.branches ?? [];
+
+  function switchMode(next: 'new' | 'existing'): void {
+    setMode(next);
+    setSelectedBranch(null);
+    // Continuing on an existing branch usually means working in the primary
+    // checkout rather than spinning up a dedicated worktree for it.
+    setUseWorktree(next === 'new');
+  }
+
+  function handleSubmit(): void {
+    if (mode === 'existing') {
+      if (!selectedBranch) return;
+      update.mutate({
+        branchOverride: selectedBranch,
+        worktreePreference: useWorktree ? 'worktree' : 'branch'
+      });
+      return;
+    }
+    update.mutate({ worktreePreference: useWorktree ? 'worktree' : 'branch' });
+  }
 
   return (
     <div className="space-y-3 text-sm">
@@ -290,18 +326,61 @@ function CreateBranchForm({ mission }: { mission: MissionDetailDto }) {
 
       <div className="space-y-3 rounded-md border border-border/60 bg-muted/30 p-2.5">
         <p className="text-xs text-muted-foreground">
-          Create a dedicated branch for this mission. Overlord prepares it the next time the mission
-          runs, then follows the usual branch workflow.
+          {mode === 'new'
+            ? 'Create a dedicated branch for this mission. Overlord prepares it the next time the mission runs, then follows the usual branch workflow.'
+            : 'Continue this mission on an existing branch. Overlord checks it out the next time the mission runs.'}
         </p>
-        <div className="flex min-w-0 items-center gap-1.5 text-xs">
-          <GitBranchPlus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <code className="min-w-0 flex-1 truncate text-[0.75rem] font-medium" title={branch.name}>
-            {branch.name}
-          </code>
-        </div>
+
+        {mode === 'new' ? (
+          <div className="flex min-w-0 items-center gap-1.5 text-xs">
+            <GitBranchPlus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <code
+              className="min-w-0 flex-1 truncate text-[0.75rem] font-medium"
+              title={branch.name}
+            >
+              {branch.name}
+            </code>
+          </div>
+        ) : (
+          <DropdownMenu open={pickerOpen} onOpenChange={setPickerOpen}>
+            <DropdownMenuTrigger
+              type="button"
+              aria-label="Choose an existing branch"
+              className="flex w-full min-w-0 items-center gap-1.5 rounded-md border border-border/60 bg-background/70 px-2 py-1.5 text-left text-xs hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <code className="min-w-0 flex-1 truncate text-[0.75rem] font-medium">
+                {selectedBranch ?? 'Choose a branch…'}
+              </code>
+              <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-56">
+              {branches.isLoading && (
+                <DropdownMenuItem disabled>Loading branches…</DropdownMenuItem>
+              )}
+              {localTargetUnavailable && options.length === 0 && !branches.isLoading && (
+                <DropdownMenuItem disabled>
+                  <LocalTargetRequiredNotice />
+                </DropdownMenuItem>
+              )}
+              {!branches.isLoading && !localTargetUnavailable && options.length === 0 && (
+                <DropdownMenuItem disabled>No branches found</DropdownMenuItem>
+              )}
+              {options.map(name => (
+                <DropdownMenuItem key={name} onClick={() => setSelectedBranch(name)}>
+                  <Check
+                    className={cn('h-3 w-3', selectedBranch === name ? 'opacity-100' : 'opacity-0')}
+                  />
+                  {name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
         <div className="flex items-center justify-between gap-3">
           <Label htmlFor="create-in-worktree" className="text-xs font-normal">
-            Create in a worktree
+            {mode === 'new' ? 'Create in a worktree' : 'Check out in a worktree'}
           </Label>
           <Switch
             id="create-in-worktree"
@@ -313,12 +392,20 @@ function CreateBranchForm({ mission }: { mission: MissionDetailDto }) {
         <Button
           variant="primary"
           className="w-full justify-center"
-          disabled={update.isPending}
-          onClick={() => update.mutate({ worktreePreference: useWorktree ? 'worktree' : 'branch' })}
+          disabled={update.isPending || (mode === 'existing' && !selectedBranch)}
+          onClick={handleSubmit}
         >
           <GitBranchPlus className="h-3.5 w-3.5" />
-          {update.isPending ? 'Creating…' : 'Create branch'}
+          {update.isPending ? 'Saving…' : mode === 'existing' ? 'Use branch' : 'Create branch'}
         </Button>
+        <button
+          type="button"
+          disabled={update.isPending}
+          onClick={() => switchMode(mode === 'new' ? 'existing' : 'new')}
+          className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-60"
+        >
+          {mode === 'new' ? 'Use an existing branch instead' : 'Create a new branch instead'}
+        </button>
       </div>
       {update.isError && (
         <p className="text-xs text-destructive">{(update.error as Error).message}</p>

@@ -1,5 +1,5 @@
 import { Tag } from 'lucide-react';
-import { type MouseEvent, type PointerEvent, useMemo } from 'react';
+import { type MouseEvent, type PointerEvent, useMemo, useState } from 'react';
 
 import { DeleteMissionButton } from '@/components/DeleteMissionButton';
 import { MissionTimerCircleButton } from '@/components/everhour/MissionTimerButtons';
@@ -33,7 +33,6 @@ function TagsSelector({
   const tagOptions = useMemo(() => {
     const projectTags = tagsQ.data ?? [];
     const activeTags = projectTags.filter(tag => tag.active);
-    const activeIds = new Set(activeTags.map(tag => tag.id));
     const inactiveAssigned = projectTags.filter(tag => !tag.active && assignedTagIdSet.has(tag.id));
     return [...activeTags, ...inactiveAssigned];
   }, [assignedTagIdSet, tagsQ.data]);
@@ -113,6 +112,7 @@ export function MissionCardHoverFooter({
   displayId: string;
   assignedTagIds: string[];
 }) {
+  const [timerVisible, setTimerVisible] = useState(false);
   const stopPropagation = (event: MouseEvent | PointerEvent) => {
     event.stopPropagation();
   };
@@ -127,9 +127,13 @@ export function MissionCardHoverFooter({
       )}
       onClick={stopPropagation}
       onPointerDown={stopPropagation}
+      onPointerEnter={() => setTimerVisible(true)}
     >
       <div className="overflow-hidden">
-        <div className="flex items-center gap-1.5 border-t border-border/60 bg-muted/80 px-2 py-1">
+        <div
+          className="flex items-center gap-1.5 border-t border-border/60 bg-muted/80 px-2 py-1"
+          onFocusCapture={() => setTimerVisible(true)}
+        >
           <TagsSelector
             missionId={missionId}
             projectId={projectId}
@@ -143,7 +147,7 @@ export function MissionCardHoverFooter({
             >
               {displayId}
             </span>
-            <MissionTimerCircleButton missionId={missionId} />
+            {timerVisible ? <MissionTimerCircleButton missionId={missionId} /> : null}
             <DeleteMissionButton
               missionId={missionId}
               projectId={projectId}

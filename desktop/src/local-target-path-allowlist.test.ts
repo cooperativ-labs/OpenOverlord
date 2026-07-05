@@ -53,3 +53,36 @@ test('validateLocalTargetCallPaths rejects relative paths', () => {
     PathAllowlistError
   );
 });
+
+test('roots registered by an earlier call authorize a later out-of-own-root path', () => {
+  resetAllowedPathsForTests();
+
+  const parent = path.join(tmpdir(), 'overlord-allowlist-accumulate');
+  const child = path.join(parent, 'child');
+
+  // Before the parent is registered, a call rooted at `child` may not reach a
+  // sibling directory under `parent` — it is outside `child`'s own root.
+  assert.throws(
+    () =>
+      validateLocalTargetCallPaths({
+        capability: 'readRepositoryTree',
+        input: { resourceId: 'res-1', repoPath: child, subPath: '../sibling' }
+      }),
+    PathAllowlistError
+  );
+
+  // An earlier call rooted at `parent` registers it for the rest of the session.
+  validateLocalTargetCallPaths({
+    capability: 'readRepositoryTree',
+    input: { resourceId: 'res-1', repoPath: parent }
+  });
+
+  // Now the same child+sibling call succeeds purely because the accumulated
+  // `parent` root from the earlier call still applies.
+  assert.doesNotThrow(() =>
+    validateLocalTargetCallPaths({
+      capability: 'readRepositoryTree',
+      input: { resourceId: 'res-1', repoPath: child, subPath: '../sibling' }
+    })
+  );
+});

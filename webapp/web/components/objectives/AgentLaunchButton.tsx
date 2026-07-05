@@ -1,4 +1,4 @@
-import { AlertTriangle, Bot, Check, ChevronDown, Copy, Loader2 } from 'lucide-react';
+import { Bot, Check, CheckCircle2, ChevronDown, Copy, Loader2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 import type { ExecutionRequestDto, ObjectiveDto } from '../../../shared/contract.ts';
@@ -54,10 +54,12 @@ const sizeStyles: Record<
 /**
  * Split run button for an objective: the primary action queues an execution
  * request for the selected agent/model; the caret offers Run and a copyable
- * prompt for driving an agent manually. Mirrors the legacy AgentSplitButton:
- * confirm-before-queue when an agent is already working the mission (enabling
- * auto-advance instead of sending to the runner), and a disabled-state tooltip
- * explaining what is missing.
+ * prompt for driving an agent manually. When the manual pseudo-agent is
+ * selected, the run affordance is replaced with a Complete button that marks
+ * the objective complete. Mirrors the legacy AgentSplitButton: confirm-before-
+ * queue when an agent is already working the mission (enabling auto-advance
+ * instead of sending to the runner), and a disabled-state tooltip explaining
+ * what is missing.
  */
 export function AgentLaunchButton({
   objective,
@@ -119,6 +121,18 @@ export function AgentLaunchButton({
       {
         onError: err =>
           setError(err instanceof Error ? err.message : 'Failed to enable auto-advance')
+      }
+    );
+  }
+
+  function handleComplete() {
+    if (updateObjective.isPending) return;
+    setError(null);
+    updateObjective.mutate(
+      { id: objective.id, body: { state: 'complete' } },
+      {
+        onError: err =>
+          setError(err instanceof Error ? err.message : 'Failed to mark objective complete')
       }
     );
   }
@@ -227,10 +241,36 @@ export function AgentLaunchButton({
     </Tooltip>
   );
 
-  // No agent selected — there's nothing to run, so the launch affordance is
-  // hidden entirely. queueLaunch still guards against being reached another
-  // way and reports the same error.
-  if (isManual) return null;
+  if (isManual) {
+    const isCompleting = updateObjective.isPending;
+    return (
+      <div className="relative">
+        <button
+          type="button"
+          className={cn(
+            'inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm transition-colors',
+            'hover:bg-accent hover:text-accent-foreground',
+            styles.runButton,
+            isCompleting && 'cursor-not-allowed opacity-60'
+          )}
+          onClick={handleComplete}
+          disabled={isCompleting}
+        >
+          {isCompleting ? (
+            <Loader2 className={cn(styles.icon, 'animate-spin')} />
+          ) : (
+            <CheckCircle2 className={styles.icon} />
+          )}
+          <span className={cn('whitespace-nowrap', styles.label)}>Complete</span>
+        </button>
+        {error ? (
+          <p className="absolute top-full right-0 z-10 mt-1 max-w-[260px] text-right text-[11px] text-red-400">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="relative">

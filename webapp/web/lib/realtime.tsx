@@ -6,6 +6,7 @@ import type { EntityChangeDto, SyncChangesDto } from '../../shared/contract.ts';
 import { getAuthorizationHeader } from './api-base.ts';
 import { fetchApi, resolveEventSourceUrl } from './api-transport.ts';
 import { connectEventStream } from './fetch-sse.ts';
+import { invalidateNonEverhourQueries } from './query-invalidation.ts';
 import { invalidateRealtimeChanges } from './realtime-invalidation.ts';
 
 export type LinkState = 'connecting' | 'live' | 'reconnecting';
@@ -30,7 +31,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const cursorRef = useRef(0);
 
   useEffect(() => {
-    const invalidateAll = () => queryClient.invalidateQueries();
+    const invalidateAll = () => invalidateNonEverhourQueries(queryClient);
     const updateCursor = (cursor: number) => {
       if (!Number.isFinite(cursor) || cursor <= cursorRef.current) return;
       cursorRef.current = cursor;

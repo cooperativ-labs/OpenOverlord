@@ -6,7 +6,7 @@ import {
   assertEscapesTokenMarkup,
   assertEscapesUrlInjection,
   assertIncludesSiteUrl,
-  assertSubjectNonEmpty,
+  assertSubjectEquals,
   assertValidEmailDocument,
   INJECTION_TOKEN,
   TEST_SITE_URL,
@@ -40,6 +40,6 @@ test('confirmEmailHtml escapes values to prevent attribute/markup injection', ()
   assertEscapesTokenMarkup(html);
 });
 
-test('confirmEmailSubject is a non-empty string', () => {
-  assertSubjectNonEmpty(confirmEmailSubject);
+test('confirmEmailSubject returns the expected subject line', () => {
+  assertSubjectEquals(confirmEmailSubject, 'Confirm your email to start running agents');
 });

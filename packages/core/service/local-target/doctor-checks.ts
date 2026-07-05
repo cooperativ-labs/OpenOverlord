@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 
 import type { DoctorCheck } from './types.ts';
 
-function commandOnPath(command: string, args: string[]): DoctorCheck {
+export function commandOnPath(command: string, args: string[]): DoctorCheck {
   try {
     const detail = execFileSync(command, args, {
       encoding: 'utf8',

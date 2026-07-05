@@ -1,6 +1,6 @@
 {
   "name": "open-overlord",
-  "version": "0.2607042322.0",
+  "version": "0.2607051108.0",
   "description": "Overlord CLI — management, agent protocol, and runner for OpenOverlord",
   "type": "module",
   "engines": {
@@ -21,6 +21,7 @@
     "build": "node scripts/build.mjs",
     "typecheck": "../node_modules/.bin/tsc --project tsconfig.build.json --noEmit",
     "test": "yarn build && tsx --test 'test/**/*.test.ts'",
+    "test:e2e": "yarn build && OVLD_PROTOCOL_E2E=1 tsx --test 'test/e2e/**/*.e2e.test.ts'",
     "prepack": "yarn build",
     "postinstall": "node scripts/postinstall.mjs"
   },

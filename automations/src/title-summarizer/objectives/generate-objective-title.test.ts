@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 
+import { getGeminiClient, resetGeminiClientForTests } from '../gemini-client.js';
 import { AI_TITLE_THRESHOLD } from '../tools/summarize-objective-title.js';
 
 import {
@@ -17,7 +18,8 @@ describe('generateObjectiveTitle', () => {
     assert.equal(title, 'Add retry logic to API client');
   });
 
-  it('falls back locally when Gemini is unavailable', async () => {
+  it('falls back locally when no Gemini API key is configured', async () => {
+    resetGeminiClientForTests();
     const longText = 'Implement '.repeat(30);
     const title = await generateObjectiveTitle({
       instructionText: longText,
@@ -26,6 +28,31 @@ describe('generateObjectiveTitle', () => {
 
     assert.equal(title.endsWith('…'), true);
     assert.equal(title.length, 101);
+  });
+
+  it('falls back locally when the Gemini API call fails', async () => {
+    resetGeminiClientForTests();
+    const env = { GEMINI_API_KEY: 'test-key' };
+    const client = getGeminiClient(env);
+    assert.ok(client, 'a client should be constructed when an API key is present');
+    // Simulate a real service failure (e.g. 503) rather than a missing key.
+    const generateContent = mock.method(client!.models, 'generateContent', async () => {
+      throw new Error('503 Service Unavailable');
+    });
+
+    try {
+      const longText = 'Implement '.repeat(30);
+      const title = await generateObjectiveTitle({ instructionText: longText, env });
+
+      // We must actually reach the Gemini call (not short-circuit on a missing key),
+      // and its thrown error must be swallowed and produce a local title.
+      assert.equal(generateContent.mock.callCount(), 1, 'the Gemini call must be attempted');
+      assert.equal(title.endsWith('…'), true);
+      assert.equal(title.length, 101);
+    } finally {
+      mock.restoreAll();
+      resetGeminiClientForTests();
+    }
   });
 
   it('skips Gemini when AI title generation is disabled', async () => {

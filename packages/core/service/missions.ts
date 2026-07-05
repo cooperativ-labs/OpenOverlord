@@ -1017,6 +1017,71 @@ export async function listAttachments({
   }));
 }
 
+// Mirrors backend/repository.ts's MY_POSITION_STEP: gap-based spacing so a
+// personal-position renumber reads naturally.
+const MY_POSITION_STEP = 100;
+
+async function topMyMissionPosition(
+  ctx: ServiceContext,
+  workspaceUserId: string,
+  statusId: string
+): Promise<number> {
+  const row = (await ctx.db.get(
+    `SELECT MIN(position) AS min_pos FROM my_mission_positions
+       WHERE workspace_user_id = ? AND status_id = ?`,
+    [workspaceUserId, statusId]
+  )) as { min_pos: number | null };
+  const minPos = row.min_pos;
+  return minPos === null ? MY_POSITION_STEP : minPos - MY_POSITION_STEP;
+}
+
+// Mirrors backend/repository.ts's upsertMyMissionPosition. Needed because
+// My Missions ordering sorts any explicitly-positioned mission in a column
+// ahead of unpositioned ones regardless of board_position, so a delivered
+// mission with no row here (or a stale row from a previous drag) can land
+// below other missions in the review column instead of at the top.
+async function upsertMyMissionPositionOnReview(
+  ctx: ServiceContext,
+  {
+    workspaceId,
+    workspaceUserId,
+    missionId,
+    statusId,
+    position,
+    now
+  }: {
+    workspaceId: string;
+    workspaceUserId: string;
+    missionId: string;
+    statusId: string;
+    position: number;
+    now: string;
+  }
+): Promise<void> {
+  const existing = (await ctx.db.get(
+    `SELECT id, revision FROM my_mission_positions
+       WHERE workspace_id = ? AND workspace_user_id = ? AND mission_id = ?`,
+    [workspaceId, workspaceUserId, missionId]
+  )) as { id: string; revision: number } | undefined;
+
+  if (existing) {
+    await ctx.db.run(
+      `UPDATE my_mission_positions
+          SET status_id = ?, position = ?, updated_at = ?, revision = ?
+        WHERE id = ?`,
+      [statusId, position, now, existing.revision + 1, existing.id]
+    );
+    return;
+  }
+
+  await ctx.db.run(
+    `INSERT INTO my_mission_positions
+       (id, workspace_id, workspace_user_id, mission_id, status_id, position, created_at, updated_at, revision)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+    [newId(), workspaceId, workspaceUserId, missionId, statusId, position, now, now]
+  );
+}
+
 export async function moveMissionToReview({
   ctx,
   missionId
@@ -1034,6 +1099,26 @@ export async function moveMissionToReview({
        WHERE id = ?`,
     [reviewStatus.id, reviewStatus.type, boardPosition, now, mission.id]
   );
+
+  const assignee = (await ctx.db.get(
+    `SELECT assigned_workspace_user_id FROM missions WHERE id = ?`,
+    [mission.id]
+  )) as { assigned_workspace_user_id: string | null };
+  if (assignee.assigned_workspace_user_id) {
+    const myPosition = await topMyMissionPosition(
+      ctx,
+      assignee.assigned_workspace_user_id,
+      reviewStatus.id
+    );
+    await upsertMyMissionPositionOnReview(ctx, {
+      workspaceId: ctx.workspace.id,
+      workspaceUserId: assignee.assigned_workspace_user_id,
+      missionId: mission.id,
+      statusId: reviewStatus.id,
+      position: myPosition,
+      now
+    });
+  }
 
   await recordChange({
     ctx,

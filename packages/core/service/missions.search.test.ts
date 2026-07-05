@@ -103,7 +103,12 @@ describe('searchMissions full-text ranking', () => {
       title: 'Logging cleanup',
       objectives: [{ objective: 'baseline two' }]
     });
-    recordEvent(ctx, inEvent.mission.id, projectId, 'Discussed moonbeam edge cases with the team');
+    await recordEvent(
+      ctx,
+      inEvent.mission.id,
+      projectId,
+      'Discussed moonbeam edge cases with the team'
+    );
 
     const ranked = (await searchMissions({ ctx, query: 'moonbeam' })).map(t => t.id);
     assert.deepEqual(ranked, [inTitle.mission.id, inEvent.mission.id]);

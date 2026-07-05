@@ -6,7 +6,7 @@ import {
   assertEscapesTokenMarkup,
   assertEscapesUrlInjection,
   assertIncludesSiteUrl,
-  assertSubjectNonEmpty,
+  assertSubjectEquals,
   assertValidEmailDocument,
   INJECTION_SCRIPT,
   INJECTION_TOKEN,
@@ -49,6 +49,6 @@ test('changeEmailHtml escapes values to prevent attribute/markup injection', () 
   assertEscapesTokenMarkup(html);
 });
 
-test('changeEmailSubject is a non-empty string', () => {
-  assertSubjectNonEmpty(changeEmailSubject);
+test('changeEmailSubject returns the expected subject line', () => {
+  assertSubjectEquals(changeEmailSubject, 'Confirm your new email address');
 });

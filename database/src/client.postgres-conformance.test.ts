@@ -186,22 +186,30 @@ for (const adapter of adapters) {
           const gate = new Promise<void>(resolve => {
             releaseTx = resolve;
           });
+          let signalStarted: () => void = () => {};
+          const started = new Promise<void>(resolve => {
+            signalStarted = resolve;
+          });
 
           const txPromise = client.transaction(async tx => {
             await tx.run(`UPDATE ambient_tx_probe SET value = ? WHERE id = ?`, ['v1', 'seed']);
+            // The transaction now holds its lock (and, on SQLite, the mutex).
+            signalStarted();
             // Hold the transaction open until the outside query has been issued,
             // so the two calls genuinely overlap in time.
             await gate;
           });
 
-          // Give the transaction a moment to start (and, on SQLite, take the mutex)
-          // before issuing the unrelated query from a separate async context.
-          await new Promise(resolve => setTimeout(resolve, 10));
+          // Deterministically wait until the transaction has actually started and
+          // taken the mutex, rather than racing an arbitrary timeout.
+          await started;
+          // Issue the unrelated query from a separate async context. On SQLite this
+          // synchronously enqueues behind the open transaction's mutex, so the two
+          // genuinely overlap; releasing the gate then lets it run to completion.
           const outsidePromise = client.get<{ value: string }>(
             `SELECT value FROM ambient_tx_probe WHERE id = ?`,
             ['seed']
           );
-          await new Promise(resolve => setTimeout(resolve, 10));
           releaseTx();
 
           const [, outsideResult] = await Promise.all([txPromise, outsidePromise]);

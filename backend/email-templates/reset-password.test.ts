@@ -5,7 +5,7 @@ import { resetPasswordHtml, resetPasswordSubject } from './reset-password.ts';
 import {
   assertEscapesUrlInjection,
   assertIncludesSiteUrl,
-  assertSubjectNonEmpty,
+  assertSubjectEquals,
   assertValidEmailDocument,
   INJECTION_SCRIPT,
   TEST_EMAIL,
@@ -62,6 +62,6 @@ test('resetPasswordHtml renders the 6-digit code block only when a token is prov
   );
 });
 
-test('resetPasswordSubject is a non-empty string', () => {
-  assertSubjectNonEmpty(resetPasswordSubject);
+test('resetPasswordSubject returns the expected subject line', () => {
+  assertSubjectEquals(resetPasswordSubject, 'Reset your password');
 });

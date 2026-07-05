@@ -7,6 +7,7 @@ import type {
   RemoveWorktreeInput
 } from './local-target/types.ts';
 import type { CapabilityResult } from './local-target/types.ts';
+import { worktreePathForBranch } from './local-target/worktree-git.ts';
 import {
   type LocalTargetMutationPayload,
   parseLocalTargetMutation
@@ -26,8 +27,19 @@ export async function executeLocalTargetMutation({
   const provider = inProcessProvider();
 
   switch (mutation.capability) {
-    case 'performBranchAction':
-      return provider.performBranchAction(mutation.input as unknown as PerformBranchActionInput);
+    case 'performBranchAction': {
+      // The control plane predicts `worktreePath` without filesystem access (it may
+      // not be co-located with the checkout), so it always resolves to the canonical
+      // worktree-mode path even for a branch-only mission checked out directly in the
+      // primary repo. This runner *is* on the execution target with real git access,
+      // so re-derive the actual checkout location the same way the desktop bridge does
+      // for local execution, falling back to the queued path when the branch isn't
+      // checked out anywhere yet.
+      const input = mutation.input as unknown as PerformBranchActionInput;
+      const resolvedWorktreePath =
+        worktreePathForBranch(input.primaryRepoPath, input.branchName) ?? input.worktreePath;
+      return provider.performBranchAction({ ...input, worktreePath: resolvedWorktreePath });
+    }
     case 'removeWorktree':
       return provider.removeWorktree(mutation.input as unknown as RemoveWorktreeInput);
     case 'purgeMergedWorktrees':

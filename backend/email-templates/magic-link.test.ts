@@ -6,7 +6,7 @@ import {
   assertEscapesTokenMarkup,
   assertEscapesUrlInjection,
   assertIncludesSiteUrl,
-  assertSubjectNonEmpty,
+  assertSubjectEquals,
   assertValidEmailDocument,
   INJECTION_SCRIPT,
   INJECTION_TOKEN,
@@ -45,6 +45,6 @@ test('magicLinkHtml escapes values to prevent attribute/markup injection', () =>
   assertEscapesTokenMarkup(html);
 });
 
-test('magicLinkSubject is a non-empty string', () => {
-  assertSubjectNonEmpty(magicLinkSubject);
+test('magicLinkSubject returns the expected subject line', () => {
+  assertSubjectEquals(magicLinkSubject, 'Sign in to Overlord');
 });

@@ -36,8 +36,12 @@ const statuses = await listWorkspaceStatuses();
 const backlog = statuses.find(s => s.key === 'backlog')!;
 const inProgress = statuses.find(s => s.key === 'in_progress')!;
 
-test('the test database resolves an active operator', async () => {
-  assert.ok(operatorId, 'operator should be set for My Missions');
+test('the test database seeds the active operator workspace user', async () => {
+  const row = db.prepare(`SELECT status FROM workspace_users WHERE id = ?`).get(operatorId) as
+    | { status: string }
+    | undefined;
+  assert.ok(row, 'bootstrap should seed the operator workspace user');
+  assert.equal(row.status, 'active', 'the seeded operator must be active');
 });
 
 test('lists missions assigned to the operator across projects, with project context', async () => {

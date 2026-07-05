@@ -34,7 +34,15 @@ export function useMissionTimerControls(missionId: string, options: { poll?: boo
     else start.mutate();
   };
 
-  return { connected, running, liveSeconds, busy, toggle, state: everhour.data };
+  return {
+    connected,
+    running,
+    liveSeconds,
+    busy,
+    toggle,
+    state: everhour.data,
+    dataUpdatedAt: everhour.dataUpdatedAt
+  };
 }
 
 /**

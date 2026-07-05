@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 
 import type { LocalTargetBridgeCall } from '../../../packages/core/service/local-target/desktop-bridge.ts';
 import type {
   CapabilityResult,
   RepositoryTreeResult
 } from '../../../packages/core/service/local-target/types.ts';
+
+import { api } from './api.ts';
 
 const bridgeCall: LocalTargetBridgeCall = {
   capability: 'readRepositoryTree',
@@ -84,12 +86,24 @@ test('invokeLocalTarget returns LOCAL_TARGET_REQUIRED without bridge or dev serv
   const original = globalThis.window;
   delete (globalThis as { window?: Window }).window;
 
-  const { invokeLocalTarget } = await import('./local-target-client.ts');
-  const result = await invokeLocalTarget(bridgeCall);
-  assert.equal(result.ok, false);
-  if (!result.ok) {
-    assert.equal(result.code, 'LOCAL_TARGET_REQUIRED');
-  }
+  // Explicitly stub the server capability probe so the LOCAL_TARGET_REQUIRED path
+  // is driven by a mocked api.meta() rejection, not by an incidental fetch error.
+  const meta = mock.method(api, 'meta', async () => {
+    throw new Error('meta unavailable in test');
+  });
 
-  (globalThis as { window?: Window }).window = original;
+  try {
+    const { invokeLocalTarget } = await import('./local-target-client.ts');
+    const result = await invokeLocalTarget(bridgeCall);
+    // The result must be driven by the stubbed capability probe, not an incidental
+    // fetch error, so the probe must actually have been consulted.
+    assert.equal(meta.mock.callCount(), 1, 'the server capability probe must be consulted');
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.code, 'LOCAL_TARGET_REQUIRED');
+    }
+  } finally {
+    mock.restoreAll();
+    (globalThis as { window?: Window }).window = original;
+  }
 });

@@ -457,6 +457,35 @@ export function buildWebappServiceContext(
 }
 
 /**
+ * Like `buildWebappServiceContext`, but scoped to an explicitly-resolved
+ * workspace instead of the request's active one (coo:135). For code paths
+ * that already authorized access to a specific mission/project and now need a
+ * `ServiceContext` for that resource's *own* workspace — e.g. execution-target
+ * resolution for a mission in a secondary workspace — rather than silently
+ * defaulting to whichever workspace the caller currently has active.
+ */
+export async function buildWebappServiceContextForWorkspace(
+  workspaceId: string,
+  client: DatabaseClient = requireDatabaseClient(),
+  actorWorkspaceUserId: string | null = getActorWorkspaceUserId()
+): Promise<ServiceContext> {
+  const workspace = (await client.get(
+    `SELECT id, slug, name FROM workspaces WHERE id = ? AND deleted_at IS NULL`,
+    [workspaceId]
+  )) as { id: string; slug: string; name: string } | undefined;
+  if (!workspace) {
+    throw new Error(`Workspace ${workspaceId} not found`);
+  }
+  return {
+    db: client,
+    workspace,
+    actorWorkspaceUserId,
+    source: 'webapp',
+    clientDevice: getClientDeviceIdentity()
+  };
+}
+
+/**
  * Set the process-wide fallback workspace/actor pair directly. This — plus
  * `refreshActiveWorkspaceFromClient`/`bindDatabaseClient` at bootstrap — is the
  * *only* writer of `defaultWorkspace`/`ACTOR_WORKSPACE_USER_ID`. It is not

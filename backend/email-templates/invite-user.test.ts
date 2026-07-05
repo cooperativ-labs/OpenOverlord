@@ -5,7 +5,7 @@ import { inviteUserHtml, inviteUserSubject } from './invite-user.ts';
 import {
   assertEscapesUrlInjection,
   assertIncludesSiteUrl,
-  assertSubjectNonEmpty,
+  assertSubjectEquals,
   assertValidEmailDocument,
   INJECTION_SCRIPT,
   TEST_EMAIL,
@@ -38,6 +38,6 @@ test('inviteUserHtml escapes values to prevent attribute/markup injection', () =
   assertEscapesUrlInjection(html);
 });
 
-test('inviteUserSubject is a non-empty string', () => {
-  assertSubjectNonEmpty(inviteUserSubject);
+test('inviteUserSubject returns the expected subject line', () => {
+  assertSubjectEquals(inviteUserSubject, "You've been invited to Overlord");
 });

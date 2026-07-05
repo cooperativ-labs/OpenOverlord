@@ -7,7 +7,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import {
   useAddMissionTime,
   useDeleteMissionTime,
-  useMissionEverhour,
   useStartMissionTimer,
   useStopMissionTimer,
   useUpdateMissionTime
@@ -199,16 +198,22 @@ function AddTimeForm({ missionId }: { missionId: string }) {
   );
 }
 
-function PopoverBody({ missionId }: { missionId: string }) {
-  const everhour = useMissionEverhour(missionId, { poll: true });
+function PopoverBody({
+  missionId,
+  state,
+  dataUpdatedAt
+}: {
+  missionId: string;
+  state: ReturnType<typeof useMissionTimerControls>['state'];
+  dataUpdatedAt: number;
+}) {
   const start = useStartMissionTimer(missionId);
   const stop = useStopMissionTimer(missionId);
-  const state = everhour.data;
 
   const running = Boolean(state?.runningTimer);
   const liveSeconds = useLiveSeconds(
     state?.runningTimer?.durationSeconds ?? 0,
-    everhour.dataUpdatedAt,
+    dataUpdatedAt,
     running
   );
   const busy = start.isPending || stop.isPending;
@@ -272,11 +277,17 @@ function PopoverBody({ missionId }: { missionId: string }) {
  * nothing when the workspace has no Everhour API key.
  */
 export function MissionTimerPopover({ missionId }: { missionId: string }) {
-  const { connected, running, liveSeconds } = useMissionTimerControls(missionId, { poll: true });
+  const [open, setOpen] = useState(false);
+  const { connected, running, liveSeconds, state, dataUpdatedAt } = useMissionTimerControls(
+    missionId,
+    {
+      poll: open
+    }
+  );
   if (!connected) return null;
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
           <button
@@ -296,7 +307,9 @@ export function MissionTimerPopover({ missionId }: { missionId: string }) {
       </PopoverTrigger>
       <PopoverContent align="end" className="w-96">
         <div className="mb-2 text-sm font-medium">Time tracking</div>
-        <PopoverBody missionId={missionId} />
+        {open ? (
+          <PopoverBody missionId={missionId} state={state} dataUpdatedAt={dataUpdatedAt} />
+        ) : null}
       </PopoverContent>
     </Popover>
   );

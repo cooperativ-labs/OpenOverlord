@@ -1,6 +1,6 @@
 {
   "name": "overlord",
-  "version": "0.2607042322.0",
+  "version": "0.2607051108.0",
   "description": "Open-source management and coordination layer for AI coding agents",
   "type": "module",
   "private": true,
@@ -81,6 +81,7 @@
     "test:auth": "node scripts/with-ovld-home.mjs yarn workspace @overlord/auth test",
     "test:automations": "node scripts/with-ovld-home.mjs yarn workspace @overlord/automations test",
     "test:cli": "node scripts/with-ovld-home.mjs yarn workspace open-overlord test",
+    "test:cli:e2e": "node scripts/with-ovld-home.mjs yarn workspace open-overlord test:e2e",
     "test:backend": "node scripts/with-ovld-home.mjs yarn workspace @overlord/backend test",
     "test:webapp": "node scripts/with-ovld-home.mjs yarn workspace @overlord/webapp test",
     "test:all": "yarn test",
