@@ -12,9 +12,17 @@ import {
 } from '@/components/ui/dropdown-menu.tsx';
 import { cn } from '@/lib/utils';
 
-import type { WorkspaceStatusDto } from '../../shared/contract.ts';
+import type { StatusType } from '../../shared/contract.ts';
 
 import { getStatusFilterLabel } from './board-shared.ts';
+
+/**
+ * Minimal status shape this dropdown needs. The project board passes
+ * `WorkspaceStatusDto` rows (id = status id); My Missions passes its merged
+ * columns (id = the lowercase-name column key) so filtering matches the
+ * deduplicated columns rather than one workspace's status ids.
+ */
+export type StatusFilterOption = { id: string; name: string; type: StatusType };
 
 export function MissionStatusFilterDropdown({
   statuses,
@@ -22,7 +30,7 @@ export function MissionStatusFilterDropdown({
   onClear,
   onToggle
 }: {
-  statuses: WorkspaceStatusDto[];
+  statuses: StatusFilterOption[];
   selectedStatusIds: string[];
   onClear: () => void;
   onToggle: (statusId: string) => void;

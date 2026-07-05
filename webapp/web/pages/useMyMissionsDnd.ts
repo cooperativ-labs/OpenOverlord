@@ -12,31 +12,37 @@ import {
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { useCallback, useEffect, useState } from 'react';
 
-import type { WorkspaceStatusDto } from '../../shared/contract.ts';
-import { useReorderMyMissions } from '../lib/queries.ts';
-
 import { type BoardDndResult, type ColumnMap, columnMapsEqual } from './board-shared.ts';
+
+/** Destination of a completed drop, handed to the page to persist. */
+export interface MyMissionsDropTarget {
+  /** The moved mission id. */
+  movedMissionId: string;
+  /** The destination merged-column key (its DnD droppable id). */
+  dropColumnKey: string;
+  /** Every mission id occupying the destination merged column, top-to-bottom. */
+  orderedMissionIds: string[];
+}
 
 /**
  * Drag-and-drop state machine for the My Missions aggregate board. Mirrors the
- * project board's optimistic-override pattern (`useBoardColumnDnd`) but persists
- * through `useReorderMyMissions`: a within-column drop reorders the operator's
- * personal slots, a cross-column drop is a real status change. When the server
- * rejects a move (e.g. a status the mission's workspace lacks) the override is
- * reverted and `onReorderError` is invoked so the page can alert the operator.
+ * project board's optimistic-override pattern (`useBoardColumnDnd`): a drop is
+ * applied to a local override immediately, then handed to `onDrop` to persist.
+ * Because My Missions merges like-named columns across workspaces, resolving a
+ * drop to a concrete workspace status (and validating it exists in the card's
+ * own workspace) is workspace-aware logic the page owns — the hook only decides
+ * *that* something moved, not *how* it persists. `onDrop` rejects to signal an
+ * invalid or failed move, which reverts the optimistic override.
  */
 export function useMyMissionsDnd({
   columns,
-  statuses,
-  onReorderError,
+  onDrop,
   draggable = true
 }: {
   columns: ColumnMap;
-  statuses: WorkspaceStatusDto[];
-  onReorderError: (status: WorkspaceStatusDto, error: unknown) => void;
+  onDrop: (target: MyMissionsDropTarget) => Promise<void>;
   draggable?: boolean;
 }): BoardDndResult {
-  const reorder = useReorderMyMissions();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [override, setOverride] = useState<ColumnMap | null>(null);
 
@@ -134,27 +140,15 @@ export function useMyMissionsDnd({
         return;
       }
 
-      const status = statuses.find(s => s.id === dropColumn);
-      if (!status) {
-        setOverride(null);
-        return;
-      }
-
-      reorder.mutate(
-        {
-          statusId: dropColumn,
-          statusType: status.type,
-          orderedMissionIds: finalItems
-        },
-        {
-          onError: error => {
-            setOverride(null);
-            onReorderError(status, error);
-          }
-        }
-      );
+      // Persist through the page. A rejection (invalid target workspace, or a
+      // server error) rolls the optimistic override back to server truth.
+      void onDrop({
+        movedMissionId: id,
+        dropColumnKey: dropColumn,
+        orderedMissionIds: finalItems
+      }).catch(() => setOverride(null));
     },
-    [columns, findColumn, onReorderError, override, reorder, statuses]
+    [columns, findColumn, onDrop, override]
   );
 
   const handleDragCancel = useCallback(() => {

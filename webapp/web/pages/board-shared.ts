@@ -6,7 +6,7 @@ import type {
   useSensors
 } from '@dnd-kit/core';
 
-import type { MissionDto, WorkspaceMemberDto, WorkspaceStatusDto } from '../../shared/contract.ts';
+import type { MissionDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
 export const BOARD_VIEW_STORAGE_PREFIX = 'overlord:project-board-view:';
@@ -65,13 +65,26 @@ export function getTagFilterLabel(
 
 export function getStatusFilterLabel(
   selectedStatusIds: string[],
-  statuses: WorkspaceStatusDto[]
+  statuses: Array<{ id: string; name: string }>
 ): string {
   if (selectedStatusIds.length === 0) return 'All';
   if (selectedStatusIds.length === 1) {
     return statuses.find(status => status.id === selectedStatusIds[0])?.name ?? 'Status';
   }
   return `${selectedStatusIds.length} statuses`;
+}
+
+export function getWorkspaceFilterLabel(
+  selectedWorkspaceIds: string[],
+  workspaces: Array<{ id: string; name: string }>
+): string {
+  if (selectedWorkspaceIds.length === 0) return 'All';
+  if (selectedWorkspaceIds.length === 1) {
+    return (
+      workspaces.find(workspace => workspace.id === selectedWorkspaceIds[0])?.name ?? 'Workspace'
+    );
+  }
+  return `${selectedWorkspaceIds.length} workspaces`;
 }
 
 export function readStoredBoardView(projectId: string): BoardView {
