@@ -3494,6 +3494,19 @@ async function patchMissionFieldsTx(id: string, body: UpdateMissionBody): Promis
       setParams.push(preference);
       changed.push('worktree_preference');
     }
+    if (body.resetActiveBranch === true) {
+      if (!existing.active_branch?.trim()) {
+        throw new ApiError(400, 'Mission has no prepared branch to reset.');
+      }
+      fields.push('active_branch = ?');
+      setParams.push(null);
+      changed.push('active_branch');
+      await tx.run(
+        `DELETE FROM mission_branch_observations
+          WHERE workspace_id = ? AND mission_id = ?`,
+        [existing.workspace_id, id]
+      );
+    }
     if (body.dueDatetime !== undefined) {
       if (body.dueDatetime !== null && Number.isNaN(Date.parse(body.dueDatetime))) {
         throw new ApiError(400, 'dueDatetime must be a valid ISO-8601 datetime or null');

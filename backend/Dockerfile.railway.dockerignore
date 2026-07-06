@@ -35,6 +35,9 @@
 !backend/Dockerfile.railway
 !backend/Dockerfile.railway.dockerignore
 
+!mcp/
+!mcp/server.ts
+
 !database/
 !database/package.json
 !database/tsconfig.json

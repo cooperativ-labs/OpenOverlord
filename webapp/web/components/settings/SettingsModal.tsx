@@ -1,5 +1,6 @@
 import {
   Bell,
+  Cable,
   Cloud,
   Code2,
   GitBranch,
@@ -24,6 +25,7 @@ import { ExecutionTargetsPage } from '@/components/settings/ExecutionTargetsPage
 import { HotkeysPage } from '@/components/settings/HotkeysPage';
 import { IdePage } from '@/components/settings/IdePage';
 import { IntegrationsPage } from '@/components/settings/IntegrationsPage';
+import { McpPage } from '@/components/settings/McpPage';
 import { NotificationsPage } from '@/components/settings/NotificationsPage';
 import {
   SettingsDialogShell,
@@ -46,7 +48,8 @@ type SettingsModalProps = {
 const workflowNavItems: SettingsNavItem[] = [
   { name: 'Terminal & IDE', icon: Code2 },
   { name: 'Execution Targets', icon: Terminal },
-  { name: 'Worktrees', icon: GitBranch }
+  { name: 'Worktrees', icon: GitBranch },
+  { name: 'MCP', icon: Cable }
 ];
 
 const appNavItems: SettingsNavItem[] = [
@@ -152,6 +155,14 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
       {activeNav === 'Notifications' && <NotificationsPage />}
       {activeNav === 'Execution Targets' && <ExecutionTargetsPage />}
       {activeNav === 'Worktrees' && <WorktreesPage />}
+      {activeNav === 'MCP' && (
+        <McpPage
+          onNavigateToBackend={
+            isDesktop ? () => setActiveNav('Backend' as SettingsNavSection) : undefined
+          }
+          onNavigateToTokens={() => setActiveNav('Tokens')}
+        />
+      )}
       {activeNav === 'Backend' && <BackendPage />}
       {activeNav === 'Desktop' && <DesktopUpdatesPage />}
       {activeNav === 'Profile' && <UserProfilePage open={open} />}

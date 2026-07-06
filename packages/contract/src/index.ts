@@ -1236,6 +1236,12 @@ export interface UpdateMissionBody {
    */
   worktreePreference?: MissionWorktreePreference | null;
   /**
+   * Clear `missions.active_branch` so the mission panel returns to a pending
+   * branch preview. Used when switching to a different branch after the
+   * previous one has merged. Clears stored branch observations for the mission.
+   */
+  resetActiveBranch?: boolean;
+  /**
    * Replace the mission's assigned tags with this set of `project_tags.id` values.
    * Every id must belong to the mission's project. Pass `[]` to clear all tags.
    */

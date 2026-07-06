@@ -76,4 +76,40 @@ describe('per-mission worktree preference', () => {
       /worktreePreference/
     );
   });
+
+  it('clears active_branch when resetActiveBranch is true', async () => {
+    const dir = mkdtempSync(path.join('/tmp', 'ovld-wt-pref-reset-'));
+    const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
+    await bootstrapIntegrationTestDb({ sqlitePath: path.join(dir, 'Overlord.sqlite') });
+
+    const { createProject, createMission, updateMission } = await import('./repository.ts');
+    const { recordBranchPrepared } = await import('./runner.ts');
+
+    const project = await createProject({ name: 'Reset Active Branch' });
+    const mission = await createMission({ projectId: project.id, firstObjective: 'Switch later' });
+    await updateMission(mission.id, { worktreePreference: 'worktree' });
+    await recordBranchPrepared({
+      missionId: mission.displayId,
+      payload: {
+        branchName: 'overlord/switch-later-1',
+        baseBranch: 'main',
+        worktreePath: '/tmp/none',
+        action: 'create',
+        cycle: 1
+      }
+    });
+
+    const reset = await updateMission(mission.id, {
+      branchOverride: 'feature/other',
+      resetActiveBranch: true
+    });
+    assert.equal(reset.branch?.name, 'feature/other');
+    assert.equal(reset.branch?.status, 'pending');
+    assert.equal(reset.branch?.overrideBranch, 'feature/other');
+
+    await assert.rejects(
+      updateMission(mission.id, { resetActiveBranch: true }),
+      /no prepared branch/i
+    );
+  });
 });

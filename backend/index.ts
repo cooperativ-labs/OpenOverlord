@@ -450,7 +450,8 @@ app.get(
         sqlStudio: getSqlStudioState().enabled,
         launchAgents: true,
         executionTargets: false,
-        localTarget: resolveLocalTargetServerCapability({ dialect: DATABASE_DIALECT })
+        localTarget: resolveLocalTargetServerCapability({ dialect: DATABASE_DIALECT }),
+        mcp: mcpEnabled
       }
     }),
     {}

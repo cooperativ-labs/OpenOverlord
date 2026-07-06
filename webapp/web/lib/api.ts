@@ -105,6 +105,7 @@ export interface MetaCapabilities {
   launchAgents: boolean;
   executionTargets: boolean;
   localTarget: LocalTargetServerCapability;
+  mcp: boolean;
 }
 
 export interface Meta extends MetaDto {

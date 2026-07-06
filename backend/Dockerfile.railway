@@ -51,6 +51,7 @@ COPY packages/core/repository packages/core/repository
 COPY packages/core/service packages/core/service
 COPY packages/core/types packages/core/types
 COPY backend backend
+COPY mcp mcp
 COPY webapp/shared webapp/shared
 
 # The server still imports a small CLI config/env/catalog subset at runtime.
