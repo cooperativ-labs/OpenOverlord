@@ -70,6 +70,16 @@ import {
   updateOrganization
 } from './organizations.ts';
 import {
+  handleOAuthApprove,
+  handleOAuthRegister,
+  handleOAuthRequestInfo,
+  handleOAuthRevoke,
+  handleOAuthToken,
+  oauthAuthorizationServerMetadata,
+  oauthProtectedResourceMetadata,
+  redirectToOAuthApproval
+} from './oauth.ts';
+import {
   getProjectExecutionTarget,
   updateProjectExecutionTarget
 } from './project-execution-target.ts';
@@ -291,6 +301,7 @@ app.use(
 app.all('/api/auth/*', authNodeHandler);
 
 const jsonBody = express.json();
+const urlEncodedBody = express.urlencoded({ extended: false });
 function isRawUploadRequest(req: Request): boolean {
   if (req.method !== 'POST') return false;
   if (req.path.startsWith('/api/uploads/')) return true;
@@ -301,49 +312,6 @@ app.use((req, res, next) => {
   if (isRawUploadRequest(req)) return next();
   return jsonBody(req, res, next);
 });
-
-function publicBaseUrl(req: Request): string {
-  const configured = process.env.OVERLORD_PUBLIC_URL?.trim();
-  if (configured) return configured.replace(/\/+$/, '');
-  return `${req.protocol}://${req.get('host') ?? 'localhost'}`;
-}
-
-function oauthProtectedResourceMetadata(req: Request): Record<string, unknown> {
-  const baseUrl = publicBaseUrl(req);
-  return {
-    resource: `${baseUrl}/mcp`,
-    authorization_servers: [`${baseUrl}/.well-known/oauth-authorization-server`],
-    bearer_methods_supported: ['header'],
-    resource_documentation: `${baseUrl}/mcp`,
-    scopes_supported: [
-      'overlord.workspace.read',
-      'overlord.mission.read',
-      'overlord.mission.write',
-      'overlord.session.write'
-    ]
-  };
-}
-
-function oauthAuthorizationServerMetadata(req: Request): Record<string, unknown> {
-  const baseUrl = publicBaseUrl(req);
-  return {
-    issuer: baseUrl,
-    authorization_endpoint: `${baseUrl}/oauth/authorize`,
-    token_endpoint: `${baseUrl}/oauth/token`,
-    registration_endpoint: `${baseUrl}/oauth/register`,
-    revocation_endpoint: `${baseUrl}/oauth/revoke`,
-    response_types_supported: ['code'],
-    grant_types_supported: ['authorization_code', 'refresh_token'],
-    code_challenge_methods_supported: ['S256'],
-    token_endpoint_auth_methods_supported: ['none', 'client_secret_post'],
-    scopes_supported: [
-      'overlord.workspace.read',
-      'overlord.mission.read',
-      'overlord.mission.write',
-      'overlord.session.write'
-    ]
-  };
-}
 
 /**
  * Persist which workspace a browser session defaults to on future requests
@@ -403,13 +371,23 @@ app.get('/.well-known/oauth-protected-resource/mcp', (req, res) => {
 app.get('/.well-known/oauth-authorization-server', (req, res) => {
   res.json(oauthAuthorizationServerMetadata(req));
 });
-app.all('/oauth/:operation', (req, res) => {
-  res.status(501).json({
-    error: 'OAuth authorization server is not implemented yet',
-    code: 'oauth_server_not_implemented',
-    operation: req.params.operation
-  });
+app.get('/oauth/authorize', redirectToOAuthApproval);
+app.post('/oauth/register', urlEncodedBody, handleOAuthRegister);
+app.post('/oauth/token', urlEncodedBody, handleOAuthToken);
+app.post('/oauth/revoke', urlEncodedBody, (req, res, next) => {
+  void handleOAuthRevoke(req, res).catch(next);
 });
+app.post('/oauth/authorize/request', requireAuthenticatedSession, handle(handleOAuthRequestInfo));
+app.post(
+  '/oauth/authorize/approve',
+  requireAuthenticatedSession,
+  handle(
+    async (req, res) => {
+      await handleOAuthApprove(req, res);
+    },
+    { mutates: true }
+  )
+);
 
 if (mcpEnabled) {
   app.get('/mcp', requireAuthenticatedSession, (req, res) => {

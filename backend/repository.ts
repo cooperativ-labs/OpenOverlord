@@ -5812,3 +5812,54 @@ export async function revokeUserToken(id: string): Promise<UserTokenDto> {
     return toUserTokenDto(tx, await reloadUserToken(tx, id));
   });
 }
+
+export async function revokeUserTokenSecret(rawToken: string): Promise<boolean> {
+  if (!rawToken.startsWith(`${USER_TOKEN_SCHEME}_`)) return false;
+  const tokenHash = createHash(USER_TOKEN_HASH_ALGORITHM).update(rawToken).digest('hex');
+
+  return requireDatabaseClient().transaction(async tx => {
+    const existing = (await tx.get(
+      `SELECT id, workspace_id, workspace_user_id, status, revision
+         FROM user_tokens
+        WHERE token_hash = ? AND deleted_at IS NULL
+        LIMIT 1`,
+      [tokenHash]
+    )) as
+      | {
+          id: string;
+          workspace_id: string;
+          workspace_user_id: string | null;
+          status: string;
+          revision: number;
+        }
+      | undefined;
+
+    if (!existing || existing.status === 'revoked') return false;
+
+    const now = nowIso();
+    const revision = existing.revision + 1;
+    await tx.run(
+      `UPDATE user_tokens
+        SET status = 'revoked', revoked_at = ?,
+            revoked_by_workspace_user_id = COALESCE(?, revoked_by_workspace_user_id),
+            updated_at = ?, revision = ?
+      WHERE id = ? AND revision = ?`,
+      [now, existing.workspace_user_id, now, revision, existing.id, existing.revision]
+    );
+
+    await recordChange(
+      {
+        entityType: 'user_token',
+        entityId: existing.id,
+        operation: 'update',
+        entityRevision: revision,
+        changedFields: ['status', 'revoked_at'],
+        workspaceId: existing.workspace_id,
+        actorWorkspaceUserId: existing.workspace_user_id
+      },
+      tx
+    );
+
+    return true;
+  });
+}

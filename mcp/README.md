@@ -13,6 +13,10 @@ The first hosted implementation is mounted by the backend when
 - `GET /.well-known/oauth-protected-resource`
 - `GET /.well-known/oauth-protected-resource/mcp`
 - `GET /.well-known/oauth-authorization-server`
+- `POST /oauth/register`
+- `GET /oauth/authorize` (redirects to the web approval page)
+- `POST /oauth/token`
+- `POST /oauth/revoke`
 
 The endpoint is intentionally backend-hosted, not a CLI shim. Local connector
 MCP scripts for Codex, Claude Code, Cursor, and Antigravity continue to use
@@ -24,12 +28,17 @@ MCP requests must authenticate through the backend Auth Layer before tools are
 listed or invoked. Unauthenticated `/mcp` calls return a `WWW-Authenticate:
 Bearer` challenge that points clients at the protected-resource metadata.
 
-This build exposes OAuth protected-resource and authorization-server metadata,
-and uses the existing bearer-authenticated backend request context for tool
-execution. The advertised `/oauth/*` endpoints currently return a structured
-`501` until the next phase adds dynamic client registration, consent
-management, authorization-code + PKCE token issuance, refresh tokens, and
-revocation UI.
+OAuth-aware clients can use dynamic client registration followed by an
+authorization-code + PKCE flow. Approval happens in the web app at
+`/oauth/approve`; approving creates a scoped `USER_TOKEN` with the
+`mission_lifecycle` preset and exchanges the one-time authorization code for a
+bearer access token. Refresh tokens are not issued in contract version `0`.
+
+When the SPA is deployed separately from the backend, the hosted web build can
+serve same-domain OAuth discovery metadata and proxy `/mcp` plus OAuth token
+traffic to the backend. Set `OVERLORD_BACKEND_URL` and
+`OVERLORD_WEBAPP_PUBLIC_URL` in the web deployment so remote MCP clients can use
+the webapp domain as the MCP resource.
 
 ## Tools
 

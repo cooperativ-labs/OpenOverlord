@@ -126,6 +126,7 @@ components:
       - 'shared onboarding endpoint (POST /api/onboarding, zero-membership users only): creates an organization, a default workspace, membership, and ADMIN role in one transaction; used verbatim by the web onboarding screen and the ovld org-setup CLI command'
       - 'project APIs support explicit target workspace context for multi-workspace organization UIs: CreateProjectBody.workspaceId and GET /api/workspaces/:id/statuses'
       - 'storage routes for the organization-images bucket key (/api/storage/organization-images/…) with a PUBLIC organization_image:read grant'
+      - 'hosted MCP OAuth endpoints: POST /oauth/register, POST /oauth/token, POST /oauth/revoke, GET /oauth/authorize, POST /oauth/authorize/request, POST /oauth/authorize/approve'
     dependsOn:
       - database
       - auth
@@ -146,6 +147,7 @@ components:
       - 'Better Auth implementation tables: user, session, account, verification, apikey'
       - 'self-service account deletion trigger (user.deleteUser), delegating the cascade to a backend-supplied callback'
       - 'sign-up/sign-in email verification via an optional backend-supplied sendVerificationEmail callback (Resend-backed, RESEND_API_KEY, notifications.cooperativ.io); disabled by default when unset'
+      - 'hosted MCP OAuth consent and token issuance: browser approval creates scoped mission_lifecycle USER_TOKEN access tokens; authorization codes are short-lived, single-use, and PKCE-protected; refresh tokens are not issued in contract version 0'
     dependsOn:
       - database
     interactionSurfaces:
@@ -306,11 +308,20 @@ interactionSurfaces:
     discoveryEndpoints:
       - 'GET /.well-known/oauth-protected-resource'
       - 'GET /.well-known/oauth-protected-resource/mcp'
+      - 'GET /.well-known/oauth-authorization-server'
+    authorizationEndpoints:
+      - 'POST /oauth/register'
+      - 'GET /oauth/authorize'
+      - 'POST /oauth/token'
+      - 'POST /oauth/revoke'
+      - 'POST /oauth/authorize/request'
+      - 'POST /oauth/authorize/approve'
     rules:
       - 'MCP handlers must resolve the caller through the Auth Layer before listing or invoking tools'
       - 'Missing or failed authentication returns an OAuth-compatible WWW-Authenticate: Bearer challenge'
       - 'The active workspace is resolved by the Auth Layer from the bearer credential plus X-Overlord-Active-Workspace when supplied'
       - 'MCP must not silently select another workspace after auth'
+      - 'OAuth approval creates mission_lifecycle-scoped USER_TOKEN access tokens and does not issue refresh tokens in contract version 0'
 
   mcpToService:
     description: 'MCP tool handlers call existing service/protocol functions and never write tables directly'

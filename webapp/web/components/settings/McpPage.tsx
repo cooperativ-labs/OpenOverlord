@@ -45,11 +45,26 @@ type McpPageProps = {
 
 function resolveMcpBaseUrl(): string {
   const apiBase = getApiBaseUrl().trim();
+  const isDesktop = typeof window !== 'undefined' && window.overlord?.isDesktop === true;
+  const isLocalhost =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  if (apiBase && !isDesktop && !isLocalhost) {
+    return window.location.origin.replace(/\/+$/, '');
+  }
   if (apiBase) return apiBase.replace(/\/+$/, '');
   return getAuthBaseUrl().replace(/\/+$/, '');
 }
 
-function CopyValueRow({ label, value, description }: { label: string; value: string; description?: string }) {
+function CopyValueRow({
+  label,
+  value,
+  description
+}: {
+  label: string;
+  value: string;
+  description?: string;
+}) {
   const { copied, copy } = useCopyToClipboard();
 
   return (
@@ -92,7 +107,9 @@ function ProviderSetupCard({
           <h3 className="text-sm font-medium">{title}</h3>
         </div>
       </div>
-      <ol className="list-decimal space-y-2 px-4 py-4 pl-8 text-sm text-muted-foreground">{children}</ol>
+      <ol className="list-decimal space-y-2 px-4 py-4 pl-8 text-sm text-muted-foreground">
+        {children}
+      </ol>
     </div>
   );
 }
@@ -173,6 +190,7 @@ export function McpPage({ onNavigateToBackend, onNavigateToTokens }: McpPageProp
   const mcpUrl = `${baseUrl}/mcp`;
   const resourceMetadataUrl = `${baseUrl}/.well-known/oauth-protected-resource/mcp`;
   const authServerMetadataUrl = `${baseUrl}/.well-known/oauth-authorization-server`;
+  const authorizationUrl = `${baseUrl}/oauth/approve`;
 
   if (meta.isLoading && !meta.data) {
     return <p className="text-sm text-muted-foreground">Loading MCP settings…</p>;
@@ -225,8 +243,8 @@ export function McpPage({ onNavigateToBackend, onNavigateToTokens }: McpPageProp
           <code className="rounded bg-background/60 px-1 py-0.5 font-mono text-xs">
             OVERLORD_MCP_ENABLED=true
           </code>{' '}
-          on the backend deployment. The connection details below are still the values you will
-          use once it is live.
+          on the backend deployment. The connection details below are still the values you will use
+          once it is live.
         </div>
       ) : null}
 
@@ -253,6 +271,11 @@ export function McpPage({ onNavigateToBackend, onNavigateToTokens }: McpPageProp
             value={authServerMetadataUrl}
             description="OAuth authorization-server discovery document for sign-in flows."
           />
+          <CopyValueRow
+            label="OAuth approval page"
+            value={authorizationUrl}
+            description="Browser page shown when an MCP client asks you to approve access."
+          />
         </div>
       </div>
 
@@ -260,10 +283,7 @@ export function McpPage({ onNavigateToBackend, onNavigateToTokens }: McpPageProp
         <ProviderSetupCard title="ChatGPT custom connector" accentClassName="bg-emerald-500/10">
           <li>Open ChatGPT settings and add a custom MCP connector.</li>
           <li>Paste the MCP server URL above.</li>
-          <li>
-            Complete the Overlord sign-in when prompted. OAuth consent UI is rolling out; until
-            then, use a mission-lifecycle token from Tokens if your client supports bearer auth.
-          </li>
+          <li>Complete the Overlord sign-in and approve the requested mission lifecycle access.</li>
           <li>Ask the agent to list tools and search your missions.</li>
         </ProviderSetupCard>
 
@@ -289,7 +309,8 @@ export function McpPage({ onNavigateToBackend, onNavigateToTokens }: McpPageProp
               <h3 className="text-sm font-medium">Bearer token fallback</h3>
             </div>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Until interactive OAuth is fully live, create a token with the{' '}
+              OAuth-aware MCP clients can connect through the approval page above. For clients that
+              only support manual headers, create a token with the{' '}
               <strong className="font-medium text-foreground">Mission lifecycle + runner</strong>{' '}
               scope and configure your MCP client to send{' '}
               <code className="rounded bg-background px-1 py-0.5 font-mono text-xs">
