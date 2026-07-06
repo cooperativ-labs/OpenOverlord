@@ -60,7 +60,11 @@ function oauthMetadata() {
 function protectedResourceMetadata() {
   return {
     resource: `${webappUrl}/mcp`,
-    authorization_servers: [`${webappUrl}/.well-known/oauth-authorization-server`],
+    // RFC 9728: authorization_servers holds issuer *identifiers*, not metadata
+    // document URLs. MCP clients treat each entry as an issuer and derive the AS
+    // metadata URL via RFC 8414 path-insertion, so this must be the bare issuer
+    // (matching `issuer` in the AS metadata). See oauthMetadata().issuer.
+    authorization_servers: [webappUrl],
     bearer_methods_supported: ['header'],
     resource_documentation: `${webappUrl}/mcp`,
     scopes_supported: [
@@ -88,6 +92,10 @@ function writeWellKnownMetadata() {
   }
 
   writeJson(path.join(wellKnownDir, 'oauth-authorization-server'), oauthMetadata());
+  // Path-aware form only: this matches the resource_metadata URL advertised in
+  // the backend's WWW-Authenticate header, which is what MCP clients follow. A
+  // bare `oauth-protected-resource` file cannot coexist with this directory as a
+  // static asset, so it is intentionally omitted.
   writeJson(
     path.join(wellKnownDir, 'oauth-protected-resource', 'mcp'),
     protectedResourceMetadata()

@@ -211,7 +211,12 @@ export function oauthProtectedResourceMetadata(req: Request): Record<string, unk
   const baseUrl = webPublicBaseUrl(req);
   return {
     resource: `${baseUrl}/mcp`,
-    authorization_servers: [`${baseUrl}/.well-known/oauth-authorization-server`],
+    // RFC 9728: authorization_servers holds issuer *identifiers* (not metadata
+    // document URLs). MCP clients treat each entry as an issuer and derive the
+    // metadata URL via RFC 8414 path-insertion, so this must be the bare issuer
+    // (matching `issuer` in the AS metadata) — pointing it at the well-known
+    // document URL makes clients fetch `.../oauth-authorization-server/.well-known/...`.
+    authorization_servers: [baseUrl],
     bearer_methods_supported: ['header'],
     resource_documentation: `${baseUrl}/mcp`,
     scopes_supported: OAUTH_SCOPES
