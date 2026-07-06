@@ -354,7 +354,7 @@ ships its tests with its code — never after.
 
 ### MCP
 
-`mcp/` is a contract component as of contract version 8. Initial coverage should
+`mcp/` is a contract component as of contract version 0. Initial coverage should
 focus on the hosted `/mcp` surface:
 
 1. MCP JSON-RPC `initialize`, `tools/list`, and `tools/call` shape tests.

@@ -2,7 +2,7 @@
 
 Read [`CONTRACT.md`](../CONTRACT.md) and the
 [component-contract skill](../.claude/skills/component-contract/SKILL.md) before
-changing this module. MCP is a contract component as of contract version 8.
+changing this module. MCP is a contract component as of contract version 0.
 
 ## What MCP Owns
 

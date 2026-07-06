@@ -16,9 +16,9 @@ import { migrateDatabase, openInMemoryDatabase } from './connection.js';
  * consolidation (coo:144): fresh installs now create the post-organization
  * schema directly, so there is no discrete rekey step left to rehearse, and
  * already-migrated production databases keep the result they already have (the
- * consolidation only rewrites their `schema_migrations` ledger — see
- * `database/{sqlite,postgres}/reconcile_schema_migrations.sql`). The rehearsal
- * was therefore removed; the schema-only fresh-install invariant below remains.
+ * consolidation only rewrote their `schema_migrations` ledger during rollout).
+ * The rehearsal was therefore removed; the schema-only fresh-install invariant
+ * below remains.
  */
 describe('fresh-install ends at zero organizations and zero workspaces [sqlite]', () => {
   it('has no organizations or workspaces after the full migration chain', () => {

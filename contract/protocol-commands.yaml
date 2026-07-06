@@ -12,7 +12,7 @@
 # entry) are intentionally not listed here: `record-touched` and `changes`. See
 # CONTRACT.md's contract-version-2 changelog entry for the precedent.
 
-contractVersion: "2"
+contractVersion: "0"
 referenceSpec: "cli/docs/03-agent-protocol.md"
 
 # Transport-level shape shared by every protocol command, independent of subcommand.
