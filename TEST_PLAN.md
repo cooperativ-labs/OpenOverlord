@@ -28,8 +28,8 @@ module owns its code, tests, and documentation under `<module>/docs/`:
 | Webapp | [`webapp/docs/testing.md`](webapp/docs/testing.md) (UI section) | `rest` (consumer) |
 | Connectors | [`connectors/docs/testing.md`](connectors/docs/testing.md) | `connector` |
 | Automations | [`automations/docs/testing.md`](automations/docs/testing.md) | `automations` |
-| MCP | This document → [Future Modules](#future-modules) | _(future)_ |
-| Mobile App | This document → [Future Modules](#future-modules) | _(future)_ |
+| MCP | This document → [MCP](#mcp) | `mcp` |
+| Mobile App | This document → [MCP And Future Modules](#mcp-and-future-modules) | _(future)_ |
 
 The **cross-module contract conformance suite** ([Layer 3](#layer-3--contract-conformance-cross-module))
 is owned by this document and lives under `contract/conformance/` so it can
@@ -346,31 +346,25 @@ ships its tests with its code — never after.
 | 2 | Agent protocol MVP | L3 protocol-surface + attach-response; rationale-on-deliver; state machine (objectives) |
 | 3 | Local launch + runner | L3 runner queue atomicity; execution_requests state machine |
 | 4 | Review features | L2 artifacts/rationales/shared-context; record-work without session |
-| 5 | Auth, RBAC, tokens, extensions, adapters, MCP, web | Auth/RBAC suites; adapter conformance for new adapters; REST + UI; MCP (post-contract) |
+| 5 | Auth, RBAC, tokens, extensions, adapters, MCP, web | Auth/RBAC suites; adapter conformance for new adapters; REST + UI; MCP transport/tool tests |
 
 ---
 
-## Future Modules
+## MCP And Future Modules
 
-These modules are reserved but not yet implemented. Per
-[Contract Maintenance Rules](CONTRACT.md), the **contract must be updated before**
-their implementation (and therefore their tests) land. Each gets a per-module
-`<module>/docs/testing.md` at that time, mirroring the structure used here.
+### MCP
 
-### MCP (Phase 5, deferred)
+`mcp/` is a contract component as of contract version 8. Initial coverage should
+focus on the hosted `/mcp` surface:
 
-`mcp/` is a reserved slot and **not yet a contract component**. Entry criteria
-before any MCP test is written:
-
-1. `mcp` added to the Component Registry, `contract/components.yaml`, and a new
-   `mcpToDatabase` (service-layer) interaction surface declared.
-2. Contract version bumped; changelog entry added.
-
-Planned coverage once admitted: MCP tools map 1:1 to existing service-layer
-operations (no new persistence paths); MCP server reaches the DB only through the
-service layer (asserted by the same boundary test as REST/CLI); tool
-input/output schemas validate; and a `drift-review`-style test confirms MCP tools
-do not drift from the REST/CLI/protocol surface they mirror.
+1. MCP JSON-RPC `initialize`, `tools/list`, and `tools/call` shape tests.
+2. OAuth protected-resource and authorization-server metadata response tests.
+3. Auth challenge tests for unauthenticated `/mcp` calls.
+4. Tool mapping tests proving handlers call existing protocol/service functions
+   and preserve RBAC behavior.
+5. Drift-review coverage to ensure hosted MCP tools stay aligned with the
+   REST/CLI/protocol operations they mirror and do not expose local filesystem,
+   runner-claim, execution-target mutation, or branch-action operations.
 
 ### Mobile App (deferred)
 

@@ -1,6 +1,6 @@
 # Overlord Component Interaction Contract
 
-Contract Version: `7`
+Contract Version: `8`
 
 ## Purpose
 
@@ -47,6 +47,7 @@ The contract version is incremented when any stable interface changes. All confo
 | `5` | Introduces an **organization** grouping layer above workspaces: `organization → workspace → project`, splitting the former workspace role in two while keeping **workspaces as the sole RBAC layer**. Adds `organizations` to the Database Layer (`id` uuid, `name`, `settings_json` incl. `logoUrl`, timestamps, `deleted_at`, `revision`) and a required `workspaces.organization_id` FK. Workspace IDs move from slugified names to opaque UUIDs (`newId()`), deleting the old rename-triggered `rekeyWorkspaceReferences` re-slug machinery; **slugs are now unique per organization** (`UNIQUE (organization_id, slug) WHERE deleted_at IS NULL`) instead of globally, so the `<slug>:<sequence>` mission display ID stays workspace-scoped and unique-per-org rather than instance-global — webhook consumers and other external readers that treated `displayId` as a global key must scope lookups by workspace/org. Adds `MANAGER` to the RBAC role vocabulary (workspace-scoped, between `MEMBER` and `ADMIN`: manages the workspace itself and can invite/remove/promote members up to `MANAGER` but never `ADMIN`, plus full project management), enforced server-side on both the invite and role-update paths. Adds the REST API Layer's organization endpoints (list/update organization, list/add/remove organization admins — "org admin" is a derived, invariant-maintained concept: `ADMIN` of *every* constituent workspace, not a new RBAC scope type) and a shared `POST /api/onboarding` endpoint (org + workspace + membership + ADMIN role in one transaction) used verbatim by both the web onboarding screen and the future `ovld org-setup` CLI command. Adds an `organization-images` storage bucket key: `storage_buckets` gains a nullable `organization_id` with a CHECK that exactly one of `workspace_id`/`organization_id` is set, since an org logo must outlive any single member workspace. `user_tokens.workspace_id` becomes nullable (it has been audit-only metadata since the `20260702103000` profile-scope change) so a zero-membership user can mint a token and complete onboarding headless. The instance now supports a **zero-workspace boot state**: fresh installs no longer seed a `local-workspace` (the organizations migration removes the pristine seed — untouched name/slug, no projects/missions — from previously-seeded databases too), the live active-workspace binding starts `null`, and `/api/meta` returns `organization`/`organizations[]`/`workspaces[]` for the active org with `workspace` nullable pre-onboarding; workspace-scoped routes return a clear "complete onboarding" error instead of assuming a workspace exists. `CreateWorkspaceBody` drops the client-chosen `id` field (superseded by server-generated UUIDs) and gains `organizationId`. Implemented across mission coo:135's phased objectives (schema/contract, RBAC + backend service, SPA, CLI/parity/tests); see `planning/feature-plans/organization-workspace-hierarchy.md`. |
 | `6` | Restructures the attach/resume-follow-up response shape (`attach-response-v2` → `attach-response-v3`, a backward-incompatible change to a stable interface). The human-readable `promptContext` top-level field is removed and replaced by `agentInstructions`. Attach responses still carry full structured mission context in `mission`, `objective`, `previousObjectives`, `futureObjectives`, `history`, `attachments`, `artifacts`, and `sharedState`; `agentInstructions` is intentionally limited to mission/objective identifiers, where to find the current objective in the JSON, required protocol workflow guidance, and optional user custom agent instructions. This avoids duplicating objective/history/artifact content already present in the structured response and in launcher-supplied prompts. |
 | `7` | Adds explicit target-workspace support for project creation and secondary-workspace project reads. `CreateProjectBody` gains optional `workspaceId`; when present, `POST /api/projects` creates in that workspace after validating the caller's target-workspace membership and `project:create` permission, without changing the active workspace preference. Project detail reads (`GET /api/projects/:id`) and project-scoped board reads validate against the project's own workspace instead of the caller's active workspace. Adds `GET /api/workspaces/:id/statuses` so clients rendering a project from a non-active workspace can load the correct board columns while keeping the legacy `GET /api/workspace/statuses` active-workspace endpoint. |
+| `8` | Adds the MCP Server component and its hosted cloud-agent surface. The backend may mount a Streamable HTTP-compatible MCP JSON-RPC endpoint at `GET/POST /mcp` when `OVERLORD_MCP_ENABLED=true`, plus OAuth protected-resource metadata at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp`. MCP owns tool names, resource URI patterns, prompt names, protocol-version advertisement, and MCP response shaping. MCP handlers must authenticate through the Auth Layer, then call existing service/protocol functions; they must not write database tables directly or expose local filesystem, runner-claim, or branch-action operations. |
 
 ---
 
@@ -275,6 +276,37 @@ Depends on:
 
 The dependency arrow points one way only: `webapp`, `cli`, and `database` MUST NOT depend on `desktop`.
 
+### 11. MCP Server
+
+**Stable identifier**: `mcp`
+**Reference spec**: [`mcp/README.md`](mcp/README.md)
+
+An optional hosted Model Context Protocol surface for cloud agents such as
+ChatGPT, Claude, and other MCP clients. It runs inside the backend process and
+is enabled only when `OVERLORD_MCP_ENABLED=true`.
+
+Owns:
+
+- MCP endpoint path (`/mcp`) and supported MCP protocol-version advertisement
+- MCP tool names, tool input schemas, resource URI patterns, prompt names, and
+  MCP JSON-RPC response shaping
+- OAuth protected-resource metadata for the hosted MCP resource
+- Mapping MCP tool calls to existing service/protocol operations
+
+Does NOT own:
+
+- Database schema or persistence rules (→ Database Layer)
+- Authentication mechanism, token issuance, consent, or RBAC policy (→ Auth Layer)
+- Protocol lifecycle semantics such as attach/update/deliver state transitions (→ Protocol Layer)
+- REST URL/DTO contracts outside `/mcp` and OAuth discovery metadata (→ REST API Layer)
+- Local filesystem, worktree, runner claim, or branch-action operations (→ CLI / Runner / REST Layers)
+
+Depends on:
+
+- `auth` — resolves the MCP caller to an authenticated profile/workspace actor
+- `protocol` / service layer — executes mission lifecycle and project discovery operations
+- `database` — reached only through existing service/protocol functions
+
 ---
 
 ## Interaction Surfaces
@@ -330,6 +362,33 @@ These are the **only sanctioned paths** between components. Bypassing these surf
 - **Response shape**: Derived from logical schema camelCase field names
 - **Idempotency**: REST-scope idempotency keys for retried writes
 
+### MCP Server → Auth (Hosted Agent Auth Surface)
+
+- **Transport**: HTTP bearer credentials on `GET/POST /mcp`
+- **Discovery**: `GET /.well-known/oauth-protected-resource` and
+  `GET /.well-known/oauth-protected-resource/mcp` advertise the MCP resource URL
+  and authorization-server metadata locations
+- **Rule**: MCP handlers must resolve the caller through the Auth Layer before
+  listing or invoking tools. A request that is missing or fails authentication
+  returns an OAuth-compatible `WWW-Authenticate: Bearer` challenge.
+- **Workspace binding**: the active workspace is resolved by the Auth Layer from
+  the bearer credential plus `X-Overlord-Active-Workspace` when supplied; MCP
+  must not silently select another workspace after auth.
+
+### MCP Server → Service Layer
+
+- **Transport**: In-process function calls from MCP tool handlers to existing
+  service/protocol functions
+- **Rule**: MCP handlers must not read or write database tables directly.
+- **Authorization**: Every tool call must pass through the same RBAC gates as the
+  corresponding REST or protocol operation.
+- **Project context**: Hosted MCP cannot observe a cloud agent's current working
+  directory. Mutating mission creation tools must require explicit `projectId`
+  or a prior resolved project identity; missing or ambiguous project context is
+  a tool error, not an implicit default selection.
+- **Locality**: Hosted MCP must not expose local filesystem/worktree inspection,
+  runner queue claiming, execution target mutation, or branch-action tools.
+
 ### Auth → Database (Identity Bridge)
 
 - **Transport**: Better Auth's configured database adapter for auth tables; direct service-layer/database adapter queries for identity bridging. The auth domain query helpers (`queryOne`/`queryAll`/`execute`) run against the async `DatabaseClient` (preferred) or, for tests/legacy callers, a raw `better-sqlite3` handle or a bare `PostgresQueryExecutor`; the webapp routes both editions through the `DatabaseClient`
@@ -376,7 +435,7 @@ Any component, connector, or extension that ships against Overlord must:
 
 1. **Provide a conformance manifest** (`conformance-manifest.yaml`) at its root declaring:
    - `contractVersion`: the version this component was validated against
-   - `componentType`: one of `connector`, `extension`, `database-adapter`, `auth-provider`, `rest-module`, `desktop-shell`
+   - `componentType`: one of `connector`, `extension`, `database-adapter`, `auth-provider`, `rest-module`, `desktop-shell`, `mcp-server`
    - `componentKey`: stable lowercase identifier
    - All capabilities and extension points it uses
 

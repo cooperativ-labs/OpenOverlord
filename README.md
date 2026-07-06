@@ -266,7 +266,7 @@ planning, and security audits), and records where each kind of doc lives.
 | [cli/](cli/README.md) | The client-only `ovld` command surface: config, backend API client, agent protocol forwarding, and local runner/launcher | `cli`, `protocol`, `runner` |
 | [auth/](auth/README.md) | Mix-and-match authentication (tokens) and RBAC authorization (the `@overlord/auth` workspace package — runtime in `auth/src/`) | `auth` |
 | [webapp/](webapp/README.md) | Web control center + REST/realtime API | `rest` |
-| [mcp/](mcp/README.md) | Planned MCP server surface (not yet implemented) | _(future)_ |
+| [mcp/](mcp/README.md) | Optional hosted MCP server surface for cloud agents | `mcp` |
 | [connectors/](connectors/README.md) | Agent harness connectors: core, plugins, adapters, hooks | `connector` |
 | [automations/](automations/README.md) | Optional AI automations (Gemini summarization, objective titles) (the `@overlord/automations` workspace package — runtime in `automations/src/`) | `automations` |
 | [desktop/](desktop/README.md) | Optional Electron desktop shell wrapping the webapp (the `@overlord/desktop` workspace package) — **not built by default** | `desktop` |
@@ -288,4 +288,6 @@ The master test strategy is [`TEST_PLAN.md`](TEST_PLAN.md): a five-layer test py
 
 ### Planned / Deferred
 
-* **MCP** — reserved at [mcp/](mcp/README.md); not yet implemented.
+* OAuth consent/token management for hosted [MCP](mcp/README.md) connections is
+  still phased; the initial MCP endpoint and metadata are implemented behind
+  `OVERLORD_MCP_ENABLED=true`.
