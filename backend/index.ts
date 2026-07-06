@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { loadConfig } from '../cli/src/config.ts';
 import { isExplicitRuntimeEnv, resolveLayeredEnv } from '../cli/src/env.ts';
+import { handleMcpPost, mcpServerInfo } from '../mcp/server.ts';
 import { ServiceError } from '../packages/core/service/errors.ts';
 import type { LocalTargetBridgeCall } from '../packages/core/service/local-target/desktop-bridge.ts';
 import type { StoredImageDto } from '../webapp/shared/contract.ts';
@@ -235,6 +236,7 @@ const sqlStudioPort = parsePort(
   'OVERLORD_SQL_STUDIO_PORT'
 );
 const sqlStudioBinary = resolveLayered('OVERLORD_SQL_STUDIO_BINARY', config.sqlStudioBinary);
+const mcpEnabled = process.env.OVERLORD_MCP_ENABLED === 'true';
 
 initSqlStudioManager({
   binary: sqlStudioBinary,
@@ -300,6 +302,49 @@ app.use((req, res, next) => {
   return jsonBody(req, res, next);
 });
 
+function publicBaseUrl(req: Request): string {
+  const configured = process.env.OVERLORD_PUBLIC_URL?.trim();
+  if (configured) return configured.replace(/\/+$/, '');
+  return `${req.protocol}://${req.get('host') ?? 'localhost'}`;
+}
+
+function oauthProtectedResourceMetadata(req: Request): Record<string, unknown> {
+  const baseUrl = publicBaseUrl(req);
+  return {
+    resource: `${baseUrl}/mcp`,
+    authorization_servers: [`${baseUrl}/.well-known/oauth-authorization-server`],
+    bearer_methods_supported: ['header'],
+    resource_documentation: `${baseUrl}/mcp`,
+    scopes_supported: [
+      'overlord.workspace.read',
+      'overlord.mission.read',
+      'overlord.mission.write',
+      'overlord.session.write'
+    ]
+  };
+}
+
+function oauthAuthorizationServerMetadata(req: Request): Record<string, unknown> {
+  const baseUrl = publicBaseUrl(req);
+  return {
+    issuer: baseUrl,
+    authorization_endpoint: `${baseUrl}/oauth/authorize`,
+    token_endpoint: `${baseUrl}/oauth/token`,
+    registration_endpoint: `${baseUrl}/oauth/register`,
+    revocation_endpoint: `${baseUrl}/oauth/revoke`,
+    response_types_supported: ['code'],
+    grant_types_supported: ['authorization_code', 'refresh_token'],
+    code_challenge_methods_supported: ['S256'],
+    token_endpoint_auth_methods_supported: ['none', 'client_secret_post'],
+    scopes_supported: [
+      'overlord.workspace.read',
+      'overlord.mission.read',
+      'overlord.mission.write',
+      'overlord.session.write'
+    ]
+  };
+}
+
 /**
  * Persist which workspace a browser session defaults to on future requests
  * (the per-user replacement for the old process-global active workspace —
@@ -348,6 +393,36 @@ function handle(
 // ---- Meta / health -------------------------------------------------------
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+app.get('/.well-known/oauth-protected-resource', (req, res) => {
+  res.json(oauthProtectedResourceMetadata(req));
+});
+app.get('/.well-known/oauth-protected-resource/mcp', (req, res) => {
+  res.json(oauthProtectedResourceMetadata(req));
+});
+app.get('/.well-known/oauth-authorization-server', (req, res) => {
+  res.json(oauthAuthorizationServerMetadata(req));
+});
+app.all('/oauth/:operation', (req, res) => {
+  res.status(501).json({
+    error: 'OAuth authorization server is not implemented yet',
+    code: 'oauth_server_not_implemented',
+    operation: req.params.operation
+  });
+});
+
+if (mcpEnabled) {
+  app.get('/mcp', requireAuthenticatedSession, (req, res) => {
+    res.json(mcpServerInfo(req));
+  });
+  app.post('/mcp', requireAuthenticatedSession, (req, res, next) => {
+    void (async () => {
+      await handleMcpPost(req, res, next);
+      realtime.pollNow();
+      webhookDispatcher.pollNow();
+    })().catch(next);
+  });
+}
 
 app.use('/api', requireAuthenticatedSession);
 

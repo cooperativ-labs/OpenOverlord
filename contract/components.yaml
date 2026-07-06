@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '7'
+contractVersion: '8'
 
 components:
   protocol:
@@ -204,6 +204,25 @@ components:
       - shellToRest
       - shellToCli
 
+  mcp:
+    label: 'MCP Server'
+    stableIdentifier: mcp
+    referenceSpec: 'mcp/README.md'
+    optional: true
+    owns:
+      - 'hosted MCP endpoint path: GET/POST /mcp'
+      - 'supported MCP protocol version advertisement'
+      - 'MCP tool names, tool input schemas, resource URI patterns, prompt names, and MCP JSON-RPC response shaping'
+      - 'OAuth protected-resource metadata for the hosted MCP resource'
+      - 'mapping MCP tool calls to existing service/protocol operations'
+    dependsOn:
+      - auth
+      - protocol
+      - database
+    interactionSurfaces:
+      - mcpToAuth
+      - mcpToService
+
 # Interaction surfaces — the only sanctioned paths between components
 interactionSurfaces:
   agentToProtocol:
@@ -277,6 +296,32 @@ interactionSurfaces:
       - 'Same service layer as CLI and Protocol Layers'
       - 'Idempotency keys for retried writes'
       - 'Response shapes use camelCase logical field names'
+
+  mcpToAuth:
+    description: 'Hosted MCP requests authenticate through the Auth Layer before tool listing or invocation'
+    from: mcp
+    to: auth
+    transport: http-bearer
+    authMechanism: oauth-bearer-token
+    discoveryEndpoints:
+      - 'GET /.well-known/oauth-protected-resource'
+      - 'GET /.well-known/oauth-protected-resource/mcp'
+    rules:
+      - 'MCP handlers must resolve the caller through the Auth Layer before listing or invoking tools'
+      - 'Missing or failed authentication returns an OAuth-compatible WWW-Authenticate: Bearer challenge'
+      - 'The active workspace is resolved by the Auth Layer from the bearer credential plus X-Overlord-Active-Workspace when supplied'
+      - 'MCP must not silently select another workspace after auth'
+
+  mcpToService:
+    description: 'MCP tool handlers call existing service/protocol functions and never write tables directly'
+    from: mcp
+    to: database
+    transport: service-layer-function-calls
+    rules:
+      - 'MCP handlers must not read or write database tables directly'
+      - 'Every tool call must pass through the same RBAC gates as the corresponding REST or protocol operation'
+      - 'Mission creation tools require explicit projectId or a prior resolved project identity; missing or ambiguous project context is a tool error'
+      - 'Hosted MCP must not expose local filesystem/worktree inspection, runner queue claiming, execution target mutation, or branch-action tools'
 
   authToDatabase:
     description: 'Auth layer accesses auth tables via the configured Better Auth database adapter; reads role_assignments and workspace_users for identity bridging'

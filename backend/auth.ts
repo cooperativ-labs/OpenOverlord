@@ -109,7 +109,9 @@ function usesNonBrowserAuthSurface(req: Request): boolean {
     path === '/protocol' ||
     path.startsWith('/protocol/') ||
     path === '/runner' ||
-    path.startsWith('/runner/')
+    path.startsWith('/runner/') ||
+    path === '/mcp' ||
+    path.startsWith('/mcp/')
   );
 }
 
@@ -328,6 +330,12 @@ export async function requireAuthenticatedSession(
         return;
       }
 
+      if ((req.path || req.url || req.originalUrl).startsWith('/mcp')) {
+        res.setHeader(
+          'WWW-Authenticate',
+          'Bearer resource_metadata="/.well-known/oauth-protected-resource/mcp"'
+        );
+      }
       res.status(401).json({ error: 'Authentication required' });
     } catch (err) {
       next(err);

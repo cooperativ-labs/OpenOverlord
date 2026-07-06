@@ -1,46 +1,57 @@
-# MCP Module — PLANNED / DEFERRED
+# MCP Module
 
-A Model Context Protocol (MCP) server surface that would expose Overlord
-capabilities (missions, objectives, protocol operations) to MCP-aware clients.
+The MCP module exposes a hosted Model Context Protocol endpoint for cloud
+agents such as ChatGPT, Claude, and other MCP clients.
 
-## Table of Contents
+## Status
 
-- [For Users](#for-users)
-  - [Status](#status)
-- [For Developers](#for-developers)
-  - [Contract Component](#contract-component)
-  - [Documentation](#documentation)
+The first hosted implementation is mounted by the backend when
+`OVERLORD_MCP_ENABLED=true`:
 
-## For Users
+- `GET /mcp` returns server/tool metadata for authenticated callers.
+- `POST /mcp` accepts JSON-RPC MCP requests.
+- `GET /.well-known/oauth-protected-resource`
+- `GET /.well-known/oauth-protected-resource/mcp`
+- `GET /.well-known/oauth-authorization-server`
 
-### Status
+The endpoint is intentionally backend-hosted, not a CLI shim. Local connector
+MCP scripts for Codex, Claude Code, Cursor, and Antigravity continue to use
+`ovld protocol` for checkout-local workflows.
 
-> **Not yet implemented.** There is no MCP server to install today. Agent
-> connectors (Claude, Codex, Cursor) ship their own MCP bridges to
-> `ovld protocol` — see the [connectors module](../connectors/README.md).
+## Authentication
 
-## For Developers
+MCP requests must authenticate through the backend Auth Layer before tools are
+listed or invoked. Unauthenticated `/mcp` calls return a `WWW-Authenticate:
+Bearer` challenge that points clients at the protected-resource metadata.
 
-### Contract Component
+This build exposes OAuth protected-resource and authorization-server metadata,
+and uses the existing bearer-authenticated backend request context for tool
+execution. The advertised `/oauth/*` endpoints currently return a structured
+`501` until the next phase adds dynamic client registration, consent
+management, authorization-code + PKCE token issuance, refresh tokens, and
+revocation UI.
 
-MCP is **not yet a component** in [`CONTRACT.md`](../CONTRACT.md). When this
-module is implemented it will become a new component connected via the contract,
-which means — per the [Contract Maintenance Rules](../CONTRACT.md) — the contract
-must be updated **before** any MCP implementation code lands:
+## Tools
 
-1. Add an `mcp` entry to the Component Registry and `contract/components.yaml`.
-2. Declare its interaction surface (likely MCP server → service layer, mirroring
-   the REST and protocol surfaces — no direct table writes).
-3. Add a changelog entry and bump the contract version if a stable interface changes.
+The current tool catalog is mission-first:
 
-Like REST and the CLI protocol, an MCP server should reach persistence only
-through the shared **service layer**, never by touching tables directly.
+- `overlord_resolve_project`
+- `overlord_search_missions`
+- `overlord_create_mission`
+- `overlord_load_mission_context`
+- `overlord_add_objectives`
+- `overlord_attach_session`
+- `overlord_update_session`
+- `overlord_deliver_session`
 
-This directory reserves the module slot and records the intended design so the
-surface lands in a consistent place when work begins.
+Hosted MCP cannot observe an agent's local current working directory. Tools
+that create missions require explicit `projectId`; clients should call
+`overlord_resolve_project` first when project identity comes from an exposed
+repository resource carrying `.overlord/project.json`.
 
-### Documentation
+## Boundaries
 
-No dedicated feature plan exists yet. The expansion intent is noted in the
-[feature-plans README](../planning/feature-plans/README.md). Add an
-`mcp.md` feature plan here (or in `planning/feature-plans/`) when scoping begins.
+MCP handlers call existing service/protocol functions and rely on their RBAC
+checks. They must not write database tables directly. Hosted MCP intentionally
+does not expose local filesystem inspection, runner queue claiming, execution
+target mutation, or branch actions.
