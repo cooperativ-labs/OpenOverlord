@@ -14,8 +14,18 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useCopyToClipboard } from '@/lib/hooks/use-copy-to-clipboard';
-import { getApiBaseUrl, getAuthBaseUrl } from '@/lib/api-base.ts';
+import { getApiBaseUrl, getAuthBaseUrl, isRemoteBackend } from '@/lib/api-base.ts';
 import { useMeta } from '@/lib/queries';
+
+function isHostedMcpBackend({
+  backendMode,
+  clientUsesRemoteBackend
+}: {
+  backendMode: 'local' | 'cloud' | undefined;
+  clientUsesRemoteBackend: boolean;
+}): boolean {
+  return backendMode === 'cloud' || clientUsesRemoteBackend;
+}
 
 const MCP_TOOLS = [
   { name: 'overlord_resolve_project', label: 'Resolve project' },
@@ -154,7 +164,10 @@ function LocalModeDisclaimer({
 export function McpPage({ onNavigateToBackend, onNavigateToTokens }: McpPageProps) {
   const meta = useMeta();
   const isDesktop = typeof window !== 'undefined' && window.overlord?.isDesktop === true;
-  const isCloudBackend = meta.data?.backendMode === 'cloud';
+  const isCloudBackend = isHostedMcpBackend({
+    backendMode: meta.data?.backendMode,
+    clientUsesRemoteBackend: isRemoteBackend()
+  });
   const mcpEnabled = meta.data?.capabilities.mcp === true;
   const baseUrl = resolveMcpBaseUrl();
   const mcpUrl = `${baseUrl}/mcp`;

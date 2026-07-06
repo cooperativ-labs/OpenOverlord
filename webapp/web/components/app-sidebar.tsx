@@ -39,7 +39,7 @@ export function AppSidebar() {
   };
 
   const pathname = useRouterState({ select: state => state.location.pathname });
-  const isMyMissionsActive = pathname === '/workspace' || pathname.startsWith('/workspace/');
+  const isMyMissionsActive = pathname === '/user' || pathname.startsWith('/user/');
   const { isMacDesktop } = getDesktopChrome();
 
   return (
@@ -60,7 +60,7 @@ export function AppSidebar() {
               <SidebarMenu>
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    render={<Link to="/workspace" />}
+                    render={<Link to="/user" />}
                     isActive={isMyMissionsActive}
                     tooltip="My Missions"
                   >

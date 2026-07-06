@@ -102,7 +102,7 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   beforeLoad: () => {
-    throw redirect({ to: '/workspace' });
+    throw redirect({ to: '/user' });
   }
 });
 
@@ -114,8 +114,24 @@ const projectsRoute = createRoute({
 
 const myMissionsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/workspace',
+  path: '/user',
   component: MyMissionsShell
+});
+
+const workspaceLegacyRedirectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/workspace',
+  beforeLoad: () => {
+    throw redirect({ to: '/user' });
+  }
+});
+
+const workspaceMissionLegacyRedirectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/workspace/missions/$missionId',
+  beforeLoad: ({ params }) => {
+    throw redirect({ to: '/user/missions/$missionId', params });
+  }
 });
 
 const myMissionsPanelRoute = createRoute({
@@ -141,6 +157,8 @@ export const routeTree = rootRoute.addChildren([
   acceptInviteRoute,
   indexRoute,
   projectsRoute,
+  workspaceLegacyRedirectRoute,
+  workspaceMissionLegacyRedirectRoute,
   myMissionsRoute.addChildren([myMissionsPanelRoute]),
   boardRoute.addChildren([missionRoute])
 ]);

@@ -80,7 +80,7 @@ export function MyMissionsPage() {
   const setMissionStatus = useSetMissionStatus();
   const reorder = useReorderMyMissions();
 
-  const missionMatch = useMatch({ from: '/workspace/missions/$missionId', shouldThrow: false });
+  const missionMatch = useMatch({ from: '/user/missions/$missionId', shouldThrow: false });
   const selectedMissionId = missionMatch?.params.missionId;
 
   const workspaces = useMemo(() => meta.data?.workspaces ?? [], [meta.data]);
@@ -363,7 +363,7 @@ export function MyMissionsPage() {
 
   const openMission = useCallback(
     (missionId: string) => {
-      void navigate({ to: '/workspace/missions/$missionId', params: { missionId } });
+      void navigate({ to: '/user/missions/$missionId', params: { missionId } });
     },
     [navigate]
   );
@@ -445,7 +445,7 @@ export function MyMissionsPage() {
       options?: BlankMissionCreateOptions
     ) => {
       const { missionId } = await createMissionInColumn(statusId, objective, options);
-      void navigate({ to: '/workspace/missions/$missionId', params: { missionId } });
+      void navigate({ to: '/user/missions/$missionId', params: { missionId } });
     },
     [createMissionInColumn, navigate]
   );

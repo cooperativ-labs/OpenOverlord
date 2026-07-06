@@ -61,7 +61,7 @@ export function AcceptInvitePage() {
         </CardHeader>
         <CardContent>
           {status === 'success' ? (
-            <Button className="w-full" onClick={() => void navigate({ to: '/workspace' })}>
+            <Button className="w-full" onClick={() => void navigate({ to: '/user' })}>
               Go to workspace
             </Button>
           ) : null}
@@ -69,7 +69,7 @@ export function AcceptInvitePage() {
             <Button
               variant="outline"
               className="w-full"
-              onClick={() => void navigate({ to: '/workspace' })}
+              onClick={() => void navigate({ to: '/user' })}
             >
               Back to Overlord
             </Button>

@@ -432,7 +432,9 @@ app.get(
     async () => ({
       ...(await buildMeta()),
       databasePath: DATABASE_PATH,
-      backendMode: config.backendMode,
+      // Hosted Postgres deployments have no overlord.toml, so config.backendMode
+      // defaults to local. Infer cloud for the SPA and other API consumers.
+      backendMode: DATABASE_DIALECT === 'postgres' ? 'cloud' : config.backendMode,
       web: {
         host: bindHost,
         port: bindPort,

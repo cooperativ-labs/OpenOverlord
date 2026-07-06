@@ -22,18 +22,18 @@ export function MyMissionsShell() {
   );
 }
 
-/** The mission panel opened from a My Missions card; closes back to `/workspace`. */
+/** The mission panel opened from a My Missions card; closes back to `/user`. */
 export function WorkspaceMissionPanelRoute() {
-  const { missionId } = useParams({ from: '/workspace/missions/$missionId' });
+  const { missionId } = useParams({ from: '/user/missions/$missionId' });
   const navigate = useNavigate();
   return (
     <MissionDrawer>
       <MissionPanel
         projectId=""
         missionId={missionId}
-        onClose={() => void navigate({ to: '/workspace' })}
+        onClose={() => void navigate({ to: '/user' })}
         onProjectChanged={() =>
-          void navigate({ to: '/workspace/missions/$missionId', params: { missionId } })
+          void navigate({ to: '/user/missions/$missionId', params: { missionId } })
         }
       />
     </MissionDrawer>
