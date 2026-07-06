@@ -1,10 +1,14 @@
-import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
+import {
+  finalizeExtEverhourMissionLinksSqlite,
+  isExtEverhourPersistenceMigration
+} from './ext-everhour-migration-runtime.js';
 import {
   bindBool,
   CONTRACT_VERSION,
@@ -14,10 +18,6 @@ import {
   migrateDatabase,
   type OverlordDatabase
 } from './index.js';
-import {
-  finalizeExtEverhourMissionLinksSqlite,
-  isExtEverhourPersistenceMigration
-} from './ext-everhour-migration-runtime.js';
 import { resolveAppliedMigrationSqlite } from './migration-ledger.js';
 
 const EXT_EVERHOUR_MIGRATION = '20260706000000_ext_everhour_persistence.sql';
@@ -154,7 +154,17 @@ function seedLegacyEverhourRows(db: OverlordDatabase): {
        id, workspace_id, project_id, display_id, sequence_number, title, status_id, status_type,
        board_position, created_at, updated_at, revision, everhour_task_id
      ) VALUES (?, ?, ?, ?, 1, ?, ?, 'execute', 0, ?, ?, 1, ?)`
-  ).run(missionId, workspaceId, projectId, 'legacy:1', 'Legacy mission', statusId, now, now, 'ev:task-99');
+  ).run(
+    missionId,
+    workspaceId,
+    projectId,
+    'legacy:1',
+    'Legacy mission',
+    statusId,
+    now,
+    now,
+    'ev:task-99'
+  );
 
   return { workspaceId, projectId, missionId };
 }
@@ -169,9 +179,9 @@ test('ext_everhour migration backfills legacy settings and records ext:everhour'
     const { workspaceId, projectId, missionId } = seedLegacyEverhourRows(db);
 
     assert.ok(
-      db
-        .prepare(`SELECT everhour_task_id FROM missions WHERE id = ?`)
-        .get(missionId) as { everhour_task_id: string }
+      db.prepare(`SELECT everhour_task_id FROM missions WHERE id = ?`).get(missionId) as {
+        everhour_task_id: string;
+      }
     );
 
     applySqliteMigrationFile(db, EXT_EVERHOUR_MIGRATION);
@@ -207,9 +217,9 @@ test('ext_everhour migration backfills legacy settings and records ext:everhour'
       .get(missionId) as { everhour_task_id: string };
     assert.equal(missionLink.everhour_task_id, 'ev:task-99');
 
-    const missionColumns = db
-      .prepare(`PRAGMA table_info(missions)`)
-      .all() as Array<{ name: string }>;
+    const missionColumns = db.prepare(`PRAGMA table_info(missions)`).all() as Array<{
+      name: string;
+    }>;
     assert.equal(
       missionColumns.some(column => column.name === 'everhour_task_id'),
       false
@@ -252,9 +262,9 @@ test('ext_everhour migration reconciles legacy core ledger record without re-run
       .get() as { component: string };
     assert.equal(ledger.component, 'ext:everhour');
 
-    const missionColumns = db
-      .prepare(`PRAGMA table_info(missions)`)
-      .all() as Array<{ name: string }>;
+    const missionColumns = db.prepare(`PRAGMA table_info(missions)`).all() as Array<{
+      name: string;
+    }>;
     assert.equal(
       missionColumns.some(column => column.name === 'everhour_task_id'),
       false
@@ -273,9 +283,9 @@ test('ext_everhour migration applies cleanly on fresh installs without legacy mi
     migrateUpToExtEverhour(db);
     applySqliteMigrationFile(db, EXT_EVERHOUR_MIGRATION);
 
-    const missionColumns = db
-      .prepare(`PRAGMA table_info(missions)`)
-      .all() as Array<{ name: string }>;
+    const missionColumns = db.prepare(`PRAGMA table_info(missions)`).all() as Array<{
+      name: string;
+    }>;
     assert.equal(
       missionColumns.some(column => column.name === 'everhour_task_id'),
       false

@@ -214,7 +214,16 @@ async function writeEverhourConnection(
             SET api_key_secret = ?, account_id = ?, account_name = ?,
                 updated_at = ?, revision = ?
           WHERE id = ? AND workspace_id = ? AND revision = ?`,
-        [apiKey, accountId, accountName, now, revision, existing.id, WORKSPACE.id, existing.revision]
+        [
+          apiKey,
+          accountId,
+          accountName,
+          now,
+          revision,
+          existing.id,
+          WORKSPACE.id,
+          existing.revision
+        ]
       );
       await recordChange(
         {

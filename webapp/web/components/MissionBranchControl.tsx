@@ -356,9 +356,7 @@ function MissionBranchSetupForm({
       )}
 
       <div className="space-y-3 rounded-md border border-border/60 bg-muted/30 p-2.5">
-        {isSwitch && (
-          <p className="text-xs font-medium text-foreground">Switch branch</p>
-        )}
+        {isSwitch && <p className="text-xs font-medium text-foreground">Switch branch</p>}
 
         <BranchModeToggle mode={mode} disabled={update.isPending} onChange={switchMode} />
 
@@ -373,7 +371,8 @@ function MissionBranchSetupForm({
         {mode === 'new' ? (
           isSwitch ? (
             <p className="rounded-md border border-border/50 bg-background/60 px-2 py-1.5 text-xs text-muted-foreground">
-              The merged branch stays on record so Overlord can pick the next cycle name automatically.
+              The merged branch stays on record so Overlord can pick the next cycle name
+              automatically.
             </p>
           ) : (
             <div className="flex min-w-0 items-center gap-1.5 text-xs">

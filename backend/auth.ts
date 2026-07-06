@@ -1,4 +1,9 @@
-import { verifyUserToken } from '@overlord/auth';
+import {
+  authDatabaseFromAdapter,
+  listActiveTokenScopeGrants,
+  USER_TOKEN_PREFIX,
+  verifyUserToken
+} from '@overlord/auth';
 import { resolveAdapter } from '@overlord/database';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
 import type { NextFunction, Request, Response } from 'express';
@@ -77,18 +82,8 @@ export function getAllowedBrowserOrigins(): string[] {
   });
 }
 
-const authAdapter = resolveAdapter({ databasePath: DATABASE_PATH });
 export const auth = createAuth({
-  database:
-    authAdapter.type === 'sqlite'
-      ? { type: 'sqlite', path: authAdapter.path }
-      : authAdapter.schema
-        ? {
-            type: 'postgres',
-            connectionString: authAdapter.connectionString,
-            schema: authAdapter.schema
-          }
-        : { type: 'postgres', connectionString: authAdapter.connectionString },
+  database: authDatabaseFromAdapter(resolveAdapter({ databasePath: DATABASE_PATH })),
   trustedOrigins: getAllowedBrowserOrigins(),
   onDeleteUser: cascadeDeleteAccount,
   sendVerificationEmail: verificationEmailSenderFromEnv(),
@@ -123,16 +118,6 @@ function isLoopbackAddress(addr: string | null | undefined): boolean {
 
 function isLoopbackRequest(req: Request): boolean {
   return isLoopbackAddress(req.ip) || isLoopbackAddress(req.socket?.remoteAddress);
-}
-
-/** Active scope grant patterns for a token (empty = `full`, no restriction). */
-async function loadTokenScopeGrants(tokenId: string): Promise<string[]> {
-  const rows = await requireDatabaseClient().all<{ permission: string }>(
-    `SELECT permission FROM user_token_scopes
-       WHERE token_id = ? AND deleted_at IS NULL`,
-    [tokenId]
-  );
-  return rows.map(r => r.permission);
 }
 
 export interface WorkspaceMembership {
@@ -244,13 +229,8 @@ export async function requireAuthenticatedSession(
           // a member of) throws `ApiError(403)` instead of falling through.
           const requestedWorkspaceId = getRequestedWorkspaceId(req);
           const membership = await ensureWorkspaceUser(session.user.id, requestedWorkspaceId);
-          if (membership) {
-            setActiveWorkspaceContext(membership.workspace);
-            setActiveWorkspaceUser(membership.workspaceUserId);
-          } else {
-            setActiveWorkspaceContext(null);
-            setActiveWorkspaceUser(null);
-          }
+          setActiveWorkspaceContext(membership?.workspace ?? null);
+          setActiveWorkspaceUser(membership?.workspaceUserId ?? null);
           next();
           return;
         }
@@ -265,43 +245,25 @@ export async function requireAuthenticatedSession(
       //    reach `/api/onboarding`; workspace-scoped routes reject it via RBAC
       //    (a null actor has no roles) or their own explicit checks.
       const bearerToken = extractBearerToken(req);
-      if (bearerToken?.startsWith('out_')) {
+      if (bearerToken?.startsWith(USER_TOKEN_PREFIX)) {
         const verified = await verifyUserToken(authDomainDatabase(), bearerToken);
         if (!verified) {
           res.status(401).json({ error: 'Invalid or expired USER_TOKEN' });
           return;
         }
         setActiveProfileId(verified.profileId);
+        // `membership.workspace` is already backed by a live workspace row —
+        // `ensureWorkspaceUser` resolved it moments ago — so it is used directly.
         const membership = await ensureWorkspaceUser(
           verified.profileId,
           getRequestedWorkspaceId(req)
         );
-        const scopeGrants = await loadTokenScopeGrants(verified.id);
-        if (!membership) {
-          setActiveWorkspaceContext(null);
-          setActiveTokenAuth({
-            workspaceUserId: null,
-            tokenId: verified.id,
-            scopeGrants: scopeGrants.length > 0 ? scopeGrants : null
-          });
-          next();
-          return;
-        }
-        const workspace = await loadWorkspaceRow(membership.workspace.id);
-        if (!workspace) {
-          res.status(403).json({ error: 'No active workspace membership for USER_TOKEN' });
-          return;
-        }
-        setActiveWorkspaceContext({
-          id: workspace.id,
-          slug: workspace.slug,
-          name: workspace.name,
-          kind: workspace.kind
-        });
+        const scopeGrants = await listActiveTokenScopeGrants(authDomainDatabase(), verified.id);
+        setActiveWorkspaceContext(membership?.workspace ?? null);
         setActiveTokenAuth({
-          workspaceUserId: membership.workspaceUserId,
+          workspaceUserId: membership?.workspaceUserId ?? null,
           tokenId: verified.id,
-          scopeGrants: scopeGrants.length > 0 ? scopeGrants : null
+          scopeGrants
         });
         next();
         return;

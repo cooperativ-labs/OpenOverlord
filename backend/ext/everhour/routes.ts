@@ -1,5 +1,5 @@
-import { PERMISSIONS, type Permission } from '@overlord/auth';
-import { Router, type NextFunction, type Request, type Response } from 'express';
+import { type Permission, PERMISSIONS } from '@overlord/auth';
+import { type NextFunction, type Request, type Response, Router } from 'express';
 
 import {
   addMissionTime,

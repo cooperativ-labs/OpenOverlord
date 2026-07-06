@@ -8,12 +8,12 @@ import {
   finalizeExtEverhourMissionLinksSqlite,
   isExtEverhourPersistenceMigration
 } from './ext-everhour-migration-runtime.js';
+import { resolveGlobalDatabasePath } from './local-paths.js';
 import {
   knownMigrationVersions,
   pruneObsoleteMigrationLedgerSqlite,
   resolveAppliedMigrationSqlite
 } from './migration-ledger.js';
-import { resolveGlobalDatabasePath } from './local-paths.js';
 
 const MIGRATION_FILE_PATTERN = /^\d+_[a-z0-9_]+\.sql$/;
 

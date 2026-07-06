@@ -3,19 +3,20 @@ export type {
   AuthDatabaseConfig,
   AuthDomainDatabase,
   CreateAuthOptions,
-  CreateTokenParams,
-  PostgresQueryExecutor,
-  UserTokenMeta
+  PostgresQueryExecutor
 } from './auth/index.js';
 export {
+  authDatabaseFromAdapter,
   createAuth,
-  createUserToken,
+  DEFAULT_USER_TOKEN_TTL_DAYS,
+  generateUserTokenSecret,
   getActorForSession,
   getActorForToken,
-  listUserTokens,
+  hashUserTokenSecret,
+  listActiveTokenScopeGrants,
   resolveUserTokenProfileId,
-  resolveUserTokenWorkspaceId,
-  revokeUserToken,
+  USER_TOKEN_HASH_ALGORITHM,
+  USER_TOKEN_PREFIX,
   verifyUserToken
 } from './auth/index.js';
 export type {

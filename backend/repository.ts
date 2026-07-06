@@ -1,7 +1,16 @@
-import { type Permission, PERMISSIONS, scopeGrantsForPreset } from '@overlord/auth';
+import {
+  DEFAULT_USER_TOKEN_TTL_DAYS,
+  generateUserTokenSecret,
+  hashUserTokenSecret,
+  listActiveTokenScopeGrants,
+  type Permission,
+  PERMISSIONS,
+  scopeGrantsForPreset,
+  USER_TOKEN_HASH_ALGORITHM,
+  USER_TOKEN_PREFIX
+} from '@overlord/auth';
 import { generateDateFromSchedule, type ScheduleLike } from '@overlord/automations';
 import { bindBool, type DatabaseClient } from '@overlord/database';
-import { createHash, randomBytes } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -5506,19 +5515,9 @@ export async function updateProfile(body: UpdateProfileBody): Promise<ProfileDto
 // profile across workspaces; authorization is resolved from the active workspace
 // membership on each request. We store only a hash of the secret plus a
 // non-secret display prefix; the raw secret is returned exactly once at creation
-// and never persisted or shown again.
-
-/** Recognizable scheme for Overlord user tokens: `out_…`. */
-const USER_TOKEN_SCHEME = 'out';
-/** Algorithm recorded in `user_tokens.hash_algorithm` and used to hash secrets. */
-const USER_TOKEN_HASH_ALGORITHM = 'sha256';
-
-/**
- * Tokens default to a bounded lifetime so a leaked-but-forgotten credential stops
- * working on its own (security audit 2026-06-18). Callers can pass an explicit
- * expiry, or an explicit `null` to opt out and mint a non-expiring token.
- */
-const DEFAULT_TOKEN_TTL_DAYS = 90;
+// and never persisted or shown again. Secret format, hashing, and scope-grant
+// reads live in `@overlord/auth` (the Auth Layer owns token creation and hash
+// storage per CONTRACT.md); this module owns persistence and lifecycle state.
 
 const USER_TOKEN_COLUMNS =
   'id, label, token_prefix, status, expires_at, last_used_at, revoked_at, created_at';
@@ -5545,19 +5544,8 @@ interface OperatorIdentity {
   workspaceUserId: string;
 }
 
-/** Load the active scope grant patterns for a token (empty = full, no restriction). */
-async function loadTokenScopeGrants(db: DatabaseClient, tokenId: string): Promise<string[]> {
-  const rows = (await db.all(
-    `SELECT permission FROM user_token_scopes
-         WHERE token_id = ? AND deleted_at IS NULL
-         ORDER BY permission ASC`,
-    [tokenId]
-  )) as Array<{ permission: string }>;
-  return rows.map(r => r.permission);
-}
-
 async function toUserTokenDto(db: DatabaseClient, row: UserTokenRow): Promise<UserTokenDto> {
-  const scopeGrants = await loadTokenScopeGrants(db, row.id);
+  const scopeGrants = await listActiveTokenScopeGrants(db, row.id);
   return {
     id: row.id,
     label: row.label,
@@ -5588,18 +5576,6 @@ async function loadOperatorIdentity(db: DatabaseClient): Promise<OperatorIdentit
     throw new ApiError(409, 'No active workspace membership for the authenticated user');
   }
   return { userId: user.id, workspaceUserId: membership.id };
-}
-
-/**
- * Generate a high-entropy secret of the form `out_<prefix><secret>`. The
- * `out_<prefix>` portion is the non-secret lookup/display prefix; the full
- * string is the raw secret. Only the SHA-256 hash of the raw secret is stored.
- */
-function generateUserTokenSecret(): { secret: string; prefix: string; hash: string } {
-  const prefix = `${USER_TOKEN_SCHEME}_${randomBytes(4).toString('hex')}`;
-  const secret = `${prefix}${randomBytes(24).toString('hex')}`;
-  const hash = createHash(USER_TOKEN_HASH_ALGORITHM).update(secret).digest('hex');
-  return { secret, prefix, hash };
 }
 
 async function loadUserTokenForUpdate(
@@ -5646,7 +5622,9 @@ export async function createUserToken(
     // forgotten leaked token stops working on its own (security audit 2026-06-18).
     let expiresAt: string | null = null;
     if (body.expiresAt === undefined) {
-      expiresAt = new Date(Date.now() + DEFAULT_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      expiresAt = new Date(
+        Date.now() + DEFAULT_USER_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000
+      ).toISOString();
     } else if (body.expiresAt !== null && String(body.expiresAt).trim()) {
       const parsed = new Date(body.expiresAt);
       if (Number.isNaN(parsed.getTime())) throw new ApiError(400, 'Expiry must be a valid date');
@@ -5797,8 +5775,8 @@ export async function revokeUserToken(id: string): Promise<UserTokenDto> {
 }
 
 export async function revokeUserTokenSecret(rawToken: string): Promise<boolean> {
-  if (!rawToken.startsWith(`${USER_TOKEN_SCHEME}_`)) return false;
-  const tokenHash = createHash(USER_TOKEN_HASH_ALGORITHM).update(rawToken).digest('hex');
+  if (!rawToken.startsWith(USER_TOKEN_PREFIX)) return false;
+  const tokenHash = hashUserTokenSecret(rawToken);
 
   return requireDatabaseClient().transaction(async tx => {
     const existing = (await tx.get(

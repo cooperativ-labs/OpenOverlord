@@ -1,5 +1,3 @@
-import type { LocalTargetBridgeCall } from '../../../packages/core/service/local-target/desktop-bridge.ts';
-import type { CapabilityResult } from '../../../packages/core/service/local-target/types.ts';
 import type {
   CreateEverhourTimeBody,
   EverhourIntegrationDto,
@@ -8,6 +6,9 @@ import type {
   ProjectEverhourLinkDto,
   UpdateEverhourTimeBody
 } from '@overlord/contract/ext/everhour';
+
+import type { LocalTargetBridgeCall } from '../../../packages/core/service/local-target/desktop-bridge.ts';
+import type { CapabilityResult } from '../../../packages/core/service/local-target/types.ts';
 import type {
   AcceptWorkspaceInvitationBody,
   AddOrganizationAdminBody,
@@ -501,12 +502,10 @@ export const api = {
     request<ProjectExecutionTargetDto>('PUT', `/api/projects/${projectId}/execution-target`, body),
 
   // ---- Everhour integration ----------------------------------------------
-  getEverhourIntegration: () =>
-    request<EverhourIntegrationDto>('GET', '/ext/everhour/integration'),
+  getEverhourIntegration: () => request<EverhourIntegrationDto>('GET', '/ext/everhour/integration'),
   setEverhourApiKey: (apiKey: string) =>
     request<EverhourIntegrationDto>('PUT', '/ext/everhour/integration', { apiKey }),
-  clearEverhourApiKey: () =>
-    request<EverhourIntegrationDto>('DELETE', '/ext/everhour/integration'),
+  clearEverhourApiKey: () => request<EverhourIntegrationDto>('DELETE', '/ext/everhour/integration'),
   getProjectEverhourLink: (projectId: string) =>
     request<ProjectEverhourLinkDto>('GET', `/ext/everhour/projects/${projectId}/link`),
   linkProjectEverhour: (projectId: string, body: LinkProjectEverhourBody) =>

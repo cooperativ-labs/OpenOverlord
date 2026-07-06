@@ -13,6 +13,7 @@ import { ServiceError } from '../packages/core/service/errors.ts';
 import type { LocalTargetBridgeCall } from '../packages/core/service/local-target/desktop-bridge.ts';
 import type { StoredImageDto } from '../webapp/shared/contract.ts';
 
+import { createEverhourExtensionRouter } from './ext/everhour/routes.ts';
 import {
   ACTIVE_WORKSPACE_COOKIE,
   authNodeHandler,
@@ -31,7 +32,6 @@ import {
 } from './db.ts';
 import { ENV_PROFILE, REPO_ROOT } from './env-profile.ts';
 import { apiErrorFromDatabaseError } from './errors.ts';
-import { createEverhourExtensionRouter } from './ext/everhour/routes.ts';
 import { getExecutionTargetMigrationDiagnostics } from './execution-target-migration.ts';
 import {
   getAgentCatalog,
@@ -52,13 +52,6 @@ import { invokeLocalTargetOnServer } from './local-target-invoke.ts';
 import { buildMeta } from './meta.ts';
 import { postMissionBranchObservations } from './mission-branch-observations.ts';
 import {
-  addOrganizationAdmin,
-  listOrganizationAdmins,
-  listOrganizationsForUser,
-  removeOrganizationAdmin,
-  updateOrganization
-} from './organizations.ts';
-import {
   handleOAuthApprove,
   handleOAuthRegister,
   handleOAuthRequestInfo,
@@ -68,6 +61,13 @@ import {
   oauthProtectedResourceMetadata,
   redirectToOAuthApproval
 } from './oauth.ts';
+import {
+  addOrganizationAdmin,
+  listOrganizationAdmins,
+  listOrganizationsForUser,
+  removeOrganizationAdmin,
+  updateOrganization
+} from './organizations.ts';
 import {
   getProjectExecutionTarget,
   updateProjectExecutionTarget
@@ -362,7 +362,9 @@ app.get('/.well-known/oauth-authorization-server', (req, res) => {
 });
 app.get('/oauth/authorize', redirectToOAuthApproval);
 app.post('/oauth/register', urlEncodedBody, handleOAuthRegister);
-app.post('/oauth/token', urlEncodedBody, handleOAuthToken);
+app.post('/oauth/token', urlEncodedBody, (req, res, next) => {
+  void handleOAuthToken(req, res).catch(next);
+});
 app.post('/oauth/revoke', urlEncodedBody, (req, res, next) => {
   void handleOAuthRevoke(req, res).catch(next);
 });

@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import {
   Bot,
   Cable,
@@ -10,11 +9,12 @@ import {
   KeyRound,
   Sparkles
 } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useCopyToClipboard } from '@/lib/hooks/use-copy-to-clipboard';
 import { getApiBaseUrl, getAuthBaseUrl, isRemoteBackend } from '@/lib/api-base.ts';
+import { useCopyToClipboard } from '@/lib/hooks/use-copy-to-clipboard';
 import { useMeta } from '@/lib/queries';
 
 function isHostedMcpBackend({

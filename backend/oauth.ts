@@ -1,6 +1,6 @@
 import { PERMISSIONS } from '@overlord/auth';
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Request, Response } from 'express';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 import { ApiError } from './errors.ts';
 import { requirePermission } from './rbac.ts';
@@ -36,6 +36,33 @@ type AuthorizationCode = {
 };
 
 const authorizationCodes = new Map<string, AuthorizationCode>();
+
+/**
+ * Drop expired pending codes and revoke the USER_TOKEN each would have
+ * delivered. Approval mints the token before the exchange, so a code that is
+ * never (successfully) exchanged would otherwise leave an active 90-day token
+ * that no client holds — and the map entry would sit in memory forever. Runs
+ * opportunistically on every approve/exchange, keeping the map bounded by the
+ * number of approvals in the last five minutes.
+ */
+async function sweepExpiredAuthorizationCodes(): Promise<void> {
+  const now = Date.now();
+  for (const [code, entry] of authorizationCodes) {
+    if (entry.expiresAt > now) continue;
+    authorizationCodes.delete(code);
+    await revokeOrphanedAccessToken(entry.accessToken);
+  }
+}
+
+/** Best-effort revocation of a minted-but-undelivered OAuth access token. */
+async function revokeOrphanedAccessToken(accessToken: string): Promise<void> {
+  try {
+    await revokeUserTokenSecret(accessToken);
+  } catch {
+    // Sweeping must never fail the request that triggered it; an unrevoked
+    // orphan still expires on its own TTL.
+  }
+}
 
 function base64Url(input: Buffer | string): string {
   return Buffer.from(input).toString('base64url');
@@ -193,10 +220,14 @@ function appendParams(url: string, params: Record<string, string>): string {
   return parsed.toString();
 }
 
-function consumeAuthorizationCode(code: string): AuthorizationCode | null {
+async function consumeAuthorizationCode(code: string): Promise<AuthorizationCode | null> {
   const entry = authorizationCodes.get(code);
   authorizationCodes.delete(code);
-  if (!entry || entry.expiresAt <= Date.now()) return null;
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    await revokeOrphanedAccessToken(entry.accessToken);
+    return null;
+  }
   return entry;
 }
 
@@ -296,6 +327,7 @@ export function handleOAuthRequestInfo(req: Request, res: Response): void {
 
 export async function handleOAuthApprove(req: Request, res: Response): Promise<void> {
   await requirePermission(PERMISSIONS.USER_TOKEN_SELF_CREATE);
+  await sweepExpiredAuthorizationCodes();
   const parsed = validateAuthorizationRequest(req);
   const decision = bodyString(req, 'decision');
 
@@ -337,7 +369,8 @@ export async function handleOAuthApprove(req: Request, res: Response): Promise<v
   });
 }
 
-export function handleOAuthToken(req: Request, res: Response): void {
+export async function handleOAuthToken(req: Request, res: Response): Promise<void> {
+  await sweepExpiredAuthorizationCodes();
   const grantType = bodyString(req, 'grant_type');
   if (grantType !== 'authorization_code') {
     jsonError(res, 400, 'unsupported_grant_type', 'Only authorization_code is supported.');
@@ -348,18 +381,22 @@ export function handleOAuthToken(req: Request, res: Response): void {
   const clientId = bodyString(req, 'client_id');
   const redirectUri = bodyString(req, 'redirect_uri');
   const codeVerifier = bodyString(req, 'code_verifier');
-  const entry = consumeAuthorizationCode(code);
+  const entry = await consumeAuthorizationCode(code);
   if (!entry) {
     jsonError(res, 400, 'invalid_grant', 'Authorization code is invalid or expired.');
     return;
   }
+  // Codes are single-use: a failed exchange consumes the code, so the token it
+  // would have delivered can never be handed out — revoke it immediately.
   if (entry.clientId !== clientId || entry.redirectUri !== redirectUri) {
+    await revokeOrphanedAccessToken(entry.accessToken);
     jsonError(res, 400, 'invalid_grant', 'Authorization code request does not match.');
     return;
   }
 
   const challenge = createHash('sha256').update(codeVerifier).digest('base64url');
   if (!codeVerifier || challenge !== entry.codeChallenge) {
+    await revokeOrphanedAccessToken(entry.accessToken);
     jsonError(res, 400, 'invalid_grant', 'PKCE verification failed.');
     return;
   }

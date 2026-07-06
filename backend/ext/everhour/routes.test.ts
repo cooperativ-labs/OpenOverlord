@@ -1,10 +1,10 @@
-import { PERMISSIONS, type Permission } from '@overlord/auth';
+import { type Permission, PERMISSIONS } from '@overlord/auth';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import express, { type NextFunction, type Request, type Response } from 'express';
 
 const tempDir = mkdtempSync(path.join(tmpdir(), 'overlord-everhour-routes-'));
 const { bootstrapIntegrationTestDb } = await import('../../test-helpers.ts');
@@ -16,9 +16,7 @@ const { requirePermission } = await import('../../rbac.ts');
 const { createMission, createProject } = await import('../../repository.ts');
 const { createEverhourExtensionRouter } = await import('./routes.ts');
 
-const operatorWorkspaceUserId = (
-  await import('../../db.ts')
-).getActorWorkspaceUserId();
+const operatorWorkspaceUserId = (await import('../../db.ts')).getActorWorkspaceUserId();
 
 function makeHandle() {
   return (
@@ -39,9 +37,7 @@ function makeHandle() {
   };
 }
 
-async function withEverhourServer(
-  run: (baseUrl: string) => Promise<void>
-): Promise<void> {
+async function withEverhourServer(run: (baseUrl: string) => Promise<void>): Promise<void> {
   const app = express();
   app.use(express.json());
   app.use('/ext/everhour', createEverhourExtensionRouter(makeHandle()));

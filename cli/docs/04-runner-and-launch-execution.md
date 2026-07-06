@@ -129,7 +129,10 @@ from the `missions.active_branch` column (surfaced on the mission detail DTO's
 `branch` field). If that branch has been merged or deleted after merge, the next
 launch starts a new cycle with a numeric suffix (`-2`, `-3`, ...). Preparation is
 never destructive: the main checkout is not stashed, reset, or force-checked out;
-dirty target worktrees fail the launch with an actionable error.
+an existing worktree at the planned path is reused only when it is a git worktree
+checked out on the expected mission branch. A dirty reused worktree is allowed so
+later objectives in the same mission can continue uncommitted work on the same
+branch.
 
 After preparation, the runner records `POST /api/missions/:id/branch-prepared`,
 which writes the resolved branch to the `missions.active_branch` column (the

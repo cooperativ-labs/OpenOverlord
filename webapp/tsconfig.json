@@ -18,5 +18,5 @@
       "@/*": ["./web/*"]
     }
   },
-  "include": ["web", "shared", "vite.config.ts", "../packages/core/repository"]
+  "include": ["web", "shared", "vite.config.ts", "vercel.ts", "../packages/core/repository"]
 }

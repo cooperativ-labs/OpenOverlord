@@ -8,8 +8,7 @@ export function isExtEverhourPersistenceMigration(migration: {
   component: string;
 }): boolean {
   return (
-    migration.version === EXT_EVERHOUR_MIGRATION_VERSION &&
-    migration.component === 'ext:everhour'
+    migration.version === EXT_EVERHOUR_MIGRATION_VERSION && migration.component === 'ext:everhour'
   );
 }
 
@@ -18,9 +17,7 @@ function missionsHasEverhourTaskIdColumnSqlite(db: BetterSqlite3Database): boole
   return columns.some(column => column.name === 'everhour_task_id');
 }
 
-async function missionsHasEverhourTaskIdColumnPostgres(
-  client: DatabaseClient
-): Promise<boolean> {
+async function missionsHasEverhourTaskIdColumnPostgres(client: DatabaseClient): Promise<boolean> {
   const row = await client.get<{ present: number }>(
     `SELECT 1 AS present
        FROM information_schema.columns

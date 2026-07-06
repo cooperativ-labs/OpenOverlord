@@ -92,6 +92,7 @@ components:
       - 'execution_requests queue claiming and launch'
       - 'working directory resolution'
       - 'per-mission branch/worktree preparation before local agent spawn when enabled'
+      - 'same-mission branch/worktree reuse: an existing planned worktree on the expected mission branch may be reused even when dirty so sequential objectives can continue uncommitted work'
       - 'mission branch base resolution for runner preparation: project-configured base first, then the repository main worktree checkout, then the repo default'
       - 'deterministic branch/worktree planning algorithm (cli/src/branch-planning.ts), co-owned with the service layer and pinned to contract/branch-planning-vectors.json'
       - 'ovld runner commands'

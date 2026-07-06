@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Cable, Check, ExternalLink, Loader2, ShieldCheck, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

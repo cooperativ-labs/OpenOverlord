@@ -184,11 +184,6 @@ export async function initApiConfig(): Promise<void> {
   await loadStoredTokensForActiveBackend();
 }
 
-/** @deprecated Use initApiConfig */
-export async function initDesktopApiConfig(): Promise<void> {
-  return initApiConfig();
-}
-
 function resolveAuthorizationToken(): string | null {
   return userToken ?? sessionToken;
 }
@@ -197,11 +192,6 @@ export function getAuthorizationHeader(): Record<string, string> | undefined {
   const token = resolveAuthorizationToken();
   if (!token) return undefined;
   return { Authorization: `Bearer ${token}` };
-}
-
-/** @deprecated Use getAuthorizationHeader */
-export function getBearerAuthorizationHeader(): Record<string, string> | undefined {
-  return getAuthorizationHeader();
 }
 
 export function getDesktopSessionToken(): string {
@@ -224,11 +214,6 @@ export async function persistAuthSessionToken(token: string): Promise<void> {
     return;
   }
   await bridge.setSessionToken({ profileId: activeBackend.id, token: sessionToken });
-}
-
-/** @deprecated Use persistAuthSessionToken. */
-export async function persistDesktopSessionToken(token: string): Promise<void> {
-  await persistAuthSessionToken(token);
 }
 
 export async function persistDesktopBearerToken(token: string): Promise<void> {
@@ -261,11 +246,6 @@ export async function clearAuthTokens(): Promise<void> {
   if (!activeBackend) return;
   if (bridge?.clearBearerToken) await bridge.clearBearerToken(activeBackend.id);
   if (bridge?.clearSessionToken) await bridge.clearSessionToken(activeBackend.id);
-}
-
-/** @deprecated Use clearAuthTokens. */
-export async function clearDesktopAuthTokens(): Promise<void> {
-  await clearAuthTokens();
 }
 
 export function apiFetchCredentials(): RequestCredentials {

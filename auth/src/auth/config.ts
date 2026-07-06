@@ -110,8 +110,13 @@ function createBetterAuthDatabase(config: AuthDatabaseConfig) {
   };
 }
 
-/** Map the repo-wide `resolveAdapter()` result onto Better Auth's database config. */
-function authDatabaseFromAdapter(adapter: AdapterConfig): AuthDatabaseConfig {
+/**
+ * Map the repo-wide `resolveAdapter()` result onto Better Auth's database
+ * config. Exported so callers that resolve the adapter themselves (e.g. the
+ * backend, which passes an explicit database path) reuse the same mapping
+ * instead of re-deriving it.
+ */
+export function authDatabaseFromAdapter(adapter: AdapterConfig): AuthDatabaseConfig {
   if (adapter.type === 'sqlite') {
     return { type: 'sqlite', path: adapter.path };
   }

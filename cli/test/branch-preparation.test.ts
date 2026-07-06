@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, realpathSync } from 'node:fs';
+import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -130,6 +130,57 @@ test('prepareMissionBranch creates a worktree when the mission resolves to workt
     // The branch is checked out in a *separate* worktree, not the primary repo.
     const list = git(repo, ['worktree', 'list', '--porcelain']);
     assert.ok(list.includes(result.workingDirectory), 'a dedicated worktree was registered');
+  } finally {
+    delete process.env.OVERLORD_WORKTREE_ROOT;
+  }
+});
+
+test('prepareMissionBranch reuses a dirty same-mission worktree', async () => {
+  const repo = initRepo('ovld-prep-dirty-reuse-');
+  const worktreeRoot = mkdtempSync(path.join(os.tmpdir(), 'ovld-prep-dirty-reuse-wt-'));
+  process.env.OVERLORD_WORKTREE_ROOT = worktreeRoot;
+  try {
+    const mission = {
+      title: 'Continue dirty work',
+      sequence: 15,
+      projectId: 'p1',
+      project: { slug: 'demo' },
+      branch: { baseBranch: 'main', willPrepareBranch: true, willUseWorktree: true }
+    };
+    const first = await prepareMissionBranch({
+      runtime: runtimeForMission(mission),
+      options: {
+        missionId: 'coo:15',
+        workingDirectory: repo,
+        workspaceAutomationEnabled: false
+      }
+    });
+    assert.ok(first.branchAutomation, 'expected initial branch automation payload');
+    writeFileSync(path.join(first.workingDirectory, 'dirty.txt'), 'uncommitted work\n');
+    assert.ok(git(first.workingDirectory, ['status', '--porcelain']).includes('dirty.txt'));
+
+    const second = await prepareMissionBranch({
+      runtime: runtimeForMission({
+        ...mission,
+        branch: {
+          ...mission.branch,
+          name: first.branchAutomation.branchName,
+          status: 'created'
+        }
+      }),
+      options: {
+        missionId: 'coo:15',
+        workingDirectory: repo,
+        workspaceAutomationEnabled: false
+      }
+    });
+
+    assert.equal(second.workingDirectory, first.workingDirectory);
+    assert.equal(second.branchAutomation?.branchName, first.branchAutomation.branchName);
+    assert.ok(
+      git(second.workingDirectory, ['status', '--porcelain']).includes('dirty.txt'),
+      'dirty work is preserved for the next objective'
+    );
   } finally {
     delete process.env.OVERLORD_WORKTREE_ROOT;
   }

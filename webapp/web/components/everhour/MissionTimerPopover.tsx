@@ -1,3 +1,4 @@
+import type { EverhourTimeRecordDto } from '@overlord/contract/ext/everhour';
 import { Check, Clock, Pencil, Play, Plus, Square, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 
@@ -13,7 +14,6 @@ import {
 } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
-import type { EverhourTimeRecordDto } from '@overlord/contract/ext/everhour';
 import {
   formatClock,
   formatHoursMinutes,

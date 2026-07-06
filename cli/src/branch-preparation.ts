@@ -203,12 +203,6 @@ function repoRefs(gitRoot: string, base: string) {
   };
 }
 
-function isDirtyWorktree(worktreePath: string): boolean {
-  if (!existsSync(worktreePath)) return false;
-  const status = runGit(worktreePath, ['status', '--porcelain'], { optional: true });
-  return status.trim().length > 0;
-}
-
 function worktreeBranch(worktreePath: string): string | null {
   const inside = runGit(worktreePath, ['rev-parse', '--is-inside-work-tree'], { optional: true });
   if (inside !== 'true') return null;
@@ -306,9 +300,6 @@ function ensureWorktree(gitRoot: string, decision: BranchDecision): void {
       throw new Error(
         `Worktree path is checked out on ${existingBranch}, expected ${decision.branch}: ${decision.worktreePath}`
       );
-    }
-    if (isDirtyWorktree(decision.worktreePath)) {
-      throw new Error(`Worktree has uncommitted changes: ${decision.worktreePath}`);
     }
     return;
   }
