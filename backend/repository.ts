@@ -1125,7 +1125,7 @@ async function recordBranchActionActivity(
           missionId: ctx.missionId,
           workspaceId: ctx.workspaceId,
           actorWorkspaceUserId,
-          changedFields: ['active_branch']
+          changedFields: ['updated_at']
         },
         tx
       );

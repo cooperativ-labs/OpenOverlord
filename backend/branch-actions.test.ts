@@ -9,13 +9,14 @@ describe('branch actions', () => {
   async function setup(): Promise<{
     api: typeof import('./repository.ts');
     runner: typeof import('./runner.ts');
+    db: import('better-sqlite3').Database;
   }> {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-ba-db-'));
     const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
-    await bootstrapIntegrationTestDb({ sqlitePath: path.join(dir, 'Overlord.sqlite') });
+    const { db } = await bootstrapIntegrationTestDb({ sqlitePath: path.join(dir, 'Overlord.sqlite') });
     const api = await import('./repository.ts');
     const runner = await import('./runner.ts');
-    return { api, runner };
+    return { api, runner, db };
   }
 
   it('rejects server-side git mutations without clientExecuted', async () => {
@@ -45,7 +46,7 @@ describe('branch actions', () => {
   });
 
   it('records activity when the client reports a successful branch action', async () => {
-    const { api, runner } = await setup();
+    const { api, runner, db } = await setup();
     const project = await api.createProject({ name: 'Client Branch Action Test' });
     await api.createProjectResource(project.id, {
       directoryPath: '/tmp/primary-repo',
@@ -70,5 +71,16 @@ describe('branch actions', () => {
       summary: 'Merged main into feat-1'
     });
     assert.equal(detail.branch?.name, 'feat-1');
+
+    const change = db
+      .prepare(
+        `SELECT changed_fields_json
+           FROM entity_changes
+          WHERE entity_type = 'mission' AND entity_id = ?
+          ORDER BY seq DESC
+          LIMIT 1`
+      )
+      .get(mission.id) as { changed_fields_json: string } | undefined;
+    assert.deepEqual(JSON.parse(change?.changed_fields_json ?? '[]'), ['updated_at']);
   });
 });
