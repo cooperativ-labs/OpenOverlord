@@ -70,11 +70,4 @@ CREATE TABLE "verification" (
 
 CREATE INDEX "idx_verification_identifier" ON "verification" ("identifier");
 
-INSERT INTO "user" (
-  "id", "name", "email", "emailVerified", "image", "createdAt", "updatedAt"
-) VALUES (
-  'local-user', 'Local User', 'local@overlord.local', 1, NULL,
-  '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
-);
-
 COMMIT;

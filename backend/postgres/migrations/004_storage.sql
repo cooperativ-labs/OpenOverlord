@@ -3,9 +3,13 @@
 
 BEGIN;
 
+-- A bucket belongs to exactly one of a workspace or an organization
+-- (organization buckets were added in coo:135). The named cross-column CHECK
+-- enforces that exactly one owner is set.
 CREATE TABLE storage_buckets (
   id text PRIMARY KEY,
-  workspace_id text NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
+  workspace_id text REFERENCES workspaces (id) ON DELETE RESTRICT,
+  organization_id text REFERENCES organizations (id) ON DELETE RESTRICT,
   bucket_key text NOT NULL CHECK (char_length(btrim(bucket_key)) > 0),
   storage_backend text NOT NULL CHECK (char_length(btrim(storage_backend)) > 0),
   base_url text,
@@ -15,12 +19,17 @@ CREATE TABLE storage_buckets (
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
   deleted_at timestamptz,
-  revision integer NOT NULL DEFAULT 1 CHECK (revision >= 1)
+  revision integer NOT NULL DEFAULT 1 CHECK (revision >= 1),
+  CONSTRAINT storage_buckets_workspace_xor_organization
+    CHECK ((workspace_id IS NOT NULL) <> (organization_id IS NOT NULL))
 );
 
 CREATE UNIQUE INDEX idx_storage_buckets_active_workspace_key ON storage_buckets
   (workspace_id, bucket_key)
   WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_storage_buckets_active_organization_key ON storage_buckets
+  (organization_id, bucket_key)
+  WHERE organization_id IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX idx_storage_buckets_workspace_backend ON storage_buckets (workspace_id, storage_backend);
 
 CREATE TABLE workspace_images (
@@ -107,25 +116,5 @@ CREATE INDEX idx_attachments_mission_created ON attachments (mission_id, created
   WHERE mission_id IS NOT NULL;
 CREATE INDEX idx_attachments_objective_created ON attachments (objective_id, created_at)
   WHERE objective_id IS NOT NULL;
-
-INSERT INTO storage_buckets (
-  id, workspace_id, bucket_key, storage_backend, base_url, local_path, settings_json,
-  created_by_workspace_user_id, created_at, updated_at, revision
-) VALUES
-  (
-    'local-storage-workspace-images', 'local-workspace', 'workspace-images', 'local_fs',
-    NULL, 'database/.local/storage/workspace-images', '{}'::jsonb, 'local-workspace-user',
-    '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1
-  ),
-  (
-    'local-storage-user-images', 'local-workspace', 'user-images', 'local_fs',
-    NULL, 'database/.local/storage/user-images', '{}'::jsonb, 'local-workspace-user',
-    '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1
-  ),
-  (
-    'local-storage-attachments', 'local-workspace', 'attachments', 'local_fs',
-    NULL, 'database/.local/storage/attachments', '{}'::jsonb, 'local-workspace-user',
-    '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1
-  );
 
 COMMIT;

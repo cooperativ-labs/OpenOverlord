@@ -33,11 +33,14 @@ CREATE INDEX idx_role_assignments_workspace_role ON role_assignments (workspace_
 CREATE INDEX idx_role_assignments_workspace_user ON role_assignments (workspace_id, workspace_user_id);
 
 -- user_tokens stores USER_TOKEN metadata and hashes only. Raw secrets must never be persisted.
+-- workspace_id and workspace_user_id are nullable audit-only metadata: a
+-- zero-membership user has no workspace_users row in any workspace yet must be
+-- able to mint a token and run `ovld org-setup` headless (coo:135).
 CREATE TABLE user_tokens (
   id TEXT PRIMARY KEY,
-  workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
+  workspace_id TEXT REFERENCES workspaces (id) ON DELETE RESTRICT,
   profile_id TEXT NOT NULL REFERENCES profiles (id) ON DELETE RESTRICT,
-  workspace_user_id TEXT NOT NULL REFERENCES workspace_users (id) ON DELETE RESTRICT,
+  workspace_user_id TEXT REFERENCES workspace_users (id) ON DELETE RESTRICT,
   label TEXT NOT NULL CHECK (length(trim(label)) > 0),
   token_prefix TEXT NOT NULL CHECK (length(trim(token_prefix)) > 0),
   token_hash TEXT NOT NULL CHECK (length(trim(token_hash)) > 0),
@@ -61,6 +64,11 @@ CREATE INDEX idx_user_tokens_workspace_user_status ON user_tokens (workspace_id,
 CREATE INDEX idx_user_tokens_profile_status ON user_tokens (profile_id, status);
 CREATE INDEX idx_user_tokens_workspace_expires ON user_tokens (workspace_id, expires_at)
   WHERE expires_at IS NOT NULL;
+-- Profile-owned token lookup: authentication resolves by hash first, then
+-- authorization resolves the active workspace membership separately (coo:135).
+CREATE INDEX idx_user_tokens_profile_prefix ON user_tokens (profile_id, token_prefix);
+CREATE INDEX idx_user_tokens_hash_active ON user_tokens (token_hash)
+  WHERE deleted_at IS NULL;
 
 -- user_token_scopes reserves future token-level permission restrictions.
 -- Absence of rows for a token means the token inherits the full permissions of the creating user.
@@ -79,15 +87,7 @@ CREATE TABLE user_token_scopes (
 
 CREATE INDEX idx_user_token_scopes_token ON user_token_scopes (token_id);
 CREATE INDEX idx_user_token_scopes_workspace_token ON user_token_scopes (workspace_id, token_id);
-
--- Seed: grant ADMIN to the implicit local workspace user.
--- Empty string sentinels for resource_type and resource_id represent workspace-level scope.
-INSERT INTO role_assignments (
-  id, workspace_id, workspace_user_id, role_key, resource_type, resource_id,
-  assigned_by_workspace_user_id, created_at, updated_at, revision
-) VALUES (
-  'local-admin-role', 'local-workspace', 'local-workspace-user', 'ADMIN', '', '',
-  NULL, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1
-);
+CREATE INDEX idx_user_token_scopes_token_active ON user_token_scopes (token_id)
+  WHERE deleted_at IS NULL;
 
 COMMIT;
