@@ -31,18 +31,7 @@ import {
 } from './db.ts';
 import { ENV_PROFILE, REPO_ROOT } from './env-profile.ts';
 import { apiErrorFromDatabaseError } from './errors.ts';
-import {
-  addMissionTime,
-  clearEverhourApiKey,
-  deleteMissionTime,
-  getEverhourIntegration,
-  getMissionEverhourState,
-  linkProjectEverhour,
-  setEverhourApiKey,
-  startMissionTimer,
-  stopMissionTimer,
-  updateMissionTime
-} from './everhour.ts';
+import { createEverhourExtensionRouter } from './ext/everhour/routes.ts';
 import { getExecutionTargetMigrationDiagnostics } from './execution-target-migration.ts';
 import {
   getAgentCatalog,
@@ -1142,76 +1131,7 @@ app.get(
   handle(req => listMissions(req.params.id))
 );
 
-// ---- Everhour integration ------------------------------------------------
-//
-// Time tracking via Everhour. The workspace API key is stored server-side and
-// every Everhour call is proxied here so it never reaches the browser. The
-// presence flag gates all Everhour UI; durations are seconds, dates YYYY-MM-DD.
-
-app.get(
-  '/api/integrations/everhour',
-  handle(() => getEverhourIntegration(), { requires: PERMISSIONS.WORKSPACE_READ })
-);
-app.put(
-  '/api/integrations/everhour',
-  handle(req => setEverhourApiKey(String(req.body?.apiKey ?? '')), {
-    mutates: true,
-    requires: PERMISSIONS.WORKSPACE_UPDATE
-  })
-);
-app.delete(
-  '/api/integrations/everhour',
-  handle(() => clearEverhourApiKey(), {
-    mutates: true,
-    requires: PERMISSIONS.WORKSPACE_UPDATE
-  })
-);
-app.put(
-  '/api/projects/:id/everhour-link',
-  handle(req => linkProjectEverhour(req.params.id, req.body?.everhourProjectName ?? null), {
-    mutates: true,
-    requires: PERMISSIONS.PROJECT_UPDATE
-  })
-);
-app.get(
-  '/api/missions/:id/everhour',
-  handle(req => getMissionEverhourState(req.params.id), { requires: PERMISSIONS.MISSION_READ })
-);
-app.post(
-  '/api/missions/:id/everhour/timer/start',
-  handle(req => startMissionTimer(req.params.id), {
-    mutates: true,
-    requires: PERMISSIONS.MISSION_UPDATE
-  })
-);
-app.post(
-  '/api/missions/:id/everhour/timer/stop',
-  handle(req => stopMissionTimer(req.params.id), {
-    mutates: true,
-    requires: PERMISSIONS.MISSION_UPDATE
-  })
-);
-app.post(
-  '/api/missions/:id/everhour/time',
-  handle(req => addMissionTime(req.params.id, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.MISSION_UPDATE
-  })
-);
-app.patch(
-  '/api/missions/:id/everhour/time/:recordId',
-  handle(req => updateMissionTime(req.params.id, req.params.recordId, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.MISSION_UPDATE
-  })
-);
-app.delete(
-  '/api/missions/:id/everhour/time/:recordId',
-  handle(req => deleteMissionTime(req.params.id, req.params.recordId), {
-    mutates: true,
-    requires: PERMISSIONS.MISSION_UPDATE
-  })
-);
+app.use('/ext/everhour', createEverhourExtensionRouter(handle));
 app.patch(
   '/api/projects/:id/board/reorder',
   handle(req => reorderBoardColumn(req.params.id, req.body), {

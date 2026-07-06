@@ -9,9 +9,9 @@ import type {
 } from '@overlord/contract';
 import type { DatabaseClient } from '@overlord/database';
 
-import { newId, nowIso, recordChange, requireDatabaseClient, WORKSPACE } from './db.ts';
-import { ApiError } from './errors.ts';
-import { getProject } from './repository.ts';
+import { newId, nowIso, recordChange, requireDatabaseClient, WORKSPACE } from '../../db.ts';
+import { ApiError } from '../../errors.ts';
+import { getProject } from '../../repository.ts';
 
 const EVERHOUR_BASE_URL = 'https://api.everhour.com';
 
