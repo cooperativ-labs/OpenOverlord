@@ -37,9 +37,9 @@ Current version: `0`
 
 The contract version is incremented when any stable interface changes. All conformance manifests must declare the contract version they were validated against.
 
-| Version | Changes |
-| ------- | ------- |
-| `0` | Initial public release baseline (coo:144). Describes the full component registry (including the MCP Server), interaction surfaces, stable interfaces (`attach-response-v3`, webhook delivery, organization → workspace → project hierarchy, multi-target `.overlord/project.json` linking, target-workspace project APIs, deliver `observedDirtyPaths` reconciliation, and `ovld protocol changes` preflight), extension points, and controlled vocabularies as shipped in Open Overlord v0. Pre-release contract versions 1–8 were consolidated into this baseline at public release. |
+| Version | Changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`     | Initial public release baseline (coo:144). Describes the full component registry (including the MCP Server), interaction surfaces, stable interfaces (`attach-response-v3`, webhook delivery, organization → workspace → project hierarchy, multi-target `.overlord/project.json` linking, target-workspace project APIs, deliver `observedDirtyPaths` reconciliation, and `ovld protocol changes` preflight), extension points, and controlled vocabularies as shipped in Open Overlord v0. Pre-release contract versions 1–8 were consolidated into this baseline at public release. |
 
 ---
 
@@ -160,15 +160,16 @@ Owns:
 - Request/response DTO shapes (derived from the logical schema's camelCase field names)
 - Realtime `EntityChangeDto` projections from `entity_changes`, including `changedFields` parsed from `changed_fields_json`
 - Read-only derived mission branch metadata (`MissionBranchDto`) from `missions.active_branch`, predicted via the service layer's copy of the shared branch/worktree planning algorithm (`backend/branch-planning.ts`) — co-owned with the Runner Layer and pinned to `contract/branch-planning-vectors.json` (see "Shared Deterministic Algorithms")
-- On-demand branch-action git mutations (`POST /api/missions/:id/branch/action`: commit / merge-with-parent / push-parent / publish) run host-side against the project's worktrees under `~/.ovld/worktrees` and primary repo (`backend/repository.ts`). The Runner Layer owns launching the *agent* into a worktree, not these on-demand mutations.
+- On-demand branch-action git mutations (`POST /api/missions/:id/branch/action`: commit / merge-with-parent / push-parent / publish) run host-side against the project's worktrees under `~/.ovld/worktrees` and primary repo (`backend/repository.ts`). The Runner Layer owns launching the _agent_ into a worktree, not these on-demand mutations.
 - REST auth integration points
 - SSE/WebSocket realtime endpoint
 - SQL Studio launch metadata in `/api/meta` when the optional external SQL Studio process is enabled
 - Webhook subscription management (`/api/webhooks*`: list/create, update/delete, rotate-secret, test, deliveries, redeliver) and the in-process webhook dispatcher (`backend/webhook-dispatcher.ts`, a `RealtimeHub`-style singleton polling loop that claims `outbox_messages` rows and delivers HMAC-signed HTTP POSTs). SSRF guards (HTTPS-only, private-network block) apply to external endpoints; hosts matching the `OVERLORD_WEBHOOK_INTERNAL_HOSTS` env allowlist (plus implicit `localhost` in Local edition) are treated as internal — exempt from the SSRF block and the HTTPS requirement, and default to the `full` payload mode
-- Organization management endpoints: list organizations for the caller, update an organization (name/logo; org-admin gated), and list/add/remove organization admins (transactional invariant: an org admin is `ADMIN` of *every* constituent workspace)
+- Organization management endpoints: list organizations for the caller, update an organization (name/logo; org-admin gated), and list/add/remove organization admins (transactional invariant: an org admin is `ADMIN` of _every_ constituent workspace)
 - The shared onboarding endpoint (`POST /api/onboarding`, zero-membership users only): creates an organization, a workspace (default `general`), the caller's membership, and the `ADMIN` role in one transaction, then returns `/api/meta` — used verbatim by both the web onboarding screen and the `ovld org-setup` CLI command so the two clients cannot drift
 - Storage routes for the `organization-images` bucket key (`/api/storage/organization-images/…`) with a `PUBLIC organization_image:read` grant, mirroring `workspace_image:read`
 - Workspace agent catalog management (`GET /api/agent-catalog`, `PUT /api/agent-catalog`, `POST /api/agent-catalog/refresh`) for `workspaces.settings_json.agentCatalog`
+- Hosted MCP OAuth endpoints: dynamic client registration (`POST /oauth/register`), authorization-code + PKCE token exchange (`POST /oauth/token`), revocation (`POST /oauth/revoke`), browser authorization redirect (`GET /oauth/authorize` → web approval UI), and authenticated approval helpers (`POST /oauth/authorize/request`, `POST /oauth/authorize/approve`)
 
 Does NOT own:
 
@@ -190,6 +191,7 @@ Owns:
 - Self-service account deletion trigger (`user.deleteUser`), delegating the cascade to a backend-supplied callback
 - Sign-up/sign-in email verification: an optional `sendVerificationEmail` callback (`CreateAuthOptions.sendVerificationEmail`) delegates delivery to a backend-supplied sender, mirroring the `onDeleteUser` delegation pattern. When provided, Better Auth also enables `emailAndPassword.requireEmailVerification` so unverified accounts cannot sign in. When omitted (the default, e.g. Local/offline editions with no configured email provider), verification stays fully disabled and behavior is unchanged. The backend's concrete sender (`backend/email-verification.ts`) uses Resend, configured via the `RESEND_API_KEY` env var and the `notifications.cooperativ.io` sending domain
 - Numeric one-time codes (OTP): an optional `sendEmailOTP` callback (`CreateAuthOptions.sendEmailOTP`) enables Better Auth's `emailOTP` plugin (6-digit codes, 1-hour expiry), the same caller-supplied-callback pattern as `sendVerificationEmail`. When enabled, the sign-up verification email carries **both** the existing magic link **and** a real 6-digit code minted via `auth.api.createVerificationOTP` and passed to `sendVerificationEmail` as `otp` — replacing the previous behavior of showing the raw (untypable) verification link token in the code block. The plugin also exposes `/api/auth/email-otp/*` server endpoints (notably `verify-email`, `check-verification-otp`, `send-verification-otp`, `sign-in/email-otp`, `forget-password`/`reset-password`) and the corresponding `authClient.emailOtp.*` client methods for typed-code sign-in and password reset. When `sendEmailOTP` is omitted, the plugin is left off and no OTP endpoints exist. The backend sender is `emailOTPSenderFromEnv()` in `backend/email-verification.ts` (Resend-backed)
+- Hosted MCP OAuth consent and token issuance: OAuth approval creates a scoped `USER_TOKEN` with the `mission_lifecycle` preset after an authenticated browser session approves the request. Authorization codes are short-lived, single-use, PKCE-protected, and exchanged for bearer access tokens; refresh tokens are not issued in contract version `0`.
 
 Does NOT own:
 
@@ -360,6 +362,7 @@ These are the **only sanctioned paths** between components. Bypassing these surf
 - **Discovery**: `GET /.well-known/oauth-protected-resource` and
   `GET /.well-known/oauth-protected-resource/mcp` advertise the MCP resource URL
   and authorization-server metadata locations
+- **Authorization server**: OAuth-aware clients use dynamic registration (`POST /oauth/register`), browser approval (`GET /oauth/authorize` redirecting to the web approval page), authorization-code + PKCE token exchange (`POST /oauth/token`), and token revocation (`POST /oauth/revoke`). The web app may serve same-domain `.well-known` metadata and proxy `/mcp` plus `/oauth/*` traffic to the backend when deployed separately from the backend.
 - **Rule**: MCP handlers must resolve the caller through the Auth Layer before
   listing or invoking tools. A request that is missing or fails authentication
   returns an OAuth-compatible `WWW-Authenticate: Bearer` challenge.

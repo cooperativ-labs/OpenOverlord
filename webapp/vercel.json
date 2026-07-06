@@ -1,9 +1,0 @@
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": null,
-  "installCommand": "cd .. && yarn install",
-  "buildCommand": "node scripts/write-runtime-config.mjs && cd .. && yarn contract:build:prod && yarn automations:build:prod && yarn webapp:build:prod",
-  "outputDirectory": "dist",
-  "regions": ["fra1"],
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
-}

@@ -18,6 +18,7 @@ import { shouldShowOnboarding } from './lib/router-gates.ts';
 import { AcceptInvitePage } from './pages/AcceptInvitePage.tsx';
 import { MissionPanelRoute } from './pages/MissionPage.tsx';
 import { MyMissionsShell, WorkspaceMissionPanelRoute } from './pages/MyMissionsShell.tsx';
+import { OAuthApprovePage } from './pages/OAuthApprovePage.tsx';
 import { ProjectBoardShell } from './pages/ProjectBoardShell.tsx';
 import { ProjectsPage } from './pages/ProjectsPage.tsx';
 import { QuickTaskPage } from './pages/QuickTaskPage.tsx';
@@ -49,13 +50,12 @@ function RootLayout() {
   const isAcceptInvite = useRouterState({
     select: state => state.location.pathname === '/accept-invite'
   });
+  const isOAuthApprove = useRouterState({
+    select: state => state.location.pathname === '/oauth/approve'
+  });
   const meta = useMeta();
 
-  if (isQuickTask) {
-    return <Outlet />;
-  }
-
-  if (isAcceptInvite) {
+  if (isQuickTask || isAcceptInvite || isOAuthApprove) {
     return <Outlet />;
   }
 
@@ -96,6 +96,12 @@ const acceptInviteRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/accept-invite',
   component: AcceptInvitePage
+});
+
+const oauthApproveRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/oauth/approve',
+  component: OAuthApprovePage
 });
 
 const indexRoute = createRoute({
@@ -155,6 +161,7 @@ const missionRoute = createRoute({
 export const routeTree = rootRoute.addChildren([
   quickTaskShellRoute.addChildren([quickTaskRoute]),
   acceptInviteRoute,
+  oauthApproveRoute,
   indexRoute,
   projectsRoute,
   workspaceLegacyRedirectRoute,

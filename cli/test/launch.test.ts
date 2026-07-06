@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
@@ -64,6 +64,20 @@ test('buildLaunchPlan exports mission context for terminal prompt hooks', async 
   assert.equal(plan.env.OVERLORD_EXECUTION_REQUEST_ID, 'request-123');
 
   const script = plan.execution.args[1] ?? '';
-  assert.ok(script.includes(`export MISSION_ID='coo:11'`));
-  assert.ok(script.includes(`export OVERLORD_BACKEND_URL='http://127.0.0.1:4310'`));
+  const launchScriptPath = path.join(
+    workingDirectory,
+    '.overlord',
+    'tmp',
+    'launch-coo-11-request-123.sh'
+  );
+  assert.ok(script.includes(`/bin/bash '${launchScriptPath}'`));
+  assert.ok(!script.includes(`export MISSION_ID='coo:11'`));
+
+  const mode = statSync(launchScriptPath).mode & 0o777;
+  assert.equal(mode, 0o700);
+  const launchScript = readFileSync(launchScriptPath, 'utf8');
+  assert.ok(launchScript.includes(`cd '${workingDirectory}'`));
+  assert.ok(launchScript.includes(`export MISSION_ID='coo:11'`));
+  assert.ok(launchScript.includes(`export OVERLORD_BACKEND_URL='http://127.0.0.1:4310'`));
+  assert.ok(launchScript.includes(`'codex'`));
 });
