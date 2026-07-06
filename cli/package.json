@@ -1,6 +1,6 @@
 {
   "name": "open-overlord",
-  "version": "0.2607061154.0",
+  "version": "0.2607061300.0",
   "description": "Overlord CLI — management, agent protocol, and runner for OpenOverlord",
   "type": "module",
   "engines": {
@@ -40,6 +40,15 @@
     "ovld"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cooperativ-labs/OpenOverlord.git",
+    "directory": "cli"
+  },
+  "homepage": "https://github.com/cooperativ-labs/OpenOverlord/tree/main/cli#readme",
+  "bugs": {
+    "url": "https://github.com/cooperativ-labs/OpenOverlord/issues"
+  },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   }

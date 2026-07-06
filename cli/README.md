@@ -52,7 +52,7 @@ ovld doctor
 ovld config list
 ```
 
-See [Getting Started](../docs/getting-started.md) for the full walkthrough from
+See [Getting Started](https://github.com/cooperativ-labs/OpenOverlord/blob/main/docs/getting-started.md) for the full walkthrough from
 install through first delivered mission.
 
 ### How the published CLI works
@@ -212,7 +212,7 @@ resolved project directory. The queue state remains in the backend.
 ### Contract Components
 
 This module is the developer-facing home for three components defined in
-[`CONTRACT.md`](../CONTRACT.md):
+[`CONTRACT.md`](https://github.com/cooperativ-labs/OpenOverlord/blob/main/CONTRACT.md):
 
 | Component      | Stable id  | What it owns                                                                                                                                                                        |
 | -------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -227,16 +227,16 @@ the `ovld` command surface and tend to be worked on together.
 ### Documentation
 
 Requirements and behavior specs are colocated in this module's
-[`docs/`](docs/) folder (see the root [README](../README.md#modules) for the
+[`docs/`](https://github.com/cooperativ-labs/OpenOverlord/tree/main/cli/docs) folder (see the root [README](https://github.com/cooperativ-labs/OpenOverlord/blob/main/README.md#modules) for the
 colocation convention):
 
-- [01 — Command Reference](docs/01-command-reference.md): exhaustive tables of `ovld` commands, subcommands, and flags.
-- [02 — CLI-First Product Surface](docs/02-cli-first-product-surface.md): management commands, configuration, project linking, output contracts.
-- [03 — Agent Protocol](docs/03-agent-protocol.md): `ovld protocol` lifecycle, context assembly, updates, delivery, attachments.
-- [04 — Runner and Launch Execution](docs/04-runner-and-launch-execution.md): execution requests, local runner, launch command generation, auto-advance.
-- [06 — Core Domain and Lifecycle](docs/06-core-domain-and-lifecycle.md): projects, missions, objectives, sessions, events, statuses, state transitions.
-- [11 — Review, Artifacts, and Change Tracking](docs/11-review-artifacts-and-change-tracking.md): delivery review records, artifacts, rationale coverage, local diff support.
-- [Test Plan](docs/testing.md): test plan for the `cli`, `protocol`, and `runner` components — management commands, protocol lifecycle/attach-shape/validation conformance, runner queue atomicity, and surface smoke tests. Part of the root [TEST_PLAN.md](../TEST_PLAN.md).
+- [01 — Command Reference](https://github.com/cooperativ-labs/OpenOverlord/blob/main/cli/docs/01-command-reference.md): exhaustive tables of `ovld` commands, subcommands, and flags.
+- [02 — CLI-First Product Surface](https://github.com/cooperativ-labs/OpenOverlord/blob/main/cli/docs/02-cli-first-product-surface.md): management commands, configuration, project linking, output contracts.
+- [03 — Agent Protocol](https://github.com/cooperativ-labs/OpenOverlord/blob/main/cli/docs/03-agent-protocol.md): `ovld protocol` lifecycle, context assembly, updates, delivery, attachments.
+- [04 — Runner and Launch Execution](https://github.com/cooperativ-labs/OpenOverlord/blob/main/cli/docs/04-runner-and-launch-execution.md): execution requests, local runner, launch command generation, auto-advance.
+- [06 — Core Domain and Lifecycle](https://github.com/cooperativ-labs/OpenOverlord/blob/main/cli/docs/06-core-domain-and-lifecycle.md): projects, missions, objectives, sessions, events, statuses, state transitions.
+- [11 — Review, Artifacts, and Change Tracking](https://github.com/cooperativ-labs/OpenOverlord/blob/main/cli/docs/11-review-artifacts-and-change-tracking.md): delivery review records, artifacts, rationale coverage, local diff support.
+- [Test Plan](https://github.com/cooperativ-labs/OpenOverlord/blob/main/cli/docs/testing.md): test plan for the `cli`, `protocol`, and `runner` components — management commands, protocol lifecycle/attach-shape/validation conformance, runner queue atomicity, and surface smoke tests. Part of the root [TEST_PLAN.md](https://github.com/cooperativ-labs/OpenOverlord/blob/main/TEST_PLAN.md).
 
 ### Code & Tests
 
@@ -307,5 +307,5 @@ would run untested working-tree code against your real mission data.
 
 Per the contract, the CLI/protocol/runner surfaces reach persistence only
 through the configured **REST/backend API** — never direct table writes.
-See the Interaction Surfaces section of [`CONTRACT.md`](../CONTRACT.md) before
+See the Interaction Surfaces section of [`CONTRACT.md`](https://github.com/cooperativ-labs/OpenOverlord/blob/main/CONTRACT.md) before
 making any cross-module change.
