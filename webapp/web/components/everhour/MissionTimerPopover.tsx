@@ -13,7 +13,7 @@ import {
 } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
-import type { EverhourTimeRecordDto } from '../../../shared/contract.ts';
+import type { EverhourTimeRecordDto } from '@overlord/contract/ext/everhour';
 import {
   formatClock,
   formatHoursMinutes,
