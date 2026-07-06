@@ -25,11 +25,21 @@ function checksum(sql: string): string {
   return createHash('sha256').update(sql).digest('hex');
 }
 
-function loadMigrationSql(fileName: string): { version: string; sql: string; checksum: string } {
+function migrationComponent(fileName: string): string {
+  const match = fileName.match(/^\d+_ext_([a-z0-9_]+)_/);
+  return match ? `ext:${match[1]}` : 'core';
+}
+
+function loadMigrationSql(fileName: string): {
+  version: string;
+  component: string;
+  sql: string;
+  checksum: string;
+} {
   const version = fileName.split('_', 1)[0] ?? fileName;
   const filePath = path.join(migrationsDir(), fileName);
   const sql = readFileSync(filePath, 'utf8');
-  return { version, sql, checksum: checksum(sql) };
+  return { version, component: migrationComponent(fileName), sql, checksum: checksum(sql) };
 }
 
 export function listSqliteMigrationFiles(): string[] {
@@ -45,9 +55,9 @@ function applyMigration(
   const applied = db
     .prepare(
       `SELECT checksum FROM schema_migrations
-       WHERE adapter = 'sqlite' AND component = 'core' AND version = ?`
+       WHERE adapter = 'sqlite' AND component = ? AND version = ?`
     )
-    .get(migration.version) as { checksum: string } | undefined;
+    .get(migration.component, migration.version) as { checksum: string } | undefined;
 
   if (applied) {
     if (applied.checksum !== migration.checksum) {
@@ -62,8 +72,14 @@ function applyMigration(
   db.exec(migration.sql);
   db.prepare(
     `INSERT INTO schema_migrations (version, adapter, component, contract_version, checksum, applied_at)
-     VALUES (?, 'sqlite', 'core', ?, ?, ?)`
-  ).run(migration.version, CONTRACT_VERSION, migration.checksum, new Date().toISOString());
+     VALUES (?, 'sqlite', ?, ?, ?, ?)`
+  ).run(
+    migration.version,
+    migration.component,
+    CONTRACT_VERSION,
+    migration.checksum,
+    new Date().toISOString()
+  );
 }
 
 export function openDatabase({ databasePath }: { databasePath: string }): OverlordDatabase {
@@ -99,8 +115,14 @@ export function migrateDatabase(db: OverlordDatabase): void {
       for (const pending of [...pendingMigrationRecords, migration]) {
         db.prepare(
           `INSERT INTO schema_migrations (version, adapter, component, contract_version, checksum, applied_at)
-           VALUES (?, 'sqlite', 'core', ?, ?, ?)`
-        ).run(pending.version, CONTRACT_VERSION, pending.checksum, new Date().toISOString());
+           VALUES (?, 'sqlite', ?, ?, ?, ?)`
+        ).run(
+          pending.version,
+          pending.component,
+          CONTRACT_VERSION,
+          pending.checksum,
+          new Date().toISOString()
+        );
       }
       pendingMigrationRecords.length = 0;
       continue;

@@ -6,7 +6,6 @@ import { nowIso, requireDatabaseClient, WORKSPACE } from './db.ts';
 import { ApiError } from './errors.ts';
 
 export const SQL_STUDIO_SETTINGS_KEY = 'sqlStudioEnabled';
-export const EVERHOUR_API_KEY_SETTINGS_KEY = 'everhourApiKey';
 
 function parseSettings(raw: string): Record<string, unknown> {
   try {
@@ -85,42 +84,6 @@ export async function writeSqlStudioEnabled({
     workspaceId,
     key: SQL_STUDIO_SETTINGS_KEY,
     value: enabled,
-    client
-  });
-}
-
-/**
- * The workspace Everhour API key, or `null` when not configured. The key is held
- * server-side only and never returned to the client — the REST API Layer proxies
- * every Everhour call so the browser never sees it.
- */
-export async function readEverhourApiKey({
-  workspaceId = WORKSPACE.id,
-  client = requireDatabaseClient()
-}: {
-  workspaceId?: string;
-  client?: DatabaseClient;
-} = {}): Promise<string | null> {
-  const value = parseSettings(await readSettingsJson(workspaceId, client))[
-    EVERHOUR_API_KEY_SETTINGS_KEY
-  ];
-  return typeof value === 'string' && value.trim() ? value : null;
-}
-
-/** Set or clear (pass `null`/empty) the workspace Everhour API key. */
-export async function writeEverhourApiKey({
-  workspaceId = WORKSPACE.id,
-  apiKey,
-  client = requireDatabaseClient()
-}: {
-  workspaceId?: string;
-  apiKey: string | null;
-  client?: DatabaseClient;
-}): Promise<void> {
-  await writeWorkspaceSetting({
-    workspaceId,
-    key: EVERHOUR_API_KEY_SETTINGS_KEY,
-    value: apiKey?.trim() ? apiKey.trim() : undefined,
     client
   });
 }

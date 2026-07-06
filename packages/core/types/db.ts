@@ -237,6 +237,43 @@ export interface ExecutionTargets {
   workspace_id: string;
 }
 
+export interface ExtEverhourMissionLinks {
+  created_at: string;
+  deleted_at: string | null;
+  everhour_task_id: string;
+  id: string | null;
+  mission_id: string;
+  project_id: string;
+  revision: Generated<number>;
+  updated_at: string;
+  workspace_id: string;
+}
+
+export interface ExtEverhourProjectLinks {
+  created_at: string;
+  deleted_at: string | null;
+  everhour_project_id: string;
+  everhour_project_name: string;
+  everhour_section_id: string | null;
+  id: string | null;
+  project_id: string;
+  revision: Generated<number>;
+  updated_at: string;
+  workspace_id: string;
+}
+
+export interface ExtEverhourWorkspaceConnections {
+  account_id: string | null;
+  account_name: string | null;
+  api_key_secret: string;
+  created_at: string;
+  deleted_at: string | null;
+  id: string | null;
+  revision: Generated<number>;
+  updated_at: string;
+  workspace_id: string;
+}
+
 export interface IdempotencyKeys {
   actor_workspace_user_id: string | null;
   created_at: string;
@@ -296,7 +333,6 @@ export interface Missions {
   deleted_at: string | null;
   display_id: string;
   due_datetime: string | null;
-  everhour_task_id: string | null;
   execution_target_intent_json: Generated<string>;
   id: string | null;
   metadata_json: Generated<string>;
@@ -859,6 +895,9 @@ export interface DB {
   entity_changes: EntityChanges;
   execution_requests: ExecutionRequests;
   execution_targets: ExecutionTargets;
+  ext_everhour_mission_links: ExtEverhourMissionLinks;
+  ext_everhour_project_links: ExtEverhourProjectLinks;
+  ext_everhour_workspace_connections: ExtEverhourWorkspaceConnections;
   idempotency_keys: IdempotencyKeys;
   mission_branch_observations: MissionBranchObservations;
   mission_events: MissionEvents;

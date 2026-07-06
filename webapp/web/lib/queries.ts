@@ -1,10 +1,14 @@
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type {
+  CreateEverhourTimeBody,
+  LinkProjectEverhourBody,
+  UpdateEverhourTimeBody
+} from '@overlord/contract/ext/everhour';
+import type {
   AcceptWorkspaceInvitationBody,
   AddOrganizationAdminBody,
   BranchActionBody,
-  CreateEverhourTimeBody,
   CreateMissionBody,
   CreateObjectiveBody,
   CreateOrganizationOnboardingBody,
@@ -18,7 +22,6 @@ import type {
   InviteWorkspaceMemberBody,
   LaunchObjectiveBody,
   LaunchPreferenceDto,
-  LinkProjectEverhourBody,
   MissionDetailDto,
   MissionDto,
   MissionScheduleDto,
@@ -34,7 +37,6 @@ import type {
   StatusType,
   UpdateAgentCatalogBody,
   UpdateAgentLaunchConfigBody,
-  UpdateEverhourTimeBody,
   UpdateLaunchPreferenceBody,
   UpdateMissionBody,
   UpdateObjectiveBody,
@@ -125,6 +127,7 @@ export const keys = {
   projectExecutionTarget: (projectId: string) =>
     ['project', projectId, 'execution-target'] as const,
   everhourIntegration: ['integrations', 'everhour'] as const,
+  projectEverhourLink: (projectId: string) => ['project', projectId, 'everhour-link'] as const,
   missionEverhour: (id: string) => ['mission', id, 'everhour'] as const
 };
 
@@ -1465,11 +1468,18 @@ export function useLinkProjectEverhour(projectId: string) {
   return useMutation({
     mutationFn: (body: LinkProjectEverhourBody) => api.linkProjectEverhour(projectId, body),
     onSuccess: data => {
-      qc.setQueryData(keys.project(projectId), data);
+      qc.setQueryData(keys.projectEverhourLink(projectId), data);
       invalidateMissionEverhourQueries(qc);
     }
   });
 }
+
+export const useProjectEverhourLink = (projectId: string, options: { enabled?: boolean } = {}) =>
+  useQuery({
+    queryKey: keys.projectEverhourLink(projectId),
+    queryFn: () => api.getProjectEverhourLink(projectId),
+    enabled: options.enabled ?? true
+  });
 
 /**
  * Everhour state for one mission. Only enabled once we know the workspace is

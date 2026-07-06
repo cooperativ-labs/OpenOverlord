@@ -1,12 +1,19 @@
 import type { LocalTargetBridgeCall } from '../../../packages/core/service/local-target/desktop-bridge.ts';
 import type { CapabilityResult } from '../../../packages/core/service/local-target/types.ts';
 import type {
+  CreateEverhourTimeBody,
+  EverhourIntegrationDto,
+  LinkProjectEverhourBody,
+  MissionEverhourStateDto,
+  ProjectEverhourLinkDto,
+  UpdateEverhourTimeBody
+} from '@overlord/contract/ext/everhour';
+import type {
   AcceptWorkspaceInvitationBody,
   AddOrganizationAdminBody,
   AgentCatalogDto,
   ArtifactDto,
   BranchActionBody,
-  CreateEverhourTimeBody,
   CreateMissionBody,
   CreateObjectiveBody,
   CreateOrganizationOnboardingBody,
@@ -19,7 +26,6 @@ import type {
   CreateWebhookSubscriptionResultDto,
   CreateWorkspaceBody,
   CreateWorkspaceStatusBody,
-  EverhourIntegrationDto,
   ExecutionRequestDto,
   FileChangeDto,
   GenerateCommitMessageBody,
@@ -29,13 +35,11 @@ import type {
   LaunchObjectiveBody,
   LaunchPreferenceDto,
   LaunchSettingsDto,
-  LinkProjectEverhourBody,
   MetaDto,
   MissionBranchListDto,
   MissionDetailDto,
   MissionDto,
   MissionEventDto,
-  MissionEverhourStateDto,
   MissionScheduleDto,
   MyMissionReorderRequest,
   MyMissionsResponse,
@@ -67,7 +71,6 @@ import type {
   StoredImageDto,
   UpdateAgentCatalogBody,
   UpdateAgentLaunchConfigBody,
-  UpdateEverhourTimeBody,
   UpdateLaunchPreferenceBody,
   UpdateMissionBody,
   UpdateObjectiveBody,
@@ -499,31 +502,33 @@ export const api = {
 
   // ---- Everhour integration ----------------------------------------------
   getEverhourIntegration: () =>
-    request<EverhourIntegrationDto>('GET', '/api/integrations/everhour'),
+    request<EverhourIntegrationDto>('GET', '/ext/everhour/integration'),
   setEverhourApiKey: (apiKey: string) =>
-    request<EverhourIntegrationDto>('PUT', '/api/integrations/everhour', { apiKey }),
+    request<EverhourIntegrationDto>('PUT', '/ext/everhour/integration', { apiKey }),
   clearEverhourApiKey: () =>
-    request<EverhourIntegrationDto>('DELETE', '/api/integrations/everhour'),
+    request<EverhourIntegrationDto>('DELETE', '/ext/everhour/integration'),
+  getProjectEverhourLink: (projectId: string) =>
+    request<ProjectEverhourLinkDto>('GET', `/ext/everhour/projects/${projectId}/link`),
   linkProjectEverhour: (projectId: string, body: LinkProjectEverhourBody) =>
-    request<ProjectDto>('PUT', `/api/projects/${projectId}/everhour-link`, body),
+    request<ProjectEverhourLinkDto>('PUT', `/ext/everhour/projects/${projectId}/link`, body),
   getMissionEverhour: (missionId: string) =>
-    request<MissionEverhourStateDto>('GET', `/api/missions/${missionId}/everhour`),
+    request<MissionEverhourStateDto>('GET', `/ext/everhour/missions/${missionId}`),
   startMissionTimer: (missionId: string) =>
-    request<MissionEverhourStateDto>('POST', `/api/missions/${missionId}/everhour/timer/start`),
+    request<MissionEverhourStateDto>('POST', `/ext/everhour/missions/${missionId}/timer/start`),
   stopMissionTimer: (missionId: string) =>
-    request<MissionEverhourStateDto>('POST', `/api/missions/${missionId}/everhour/timer/stop`),
+    request<MissionEverhourStateDto>('POST', `/ext/everhour/missions/${missionId}/timer/stop`),
   addMissionTime: (missionId: string, body: CreateEverhourTimeBody) =>
-    request<MissionEverhourStateDto>('POST', `/api/missions/${missionId}/everhour/time`, body),
+    request<MissionEverhourStateDto>('POST', `/ext/everhour/missions/${missionId}/time`, body),
   updateMissionTime: (missionId: string, recordId: string, body: UpdateEverhourTimeBody) =>
     request<MissionEverhourStateDto>(
       'PATCH',
-      `/api/missions/${missionId}/everhour/time/${recordId}`,
+      `/ext/everhour/missions/${missionId}/time/${recordId}`,
       body
     ),
   deleteMissionTime: (missionId: string, recordId: string) =>
     request<MissionEverhourStateDto>(
       'DELETE',
-      `/api/missions/${missionId}/everhour/time/${recordId}`
+      `/ext/everhour/missions/${missionId}/time/${recordId}`
     ),
 
   /** Dev-only loopback SQLite proxy for checkout-local capabilities in plain browser. */

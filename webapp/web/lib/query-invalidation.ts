@@ -14,6 +14,7 @@ interface QueryInvalidator {
 export function isEverhourQueryKey(queryKey: QueryKey): boolean {
   return (
     (queryKey[0] === 'integrations' && queryKey[1] === 'everhour') ||
+    (queryKey[0] === 'project' && queryKey[2] === 'everhour-link') ||
     (queryKey[0] === 'mission' && queryKey[2] === 'everhour')
   );
 }

@@ -1,0 +1,11 @@
+contractVersion: "0"
+componentType: rest-module
+componentKey: everhour
+label: "Everhour REST Extension"
+description: >
+  Reference REST extension for Everhour time tracking. Exposes workspace,
+  project, and mission integration endpoints under /ext/everhour/.
+
+restModule:
+  endpointPrefix: /ext/everhour
+  usesServiceLayer: true

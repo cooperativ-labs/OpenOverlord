@@ -24,7 +24,7 @@
     "build": "tsc --project tsconfig.build.json",
     "typecheck": "tsc --project tsconfig.build.json --noEmit",
     "db:start": "tsx src/launch-local.ts",
-    "test": "node --import tsx --test src/client.postgres-conformance.test.ts"
+    "test": "node --import tsx --test src/client.postgres-conformance.test.ts src/ext-everhour-migration.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1"

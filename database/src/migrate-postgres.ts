@@ -21,13 +21,23 @@ function checksum(sql: string): string {
   return createHash('sha256').update(sql).digest('hex');
 }
 
-function loadMigrationSql(fileName: string): { version: string; sql: string; checksum: string } {
+function migrationComponent(fileName: string): string {
+  const match = fileName.match(/^\d+_ext_([a-z0-9_]+)_/);
+  return match ? `ext:${match[1]}` : 'core';
+}
+
+function loadMigrationSql(fileName: string): {
+  version: string;
+  component: string;
+  sql: string;
+  checksum: string;
+} {
   // Match the SQLite convention (`connection.ts`): the version is the numeric
   // filename prefix, so the same logical migration shares a version across
   // adapters.
   const version = fileName.split('_', 1)[0] ?? fileName;
   const sql = readFileSync(path.join(postgresMigrationsDir(), fileName), 'utf8');
-  return { version, sql, checksum: checksum(sql) };
+  return { version, component: migrationComponent(fileName), sql, checksum: checksum(sql) };
 }
 
 export function listPostgresMigrationFiles(): string[] {
@@ -49,8 +59,14 @@ async function recordMigration(
 ): Promise<void> {
   await client.run(
     `INSERT INTO schema_migrations (version, adapter, component, contract_version, checksum, applied_at)
-     VALUES (?, 'postgres', 'core', ?, ?, ?)`,
-    [migration.version, CONTRACT_VERSION, migration.checksum, new Date().toISOString()]
+     VALUES (?, 'postgres', ?, ?, ?, ?)`,
+    [
+      migration.version,
+      migration.component,
+      CONTRACT_VERSION,
+      migration.checksum,
+      new Date().toISOString()
+    ]
   );
 }
 
@@ -86,8 +102,8 @@ export async function migratePostgres(client: DatabaseClient): Promise<void> {
 
     const applied = await client.get<{ checksum: string }>(
       `SELECT checksum FROM schema_migrations
-        WHERE adapter = 'postgres' AND component = 'core' AND version = ?`,
-      [migration.version]
+        WHERE adapter = 'postgres' AND component = ? AND version = ?`,
+      [migration.component, migration.version]
     );
     if (applied) {
       if (applied.checksum !== migration.checksum) {

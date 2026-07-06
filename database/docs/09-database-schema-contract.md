@@ -737,7 +737,6 @@ Durable work unit and review record.
 | `active_branch` | text | no | Git branch the mission is currently operating on under worktree automation; null until the first launch prepares one. |
 | `branch_override` | text | no | User-pinned branch chosen in the mission panel to override the planner's default; consumed (and cleared) by the runner at the next branch preparation. Null means automatic selection. |
 | `worktree_preference` | text | no | Per-mission override of the workspace `worktreeBranchAutomationEnabled` setting. `null` inherits the workspace setting; `'worktree'` forces a branch + worktree for this mission even when automation is off; `'branch'` forces a branch without a dedicated worktree (checked out in the project's primary repo). Persistent (not cleared by the runner). App-validated open set (no DB CHECK). |
-| `everhour_task_id` | text | no | Everhour task this mission is linked to for time tracking, written when a user first starts a timer or links the mission from the mission panel. Everhour task IDs are platform-prefixed strings (for example `ev:3000010034`), so this is text. Null until the mission is linked. The workspace Everhour API key lives in `workspaces.settings_json` and the linked Everhour project id/name/section live in `projects.settings_json`. |
 | `schedule_id` | Id | no | FK to `schedules`. Null means the mission does not repeat. On SQLite this is a plain (non-composite) FK added via `ALTER TABLE`, since SQLite cannot add a table-level composite FK without a full table rebuild; Postgres adds the org-scoped composite `(workspace_id, schedule_id)` FK. Every read/write path still scopes by `workspace_id` in application code regardless of dialect. |
 | `due_datetime` | TimestampUTC | no | Computed next occurrence for a scheduled mission; null when unscheduled. Recomputed by the SchedulingEngine (`@overlord/automations`) whenever the schedule is created/updated, and again for the duplicate mission spawned when a scheduled mission reaches a `complete`-type status (see `createScheduledDuplicateIfNeeded` in `backend/repository.ts`). |
 | `created_by_workspace_user_id` | Id | no | FK to `workspace_users`. |
@@ -1881,6 +1880,81 @@ Every fresh local database should seed the same logical minimum:
 - One local `devices` row and one local `execution_targets` row when runner features are initialized.
 
 Seed values should be deterministic enough for tests but should still use stable generated IDs in real installs.
+
+## Everhour Database Extension
+
+Everhour time-tracking data is owned by the `everhour` database extension, not
+core workspace/project/mission columns. Its migrations use
+`schema_migrations.component = 'ext:everhour'` and all tables use the
+`ext_everhour_` prefix.
+
+### `ext_everhour_workspace_connections`
+
+Workspace-scoped Everhour connection and secret storage. Services must never
+return `api_key_secret` to clients or include it in change-feed fields.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes | Stable extension row ID. |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `api_key_secret` | text | yes | Raw Everhour API key required for outbound API calls. |
+| `account_id` | text | no | Upstream Everhour user/account identifier, when known. |
+| `account_name` | text | no | Display name for connection state. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `deleted_at` | TimestampUTC | no | Tombstone. |
+| `revision` | integer | yes |  |
+
+Indexes:
+
+- Unique active `(workspace_id)`.
+- `(workspace_id, deleted_at)`.
+
+### `ext_everhour_project_links`
+
+Project-scoped binding from an Overlord project to an Everhour project/section.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes | Stable extension row ID. |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `project_id` | Id | yes | FK to `projects`. |
+| `everhour_project_id` | text | yes | Upstream Everhour project ID. |
+| `everhour_project_name` | text | yes | Display name captured at link time. |
+| `everhour_section_id` | text | no | Upstream section used when creating mission tasks. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `deleted_at` | TimestampUTC | no | Tombstone. |
+| `revision` | integer | yes |  |
+
+Indexes:
+
+- Unique active `(workspace_id, project_id)`.
+- `(workspace_id, everhour_project_id)`.
+- `(project_id, deleted_at)`.
+
+### `ext_everhour_mission_links`
+
+Mission-scoped binding from an Overlord mission to an Everhour task.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes | Stable extension row ID. |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `project_id` | Id | yes | FK to `projects`. |
+| `mission_id` | Id | yes | FK to `missions`. |
+| `everhour_task_id` | text | yes | Upstream Everhour task ID. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `deleted_at` | TimestampUTC | no | Tombstone. |
+| `revision` | integer | yes |  |
+
+Indexes:
+
+- Unique active `(workspace_id, mission_id)`.
+- `(workspace_id, everhour_task_id)`.
+- `(project_id, deleted_at)`.
+- `(mission_id, deleted_at)`.
 
 ## Extension Points
 
