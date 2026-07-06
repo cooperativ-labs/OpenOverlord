@@ -4,14 +4,13 @@ import type {
   EverhourTimerDto,
   EverhourTimeRecordDto,
   MissionEverhourStateDto,
-  ProjectDto,
+  ProjectEverhourLinkDto,
   UpdateEverhourTimeBody
-} from '@overlord/contract';
+} from '@overlord/contract/ext/everhour';
 import type { DatabaseClient } from '@overlord/database';
 
 import { newId, nowIso, recordChange, requireDatabaseClient, WORKSPACE } from '../../db.ts';
 import { ApiError } from '../../errors.ts';
-import { getProject } from '../../repository.ts';
 
 const EVERHOUR_BASE_URL = 'https://api.everhour.com';
 
@@ -361,6 +360,16 @@ async function clearProjectLink(projectId: string): Promise<void> {
   });
 }
 
+export async function getProjectEverhourLink(projectId: string): Promise<ProjectEverhourLinkDto> {
+  await assertProjectExists(projectId);
+  const link = await readProjectLink(projectId);
+  return {
+    projectId,
+    everhourProjectId: link?.everhour_project_id ?? null,
+    everhourProjectName: link?.everhour_project_name ?? null
+  };
+}
+
 async function writeProjectLink(
   projectId: string,
   everhourProjectId: string,
@@ -409,7 +418,16 @@ async function writeProjectLink(
          (id, workspace_id, project_id, everhour_project_id, everhour_project_name,
           everhour_section_id, created_at, updated_at, revision)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-      [id, WORKSPACE.id, projectId, everhourProjectId, everhourProjectName, everhourSectionId, now, now]
+      [
+        id,
+        WORKSPACE.id,
+        projectId,
+        everhourProjectId,
+        everhourProjectName,
+        everhourSectionId,
+        now,
+        now
+      ]
     );
     await recordChange(
       {
@@ -495,24 +513,22 @@ async function resolveSectionId(apiKey: string, projectId: string): Promise<stri
 
 /**
  * Link (or unlink) the Overlord project to an Everhour project by name. Passing an
- * empty/blank name clears the link. Returns the refreshed `ProjectDto`.
+ * empty/blank name clears the link. Returns the refreshed extension link state.
  */
 export async function linkProjectEverhour(
   projectId: string,
   rawName: string | null
-): Promise<ProjectDto> {
+): Promise<ProjectEverhourLinkDto> {
   const name = rawName?.trim() ?? '';
   if (!name) {
     await clearProjectLink(projectId);
-    const project = await getProject(projectId);
-    return { ...project, everhourProjectId: null, everhourProjectName: null };
+    return { projectId, everhourProjectId: null, everhourProjectName: null };
   }
 
   const apiKey = await requireApiKey();
   const resolved = await resolveEverhourProject(apiKey, name);
   await writeProjectLink(projectId, resolved.id, name, resolved.sectionId);
-  const project = await getProject(projectId);
-  return { ...project, everhourProjectId: resolved.id, everhourProjectName: name };
+  return { projectId, everhourProjectId: resolved.id, everhourProjectName: name };
 }
 
 // ---- mission ↔ task linking ----------------------------------------------

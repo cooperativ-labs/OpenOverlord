@@ -4,7 +4,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { LoadingButton } from '@/components/ui/loading-button';
-import { useEverhourIntegration, useLinkProjectEverhour } from '@/lib/queries';
+import {
+  useEverhourIntegration,
+  useLinkProjectEverhour,
+  useProjectEverhourLink
+} from '@/lib/queries';
 
 import type { ProjectDto } from '../../../../shared/contract.ts';
 
@@ -15,20 +19,22 @@ type IntegrationsPageProps = {
 
 function EverhourProjectField({ open, project }: IntegrationsPageProps) {
   const integration = useEverhourIntegration();
+  const projectLink = useProjectEverhourLink(project.id, { enabled: open });
   const link = useLinkProjectEverhour(project.id);
-  const defaultName = project.everhourProjectName ?? project.name;
+  const everhourProjectName = projectLink.data?.everhourProjectName ?? null;
+  const defaultName = everhourProjectName ?? project.name;
   const [name, setName] = useState(defaultName);
-  const [saved, setSaved] = useState(project.everhourProjectName);
+  const [saved, setSaved] = useState(everhourProjectName);
   const [saveState, setSaveState] = useState<ButtonLoadingState>('default');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setName(project.everhourProjectName ?? project.name);
-    setSaved(project.everhourProjectName);
+    setName(everhourProjectName ?? project.name);
+    setSaved(everhourProjectName);
     setSaveState('default');
     setError(null);
-  }, [open, project]);
+  }, [open, project, everhourProjectName]);
 
   async function handleSave() {
     const trimmed = name.trim();

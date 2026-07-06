@@ -161,8 +161,6 @@ interface ProjectRow {
   revision: number;
   mission_count: number;
   position: number | null;
-  everhour_project_id: string | null;
-  everhour_project_name: string | null;
 }
 
 const PROJECT_COLOR_SETTINGS_KEY = 'overlord.color';
@@ -432,8 +430,6 @@ function toProjectDto(r: ProjectRow): ProjectDto {
     description: r.description,
     color: readProjectColor(r.settings_json),
     defaultBranch: readProjectDefaultBranch(r.settings_json),
-    everhourProjectName: r.everhour_project_name,
-    everhourProjectId: r.everhour_project_id,
     status: r.status as ProjectDto['status'],
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -1457,15 +1453,11 @@ function slugify(input: string): string {
 // ---- Projects ------------------------------------------------------------
 
 const selectProjectsSql = `
-  SELECT p.*, e.everhour_project_id, e.everhour_project_name, (
+  SELECT p.*, (
     SELECT COUNT(*) FROM missions t
       WHERE t.project_id = p.id AND t.deleted_at IS NULL
   ) AS mission_count
   FROM projects p
-  LEFT JOIN ext_everhour_project_links e
-    ON e.workspace_id = p.workspace_id
-   AND e.project_id = p.id
-   AND e.deleted_at IS NULL
   WHERE p.workspace_id = ? AND p.deleted_at IS NULL
 `;
 

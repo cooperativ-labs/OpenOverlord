@@ -7,6 +7,7 @@ import {
   deleteMissionTime,
   getEverhourIntegration,
   getMissionEverhourState,
+  getProjectEverhourLink,
   linkProjectEverhour,
   setEverhourApiKey,
   startMissionTimer,
@@ -49,6 +50,12 @@ export function createEverhourExtensionRouter(handle: RouteHandler): Router {
         requires: PERMISSIONS.PROJECT_UPDATE
       }
     )
+  );
+  router.get(
+    '/projects/:projectId/link',
+    handle(req => getProjectEverhourLink(req.params.projectId), {
+      requires: PERMISSIONS.PROJECT_READ
+    })
   );
   router.get(
     '/missions/:missionId',
