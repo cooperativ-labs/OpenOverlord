@@ -13,6 +13,7 @@ type DatabaseInstance = import('better-sqlite3').Database;
 
 type Migration = {
   version: string;
+  component: string;
   fileName: string;
   sql: string;
   checksum: string;
@@ -40,6 +41,11 @@ function checksum(sql: string): string {
   return createHash('sha256').update(sql).digest('hex');
 }
 
+function migrationComponent(fileName: string): string {
+  const match = fileName.match(/^\d+_ext_([a-z0-9_]+)_/);
+  return match ? `ext:${match[1]}` : 'core';
+}
+
 function loadMigration(fileName: string): Migration {
   const version = fileName.split('_', 1)[0];
   if (!version) {
@@ -51,6 +57,7 @@ function loadMigration(fileName: string): Migration {
 
   return {
     version,
+    component: migrationComponent(fileName),
     fileName,
     sql,
     checksum: checksum(sql)
@@ -70,11 +77,11 @@ function applyMigration(db: DatabaseInstance, migration: Migration): 'applied' |
       SELECT checksum
       FROM schema_migrations
       WHERE adapter = 'sqlite'
-        AND component = 'core'
+        AND component = ?
         AND version = ?
       `
     )
-    .get(migration.version) as { checksum: string } | undefined;
+    .get(migration.component, migration.version) as { checksum: string } | undefined;
 
   if (applied) {
     if (applied.checksum !== migration.checksum) {
@@ -90,9 +97,15 @@ function applyMigration(db: DatabaseInstance, migration: Migration): 'applied' |
     `
     INSERT INTO schema_migrations (
       version, adapter, component, contract_version, checksum, applied_at
-    ) VALUES (?, 'sqlite', 'core', ?, ?, ?)
+    ) VALUES (?, 'sqlite', ?, ?, ?, ?)
     `
-  ).run(migration.version, CONTRACT_VERSION, migration.checksum, new Date().toISOString());
+  ).run(
+    migration.version,
+    migration.component,
+    CONTRACT_VERSION,
+    migration.checksum,
+    new Date().toISOString()
+  );
 
   return 'applied';
 }
@@ -203,9 +216,15 @@ function recordMigration(db: DatabaseInstance, migration: Migration): void {
     `
     INSERT INTO schema_migrations (
       version, adapter, component, contract_version, checksum, applied_at
-    ) VALUES (?, 'sqlite', 'core', ?, ?, ?)
+    ) VALUES (?, 'sqlite', ?, ?, ?, ?)
     `
-  ).run(migration.version, CONTRACT_VERSION, migration.checksum, new Date().toISOString());
+  ).run(
+    migration.version,
+    migration.component,
+    CONTRACT_VERSION,
+    migration.checksum,
+    new Date().toISOString()
+  );
 }
 
 function applyMigrationWithPendingRecords(

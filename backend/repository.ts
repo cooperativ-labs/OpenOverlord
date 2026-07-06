@@ -161,13 +161,12 @@ interface ProjectRow {
   revision: number;
   mission_count: number;
   position: number | null;
+  everhour_project_id: string | null;
+  everhour_project_name: string | null;
 }
 
 const PROJECT_COLOR_SETTINGS_KEY = 'overlord.color';
 const PROJECT_DEFAULT_BRANCH_SETTINGS_KEY = 'overlord.defaultBranch';
-export const PROJECT_EVERHOUR_PROJECT_ID_SETTINGS_KEY = 'overlord.everhourProjectId';
-export const PROJECT_EVERHOUR_PROJECT_NAME_SETTINGS_KEY = 'overlord.everhourProjectName';
-export const PROJECT_EVERHOUR_SECTION_ID_SETTINGS_KEY = 'overlord.everhourSectionId';
 
 function readProjectStringSetting(settingsJson: string, key: string): string | null {
   try {
@@ -181,18 +180,6 @@ function readProjectStringSetting(settingsJson: string, key: string): string | n
 
 function readProjectColor(settingsJson: string): string | null {
   return readProjectStringSetting(settingsJson, PROJECT_COLOR_SETTINGS_KEY);
-}
-
-export function readProjectEverhourProjectId(settingsJson: string): string | null {
-  return readProjectStringSetting(settingsJson, PROJECT_EVERHOUR_PROJECT_ID_SETTINGS_KEY);
-}
-
-export function readProjectEverhourProjectName(settingsJson: string): string | null {
-  return readProjectStringSetting(settingsJson, PROJECT_EVERHOUR_PROJECT_NAME_SETTINGS_KEY);
-}
-
-export function readProjectEverhourSectionId(settingsJson: string): string | null {
-  return readProjectStringSetting(settingsJson, PROJECT_EVERHOUR_SECTION_ID_SETTINGS_KEY);
 }
 
 // The project-configured base/parent branch for mission branches. `null` means
@@ -445,8 +432,8 @@ function toProjectDto(r: ProjectRow): ProjectDto {
     description: r.description,
     color: readProjectColor(r.settings_json),
     defaultBranch: readProjectDefaultBranch(r.settings_json),
-    everhourProjectName: readProjectEverhourProjectName(r.settings_json),
-    everhourProjectId: readProjectEverhourProjectId(r.settings_json),
+    everhourProjectName: r.everhour_project_name,
+    everhourProjectId: r.everhour_project_id,
     status: r.status as ProjectDto['status'],
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -1470,11 +1457,15 @@ function slugify(input: string): string {
 // ---- Projects ------------------------------------------------------------
 
 const selectProjectsSql = `
-  SELECT p.*, (
+  SELECT p.*, e.everhour_project_id, e.everhour_project_name, (
     SELECT COUNT(*) FROM missions t
       WHERE t.project_id = p.id AND t.deleted_at IS NULL
   ) AS mission_count
   FROM projects p
+  LEFT JOIN ext_everhour_project_links e
+    ON e.workspace_id = p.workspace_id
+   AND e.project_id = p.id
+   AND e.deleted_at IS NULL
   WHERE p.workspace_id = ? AND p.deleted_at IS NULL
 `;
 
