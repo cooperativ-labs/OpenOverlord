@@ -11,8 +11,14 @@ import {
   DEFAULT_STATUSES,
   listSqliteMigrationFiles,
   loadBetterSqlite3,
+  migrateDatabase,
   type OverlordDatabase
 } from './index.js';
+import {
+  finalizeExtEverhourMissionLinksSqlite,
+  isExtEverhourPersistenceMigration
+} from './ext-everhour-migration-runtime.js';
+import { resolveAppliedMigrationSqlite } from './migration-ledger.js';
 
 const EXT_EVERHOUR_MIGRATION = '20260706000000_ext_everhour_persistence.sql';
 
@@ -38,12 +44,10 @@ function applySqliteMigrationFile(db: OverlordDatabase, fileName: string): void 
   );
 
   if (hasLedger) {
-    const applied = db
-      .prepare(
-        `SELECT checksum FROM schema_migrations
-         WHERE adapter = 'sqlite' AND component = ? AND version = ?`
-      )
-      .get(component, version) as { checksum: string } | undefined;
+    const applied = resolveAppliedMigrationSqlite({
+      db,
+      migration: { version, component, checksum }
+    });
     if (applied) {
       assert.equal(applied.checksum, checksum);
       return;
@@ -51,6 +55,9 @@ function applySqliteMigrationFile(db: OverlordDatabase, fileName: string): void 
   }
 
   db.exec(sql);
+  if (isExtEverhourPersistenceMigration({ version, component })) {
+    finalizeExtEverhourMissionLinksSqlite(db);
+  }
 
   if (
     db
@@ -140,6 +147,8 @@ function seedLegacyEverhourRows(db: OverlordDatabase): {
     now
   );
 
+  db.exec(`ALTER TABLE missions ADD COLUMN everhour_task_id TEXT`);
+
   db.prepare(
     `INSERT INTO missions (
        id, workspace_id, project_id, display_id, sequence_number, title, status_id, status_type,
@@ -213,6 +222,107 @@ test('ext_everhour migration backfills legacy settings and records ext:everhour'
       )
       .get() as { component: string };
     assert.equal(ledger.component, 'ext:everhour');
+  } finally {
+    db.close();
+  }
+});
+
+test('ext_everhour migration reconciles legacy core ledger record without re-running', () => {
+  const Database = loadBetterSqlite3();
+  const db = new Database(':memory:');
+  db.pragma('foreign_keys = ON');
+
+  try {
+    migrateUpToExtEverhour(db);
+    applySqliteMigrationFile(db, EXT_EVERHOUR_MIGRATION);
+
+    db.prepare(
+      `UPDATE schema_migrations
+          SET component = 'core'
+        WHERE adapter = 'sqlite' AND version = '20260706000000'`
+    ).run();
+
+    migrateDatabase(db);
+
+    const ledger = db
+      .prepare(
+        `SELECT component FROM schema_migrations
+         WHERE adapter = 'sqlite' AND version = '20260706000000'`
+      )
+      .get() as { component: string };
+    assert.equal(ledger.component, 'ext:everhour');
+
+    const missionColumns = db
+      .prepare(`PRAGMA table_info(missions)`)
+      .all() as Array<{ name: string }>;
+    assert.equal(
+      missionColumns.some(column => column.name === 'everhour_task_id'),
+      false
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('ext_everhour migration applies cleanly on fresh installs without legacy mission column', () => {
+  const Database = loadBetterSqlite3();
+  const db = new Database(':memory:');
+  db.pragma('foreign_keys = ON');
+
+  try {
+    migrateUpToExtEverhour(db);
+    applySqliteMigrationFile(db, EXT_EVERHOUR_MIGRATION);
+
+    const missionColumns = db
+      .prepare(`PRAGMA table_info(missions)`)
+      .all() as Array<{ name: string }>;
+    assert.equal(
+      missionColumns.some(column => column.name === 'everhour_task_id'),
+      false
+    );
+
+    const tables = db
+      .prepare(
+        `SELECT name FROM sqlite_schema
+         WHERE type = 'table' AND name LIKE 'ext_everhour_%'
+         ORDER BY name`
+      )
+      .all() as Array<{ name: string }>;
+    assert.deepEqual(
+      tables.map(table => table.name),
+      [
+        'ext_everhour_mission_links',
+        'ext_everhour_project_links',
+        'ext_everhour_workspace_connections'
+      ]
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test('migrateDatabase prunes retired migration ledger versions', () => {
+  const Database = loadBetterSqlite3();
+  const db = new Database(':memory:');
+  db.pragma('foreign_keys = ON');
+
+  try {
+    migrateDatabase(db);
+    db.prepare(
+      `INSERT INTO schema_migrations (
+         version, adapter, component, contract_version, checksum, applied_at
+       ) VALUES (?, 'sqlite', 'core', ?, 'retired', ?)`
+    ).run('20260625000000', CONTRACT_VERSION, new Date().toISOString());
+
+    migrateDatabase(db);
+
+    const retired = db
+      .prepare(
+        `SELECT 1 FROM schema_migrations
+         WHERE adapter = 'sqlite' AND version = '20260625000000'`
+      )
+      .get();
+    assert.equal(retired, undefined);
   } finally {
     db.close();
   }

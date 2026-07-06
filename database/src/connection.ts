@@ -5,7 +5,16 @@ import { fileURLToPath } from 'node:url';
 
 import { type BetterSqlite3Database, loadBetterSqlite3 } from './better-sqlite3-loader.js';
 import { CONTRACT_VERSION } from './constants.js';
+import {
+  finalizeExtEverhourMissionLinksSqlite,
+  isExtEverhourPersistenceMigration
+} from './ext-everhour-migration-runtime.js';
 import { resolveGlobalDatabasePath } from './local-paths.js';
+import {
+  knownMigrationVersions,
+  pruneObsoleteMigrationLedgerSqlite,
+  resolveAppliedMigrationSqlite
+} from './migration-ledger.js';
 
 const MIGRATION_FILE_PATTERN = /^\d+_[a-z0-9_]+\.sql$/;
 
@@ -52,12 +61,7 @@ function applyMigration(
   db: OverlordDatabase,
   migration: ReturnType<typeof loadMigrationSql>
 ): void {
-  const applied = db
-    .prepare(
-      `SELECT checksum FROM schema_migrations
-       WHERE adapter = 'sqlite' AND component = ? AND version = ?`
-    )
-    .get(migration.component, migration.version) as { checksum: string } | undefined;
+  const applied = resolveAppliedMigrationSqlite({ db, migration });
 
   if (applied) {
     if (applied.checksum !== migration.checksum) {
@@ -70,6 +74,9 @@ function applyMigration(
   }
 
   db.exec(migration.sql);
+  if (isExtEverhourPersistenceMigration(migration)) {
+    finalizeExtEverhourMissionLinksSqlite(db);
+  }
   db.prepare(
     `INSERT INTO schema_migrations (version, adapter, component, contract_version, checksum, applied_at)
      VALUES (?, 'sqlite', ?, ?, ?, ?)`
@@ -97,8 +104,19 @@ export function openDatabase({ databasePath }: { databasePath: string }): Overlo
 }
 
 export function migrateDatabase(db: OverlordDatabase): void {
+  const migrationFiles = listSqliteMigrationFiles();
+  const knownVersions = knownMigrationVersions(migrationFiles);
+  const hasSchemaLedger = Boolean(
+    db
+      .prepare(`SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'schema_migrations'`)
+      .get()
+  );
+  if (hasSchemaLedger) {
+    pruneObsoleteMigrationLedgerSqlite({ db, knownVersions });
+  }
+
   const pendingMigrationRecords: Array<ReturnType<typeof loadMigrationSql>> = [];
-  for (const fileName of listSqliteMigrationFiles()) {
+  for (const fileName of migrationFiles) {
     const migration = loadMigrationSql(fileName);
     const hasSchema = db
       .prepare(`SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'schema_migrations'`)

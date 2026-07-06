@@ -4,6 +4,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { CONTRACT_VERSION } from './constants.js';
+import {
+  finalizeExtEverhourMissionLinksSqlite,
+  isExtEverhourPersistenceMigration
+} from './ext-everhour-migration-runtime.js';
+import {
+  knownMigrationVersions,
+  pruneObsoleteMigrationLedgerSqlite,
+  resolveAppliedMigrationSqlite
+} from './migration-ledger.js';
 import { resolveGlobalDatabasePath } from './local-paths.js';
 
 const MIGRATION_FILE_PATTERN = /^\d+_[a-z0-9_]+\.sql$/;
@@ -71,17 +80,14 @@ function listMigrationFiles(): string[] {
 }
 
 function applyMigration(db: DatabaseInstance, migration: Migration): 'applied' | 'skipped' {
-  const applied = db
-    .prepare(
-      `
-      SELECT checksum
-      FROM schema_migrations
-      WHERE adapter = 'sqlite'
-        AND component = ?
-        AND version = ?
-      `
-    )
-    .get(migration.component, migration.version) as { checksum: string } | undefined;
+  const applied = resolveAppliedMigrationSqlite({
+    db,
+    migration: {
+      version: migration.version,
+      component: migration.component,
+      checksum: migration.checksum
+    }
+  });
 
   if (applied) {
     if (applied.checksum !== migration.checksum) {
@@ -93,19 +99,10 @@ function applyMigration(db: DatabaseInstance, migration: Migration): 'applied' |
   }
 
   db.exec(migration.sql);
-  db.prepare(
-    `
-    INSERT INTO schema_migrations (
-      version, adapter, component, contract_version, checksum, applied_at
-    ) VALUES (?, 'sqlite', ?, ?, ?, ?)
-    `
-  ).run(
-    migration.version,
-    migration.component,
-    CONTRACT_VERSION,
-    migration.checksum,
-    new Date().toISOString()
-  );
+  if (isExtEverhourPersistenceMigration(migration)) {
+    finalizeExtEverhourMissionLinksSqlite(db);
+  }
+  recordMigration(db, migration);
 
   return 'applied';
 }
@@ -170,6 +167,13 @@ async function main(): Promise<void> {
   const results: string[] = [];
 
   try {
+    if (hasSchemaMigrationsTable(db)) {
+      pruneObsoleteMigrationLedgerSqlite({
+        db,
+        knownVersions: knownMigrationVersions(listMigrationFiles())
+      });
+    }
+
     const pendingMigrationRecords: Migration[] = [];
     for (const migration of migrations) {
       const state = applyMigrationWithPendingRecords(db, migration, pendingMigrationRecords);
@@ -235,6 +239,9 @@ function applyMigrationWithPendingRecords(
   if (hasSchemaMigrationsTable(db)) return applyMigration(db, migration);
 
   db.exec(migration.sql);
+  if (isExtEverhourPersistenceMigration(migration)) {
+    finalizeExtEverhourMissionLinksSqlite(db);
+  }
   if (!hasSchemaMigrationsTable(db)) {
     pendingMigrationRecords.push(migration);
     return 'applied-pending';

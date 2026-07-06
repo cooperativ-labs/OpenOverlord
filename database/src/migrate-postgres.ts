@@ -5,6 +5,15 @@ import { fileURLToPath } from 'node:url';
 
 import type { DatabaseClient } from './client.js';
 import { CONTRACT_VERSION } from './constants.js';
+import {
+  finalizeExtEverhourMissionLinksPostgres,
+  isExtEverhourPersistenceMigration
+} from './ext-everhour-migration-runtime.js';
+import {
+  knownMigrationVersions,
+  pruneObsoleteMigrationLedgerPostgres,
+  resolveAppliedMigrationPostgres
+} from './migration-ledger.js';
 
 const MIGRATION_FILE_PATTERN = /^\d+_[a-z0-9_]+\.sql$/;
 
@@ -83,12 +92,21 @@ export async function migratePostgres(client: DatabaseClient): Promise<void> {
     throw new Error(`migratePostgres requires a postgres client, got '${client.dialect}'`);
   }
 
+  const migrationFiles = listPostgresMigrationFiles();
+  const knownVersions = knownMigrationVersions(migrationFiles);
+  if (await schemaMigrationsExists(client)) {
+    await pruneObsoleteMigrationLedgerPostgres({ client, knownVersions });
+  }
+
   const pending: Array<ReturnType<typeof loadMigrationSql>> = [];
-  for (const fileName of listPostgresMigrationFiles()) {
+  for (const fileName of migrationFiles) {
     const migration = loadMigrationSql(fileName);
 
     if (!(await schemaMigrationsExists(client))) {
       await client.exec(migration.sql);
+      if (isExtEverhourPersistenceMigration(migration)) {
+        await finalizeExtEverhourMissionLinksPostgres(client);
+      }
       if (!(await schemaMigrationsExists(client))) {
         pending.push(migration);
         continue;
@@ -100,11 +118,7 @@ export async function migratePostgres(client: DatabaseClient): Promise<void> {
       continue;
     }
 
-    const applied = await client.get<{ checksum: string }>(
-      `SELECT checksum FROM schema_migrations
-        WHERE adapter = 'postgres' AND component = ? AND version = ?`,
-      [migration.component, migration.version]
-    );
+    const applied = await resolveAppliedMigrationPostgres({ client, migration });
     if (applied) {
       if (applied.checksum !== migration.checksum) {
         throw new Error(
@@ -116,6 +130,9 @@ export async function migratePostgres(client: DatabaseClient): Promise<void> {
     }
 
     await client.exec(migration.sql);
+    if (isExtEverhourPersistenceMigration(migration)) {
+      await finalizeExtEverhourMissionLinksPostgres(client);
+    }
     await recordMigration(client, migration);
   }
 }

@@ -1,3 +1,12 @@
+-- Everhour extension persistence (coo:29).
+--
+-- Introduces `ext_everhour_*` tables and backfills workspace/project links from
+-- legacy JSON settings. Mission-link backfill from the retired core
+-- `missions.everhour_task_id` column runs in migration runtime when that column
+-- still exists, then drops it.
+--
+-- Contract: database/docs/09-database-schema-contract.md → ext_everhour_*
+
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS ext_everhour_workspace_connections (
@@ -111,21 +120,3 @@ WHERE p.deleted_at IS NULL
   AND length(trim(json_extract(p.settings_json, '$."overlord.everhourProjectId"'))) > 0
   AND length(trim(json_extract(p.settings_json, '$."overlord.everhourProjectName"'))) > 0;
 
-INSERT OR IGNORE INTO ext_everhour_mission_links (
-  id, workspace_id, project_id, mission_id, everhour_task_id, created_at, updated_at, revision
-)
-SELECT
-  lower(hex(randomblob(16))),
-  m.workspace_id,
-  m.project_id,
-  m.id,
-  m.everhour_task_id,
-  strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-  strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
-  1
-FROM missions m
-WHERE m.deleted_at IS NULL
-  AND m.everhour_task_id IS NOT NULL
-  AND length(trim(m.everhour_task_id)) > 0;
-
-ALTER TABLE missions DROP COLUMN everhour_task_id;
