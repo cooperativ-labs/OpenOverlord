@@ -572,28 +572,30 @@ export function MyMissionsPage() {
               </Button>
             }
           />
-        ) : view === 'board' && isFilterActive ? (
-          <div className="flex h-full min-h-0 items-stretch gap-2">{renderColumns(false)}</div>
         ) : view === 'board' ? (
-          <DndContext {...dndContextProps}>
-            <div className="flex h-full min-h-0 items-stretch gap-2">{renderColumns(true)}</div>
-            <DragOverlay>
-              {activeMission ? (
-                <SortableMissionCard
-                  mission={activeMission}
-                  projectId={activeMission.projectId}
-                  projectName={activeMission.projectName}
-                  projectColor={activeMission.projectColor}
-                  assignee={
-                    activeMission.assignedWorkspaceUserId
-                      ? membersByWorkspaceUserId.get(activeMission.assignedWorkspaceUserId)
-                      : undefined
-                  }
-                  selected={activeMission.id === selectedMissionId}
-                  isDragOverlay
-                />
-              ) : null}
-            </DragOverlay>
+          <DndContext {...(isFilterActive ? listDnd.dndContextProps : dndContextProps)}>
+            <div className="flex h-full min-h-0 items-stretch gap-2">
+              {renderColumns(!isFilterActive)}
+            </div>
+            {!isFilterActive ? (
+              <DragOverlay>
+                {activeMission ? (
+                  <SortableMissionCard
+                    mission={activeMission}
+                    projectId={activeMission.projectId}
+                    projectName={activeMission.projectName}
+                    projectColor={activeMission.projectColor}
+                    assignee={
+                      activeMission.assignedWorkspaceUserId
+                        ? membersByWorkspaceUserId.get(activeMission.assignedWorkspaceUserId)
+                        : undefined
+                    }
+                    selected={activeMission.id === selectedMissionId}
+                    isDragOverlay
+                  />
+                ) : null}
+              </DragOverlay>
+            ) : null}
           </DndContext>
         ) : (
           <MissionListView

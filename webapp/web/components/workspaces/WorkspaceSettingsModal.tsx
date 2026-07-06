@@ -91,11 +91,12 @@ export function WorkspaceSettingsModal({
                 Switch to this workspace to manage its model catalog.
               </p>
             ))}
-          {activeNav === 'Card statuses' &&
+          {activeNav === 'Card statuses' && (
             // Statuses are managed through the workspace-scoped routes
             // (`/api/workspaces/:id/statuses`), so any org workspace's statuses
             // can be edited here without first switching to it (coo:135).
-            <StatusesPage workspaceId={workspace.id} />}
+            <StatusesPage workspaceId={workspace.id} />
+          )}
           {activeNav === 'Archived projects' &&
             // `/api/projects` is scoped to the active workspace, so archived
             // projects can only be managed for the workspace you are in.

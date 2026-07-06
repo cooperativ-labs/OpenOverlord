@@ -10,7 +10,6 @@ import type { MissionDto, WorkspaceMemberDto, WorkspaceStatusDto } from '../../s
 
 import { BlankMissionCard, type BlankMissionCreateOptions } from './BlankMissionCard.tsx';
 import { resolveAssignee } from './board-shared.ts';
-import { MissionCard } from './MissionCard.tsx';
 import { SortableMissionCard } from './SortableMissionCard.tsx';
 
 export type BoardColumnStatus =
@@ -128,11 +127,7 @@ export function BoardColumn<TMission extends MissionDto = MissionDto>({
           onOpen: cardContext.onOpen
         };
 
-        return draggable ? (
-          <SortableMissionCard key={mission.id} {...cardProps} />
-        ) : (
-          <MissionCard key={mission.id} {...cardProps} />
-        );
+        return <SortableMissionCard key={mission.id} {...cardProps} disabled={!draggable} />;
       })}
       {canCreateMission && isAddingBottom ? (
         <div className="pb-0.52">

@@ -794,12 +794,7 @@ export async function resolveStoredObject(
           )
         ORDER BY created_at DESC
         LIMIT 1`,
-      [
-        bucket.id,
-        publicUrlFor(bucketKey, storageKey),
-        storageKey,
-        legacyStorageKeyLike
-      ]
+      [bucket.id, publicUrlFor(bucketKey, storageKey), storageKey, legacyStorageKeyLike]
     );
   }
   if (!row) throw new ApiError(404, 'File not found');

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -14,7 +14,11 @@ import {
   resolveDatabasePath,
   writeConfig
 } from '../src/config.ts';
-import { isInstalledModulePath, resetExplicitRuntimeEnvForTests } from '../src/env.ts';
+import {
+  isInstalledCliEntrypointPath,
+  isInstalledModulePath,
+  resetExplicitRuntimeEnvForTests
+} from '../src/env.ts';
 
 test('isInstalledModulePath flags installed packages but not the source build', () => {
   // An installed/published CLI runs as production and must never read the dev-only
@@ -25,6 +29,23 @@ test('isInstalledModulePath flags installed packages but not the source build', 
   );
   assert.equal(isInstalledModulePath('/Users/x/Development/OpenOverlord/cli/dist'), false);
   assert.equal(isInstalledModulePath('/Users/x/Development/OpenOverlord/cli/src'), false);
+});
+
+test('isInstalledCliEntrypointPath treats global bin symlinks as installed', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'overlord-bin-'));
+  const binDir = path.join(dir, 'bin');
+  const packageBinDir = path.join(dir, 'lib', 'node_modules', 'open-overlord', 'bin');
+  mkdirSync(binDir, { recursive: true });
+  mkdirSync(packageBinDir, { recursive: true });
+
+  const binPath = path.join(binDir, 'ovld');
+  symlinkSync('../lib/node_modules/open-overlord/bin/ovld.mjs', binPath);
+
+  assert.equal(isInstalledCliEntrypointPath(binPath), true);
+  assert.equal(
+    isInstalledCliEntrypointPath('/Users/x/Development/OpenOverlord/cli/bin/ovld.mjs'),
+    false
+  );
 });
 
 test('loadConfig parses scalar keys from overlord.toml', () => {

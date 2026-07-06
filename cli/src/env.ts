@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readlinkSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -35,6 +35,29 @@ export function isInstalledModulePath(moduleDir: string): boolean {
 }
 
 /**
+ * True when the invoked `ovld` entrypoint came from an installed package path.
+ * Node resolves package symlinks before exposing `import.meta.url`, so a globally
+ * linked `open-overlord` package can otherwise look like the in-repo source build.
+ */
+export function isInstalledCliEntrypointPath(entrypointPath: string): boolean {
+  if (!entrypointPath) return false;
+  if (isInstalledModulePath(entrypointPath)) return true;
+
+  try {
+    const stat = lstatSync(entrypointPath);
+    if (!stat.isSymbolicLink()) return false;
+
+    const target = readlinkSync(entrypointPath);
+    const resolvedTarget = path.isAbsolute(target)
+      ? target
+      : path.resolve(path.dirname(entrypointPath), target);
+    return isInstalledModulePath(resolvedTarget);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Default env profile for a bare `ovld` invocation. The **installed/published**
  * CLI (under `node_modules`) runs as `production`: it never auto-loads `.env.local`
  * and never reads the dev-only `OVERLORD_BACKEND_URL_DEV`, so a development variable
@@ -46,7 +69,9 @@ export function isInstalledModulePath(moduleDir: string): boolean {
 export function detectCliEnvProfile(): EnvProfile {
   try {
     const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-    return isInstalledModulePath(moduleDir) ? 'production' : 'development';
+    return isInstalledModulePath(moduleDir) || isInstalledCliEntrypointPath(process.argv[1] ?? '')
+      ? 'production'
+      : 'development';
   } catch {
     return 'development';
   }

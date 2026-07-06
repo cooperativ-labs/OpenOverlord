@@ -13,7 +13,9 @@ describe('branch actions', () => {
   }> {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-ba-db-'));
     const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
-    const { db } = await bootstrapIntegrationTestDb({ sqlitePath: path.join(dir, 'Overlord.sqlite') });
+    const { db } = await bootstrapIntegrationTestDb({
+      sqlitePath: path.join(dir, 'Overlord.sqlite')
+    });
     const api = await import('./repository.ts');
     const runner = await import('./runner.ts');
     return { api, runner, db };

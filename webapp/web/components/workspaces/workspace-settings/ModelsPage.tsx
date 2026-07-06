@@ -34,11 +34,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  useAgentCatalog,
-  useRefreshAgentCatalog,
-  useUpdateAgentCatalog
-} from '@/lib/queries';
+import { useAgentCatalog, useRefreshAgentCatalog, useUpdateAgentCatalog } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
 import type { AgentCatalogAgentDto, AgentCatalogDto } from '../../../../shared/contract.ts';
@@ -214,10 +210,7 @@ function AgentModelsSection({
   function handleAddModel() {
     const suffix = agent.models.length + 1;
     const id = `model-${suffix}`;
-    updateModels([
-      ...agent.models,
-      { id, displayName: `Model ${suffix}`, reasoningOptions: [] }
-    ]);
+    updateModels([...agent.models, { id, displayName: `Model ${suffix}`, reasoningOptions: [] }]);
   }
 
   return (
@@ -304,10 +297,7 @@ function AgentModelsSection({
               </tr>
             </thead>
             <tbody>
-              <SortableContext
-                items={modelOrder}
-                strategy={verticalListSortingStrategy}
-              >
+              <SortableContext items={modelOrder} strategy={verticalListSortingStrategy}>
                 {orderedModels.map(model => (
                   <SortableModelRow
                     key={model.id}
@@ -325,7 +315,9 @@ function AgentModelsSection({
                       }
                       updateModels(models);
                     }}
-                    onDelete={() => updateModels(agent.models.filter(existing => existing.id !== model.id))}
+                    onDelete={() =>
+                      updateModels(agent.models.filter(existing => existing.id !== model.id))
+                    }
                   />
                 ))}
               </SortableContext>

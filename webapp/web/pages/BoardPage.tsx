@@ -394,26 +394,26 @@ export function BoardPage() {
               </Button>
             }
           />
-        ) : view === 'board' && isFilterActive ? (
-          <div className="flex h-full min-h-0 items-stretch gap-2">{renderBoardColumns(false)}</div>
         ) : view === 'board' ? (
-          <DndContext {...dndContextProps}>
+          <DndContext {...(isFilterActive ? listDnd.dndContextProps : dndContextProps)}>
             <div className="flex h-full min-h-0 items-stretch gap-2">
-              {renderBoardColumns(true)}
+              {renderBoardColumns(!isFilterActive)}
             </div>
-            <DragOverlay>
-              {activeMission ? (
-                <SortableMissionCard
-                  mission={activeMission}
-                  projectId={projectId}
-                  projectName={projectName}
-                  projectColor={projectColor}
-                  assignee={activeAssignee}
-                  selected={activeMission.id === selectedMissionId}
-                  isDragOverlay
-                />
-              ) : null}
-            </DragOverlay>
+            {!isFilterActive ? (
+              <DragOverlay>
+                {activeMission ? (
+                  <SortableMissionCard
+                    mission={activeMission}
+                    projectId={projectId}
+                    projectName={projectName}
+                    projectColor={projectColor}
+                    assignee={activeAssignee}
+                    selected={activeMission.id === selectedMissionId}
+                    isDragOverlay
+                  />
+                ) : null}
+              </DragOverlay>
+            ) : null}
           </DndContext>
         ) : (
           <MissionListView

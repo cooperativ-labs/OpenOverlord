@@ -17,6 +17,7 @@ export function SortableMissionCard({
   assignee,
   selected,
   isDragOverlay,
+  disabled,
   onOpen
 }: {
   mission: MissionDto;
@@ -26,12 +27,13 @@ export function SortableMissionCard({
   assignee?: WorkspaceMemberDto | null;
   selected?: boolean;
   isDragOverlay?: boolean;
+  disabled?: boolean;
   /** Override the default navigate-to-project-mission click (e.g. the My Missions board). */
   onOpen?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: mission.id,
-    disabled: isDragOverlay
+    disabled: isDragOverlay || disabled
   });
 
   if (isDragOverlay) {
@@ -58,9 +60,13 @@ export function SortableMissionCard({
     <div
       ref={setNodeRef}
       style={style}
-      className={cn('cursor-grab touch-none active:cursor-grabbing', isDragging && 'opacity-40')}
-      {...listeners}
-      {...attributes}
+      className={cn(
+        'shrink-0',
+        disabled ? 'cursor-pointer' : 'cursor-grab touch-none active:cursor-grabbing',
+        isDragging && 'opacity-40'
+      )}
+      {...(disabled ? {} : listeners)}
+      {...(disabled ? {} : attributes)}
     >
       <MissionCardSurface
         mission={mission}
