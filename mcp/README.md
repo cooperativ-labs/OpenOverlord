@@ -41,6 +41,5 @@ surface lands in a consistent place when work begins.
 
 ### Documentation
 
-No dedicated feature plan exists yet. The expansion intent is noted in the
-[feature-plans README](../planning/feature-plans/README.md). Add an
-`mcp.md` feature plan here (or in `planning/feature-plans/`) when scoping begins.
+The hosted cloud-agent MCP implementation is scoped in
+[`planning/feature-plans/cloud-agent-overlord-mcp.md`](../planning/feature-plans/cloud-agent-overlord-mcp.md).
