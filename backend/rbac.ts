@@ -9,10 +9,12 @@ import {
 import { type DatabaseClient } from '@overlord/database';
 
 import {
+  findActiveMembershipId,
   getActiveTokenScopes,
   getActiveWorkspaceIdOrNull,
   getActorWorkspaceUserId,
-  requireDatabaseClient
+  requireDatabaseClient,
+  resolveActiveProfileId
 } from './db.ts';
 import { ApiError } from './errors.ts';
 
@@ -89,6 +91,63 @@ export async function requirePermission(action: Permission): Promise<void> {
   }
 }
 
+/**
+ * Per-target-workspace gate (coo:96/coo:135 pattern): the caller must be an
+ * active member of `workspaceId` — independent of which workspace is currently
+ * active — and hold `permission` there. Returns the caller's membership id in
+ * that workspace. Non-membership reads as `notFoundMessage` (404) so foreign
+ * workspace/resource ids don't leak existence; permission denial inside a real
+ * membership is an honest 403.
+ */
+export async function requireWorkspacePermission({
+  workspaceId,
+  permission,
+  db = requireDatabaseClient(),
+  notFoundMessage = 'Workspace not found'
+}: {
+  workspaceId: string;
+  permission: Permission;
+  db?: DatabaseClient;
+  notFoundMessage?: string;
+}): Promise<string> {
+  const profileId = await resolveActiveProfileId(db);
+  if (!profileId) throw new ApiError(401, 'Authentication required');
+  const membershipId = await findActiveMembershipId(workspaceId, profileId, db);
+  if (!membershipId) throw new ApiError(404, notFoundMessage);
+  if (!(await actorCan(permission, { workspaceId, workspaceUserId: membershipId }))) {
+    throw new ApiError(403, `Permission denied: ${permission}`);
+  }
+  return membershipId;
+}
+
+/**
+ * Resolves a project to its owning workspace and checks `permission` there via
+ * `requireWorkspacePermission`, so a project in a secondary workspace resolves
+ * even when a different workspace is active (coo:135).
+ */
+export async function requireProjectPermission({
+  projectId,
+  permission,
+  db = requireDatabaseClient()
+}: {
+  projectId: string;
+  permission: Permission;
+  db?: DatabaseClient;
+}): Promise<{ workspaceId: string; workspaceUserId: string }> {
+  const project = (await db.get(
+    `SELECT workspace_id FROM projects WHERE id = ? AND deleted_at IS NULL`,
+    [projectId]
+  )) as { workspace_id: string } | undefined;
+  if (!project) throw new ApiError(404, 'Project not found');
+  const workspaceUserId = await requireWorkspacePermission({
+    workspaceId: project.workspace_id,
+    permission,
+    db,
+    notFoundMessage: 'Project not found'
+  });
+  return { workspaceId: project.workspace_id, workspaceUserId };
+}
+
 // ---- Organization admin (derived, not a stored role) ----------------------
 //
 // "Organization admin" has no row of its own: it is ADMIN of every live
@@ -98,7 +157,8 @@ export async function requirePermission(action: Permission): Promise<void> {
 // otherwise a single-workspace ADMIN could add themselves as org admin and
 // escalate to every workspace in the org (R1).
 
-async function liveOrganizationWorkspaceIds(
+/** Ids of an organization's live (non-deleted) constituent workspaces. */
+export async function liveOrganizationWorkspaceIds(
   organizationId: string,
   client: DatabaseClient
 ): Promise<string[]> {

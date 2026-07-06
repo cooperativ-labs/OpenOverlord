@@ -118,7 +118,7 @@ camelCase per the [REST API Boundary](../database/docs/09-database-schema-contra
 | `GET /realtime` | Canonical SSE realtime feed of `entity_changes` deltas |
 | `GET /api/stream` | Compatibility alias for the SSE realtime feed |
 | `GET /sync/changes?after=<seq>` | Reconnect catch-up read backed by `entity_changes` |
-| `GET /api/agent-catalog`, `POST /api/agent-catalog/refresh` | Workspace agent catalog for launch/settings surfaces |
+| `GET /api/agent-catalog`, `PUT /api/agent-catalog`, `POST /api/agent-catalog/refresh` | Workspace agent catalog for launch/settings surfaces |
 | `GET /api/launch-settings` | The acting user's local execution-target launch defaults |
 | `PATCH /api/launch-settings/agents/:agentKey` | Persist per-agent pre-command / flags to `user_execution_target_preferences.agent_configs_json` |
 | `PATCH /api/launch-settings/terminal-profile` | Persist the local terminal launcher profile to `user_execution_target_preferences.terminal_profile_json` |

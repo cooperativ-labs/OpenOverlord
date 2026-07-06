@@ -108,6 +108,20 @@ describe('mission and objective access in a secondary (non-active) workspace', (
     const updatedMission = await updateMission(mission.id, { title: 'Renamed mission' });
     assert.equal(updatedMission.title, 'Renamed mission');
 
+    // Branch metadata must resolve against the mission's own workspace too:
+    // the project slug feeds the predicted worktree path and the
+    // project-configured default branch feeds baseBranch. Both formerly
+    // queried `projects` scoped to the *active* workspace, silently falling
+    // back to 'project'/'main' for a secondary-workspace mission.
+    await updateProject(project.id, { defaultBranch: 'develop' });
+    const detailWithBranch = await getMissionDetail(mission.id);
+    assert.ok(detailWithBranch.branch?.worktreePath, 'mission detail must predict a worktree path');
+    assert.ok(
+      detailWithBranch.branch.worktreePath.includes('secondary-project'),
+      `worktree path must use the secondary project's slug, got ${detailWithBranch.branch.worktreePath}`
+    );
+    assert.equal(detailWithBranch.branch.baseBranch, 'develop');
+
     const schedule = await getMissionSchedule(mission.id);
     assert.equal(schedule.schedule, null);
     await upsertMissionSchedule(mission.id, {
@@ -183,5 +197,144 @@ describe('mission and objective access in a secondary (non-active) workspace', (
       remaining.map(project => project.id),
       [second.id]
     );
+  });
+});
+
+// coo:135 objective 12: the runner claims/drives executions across every
+// workspace the caller belongs to in the active org (the My Missions
+// precedent), not just the active one. Before this, a desktop runner never saw
+// executions queued in a secondary workspace, and branch-prepared / status
+// transitions 404'd because they scoped to the active workspace.
+describe('runner claims and drives executions in a secondary (non-active) workspace', () => {
+  it('claims a secondary-workspace execution, transitions it, and records its prepared branch', async () => {
+    const dir = mkdtempSync(path.join('/tmp', 'ovld-secondary-runner-'));
+    const { bootstrapIntegrationTestDb, DEFAULT_TEST_ORGANIZATION_ID } =
+      await import('./test-helpers.ts');
+    const { WORKSPACE } = await bootstrapIntegrationTestDb({
+      sqlitePath: path.join(dir, 'Overlord.sqlite')
+    });
+    const workspaceAId = WORKSPACE.id;
+
+    const { setActiveWorkspace } = await import('./db.ts');
+    const { createWorkspace } = await import('./workspaces.ts');
+    const { createProject, createProjectResource, createMission, getMissionDetail } =
+      await import('./repository.ts');
+    const { launchObjective } = await import('./launch.ts');
+    const { claimRunnerRequest, updateRunnerRequestStatus, runnerStatus, recordBranchPrepared } =
+      await import('./runner.ts');
+
+    const secondary = await createWorkspace({
+      organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+      name: 'Secondary Runner Workspace'
+    });
+    // Back to A: everything below runs with A active while the queued execution
+    // lives in the secondary workspace B — exactly the reported runner bug.
+    await setActiveWorkspace(workspaceAId);
+
+    const project = await createProject({
+      name: 'Secondary Runner Project',
+      workspaceId: secondary.id
+    });
+    // A primary resource gives the launch a real working directory to resolve;
+    // the runner claim re-checks it exists (sqlite dialect), so it must be real.
+    await createProjectResource(project.id, {
+      directoryPath: mkdtempSync(path.join('/tmp', 'ovld-secondary-runner-resource-')),
+      executionTargetId: null,
+      isPrimary: true
+    });
+    const mission = await createMission({
+      projectId: project.id,
+      firstObjective: 'Run in the secondary workspace'
+    });
+    assert.equal(mission.workspaceId, secondary.id);
+    const objectiveId = mission.objectives[0]!.id;
+
+    // Queue an execution in B (launchObjective resolves the objective's own
+    // workspace), then confirm the runner — polling with A active — sees it.
+    const queued = await launchObjective(objectiveId, { agent: 'codex' });
+    assert.equal(queued.status, 'queued');
+
+    const statusBeforeClaim = await runnerStatus();
+    assert.ok(
+      (statusBeforeClaim.queue as Array<{ id: string; workspaceId: string }>).some(
+        request => request.id === queued.id && request.workspaceId === secondary.id
+      ),
+      'runner status must include the secondary-workspace queued execution'
+    );
+
+    // Claim it while A is active — the fix claims across org memberships.
+    const claimed = await claimRunnerRequest();
+    assert.ok(claimed.request, 'runner must claim the secondary-workspace execution');
+    assert.equal((claimed.request as { id: string }).id, queued.id);
+    assert.equal((claimed.request as { workspaceId: string }).workspaceId, secondary.id);
+    assert.equal((claimed.request as { status: string }).status, 'claimed');
+
+    // Drive the claimed request through its launch transitions.
+    const launching = await updateRunnerRequestStatus({
+      requestId: queued.id,
+      status: 'launching'
+    });
+    assert.equal((launching as { status: string }).status, 'launching');
+    const launched = await updateRunnerRequestStatus({ requestId: queued.id, status: 'launched' });
+    assert.equal((launched as { status: string }).status, 'launched');
+
+    // Record a prepared branch for the secondary-workspace mission by display_id
+    // (unique per workspace) — this formerly 404'd against the active workspace.
+    await recordBranchPrepared({
+      missionId: mission.displayId,
+      requestId: queued.id,
+      payload: {
+        branchName: 'overlord/run-in-the-secondary-workspace-1',
+        baseBranch: 'main',
+        worktreePath: '/tmp/.ovld/worktrees/secondary/overlord-run-1',
+        action: 'create',
+        cycle: 1
+      }
+    });
+    const branch = (await getMissionDetail(mission.id)).branch;
+    assert.equal(branch?.name, 'overlord/run-in-the-secondary-workspace-1');
+  });
+
+  it('manages a secondary workspace’s card statuses while another is active', async () => {
+    const dir = mkdtempSync(path.join('/tmp', 'ovld-secondary-statuses-'));
+    const { bootstrapIntegrationTestDb, DEFAULT_TEST_ORGANIZATION_ID } =
+      await import('./test-helpers.ts');
+    const { WORKSPACE } = await bootstrapIntegrationTestDb({
+      sqlitePath: path.join(dir, 'Overlord.sqlite')
+    });
+    const workspaceAId = WORKSPACE.id;
+
+    const { setActiveWorkspace } = await import('./db.ts');
+    const { createWorkspace } = await import('./workspaces.ts');
+    const { createWorkspaceStatus, listWorkspaceStatusesForWorkspace } =
+      await import('./repository.ts');
+
+    const secondary = await createWorkspace({
+      organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+      name: 'Secondary Statuses Workspace'
+    });
+    await setActiveWorkspace(workspaceAId);
+
+    const before = await listWorkspaceStatusesForWorkspace(secondary.id);
+    const aBefore = await listWorkspaceStatusesForWorkspace(workspaceAId);
+
+    // Create a status in the secondary workspace while A is active — the
+    // workspace-scoped route stamps B, not the active workspace.
+    const created = await createWorkspaceStatus(
+      { name: 'Awaiting QA Signoff', type: 'draft' },
+      secondary.id
+    );
+    assert.equal(created.workspaceId, secondary.id);
+
+    const after = await listWorkspaceStatusesForWorkspace(secondary.id);
+    assert.equal(after.length, before.length + 1);
+    assert.ok(
+      after.some(status => status.id === created.id && status.name === 'Awaiting QA Signoff')
+    );
+
+    // The active workspace's statuses must be untouched.
+    const aAfter = await listWorkspaceStatusesForWorkspace(workspaceAId);
+    assert.equal(aAfter.length, aBefore.length);
+    assert.ok(!aAfter.some(status => status.name === 'Awaiting QA Signoff'));
   });
 });

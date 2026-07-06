@@ -32,7 +32,11 @@ import {
   resolveActiveProfileId
 } from './db.ts';
 import { ApiError } from './errors.ts';
-import { isOrganizationAdmin, listOrganizationAdminProfileIds } from './rbac.ts';
+import {
+  isOrganizationAdmin,
+  listOrganizationAdminProfileIds,
+  liveOrganizationWorkspaceIds
+} from './rbac.ts';
 import { createStorageBackend } from './storage-backends.ts';
 
 // backend/organizations.ts -> repo root is one level up from backend/.
@@ -149,15 +153,75 @@ async function requireCurrentProfileId(
   return profileId;
 }
 
-async function liveConstituentWorkspaceIds(
+/**
+ * The shared gate for every org mutation/admin read: authenticated caller,
+ * existing organization, and org-admin status (ADMIN in every live
+ * constituent workspace, Q2). Returns the caller's profile id.
+ */
+async function requireOrganizationAdmin(
   organizationId: string,
   client: DatabaseClient
-): Promise<string[]> {
-  const rows = await client.all<{ id: string }>(
-    `SELECT id FROM workspaces WHERE organization_id = ? AND deleted_at IS NULL`,
-    [organizationId]
+): Promise<string> {
+  const profileId = await requireCurrentProfileId(client);
+  await getOrganizationRow(organizationId, client);
+  if (!(await isOrganizationAdmin(profileId, organizationId, client))) {
+    throw new ApiError(403, 'Organization admin required');
+  }
+  return profileId;
+}
+
+/**
+ * Make `roleKey` the member's sole role in a workspace: soft-delete every
+ * current assignment and insert the new one, recording the change. No-op when
+ * the member already holds exactly that one role. Shared by the org-admin
+ * add (→ ADMIN everywhere) and remove (→ MEMBER everywhere) invariants.
+ */
+async function setSoleRoleAssignment(
+  tx: DatabaseClient,
+  {
+    workspaceId,
+    workspaceUserId,
+    roleKey,
+    assignedByWorkspaceUserId,
+    now
+  }: {
+    workspaceId: string;
+    workspaceUserId: string;
+    roleKey: 'ADMIN' | 'MEMBER';
+    assignedByWorkspaceUserId: string;
+    now: string;
+  }
+): Promise<void> {
+  const roles = await tx.all<{ role_key: string }>(
+    `SELECT role_key FROM role_assignments
+       WHERE workspace_id = ? AND workspace_user_id = ? AND deleted_at IS NULL`,
+    [workspaceId, workspaceUserId]
   );
-  return rows.map(row => row.id);
+  if (roles.length === 1 && roles[0].role_key === roleKey) return;
+
+  await tx.run(
+    `UPDATE role_assignments
+        SET deleted_at = ?, updated_at = ?, revision = revision + 1
+      WHERE workspace_id = ? AND workspace_user_id = ? AND deleted_at IS NULL`,
+    [now, now, workspaceId, workspaceUserId]
+  );
+  await tx.run(
+    `INSERT INTO role_assignments
+       (id, workspace_id, workspace_user_id, role_key, resource_type, resource_id,
+        assigned_by_workspace_user_id, created_at, updated_at, revision)
+     VALUES (?, ?, ?, ?, '', '', ?, ?, ?, 1)`,
+    [newId(), workspaceId, workspaceUserId, roleKey, assignedByWorkspaceUserId, now, now]
+  );
+  await recordChange(
+    {
+      entityType: 'role_assignment',
+      entityId: workspaceUserId,
+      operation: 'update',
+      workspaceId,
+      changedFields: ['role_key']
+    },
+    tx
+  );
 }
 
 /** Fan out one `entity_changes` row per constituent workspace (R4). */
@@ -174,7 +238,7 @@ async function recordOrganizationChange({
   changedFields?: string[];
   client: DatabaseClient;
 }): Promise<void> {
-  const workspaceIds = await liveConstituentWorkspaceIds(organizationId, client);
+  const workspaceIds = await liveOrganizationWorkspaceIds(organizationId, client);
   for (const workspaceId of workspaceIds) {
     await recordChange(
       {
@@ -195,11 +259,8 @@ export async function updateOrganization(
   id: string,
   body: UpdateOrganizationBody
 ): Promise<OrganizationDto> {
-  const profileId = await requireCurrentProfileId();
   const client = requireDatabaseClient();
-  if (!(await isOrganizationAdmin(profileId, id, client))) {
-    throw new ApiError(403, 'Organization admin required');
-  }
+  await requireOrganizationAdmin(id, client);
 
   await client.transaction(async tx => {
     const existing = await getOrganizationRow(id, tx);
@@ -300,12 +361,8 @@ async function loadOrganizationAdmins(
 export async function listOrganizationAdmins(
   organizationId: string
 ): Promise<OrganizationAdminDto[]> {
-  const profileId = await requireCurrentProfileId();
   const client = requireDatabaseClient();
-  await getOrganizationRow(organizationId, client);
-  if (!(await isOrganizationAdmin(profileId, organizationId, client))) {
-    throw new ApiError(403, 'Organization admin required');
-  }
+  await requireOrganizationAdmin(organizationId, client);
   return loadOrganizationAdmins(organizationId, client);
 }
 
@@ -321,12 +378,8 @@ export async function addOrganizationAdmin(
   organizationId: string,
   body: AddOrganizationAdminBody
 ): Promise<OrganizationAdminDto[]> {
-  const actingProfileId = await requireCurrentProfileId();
   const client = requireDatabaseClient();
-  await getOrganizationRow(organizationId, client);
-  if (!(await isOrganizationAdmin(actingProfileId, organizationId, client))) {
-    throw new ApiError(403, 'Organization admin required');
-  }
+  const actingProfileId = await requireOrganizationAdmin(organizationId, client);
 
   const targetProfileId = (body.userId ?? '').trim();
   if (!targetProfileId) throw new ApiError(400, 'userId is required');
@@ -338,7 +391,7 @@ export async function addOrganizationAdmin(
     );
     if (!targetProfile) throw new ApiError(404, 'User not found');
 
-    const workspaceIds = await liveConstituentWorkspaceIds(organizationId, tx);
+    const workspaceIds = await liveOrganizationWorkspaceIds(organizationId, tx);
     if (workspaceIds.length === 0) throw new ApiError(404, 'Organization has no workspaces');
 
     const hasAnyMembership = await tx.get(
@@ -386,42 +439,19 @@ export async function addOrganizationAdmin(
         );
       }
 
-      const roles = await tx.all<{ role_key: string }>(
-        `SELECT role_key FROM role_assignments
-           WHERE workspace_id = ? AND workspace_user_id = ? AND deleted_at IS NULL`,
-        [workspaceId, workspaceUserId]
-      );
-      if (roles.length === 1 && roles[0].role_key === 'ADMIN') continue;
-
       const actingMembership = await tx.get<{ id: string }>(
         `SELECT id FROM workspace_users
            WHERE workspace_id = ? AND profile_id = ? AND status = 'active' AND deleted_at IS NULL`,
         [workspaceId, actingProfileId]
       );
 
-      await tx.run(
-        `UPDATE role_assignments
-            SET deleted_at = ?, updated_at = ?, revision = revision + 1
-          WHERE workspace_id = ? AND workspace_user_id = ? AND deleted_at IS NULL`,
-        [now, now, workspaceId, workspaceUserId]
-      );
-      await tx.run(
-        `INSERT INTO role_assignments
-           (id, workspace_id, workspace_user_id, role_key, resource_type, resource_id,
-            assigned_by_workspace_user_id, created_at, updated_at, revision)
-         VALUES (?, ?, ?, 'ADMIN', '', '', ?, ?, ?, 1)`,
-        [newId(), workspaceId, workspaceUserId, actingMembership?.id ?? workspaceUserId, now, now]
-      );
-      await recordChange(
-        {
-          entityType: 'role_assignment',
-          entityId: workspaceUserId,
-          operation: 'update',
-          workspaceId,
-          changedFields: ['role_key']
-        },
-        tx
-      );
+      await setSoleRoleAssignment(tx, {
+        workspaceId,
+        workspaceUserId,
+        roleKey: 'ADMIN',
+        assignedByWorkspaceUserId: actingMembership?.id ?? workspaceUserId,
+        now
+      });
     }
   });
 
@@ -436,12 +466,8 @@ export async function removeOrganizationAdmin(
   organizationId: string,
   body: RemoveOrganizationAdminBody
 ): Promise<OrganizationAdminDto[]> {
-  const actingProfileId = await requireCurrentProfileId();
   const client = requireDatabaseClient();
-  await getOrganizationRow(organizationId, client);
-  if (!(await isOrganizationAdmin(actingProfileId, organizationId, client))) {
-    throw new ApiError(403, 'Organization admin required');
-  }
+  await requireOrganizationAdmin(organizationId, client);
 
   const targetProfileId = (body.userId ?? '').trim();
   if (!targetProfileId) throw new ApiError(400, 'userId is required');
@@ -455,7 +481,7 @@ export async function removeOrganizationAdmin(
   }
 
   await client.transaction(async tx => {
-    const workspaceIds = await liveConstituentWorkspaceIds(organizationId, tx);
+    const workspaceIds = await liveOrganizationWorkspaceIds(organizationId, tx);
     const now = nowIso();
     for (const workspaceId of workspaceIds) {
       const membership = await tx.get<{ id: string }>(
@@ -465,36 +491,13 @@ export async function removeOrganizationAdmin(
       );
       if (!membership) continue;
 
-      const roles = await tx.all<{ role_key: string }>(
-        `SELECT role_key FROM role_assignments
-           WHERE workspace_id = ? AND workspace_user_id = ? AND deleted_at IS NULL`,
-        [workspaceId, membership.id]
-      );
-      if (roles.length === 1 && roles[0].role_key === 'MEMBER') continue;
-
-      await tx.run(
-        `UPDATE role_assignments
-            SET deleted_at = ?, updated_at = ?, revision = revision + 1
-          WHERE workspace_id = ? AND workspace_user_id = ? AND deleted_at IS NULL`,
-        [now, now, workspaceId, membership.id]
-      );
-      await tx.run(
-        `INSERT INTO role_assignments
-           (id, workspace_id, workspace_user_id, role_key, resource_type, resource_id,
-            assigned_by_workspace_user_id, created_at, updated_at, revision)
-         VALUES (?, ?, ?, 'MEMBER', '', '', ?, ?, ?, 1)`,
-        [newId(), workspaceId, membership.id, membership.id, now, now]
-      );
-      await recordChange(
-        {
-          entityType: 'role_assignment',
-          entityId: membership.id,
-          operation: 'update',
-          workspaceId,
-          changedFields: ['role_key']
-        },
-        tx
-      );
+      await setSoleRoleAssignment(tx, {
+        workspaceId,
+        workspaceUserId: membership.id,
+        roleKey: 'MEMBER',
+        assignedByWorkspaceUserId: membership.id,
+        now
+      });
     }
   });
 
@@ -546,11 +549,7 @@ export async function deleteOrganizationIfEmpty(
   organizationId: string,
   client: DatabaseClient
 ): Promise<void> {
-  const remaining = await client.get<{ count: number }>(
-    `SELECT COUNT(*) AS count FROM workspaces WHERE organization_id = ? AND deleted_at IS NULL`,
-    [organizationId]
-  );
-  if ((remaining?.count ?? 0) > 0) return;
+  if ((await workspaceCountForOrganization(organizationId, client)) > 0) return;
 
   const org = await client.get<{
     settings_json: string;

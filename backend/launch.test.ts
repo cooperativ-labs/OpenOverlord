@@ -13,7 +13,7 @@ const { db } = await bootstrapIntegrationTestDb({
 });
 const { createProject, createProjectResource, createMission, createObjective, updateObjective } =
   await import('./repository.ts');
-const { launchObjective } = await import('./launch.ts');
+const { launchObjective, getAgentCatalog, updateAgentCatalog } = await import('./launch.ts');
 
 after(() => {
   db.close();
@@ -101,4 +101,42 @@ test('launching another objective while one is active is rejected without queuei
     .prepare(`SELECT auto_advance FROM objectives WHERE id = ?`)
     .get(second.id) as { auto_advance: number };
   assert.equal(secondObjective.auto_advance, 0);
+});
+
+test('updateAgentCatalog persists model order and display names', async () => {
+  const initial = await getAgentCatalog();
+  const cursor = initial.agents.find(agent => agent.key === 'cursor');
+  assert.ok(cursor);
+  assert.ok(cursor.models.length >= 2);
+
+  const reversed = [...cursor.models].reverse();
+  const updated = await updateAgentCatalog({
+    agents: initial.agents.map(agent =>
+      agent.key === 'cursor'
+        ? {
+            ...agent,
+            models: reversed.map((model, index) => ({
+              ...model,
+              displayName: index === 0 ? 'Top Model' : model.displayName
+            }))
+          }
+        : agent
+    )
+  });
+
+  const savedCursor = updated.agents.find(agent => agent.key === 'cursor');
+  assert.ok(savedCursor);
+  assert.equal(savedCursor.models[0]?.displayName, 'Top Model');
+  assert.equal(
+    savedCursor.models.map(model => model.id).join(','),
+    reversed.map(model => model.id).join(',')
+  );
+
+  const row = db
+    .prepare(`SELECT settings_json FROM workspaces WHERE deleted_at IS NULL LIMIT 1`)
+    .get() as { settings_json: string };
+  const settings = JSON.parse(row.settings_json) as {
+    agentCatalog?: { agents?: { cursor?: { models?: Array<{ displayName: string }> } } };
+  };
+  assert.equal(settings.agentCatalog?.agents?.cursor?.models?.[0]?.displayName, 'Top Model');
 });

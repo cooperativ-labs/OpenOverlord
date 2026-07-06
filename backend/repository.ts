@@ -86,7 +86,6 @@ import {
   DATABASE_DIALECT,
   enqueueWebhookEventRest,
   findActiveMembershipId,
-  getActiveWorkspace,
   getActiveWorkspaceId,
   getActorWorkspaceUserId,
   newId,
@@ -110,7 +109,12 @@ import {
   resolveRemoteMutationTarget
 } from './local-target-mutation-queue.ts';
 import { getActiveOrganizationIdOrNull } from './organizations.ts';
-import { actorCan, loadActorRoles } from './rbac.ts';
+import {
+  actorCan,
+  loadActorRoles,
+  requireProjectPermission,
+  requireWorkspacePermission
+} from './rbac.ts';
 import {
   generateMissionTitleNow,
   initialTitleFromInstruction,
@@ -275,13 +279,16 @@ function isTerminalStatusType(type: StatusType): boolean {
   return type === 'complete' || type === 'cancelled';
 }
 
-async function uniqueStatusKey(db: DatabaseClient, { name }: { name: string }): Promise<string> {
+async function uniqueStatusKey(
+  db: DatabaseClient,
+  { name, workspaceId }: { name: string; workspaceId: string }
+): Promise<string> {
   const base = slugify(name).replace(/-/g, '_');
   let key = base;
   let suffix = 2;
   while (
     await db.get(`SELECT 1 FROM workspace_statuses WHERE workspace_id = ? AND key = ?`, [
-      getActiveWorkspaceId(),
+      workspaceId,
       key
     ])
   ) {
@@ -293,13 +300,14 @@ async function uniqueStatusKey(db: DatabaseClient, { name }: { name: string }): 
 
 async function getWorkspaceStatusRow(
   db: DatabaseClient,
-  statusId: string
+  statusId: string,
+  workspaceId: string
 ): Promise<WorkspaceStatusRow> {
   const row = (await db.get(
     `SELECT id, workspace_id, key, name, type, position, is_default, is_terminal, revision
          FROM workspace_statuses
         WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [statusId, getActiveWorkspaceId()]
+    [statusId, workspaceId]
   )) as WorkspaceStatusRow | undefined;
   if (!row) throw new ApiError(404, 'Status not found');
   return row;
@@ -309,29 +317,31 @@ async function assertUniqueStatusName(
   db: DatabaseClient,
   {
     name,
-    excludeStatusId
+    excludeStatusId,
+    workspaceId
   }: {
     name: string;
     excludeStatusId?: string;
+    workspaceId: string;
   }
 ): Promise<void> {
   const existing = await db.get(
     `SELECT 1 FROM workspace_statuses
         WHERE workspace_id = ? AND deleted_at IS NULL AND lower(name) = lower(?)
           AND id != ?`,
-    [getActiveWorkspaceId(), name, excludeStatusId ?? '']
+    [workspaceId, name, excludeStatusId ?? '']
   );
   if (existing) throw new ApiError(409, `A status named "${name}" already exists`);
 }
 
 async function countActiveStatusesByType(
   db: DatabaseClient,
-  { type }: { type: string }
+  { type, workspaceId }: { type: string; workspaceId: string }
 ): Promise<number> {
   const row = (await db.get(
     `SELECT COUNT(*) AS count FROM workspace_statuses
         WHERE workspace_id = ? AND type = ? AND deleted_at IS NULL`,
-    [getActiveWorkspaceId(), type]
+    [workspaceId, type]
   )) as { count: number };
   return row.count;
 }
@@ -346,18 +356,13 @@ async function countMissionsOnStatus(db: DatabaseClient, statusId: string): Prom
 
 async function clearWorkspaceDefaultStatuses(
   db: DatabaseClient,
-  { now }: { now: string }
+  { now, workspaceId }: { now: string; workspaceId: string }
 ): Promise<void> {
   await db.run(
     `UPDATE workspace_statuses
         SET is_default = ?, updated_at = ?, revision = revision + 1
       WHERE workspace_id = ? AND is_default = ? AND deleted_at IS NULL`,
-    [
-      bindBool(DATABASE_DIALECT, false),
-      now,
-      getActiveWorkspaceId(),
-      bindBool(DATABASE_DIALECT, true)
-    ]
+    [bindBool(DATABASE_DIALECT, false), now, workspaceId, bindBool(DATABASE_DIALECT, true)]
   );
 }
 
@@ -720,10 +725,10 @@ async function deriveBranchStatus(_input: {
   return 'created';
 }
 
-async function getProjectSlug(projectId: string): Promise<string> {
+async function getProjectSlug(projectId: string, workspaceId: string): Promise<string> {
   const row = (await requireDatabaseClient().get(
     `SELECT slug FROM projects WHERE id = ? AND workspace_id = ?`,
-    [projectId, getActiveWorkspaceId()]
+    [projectId, workspaceId]
   )) as { slug: string } | undefined;
   return row?.slug ?? 'project';
 }
@@ -744,11 +749,12 @@ async function primaryCheckoutBranch(
 // checked out in the project's primary/main worktree, otherwise `main`.
 async function resolveProjectBaseBranch(
   projectId: string,
+  workspaceId: string,
   executionTargetId?: string | null
 ): Promise<string> {
   const row = (await requireDatabaseClient().get(
     `SELECT settings_json FROM projects WHERE id = ? AND workspace_id = ?`,
-    [projectId, getActiveWorkspaceId()]
+    [projectId, workspaceId]
   )) as { settings_json: string } | undefined;
   return (
     (row && readProjectDefaultBranch(row.settings_json)) ||
@@ -757,14 +763,18 @@ async function resolveProjectBaseBranch(
   );
 }
 
-async function preparedBaseBranch(missionId: string, branchName: string): Promise<string | null> {
+async function preparedBaseBranch(
+  missionId: string,
+  workspaceId: string,
+  branchName: string
+): Promise<string | null> {
   const rows = (await requireDatabaseClient().all(
     `SELECT payload_json FROM mission_events
         WHERE workspace_id = ? AND mission_id = ?
           AND payload_json IS NOT NULL
         ORDER BY created_at DESC
         LIMIT 50`,
-    [getActiveWorkspaceId(), missionId]
+    [workspaceId, missionId]
   )) as { payload_json: string | null }[];
 
   for (const row of rows) {
@@ -789,17 +799,19 @@ async function preparedBaseBranch(missionId: string, branchName: string): Promis
 async function resolveMissionBaseBranch({
   projectId,
   missionId,
+  workspaceId,
   branchName,
   executionTargetId
 }: {
   projectId: string;
   missionId: string;
+  workspaceId: string;
   branchName: string;
   executionTargetId?: string | null;
 }): Promise<string> {
   return (
-    (await preparedBaseBranch(missionId, branchName)) ||
-    (await resolveProjectBaseBranch(projectId, executionTargetId))
+    (await preparedBaseBranch(missionId, workspaceId, branchName)) ||
+    (await resolveProjectBaseBranch(projectId, workspaceId, executionTargetId))
   );
 }
 
@@ -813,12 +825,15 @@ function parseWorktreePreference(value: string | null): MissionWorktreePreferenc
 // preference with the workspace automation setting (coo:9). When the preference
 // is null the mission inherits the workspace setting (the original behavior);
 // `'worktree'`/`'branch'` opt an individual mission in regardless of the setting.
-async function resolveBranchAutomation(preference: MissionWorktreePreference | null): Promise<{
+async function resolveBranchAutomation(
+  preference: MissionWorktreePreference | null,
+  workspaceId: string
+): Promise<{
   automationEnabled: boolean;
   willPrepareBranch: boolean;
   willUseWorktree: boolean;
 }> {
-  const automationEnabled = await readWorktreeBranchAutomationEnabled();
+  const automationEnabled = await readWorktreeBranchAutomationEnabled(undefined, workspaceId);
   const willPrepareBranch =
     preference === 'worktree' ||
     preference === 'branch' ||
@@ -850,17 +865,20 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
     row.project_id,
     row.workspace_id
   );
-  const projectSlug = await getProjectSlug(row.project_id);
+  const projectSlug = await getProjectSlug(row.project_id, row.workspace_id);
   const worktreeRoot = resolveWorktreeRoot();
   const overrideBranch = row.branch_override?.trim() || null;
   const worktreePreference = parseWorktreePreference(row.worktree_preference);
-  const { automationEnabled, willPrepareBranch, willUseWorktree } =
-    await resolveBranchAutomation(worktreePreference);
+  const { automationEnabled, willPrepareBranch, willUseWorktree } = await resolveBranchAutomation(
+    worktreePreference,
+    row.workspace_id
+  );
   const name = row.active_branch?.trim();
   if (name) {
     const baseBranch = await resolveMissionBaseBranch({
       projectId: row.project_id,
       missionId: row.id,
+      workspaceId: row.workspace_id,
       branchName: name,
       executionTargetId
     });
@@ -889,7 +907,7 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
       willUseWorktree
     };
     const observations = await loadMissionBranchObservationsForMissions({
-      ctx: buildWebappServiceContext(),
+      ctx: await buildWebappServiceContextForWorkspace(row.workspace_id),
       executionTargetId,
       missionIds: [row.id]
     });
@@ -902,7 +920,11 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
   // No branch prepared yet: preview the name the next launch will use. A pinned
   // override wins over the planner's canonical prediction so the panel reflects
   // exactly what the next launch will prepare.
-  const baseBranch = await resolveProjectBaseBranch(row.project_id, executionTargetId);
+  const baseBranch = await resolveProjectBaseBranch(
+    row.project_id,
+    row.workspace_id,
+    executionTargetId
+  );
   const preview = previewMissionBranch({
     mission: { title: row.title, sequence: row.sequence_number },
     project: { slug: projectSlug },
@@ -939,6 +961,8 @@ export type BranchActionName = 'integrate' | 'commit' | 'push_parent' | 'publish
 interface BranchActionContext {
   missionId: string;
   projectId: string;
+  /** The mission's own workspace — not necessarily the caller's active one. */
+  workspaceId: string;
   branchName: string;
   baseBranch: string;
   worktreePath: string;
@@ -1031,16 +1055,18 @@ async function loadBranchActionContext(missionRef: string): Promise<BranchAction
   // the right place, falling back to the canonical worktree path.
   const canonicalWorktree = missionWorktreePath({
     worktreeRoot: resolveWorktreeRoot(),
-    projectSlug: await getProjectSlug(row.project_id),
+    projectSlug: await getProjectSlug(row.project_id, row.workspace_id),
     branch: branchName
   });
   return {
     missionId: row.id,
     projectId: row.project_id,
+    workspaceId: row.workspace_id,
     branchName,
     baseBranch: await resolveMissionBaseBranch({
       projectId: row.project_id,
       missionId: row.id,
+      workspaceId: row.workspace_id,
       branchName,
       executionTargetId
     }),
@@ -1054,14 +1080,14 @@ async function loadBranchActionContext(missionRef: string): Promise<BranchAction
   };
 }
 
-async function missionHasActiveExecution(missionId: string): Promise<boolean> {
+async function missionHasActiveExecution(missionId: string, workspaceId: string): Promise<boolean> {
   return Boolean(
     await requireDatabaseClient().get(
       `SELECT 1 FROM execution_requests
           WHERE mission_id = ? AND workspace_id = ?
             AND status IN ('queued', 'claimed', 'launching')
           LIMIT 1`,
-      [missionId, getActiveWorkspaceId()]
+      [missionId, workspaceId]
     )
   );
 }
@@ -1073,15 +1099,21 @@ async function recordBranchActionActivity(
   await requireDatabaseClient().transaction(async tx => {
     const mission = (await tx.get(
       `SELECT revision FROM missions WHERE id = ? AND workspace_id = ?`,
-      [ctx.missionId, getActiveWorkspaceId()]
+      [ctx.missionId, ctx.workspaceId]
     )) as { revision: number } | undefined;
     const now = nowIso();
+    // Attribute the change to the caller's membership in the mission's own
+    // workspace — the request-level actor id belongs to the active workspace.
+    const profileId = await resolveActiveProfileId(tx);
+    const actorWorkspaceUserId = profileId
+      ? await findActiveMembershipId(ctx.workspaceId, profileId, tx)
+      : null;
     if (mission) {
       const revision = mission.revision + 1;
       await tx.run(
         `UPDATE missions SET updated_at = ?, revision = ?
          WHERE id = ? AND workspace_id = ?`,
-        [now, revision, ctx.missionId, getActiveWorkspaceId()]
+        [now, revision, ctx.missionId, ctx.workspaceId]
       );
       await recordChange(
         {
@@ -1091,6 +1123,8 @@ async function recordBranchActionActivity(
           entityRevision: revision,
           projectId: ctx.projectId,
           missionId: ctx.missionId,
+          workspaceId: ctx.workspaceId,
+          actorWorkspaceUserId,
           changedFields: ['active_branch']
         },
         tx
@@ -1103,12 +1137,12 @@ async function recordBranchActionActivity(
      VALUES (?, ?, ?, ?, NULL, 'update', 'execute', ?, ?, 'webapp', ?, ?)`,
       [
         newId(),
-        getActiveWorkspaceId(),
+        ctx.workspaceId,
         ctx.projectId,
         ctx.missionId,
         summary,
         JSON.stringify({ branch: ctx.branchName, baseBranch: ctx.baseBranch }),
-        getActorWorkspaceUserId(),
+        actorWorkspaceUserId,
         now
       ]
     );
@@ -1138,7 +1172,10 @@ export async function performBranchAction(
     throw new ApiError(400, 'Invalid branch action.');
   }
   const ctx = await loadBranchActionContext(missionRef);
-  if (body.confirmBusy !== true && (await missionHasActiveExecution(ctx.missionId))) {
+  if (
+    body.confirmBusy !== true &&
+    (await missionHasActiveExecution(ctx.missionId, ctx.workspaceId))
+  ) {
     throw new ApiError(
       409,
       'An objective is currently executing on this branch. Continuing may conflict with in-progress work in its worktree.',
@@ -1157,13 +1194,14 @@ export async function performBranchAction(
   }
 
   const remoteTarget = await resolveRemoteMutationTarget({
-    ctx: buildWebappServiceContext(),
+    ctx: await buildWebappServiceContextForWorkspace(ctx.workspaceId),
     projectId: ctx.projectId
   });
   if (remoteTarget.queue) {
     await queueLocalTargetMutation({
       projectId: ctx.projectId,
       missionId: ctx.missionId,
+      workspaceId: ctx.workspaceId,
       executionTargetId: remoteTarget.executionTargetId,
       kind: 'branch_action',
       capability: 'performBranchAction',
@@ -1475,50 +1513,6 @@ export async function listProjectsForWorkspace(
   return rows.map(toProjectDto);
 }
 
-export async function requireWorkspacePermission({
-  workspaceId,
-  permission,
-  db = requireDatabaseClient(),
-  notFoundMessage = 'Workspace not found'
-}: {
-  workspaceId: string;
-  permission: Permission;
-  db?: DatabaseClient;
-  notFoundMessage?: string;
-}): Promise<string> {
-  const profileId = await resolveActiveProfileId(db);
-  if (!profileId) throw new ApiError(401, 'Authentication required');
-  const membershipId = await findActiveMembershipId(workspaceId, profileId, db);
-  if (!membershipId) throw new ApiError(404, notFoundMessage);
-  if (!(await actorCan(permission, { workspaceId, workspaceUserId: membershipId }))) {
-    throw new ApiError(403, `Permission denied: ${permission}`);
-  }
-  return membershipId;
-}
-
-async function requireProjectPermission({
-  projectId,
-  permission,
-  db = requireDatabaseClient()
-}: {
-  projectId: string;
-  permission: Permission;
-  db?: DatabaseClient;
-}): Promise<{ workspaceId: string; workspaceUserId: string }> {
-  const project = (await db.get(
-    `SELECT workspace_id FROM projects WHERE id = ? AND deleted_at IS NULL`,
-    [projectId]
-  )) as { workspace_id: string } | undefined;
-  if (!project) throw new ApiError(404, 'Project not found');
-  const workspaceUserId = await requireWorkspacePermission({
-    workspaceId: project.workspace_id,
-    permission,
-    db,
-    notFoundMessage: 'Project not found'
-  });
-  return { workspaceId: project.workspace_id, workspaceUserId };
-}
-
 export async function getProject(
   id: string,
   db: DatabaseClient = requireDatabaseClient()
@@ -1674,17 +1668,40 @@ export async function listWorkspaceStatusesForWorkspace(
   return selectWorkspaceStatusesForWorkspace(workspaceId, db);
 }
 
+/**
+ * Resolve the workspace a status mutation targets and authorize it there. When
+ * `workspaceId` is omitted the caller's active workspace is used (the legacy
+ * `/api/workspace/statuses` routes); when provided (the workspace-scoped
+ * `/api/workspaces/:id/statuses` routes) any live workspace of the org can be
+ * managed from the settings modal without first switching to it (coo:135).
+ */
+async function resolveStatusWorkspaceId(
+  db: DatabaseClient,
+  workspaceId?: string | null
+): Promise<string> {
+  const targetWorkspaceId = workspaceId ?? getActiveWorkspaceId();
+  await requireWorkspacePermission({
+    workspaceId: targetWorkspaceId,
+    permission: PERMISSIONS.WORKSPACE_UPDATE,
+    db,
+    notFoundMessage: 'Workspace not found or no active membership'
+  });
+  return targetWorkspaceId;
+}
+
 export async function createWorkspaceStatus(
-  body: CreateWorkspaceStatusBody
+  body: CreateWorkspaceStatusBody,
+  workspaceId?: string | null
 ): Promise<WorkspaceStatusDto> {
   return requireDatabaseClient().transaction(async tx => {
+    const ws = await resolveStatusWorkspaceId(tx, workspaceId);
     const name = (body.name ?? '').trim();
     if (!name) throw new ApiError(400, 'Status name is required');
-    await assertUniqueStatusName(tx, { name });
+    await assertUniqueStatusName(tx, { name, workspaceId: ws });
 
     const type = assertValidStatusType(body.type);
     if (type === 'execute' || type === 'review') {
-      if ((await countActiveStatusesByType(tx, { type })) > 0) {
+      if ((await countActiveStatusesByType(tx, { type, workspaceId: ws })) > 0) {
         throw new ApiError(409, `This workspace already has a ${type} status`);
       }
     }
@@ -1696,16 +1713,16 @@ export async function createWorkspaceStatus(
 
     const now = nowIso();
     const id = newId();
-    const key = await uniqueStatusKey(tx, { name });
+    const key = await uniqueStatusKey(tx, { name, workspaceId: ws });
     const maxPos = (await tx.get(
       `SELECT COALESCE(MAX(position), -1) AS max_pos FROM workspace_statuses
           WHERE workspace_id = ? AND deleted_at IS NULL`,
-      [getActiveWorkspaceId()]
+      [ws]
     )) as { max_pos: number };
     const position = maxPos.max_pos + 1;
 
     if (isDefault) {
-      await clearWorkspaceDefaultStatuses(tx, { now });
+      await clearWorkspaceDefaultStatuses(tx, { now, workspaceId: ws });
     }
 
     await tx.run(
@@ -1715,7 +1732,7 @@ export async function createWorkspaceStatus(
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       [
         id,
-        getActiveWorkspaceId(),
+        ws,
         key,
         name,
         type,
@@ -1729,6 +1746,7 @@ export async function createWorkspaceStatus(
 
     await recordChange(
       {
+        workspaceId: ws,
         entityType: 'workspace_status',
         entityId: id,
         operation: 'insert',
@@ -1738,16 +1756,18 @@ export async function createWorkspaceStatus(
       tx
     );
 
-    return toStatusDto(await getWorkspaceStatusRow(tx, id));
+    return toStatusDto(await getWorkspaceStatusRow(tx, id, ws));
   });
 }
 
 export async function updateWorkspaceStatus(
   statusId: string,
-  body: UpdateWorkspaceStatusBody
+  body: UpdateWorkspaceStatusBody,
+  workspaceId?: string | null
 ): Promise<WorkspaceStatusDto> {
   return requireDatabaseClient().transaction(async tx => {
-    const existing = await getWorkspaceStatusRow(tx, statusId);
+    const ws = await resolveStatusWorkspaceId(tx, workspaceId);
+    const existing = await getWorkspaceStatusRow(tx, statusId, ws);
     const changed: string[] = [];
     const now = nowIso();
     const fields: string[] = [];
@@ -1756,7 +1776,7 @@ export async function updateWorkspaceStatus(
     if (body.name !== undefined) {
       const name = body.name.trim();
       if (!name) throw new ApiError(400, 'Status name cannot be empty');
-      await assertUniqueStatusName(tx, { name, excludeStatusId: statusId });
+      await assertUniqueStatusName(tx, { name, excludeStatusId: statusId, workspaceId: ws });
       fields.push('name = ?');
       setParams.push(name);
       changed.push('name');
@@ -1767,7 +1787,7 @@ export async function updateWorkspaceStatus(
         if (existing.type !== 'draft') {
           throw new ApiError(400, 'Only draft-type statuses can be the default');
         }
-        await clearWorkspaceDefaultStatuses(tx, { now });
+        await clearWorkspaceDefaultStatuses(tx, { now, workspaceId: ws });
         fields.push('is_default = ?');
         setParams.push(bindBool(DATABASE_DIALECT, true));
         changed.push('is_default');
@@ -1785,11 +1805,12 @@ export async function updateWorkspaceStatus(
       `UPDATE workspace_statuses
           SET ${fields.join(', ')}, updated_at = ?, revision = ?
         WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [...setParams, now, revision, statusId, getActiveWorkspaceId()]
+      [...setParams, now, revision, statusId, ws]
     );
 
     await recordChange(
       {
+        workspaceId: ws,
         entityType: 'workspace_status',
         entityId: statusId,
         operation: 'update',
@@ -1799,13 +1820,17 @@ export async function updateWorkspaceStatus(
       tx
     );
 
-    return toStatusDto(await getWorkspaceStatusRow(tx, statusId));
+    return toStatusDto(await getWorkspaceStatusRow(tx, statusId, ws));
   });
 }
 
-export async function deleteWorkspaceStatus(statusId: string): Promise<void> {
+export async function deleteWorkspaceStatus(
+  statusId: string,
+  workspaceId?: string | null
+): Promise<void> {
   await requireDatabaseClient().transaction(async tx => {
-    const existing = await getWorkspaceStatusRow(tx, statusId);
+    const ws = await resolveStatusWorkspaceId(tx, workspaceId);
+    const existing = await getWorkspaceStatusRow(tx, statusId, ws);
 
     if (existing.type === 'execute' || existing.type === 'review') {
       throw new ApiError(409, 'Cannot remove the required execute or review status');
@@ -1828,11 +1853,12 @@ export async function deleteWorkspaceStatus(statusId: string): Promise<void> {
       `UPDATE workspace_statuses
         SET deleted_at = ?, updated_at = ?, revision = ?
       WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-      [now, now, revision, statusId, getActiveWorkspaceId()]
+      [now, now, revision, statusId, ws]
     );
 
     await recordChange(
       {
+        workspaceId: ws,
         entityType: 'workspace_status',
         entityId: statusId,
         operation: 'delete',
@@ -1845,15 +1871,17 @@ export async function deleteWorkspaceStatus(statusId: string): Promise<void> {
 }
 
 export async function reorderWorkspaceStatuses(
-  body: ReorderWorkspaceStatusesBody
+  body: ReorderWorkspaceStatusesBody,
+  workspaceId?: string | null
 ): Promise<WorkspaceStatusDto[]> {
   return requireDatabaseClient().transaction(async tx => {
+    const ws = await resolveStatusWorkspaceId(tx, workspaceId);
     const orderedIds = body.orderedStatusIds;
     if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
       throw new ApiError(400, 'orderedStatusIds is required');
     }
 
-    const current = await listWorkspaceStatuses(tx);
+    const current = await selectWorkspaceStatusesForWorkspace(ws, tx);
     if (orderedIds.length !== current.length) {
       throw new ApiError(400, 'orderedStatusIds must include every status');
     }
@@ -1871,10 +1899,11 @@ export async function reorderWorkspaceStatuses(
         `UPDATE workspace_statuses
           SET position = ?, updated_at = ?, revision = revision + 1
         WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-        [position, now, id, getActiveWorkspaceId()]
+        [position, now, id, ws]
       );
       await recordChange(
         {
+          workspaceId: ws,
           entityType: 'workspace_status',
           entityId: id,
           operation: 'update',
@@ -1884,7 +1913,7 @@ export async function reorderWorkspaceStatuses(
       );
     }
 
-    return listWorkspaceStatuses(tx);
+    return selectWorkspaceStatusesForWorkspace(ws, tx);
   });
 }
 
@@ -4232,7 +4261,7 @@ function toMyMissionDto(r: MyMissionRow, tags: ProjectTagDto[]): MyMissionDto {
  * workspace; merging like-named statuses across workspaces is deferred).
  * Empty pre-onboarding (no active organization) or with no active profile.
  */
-async function callerMembershipsInActiveOrganization(
+export async function callerMembershipsInActiveOrganization(
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<Array<{ workspaceId: string; workspaceUserId: string }>> {
   const profileId = await resolveActiveProfileId(client);
@@ -4503,9 +4532,12 @@ export async function reorderWorkspaceMyMissions(
       typeof err === 'object' &&
       (err as { code?: string }).code === 'SQLITE_CONSTRAINT_FOREIGNKEY'
     ) {
+      // The rejected status belongs to the moved mission's workspace, which —
+      // now that My Missions aggregates across the organization — need not be
+      // the caller's active one, so no workspace is named here.
       throw new ApiError(
         409,
-        `That status is not available for missions in the ${getActiveWorkspace().name} workspace`,
+        `That status is not available in this mission's workspace`,
         undefined,
         STATUS_UNAVAILABLE_FOR_WORKSPACE
       );

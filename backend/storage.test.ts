@@ -244,3 +244,23 @@ test('uploadUserImage stores profile images under the user-images profile prefix
   assert.match(stored.storageKey, /^user-images\/operator-user\/[a-z0-9-]+\.png$/);
   assert.equal(stored.url, `/api/storage/user-images/${encodeURIComponent(stored.storageKey)}`);
 });
+
+test('resolveStoredObject serves legacy one-segment user image URLs by canonical basename', async () => {
+  const pngBytes = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64'
+  );
+
+  const stored = await uploadUserImage({
+    bytes: pngBytes,
+    filename: 'avatar.png',
+    contentType: 'image/png'
+  });
+  const legacyStorageKey = path.basename(stored.storageKey);
+
+  const resolved = await resolveStoredObject('user-images', legacyStorageKey);
+
+  assert.equal(resolved.contentType, 'image/png');
+  assert.equal(resolved.filename, 'avatar.png');
+  assert.ok(resolved.absolutePath?.endsWith(stored.storageKey));
+});

@@ -8,7 +8,13 @@ import {
 } from '../packages/core/service/local-target-mutations.ts';
 import { resolveProjectExecutionTargetForLaunch } from '../packages/core/service/project-execution-target.ts';
 
-import { buildWebappServiceContext, newId, nowIso, recordChange, WORKSPACE } from './db.ts';
+import { recordRunnerBranchEvent } from './branch-activity.ts';
+import {
+  buildWebappServiceContext,
+  buildWebappServiceContextForWorkspace,
+  nowIso,
+  recordChange
+} from './db.ts';
 import { ApiError } from './errors.ts';
 
 export async function resolveRemoteMutationTarget({
@@ -33,6 +39,7 @@ export async function resolveRemoteMutationTarget({
 export async function queueLocalTargetMutation({
   projectId,
   missionId,
+  workspaceId,
   executionTargetId,
   kind,
   capability,
@@ -41,13 +48,21 @@ export async function queueLocalTargetMutation({
 }: {
   projectId: string;
   missionId: string;
+  /**
+   * The mission/project's own workspace. When omitted the request is queued
+   * under the caller's active workspace — only correct for surfaces that are
+   * themselves active-workspace-scoped (Settings → Worktrees).
+   */
+  workspaceId?: string;
   executionTargetId: string;
   kind: LocalTargetMutationKind;
   capability: LocalTargetMutationCapability;
   input: Record<string, unknown>;
   eventSummary?: string;
 }): Promise<{ executionRequestId: string }> {
-  const ctx = buildWebappServiceContext();
+  const ctx = workspaceId
+    ? await buildWebappServiceContextForWorkspace(workspaceId)
+    : buildWebappServiceContext();
   const created = await createLocalTargetMutationRequest({
     ctx,
     projectId,
@@ -85,18 +100,26 @@ export async function resolveMutationAnchorMissionId(projectId: string): Promise
 }
 
 export async function recordBranchActionActivityFromMutation({
+  ctx,
   requestId,
   summary
 }: {
+  /**
+   * The execution request's own workspace context (resolved by the runner
+   * layer from the request's `workspace_id`), so the activity is attributed to
+   * the mission's workspace even when it is not the caller's active one
+   * (coo:135).
+   */
+  ctx: ServiceContext;
   requestId: string;
   summary: string;
 }): Promise<void> {
-  const ctx = buildWebappServiceContext();
+  const workspaceId = ctx.workspace.id;
   const row = (await ctx.db.get(
     `SELECT mission_id, project_id, metadata_json
        FROM execution_requests
       WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [requestId, ctx.workspace.id]
+    [requestId, workspaceId]
   )) as { mission_id: string; project_id: string; metadata_json: string } | undefined;
   if (!row) return;
 
@@ -109,7 +132,7 @@ export async function recordBranchActionActivityFromMutation({
   await ctx.db.transaction(async tx => {
     const mission = (await tx.get(
       `SELECT revision FROM missions WHERE id = ? AND workspace_id = ?`,
-      [row.mission_id, WORKSPACE.id]
+      [row.mission_id, workspaceId]
     )) as { revision: number } | undefined;
     const now = nowIso();
     if (mission) {
@@ -117,10 +140,11 @@ export async function recordBranchActionActivityFromMutation({
       await tx.run(
         `UPDATE missions SET updated_at = ?, revision = ?
          WHERE id = ? AND workspace_id = ?`,
-        [now, revision, row.mission_id, WORKSPACE.id]
+        [now, revision, row.mission_id, workspaceId]
       );
       await recordChange(
         {
+          workspaceId,
           entityType: 'mission',
           entityId: row.mission_id,
           operation: 'update',
@@ -132,20 +156,13 @@ export async function recordBranchActionActivityFromMutation({
         tx
       );
     }
-    await tx.run(
-      `INSERT INTO mission_events
-       (id, workspace_id, project_id, mission_id, objective_id, type, phase, summary,
-        payload_json, source, actor_workspace_user_id, created_at)
-     VALUES (?, ?, ?, ?, NULL, 'update', 'execute', ?, ?, 'runner', NULL, ?)`,
-      [
-        newId(),
-        WORKSPACE.id,
-        row.project_id,
-        row.mission_id,
-        summary,
-        JSON.stringify({ branch: branchName, baseBranch }),
-        now
-      ]
-    );
+    await recordRunnerBranchEvent(tx, {
+      workspaceId,
+      projectId: row.project_id,
+      missionId: row.mission_id,
+      summary,
+      payload: { branch: branchName, baseBranch },
+      now
+    });
   });
 }

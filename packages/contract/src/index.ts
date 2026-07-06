@@ -803,6 +803,11 @@ export interface AgentCatalogDto {
   defaultModel: string | null;
 }
 
+/** Replace the workspace agent catalog stored in `workspaces.settings_json.agentCatalog`. */
+export interface UpdateAgentCatalogBody {
+  agents: AgentCatalogAgentDto[];
+}
+
 /** Per-agent launch mechanics: shell pre-command and extra CLI flags. */
 export interface AgentLaunchConfigDto {
   preCommand: string;

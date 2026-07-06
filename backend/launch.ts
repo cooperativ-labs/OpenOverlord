@@ -16,7 +16,7 @@
  *   config → workspace default → empty) and snapshots it into
  *   `execution_requests.launch_flags_json` for the runner to consume verbatim.
  */
-import { type Permission, PERMISSIONS } from '@overlord/auth';
+import { PERMISSIONS } from '@overlord/auth';
 import type { TerminalProfile } from '@overlord/core/service/terminal-profile-types';
 import type { DatabaseClient } from '@overlord/database';
 
@@ -54,6 +54,7 @@ import type {
   LaunchSettingsDto,
   ObjectivePromptDto,
   TerminalProfileDto,
+  UpdateAgentCatalogBody,
   UpdateAgentLaunchConfigBody,
   UpdateLaunchPreferenceBody,
   UpdateTerminalProfileBody,
@@ -74,7 +75,7 @@ import {
   WORKSPACE
 } from './db.ts';
 import { ApiError } from './errors.ts';
-import { actorCan } from './rbac.ts';
+import { actorCan, requireProjectPermission } from './rbac.ts';
 
 // ---- Instance default catalog ----------------------------------------------
 //
@@ -110,11 +111,12 @@ function instanceAgentCatalog(): Record<string, StoredCatalogAgent> {
 // ---- Workspace settings helpers --------------------------------------------
 
 async function readWorkspaceSettings(
-  client: DatabaseClient = requireDatabaseClient()
+  client: DatabaseClient = requireDatabaseClient(),
+  workspaceId: string = WORKSPACE.id
 ): Promise<Record<string, unknown>> {
   const row = await client.get<{ settings_json: string }>(
     `SELECT settings_json FROM workspaces WHERE id = ? AND deleted_at IS NULL`,
-    [WORKSPACE.id]
+    [workspaceId]
   );
   if (!row) throw new ApiError(500, 'Workspace not found');
   try {
@@ -152,10 +154,17 @@ async function persistCatalog(
   await writeWorkspaceSettings(settings, client);
 }
 
+/**
+ * Whether worktree/branch automation is enabled for `workspaceId` (default:
+ * the request's active workspace). Mission-detail assembly passes the
+ * mission's own workspace so a secondary workspace's setting — not the active
+ * one's — governs its missions (coo:135).
+ */
 export async function readWorktreeBranchAutomationEnabled(
-  client: DatabaseClient = requireDatabaseClient()
+  client: DatabaseClient = requireDatabaseClient(),
+  workspaceId: string = WORKSPACE.id
 ): Promise<boolean> {
-  const settings = await readWorkspaceSettings(client);
+  const settings = await readWorkspaceSettings(client, workspaceId);
   return settings[WORKTREE_BRANCH_AUTOMATION_SETTINGS_KEY] === true;
 }
 
@@ -232,6 +241,99 @@ export async function refreshAgentCatalog(): Promise<AgentCatalogDto> {
         if (!knownIds.has(model.id)) existing.models.push(structuredClone(model));
       }
     }
+    await persistCatalog(stored, tx);
+    return toCatalogDto(stored);
+  });
+}
+
+function storedCatalogFromBody(body: UpdateAgentCatalogBody): StoredCatalog {
+  if (!body || !Array.isArray(body.agents)) {
+    throw new ApiError(400, 'agents array is required');
+  }
+
+  const agents: Record<string, StoredCatalogAgent> = {};
+
+  for (const agent of body.agents) {
+    const key = agent.key?.trim();
+    if (!key) throw new ApiError(400, 'Each agent must have a key');
+    const label = agent.label?.trim();
+    if (!label) throw new ApiError(400, `Agent ${key} must have a label`);
+    if (!Array.isArray(agent.models) || agent.models.length === 0) {
+      throw new ApiError(400, `Agent ${key} must have at least one model`);
+    }
+
+    const modelIds = new Set<string>();
+    const models = agent.models.map(model => {
+      const id = model.id?.trim();
+      if (!id) throw new ApiError(400, `Model id is required for agent ${key}`);
+      if (modelIds.has(id)) {
+        throw new ApiError(400, `Duplicate model id ${id} in agent ${key}`);
+      }
+      modelIds.add(id);
+      return {
+        id,
+        displayName: model.displayName?.trim() || id,
+        reasoningOptions: Array.isArray(model.reasoningOptions)
+          ? model.reasoningOptions
+              .map(option => (typeof option === 'string' ? option.trim() : ''))
+              .filter(option => option.length > 0)
+          : []
+      };
+    });
+
+    if (
+      agent.defaultModel !== null &&
+      agent.defaultModel !== undefined &&
+      !modelIds.has(agent.defaultModel)
+    ) {
+      throw new ApiError(400, `defaultModel must reference a model id in agent ${key}`);
+    }
+
+    if (
+      agent.defaultReasoningEffort !== null &&
+      agent.defaultReasoningEffort !== undefined &&
+      agent.defaultModel !== null &&
+      agent.defaultModel !== undefined
+    ) {
+      const defaultModel = models.find(model => model.id === agent.defaultModel);
+      if (
+        defaultModel &&
+        defaultModel.reasoningOptions.length > 0 &&
+        !defaultModel.reasoningOptions.includes(agent.defaultReasoningEffort)
+      ) {
+        throw new ApiError(
+          400,
+          `defaultReasoningEffort must be one of the default model's reasoning options for agent ${key}`
+        );
+      }
+    }
+
+    agents[key] = {
+      label,
+      availableByDefault: agent.availableByDefault !== false,
+      models,
+      defaultModel: agent.defaultModel ?? null,
+      defaultReasoningEffort: agent.defaultReasoningEffort ?? null,
+      reasoningLabel: agent.reasoningLabel?.trim() || 'Thinking'
+    };
+  }
+
+  return { agents };
+}
+
+/** Replace the workspace agent catalog with a validated client payload. */
+export async function updateAgentCatalog(body: UpdateAgentCatalogBody): Promise<AgentCatalogDto> {
+  return requireDatabaseClient().transaction(async tx => {
+    const stored = storedCatalogFromBody(body);
+    const existing = (await readStoredCatalog(tx)) ?? { agents: {} };
+
+    for (const [key, agent] of Object.entries(stored.agents)) {
+      const previous = existing.agents[key];
+      if (previous?.launchDefaults) {
+        agent.launchDefaults = previous.launchDefaults;
+      }
+    }
+
     await persistCatalog(stored, tx);
     return toCatalogDto(stored);
   });
@@ -367,37 +469,6 @@ export async function updateWorktreeBranchAutomation(
 
 const LAUNCH_PREFERENCE_KEY = 'launchPreference';
 
-/**
- * Resolves a project to its own workspace and the caller's membership there
- * (coo:135), independent of the request's active workspace — a mission panel
- * open on a secondary workspace still needs its project's launch preference to
- * load. Checks `permission` against that resolved workspace, mirroring
- * `requireObjectivePermission` in repository.ts.
- */
-async function requireProjectWorkspaceAccess(
-  projectId: string,
-  permission: Permission,
-  client: DatabaseClient
-): Promise<{ workspaceId: string; workspaceUserId: string }> {
-  const row = await client.get<{ workspace_id: string }>(
-    `SELECT workspace_id FROM projects WHERE id = ? AND deleted_at IS NULL`,
-    [projectId]
-  );
-  if (!row) throw new ApiError(404, 'Project not found');
-
-  const profileId = await resolveActiveProfileId(client);
-  const workspaceUserId = profileId
-    ? await findActiveMembershipId(row.workspace_id, profileId, client)
-    : null;
-  if (
-    !workspaceUserId ||
-    !(await actorCan(permission, { workspaceId: row.workspace_id, workspaceUserId }))
-  ) {
-    throw new ApiError(404, 'Project not found');
-  }
-  return { workspaceId: row.workspace_id, workspaceUserId };
-}
-
 function readPreferenceRow(
   projectId: string,
   workspaceId: string,
@@ -416,11 +487,11 @@ export async function getLaunchPreference(
   projectId: string,
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<LaunchPreferenceDto> {
-  const { workspaceId, workspaceUserId } = await requireProjectWorkspaceAccess(
+  const { workspaceId, workspaceUserId } = await requireProjectPermission({
     projectId,
-    PERMISSIONS.LAUNCH_READ,
-    client
-  );
+    permission: PERMISSIONS.LAUNCH_READ,
+    db: client
+  });
   const row = await readPreferenceRow(projectId, workspaceId, workspaceUserId, client);
   const stored = row?.preferences[LAUNCH_PREFERENCE_KEY] as
     | Partial<LaunchPreferenceDto>
@@ -437,11 +508,11 @@ export async function updateLaunchPreference(
   body: UpdateLaunchPreferenceBody
 ): Promise<LaunchPreferenceDto> {
   return requireDatabaseClient().transaction(async tx => {
-    const { workspaceId, workspaceUserId } = await requireProjectWorkspaceAccess(
+    const { workspaceId, workspaceUserId } = await requireProjectPermission({
       projectId,
-      PERMISSIONS.LAUNCH_CONFIGURE,
-      tx
-    );
+      permission: PERMISSIONS.LAUNCH_CONFIGURE,
+      db: tx
+    });
 
     const row = await readPreferenceRow(projectId, workspaceId, workspaceUserId, tx);
     const current = (row?.preferences[LAUNCH_PREFERENCE_KEY] ?? {}) as Partial<LaunchPreferenceDto>;

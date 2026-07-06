@@ -3,6 +3,30 @@ import { useEffect, useState } from 'react';
 import { fetchApi } from './api-transport.ts';
 import { isOverlordStorageUrl, storageUrlNeedsAuthenticatedFetch } from './storage-url.ts';
 
+const failedAuthenticatedMediaUrls = new Set<string>();
+const inFlightAuthenticatedMediaFetches = new Map<string, Promise<Blob | null>>();
+
+async function fetchAuthenticatedMediaBlob(url: string): Promise<Blob | null> {
+  const existing = inFlightAuthenticatedMediaFetches.get(url);
+  if (existing) return existing;
+
+  const request = (async () => {
+    const response = await fetchApi(url);
+    if (!response.ok) {
+      failedAuthenticatedMediaUrls.add(url);
+      return null;
+    }
+    return await response.blob();
+  })();
+
+  inFlightAuthenticatedMediaFetches.set(url, request);
+  try {
+    return await request;
+  } finally {
+    inFlightAuthenticatedMediaFetches.delete(url);
+  }
+}
+
 /**
  * Resolves a profile/attachment/storage URL for rendering. Overlord storage paths
  * stay relative when the shell shares an origin (or dev proxy) with the API; in
@@ -25,6 +49,10 @@ export function useAuthenticatedMediaUrl(url: string | null | undefined): string
       setResolvedUrl(url);
       return;
     }
+    if (failedAuthenticatedMediaUrls.has(url)) {
+      setResolvedUrl(null);
+      return;
+    }
 
     setResolvedUrl(null);
     let cancelled = false;
@@ -32,9 +60,8 @@ export function useAuthenticatedMediaUrl(url: string | null | undefined): string
 
     void (async () => {
       try {
-        const response = await fetchApi(url);
-        if (!response.ok || cancelled) return;
-        const blob = await response.blob();
+        const blob = await fetchAuthenticatedMediaBlob(url);
+        if (!blob || cancelled) return;
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
         setResolvedUrl(objectUrl);

@@ -154,6 +154,10 @@ function attachmentObjectKey(workspaceId: string, attachmentId: string, ext: str
   return `workspace-files/${workspaceId}/attachments/${attachmentId}${ext}`;
 }
 
+function escapeSqlLike(value: string): string {
+  return value.replace(/[\\%_]/g, match => `\\${match}`);
+}
+
 /** Validate image bytes, write them to the bucket backend, return metadata. */
 async function writeImageObject(
   bucket: StorageBucketRow,
@@ -763,19 +767,46 @@ export async function resolveStoredObject(
   const table = SERVABLE_OBJECT_TABLES[bucketKey];
   if (!table) throw new ApiError(404, `Serving is not configured for bucket '${bucketKey}'`);
 
-  const row = await requireDatabaseClient().get<{
+  let row = await requireDatabaseClient().get<{
+    storage_key: string;
     content_type: string | null;
     filename: string;
   }>(
-    `SELECT content_type, filename FROM ${table}
+    `SELECT storage_key, content_type, filename FROM ${table}
       WHERE storage_bucket_id = ? AND storage_key = ? AND deleted_at IS NULL`,
     [bucket.id, storageKey]
   );
+
+  if (!row && bucketKey === 'user-images' && !storageKey.includes('/')) {
+    const legacyStorageKeyLike = `%/${escapeSqlLike(storageKey)}`;
+    row = await requireDatabaseClient().get<{
+      storage_key: string;
+      content_type: string | null;
+      filename: string;
+    }>(
+      `SELECT storage_key, content_type, filename FROM user_images
+        WHERE storage_bucket_id = ?
+          AND deleted_at IS NULL
+          AND (
+            public_url = ?
+            OR storage_key = ?
+            OR storage_key LIKE ? ESCAPE '\\'
+          )
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [
+        bucket.id,
+        publicUrlFor(bucketKey, storageKey),
+        storageKey,
+        legacyStorageKeyLike
+      ]
+    );
+  }
   if (!row) throw new ApiError(404, 'File not found');
 
   return finalizeStoredObject({
     bucket,
-    storageKey,
+    storageKey: row.storage_key,
     contentType: row.content_type ?? 'application/octet-stream',
     filename: row.filename,
     forceDownload: bucketKey === ATTACHMENTS_BUCKET_KEY

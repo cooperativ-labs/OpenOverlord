@@ -65,6 +65,7 @@ import type {
   RotateWebhookSecretResultDto,
   ScheduleInput,
   StoredImageDto,
+  UpdateAgentCatalogBody,
   UpdateAgentLaunchConfigBody,
   UpdateEverhourTimeBody,
   UpdateLaunchPreferenceBody,
@@ -307,14 +308,42 @@ export const api = {
   reorderProjects: (body: ReorderProjectsBody) =>
     request<ProjectDto[]>('PATCH', `/api/projects/reorder`, body),
   listWorkspaceStatuses: () => request<WorkspaceStatusDto[]>('GET', `/api/workspace/statuses`),
-  createWorkspaceStatus: (body: CreateWorkspaceStatusBody) =>
-    request<WorkspaceStatusDto>('POST', `/api/workspace/statuses`, body),
-  updateWorkspaceStatus: (statusId: string, body: UpdateWorkspaceStatusBody) =>
-    request<WorkspaceStatusDto>('PATCH', `/api/workspace/statuses/${statusId}`, body),
-  deleteWorkspaceStatus: (statusId: string) =>
-    request<{ ok: true }>('DELETE', `/api/workspace/statuses/${statusId}`),
-  reorderWorkspaceStatuses: (body: ReorderWorkspaceStatusesBody) =>
-    request<WorkspaceStatusDto[]>('PATCH', `/api/workspace/statuses/reorder`, body),
+  // A `workspaceId` targets the workspace-scoped routes (any org workspace,
+  // authorized there), so the settings modal can manage a non-active
+  // workspace's statuses; omit it for the active-workspace legacy routes.
+  createWorkspaceStatus: (body: CreateWorkspaceStatusBody, workspaceId?: string | null) =>
+    request<WorkspaceStatusDto>(
+      'POST',
+      workspaceId ? `/api/workspaces/${workspaceId}/statuses` : `/api/workspace/statuses`,
+      body
+    ),
+  updateWorkspaceStatus: (
+    statusId: string,
+    body: UpdateWorkspaceStatusBody,
+    workspaceId?: string | null
+  ) =>
+    request<WorkspaceStatusDto>(
+      'PATCH',
+      workspaceId
+        ? `/api/workspaces/${workspaceId}/statuses/${statusId}`
+        : `/api/workspace/statuses/${statusId}`,
+      body
+    ),
+  deleteWorkspaceStatus: (statusId: string, workspaceId?: string | null) =>
+    request<{ ok: true }>(
+      'DELETE',
+      workspaceId
+        ? `/api/workspaces/${workspaceId}/statuses/${statusId}`
+        : `/api/workspace/statuses/${statusId}`
+    ),
+  reorderWorkspaceStatuses: (body: ReorderWorkspaceStatusesBody, workspaceId?: string | null) =>
+    request<WorkspaceStatusDto[]>(
+      'PATCH',
+      workspaceId
+        ? `/api/workspaces/${workspaceId}/statuses/reorder`
+        : `/api/workspace/statuses/reorder`,
+      body
+    ),
   listProjectTags: (id: string) => request<ProjectTagDto[]>('GET', `/api/projects/${id}/tags`),
   createProjectTag: (projectId: string, body: CreateProjectTagBody) =>
     request<ProjectTagDto>('POST', `/api/projects/${projectId}/tags`, body),
@@ -444,6 +473,8 @@ export const api = {
     ),
 
   getAgentCatalog: () => request<AgentCatalogDto>('GET', '/api/agent-catalog'),
+  updateAgentCatalog: (body: UpdateAgentCatalogBody) =>
+    request<AgentCatalogDto>('PUT', '/api/agent-catalog', body),
   refreshAgentCatalog: () => request<AgentCatalogDto>('POST', '/api/agent-catalog/refresh'),
   getLaunchSettings: () => request<LaunchSettingsDto>('GET', '/api/launch-settings'),
   updateAgentLaunchConfig: (agentKey: string, body: UpdateAgentLaunchConfigBody) =>

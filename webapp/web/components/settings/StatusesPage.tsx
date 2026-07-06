@@ -155,14 +155,19 @@ function SortableStatusRow({
   );
 }
 
-export function StatusesPage() {
-  const statusesQ = useWorkspaceStatuses();
+/**
+ * Card-status manager. Pass `workspaceId` to manage a specific (possibly
+ * non-active) workspace's statuses via the workspace-scoped routes; omit it to
+ * manage the active workspace (coo:135).
+ */
+export function StatusesPage({ workspaceId }: { workspaceId?: string | null } = {}) {
+  const statusesQ = useWorkspaceStatuses(workspaceId);
   const statuses = useMemo(() => statusesQ.data ?? [], [statusesQ.data]);
   const ordered = useMemo(() => [...statuses].sort((a, b) => a.position - b.position), [statuses]);
-  const createStatus = useCreateWorkspaceStatus();
-  const updateStatus = useUpdateWorkspaceStatus();
-  const deleteStatus = useDeleteWorkspaceStatus();
-  const reorderStatuses = useReorderWorkspaceStatuses();
+  const createStatus = useCreateWorkspaceStatus(workspaceId);
+  const updateStatus = useUpdateWorkspaceStatus(workspaceId);
+  const deleteStatus = useDeleteWorkspaceStatus(workspaceId);
+  const reorderStatuses = useReorderWorkspaceStatuses(workspaceId);
 
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<StatusType>('draft');

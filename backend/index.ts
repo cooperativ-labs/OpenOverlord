@@ -50,6 +50,7 @@ import {
   getObjectivePrompt,
   launchObjective,
   refreshAgentCatalog,
+  updateAgentCatalog,
   updateAgentLaunchConfig,
   updateLaunchPreference,
   updateTerminalProfile,
@@ -600,6 +601,34 @@ app.get(
 app.get(
   '/api/workspaces/:id/statuses',
   handle(req => listWorkspaceStatusesForWorkspace(req.params.id))
+);
+// Workspace-scoped status CRUD. Unlike the legacy `/api/workspace/statuses`
+// routes (active-workspace only), these target the `:id` workspace and
+// authorize `workspace:update` there inside the service, so the settings modal
+// can manage any org workspace's statuses without switching to it (coo:135).
+app.post(
+  '/api/workspaces/:id/statuses',
+  handle(req => createWorkspaceStatus(req.body, req.params.id), { mutates: true })
+);
+app.patch(
+  '/api/workspaces/:id/statuses/reorder',
+  handle(req => reorderWorkspaceStatuses(req.body, req.params.id), { mutates: true })
+);
+app.patch(
+  '/api/workspaces/:id/statuses/:statusId',
+  handle(req => updateWorkspaceStatus(req.params.statusId, req.body, req.params.id), {
+    mutates: true
+  })
+);
+app.delete(
+  '/api/workspaces/:id/statuses/:statusId',
+  handle(
+    async req => {
+      await deleteWorkspaceStatus(req.params.statusId, req.params.id);
+      return { ok: true as const };
+    },
+    { mutates: true }
+  )
 );
 
 // ---- Profile -------------------------------------------------------------
@@ -1274,6 +1303,13 @@ app.get(
 app.post(
   '/api/agent-catalog/refresh',
   handle(() => refreshAgentCatalog(), { mutates: true, requires: PERMISSIONS.LAUNCH_CONFIGURE })
+);
+app.put(
+  '/api/agent-catalog',
+  handle(req => updateAgentCatalog(req.body), {
+    mutates: true,
+    requires: PERMISSIONS.LAUNCH_CONFIGURE
+  })
 );
 app.get(
   '/api/launch-settings',

@@ -175,6 +175,7 @@ Owns:
 - Organization management endpoints: list organizations for the caller, update an organization (name/logo; org-admin gated), and list/add/remove organization admins (transactional invariant: an org admin is `ADMIN` of *every* constituent workspace)
 - The shared onboarding endpoint (`POST /api/onboarding`, zero-membership users only): creates an organization, a workspace (default `general`), the caller's membership, and the `ADMIN` role in one transaction, then returns `/api/meta` — used verbatim by both the web onboarding screen and the `ovld org-setup` CLI command so the two clients cannot drift
 - Storage routes for the `organization-images` bucket key (`/api/storage/organization-images/…`) with a `PUBLIC organization_image:read` grant, mirroring `workspace_image:read`
+- Workspace agent catalog management (`GET /api/agent-catalog`, `PUT /api/agent-catalog`, `POST /api/agent-catalog/refresh`) for `workspaces.settings_json.agentCatalog`
 
 Does NOT own:
 

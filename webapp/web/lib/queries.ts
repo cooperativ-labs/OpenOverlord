@@ -32,6 +32,7 @@ import type {
   ReorderWorkspaceStatusesBody,
   ScheduleInput,
   StatusType,
+  UpdateAgentCatalogBody,
   UpdateAgentLaunchConfigBody,
   UpdateEverhourTimeBody,
   UpdateLaunchPreferenceBody,
@@ -729,42 +730,49 @@ export function useReorderProjects(workspaceId?: string) {
   });
 }
 
-export function useCreateWorkspaceStatus() {
+// The status mutation hooks take an optional `workspaceId`. When set (the
+// settings modal for a specific workspace) they target the workspace-scoped
+// routes and cache the result under that workspace's key; when omitted they use
+// the active-workspace legacy routes (coo:135).
+export function useCreateWorkspaceStatus(workspaceId?: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: CreateWorkspaceStatusBody) => api.createWorkspaceStatus(body),
+    mutationFn: (body: CreateWorkspaceStatusBody) => api.createWorkspaceStatus(body, workspaceId),
     onSuccess: data => {
-      qc.setQueryData(keys.workspaceStatuses(), (prev: WorkspaceStatusDto[] | undefined) =>
-        prev ? [...prev, data].sort((a, b) => a.position - b.position) : [data]
+      qc.setQueryData(
+        keys.workspaceStatuses(workspaceId),
+        (prev: WorkspaceStatusDto[] | undefined) =>
+          prev ? [...prev, data].sort((a, b) => a.position - b.position) : [data]
       );
       void qc.invalidateQueries({ queryKey: ['workspace'] });
     }
   });
 }
 
-export function useUpdateWorkspaceStatus() {
+export function useUpdateWorkspaceStatus(workspaceId?: string | null) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ statusId, body }: { statusId: string; body: UpdateWorkspaceStatusBody }) =>
-      api.updateWorkspaceStatus(statusId, body),
+      api.updateWorkspaceStatus(statusId, body, workspaceId),
     onSuccess: () => invalidateAll(qc)
   });
 }
 
-export function useDeleteWorkspaceStatus() {
+export function useDeleteWorkspaceStatus(workspaceId?: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (statusId: string) => api.deleteWorkspaceStatus(statusId),
+    mutationFn: (statusId: string) => api.deleteWorkspaceStatus(statusId, workspaceId),
     onSuccess: () => invalidateAll(qc)
   });
 }
 
-export function useReorderWorkspaceStatuses() {
+export function useReorderWorkspaceStatuses(workspaceId?: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: ReorderWorkspaceStatusesBody) => api.reorderWorkspaceStatuses(body),
+    mutationFn: (body: ReorderWorkspaceStatusesBody) =>
+      api.reorderWorkspaceStatuses(body, workspaceId),
     onSuccess: data => {
-      qc.setQueryData(keys.workspaceStatuses(), data);
+      qc.setQueryData(keys.workspaceStatuses(workspaceId), data);
       void qc.invalidateQueries({ queryKey: ['workspace'] });
     }
   });
@@ -1412,6 +1420,14 @@ export function useRefreshAgentCatalog() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.refreshAgentCatalog(),
+    onSuccess: data => qc.setQueryData(keys.agentCatalog, data)
+  });
+}
+
+export function useUpdateAgentCatalog() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateAgentCatalogBody) => api.updateAgentCatalog(body),
     onSuccess: data => qc.setQueryData(keys.agentCatalog, data)
   });
 }

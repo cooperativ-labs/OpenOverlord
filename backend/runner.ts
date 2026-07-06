@@ -1,6 +1,8 @@
+import { PERMISSIONS } from '@overlord/auth';
 import type { DatabaseClient } from '@overlord/database';
 
 import type { ServiceContext } from '../packages/core/service/context.ts';
+import { ServiceError } from '../packages/core/service/errors.ts';
 import {
   claimNextExecutionRequest,
   clearExecutionRequests,
@@ -15,18 +17,100 @@ import {
 import type { CapabilityResult } from '../packages/core/service/local-target/types.ts';
 import { completeLocalTargetMutationRequest } from '../packages/core/service/local-target-mutations.ts';
 
+import { recordRunnerBranchEvent } from './branch-activity.ts';
 import { clientDeviceFromBody } from './client-device.ts';
 import {
-  buildWebappServiceContext,
-  getActorWorkspaceUserId,
-  newId,
+  buildWebappServiceContextForWorkspace,
+  getClientDeviceIdentity,
   nowIso,
   recordChange,
-  requireDatabaseClient,
-  serviceDatabaseClient,
-  WORKSPACE
+  requireDatabaseClient
 } from './db.ts';
 import { ApiError } from './errors.ts';
+import { requireWorkspacePermission } from './rbac.ts';
+import { callerMembershipsInActiveOrganization } from './repository.ts';
+
+type ClientDeviceBody = {
+  deviceFingerprint?: string | null;
+  deviceLabel?: string | null;
+  devicePlatform?: string | null;
+} | null;
+
+/**
+ * A `ServiceContext` scoped to `workspaceId` with the caller's own membership
+ * (`actorWorkspaceUserId`) in *that* workspace — never the active workspace's
+ * actor. Every runner operation runs under the context of the workspace that
+ * actually owns the execution request/mission it touches (coo:135), so a
+ * desktop runner claims and drives executions queued in a secondary workspace,
+ * and every mission_event / entity_changes row is attributed to the correct
+ * workspace instead of whichever one the caller currently has active.
+ */
+async function workspaceServiceContext(
+  workspaceId: string,
+  actorWorkspaceUserId: string,
+  clientDevice?: ClientDeviceBody
+): Promise<ServiceContext> {
+  const ctx = await buildWebappServiceContextForWorkspace(
+    workspaceId,
+    requireDatabaseClient(),
+    actorWorkspaceUserId
+  );
+  return {
+    ...ctx,
+    clientDevice: clientDeviceFromBody(clientDevice) ?? getClientDeviceIdentity()
+  };
+}
+
+/**
+ * Resolve, authorize, and scope a `ServiceContext` for the workspace that owns
+ * execution request `requestId`. Membership + `execution_request:claim` are
+ * checked against the request's *own* workspace (`requireWorkspacePermission`),
+ * so status transitions and completion work for a secondary-workspace request
+ * without the caller having it active. A request the caller cannot reach is an
+ * honest 404 (never leaks existence across the org boundary).
+ */
+async function requestRunnerContext(
+  requestId: string,
+  clientDevice?: ClientDeviceBody
+): Promise<ServiceContext> {
+  const row = (await requireDatabaseClient().get(
+    `SELECT workspace_id FROM execution_requests WHERE id = ? AND deleted_at IS NULL`,
+    [requestId]
+  )) as { workspace_id: string } | undefined;
+  if (!row) throw new ApiError(404, 'Execution request not found');
+  const actor = await requireWorkspacePermission({
+    workspaceId: row.workspace_id,
+    permission: PERMISSIONS.EXECUTION_REQUEST_CLAIM,
+    notFoundMessage: 'Execution request not found'
+  });
+  return workspaceServiceContext(row.workspace_id, actor, clientDevice);
+}
+
+/** The workspace that owns project `projectId` by id, or `null` (slug/name refs fall through). */
+async function directProjectWorkspaceId(projectId: string): Promise<string | null> {
+  const row = (await requireDatabaseClient().get(
+    `SELECT workspace_id FROM projects WHERE id = ? AND deleted_at IS NULL`,
+    [projectId]
+  )) as { workspace_id: string } | undefined;
+  return row?.workspace_id ?? null;
+}
+
+/**
+ * The caller's runner scope: every workspace of the active organization the
+ * caller is an active member of (every role grants `execution_request:claim`),
+ * narrowed to a single workspace when `projectId` resolves to one by id. This
+ * is the runner counterpart of My Missions' cross-workspace aggregation.
+ */
+async function resolveRunnerScopes(
+  projectId?: string | null
+): Promise<Array<{ workspaceId: string; workspaceUserId: string }>> {
+  const scopes = await callerMembershipsInActiveOrganization();
+  if (projectId) {
+    const owningWorkspaceId = await directProjectWorkspaceId(projectId);
+    if (owningWorkspaceId) return scopes.filter(scope => scope.workspaceId === owningWorkspaceId);
+  }
+  return scopes;
+}
 
 type ExecutionRequestRow = {
   id: string;
@@ -100,28 +184,23 @@ function serviceSummaryToDto(row: ExecutionRequestSummary): Record<string, unkno
   };
 }
 
-function serviceContext(
-  clientDevice?: {
-    deviceFingerprint?: string | null;
-    deviceLabel?: string | null;
-    devicePlatform?: string | null;
-  } | null
-): ServiceContext {
-  return {
-    ...buildWebappServiceContext(),
-    clientDevice: clientDeviceFromBody(clientDevice) ?? buildWebappServiceContext().clientDevice
-  };
-}
-
 export async function runnerStatus(projectId?: string | null): Promise<Record<string, unknown>> {
-  const ctx = serviceContext();
-  await expireStaleExecutionRequests({ ctx });
-  const queue = (await listExecutionRequests({ ctx, projectId })).map(serviceSummaryToDto);
-  return {
-    workspace: WORKSPACE,
-    queue,
-    activeCount: queue.length
-  };
+  const scopes = await resolveRunnerScopes(projectId);
+  const queue: Record<string, unknown>[] = [];
+  for (const scope of scopes) {
+    const ctx = await workspaceServiceContext(scope.workspaceId, scope.workspaceUserId);
+    await expireStaleExecutionRequests({ ctx });
+    try {
+      const rows = await listExecutionRequests({ ctx, projectId });
+      queue.push(...rows.map(serviceSummaryToDto));
+    } catch (error) {
+      // A slug/name `projectId` that doesn't resolve in this scope's workspace
+      // is simply not this workspace's project — skip, don't fail the poll.
+      if (error instanceof ServiceError && error.code === 'project_not_found') continue;
+      throw error;
+    }
+  }
+  return { queue, activeCount: queue.length };
 }
 
 export async function claimRunnerRequest({
@@ -129,20 +208,34 @@ export async function claimRunnerRequest({
   clientDevice
 }: {
   projectId?: string | null;
-  clientDevice?: {
-    deviceFingerprint?: string | null;
-    deviceLabel?: string | null;
-    devicePlatform?: string | null;
-  } | null;
+  clientDevice?: ClientDeviceBody;
 } = {}): Promise<{
   request: Record<string, unknown> | null;
 }> {
-  const request = await claimNextExecutionRequest({
-    ctx: serviceContext(clientDevice),
-    projectId,
-    clientDevice: clientDeviceFromBody(clientDevice)
-  });
-  return { request: request ? serviceSummaryToDto(request) : null };
+  // Claim across every workspace the caller belongs to in the active
+  // organization (the My Missions precedent). Iterate in membership order and
+  // return the first workspace that yields a claimable request; the runner
+  // polls repeatedly, so subsequent polls drain the remaining workspaces.
+  for (const scope of await resolveRunnerScopes(projectId)) {
+    const ctx = await workspaceServiceContext(
+      scope.workspaceId,
+      scope.workspaceUserId,
+      clientDevice
+    );
+    let request;
+    try {
+      request = await claimNextExecutionRequest({
+        ctx,
+        projectId,
+        clientDevice: clientDeviceFromBody(clientDevice)
+      });
+    } catch (error) {
+      if (error instanceof ServiceError && error.code === 'project_not_found') continue;
+      throw error;
+    }
+    if (request) return { request: serviceSummaryToDto(request) };
+  }
+  return { request: null };
 }
 
 export async function updateRunnerRequestStatus({
@@ -154,7 +247,7 @@ export async function updateRunnerRequestStatus({
   status: 'launching' | 'launched' | 'failed';
   error?: string | null;
 }): Promise<Record<string, unknown>> {
-  const ctx = serviceContext();
+  const ctx = await requestRunnerContext(requestId);
   const request =
     status === 'launching'
       ? await markExecutionLaunching({ ctx, requestId })
@@ -180,7 +273,7 @@ export async function completeRunnerMutationRequest({
     throw new ApiError(400, 'mutationResult must be a CapabilityResult envelope.');
   }
   const result = mutationResult as CapabilityResult<unknown>;
-  const ctx = serviceContext();
+  const ctx = await requestRunnerContext(requestId);
   const completed = await completeLocalTargetMutationRequest({
     ctx,
     requestId,
@@ -197,6 +290,7 @@ export async function completeRunnerMutationRequest({
     const { recordBranchActionActivityFromMutation } =
       await import('./local-target-mutation-queue.ts');
     await recordBranchActionActivityFromMutation({
+      ctx,
       requestId,
       summary: (result.value as { summary: string }).summary
     });
@@ -224,10 +318,12 @@ function requireBranchPayload(value: unknown): BranchPreparedPayload {
 async function recordBranchPreparedTx(
   tx: DatabaseClient,
   {
+    workspaceId,
     missionId,
     requestId,
     payload
   }: {
+    workspaceId: string;
     missionId: string;
     requestId?: string | null;
     payload: unknown;
@@ -239,15 +335,16 @@ async function recordBranchPreparedTx(
       WHERE workspace_id = ?
         AND deleted_at IS NULL
         AND (id = ? OR display_id = ?)`,
-    [WORKSPACE.id, missionId, missionId]
+    [workspaceId, missionId, missionId]
   );
   if (!mission) throw new ApiError(404, 'Mission not found');
 
   let objectiveId: string | null = null;
   if (requestId) {
     const row = await tx.get<ExecutionRequestRow>(
-      `SELECT ${EXECUTION_REQUEST_COLUMNS} FROM execution_requests WHERE id = ?`,
-      [requestId]
+      `SELECT ${EXECUTION_REQUEST_COLUMNS} FROM execution_requests
+         WHERE id = ? AND workspace_id = ?`,
+      [requestId, workspaceId]
     );
     if (!row) throw new ApiError(404, 'Execution request not found');
     objectiveId = row.objective_id;
@@ -265,6 +362,7 @@ async function recordBranchPreparedTx(
     );
     await recordChange(
       {
+        workspaceId,
         entityType: 'execution_request',
         entityId: row.id,
         operation: 'update',
@@ -295,6 +393,7 @@ async function recordBranchPreparedTx(
       );
       await recordChange(
         {
+          workspaceId,
           entityType: 'objective',
           entityId: objectiveId,
           operation: 'update',
@@ -319,6 +418,7 @@ async function recordBranchPreparedTx(
   );
   await recordChange(
     {
+      workspaceId,
       entityType: 'mission',
       entityId: mission.id,
       operation: 'update',
@@ -331,22 +431,15 @@ async function recordBranchPreparedTx(
     tx
   );
 
-  await tx.run(
-    `INSERT INTO mission_events
-       (id, workspace_id, project_id, mission_id, objective_id, type, phase, summary,
-        payload_json, source, actor_workspace_user_id, created_at)
-     VALUES (?, ?, ?, ?, ?, 'update', 'execute', ?, ?, 'runner', NULL, ?)`,
-    [
-      newId(),
-      WORKSPACE.id,
-      mission.project_id,
-      mission.id,
-      objectiveId,
-      `Prepared branch ${branch.branchName} in worktree ${branch.worktreePath}.`,
-      JSON.stringify(branch),
-      now
-    ]
-  );
+  await recordRunnerBranchEvent(tx, {
+    workspaceId,
+    projectId: mission.project_id,
+    missionId: mission.id,
+    objectiveId,
+    summary: `Prepared branch ${branch.branchName} in worktree ${branch.worktreePath}.`,
+    payload: branch as unknown as Record<string, unknown>,
+    now
+  });
   return { ok: true };
 }
 
@@ -359,8 +452,23 @@ export async function recordBranchPrepared({
   requestId?: string | null;
   payload: unknown;
 }): Promise<{ ok: true }> {
+  // Resolve the mission's own workspace across the caller's active-org
+  // memberships — `missionId` may be a display_id (unique per workspace), so a
+  // runner driving a secondary-workspace mission still resolves it (coo:135).
+  const scopes = await callerMembershipsInActiveOrganization();
+  if (scopes.length === 0) throw new ApiError(404, 'Mission not found');
+  const placeholders = scopes.map(() => '?').join(', ');
+  const mission = (await requireDatabaseClient().get(
+    `SELECT workspace_id FROM missions
+      WHERE (id = ? OR display_id = ?)
+        AND deleted_at IS NULL
+        AND workspace_id IN (${placeholders})`,
+    [missionId, missionId, ...scopes.map(scope => scope.workspaceId)]
+  )) as { workspace_id: string } | undefined;
+  if (!mission) throw new ApiError(404, 'Mission not found');
+
   return requireDatabaseClient().transaction(async tx =>
-    recordBranchPreparedTx(tx, { missionId, requestId, payload })
+    recordBranchPreparedTx(tx, { workspaceId: mission.workspace_id, missionId, requestId, payload })
   );
 }
 
@@ -368,5 +476,19 @@ export async function clearRunnerRequests({
   objectiveId,
   projectId
 }: { objectiveId?: string | null; projectId?: string | null } = {}): Promise<{ cleared: number }> {
-  return clearExecutionRequests({ ctx: serviceContext(), objectiveId, projectId });
+  // Clear across every workspace the caller belongs to in the active
+  // organization, narrowed to the project's own workspace when `projectId`
+  // resolves to one — so clearing a secondary-workspace project's queue works
+  // regardless of which workspace is active (coo:135).
+  let cleared = 0;
+  for (const scope of await resolveRunnerScopes(projectId)) {
+    const ctx = await workspaceServiceContext(scope.workspaceId, scope.workspaceUserId);
+    try {
+      cleared += (await clearExecutionRequests({ ctx, objectiveId, projectId })).cleared;
+    } catch (error) {
+      if (error instanceof ServiceError && error.code === 'project_not_found') continue;
+      throw error;
+    }
+  }
+  return { cleared };
 }
