@@ -6,8 +6,22 @@ PRAGMA journal_mode = WAL;
 
 BEGIN;
 
+-- Organization -> workspace -> project hierarchy (coo:135). Workspaces remain
+-- the sole RBAC layer; an organization is a grouping + identity shell above them.
+-- See planning/feature-plans/organization-workspace-hierarchy.md.
+CREATE TABLE organizations (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+  settings_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(settings_json)),
+  created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
+  updated_at TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??.???Z'),
+  deleted_at TEXT CHECK (deleted_at IS NULL OR deleted_at GLOB '????-??-??T??:??:??.???Z'),
+  revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)
+);
+
 CREATE TABLE workspaces (
   id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations (id) ON DELETE RESTRICT,
   slug TEXT NOT NULL CHECK (length(trim(slug)) > 0),
   name TEXT NOT NULL CHECK (length(trim(name)) > 0),
   kind TEXT NOT NULL CHECK (kind IN ('local', 'hosted')),
@@ -18,7 +32,8 @@ CREATE TABLE workspaces (
   revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)
 );
 
-CREATE UNIQUE INDEX idx_workspaces_slug ON workspaces (slug);
+CREATE UNIQUE INDEX idx_workspaces_organization_slug ON workspaces (organization_id, slug)
+  WHERE deleted_at IS NULL;
 
 CREATE TABLE profiles (
   id TEXT PRIMARY KEY REFERENCES "user" ("id") ON DELETE CASCADE,
@@ -82,6 +97,21 @@ BEGIN
      AND handle IS NOT NULLIF(trim(NEW."name"), '');
 END;
 
+-- Keep profiles.email mirrored from the authoritative Better Auth account email,
+-- the same way profiles.handle mirrors the account name.
+CREATE TRIGGER trg_better_auth_user_sync_profile_email
+AFTER UPDATE OF "email" ON "user"
+FOR EACH ROW
+WHEN NEW."email" IS NOT OLD."email"
+BEGIN
+  UPDATE profiles
+     SET email = NEW."email",
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+         revision = revision + 1
+   WHERE id = NEW."id"
+     AND email IS NOT NEW."email";
+END;
+
 CREATE TABLE workspace_users (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
@@ -111,6 +141,8 @@ CREATE TABLE projects (
   status TEXT NOT NULL CHECK (status IN ('active', 'archived')),
   settings_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(settings_json)),
   created_by_workspace_user_id TEXT REFERENCES workspace_users (id) ON DELETE SET NULL,
+  -- 1-based drag-and-drop ordering within a workspace (coo:132).
+  position INTEGER CHECK (position IS NULL OR position >= 1),
   created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
   updated_at TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??.???Z'),
   deleted_at TEXT CHECK (deleted_at IS NULL OR deleted_at GLOB '????-??-??T??:??:??.???Z'),
@@ -121,6 +153,8 @@ CREATE UNIQUE INDEX idx_projects_workspace_slug ON projects (workspace_id, slug)
   WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX idx_projects_workspace_id ON projects (workspace_id, id);
 CREATE INDEX idx_projects_workspace_status_updated ON projects (workspace_id, status, updated_at);
+CREATE UNIQUE INDEX idx_projects_workspace_position ON projects (workspace_id, position)
+  WHERE deleted_at IS NULL;
 
 CREATE TABLE workspace_statuses (
   id TEXT PRIMARY KEY,
@@ -270,6 +304,32 @@ CREATE TABLE mission_sequences (
 
 CREATE UNIQUE INDEX idx_mission_sequences_scope ON mission_sequences (workspace_id, scope_type, scope_id, counter_name);
 
+-- Mission scheduling (coo:124): repeating schedules that compute a mission's due
+-- date and, on completion, spawn a duplicate mission for the next occurrence.
+-- See planning/feature-plans/mission-scheduling-engine.md.
+CREATE TABLE schedules (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
+  name TEXT,
+  period_type TEXT NOT NULL DEFAULT 'd' CHECK (period_type IN ('d', 'w', 'm')),
+  period_interval INTEGER NOT NULL DEFAULT 1 CHECK (period_interval >= 1),
+  weeks_of_month_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(weeks_of_month_json)),
+  days_of_month_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(days_of_month_json)),
+  days_of_week_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(days_of_week_json)),
+  start_date TEXT CHECK (start_date IS NULL OR start_date GLOB '????-??-??T??:??:??.???Z'),
+  timezone TEXT NOT NULL CHECK (length(trim(timezone)) > 0),
+  -- Configurable duplicate target status. NULL falls back to the workspace
+  -- default/next-up status at duplication time.
+  next_status_id TEXT REFERENCES workspace_statuses (id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
+  updated_at TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??.???Z'),
+  revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+  FOREIGN KEY (workspace_id, next_status_id) REFERENCES workspace_statuses (workspace_id, id) ON DELETE SET NULL
+);
+
+CREATE UNIQUE INDEX idx_schedules_workspace_id ON schedules (workspace_id, id);
+CREATE INDEX idx_schedules_workspace_next_status ON schedules (workspace_id, next_status_id);
+
 CREATE TABLE missions (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
@@ -287,6 +347,17 @@ CREATE TABLE missions (
   output_format_text TEXT,
   execution_target_intent_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(execution_target_intent_json)),
   metadata_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata_json)),
+  -- Branch automation (coo:16/coo:30/coo:9): active_branch is the branch the
+  -- mission is currently operating on; branch_override is a one-shot user-pinned
+  -- branch consumed at branch-preparation; worktree_preference is a persistent
+  -- per-mission worktree/branch opt-in overriding the workspace setting.
+  active_branch TEXT,
+  branch_override TEXT,
+  worktree_preference TEXT,
+  -- Scheduling (coo:124): scoped by workspace_id in application code (SQLite
+  -- ALTER TABLE precedent kept a plain FK here rather than a composite one).
+  schedule_id TEXT REFERENCES schedules (id) ON DELETE SET NULL,
+  due_datetime TEXT CHECK (due_datetime IS NULL OR due_datetime GLOB '????-??-??T??:??:??.???Z'),
   created_by_workspace_user_id TEXT REFERENCES workspace_users (id) ON DELETE SET NULL,
   assigned_workspace_user_id TEXT REFERENCES workspace_users (id) ON DELETE SET NULL,
   created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
@@ -304,6 +375,9 @@ CREATE UNIQUE INDEX idx_missions_project_id ON missions (project_id, id);
 CREATE INDEX idx_missions_project_status_updated ON missions (project_id, status_type, updated_at);
 CREATE INDEX idx_missions_project_status_board ON missions (project_id, status_id, board_position);
 CREATE INDEX idx_missions_workspace_creator_updated ON missions (workspace_id, created_by_workspace_user_id, updated_at);
+CREATE INDEX idx_missions_schedule_id ON missions (schedule_id) WHERE schedule_id IS NOT NULL;
+CREATE INDEX idx_missions_project_due_datetime ON missions (project_id, due_datetime)
+  WHERE due_datetime IS NOT NULL AND deleted_at IS NULL;
 
 -- Personal My Missions ordering: per-operator, per-status-column drag order for
 -- the My Missions selected-workspace view. Kept separate from
@@ -342,6 +416,9 @@ CREATE TABLE objectives (
   reasoning_effort TEXT,
   agent_flags_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(agent_flags_json)),
   launch_config_json TEXT CHECK (launch_config_json IS NULL OR json_valid(launch_config_json)),
+  -- The branch an objective actually ran on, written by the runner at
+  -- branch-prepared time (coo:30).
+  branch TEXT,
   auto_advance INTEGER NOT NULL DEFAULT 0 CHECK (auto_advance IN (0, 1)),
   approval_reason TEXT,
   auto_advanced_at TEXT CHECK (auto_advanced_at IS NULL OR auto_advanced_at GLOB '????-??-??T??:??:??.???Z'),
@@ -660,6 +737,352 @@ CREATE INDEX idx_entity_changes_project_seq ON entity_changes (project_id, seq);
 CREATE INDEX idx_entity_changes_mission_seq ON entity_changes (mission_id, seq);
 CREATE INDEX idx_entity_changes_entity_seq ON entity_changes (entity_type, entity_id, seq);
 
+-- ---------------------------------------------------------------------------
+-- Project-scoped mission tags (project_tags definitions + mission_tags join).
+-- ---------------------------------------------------------------------------
+CREATE TABLE project_tags (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
+  project_id TEXT NOT NULL REFERENCES projects (id) ON DELETE RESTRICT,
+  label TEXT NOT NULL CHECK (length(trim(label)) > 0),
+  color TEXT,
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+  created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
+  updated_at TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??.???Z'),
+  deleted_at TEXT CHECK (deleted_at IS NULL OR deleted_at GLOB '????-??-??T??:??:??.???Z'),
+  revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+  FOREIGN KEY (workspace_id, project_id) REFERENCES projects (workspace_id, id) ON DELETE RESTRICT
+);
+
+CREATE UNIQUE INDEX idx_project_tags_project_label ON project_tags (project_id, label)
+  WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_project_tags_project_id ON project_tags (project_id, id);
+CREATE INDEX idx_project_tags_project_active ON project_tags (project_id, active);
+
+CREATE TABLE mission_tags (
+  mission_id TEXT NOT NULL REFERENCES missions (id) ON DELETE CASCADE,
+  tag_id TEXT NOT NULL REFERENCES project_tags (id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
+  PRIMARY KEY (mission_id, tag_id)
+);
+
+CREATE INDEX idx_mission_tags_tag ON mission_tags (tag_id);
+
+-- ---------------------------------------------------------------------------
+-- Client-reported observations per execution target (WS-F4 / WS-F6).
+-- ---------------------------------------------------------------------------
+CREATE TABLE target_resource_observations (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
+  execution_target_id TEXT NOT NULL REFERENCES execution_targets (id) ON DELETE CASCADE,
+  resource_id TEXT NOT NULL REFERENCES project_resources (id) ON DELETE CASCADE,
+  state TEXT NOT NULL,
+  git_root TEXT,
+  branch TEXT,
+  git_commit TEXT,
+  observed_at TEXT NOT NULL CHECK (observed_at GLOB '????-??-??T??:??:??.???Z'),
+  created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
+  updated_at TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??.???Z'),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces (id) ON DELETE RESTRICT,
+  FOREIGN KEY (execution_target_id) REFERENCES execution_targets (id) ON DELETE CASCADE,
+  FOREIGN KEY (resource_id) REFERENCES project_resources (id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX idx_target_resource_observations_target_resource
+  ON target_resource_observations (execution_target_id, resource_id);
+CREATE INDEX idx_target_resource_observations_resource
+  ON target_resource_observations (resource_id);
+
+CREATE TABLE mission_branch_observations (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
+  execution_target_id TEXT NOT NULL REFERENCES execution_targets (id) ON DELETE CASCADE,
+  mission_id TEXT NOT NULL REFERENCES missions (id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('created', 'published', 'merged_unpushed', 'merged')),
+  dirty INTEGER NOT NULL CHECK (dirty IN (0, 1)),
+  worktree_path TEXT,
+  observed_at TEXT NOT NULL CHECK (observed_at GLOB '????-??-??T??:??:??.???Z'),
+  created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
+  updated_at TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??.???Z'),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces (id) ON DELETE RESTRICT,
+  FOREIGN KEY (execution_target_id) REFERENCES execution_targets (id) ON DELETE CASCADE,
+  FOREIGN KEY (mission_id) REFERENCES missions (id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX idx_mission_branch_observations_target_mission
+  ON mission_branch_observations (execution_target_id, mission_id);
+CREATE INDEX idx_mission_branch_observations_mission
+  ON mission_branch_observations (mission_id);
+
+-- ---------------------------------------------------------------------------
+-- Workspace member invitations (single-use hashed tokens, mirroring user_tokens).
+-- ---------------------------------------------------------------------------
+CREATE TABLE workspace_invitations (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
+  email TEXT NOT NULL CHECK (length(trim(email)) > 0),
+  role_key TEXT NOT NULL DEFAULT 'MEMBER' CHECK (length(trim(role_key)) > 0),
+  token_prefix TEXT NOT NULL CHECK (length(trim(token_prefix)) > 0),
+  token_hash TEXT NOT NULL CHECK (length(trim(token_hash)) > 0),
+  hash_algorithm TEXT NOT NULL CHECK (length(trim(hash_algorithm)) > 0),
+  status TEXT NOT NULL CHECK (status IN ('pending', 'accepted', 'revoked', 'expired')),
+  invited_by_workspace_user_id TEXT NOT NULL REFERENCES workspace_users (id) ON DELETE RESTRICT,
+  accepted_by_workspace_user_id TEXT REFERENCES workspace_users (id) ON DELETE SET NULL,
+  expires_at TEXT NOT NULL CHECK (expires_at GLOB '????-??-??T??:??:??.???Z'),
+  accepted_at TEXT CHECK (accepted_at IS NULL OR accepted_at GLOB '????-??-??T??:??:??.???Z'),
+  revoked_at TEXT CHECK (revoked_at IS NULL OR revoked_at GLOB '????-??-??T??:??:??.???Z'),
+  created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
+  updated_at TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??.???Z'),
+  deleted_at TEXT CHECK (deleted_at IS NULL OR deleted_at GLOB '????-??-??T??:??:??.???Z'),
+  revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)
+);
+
+CREATE UNIQUE INDEX idx_workspace_invitations_workspace_email_pending
+  ON workspace_invitations (workspace_id, email)
+  WHERE status = 'pending' AND deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_workspace_invitations_workspace_prefix
+  ON workspace_invitations (workspace_id, token_prefix);
+CREATE INDEX idx_workspace_invitations_workspace_status
+  ON workspace_invitations (workspace_id, status);
+
+-- ---------------------------------------------------------------------------
+-- Mission-data webhooks/API (coo:115): outbox_messages durable effect queue and
+-- its first consumer, a workspace-scoped webhook subscription system.
+-- ---------------------------------------------------------------------------
+CREATE TABLE outbox_messages (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
+  topic TEXT NOT NULL CHECK (length(trim(topic)) > 0),
+  payload_json TEXT NOT NULL CHECK (json_valid(payload_json)),
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'processing', 'sent', 'failed', 'cancelled')),
+  available_at TEXT NOT NULL CHECK (available_at GLOB '????-??-??T??:??:??.???Z'),
+  attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  last_error TEXT,
+  created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
+  updated_at TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??.???Z')
+);
+
+CREATE INDEX idx_outbox_messages_workspace_status_available ON outbox_messages
+  (workspace_id, status, available_at);
+CREATE INDEX idx_outbox_messages_topic_created ON outbox_messages (topic, created_at);
+
+CREATE TABLE webhook_subscriptions (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
+  project_id TEXT REFERENCES projects (id) ON DELETE SET NULL,
+  name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+  endpoint_url TEXT NOT NULL CHECK (length(trim(endpoint_url)) > 0),
+  secret TEXT NOT NULL CHECK (length(trim(secret)) > 0),
+  event_types_json TEXT NOT NULL CHECK (json_valid(event_types_json)),
+  payload_mode TEXT NOT NULL DEFAULT 'thin' CHECK (payload_mode IN ('thin', 'full')),
+  created_by_workspace_user_id TEXT NOT NULL REFERENCES workspace_users (id) ON DELETE RESTRICT,
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  disabled_reason TEXT CHECK (disabled_reason IS NULL OR disabled_reason IN ('manual', 'failures', 'owner_revoked')),
+  consecutive_failures INTEGER NOT NULL DEFAULT 0 CHECK (consecutive_failures >= 0),
+  last_success_at TEXT CHECK (last_success_at IS NULL OR last_success_at GLOB '????-??-??T??:??:??.???Z'),
+  last_failure_at TEXT CHECK (last_failure_at IS NULL OR last_failure_at GLOB '????-??-??T??:??:??.???Z'),
+  created_at TEXT NOT NULL CHECK (created_at GLOB '????-??-??T??:??:??.???Z'),
+  updated_at TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??.???Z'),
+  deleted_at TEXT CHECK (deleted_at IS NULL OR deleted_at GLOB '????-??-??T??:??:??.???Z'),
+  revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+  FOREIGN KEY (workspace_id, project_id) REFERENCES projects (workspace_id, id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_webhook_subscriptions_workspace_enabled ON webhook_subscriptions (workspace_id, enabled)
+  WHERE deleted_at IS NULL;
+CREATE INDEX idx_webhook_subscriptions_workspace_project ON webhook_subscriptions (workspace_id, project_id)
+  WHERE deleted_at IS NULL;
+
+CREATE TABLE webhook_delivery_attempts (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
+  subscription_id TEXT NOT NULL REFERENCES webhook_subscriptions (id) ON DELETE RESTRICT,
+  outbox_message_id TEXT NOT NULL REFERENCES outbox_messages (id) ON DELETE RESTRICT,
+  event_type TEXT NOT NULL CHECK (length(trim(event_type)) > 0),
+  attempt_number INTEGER NOT NULL CHECK (attempt_number >= 1),
+  response_status INTEGER,
+  response_snippet TEXT,
+  error TEXT,
+  duration_ms INTEGER,
+  attempted_at TEXT NOT NULL CHECK (attempted_at GLOB '????-??-??T??:??:??.???Z')
+);
+
+CREATE INDEX idx_webhook_delivery_attempts_subscription_attempted ON webhook_delivery_attempts
+  (subscription_id, attempted_at);
+CREATE INDEX idx_webhook_delivery_attempts_outbox_message ON webhook_delivery_attempts (outbox_message_id);
+
+-- ---------------------------------------------------------------------------
+-- Mission search: portable indexing table + FTS5 full-text index + sync triggers.
+-- ---------------------------------------------------------------------------
+CREATE TABLE search_documents (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces (id) ON DELETE RESTRICT,
+  project_id TEXT REFERENCES projects (id) ON DELETE SET NULL,
+  mission_id TEXT NOT NULL,
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('mission', 'objective', 'event')),
+  entity_id TEXT NOT NULL,
+  title TEXT,
+  body_text TEXT NOT NULL,
+  content_hash TEXT,
+  source_revision INTEGER,
+  metadata_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata_json)),
+  indexed_at TEXT NOT NULL CHECK (indexed_at GLOB '????-??-??T??:??:??.???Z')
+);
+
+CREATE UNIQUE INDEX idx_search_documents_entity ON search_documents (workspace_id, entity_type, entity_id);
+CREATE INDEX idx_search_documents_workspace_project_type ON search_documents (workspace_id, project_id, entity_type);
+CREATE INDEX idx_search_documents_mission ON search_documents (mission_id);
+
+CREATE VIRTUAL TABLE search_documents_fts USING fts5(
+  title,
+  body_text,
+  mission_id UNINDEXED,
+  entity_type UNINDEXED,
+  content = 'search_documents',
+  tokenize = 'unicode61 remove_diacritics 2'
+);
+
+CREATE TRIGGER trg_search_documents_fts_ai AFTER INSERT ON search_documents BEGIN
+  INSERT INTO search_documents_fts (rowid, title, body_text, mission_id, entity_type)
+  VALUES (new.rowid, new.title, new.body_text, new.mission_id, new.entity_type);
+END;
+
+CREATE TRIGGER trg_search_documents_fts_ad AFTER DELETE ON search_documents BEGIN
+  INSERT INTO search_documents_fts (search_documents_fts, rowid, title, body_text, mission_id, entity_type)
+  VALUES ('delete', old.rowid, old.title, old.body_text, old.mission_id, old.entity_type);
+END;
+
+CREATE TRIGGER trg_search_documents_fts_au AFTER UPDATE ON search_documents BEGIN
+  INSERT INTO search_documents_fts (search_documents_fts, rowid, title, body_text, mission_id, entity_type)
+  VALUES ('delete', old.rowid, old.title, old.body_text, old.mission_id, old.entity_type);
+  INSERT INTO search_documents_fts (rowid, title, body_text, mission_id, entity_type)
+  VALUES (new.rowid, new.title, new.body_text, new.mission_id, new.entity_type);
+END;
+
+CREATE TRIGGER trg_search_missions_ai AFTER INSERT ON missions
+WHEN new.deleted_at IS NULL
+BEGIN
+  INSERT INTO search_documents (
+    id, workspace_id, project_id, mission_id, entity_type, entity_id,
+    title, body_text, source_revision, indexed_at
+  ) VALUES (
+    lower(hex(randomblob(16))), new.workspace_id, new.project_id, new.id, 'mission', new.id,
+    new.title, new.title || ' ' || new.display_id, new.revision,
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  )
+  ON CONFLICT (workspace_id, entity_type, entity_id) DO UPDATE SET
+    project_id = excluded.project_id,
+    mission_id = excluded.mission_id,
+    title = excluded.title,
+    body_text = excluded.body_text,
+    source_revision = excluded.source_revision,
+    indexed_at = excluded.indexed_at;
+END;
+
+CREATE TRIGGER trg_search_missions_au AFTER UPDATE ON missions
+WHEN new.deleted_at IS NULL
+BEGIN
+  INSERT INTO search_documents (
+    id, workspace_id, project_id, mission_id, entity_type, entity_id,
+    title, body_text, source_revision, indexed_at
+  ) VALUES (
+    lower(hex(randomblob(16))), new.workspace_id, new.project_id, new.id, 'mission', new.id,
+    new.title, new.title || ' ' || new.display_id, new.revision,
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  )
+  ON CONFLICT (workspace_id, entity_type, entity_id) DO UPDATE SET
+    project_id = excluded.project_id,
+    mission_id = excluded.mission_id,
+    title = excluded.title,
+    body_text = excluded.body_text,
+    source_revision = excluded.source_revision,
+    indexed_at = excluded.indexed_at;
+END;
+
+CREATE TRIGGER trg_search_missions_soft_delete AFTER UPDATE ON missions
+WHEN new.deleted_at IS NOT NULL AND old.deleted_at IS NULL
+BEGIN
+  DELETE FROM search_documents WHERE workspace_id = new.workspace_id AND mission_id = new.id;
+END;
+
+CREATE TRIGGER trg_search_missions_ad AFTER DELETE ON missions BEGIN
+  DELETE FROM search_documents WHERE workspace_id = old.workspace_id AND mission_id = old.id;
+END;
+
+CREATE TRIGGER trg_search_objectives_ai AFTER INSERT ON objectives
+WHEN new.deleted_at IS NULL
+BEGIN
+  INSERT INTO search_documents (
+    id, workspace_id, project_id, mission_id, entity_type, entity_id,
+    title, body_text, source_revision, indexed_at
+  ) VALUES (
+    lower(hex(randomblob(16))), new.workspace_id, new.project_id, new.mission_id, 'objective', new.id,
+    new.title, trim(coalesce(new.title, '') || ' ' || coalesce(new.instruction_text, '')), new.revision,
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  )
+  ON CONFLICT (workspace_id, entity_type, entity_id) DO UPDATE SET
+    project_id = excluded.project_id,
+    mission_id = excluded.mission_id,
+    title = excluded.title,
+    body_text = excluded.body_text,
+    source_revision = excluded.source_revision,
+    indexed_at = excluded.indexed_at;
+END;
+
+CREATE TRIGGER trg_search_objectives_au AFTER UPDATE ON objectives
+WHEN new.deleted_at IS NULL
+BEGIN
+  INSERT INTO search_documents (
+    id, workspace_id, project_id, mission_id, entity_type, entity_id,
+    title, body_text, source_revision, indexed_at
+  ) VALUES (
+    lower(hex(randomblob(16))), new.workspace_id, new.project_id, new.mission_id, 'objective', new.id,
+    new.title, trim(coalesce(new.title, '') || ' ' || coalesce(new.instruction_text, '')), new.revision,
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  )
+  ON CONFLICT (workspace_id, entity_type, entity_id) DO UPDATE SET
+    project_id = excluded.project_id,
+    mission_id = excluded.mission_id,
+    title = excluded.title,
+    body_text = excluded.body_text,
+    source_revision = excluded.source_revision,
+    indexed_at = excluded.indexed_at;
+END;
+
+CREATE TRIGGER trg_search_objectives_soft_delete AFTER UPDATE ON objectives
+WHEN new.deleted_at IS NOT NULL AND old.deleted_at IS NULL
+BEGIN
+  DELETE FROM search_documents
+  WHERE workspace_id = new.workspace_id AND entity_type = 'objective' AND entity_id = new.id;
+END;
+
+CREATE TRIGGER trg_search_objectives_ad AFTER DELETE ON objectives BEGIN
+  DELETE FROM search_documents
+  WHERE workspace_id = old.workspace_id AND entity_type = 'objective' AND entity_id = old.id;
+END;
+
+CREATE TRIGGER trg_search_events_ai AFTER INSERT ON mission_events BEGIN
+  INSERT INTO search_documents (
+    id, workspace_id, project_id, mission_id, entity_type, entity_id,
+    title, body_text, indexed_at
+  ) VALUES (
+    lower(hex(randomblob(16))), new.workspace_id, new.project_id, new.mission_id, 'event', new.id,
+    NULL, new.summary,
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  )
+  ON CONFLICT (workspace_id, entity_type, entity_id) DO UPDATE SET
+    project_id = excluded.project_id,
+    mission_id = excluded.mission_id,
+    body_text = excluded.body_text,
+    indexed_at = excluded.indexed_at;
+END;
+
+CREATE TRIGGER trg_search_events_ad AFTER DELETE ON mission_events BEGIN
+  DELETE FROM search_documents
+  WHERE workspace_id = old.workspace_id AND entity_type = 'event' AND entity_id = old.id;
+END;
+
 CREATE TABLE schema_migrations (
   version TEXT NOT NULL,
   adapter TEXT NOT NULL CHECK (adapter IN ('sqlite')),
@@ -669,54 +1092,5 @@ CREATE TABLE schema_migrations (
   applied_at TEXT NOT NULL CHECK (applied_at GLOB '????-??-??T??:??:??.???Z'),
   PRIMARY KEY (adapter, component, version)
 );
-
-INSERT INTO workspaces (
-  id, slug, name, kind, settings_json, created_at, updated_at, revision
-) VALUES (
-  'local-workspace', 'local', 'Local Workspace', 'local', '{}',
-  '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1
-);
-
-INSERT INTO profiles (
-  id, kind, display_name, handle, status, metadata_json, created_at, updated_at, revision
-) VALUES (
-  'local-user', 'human', 'Local User', 'local', 'active', '{}',
-  '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1
-);
-
-INSERT INTO workspace_users (
-  id, workspace_id, profile_id, member_key, status, metadata_json,
-  created_at, updated_at, revision
-) VALUES (
-  'local-workspace-user', 'local-workspace', 'local-user', 'local:local',
-  'active', '{}',
-  '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1
-);
-
-INSERT INTO mission_sequences (
-  id, workspace_id, scope_type, scope_id, counter_name, next_value, updated_at
-) VALUES (
-  'local-workspace-mission-sequence', 'local-workspace', 'workspace',
-  'local-workspace', 'mission', 1, '2026-01-01T00:00:00.000Z'
-);
-
-INSERT INTO workspace_statuses (
-  id, workspace_id, key, name, type, position, is_default, is_terminal,
-  metadata_json, created_at, updated_at, revision
-) VALUES
-  ('local-workspace-status-backlog', 'local-workspace', 'backlog', 'Backlog', 'draft', 0, 1, 0,
-   '{}', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1),
-  ('local-workspace-status-next-up', 'local-workspace', 'next_up', 'Next Up', 'draft', 1, 0, 0,
-   '{}', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1),
-  ('local-workspace-status-in-progress', 'local-workspace', 'in_progress', 'In Progress', 'execute', 2, 0, 0,
-   '{}', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1),
-  ('local-workspace-status-in-review', 'local-workspace', 'in_review', 'In Review', 'review', 3, 0, 0,
-   '{}', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1),
-  ('local-workspace-status-done', 'local-workspace', 'done', 'Done', 'complete', 4, 0, 1,
-   '{}', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1),
-  ('local-workspace-status-blocked', 'local-workspace', 'blocked', 'Blocked', 'blocked', 5, 0, 0,
-   '{}', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1),
-  ('local-workspace-status-cancelled', 'local-workspace', 'cancelled', 'Cancelled', 'cancelled', 6, 0, 1,
-   '{}', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1);
 
 COMMIT;

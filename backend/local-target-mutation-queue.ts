@@ -151,7 +151,7 @@ export async function recordBranchActionActivityFromMutation({
           entityRevision: revision,
           projectId: row.project_id,
           missionId: row.mission_id,
-          changedFields: ['active_branch']
+          changedFields: ['updated_at']
         },
         tx
       );
