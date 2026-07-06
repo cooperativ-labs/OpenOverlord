@@ -198,6 +198,23 @@ test('multi-line agent prompts are valid AppleScript expressions', () => {
   assert.ok(script.includes('"if this prompt leaks, AppleScript fails"'));
 });
 
+test('terminal script path keeps long agent commands out of AppleScript', () => {
+  const prompt = `Use the Overlord context file at /Users/jake/.ovld/worktrees/overlord/refactor-the-existing-everhour-time-tracking-152/.overlord/tmp/mission-coo-152.md and attach to mission coo:152.`;
+  const exec = resolveLaunchExecution({
+    command: 'codex',
+    args: ['--model', 'gpt-5.5', prompt],
+    workingDirectory:
+      '/Users/jake/.ovld/worktrees/overlord/refactor-the-existing-everhour-time-tracking-152',
+    terminalLauncher: 'iTerm2',
+    terminalScriptPath:
+      '/Users/jake/.ovld/worktrees/overlord/refactor-the-existing-everhour-time-tracking-152/.overlord/tmp/launch-coo-152.sh'
+  });
+  const script = exec.args[1] ?? '';
+  assert.ok(script.includes(`/bin/bash '/Users/jake/.ovld/worktrees/overlord/`));
+  assert.ok(!script.includes(prompt));
+  assert.ok(!script.includes(`'codex' '--model' 'gpt-5.5'`));
+});
+
 test('a pre-command is wrapped inside the new terminal window', () => {
   const exec = resolveLaunchExecution({
     ...AGENT,

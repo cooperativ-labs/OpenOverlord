@@ -23,6 +23,7 @@ export type TerminalLaunchSettings = {
   terminalLauncher?: string | null;
   terminalLaunchPlacement?: TerminalLaunchPlacement;
   terminalLaunchChord?: string | null;
+  terminalScriptPath?: string | null;
 };
 
 export function shellQuote(value: string): string {
@@ -109,6 +110,27 @@ function terminalInnerCommand({
     .map(([key, value]) => `export ${key}=${shellQuote(value)}`)
     .join('; ');
   return `cd ${shellQuote(workingDirectory)} && ${exports}; ${agentCommand}`;
+}
+
+export function terminalLaunchScriptContent({
+  command,
+  args,
+  workingDirectory,
+  preCommand,
+  extraEnv = {}
+}: {
+  command: string;
+  args: string[];
+  workingDirectory: string;
+  preCommand?: string | null;
+  extraEnv?: Record<string, string>;
+}): string {
+  const agentCommand = agentShellCommand({ command, args, preCommand });
+  return `#!/usr/bin/env bash\n${terminalInnerCommand({ workingDirectory, agentCommand, extraEnv })}\n`;
+}
+
+function terminalScriptCommand(scriptPath: string): string {
+  return `/bin/bash ${shellQuote(scriptPath)}`;
 }
 
 function resolveItermSplitKind(
@@ -303,6 +325,7 @@ export function resolveLaunchExecution({
   terminalLauncher,
   terminalLaunchPlacement = 'window',
   terminalLaunchChord,
+  terminalScriptPath,
   extraEnv = {}
 }: {
   command: string;
@@ -330,11 +353,14 @@ export function resolveLaunchExecution({
   }
 
   const inner = terminalInnerCommand({ workingDirectory, agentCommand, extraEnv });
+  const terminalInner = terminalScriptPath?.trim()
+    ? terminalScriptCommand(terminalScriptPath.trim())
+    : inner;
   const builtin = resolveBuiltinTerminal(launcher);
 
   if (builtin === 'terminal') {
     const script = buildTerminalAppleScript({
-      inner,
+      inner: terminalInner,
       placement,
       chordClause
     });
@@ -343,13 +369,13 @@ export function resolveLaunchExecution({
       args: ['-e', script],
       useShell: false,
       terminal: 'Terminal',
-      display: `Terminal.app (${placement}) › ${inner}`
+      display: `Terminal.app (${placement}) › ${terminalInner}`
     };
   }
 
   if (builtin === 'iterm') {
     const script = buildItermAppleScript({
-      inner,
+      inner: terminalInner,
       placement,
       chordClause,
       chord: terminalLaunchChord
@@ -359,16 +385,20 @@ export function resolveLaunchExecution({
       args: ['-e', script],
       useShell: false,
       terminal: 'iTerm2',
-      display: `iTerm2 (${placement}) › ${inner}`
+      display: `iTerm2 (${placement}) › ${terminalInner}`
     };
   }
 
+  const genericTerminalCommand = terminalScriptPath?.trim()
+    ? terminalScriptCommand(terminalScriptPath.trim())
+    : genericAgentCommand;
+
   const full =
     placement === 'window'
-      ? `${launcher} ${genericAgentCommand}`
+      ? `${launcher} ${genericTerminalCommand}`
       : buildGenericPlacementShell({
           launcher,
-          inner: genericAgentCommand,
+          inner: genericTerminalCommand,
           placement,
           chordClause
         });

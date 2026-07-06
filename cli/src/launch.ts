@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { chmodSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { resolveAgentBinary } from './agent-binaries.js';
@@ -8,6 +8,7 @@ import type { CliRuntime } from './runtime.js';
 import {
   type LaunchExecution,
   resolveLaunchExecution,
+  terminalLaunchScriptContent,
   type TerminalLaunchSettings,
   tmpEnvFor
 } from './terminal-launcher.js';
@@ -198,6 +199,25 @@ function buildAgentCommand({
   return { command: resolveAgentBinary(agent), args };
 }
 
+function safeLaunchScriptPart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/^-+|-+$/g, '') || 'launch';
+}
+
+function launchScriptPath({
+  tmpDir,
+  displayId,
+  executionRequestId
+}: {
+  tmpDir: string;
+  displayId: string;
+  executionRequestId?: string | null;
+}): string {
+  const requestPart = executionRequestId
+    ? safeLaunchScriptPart(executionRequestId)
+    : `${process.pid}`;
+  return path.join(tmpDir, `launch-${safeLaunchScriptPart(displayId)}-${requestPart}.sh`);
+}
+
 export async function buildLaunchPlan({
   runtime,
   options
@@ -237,6 +257,27 @@ export async function buildLaunchPlan({
     launchMessage: `Start work on ${context.title} (ovld mission ${context.displayId})`
   });
 
+  const terminalScriptPath = options.terminalLauncher?.trim()
+    ? launchScriptPath({
+        tmpDir,
+        displayId: context.displayId,
+        executionRequestId: options.executionRequestId
+      })
+    : null;
+  if (terminalScriptPath) {
+    writeFileSync(
+      terminalScriptPath,
+      terminalLaunchScriptContent({
+        command: command.command,
+        args: command.args,
+        workingDirectory: options.workingDirectory,
+        preCommand: options.preCommand,
+        extraEnv: launchEnv
+      })
+    );
+    chmodSync(terminalScriptPath, 0o700);
+  }
+
   const execution = resolveLaunchExecution({
     command: command.command,
     args: command.args,
@@ -245,6 +286,7 @@ export async function buildLaunchPlan({
     terminalLauncher: options.terminalLauncher,
     terminalLaunchPlacement: options.terminalLaunchPlacement,
     terminalLaunchChord: options.terminalLaunchChord,
+    terminalScriptPath,
     extraEnv: launchEnv
   });
 
