@@ -1,0 +1,25 @@
+contractVersion: "0"
+componentType: extension
+componentKey: everhour
+label: "Everhour Time Tracking"
+description: >
+  Reference database extension for Everhour time tracking. Owns workspace
+  connections, project links, and mission task links in ext_everhour_* tables.
+
+extension:
+  tablePrefix: "ext_everhour_"
+  migrationComponent: "ext:everhour"
+  usesExtensionPoints:
+    - database-extension
+    - open-vocabulary-value
+
+vocabularyExtensions:
+  - vocabulary: entity_changes.entity_type
+    value: everhour:workspace_connection
+    description: Workspace Everhour API key connection row changed.
+  - vocabulary: entity_changes.entity_type
+    value: everhour:project_link
+    description: Overlord project to Everhour project link changed.
+  - vocabulary: entity_changes.entity_type
+    value: everhour:mission_link
+    description: Overlord mission to Everhour task link changed.
