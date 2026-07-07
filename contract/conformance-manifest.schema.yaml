@@ -41,6 +41,7 @@ properties:
       - database-adapter
       - auth-provider
       - rest-module
+      - rest-consumer
       - desktop-shell
     description: "The kind of component being shipped"
 
@@ -209,6 +210,69 @@ properties:
       usesServiceLayer:
         type: boolean
         description: "Declares that this module uses the service layer for database access (no direct table writes)"
+
+  # ── REST consumer-specific fields ─────────────────────────────────────────────
+
+  restConsumer:
+    type: object
+    description: "Required when componentType is 'rest-consumer'"
+    required:
+      - authMechanisms
+      - vendoredContractPath
+      - endpoints
+      - exportedTypes
+    additionalProperties: false
+    properties:
+      authMechanisms:
+        type: array
+        description: "Auth mechanisms this client uses against the REST surface"
+        items:
+          type: string
+          enum:
+            - bearer-token
+            - active-workspace-header
+            - better-auth-email
+        uniqueItems: true
+      vendoredContractPath:
+        type: string
+        description: "Repo-relative path to the vendored @overlord/contract subset"
+        examples:
+          - src/lib/contract.ts
+      upstreamContractRef:
+        type: string
+        description: "Path to the canonical contract source inside the OpenOverlord repo"
+        examples:
+          - packages/contract/src/index.ts
+      endpoints:
+        type: array
+        description: "REST endpoints this client calls"
+        items:
+          type: object
+          required:
+            - method
+            - path
+          additionalProperties: false
+          properties:
+            method:
+              type: string
+              enum:
+                - GET
+                - POST
+                - PATCH
+                - PUT
+                - DELETE
+            path:
+              type: string
+              description: "Route template, e.g. /api/missions/:id"
+            responseType:
+              type: string
+            requestBodyType:
+              type: string
+      exportedTypes:
+        type: array
+        description: "DTO/type names vendored from @overlord/contract"
+        items:
+          type: string
 
   # ── Desktop shell-specific fields ─────────────────────────────────────────────
 
