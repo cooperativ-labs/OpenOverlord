@@ -32,7 +32,7 @@ import {
   formatProjectResourcesInstructions,
   type ProjectResourceManifestEntry
 } from './project-resource-manifest.js';
-import { discoverProject } from './projects.js';
+import { discoverProject, findPrimaryProjectResource, findProjectResourceByKey } from './projects.js';
 import { generateSessionKey, hashSessionKey, newId, nowIso } from './util.js';
 import { enqueueWebhookEvent } from './webhook-events.js';
 
@@ -330,21 +330,63 @@ async function resolveProtocolExecutionTargetId({
 
 async function resolveSessionResourceId({
   ctx,
-  sessionId
+  session,
+  mission
 }: {
   ctx: ServiceContext;
-  sessionId: string;
+  session: { id: string; objective_id: string };
+  mission: { projectId: string };
 }): Promise<string | null> {
-  const row = (await ctx.db.get(
-    `SELECT resolved_resource_id
+  const requestRow = (await ctx.db.get(
+    `SELECT resolved_resource_id, claimed_by_execution_target_id, execution_target_id
        FROM execution_requests
-      WHERE launched_session_id = ?
+      WHERE workspace_id = ?
+        AND launched_session_id = ?
         AND deleted_at IS NULL
       ORDER BY updated_at DESC
       LIMIT 1`,
-    [sessionId]
-  )) as { resolved_resource_id: string | null } | undefined;
-  return row?.resolved_resource_id ?? null;
+    [ctx.workspace.id, session.id]
+  )) as
+    | {
+        resolved_resource_id: string | null;
+        claimed_by_execution_target_id: string | null;
+        execution_target_id: string | null;
+      }
+    | undefined;
+
+  if (requestRow?.resolved_resource_id) return requestRow.resolved_resource_id;
+
+  let executionTargetId =
+    requestRow?.claimed_by_execution_target_id ?? requestRow?.execution_target_id ?? null;
+  if (!executionTargetId) {
+    try {
+      executionTargetId = (await ensureActingDeviceTarget({ ctx })).executionTargetId;
+    } catch {
+      executionTargetId = null;
+    }
+  }
+
+  const objectiveRow = (await ctx.db.get(
+    `SELECT resource_key FROM objectives WHERE id = ? AND deleted_at IS NULL`,
+    [session.objective_id]
+  )) as { resource_key: string | null } | undefined;
+  const resourceKey = objectiveRow?.resource_key?.trim();
+  if (resourceKey) {
+    const resource = await findProjectResourceByKey({
+      ctx,
+      projectId: mission.projectId,
+      resourceKey,
+      executionTargetId
+    });
+    if (resource) return resource.id;
+  }
+
+  const primary = await findPrimaryProjectResource({
+    ctx,
+    projectId: mission.projectId,
+    executionTargetId
+  });
+  return primary?.id ?? null;
 }
 
 async function contextForObjective({
@@ -1076,7 +1118,7 @@ async function upsertChangedFiles({
   eventId: string | null;
   now: string;
 }): Promise<void> {
-  const resourceId = await resolveSessionResourceId({ ctx, sessionId: session.id });
+  const resourceId = await resolveSessionResourceId({ ctx, session, mission });
 
   for (const file of files) {
     const normalizedPath = file.filePath.replace(/\\/g, '/');

@@ -1,7 +1,7 @@
 import { createServiceContext } from './context.js';
 import { createMissionWithObjectives } from './missions.js';
 import { addProjectResource, createProject } from './projects.js';
-import { attachSession, loadMissionContext } from './protocol.js';
+import { attachSession, loadMissionContext, updateSession } from './protocol.js';
 import { buildProjectResourceManifestEntries } from './project-resource-manifest.js';
 import { createSqliteClient, openInMemoryDatabase } from '@overlord/database';
 import assert from 'node:assert/strict';
@@ -57,7 +57,7 @@ describe('protocol context manifest', () => {
       isPrimary: false
     });
 
-    const { mission, objectives } = createMissionWithObjectives({
+    const { mission, objectives } = await createMissionWithObjectives({
       ctx,
       projectId: project.id,
       objectives: [{ objective: 'Cross-repo work', resourceKey: 'backend' }]
@@ -83,7 +83,7 @@ describe('protocol context manifest', () => {
       isPrimary: true
     });
 
-    const { mission, objectives } = createMissionWithObjectives({
+    const { mission, objectives } = await createMissionWithObjectives({
       ctx,
       projectId: project.id,
       objectives: [{ objective: 'Single repo work' }]
@@ -93,5 +93,41 @@ describe('protocol context manifest', () => {
     const attached = await attachSession({ ctx, missionId: mission.id, agentIdentifier: 'test-agent' });
     assert.doesNotMatch(attached.agentInstructions, /## Project Resources/);
     assert.equal(attached.projectResources?.length, 1);
+  });
+
+  it('updateSession stamps changed_files.resource_id from objective resourceKey without execution request', async () => {
+    const db = createSqliteClient(openInMemoryDatabase());
+    const ctx = await createServiceContext({ db, source: 'protocol' });
+    const project = await createProject({ ctx, name: 'Resource id fallback' });
+    const resource = await addProjectResource({
+      ctx,
+      projectId: project.id,
+      directoryPath: process.cwd(),
+      resourceKey: 'backend',
+      isPrimary: true
+    });
+
+    const { mission, objectives } = await createMissionWithObjectives({
+      ctx,
+      projectId: project.id,
+      objectives: [{ objective: 'Direct attach', resourceKey: 'backend' }]
+    });
+    await db.run(`UPDATE objectives SET state = 'submitted' WHERE id = ?`, [objectives[0]?.id]);
+
+    const attached = await attachSession({ ctx, missionId: mission.id, agentIdentifier: 'test-agent' });
+    await updateSession({
+      ctx,
+      missionId: mission.displayId,
+      sessionKey: attached.sessionKey,
+      summary: 'Recorded a change',
+      changedFiles: [{ filePath: 'src/fallback.ts', vcsStatus: 'modified' }]
+    });
+
+    const changedFile = (await db.get(
+      `SELECT resource_id FROM changed_files WHERE session_id = ? AND deleted_at IS NULL`,
+      [attached.session.id]
+    )) as { resource_id: string | null };
+    assert.equal(changedFile.resource_id, resource.id);
+    await db.close();
   });
 });

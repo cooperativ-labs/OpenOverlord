@@ -88,7 +88,7 @@ export function buildProjectResourceManifestEntries({
         isPrimary: primaryKey !== null ? resourceKey === primaryKey : row.isPrimary,
         isCurrent: resourceKey === resolvedCurrent,
         path: executionTargetId && hasTargetRow ? row.path : null,
-        state: observationState ?? (executionTargetId ? 'unknown' : 'unknown')
+        state: observationState ?? 'unknown'
       };
     })
     .filter((entry): entry is ProjectResourceManifestEntry => entry !== null)
