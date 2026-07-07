@@ -79,6 +79,7 @@ test('ovld add-cwd writes local project metadata after resource creation', async
         return {
           id: 'resource-1',
           projectId: 'project-1',
+          resourceKey: 'openoverlord',
           executionTargetId: 'target-1',
           path: directory,
           isPrimary: true
@@ -120,6 +121,7 @@ test('ovld add-cwd writes local project metadata after resource creation', async
     version: number;
     projectId: string;
     resourceId: string;
+    resourceKey?: string;
     resourceIdsByExecutionTarget?: Record<string, string>;
     isPrimary: boolean;
   };
@@ -127,6 +129,60 @@ test('ovld add-cwd writes local project metadata after resource creation', async
   assert.equal(projectJson.version, 2);
   assert.equal(projectJson.projectId, 'project-1');
   assert.equal(projectJson.resourceId, 'resource-1');
+  assert.equal(projectJson.resourceKey, 'openoverlord');
   assert.deepEqual(projectJson.resourceIdsByExecutionTarget, { 'target-1': 'resource-1' });
   assert.equal(projectJson.isPrimary, true);
+});
+
+test('ovld add-cwd sends explicit resource key', async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'ovld-add-cwd-key-'));
+  const posts: Array<{ path: string; body: unknown }> = [];
+  const runtime = {
+    backend: {
+      baseUrl: 'https://overlord.example.test',
+      health: async () => ({ ok: true }),
+      get: async () => [{ id: 'project-1', name: 'Project One', slug: 'project-one' }],
+      post: async ({ path, body }: { path: string; body?: unknown }) => {
+        posts.push({ path, body });
+        return {
+          id: 'resource-1',
+          projectId: 'project-1',
+          resourceKey: 'mobile',
+          executionTargetId: 'target-1',
+          path: directory,
+          isPrimary: true
+        };
+      },
+      patch: async () => {
+        throw new Error('unexpected PATCH');
+      },
+      delete: async () => {
+        throw new Error('unexpected DELETE');
+      }
+    },
+    close: () => {}
+  } satisfies CliRuntime;
+
+  const originalLog = console.log;
+  console.log = () => {};
+  try {
+    await runManagementCommand({
+      runtime,
+      command: 'add-cwd',
+      rest: ['--directory', directory, '--project-id', 'project-1', '--key', 'mobile']
+    });
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.deepEqual(posts[0]?.body, {
+    directoryPath: directory,
+    resourceKey: 'mobile',
+    isPrimary: true
+  });
+
+  const projectJson = JSON.parse(
+    readFileSync(path.join(directory, '.overlord', 'project.json'), 'utf8')
+  ) as { resourceKey?: string };
+  assert.equal(projectJson.resourceKey, 'mobile');
 });

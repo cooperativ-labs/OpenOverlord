@@ -35,18 +35,18 @@ describe('target resource observations', () => {
 
     await db.run(
       `INSERT INTO project_resources
-         (id, workspace_id, project_id, execution_target_id, type, label, path,
+         (id, workspace_id, project_id, execution_target_id, resource_key, type, label, path,
           is_primary, status, metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, 'local_directory', NULL, ?, 1, 'active', '{}', ?, ?, 1)`,
+       VALUES (?, ?, ?, ?, 'primary', 'local_directory', NULL, ?, 1, 'active', '{}', ?, ?, 1)`,
       [resourceId, ctx.workspace.id, project.id, target.executionTargetId, resourceDir, now, now]
     );
 
     const missingId = 'resource-obs-missing';
     await db.run(
       `INSERT INTO project_resources
-         (id, workspace_id, project_id, execution_target_id, type, label, path,
+         (id, workspace_id, project_id, execution_target_id, resource_key, type, label, path,
           is_primary, status, metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, 'local_directory', NULL, ?, 0, 'active', '{}', ?, ?, 1)`,
+       VALUES (?, ?, ?, ?, 'missing', 'local_directory', NULL, ?, 0, 'active', '{}', ?, ?, 1)`,
       [
         missingId,
         ctx.workspace.id,

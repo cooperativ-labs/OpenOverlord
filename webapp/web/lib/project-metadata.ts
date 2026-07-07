@@ -15,6 +15,7 @@ export async function writeLocalProjectMetadata({
     directoryPath,
     projectId,
     resourceId: resource.id,
+    resourceKey: resource.resourceKey,
     executionTargetId: resource.executionTargetId,
     isPrimary: resource.isPrimary
   });

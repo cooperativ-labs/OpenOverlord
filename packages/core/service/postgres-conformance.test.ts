@@ -468,9 +468,9 @@ for (const adapter of adapters) {
         );
         await client.run(
           `INSERT INTO project_resources
-             (id, workspace_id, project_id, execution_target_id, type, label, path,
+             (id, workspace_id, project_id, execution_target_id, resource_key, type, label, path,
               is_primary, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'local_directory', 'Primary', '/tmp/conformance-primary', true,
+           VALUES (?, ?, ?, ?, 'primary', 'local_directory', 'Primary', '/tmp/conformance-primary', true,
                    'active', ?, ?)`,
           [randomUUID(), WORKSPACE_ID, graph.projectId, graph.executionTargetId, now, now]
         );
@@ -533,9 +533,9 @@ for (const adapter of adapters) {
         );
         await client.run(
           `INSERT INTO project_resources
-             (id, workspace_id, project_id, execution_target_id, type, label, path,
+             (id, workspace_id, project_id, execution_target_id, resource_key, type, label, path,
               is_primary, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'local_directory', 'Primary', '/tmp/conformance-primary', true,
+           VALUES (?, ?, ?, ?, 'primary', 'local_directory', 'Primary', '/tmp/conformance-primary', true,
                    'active', ?, ?)`,
           [randomUUID(), WORKSPACE_ID, graph.projectId, graph.executionTargetId, now, now]
         );
@@ -612,9 +612,9 @@ for (const adapter of adapters) {
         );
         await client.run(
           `INSERT INTO project_resources
-             (id, workspace_id, project_id, execution_target_id, type, label, path,
+             (id, workspace_id, project_id, execution_target_id, resource_key, type, label, path,
               is_primary, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'local_directory', 'Primary', '/tmp/conformance-primary', true,
+           VALUES (?, ?, ?, ?, 'primary', 'local_directory', 'Primary', '/tmp/conformance-primary', true,
                    'active', ?, ?)`,
           [randomUUID(), WORKSPACE_ID, graph.projectId, graph.executionTargetId, now, now]
         );

@@ -14,6 +14,10 @@ import {
   pruneObsoleteMigrationLedgerSqlite,
   resolveAppliedMigrationSqlite
 } from './migration-ledger.js';
+import {
+  finalizeProjectResourcesResourceKeySqlite,
+  isProjectResourcesResourceKeyMigration
+} from './project-resources-resource-key-migration-runtime.js';
 
 const MIGRATION_FILE_PATTERN = /^\d+_[a-z0-9_]+\.sql$/;
 
@@ -101,6 +105,9 @@ function applyMigration(db: DatabaseInstance, migration: Migration): 'applied' |
   db.exec(migration.sql);
   if (isExtEverhourPersistenceMigration(migration)) {
     finalizeExtEverhourMissionLinksSqlite(db);
+  }
+  if (isProjectResourcesResourceKeyMigration(migration)) {
+    finalizeProjectResourcesResourceKeySqlite(db);
   }
   recordMigration(db, migration);
 
@@ -241,6 +248,9 @@ function applyMigrationWithPendingRecords(
   db.exec(migration.sql);
   if (isExtEverhourPersistenceMigration(migration)) {
     finalizeExtEverhourMissionLinksSqlite(db);
+  }
+  if (isProjectResourcesResourceKeyMigration(migration)) {
+    finalizeProjectResourcesResourceKeySqlite(db);
   }
   if (!hasSchemaMigrationsTable(db)) {
     pendingMigrationRecords.push(migration);

@@ -44,7 +44,7 @@ Organizations:
 
 Projects:
   ${primaryCommand} create-project --name "<name>" [--directory <path>|--no-directory]
-  ${primaryCommand} add-cwd [--directory <path>] [--project-id <id>] [--primary true|false]
+  ${primaryCommand} add-cwd [--directory <path>] [--project-id <id>] [--key <resourceKey>] [--primary true|false]
                                                  (prompts to pick a project when --project-id is omitted)
 
 Missions:

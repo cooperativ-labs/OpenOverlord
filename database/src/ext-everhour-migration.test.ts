@@ -19,6 +19,10 @@ import {
   type OverlordDatabase
 } from './index.js';
 import { resolveAppliedMigrationSqlite } from './migration-ledger.js';
+import {
+  finalizeProjectResourcesResourceKeySqlite,
+  isProjectResourcesResourceKeyMigration
+} from './project-resources-resource-key-migration-runtime.js';
 
 const EXT_EVERHOUR_MIGRATION = '20260706000000_ext_everhour_persistence.sql';
 
@@ -57,6 +61,9 @@ function applySqliteMigrationFile(db: OverlordDatabase, fileName: string): void 
   db.exec(sql);
   if (isExtEverhourPersistenceMigration({ version, component })) {
     finalizeExtEverhourMissionLinksSqlite(db);
+  }
+  if (isProjectResourcesResourceKeyMigration({ version, component })) {
+    finalizeProjectResourcesResourceKeySqlite(db);
   }
 
   if (

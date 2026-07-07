@@ -305,12 +305,14 @@ export type ProjectResourceStatus = 'active' | 'missing' | 'archived';
 
 export interface CreateProjectResourceBody {
   directoryPath: string;
+  resourceKey?: string | null;
   label?: string | null;
   isPrimary?: boolean;
   executionTargetId?: string | null;
 }
 
 export interface UpdateProjectResourceBody {
+  resourceKey?: string | null;
   isPrimary?: boolean;
 }
 
@@ -319,6 +321,7 @@ export interface ProjectResourceDto {
   workspaceId: string;
   projectId: string;
   executionTargetId: string | null;
+  resourceKey: string;
   type: ProjectResourceType;
   label: string | null;
   path: string;

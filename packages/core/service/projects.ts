@@ -27,6 +27,7 @@ export type ProjectSummary = {
 export type ProjectResourceSummary = {
   id: string;
   projectId: string;
+  resourceKey: string;
   type: string;
   label: string | null;
   path: string;
@@ -45,6 +46,22 @@ export type PrimaryResourceConnection = {
 
 function isTruthyFlag(value: unknown): boolean {
   return value === true || value === 1;
+}
+
+export function deriveProjectResourceKey({
+  resourceKey,
+  label,
+  directoryPath
+}: {
+  resourceKey?: string | null;
+  label?: string | null;
+  directoryPath: string;
+}): string {
+  const explicit = resourceKey?.trim();
+  if (explicit) return slugify(explicit);
+  const labelKey = label?.trim();
+  if (labelKey) return slugify(labelKey);
+  return slugify(path.basename(path.resolve(directoryPath)));
 }
 
 /**
@@ -211,17 +228,20 @@ export async function addProjectResource({
   ctx,
   projectId,
   directoryPath,
+  resourceKey,
   label,
   isPrimary = false
 }: {
   ctx: ServiceContext;
   projectId: string;
   directoryPath: string;
+  resourceKey?: string | null;
   label?: string | null;
   isPrimary?: boolean;
 }): Promise<ProjectResourceSummary> {
   const resolvedProjectId = await resolveProjectId(ctx, projectId);
   const resolvedPath = path.resolve(directoryPath);
+  const resolvedResourceKey = deriveProjectResourceKey({ resourceKey, label, directoryPath });
   const executionTargetId = (await ensureActingDeviceTarget({ ctx })).executionTargetId;
   const now = nowIso();
   const id = newId();
@@ -242,14 +262,15 @@ export async function addProjectResource({
 
   await ctx.db.run(
     `INSERT INTO project_resources
-         (id, workspace_id, project_id, execution_target_id, type, label, path, is_primary, status,
+         (id, workspace_id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status,
           metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, 'local_directory', ?, ?, ?, 'active', '{}', ?, ?, 1)`,
+       VALUES (?, ?, ?, ?, ?, 'local_directory', ?, ?, ?, 'active', '{}', ?, ?, 1)`,
     [
       id,
       ctx.workspace.id,
       resolvedProjectId,
       executionTargetId,
+      resolvedResourceKey,
       label?.trim() || path.basename(resolvedPath),
       resolvedPath,
       bindBool(ctx.db.dialect, isPrimary),
@@ -266,6 +287,7 @@ export async function addProjectResource({
     directoryPath: resolvedPath,
     projectId: resolvedProjectId,
     resourceId: id,
+    resourceKey: resolvedResourceKey,
     executionTargetId,
     isPrimary
   });
@@ -283,6 +305,7 @@ export async function addProjectResource({
     id,
     projectId: resolvedProjectId,
     executionTargetId,
+    resourceKey: resolvedResourceKey,
     type: 'local_directory',
     label: label?.trim() || path.basename(resolvedPath),
     path: resolvedPath,
@@ -300,7 +323,7 @@ export async function listProjectResources({
 }): Promise<ProjectResourceSummary[]> {
   const resolvedProjectId = await resolveProjectId(ctx, projectId);
   const rows = (await ctx.db.all(
-    `SELECT id, project_id, execution_target_id, type, label, path, is_primary, status
+    `SELECT id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status
        FROM project_resources
        WHERE project_id = ? AND deleted_at IS NULL
        ORDER BY is_primary DESC, created_at ASC`,
@@ -309,6 +332,7 @@ export async function listProjectResources({
     id: string;
     project_id: string;
     execution_target_id: string | null;
+    resource_key: string;
     type: string;
     label: string | null;
     path: string;
@@ -321,6 +345,7 @@ export async function listProjectResources({
       id: row.id,
       projectId: row.project_id,
       executionTargetId: row.execution_target_id,
+      resourceKey: row.resource_key,
       type: row.type,
       label: row.label,
       path: row.path,
@@ -347,14 +372,14 @@ export async function findPrimaryProjectResource({
   const isPrimary = bindBool(ctx.db.dialect, true);
   const row = (await ctx.db.get(
     executionTargetId === null
-      ? `SELECT id, project_id, execution_target_id, type, label, path, is_primary, status
+      ? `SELECT id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status
            FROM project_resources
           WHERE project_id = ?
             AND deleted_at IS NULL
             AND is_primary = ?
           ORDER BY created_at ASC
           LIMIT 1`
-      : `SELECT id, project_id, execution_target_id, type, label, path, is_primary, status
+      : `SELECT id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status
            FROM project_resources
           WHERE project_id = ?
             AND deleted_at IS NULL
@@ -372,6 +397,7 @@ export async function findPrimaryProjectResource({
         id: string;
         project_id: string;
         execution_target_id: string | null;
+        resource_key: string;
         type: string;
         label: string | null;
         path: string;
@@ -386,6 +412,7 @@ export async function findPrimaryProjectResource({
     id: row.id,
     projectId: row.project_id,
     executionTargetId: row.execution_target_id,
+    resourceKey: row.resource_key,
     type: row.type,
     label: row.label,
     path: row.path,

@@ -1,4 +1,7 @@
-import { writeProjectJson } from '@overlord/core/service/local-target/project-metadata';
+import {
+  readProjectJsonLink,
+  writeProjectJson
+} from '@overlord/core/service/local-target/project-metadata';
 import {
   executeLocalTargetMutation,
   parseMutationFromMetadata
@@ -85,6 +88,7 @@ function writeProjectJsonFromResource({
     directoryPath: directory,
     projectId,
     resourceId: record.id,
+    resourceKey: typeof record.resourceKey === 'string' ? record.resourceKey : undefined,
     executionTargetId:
       typeof record.executionTargetId === 'string' ? record.executionTargetId : undefined,
     isPrimary: record.isPrimary !== false
@@ -976,6 +980,10 @@ export async function runManagementCommand({
     }
     case 'add-cwd': {
       const directory = flagValue(parsed.flags, '--directory') ?? process.cwd();
+      const existingProjectJson = readProjectJsonLink(
+        path.join(directory, '.overlord', 'project.json')
+      );
+      const resourceKey = flagValue(parsed.flags, '--key') ?? existingProjectJson?.resourceKey;
       let projectId = flagValue(parsed.flags, '--project-id');
       if (!projectId) {
         const projects =
@@ -1003,6 +1011,7 @@ export async function runManagementCommand({
         path: `/api/projects/${encodeURIComponent(projectId)}/resources`,
         body: {
           directoryPath: directory,
+          ...(resourceKey ? { resourceKey } : {}),
           isPrimary: flagValue(parsed.flags, '--primary') !== 'false'
         }
       });

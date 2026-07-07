@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '0'
+contractVersion: '1'
 
 components:
   protocol:
@@ -58,7 +58,8 @@ components:
       - 'ovld config set: select a local loopback backend URL or hosted/cloud backend URL'
       - 'ovld auth login: first-run backend onboarding before authentication'
       - 'project linking and discovery from working directory, with a packaged-mode fallback to the OS app-data overlord.toml'
-      - 'configuration file locations: overlord.toml, .overlord/project.json (legacy resourceId plus additive resourceIdsByExecutionTarget map keyed by execution_targets.id)'
+      - 'configuration file locations: overlord.toml, .overlord/project.json (legacy resourceId plus additive resourceIdsByExecutionTarget map keyed by execution_targets.id, plus additive resourceKey for logical checkout identity)'
+      - 'project resource registration commands, including ovld add-cwd --key <resourceKey>'
       - 'backend URL settings: backend_url and backend_mode (local/cloud)'
       - 'per-user terminal profiles on user_execution_target_preferences for opening launched agents in a terminal window'
       - 'protocol session-key cache: persists the attach session key by (working directory, mission) and auto-injects --session-key when the flag is absent; cleared at deliver'
@@ -90,9 +91,10 @@ components:
     referenceSpec: 'planning/feature-plans/04-runner-and-launch-execution.md'
     owns:
       - 'execution_requests queue claiming and launch'
-      - 'working directory resolution'
+      - 'working directory resolution: explicit workingDirectory, objective resource_key on the claiming target, primary target resource, then cwd .overlord/project.json fallback'
       - 'per-mission branch/worktree preparation before local agent spawn when enabled'
       - 'same-mission branch/worktree reuse: an existing planned worktree on the expected mission branch may be reused even when dirty so sequential objectives can continue uncommitted work'
+      - 'runner launch environment, including OVERLORD_PROJECT_RESOURCES sibling-resource manifest resolved for the launching target'
       - 'mission branch base resolution for runner preparation: project-configured base first, then the repository main worktree checkout, then the repo default'
       - 'deterministic branch/worktree planning algorithm (cli/src/branch-planning.ts), co-owned with the service layer and pinned to contract/branch-planning-vectors.json'
       - 'ovld runner commands'
@@ -117,7 +119,7 @@ components:
       - 'admin-only workspace objective CSV export (GET /api/workspaces/:id/objectives.csv) as a text/csv attachment'
       - 'read-only derived mission branch metadata (MissionBranchDto) from missions.active_branch, predicted via the service layer copy of the branch-planning algorithm (backend/branch-planning.ts) pinned to contract/branch-planning-vectors.json, then merged with latest client branch observations when available'
       - 'mission branch base metadata resolution: project-configured base first, then the primary resource main worktree checkout for pending branches, with prepared branches tied to the runner-recorded baseBranch payload'
-      - 'on-demand branch-action git mutations (POST /api/missions/:id/branch/action: merge-with-parent / push-parent / publish) run host-side against worktrees under ~/.ovld/worktrees and the primary repo; the Runner Layer owns launching the agent into a worktree, not these mutations'
+      - 'on-demand branch-action git mutations (POST /api/missions/:id/branch/action: merge-with-parent / push-parent / publish) run host-side against worktrees under ~/.ovld/worktrees and the resource selected by optional resourceKey, defaulting to the primary repo; the Runner Layer owns launching the agent into a worktree, not these mutations'
       - 'REST auth integration points'
       - 'SSE/WebSocket realtime endpoint (GET /realtime, compatibility GET /api/stream) and GET /sync/changes?after=<seq> catch-up read'
       - 'SQL Studio launch metadata exposed through /api/meta'
@@ -148,7 +150,7 @@ components:
       - 'Better Auth implementation tables: user, session, account, verification, apikey'
       - 'self-service account deletion trigger (user.deleteUser), delegating the cascade to a backend-supplied callback'
       - 'sign-up/sign-in email verification via an optional backend-supplied sendVerificationEmail callback (Resend-backed, RESEND_API_KEY, notifications.cooperativ.io); disabled by default when unset'
-      - 'hosted MCP OAuth consent and token issuance: browser approval creates scoped mission_lifecycle USER_TOKEN access tokens; authorization codes are short-lived, single-use, and PKCE-protected; refresh tokens are not issued in contract version 0'
+      - 'hosted MCP OAuth consent and token issuance: browser approval creates scoped mission_lifecycle USER_TOKEN access tokens; authorization codes are short-lived, single-use, and PKCE-protected; refresh tokens are not issued through contract version 1'
     dependsOn:
       - database
     interactionSurfaces:
@@ -322,7 +324,7 @@ interactionSurfaces:
       - 'Missing or failed authentication returns an OAuth-compatible WWW-Authenticate: Bearer challenge'
       - 'The active workspace is resolved by the Auth Layer from the bearer credential plus X-Overlord-Active-Workspace when supplied'
       - 'MCP must not silently select another workspace after auth'
-      - 'OAuth approval creates mission_lifecycle-scoped USER_TOKEN access tokens and does not issue refresh tokens in contract version 0'
+      - 'OAuth approval creates mission_lifecycle-scoped USER_TOKEN access tokens and does not issue refresh tokens through contract version 1'
 
   mcpToService:
     description: 'MCP tool handlers call existing service/protocol functions and never write tables directly'

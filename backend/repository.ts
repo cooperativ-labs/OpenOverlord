@@ -365,6 +365,7 @@ interface ProjectResourceRow {
   workspace_id: string;
   project_id: string;
   execution_target_id: string | null;
+  resource_key: string;
   type: string;
   label: string | null;
   path: string;
@@ -479,6 +480,7 @@ async function toProjectResourceDto(
     workspaceId: r.workspace_id,
     projectId: r.project_id,
     executionTargetId: r.execution_target_id,
+    resourceKey: r.resource_key,
     type: r.type as ProjectResourceDto['type'],
     label: r.label,
     path: r.path,
@@ -534,7 +536,7 @@ async function getProjectResourceRow(
   await getProject(projectId, db);
   const row = (await db.get(
     `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
-              is_primary, status, created_at, updated_at, revision
+              resource_key, is_primary, status, created_at, updated_at, revision
          FROM project_resources
         WHERE id = ? AND project_id = ? AND deleted_at IS NULL`,
     [resourceId, projectId]
@@ -1459,6 +1461,22 @@ function slugify(input: string): string {
   return base.length > 0 ? base : 'project';
 }
 
+function deriveProjectResourceKey({
+  resourceKey,
+  label,
+  directoryPath
+}: {
+  resourceKey?: string | null;
+  label?: string | null;
+  directoryPath: string;
+}): string {
+  const explicit = resourceKey?.trim();
+  if (explicit) return slugify(explicit);
+  const labelKey = label?.trim();
+  if (labelKey) return slugify(labelKey);
+  return slugify(path.basename(path.resolve(directoryPath)));
+}
+
 // ---- Projects ------------------------------------------------------------
 
 const selectProjectsSql = `
@@ -2082,7 +2100,7 @@ export async function listProjectResources(projectId: string): Promise<ProjectRe
 
   const rows = (await requireDatabaseClient().all(
     `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
-              is_primary, status, created_at, updated_at, revision
+              resource_key, is_primary, status, created_at, updated_at, revision
          FROM project_resources
         WHERE project_id = ? AND deleted_at IS NULL
         ORDER BY status ASC, is_primary DESC, label ASC, path ASC`,
@@ -2104,6 +2122,11 @@ async function insertProjectResource(
 ): Promise<string> {
   const resourcePath = (body.directoryPath ?? body.path ?? '').trim();
   if (!resourcePath) throw new ApiError(400, pathRequiredMessage);
+  const resourceKey = deriveProjectResourceKey({
+    resourceKey: body.resourceKey,
+    label: body.label,
+    directoryPath: resourcePath
+  });
   const executionTargetId = await resolveResourceExecutionTargetId(db, body.executionTargetId);
 
   const now = nowIso();
@@ -2114,14 +2137,15 @@ async function insertProjectResource(
   const resourceId = newId();
   await db.run(
     `INSERT INTO project_resources
-       (id, workspace_id, project_id, execution_target_id, type, label, path,
+       (id, workspace_id, project_id, execution_target_id, resource_key, type, label, path,
         is_primary, status, metadata_json, created_at, updated_at, revision)
-     VALUES (?, ?, ?, ?, 'local_directory', ?, ?, ?, 'active', '{}', ?, ?, 1)`,
+     VALUES (?, ?, ?, ?, ?, 'local_directory', ?, ?, ?, 'active', '{}', ?, ?, 1)`,
     [
       resourceId,
       project.workspaceId,
       project.id,
       executionTargetId,
+      resourceKey,
       body.label ?? null,
       resourcePath,
       bindBool(DATABASE_DIALECT, body.isPrimary !== false),
@@ -2139,7 +2163,7 @@ async function insertProjectResource(
       operation: 'insert',
       entityRevision: 1,
       projectId: project.id,
-      changedFields: ['path', 'is_primary'],
+      changedFields: ['path', 'resource_key', 'is_primary'],
       workspaceId: project.workspaceId,
       actorWorkspaceUserId: options.actorWorkspaceUserId
     },
@@ -2159,7 +2183,7 @@ export async function createProjectResource(
 
     const row = (await tx.get(
       `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
-                is_primary, status, created_at, updated_at, revision
+                resource_key, is_primary, status, created_at, updated_at, revision
            FROM project_resources
           WHERE id = ?`,
       [id]
@@ -2176,6 +2200,26 @@ export async function updateProjectResource(
   return requireDatabaseClient().transaction(async tx => {
     const existing = await getProjectResourceRow(tx, projectId, resourceId);
     const now = nowIso();
+    const changedFields: string[] = [];
+    let revision = existing.revision;
+
+    if (body.resourceKey !== undefined) {
+      const nextResourceKey = deriveProjectResourceKey({
+        resourceKey: body.resourceKey,
+        label: existing.label,
+        directoryPath: existing.path
+      });
+      if (nextResourceKey !== existing.resource_key) {
+        revision += 1;
+        await tx.run(
+          `UPDATE project_resources
+              SET resource_key = ?, updated_at = ?, revision = ?
+            WHERE id = ?`,
+          [nextResourceKey, now, revision, resourceId]
+        );
+        changedFields.push('resource_key');
+      }
+    }
 
     if (body.isPrimary === true && !isTruthyFlag(existing.is_primary)) {
       await clearPrimaryResourcesForTarget(tx, {
@@ -2185,18 +2229,23 @@ export async function updateProjectResource(
       });
       await tx.run(
         `UPDATE project_resources
-            SET is_primary = ?, updated_at = ?, revision = revision + 1
+            SET is_primary = ?, updated_at = ?, revision = ?
           WHERE id = ?`,
-        [bindBool(DATABASE_DIALECT, true), now, resourceId]
+        [bindBool(DATABASE_DIALECT, true), now, revision + 1, resourceId]
       );
+      revision += 1;
+      changedFields.push('is_primary');
+    }
+
+    if (changedFields.length > 0) {
       await recordChange(
         {
           entityType: 'project_resource',
           entityId: resourceId,
           operation: 'update',
-          entityRevision: existing.revision + 1,
+          entityRevision: revision,
           projectId,
-          changedFields: ['is_primary']
+          changedFields
         },
         tx
       );
@@ -2249,7 +2298,7 @@ async function getProjectRepositoryResource(
   const row = (await (executionTargetId === null
     ? requireDatabaseClient().get(
         `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
-              is_primary, status, created_at, updated_at, revision
+              resource_key, is_primary, status, created_at, updated_at, revision
          FROM project_resources
         WHERE project_id = ?
           AND status = 'active'
@@ -2260,7 +2309,7 @@ async function getProjectRepositoryResource(
       )
     : requireDatabaseClient().get(
         `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
-              is_primary, status, created_at, updated_at, revision
+              resource_key, is_primary, status, created_at, updated_at, revision
          FROM project_resources
         WHERE project_id = ?
           AND (execution_target_id = ? OR execution_target_id IS NULL)

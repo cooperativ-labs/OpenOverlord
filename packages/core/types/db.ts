@@ -472,6 +472,7 @@ export interface ProjectResources {
   metadata_json: Generated<string>;
   path: string;
   project_id: string;
+  resource_key: string;
   revision: Generated<number>;
   status: string;
   type: string;
