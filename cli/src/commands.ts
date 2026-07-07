@@ -20,7 +20,7 @@ import {
 import { type BranchAutomationPayload, prepareMissionBranch } from './branch-preparation.js';
 import { isLoopbackBackendUrl, loadConfig } from './config.js';
 import { clientDeviceIdentity } from './device-identity.js';
-import { discoverProjectOnClient } from './discover-project-local.js';
+import { discoverProjectOnClient, resolvePreferredExecutionTargetId } from './discover-project-local.js';
 import { CliError } from './errors.js';
 import { launchAgent } from './launch.js';
 import { resolveNativeSessionId } from './native-session.js';
@@ -804,6 +804,18 @@ export async function runProtocolCommand({
     return;
   }
 
+  if (
+    (subcommand === 'attach' ||
+      subcommand === 'load-context' ||
+      subcommand === 'resume-follow-up') &&
+    typeof flags['--execution-target-id'] !== 'string'
+  ) {
+    const preferredTargetId = await resolvePreferredExecutionTargetId({ backend: runtime.backend });
+    if (preferredTargetId) {
+      flags['--execution-target-id'] = preferredTargetId;
+    }
+  }
+
   const result = await runtime.backend.post<unknown>({
     path: `/api/protocol/${encodeURIComponent(subcommand)}`,
     body: {
@@ -1393,6 +1405,7 @@ async function runRunnerCommand({
           preCommand:
             typeof launchConfig.preCommand === 'string' ? launchConfig.preCommand : undefined,
           executionRequestId: requestId,
+          executionTargetId: executionTargetId || undefined,
           ...terminal,
           dryRun
         }
