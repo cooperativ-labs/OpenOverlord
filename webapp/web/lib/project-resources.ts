@@ -41,6 +41,67 @@ export function primaryResourceConnection(
   return { connected: true, primary, message: null };
 }
 
+export const OBJECTIVE_RESOURCE_REPAIR_HINT =
+  'Link the resource in project settings or run `ovld add-cwd --key <key>` from the checkout.';
+
+export function distinctProjectResourceKeys(resources: ProjectResourceDto[]): string[] {
+  const keys = new Set<string>();
+  for (const resource of resources) {
+    if (resource.status !== 'archived' && resource.resourceKey.trim()) {
+      keys.add(resource.resourceKey);
+    }
+  }
+  return [...keys].sort((left, right) => left.localeCompare(right));
+}
+
+export function objectiveResourceConnection({
+  resources,
+  resourceKey,
+  executionTargetId = null
+}: {
+  resources: ProjectResourceDto[];
+  resourceKey?: string | null;
+  executionTargetId?: string | null;
+}): PrimaryResourceConnectionState {
+  const boundKey = resourceKey?.trim();
+  if (!boundKey) {
+    return primaryResourceConnection(resources);
+  }
+
+  const matches = resources.filter(
+    resource => resource.resourceKey === boundKey && resource.status !== 'archived'
+  );
+  if (matches.length === 0) {
+    return {
+      connected: false,
+      primary: null,
+      message: `Objective resource "${boundKey}" is not linked to this project. ${OBJECTIVE_RESOURCE_REPAIR_HINT}`
+    };
+  }
+
+  const resource =
+    executionTargetId === null
+      ? matches[0]!
+      : (matches.find(item => item.executionTargetId === executionTargetId) ?? matches[0]!);
+
+  if (resource.status === 'missing') {
+    return {
+      connected: false,
+      primary: resource,
+      message: `Objective resource "${boundKey}" working directory is missing (${resource.path}). Run \`ovld add-cwd --key ${boundKey}\` from the intended checkout.`
+    };
+  }
+  if (resource.type !== 'local_directory') {
+    return {
+      connected: false,
+      primary: resource,
+      message: `Objective resource "${boundKey}" type "${resource.type}" is not supported for local agent runs yet.`
+    };
+  }
+
+  return { connected: true, primary: resource, message: null };
+}
+
 export type ExecutionTargetAvailabilityState = {
   available: boolean;
   message: string | null;

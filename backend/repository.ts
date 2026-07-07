@@ -418,6 +418,7 @@ interface ObjectiveRow {
   assigned_agent: string | null;
   model: string | null;
   reasoning_effort: string | null;
+  resource_key: string | null;
   created_at: string;
   updated_at: string;
   revision: number;
@@ -1448,7 +1449,8 @@ function toObjectiveDto(r: ObjectiveRow): ObjectiveDto {
     updatedAt: r.updated_at,
     revision: r.revision,
     externalSessionId: r.external_session_id ?? null,
-    branch: r.branch ?? null
+    branch: r.branch ?? null,
+    resourceKey: r.resource_key?.trim() || null
   };
 }
 
@@ -1475,6 +1477,25 @@ function deriveProjectResourceKey({
   const labelKey = label?.trim();
   if (labelKey) return slugify(labelKey);
   return slugify(path.basename(path.resolve(directoryPath)));
+}
+
+async function assertObjectiveResourceKeyOnProject(
+  db: DatabaseClient,
+  projectId: string,
+  resourceKey: string | null | undefined
+): Promise<string | null> {
+  const normalized = resourceKey?.trim() || null;
+  if (!normalized) return null;
+  const row = (await db.get(
+    `SELECT 1 AS ok FROM project_resources
+        WHERE project_id = ? AND resource_key = ? AND deleted_at IS NULL
+        LIMIT 1`,
+    [projectId, normalized]
+  )) as { ok: number } | undefined;
+  if (!row) {
+    throw new ApiError(409, `Project resource key "${normalized}" is not linked to this project.`);
+  }
+  return normalized;
 }
 
 // ---- Projects ------------------------------------------------------------
@@ -3289,7 +3310,8 @@ async function createMissionTx(body: CreateMissionBody): Promise<CreateMissionRe
           missionId: id,
           instructionText: item.objective,
           ...(item.title !== undefined ? { title: item.title ?? undefined } : {}),
-          autoAdvance: item.autoAdvance ?? false
+          autoAdvance: item.autoAdvance ?? false,
+          ...(item.resourceKey !== undefined ? { resourceKey: item.resourceKey } : {})
         }
       );
       objectiveIds.push(objective.id);
@@ -4826,6 +4848,12 @@ async function insertObjective(
   )) as { id: string; project_id: string } | undefined;
   if (!mission) throw new ApiError(404, 'Mission not found');
 
+  const normalizedResourceKey = await assertObjectiveResourceKeyOnProject(
+    db,
+    mission.project_id,
+    body.resourceKey
+  );
+
   const requestedState = body.state ?? 'draft';
   if (!VALID_STATES.includes(requestedState)) throw new ApiError(400, 'Invalid objective state');
 
@@ -4869,8 +4897,8 @@ async function insertObjective(
     `INSERT INTO objectives
        (id, workspace_id, project_id, mission_id, position, title, instruction_text, state,
         assigned_agent, model, reasoning_effort, agent_flags_json, auto_advance,
-        execution_metadata_json, created_by_workspace_user_id, created_at, updated_at, revision)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, '{}', ?, ?, ?, 1)`,
+        execution_metadata_json, resource_key, created_by_workspace_user_id, created_at, updated_at, revision)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, '{}', ?, ?, ?, ?, 1)`,
     [
       id,
       workspaceId,
@@ -4885,6 +4913,7 @@ async function insertObjective(
       explicitAgent ? null : launchSelection.selectedModel,
       explicitAgent ? null : launchSelection.selectedReasoningEffort,
       bindBool(DATABASE_DIALECT, body.autoAdvance ?? false),
+      normalizedResourceKey,
       workspaceUserId,
       now,
       now
@@ -5137,6 +5166,16 @@ async function updateObjectiveTx(
       fields.push('reasoning_effort = ?');
       setParams.push(body.reasoningEffort?.trim() || null);
       changed.push('reasoning_effort');
+    }
+    if (body.resourceKey !== undefined) {
+      const nextResourceKey = await assertObjectiveResourceKeyOnProject(
+        tx,
+        existing.project_id,
+        body.resourceKey
+      );
+      fields.push('resource_key = ?');
+      setParams.push(nextResourceKey);
+      changed.push('resource_key');
     }
     if (fields.length === 0) {
       return { objective: toObjectiveDto(existing), regenerateTitle: false };

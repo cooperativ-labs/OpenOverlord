@@ -1,13 +1,10 @@
-import { existsSync } from 'node:fs';
-import path from 'node:path';
-
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import { resolveMissionId, resolveProjectId } from './context.js';
 import { ServiceError } from './errors.js';
 import { type ClientDeviceIdentity, resolveClaimingDeviceTarget } from './execution-targets.js';
 import { LOCAL_TARGET_MUTATION_REQUESTED_SOURCE } from './local-target-mutations.ts';
-import { assertPrimaryResourceConnected } from './projects.js';
+import { resolveObjectiveWorkingDirectory } from './projects.js';
 import { newId, nowIso } from './util.js';
 
 export const ACTIVE_EXECUTION_REQUEST_STATUSES = ['queued', 'claimed', 'launching'] as const;
@@ -244,30 +241,23 @@ export async function getExecutionRequest({
 async function resolveWorkingDirectory({
   ctx,
   projectId,
+  objectiveResourceKey = null,
   explicitWorkingDirectory,
   executionTargetId = null
 }: {
   ctx: ServiceContext;
   projectId: string;
+  objectiveResourceKey?: string | null;
   explicitWorkingDirectory?: string | null | undefined;
   executionTargetId?: string | null;
 }): Promise<{ workingDirectory: string; resourceId: string | null }> {
-  if (explicitWorkingDirectory?.trim()) {
-    const resolved = path.resolve(explicitWorkingDirectory);
-    if (ctx.db.dialect === 'sqlite' && !existsSync(resolved)) {
-      throw new ServiceError(
-        `Working directory does not exist: ${resolved}`,
-        'working_directory_missing'
-      );
-    }
-    return { workingDirectory: resolved, resourceId: null };
-  }
-
-  const connected = await assertPrimaryResourceConnected({ ctx, projectId, executionTargetId });
-  return {
-    workingDirectory: connected.workingDirectory,
-    resourceId: connected.resource.id
-  };
+  return resolveObjectiveWorkingDirectory({
+    ctx,
+    projectId,
+    objectiveResourceKey,
+    explicitWorkingDirectory,
+    executionTargetId
+  });
 }
 
 export async function createExecutionRequest({
@@ -308,15 +298,16 @@ export async function createExecutionRequest({
     assigned_agent: string | null;
     model: string | null;
     reasoning_effort: string | null;
+    resource_key: string | null;
   };
   const objective = objectiveId
     ? ((await ctx.db.get(
-        `SELECT id, state, assigned_agent, model, reasoning_effort
+        `SELECT id, state, assigned_agent, model, reasoning_effort, resource_key
              FROM objectives WHERE id = ? AND mission_id = ?`,
         [objectiveId, mission.id]
       )) as LaunchableObjectiveRow | undefined)
     : ((await ctx.db.get(
-        `SELECT id, state, assigned_agent, model, reasoning_effort FROM objectives
+        `SELECT id, state, assigned_agent, model, reasoning_effort, resource_key FROM objectives
            WHERE mission_id = ? AND state IN (${LAUNCHABLE_OBJECTIVE_STATES.map(() => '?').join(', ')})
            ORDER BY position ASC LIMIT 1`,
         [mission.id, ...LAUNCHABLE_OBJECTIVE_STATES]
@@ -370,6 +361,7 @@ export async function createExecutionRequest({
   const { workingDirectory: resolvedDirectory, resourceId } = await resolveWorkingDirectory({
     ctx,
     projectId: resolvedProjectId,
+    objectiveResourceKey: objective.resource_key,
     explicitWorkingDirectory: workingDirectory,
     executionTargetId
   });
@@ -515,14 +507,19 @@ export async function claimNextExecutionRequest({
     const candidate = (await txCtx.db.get(
       `SELECT er.id, er.workspace_id, er.project_id, er.mission_id, er.objective_id,
                 er.execution_target_id, er.status, er.revision, er.launch_flags_json,
-                er.launched_session_id, er.resolved_working_directory
+                er.launched_session_id, er.resolved_working_directory, o.resource_key
            FROM execution_requests er
            JOIN objectives o ON o.id = er.objective_id
           WHERE ${conditions.join(' AND ')}
           ORDER BY er.created_at ASC
           LIMIT 1`,
       params
-    )) as (ExecutionRequestStateRow & { resolved_working_directory: string | null }) | undefined;
+    )) as
+      | (ExecutionRequestStateRow & {
+          resolved_working_directory: string | null;
+          resource_key: string | null;
+        })
+      | undefined;
 
     if (!candidate) return null;
 
@@ -532,6 +529,7 @@ export async function claimNextExecutionRequest({
       ({ workingDirectory, resourceId } = await resolveWorkingDirectory({
         ctx: txCtx,
         projectId: candidate.project_id,
+        objectiveResourceKey: candidate.resource_key,
         explicitWorkingDirectory: candidate.resolved_working_directory,
         executionTargetId: candidate.execution_target_id ?? target.executionTargetId
       }));
@@ -539,6 +537,7 @@ export async function claimNextExecutionRequest({
       if (
         error instanceof ServiceError &&
         (error.code === 'primary_resource_not_connected' ||
+          error.code === 'objective_resource_not_connected' ||
           error.code === 'working_directory_missing')
       ) {
         await markExecutionFailed({ ctx: txCtx, requestId: candidate.id, error: error.message });

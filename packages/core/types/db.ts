@@ -418,6 +418,7 @@ export interface Objectives {
   position: number;
   project_id: string;
   reasoning_effort: string | null;
+  resource_key: string | null;
   revision: Generated<number>;
   state: string;
   title: string | null;

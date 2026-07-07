@@ -106,14 +106,15 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
   const [deleteTarget, setDeleteTarget] = useState<ProjectResourceDto | null>(null);
 
   useEffect(() => {
+    const resources = open ? (resourcesQ.data ?? []) : [];
     setResourceKeyEdits(previous => {
       const next: Record<string, string> = {};
-      for (const resource of rows) {
+      for (const resource of resources) {
         next[resource.id] = previous[resource.id] ?? resource.resourceKey;
       }
       return next;
     });
-  }, [rows]);
+  }, [open, resourcesQ.data]);
 
   // Project default/parent branch (stored in project settings). The input mirrors
   // the saved value; an empty value clears the setting (falls back to `main`).

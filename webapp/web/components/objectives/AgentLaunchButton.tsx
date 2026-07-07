@@ -3,8 +3,13 @@ import { useRef, useState } from 'react';
 
 import type { ExecutionRequestDto, ObjectiveDto } from '../../../shared/contract.ts';
 import { api } from '../../lib/api.ts';
-import { primaryResourceConnection } from '../../lib/project-resources.ts';
-import { useLaunchObjective, useProjectResources, useUpdateObjective } from '../../lib/queries.ts';
+import { objectiveResourceConnection } from '../../lib/project-resources.ts';
+import {
+  useLaunchObjective,
+  useProjectExecutionTarget,
+  useProjectResources,
+  useUpdateObjective
+} from '../../lib/queries.ts';
 import { cn } from '../../lib/utils.ts';
 import {
   DropdownMenu,
@@ -72,12 +77,17 @@ export function AgentLaunchButton({
   const launch = useLaunchObjective();
   const updateObjective = useUpdateObjective();
   const resourcesQ = useProjectResources(objective.projectId);
+  const executionTargetQ = useProjectExecutionTarget(objective.projectId);
   const [showActiveConfirm, setShowActiveConfirm] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const primaryConnection = primaryResourceConnection(resourcesQ.data ?? []);
+  const primaryConnection = objectiveResourceConnection({
+    resources: resourcesQ.data ?? [],
+    resourceKey: objective.resourceKey,
+    executionTargetId: executionTargetQ.data?.selectedExecutionTargetId ?? null
+  });
   const isQueued = Boolean(activeRequest);
   const isLaunching = launch.isPending || updateObjective.isPending;
   const isManual = selection.agent === MANUAL_AGENT_KEY;

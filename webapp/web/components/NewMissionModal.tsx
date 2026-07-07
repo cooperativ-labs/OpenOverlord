@@ -6,6 +6,7 @@ import {
   type AgentModelSelection,
   MANUAL_AGENT_KEY
 } from '@/components/objectives/AgentModelSelector.tsx';
+import { ObjectiveResourcePicker } from '@/components/objectives/ObjectiveResourcePicker.tsx';
 import { RepositoryMentionTextarea } from '@/components/RepositoryMentionTextarea.tsx';
 import { Button } from '@/components/ui.tsx';
 import {
@@ -18,7 +19,10 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu.tsx';
 import { readLastUsedProjectId, writeLastUsedProjectId } from '@/lib/last-used-project.ts';
-import { executionTargetAvailability, primaryResourceConnection } from '@/lib/project-resources.ts';
+import {
+  executionTargetAvailability,
+  objectiveResourceConnection
+} from '@/lib/project-resources.ts';
 import {
   useAgentCatalog,
   useCreateMission,
@@ -66,6 +70,7 @@ export function NewMissionModal({
   const updateAgentConfig = useUpdateAgentLaunchConfig();
 
   const [instruction, setInstruction] = useState('');
+  const [resourceKey, setResourceKey] = useState<string | null>(null);
   const [projectId, setProjectId] = useState('');
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [pendingAction, setPendingAction] = useState<'save' | 'run' | null>(null);
@@ -95,7 +100,11 @@ export function NewMissionModal({
   const catalog = catalogQ.data ?? null;
   const agentConfigs = settingsQ.data?.agentConfigs ?? {};
   const selectionLoaded = Boolean(catalog) && !preferenceQ.isLoading && !settingsQ.isLoading;
-  const primaryConnection = primaryResourceConnection(resourcesQ.data ?? []);
+  const primaryConnection = objectiveResourceConnection({
+    resources: resourcesQ.data ?? [],
+    resourceKey,
+    executionTargetId: executionTargetQ.data?.selectedExecutionTargetId ?? null
+  });
   const targetAvailability = executionTargetAvailability({
     primaryConnected: primaryConnection.connected,
     eligibleTargets: executionTargetQ.data?.eligibleTargets
@@ -126,6 +135,7 @@ export function NewMissionModal({
   useEffect(() => {
     if (!open) return;
     setInstruction('');
+    setResourceKey(null);
     setSelectedTagIds([]);
     setSubmitError(null);
     setProjectId(current => {
@@ -184,7 +194,7 @@ export function NewMissionModal({
       // column's "Add mission" button).
       const detail = await createMission.mutateAsync({
         projectId: selectedProjectId,
-        firstObjective: text,
+        objectives: [{ objective: text, ...(resourceKey ? { resourceKey } : {}) }],
         statusId: defaultStatusId ?? undefined,
         tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined
       });
@@ -381,6 +391,13 @@ export function NewMissionModal({
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              <ObjectiveResourcePicker
+                resources={resourcesQ.data ?? []}
+                value={resourceKey}
+                disabled={isBusy}
+                onChange={setResourceKey}
+              />
             </div>
 
             <div className="flex items-center gap-1.5">

@@ -12,6 +12,7 @@ import {
   missionSearchMissionIdColumn,
   missionSearchWorkspaceParams
 } from './mission-search-sql.js';
+import { assertProjectResourceKeyExists } from './projects.js';
 import { initialTitleFromInstruction, newId, nowIso } from './util.js';
 import { enqueueWebhookEvent } from './webhook-events.js';
 
@@ -24,6 +25,7 @@ export type ObjectiveSummary = {
   objective: string;
   state: string;
   autoAdvance: boolean;
+  resourceKey: string | null;
 };
 
 export type MissionSummary = {
@@ -167,7 +169,8 @@ export async function listObjectives({
 }): Promise<ObjectiveSummary[]> {
   const resolved = await resolveMissionId(ctx, missionId);
   const rows = (await ctx.db.all(
-    `SELECT id, mission_id, project_id, position, title, instruction_text, state, auto_advance
+    `SELECT id, mission_id, project_id, position, title, instruction_text, state, auto_advance,
+            resource_key
        FROM objectives WHERE mission_id = ? AND deleted_at IS NULL ORDER BY position ASC`,
     [resolved.id]
   )) as Array<{
@@ -179,6 +182,7 @@ export async function listObjectives({
     instruction_text: string;
     state: string;
     auto_advance: number;
+    resource_key: string | null;
   }>;
 
   return rows.map(toObjectiveSummary);
@@ -193,6 +197,7 @@ function toObjectiveSummary(row: {
   instruction_text: string;
   state: string;
   auto_advance: number;
+  resource_key: string | null;
 }): ObjectiveSummary {
   return {
     id: row.id,
@@ -202,7 +207,8 @@ function toObjectiveSummary(row: {
     title: row.title,
     objective: row.instruction_text,
     state: row.state,
-    autoAdvance: isTruthyFlag(row.auto_advance)
+    autoAdvance: isTruthyFlag(row.auto_advance),
+    resourceKey: row.resource_key?.trim() || null
   };
 }
 
@@ -251,7 +257,8 @@ export async function insertObjective({
   title,
   state,
   autoAdvance = false,
-  assignedAgent
+  assignedAgent,
+  resourceKey = null
 }: {
   ctx: ServiceContext;
   missionId: string;
@@ -260,10 +267,19 @@ export async function insertObjective({
   state?: string;
   autoAdvance?: boolean;
   assignedAgent?: string | null;
+  resourceKey?: string | null;
 }): Promise<ObjectiveSummary> {
   const instruction = instructionText.trim();
 
   const mission = await resolveMissionId(ctx, missionId);
+  const normalizedResourceKey = resourceKey?.trim() || null;
+  if (normalizedResourceKey) {
+    await assertProjectResourceKeyExists({
+      ctx,
+      projectId: mission.projectId,
+      resourceKey: normalizedResourceKey
+    });
+  }
   const requestedState = state ?? 'draft';
   if (!OBJECTIVE_STATES.includes(requestedState as (typeof OBJECTIVE_STATES)[number])) {
     throw new ServiceError(`Invalid objective state: ${requestedState}`, 'validation_error');
@@ -306,8 +322,8 @@ export async function insertObjective({
     `INSERT INTO objectives
          (id, workspace_id, project_id, mission_id, position, title, instruction_text, state,
           assigned_agent, model, reasoning_effort, agent_flags_json, auto_advance,
-          execution_metadata_json, created_by_workspace_user_id, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, '{}', ?, ?, ?, 1)`,
+          execution_metadata_json, resource_key, created_by_workspace_user_id, created_at, updated_at, revision)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, '{}', ?, ?, ?, ?, 1)`,
     [
       id,
       ctx.workspace.id,
@@ -321,6 +337,7 @@ export async function insertObjective({
       resolvedModel,
       resolvedReasoningEffort,
       bindBool(ctx.db.dialect, autoAdvance),
+      normalizedResourceKey,
       ctx.actorWorkspaceUserId,
       now,
       now
@@ -346,7 +363,8 @@ export async function insertObjective({
     title: resolvedTitle,
     instruction_text: instruction,
     state: resolvedState,
-    auto_advance: autoAdvance ? 1 : 0
+    auto_advance: autoAdvance ? 1 : 0,
+    resource_key: normalizedResourceKey
   });
 }
 
@@ -440,7 +458,12 @@ export async function createMissionWithObjectives({
 }: {
   ctx: ServiceContext;
   projectId: string;
-  objectives: Array<{ objective: string; title?: string | null; autoAdvance?: boolean }>;
+  objectives: Array<{
+    objective: string;
+    title?: string | null;
+    autoAdvance?: boolean;
+    resourceKey?: string | null;
+  }>;
   title?: string | null;
   statusType?: 'draft' | 'review';
 }): Promise<{ mission: MissionSummary; objectives: ObjectiveSummary[] }> {
@@ -518,7 +541,8 @@ export async function createMissionWithObjectives({
           instructionText: instruction,
           ...(item.title !== undefined ? { title: item.title } : {}),
           state: objectiveState,
-          autoAdvance: item.autoAdvance ?? false
+          autoAdvance: item.autoAdvance ?? false,
+          ...(item.resourceKey !== undefined ? { resourceKey: item.resourceKey } : {})
         })
       );
     }
@@ -750,7 +774,7 @@ export async function addObjectivesToMission({
 }: {
   ctx: ServiceContext;
   missionId: string;
-  objectives: Array<{ objective: string; title?: string | null }>;
+  objectives: Array<{ objective: string; title?: string | null; resourceKey?: string | null }>;
 }): Promise<ObjectiveSummary[]> {
   if (objectives.length === 0) {
     throw new ServiceError('At least one objective is required', 'validation_error');
@@ -768,6 +792,7 @@ export async function addObjectivesToMission({
           missionId: resolved.id,
           instructionText: item.objective,
           ...(item.title !== undefined ? { title: item.title } : {}),
+          ...(item.resourceKey !== undefined ? { resourceKey: item.resourceKey } : {}),
           state: 'draft'
         })
       );

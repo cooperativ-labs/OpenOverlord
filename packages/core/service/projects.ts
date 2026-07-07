@@ -1,4 +1,5 @@
 import { bindBool } from '@overlord/database';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import {
@@ -38,6 +39,10 @@ export type ProjectResourceSummary = {
 
 export const PRIMARY_RESOURCE_REPAIR_HINT =
   'Run `ovld add-cwd` from your project checkout or link a directory in project settings.';
+
+export function objectiveResourceRepairHint(resourceKey: string): string {
+  return `Run \`ovld add-cwd --key ${resourceKey}\` from the intended checkout on this device.`;
+}
 
 export type PrimaryResourceConnection = {
   resource: ProjectResourceSummary;
@@ -461,6 +466,302 @@ export async function assertPrimaryResourceConnected({
     resource: primary,
     workingDirectory: path.resolve(primary.path)
   };
+}
+
+type ProjectResourceRow = {
+  id: string;
+  project_id: string;
+  execution_target_id: string | null;
+  resource_key: string;
+  type: string;
+  label: string | null;
+  path: string;
+  is_primary: number;
+  status: string;
+};
+
+function rowToProjectResourceSummary(
+  ctx: ServiceContext,
+  row: ProjectResourceRow
+): Promise<ProjectResourceSummary> {
+  return deriveResourceStatus(backendResourceProvider(ctx, row.execution_target_id), {
+    resourceId: row.id,
+    status: row.status,
+    path: row.path
+  }).then(status => ({
+    id: row.id,
+    projectId: row.project_id,
+    executionTargetId: row.execution_target_id,
+    resourceKey: row.resource_key,
+    type: row.type,
+    label: row.label,
+    path: row.path,
+    isPrimary: isTruthyFlag(row.is_primary),
+    status
+  }));
+}
+
+export async function projectHasResourceKey({
+  ctx,
+  projectId,
+  resourceKey
+}: {
+  ctx: ServiceContext;
+  projectId: string;
+  resourceKey: string;
+}): Promise<boolean> {
+  const resolvedProjectId = await resolveProjectId(ctx, projectId);
+  const normalizedKey = resourceKey.trim();
+  if (!normalizedKey) return false;
+  const row = (await ctx.db.get(
+    `SELECT 1 AS ok FROM project_resources
+        WHERE project_id = ? AND resource_key = ? AND deleted_at IS NULL
+        LIMIT 1`,
+    [resolvedProjectId, normalizedKey]
+  )) as { ok: number } | undefined;
+  return Boolean(row);
+}
+
+export async function assertProjectResourceKeyExists({
+  ctx,
+  projectId,
+  resourceKey
+}: {
+  ctx: ServiceContext;
+  projectId: string;
+  resourceKey: string;
+}): Promise<void> {
+  const normalizedKey = resourceKey.trim();
+  if (!normalizedKey) return;
+  const exists = await projectHasResourceKey({ ctx, projectId, resourceKey: normalizedKey });
+  if (!exists) {
+    throw new ServiceError(
+      `Project resource key "${normalizedKey}" is not linked to this project.`,
+      'project_resource_key_not_found',
+      409
+    );
+  }
+}
+
+export async function findProjectResourceByKey({
+  ctx,
+  projectId,
+  resourceKey,
+  executionTargetId = null
+}: {
+  ctx: ServiceContext;
+  projectId: string;
+  resourceKey: string;
+  executionTargetId?: string | null;
+}): Promise<ProjectResourceSummary | null> {
+  const resolvedProjectId = await resolveProjectId(ctx, projectId);
+  const normalizedKey = resourceKey.trim();
+  if (!normalizedKey) return null;
+
+  const row = (await ctx.db.get(
+    executionTargetId === null
+      ? `SELECT id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status
+           FROM project_resources
+          WHERE project_id = ?
+            AND resource_key = ?
+            AND deleted_at IS NULL
+          ORDER BY created_at ASC
+          LIMIT 1`
+      : `SELECT id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status
+           FROM project_resources
+          WHERE project_id = ?
+            AND resource_key = ?
+            AND deleted_at IS NULL
+            AND (execution_target_id = ? OR execution_target_id IS NULL)
+          ORDER BY
+            CASE WHEN execution_target_id = ? THEN 0 ELSE 1 END,
+            created_at ASC
+          LIMIT 1`,
+    executionTargetId === null
+      ? [resolvedProjectId, normalizedKey]
+      : [resolvedProjectId, normalizedKey, executionTargetId, executionTargetId]
+  )) as ProjectResourceRow | undefined;
+
+  if (!row) return null;
+  return rowToProjectResourceSummary(ctx, row);
+}
+
+export async function assertObjectiveResourceConnected({
+  ctx,
+  projectId,
+  resourceKey,
+  executionTargetId = null
+}: {
+  ctx: ServiceContext;
+  projectId: string;
+  resourceKey: string;
+  executionTargetId?: string | null;
+}): Promise<PrimaryResourceConnection> {
+  const normalizedKey = resourceKey.trim();
+  const resource = await findProjectResourceByKey({
+    ctx,
+    projectId,
+    resourceKey: normalizedKey,
+    executionTargetId
+  });
+  if (!resource) {
+    throw new ServiceError(
+      `Objective resource "${normalizedKey}" is not linked on this execution target. ${objectiveResourceRepairHint(normalizedKey)}`,
+      'objective_resource_not_connected',
+      409
+    );
+  }
+  if (resource.status === 'missing') {
+    throw new ServiceError(
+      `Objective resource "${normalizedKey}" working directory is missing (${resource.path}). ${objectiveResourceRepairHint(normalizedKey)}`,
+      'objective_resource_not_connected',
+      409
+    );
+  }
+  if (resource.type !== 'local_directory') {
+    throw new ServiceError(
+      `Objective resource "${normalizedKey}" type "${resource.type}" is not supported for local agent runs yet.`,
+      'objective_resource_not_connected',
+      409
+    );
+  }
+
+  return {
+    resource,
+    workingDirectory: path.resolve(resource.path)
+  };
+}
+
+export async function resolveCwdProjectResource({
+  ctx,
+  projectId,
+  executionTargetId = null,
+  workingDirectory = process.cwd()
+}: {
+  ctx: ServiceContext;
+  projectId: string;
+  executionTargetId?: string | null;
+  workingDirectory?: string;
+}): Promise<PrimaryResourceConnection | null> {
+  const resolvedProjectId = await resolveProjectId(ctx, projectId);
+  const preferredExecutionTargetId = await preferredExecutionTargetIdForDiscovery({ ctx });
+  let current = path.resolve(workingDirectory);
+
+  while (true) {
+    const projectJsonPath = path.join(current, '.overlord', 'project.json');
+    try {
+      const raw = readProjectJsonLink(projectJsonPath, { preferredExecutionTargetId });
+      if (raw?.projectId === resolvedProjectId) {
+        const row = (await ctx.db.get(
+          `SELECT id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status
+             FROM project_resources
+            WHERE id = ? AND project_id = ? AND deleted_at IS NULL`,
+          [raw.resourceId, resolvedProjectId]
+        )) as ProjectResourceRow | undefined;
+        if (!row || row.type !== 'local_directory') return null;
+        const resource = await rowToProjectResourceSummary(ctx, row);
+        if (resource.status === 'missing') return null;
+        return {
+          resource,
+          workingDirectory: path.resolve(resource.path)
+        };
+      }
+    } catch {
+      // continue walking up
+    }
+
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+
+  return null;
+}
+
+export async function resolveObjectiveWorkingDirectory({
+  ctx,
+  projectId,
+  objectiveResourceKey = null,
+  explicitWorkingDirectory,
+  executionTargetId = null
+}: {
+  ctx: ServiceContext;
+  projectId: string;
+  objectiveResourceKey?: string | null;
+  explicitWorkingDirectory?: string | null;
+  executionTargetId?: string | null;
+}): Promise<{ workingDirectory: string; resourceId: string | null }> {
+  if (explicitWorkingDirectory?.trim()) {
+    const resolved = path.resolve(explicitWorkingDirectory);
+    if (ctx.db.dialect === 'sqlite' && !existsSync(resolved)) {
+      throw new ServiceError(
+        `Working directory does not exist: ${resolved}`,
+        'working_directory_missing'
+      );
+    }
+    return { workingDirectory: resolved, resourceId: null };
+  }
+
+  const boundKey = objectiveResourceKey?.trim();
+  if (boundKey) {
+    const connected = await assertObjectiveResourceConnected({
+      ctx,
+      projectId,
+      resourceKey: boundKey,
+      executionTargetId
+    });
+    return {
+      workingDirectory: connected.workingDirectory,
+      resourceId: connected.resource.id
+    };
+  }
+
+  try {
+    const connected = await assertPrimaryResourceConnected({ ctx, projectId, executionTargetId });
+    return {
+      workingDirectory: connected.workingDirectory,
+      resourceId: connected.resource.id
+    };
+  } catch (error) {
+    if (!(error instanceof ServiceError) || error.code !== 'primary_resource_not_connected') {
+      throw error;
+    }
+    const cwdResource = await resolveCwdProjectResource({
+      ctx,
+      projectId,
+      executionTargetId
+    });
+    if (cwdResource) {
+      return {
+        workingDirectory: cwdResource.workingDirectory,
+        resourceId: cwdResource.resource.id
+      };
+    }
+    throw error;
+  }
+}
+
+export async function assertLaunchResourceConnected({
+  ctx,
+  projectId,
+  objectiveResourceKey = null,
+  executionTargetId = null
+}: {
+  ctx: ServiceContext;
+  projectId: string;
+  objectiveResourceKey?: string | null;
+  executionTargetId?: string | null;
+}): Promise<PrimaryResourceConnection> {
+  const boundKey = objectiveResourceKey?.trim();
+  if (boundKey) {
+    return assertObjectiveResourceConnected({
+      ctx,
+      projectId,
+      resourceKey: boundKey,
+      executionTargetId
+    });
+  }
+  return assertPrimaryResourceConnected({ ctx, projectId, executionTargetId });
 }
 
 export async function discoverProject({

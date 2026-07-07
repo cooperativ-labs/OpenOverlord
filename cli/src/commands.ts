@@ -1033,9 +1033,18 @@ export async function runManagementCommand({
             objective: string;
             title?: string | null;
             autoAdvance?: boolean;
+            resourceKey?: string | null;
           }>)
         : objective
-          ? [{ objective, title: flagValue(parsed.flags, '--title') ?? null }]
+          ? [
+              {
+                objective,
+                title: flagValue(parsed.flags, '--title') ?? null,
+                ...(flagValue(parsed.flags, '--resource')
+                  ? { resourceKey: flagValue(parsed.flags, '--resource') }
+                  : {})
+              }
+            ]
           : [];
       const first = objectives[0];
       if (!first) {

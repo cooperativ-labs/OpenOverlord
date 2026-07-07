@@ -177,7 +177,12 @@ function objectiveText(body: ProtocolRequestBody): string {
   throw new ApiError(400, 'Missing objective text (use --objective or a positional argument)');
 }
 
-type ObjectiveInput = { objective: string; title?: string | null; autoAdvance?: boolean };
+type ObjectiveInput = {
+  objective: string;
+  title?: string | null;
+  autoAdvance?: boolean;
+  resourceKey?: string | null;
+};
 
 /** Objective array for create/prompt: `--objectives-json`, else a one-item `--objective`. */
 function objectiveInputs(body: ProtocolRequestBody): ObjectiveInput[] {
@@ -189,7 +194,13 @@ function objectiveInputs(body: ProtocolRequestBody): ObjectiveInput[] {
     }
     return parsed;
   }
-  return [{ objective: objectiveText(body) }];
+  const resourceKey = strFlag(body, '--resource');
+  return [
+    {
+      objective: objectiveText(body),
+      ...(resourceKey ? { resourceKey } : {})
+    }
+  ];
 }
 
 type ArtifactInput = {
@@ -377,11 +388,9 @@ const handlers: Record<string, Handler> = {
       ctx,
       missionId: requireFlag(body, '--mission-id'),
       objectives:
-        parseJsonInput<Array<{ objective: string; title?: string | null }>>(
-          body,
-          '--objectives-json',
-          '--objectives-file'
-        ) ?? []
+        parseJsonInput<
+          Array<{ objective: string; title?: string | null; resourceKey?: string | null }>
+        >(body, '--objectives-json', '--objectives-file') ?? []
     }),
 
   'record-work': (ctx, body) =>

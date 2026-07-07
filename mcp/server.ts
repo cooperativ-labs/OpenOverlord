@@ -150,7 +150,8 @@ const tools: ToolEntry[] = [
       {
         projectId: stringProperty('Required Overlord project id, slug, or name.'),
         objective: stringProperty('Initial objective text.'),
-        title: stringProperty('Optional mission title.')
+        title: stringProperty('Optional mission title.'),
+        resourceKey: stringProperty('Optional logical project resource key for the objective.')
       },
       ['projectId', 'objective']
     ),
@@ -160,7 +161,10 @@ const tools: ToolEntry[] = [
         protocolBody({
           '--project-id': requiredString(args, 'projectId'),
           '--objective': requiredString(args, 'objective'),
-          ...(optionalString(args, 'title') ? { '--title': requiredString(args, 'title') } : {})
+          ...(optionalString(args, 'title') ? { '--title': requiredString(args, 'title') } : {}),
+          ...(optionalString(args, 'resourceKey')
+            ? { '--resource': requiredString(args, 'resourceKey') }
+            : {})
         })
       )
   },
@@ -191,10 +195,11 @@ const tools: ToolEntry[] = [
         missionId: stringProperty('Mission UUID or workspace display id.'),
         objectives: {
           type: 'array',
-          description: 'Objective objects with objective text and optional title.',
+          description: 'Objective objects with objective text and optional title/resourceKey.',
           items: objectSchema({
             objective: stringProperty('Objective text.'),
-            title: stringProperty('Optional objective title.')
+            title: stringProperty('Optional objective title.'),
+            resourceKey: stringProperty('Optional logical project resource key.')
           })
         }
       },

@@ -1850,7 +1850,12 @@ export async function protocolCreate({
 }: {
   ctx: ServiceContext;
   projectId?: string | null;
-  objectives: Array<{ objective: string; title?: string | null; autoAdvance?: boolean }>;
+  objectives: Array<{
+    objective: string;
+    title?: string | null;
+    autoAdvance?: boolean;
+    resourceKey?: string | null;
+  }>;
   title?: string | null;
 }): Promise<{ mission: MissionSummary; objectives: ObjectiveSummary[] }> {
   const resolvedProjectId = projectId
@@ -1874,7 +1879,12 @@ export async function protocolPrompt({
 }: {
   ctx: ServiceContext;
   projectId?: string | null;
-  objectives: Array<{ objective: string; title?: string | null; autoAdvance?: boolean }>;
+  objectives: Array<{
+    objective: string;
+    title?: string | null;
+    autoAdvance?: boolean;
+    resourceKey?: string | null;
+  }>;
   title?: string | null;
   agentIdentifier?: string;
   externalSessionId?: string | null;

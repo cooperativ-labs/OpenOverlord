@@ -481,6 +481,8 @@ export interface ObjectiveDto {
    * prepared branch (or when worktree/branch automation is disabled).
    */
   branch: string | null;
+  /** Logical project resource this objective runs in; null inherits the primary. */
+  resourceKey: string | null;
 }
 
 export type ArtifactType =
@@ -1116,7 +1118,12 @@ export interface CreateMissionBody {
   /** Optional first objective instruction; creates objective #1 when present. */
   firstObjective?: string;
   /** Optional ordered objective instructions; creates objective #1 as draft and the rest as future. */
-  objectives?: Array<{ objective: string; title?: string | null; autoAdvance?: boolean }>;
+  objectives?: Array<{
+    objective: string;
+    title?: string | null;
+    autoAdvance?: boolean;
+    resourceKey?: string | null;
+  }>;
   /** Optional `project_tags.id` values to assign to the new mission. Must belong to `projectId`. */
   tagIds?: string[];
 }
@@ -1217,6 +1224,7 @@ export interface CreateObjectiveBody {
   title?: string | null;
   state?: ObjectiveState;
   autoAdvance?: boolean;
+  resourceKey?: string | null;
 }
 
 /**
@@ -1240,6 +1248,7 @@ export interface UpdateObjectiveBody {
   assignedAgent?: string | null;
   model?: string | null;
   reasoningEffort?: string | null;
+  resourceKey?: string | null;
 }
 
 /**
