@@ -23,7 +23,9 @@ Requirements:
 - `ovld init`: create or update `overlord.toml` with the default local backend URL.
 - `ovld auth login`: first-run onboarding for the CLI. It verifies that a backend
   URL is configured before any login step. If not, it presents the `ovld config`
-  backend selector first.
+  backend selector first. On cloud backends, email/password login stores a
+  full-scope `USER_TOKEN` minted from the transient session so runner/protocol
+  commands use token auth.
 - `ovld config get/set/list`: inspect and update local configuration. `ovld
 config set` opens the interactive backend selector; `ovld config set local
 [url]` points the CLI at a local backend URL (default

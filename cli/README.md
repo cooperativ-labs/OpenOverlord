@@ -130,7 +130,9 @@ Both the desktop app and the CLI authenticate to `/api/*` with a bearer token:
   sign-in on the **local** backend. Stored in `~/.ovld/auth.json` for the CLI
   and in the desktop shell's encrypted settings for each backend profile.
 - **USER_TOKEN** (`out_…`) — long-lived token from Settings → Tokens. Works for
-  headless/CI use via `OVERLORD_USER_TOKEN` or `ovld auth login --token`.
+  headless/CI use via `OVERLORD_USER_TOKEN` or `ovld auth login --token`. On
+  cloud backends, interactive email/password login creates and stores a full
+  `USER_TOKEN` automatically so runner/protocol CLI surfaces can authenticate.
 
 For the **local** backend, desktop and CLI share `~/.ovld/auth.json`:
 
@@ -145,7 +147,9 @@ desktop app updates `~/.ovld/overlord.toml` with the new `backend_url`, but it
 does **not** update CLI auth. After switching backends in either surface, run
 `ovld auth status` to confirm the CLI is pointed at the same URL and still
 logged in. If `credentialSource` is `stored_mismatch` or `loggedIn` is false, run
-`ovld config set cloud <url>` (if needed) and `ovld auth login`.
+`ovld config set cloud <url>` (if needed) and `ovld auth login`. Email/password
+login on a cloud backend uses the session only once to create a 90-day full
+`USER_TOKEN`, then stores that token in `auth.json`.
 
 When a stored CLI credential is rejected with HTTP 401, `ovld` clears
 `auth.json` and tells you to run `ovld auth login` again.

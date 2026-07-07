@@ -1,3 +1,4 @@
+import { hostname } from 'node:os';
 import { createInterface } from 'node:readline/promises';
 
 import { writeStoredAuthCredentials } from './auth-credentials.js';
@@ -12,6 +13,8 @@ export type AuthLoginResult = {
   backendUrl: string;
   credentialsPath: string;
 };
+
+export type PasswordLoginCredentialTarget = 'session_bearer' | 'full_user_token';
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -238,6 +241,57 @@ export async function validateBearerToken({
   });
 }
 
+type CreateUserTokenResult = {
+  secret?: unknown;
+};
+
+function defaultCliLoginTokenLabel(): string {
+  const host = hostname().trim();
+  return `CLI login on ${host || 'unknown host'}`;
+}
+
+export async function createFullUserTokenFromSession({
+  backendUrl,
+  sessionToken,
+  label = defaultCliLoginTokenLabel()
+}: {
+  backendUrl: string;
+  sessionToken: string;
+  label?: string;
+}): Promise<string> {
+  const baseUrl = normalizeBaseUrl(backendUrl);
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/api/user-tokens`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${sessionToken}`
+      },
+      body: JSON.stringify({ label, scope: 'full' })
+    });
+  } catch (error) {
+    throw new CliError({
+      message:
+        `Could not create CLI USER_TOKEN at ${baseUrl}.\n` +
+        (error instanceof Error ? error.message : String(error))
+    });
+  }
+
+  const payload = (await readResponseJson(response)) as CreateUserTokenResult | unknown;
+  if (response.ok && payload && typeof payload === 'object') {
+    const secret = (payload as CreateUserTokenResult).secret;
+    if (typeof secret === 'string' && secret.startsWith('out_')) return secret;
+  }
+
+  throw new CliError({
+    message:
+      errorMessageFromJson(payload) ??
+      `Could not create CLI USER_TOKEN (${response.status}). Check your account permissions.`
+  });
+}
+
 export async function signInWithEmailPassword({
   backendUrl,
   email: rawEmail,
@@ -288,9 +342,11 @@ export async function signInWithEmailPassword({
 }
 
 export async function runInteractiveAuthLogin({
-  backendUrl
+  backendUrl,
+  passwordCredentialTarget = 'session_bearer'
 }: {
   backendUrl: string;
+  passwordCredentialTarget?: PasswordLoginCredentialTarget;
 }): Promise<AuthLoginResult> {
   const method = await promptAuthMethod();
   const normalizedBackendUrl = normalizeBaseUrl(backendUrl);
@@ -312,6 +368,28 @@ export async function runInteractiveAuthLogin({
     password
   });
   await validateBearerToken({ backendUrl: normalizedBackendUrl, token: sessionToken });
+
+  if (passwordCredentialTarget === 'full_user_token') {
+    const userToken = await createFullUserTokenFromSession({
+      backendUrl: normalizedBackendUrl,
+      sessionToken
+    });
+    await validateBearerToken({ backendUrl: normalizedBackendUrl, token: userToken });
+    writeStoredAuthCredentials({
+      type: 'user_token',
+      token: userToken,
+      backendUrl: normalizedBackendUrl
+    });
+
+    return {
+      ok: true,
+      authMethod: 'password',
+      credentialType: 'user_token',
+      backendUrl: normalizedBackendUrl,
+      credentialsPath: authCredentialsPath()
+    };
+  }
+
   writeStoredAuthCredentials({
     type: 'session_bearer',
     token: sessionToken,

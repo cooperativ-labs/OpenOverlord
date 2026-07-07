@@ -1,6 +1,6 @@
 {
   "name": "open-overlord",
-  "version": "0.2607061857.0",
+  "version": "0.2607071209.0",
   "description": "Overlord CLI — management, agent protocol, and runner for OpenOverlord",
   "type": "module",
   "engines": {
@@ -14,6 +14,7 @@
     "bin/",
     "dist/index.js",
     "dist/index.js.map",
+    "dist/connectors/**",
     "scripts/postinstall.mjs"
   ],
   "scripts": {

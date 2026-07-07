@@ -257,7 +257,10 @@ async function runAuthCommand({ rest, json }: { rest: string[]; json: boolean })
   const { loginWithUserToken, runInteractiveAuthLogin } = await import('./auth-login.js');
   const login = tokenFlag
     ? await loginWithUserToken({ backendUrl, token: tokenFlag })
-    : await runInteractiveAuthLogin({ backendUrl });
+    : await runInteractiveAuthLogin({
+        backendUrl,
+        passwordCredentialTarget: mode === 'cloud' ? 'full_user_token' : 'session_bearer'
+      });
 
   if (json) {
     printJson({

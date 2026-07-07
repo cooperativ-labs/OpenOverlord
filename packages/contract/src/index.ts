@@ -619,6 +619,12 @@ export interface MissionBranchDto {
    */
   dirty: boolean;
   /**
+   * Whether the local branch tip is ahead of `origin/<name>`. Populated when git
+   * state is observed through the desktop bridge; used to offer re-publish after
+   * further commits land on an already-published branch.
+   */
+  hasUnpushedCommits?: boolean;
+  /**
    * A user-pinned branch chosen in the mission panel to override the planner's
    * default selection. When set, the next launch prepares/uses this branch
    * instead of `name`. `null` means the system chooses automatically. The
@@ -992,7 +998,8 @@ export interface UpdateProjectBody {
  *                   (`git add -A` then `git commit -m <message>`). Requires a
  *                   non-empty `message`.
  * - `push_parent` — Action B: push the merged parent to `origin`.
- * - `publish`     — push the branch itself to `origin` (created → published).
+ * - `publish`     — push the branch itself to `origin` (created → published, or
+ *                   re-push when further commits are ahead of the remote).
  *
  * On failure the response carries a typed `code` (e.g. `BRANCH_MERGE_CONFLICT`,
  * `BRANCH_BUSY_EXECUTING`, `BRANCH_DIRTY`, `BRANCH_PUSH_FAILED`,

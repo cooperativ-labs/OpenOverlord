@@ -60,6 +60,15 @@ test('ovld agent-setup lists installable connectors', async () => {
   assert.match(payload.usage, /ovld agent-setup/);
 });
 
+test('ovld agent-setup lists packaged connectors outside the source checkout', async () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'ovld-outside-checkout-'));
+  const result = await runOvld({ args: ['agent-setup', '--json'], cwd });
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout) as { available: string[]; usage: string };
+  assert.deepEqual(payload.available.sort(), ['antigravity', 'claude', 'codex', 'cursor']);
+});
+
 test('ovld setup no longer accepts a connector argument', async () => {
   const result = await runOvld({ args: ['setup', 'claude'] });
 

@@ -12,6 +12,7 @@ import {
 } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { resolveAgentBinary } from './agent-binaries.js';
 import { resolveRepoPath } from './config.js';
@@ -91,15 +92,20 @@ const CLAUDE_MARKETPLACE_NAME = 'overlord-local';
 const CLAUDE_PLUGIN_KEY = `overlord@${CLAUDE_MARKETPLACE_NAME}`;
 
 /**
- * Locate the connector adapter source tree. The connectors directory is not
- * bundled into the published CLI package, so resolve it in priority order:
- * an explicit `OVERLORD_CONNECTORS_DIR` override, the nearest `connectors/
- * adapters` walking up from the working directory (covers a global `ovld` run
- * inside a repo checkout), then the package-relative fallback.
+ * Locate the connector adapter source tree. The CLI package ships a copy under
+ * `dist/connectors`, but source checkouts and development overrides are also
+ * supported.
  */
 function connectorsRoot(): string {
   const override = process.env.OVERLORD_CONNECTORS_DIR;
   if (override) return override;
+
+  const packaged = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    'connectors',
+    'adapters'
+  );
+  if (existsSync(packaged)) return packaged;
 
   let dir = process.cwd();
   while (true) {

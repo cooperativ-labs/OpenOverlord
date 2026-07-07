@@ -8,6 +8,7 @@ export {
   observeMissionBranchGit
 } from './branch-observe-git.ts';
 export {
+  branchHasUnpushedCommits,
   branchMergedIntoBase,
   type BranchPublicationStatus,
   deriveBranchPublicationStatus,

@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 
 import {
+  branchHasUnpushedCommits,
   type BranchPublicationStatus,
   deriveBranchPublicationStatus
 } from './branch-status-git.ts';
@@ -18,6 +19,8 @@ export interface BranchObservationResult {
   status: BranchPublicationStatus;
   dirty: boolean;
   worktreePath: string | null;
+  /** Local branch tip is ahead of `origin/<branchName>`. */
+  hasUnpushedCommits: boolean;
 }
 
 /** Observe live branch publication status, worktree location, and dirty state. */
@@ -30,6 +33,9 @@ export function observeMissionBranchGit(input: BranchObservationInput): BranchOb
   return {
     status,
     dirty: resolved ? worktreeIsDirty(resolved) : false,
-    worktreePath: resolved
+    worktreePath: resolved,
+    hasUnpushedCommits:
+      status === 'published' &&
+      branchHasUnpushedCommits({ repoPath: input.repoPath, branchName: input.branchName })
   };
 }

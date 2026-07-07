@@ -626,7 +626,9 @@ function BranchPanel({ mission }: { mission: MissionDetailDto }) {
   const showCommit = onMergeableBranch && branch.dirty;
   const showIntegrate = onMergeableBranch && !branch.dirty;
   const showPushParent = branch.status === 'merged_unpushed';
-  const showPublish = branch.status === 'created';
+  const showPublish =
+    branch.status === 'created' ||
+    (branch.status === 'published' && branch.hasUnpushedCommits === true);
   const showCreatePr = branch.status === 'published';
   const commitMessageValid = commitMessage.trim().length > 0;
   const gitUnavailable =

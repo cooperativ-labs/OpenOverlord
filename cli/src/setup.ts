@@ -2,6 +2,7 @@ import { flagBoolean, flagValue, parseArgs } from './args.js';
 import {
   type AuthLoginResult,
   isBackendReachabilityError,
+  type PasswordLoginCredentialTarget,
   probeBackendReachability,
   runInteractiveAuthLogin
 } from './auth-login.js';
@@ -157,9 +158,11 @@ async function configureBackendForSetup(): Promise<{
 }
 
 async function configureAuthForSetup({
-  backendUrl
+  backendUrl,
+  passwordCredentialTarget
 }: {
   backendUrl: string;
+  passwordCredentialTarget: PasswordLoginCredentialTarget;
 }): Promise<AuthLoginResult> {
   printLine('');
   printStepTitle('Step 2: Authenticate with the backend.');
@@ -179,7 +182,7 @@ async function configureAuthForSetup({
   }
 
   try {
-    const login = await runInteractiveAuthLogin({ backendUrl });
+    const login = await runInteractiveAuthLogin({ backendUrl, passwordCredentialTarget });
     const methodLabel = login.authMethod === 'user_token' ? 'USER_TOKEN' : 'email and password';
     printLine(`Authenticated with ${login.backendUrl} using ${methodLabel}.`);
     return login;
@@ -471,7 +474,10 @@ async function configureTerminalForSetup({ runtime }: { runtime: CliRuntime }): 
 
 async function runFullSetupCommand({ json }: { json: boolean }): Promise<void> {
   const backend = await configureBackendForSetup();
-  const auth = await configureAuthForSetup({ backendUrl: backend.url });
+  const auth = await configureAuthForSetup({
+    backendUrl: backend.url,
+    passwordCredentialTarget: backend.mode === 'cloud' ? 'full_user_token' : 'session_bearer'
+  });
   const agents = await configureAgentsForSetup();
   const runtime = openCliRuntime();
   try {

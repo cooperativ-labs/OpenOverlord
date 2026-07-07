@@ -47,12 +47,17 @@ Schema-planning implication:
 Requirements:
 
 - User can create a token from the CLI.
+- `ovld auth login` on a cloud backend can create a full-scope token after a
+  successful email/password session login and store that `USER_TOKEN` as the CLI
+  credential.
 - Future web app can create a token from settings.
 - Token has a user-supplied label.
 - Token creation defaults `expires_at` to 90 days from creation when no expiry is supplied
   when no expiry is supplied. Callers may pass an explicit expiry, or an explicit `null` to opt out
   and mint a non-expiring token.
-- The raw token secret is shown exactly once at creation.
+- Manual token creation shows the raw token secret exactly once at creation.
+  Tokens minted internally by cloud `ovld auth login` are stored directly as CLI
+  credentials and are not printed.
 - Persist only a secure hash of the token secret.
 - Store a non-secret token identifier/prefix for lookup, display, and audit.
 - Record creation time and creator user.

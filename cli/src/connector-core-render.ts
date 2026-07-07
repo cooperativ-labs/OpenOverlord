@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { resolveRepoPath } from './config.js';
 import { CliError } from './errors.js';
@@ -11,10 +12,9 @@ export const CONNECTOR_CORE_SKILL_RELATIVE_PATH = 'skills/overlord-mission/SKILL
 export const CONNECTOR_CORE_REFERENCE_PREFIX = 'skills/overlord-mission/reference/';
 
 /**
- * Locate `connectors/core/overlord-mission`. The connectors tree is not bundled
- * into the published CLI package, so resolve it in priority order: an explicit
- * `OVERLORD_CONNECTORS_DIR` sibling `core/overlord-mission`, the nearest
- * checkout walking up from cwd, then the package-relative fallback.
+ * Locate `connectors/core/overlord-mission`. The CLI package ships a copy under
+ * `dist/connectors`, but source checkouts and development overrides are also
+ * supported.
  */
 export function connectorCoreRoot(): string {
   const override = process.env.OVERLORD_CONNECTORS_DIR;
@@ -22,6 +22,14 @@ export function connectorCoreRoot(): string {
     const candidate = path.join(path.dirname(override), 'core', 'overlord-mission');
     if (existsSync(candidate)) return candidate;
   }
+
+  const packaged = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    'connectors',
+    'core',
+    'overlord-mission'
+  );
+  if (existsSync(packaged)) return packaged;
 
   let dir = process.cwd();
   while (true) {

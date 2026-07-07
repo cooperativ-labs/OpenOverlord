@@ -11,6 +11,7 @@ import {
   writeStoredAuthCredentials
 } from '../src/auth-credentials.ts';
 import {
+  createFullUserTokenFromSession,
   formatUserTokenLoginCommand,
   normalizeEmail,
   signInWithEmailPassword,
@@ -81,6 +82,57 @@ test('signInWithEmailPassword sends an Origin header so Better Auth accepts the 
     assert.equal(token, 'session-token-123');
     const headers = capturedInit?.headers as Record<string, string>;
     assert.equal(headers.Origin, 'http://127.0.0.1:4310');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('createFullUserTokenFromSession mints a full USER_TOKEN using the session bearer', async () => {
+  const originalFetch = globalThis.fetch;
+  let capturedInput: unknown;
+  let capturedInit: RequestInit | undefined;
+
+  globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
+    capturedInput = input;
+    capturedInit = init;
+    return new Response(
+      JSON.stringify({
+        token: {
+          id: 'tok-1',
+          label: 'CLI login on test-host',
+          tokenPrefix: 'out_abcd',
+          status: 'active',
+          scope: 'full',
+          scopeGrants: [],
+          expiresAt: null,
+          lastUsedAt: null,
+          revokedAt: null,
+          createdAt: new Date(0).toISOString()
+        },
+        secret: 'out_generated_secret'
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }) as typeof fetch;
+
+  try {
+    const token = await createFullUserTokenFromSession({
+      backendUrl: 'https://overlord.example.com/',
+      sessionToken: 'session-token-123',
+      label: 'CLI login on test-host'
+    });
+
+    assert.equal(token, 'out_generated_secret');
+    assert.equal(capturedInput, 'https://overlord.example.com/api/user-tokens');
+    const headers = capturedInit?.headers as Record<string, string>;
+    assert.equal(headers.Authorization, 'Bearer session-token-123');
+    assert.deepEqual(JSON.parse(String(capturedInit?.body)), {
+      label: 'CLI login on test-host',
+      scope: 'full'
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }

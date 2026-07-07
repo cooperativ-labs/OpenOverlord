@@ -52,6 +52,21 @@ export function deriveBranchPublicationStatus({
   return remoteExists ? 'published' : 'created';
 }
 
+/** True when the local branch tip is ahead of `origin/<branchName>`. */
+export function branchHasUnpushedCommits({
+  repoPath,
+  branchName
+}: {
+  repoPath: string;
+  branchName: string;
+}): boolean {
+  const localSha = resolveRef(repoPath, `refs/heads/${branchName}`);
+  const remoteSha = resolveRef(repoPath, `refs/remotes/origin/${branchName}`);
+  if (!localSha || !remoteSha || localSha === remoteSha) return false;
+  const ahead = runGit(repoPath, ['rev-list', '--count', `${remoteSha}..${localSha}`]).trim();
+  return ahead !== '0' && ahead !== '';
+}
+
 export function normalizeBranchRef(ref: string): string {
   return ref
     .replace(/^origin\//, '')
