@@ -31,6 +31,7 @@ describe('branch status derivation', () => {
         branchName: 'feat-1',
         baseBranch: 'main',
         worktreePath: path.join(dir, 'wt'),
+        resourceKey: 'primary-repo',
         action: 'create',
         cycle: 1
       }
@@ -108,6 +109,7 @@ describe('branch status derivation', () => {
         branchName: 'feat-prepared',
         baseBranch: 'release/prepared',
         worktreePath: path.join(dir, 'wt'),
+        resourceKey: 'primary-repo',
         action: 'create',
         cycle: 1
       }
@@ -142,6 +144,7 @@ describe('branch status derivation', () => {
         branchName: 'feat-observed',
         baseBranch: 'main',
         worktreePath: path.join(dir, 'fallback-wt'),
+        resourceKey: resource.resourceKey,
         action: 'create',
         cycle: 1
       }
@@ -155,6 +158,7 @@ describe('branch status derivation', () => {
         observations: [
           {
             missionId: mission.id,
+            resourceKey: resource.resourceKey,
             status: 'merged_unpushed',
             dirty: true,
             worktreePath: observedWorktree,

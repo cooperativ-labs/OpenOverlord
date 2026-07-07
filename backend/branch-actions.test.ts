@@ -36,6 +36,7 @@ describe('branch actions', () => {
         branchName: 'feat-1',
         baseBranch: 'main',
         worktreePath: '/tmp/wt',
+        resourceKey: 'primary-repo',
         action: 'create',
         cycle: 1
       }
@@ -62,6 +63,7 @@ describe('branch actions', () => {
         branchName: 'feat-1',
         baseBranch: 'main',
         worktreePath: '/tmp/wt',
+        resourceKey: 'primary-repo',
         action: 'create',
         cycle: 1
       }

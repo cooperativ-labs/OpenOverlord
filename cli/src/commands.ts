@@ -1360,6 +1360,7 @@ async function runRunnerCommand({
         options: {
           missionId,
           workingDirectory: String(requestRecord.workingDirectory ?? process.cwd()),
+          objectiveId: String(requestRecord.objectiveId ?? ''),
           workspaceAutomationEnabled: await readWorktreeBranchAutomationEnabled(runtime),
           dryRun,
           overrideBranch: flagValue(parsed.flags, '--branch'),

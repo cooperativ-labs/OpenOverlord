@@ -9,6 +9,7 @@ export type ObservedMissionBranchStatus = 'created' | 'published' | 'merged_unpu
 
 export type MissionBranchObservationInput = {
   missionId: string;
+  resourceKey: string;
   status: ObservedMissionBranchStatus;
   dirty: boolean;
   worktreePath?: string | null;
@@ -18,6 +19,7 @@ export type MissionBranchObservationInput = {
 export type MissionBranchObservationRow = {
   executionTargetId: string;
   missionId: string;
+  resourceKey: string;
   status: ObservedMissionBranchStatus;
   dirty: boolean;
   worktreePath: string | null;
@@ -73,6 +75,14 @@ function parseObservationInput(value: unknown): MissionBranchObservationInput {
       400
     );
   }
+  const resourceKey = typeof row.resourceKey === 'string' ? row.resourceKey.trim() : '';
+  if (!resourceKey) {
+    throw new ServiceError(
+      'resourceKey is required for each branch observation',
+      'validation_error',
+      400
+    );
+  }
   if (typeof row.dirty !== 'boolean') {
     throw new ServiceError(
       'dirty is required for each branch observation',
@@ -82,6 +92,7 @@ function parseObservationInput(value: unknown): MissionBranchObservationInput {
   }
   return {
     missionId,
+    resourceKey,
     status: parseBranchStatus(row.status),
     dirty: row.dirty,
     worktreePath: typeof row.worktreePath === 'string' ? row.worktreePath : null,
@@ -164,8 +175,8 @@ export async function recordMissionBranchObservations({
     for (const observation of observations) {
       const existing = await tx.get<{ id: string }>(
         `SELECT id FROM mission_branch_observations
-          WHERE execution_target_id = ? AND mission_id = ?`,
-        [targetId, observation.missionId]
+          WHERE execution_target_id = ? AND mission_id = ? AND resource_key = ?`,
+        [targetId, observation.missionId, observation.resourceKey]
       );
       if (existing) {
         await tx.run(
@@ -184,14 +195,15 @@ export async function recordMissionBranchObservations({
       } else {
         await tx.run(
           `INSERT INTO mission_branch_observations
-             (id, workspace_id, execution_target_id, mission_id, status, dirty,
+             (id, workspace_id, execution_target_id, mission_id, resource_key, status, dirty,
               worktree_path, observed_at, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             newId(),
             ctx.workspace.id,
             targetId,
             observation.missionId,
+            observation.resourceKey,
             observation.status,
             bindBool(ctx.db.dialect, observation.dirty),
             observation.worktreePath,
@@ -210,26 +222,37 @@ export async function recordMissionBranchObservations({
 export async function loadMissionBranchObservationsForMissions({
   ctx,
   executionTargetId,
-  missionIds
+  missionIds,
+  resourceKey
 }: {
   ctx: ServiceContext;
   executionTargetId: string | null;
   missionIds: string[];
+  resourceKey?: string | null;
 }): Promise<Map<string, MissionBranchObservationRow>> {
   const byMission = new Map<string, MissionBranchObservationRow>();
   if (!executionTargetId || missionIds.length === 0) return byMission;
 
   const placeholders = missionIds.map(() => '?').join(', ');
+  const normalizedKey = resourceKey?.trim() || null;
+  const params: Array<string> = [ctx.workspace.id, executionTargetId, ...missionIds];
+  const resourceFilter = normalizedKey ? 'AND resource_key = ?' : '';
+  if (normalizedKey) {
+    params.push(normalizedKey);
+  }
+
   const rows = (await ctx.db.all(
-    `SELECT execution_target_id, mission_id, status, dirty, worktree_path, observed_at, updated_at
+    `SELECT execution_target_id, mission_id, resource_key, status, dirty, worktree_path, observed_at, updated_at
        FROM mission_branch_observations
       WHERE workspace_id = ?
         AND execution_target_id = ?
-        AND mission_id IN (${placeholders})`,
-    [ctx.workspace.id, executionTargetId, ...missionIds]
+        AND mission_id IN (${placeholders})
+        ${resourceFilter}`,
+    params
   )) as Array<{
     execution_target_id: string;
     mission_id: string;
+    resource_key: string;
     status: string;
     dirty: boolean | number;
     worktree_path: string | null;
@@ -241,6 +264,7 @@ export async function loadMissionBranchObservationsForMissions({
     byMission.set(row.mission_id, {
       executionTargetId: row.execution_target_id,
       missionId: row.mission_id,
+      resourceKey: row.resource_key,
       status: row.status as ObservedMissionBranchStatus,
       dirty: row.dirty === true || row.dirty === 1,
       worktreePath: row.worktree_path,

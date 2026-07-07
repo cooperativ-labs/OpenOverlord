@@ -34,6 +34,7 @@ describe('generate commit message', () => {
         branchName: 'feat-draft',
         baseBranch: 'main',
         worktreePath: '/tmp/wt',
+        resourceKey: 'primary-repo',
         action: 'create',
         cycle: 1
       }
@@ -60,6 +61,7 @@ describe('generate commit message', () => {
         branchName: 'feat-draft-dirty',
         baseBranch: 'main',
         worktreePath: '/tmp/wt',
+        resourceKey: 'primary-repo',
         action: 'create',
         cycle: 1
       }

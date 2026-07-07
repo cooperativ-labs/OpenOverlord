@@ -287,6 +287,7 @@ describe('runner claims and drives executions in a secondary (non-active) worksp
         branchName: 'overlord/run-in-the-secondary-workspace-1',
         baseBranch: 'main',
         worktreePath: '/tmp/.ovld/worktrees/secondary/overlord-run-1',
+        resourceKey: 'primary-repo',
         action: 'create',
         cycle: 1
       }

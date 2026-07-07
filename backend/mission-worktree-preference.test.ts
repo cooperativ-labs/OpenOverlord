@@ -94,6 +94,7 @@ describe('per-mission worktree preference', () => {
         branchName: 'overlord/switch-later-1',
         baseBranch: 'main',
         worktreePath: '/tmp/none',
+        resourceKey: 'primary-repo',
         action: 'create',
         cycle: 1
       }

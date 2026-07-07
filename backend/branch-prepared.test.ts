@@ -32,6 +32,7 @@ describe('branch preparation recording', () => {
         branchName: 'overlord/prepare-a-branch-1',
         baseBranch: 'main',
         worktreePath: '/tmp/.ovld/worktrees/branch-prepared/overlord-prepare-a-branch-1',
+        resourceKey: 'primary-repo',
         action: 'create',
         cycle: 1
       }
