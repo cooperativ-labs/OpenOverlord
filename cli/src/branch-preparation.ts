@@ -1,4 +1,3 @@
-import { deriveProjectResourceKey } from '@overlord/core/service/projects';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, statSync } from 'node:fs';
 import os from 'node:os';

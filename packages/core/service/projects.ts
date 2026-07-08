@@ -14,7 +14,7 @@ import { resolveProjectId } from './context.js';
 import { ServiceError } from './errors.js';
 import { ensureActingDeviceTarget } from './execution-targets.js';
 import { deriveProjectResourceKey } from './project-resource-key.js';
-import { initialTitleFromInstruction, newId, nowIso, slugify } from './util.js';
+import { newId, nowIso, slugify } from './util.js';
 
 export { deriveProjectResourceKey } from './project-resource-key.js';
 
