@@ -58,7 +58,7 @@ export function AgentModelChooserButton({
             <PopoverTrigger
               disabled={disabled || !catalog}
               className={cn(
-                'inline-flex h-8 items-center gap-1 rounded-md border border-input bg-background px-2 text-xs text-muted-foreground shadow-sm transition-colors',
+                'inline-flex h-8 items-center gap-1 rounded-md border border-input bg-background px-2 text-xs text-foreground shadow-sm transition-colors',
                 compact ? 'shrink-0' : 'max-w-[230px]',
                 disabled || !catalog
                   ? 'cursor-not-allowed opacity-60'

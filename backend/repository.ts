@@ -403,6 +403,7 @@ interface MissionRow {
   has_executing_objective: number;
   has_completed_objective: number;
   has_pending_objective_with_instructions: number;
+  draft_objective_resource_key: string | null;
 }
 
 interface ObjectiveRow {
@@ -686,6 +687,7 @@ function toMissionDto(r: MissionRow, tags: ProjectTagDto[] = []): MissionDto {
     hasExecutingObjective: r.has_executing_objective === 1,
     hasCompletedObjective: r.has_completed_objective === 1,
     hasPendingObjectiveWithInstructions: r.has_pending_objective_with_instructions === 1,
+    draftObjectiveResourceKey: r.draft_objective_resource_key?.trim() || null,
     tags
   };
 }
@@ -2784,7 +2786,10 @@ const selectMissionsSql = `
          (SELECT COUNT(*) > 0 FROM objectives o
             WHERE o.mission_id = t.id AND o.deleted_at IS NULL
               AND o.state IN ('draft', 'future') AND TRIM(o.instruction_text) != '')
-            AS has_pending_objective_with_instructions
+            AS has_pending_objective_with_instructions,
+         (SELECT o.resource_key FROM objectives o
+            WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'draft'
+            LIMIT 1) AS draft_objective_resource_key
   FROM missions t
   WHERE t.workspace_id = ? AND t.deleted_at IS NULL
 `;
@@ -2865,6 +2870,9 @@ export async function searchMissions({
                  WHERE o.mission_id = t.id AND o.deleted_at IS NULL
                    AND o.state IN ('draft', 'future') AND TRIM(o.instruction_text) != '')
                  AS has_pending_objective_with_instructions,
+              (SELECT o.resource_key FROM objectives o
+                 WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'draft'
+                 LIMIT 1) AS draft_objective_resource_key,
               ${missionSearchDocScoreExpr(client.dialect)} AS doc_score
          FROM ${missionSearchFromClause(client.dialect)}
          JOIN missions t ON t.id = ${missionIdColumn}
@@ -4477,7 +4485,10 @@ function selectMyMissionsSql(pairPlaceholders: string): string {
          (SELECT COUNT(*) > 0 FROM objectives o
             WHERE o.mission_id = t.id AND o.deleted_at IS NULL
               AND o.state IN ('draft', 'future') AND TRIM(o.instruction_text) != '')
-            AS has_pending_objective_with_instructions
+            AS has_pending_objective_with_instructions,
+         (SELECT o.resource_key FROM objectives o
+            WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'draft'
+            LIMIT 1) AS draft_objective_resource_key
     FROM missions t
     JOIN projects p ON p.id = t.project_id AND p.workspace_id = t.workspace_id
       AND p.deleted_at IS NULL

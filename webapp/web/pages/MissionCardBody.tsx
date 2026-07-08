@@ -7,6 +7,7 @@ import type { MissionDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 
 import { getMissionTags } from './board-shared.ts';
 import { MissionCardHoverFooter } from './MissionCardHoverFooter.tsx';
+import { MissionDraftResourceBadge } from './MissionDraftResourceBadge.tsx';
 import {
   MissionAssigneeSummary,
   MissionDueDateBadge,
@@ -38,6 +39,12 @@ export function MissionCardBody({
           <h4 className="font-body text-sm font-medium leading-snug text-foreground">
             {mission.title}
           </h4>
+
+          <MissionDraftResourceBadge
+            projectId={projectId}
+            draftObjectiveResourceKey={mission.draftObjectiveResourceKey}
+            className="mt-1.5"
+          />
 
           {tags.length > 0 ? (
             <div className="mt-2 flex flex-wrap items-center gap-2">

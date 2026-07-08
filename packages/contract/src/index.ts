@@ -454,6 +454,11 @@ export interface MissionDto {
    * completed objective).
    */
   hasPendingObjectiveWithInstructions: boolean;
+  /**
+   * `objectives.resource_key` on the mission's current `draft` objective, or
+   * `null` when the draft inherits the project primary resource.
+   */
+  draftObjectiveResourceKey: string | null;
   /** Tags assigned to this mission, resolved from its project's `project_tags`. */
   tags: ProjectTagDto[];
 }

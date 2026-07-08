@@ -54,6 +54,36 @@ export function distinctProjectResourceKeys(resources: ProjectResourceDto[]): st
   return [...keys].sort((left, right) => left.localeCompare(right));
 }
 
+export function projectResourceLabel({
+  resources,
+  resourceKey
+}: {
+  resources: ProjectResourceDto[];
+  resourceKey: string;
+}): string {
+  const match = resources.find(resource => resource.resourceKey === resourceKey);
+  return match?.label?.trim() || resourceKey;
+}
+
+/**
+ * Resource key shown for a mission card: the draft objective's binding, falling
+ * back to the project primary. Returns null when the project has only one
+ * logical resource (nothing useful to distinguish on the card).
+ */
+export function missionDraftResourceBadgeKey({
+  resources,
+  draftObjectiveResourceKey
+}: {
+  resources: ProjectResourceDto[];
+  draftObjectiveResourceKey: string | null;
+}): string | null {
+  const resourceKeys = distinctProjectResourceKeys(resources);
+  if (resourceKeys.length <= 1) return null;
+
+  const primaryKey = primaryResourceConnection(resources).primary?.resourceKey ?? null;
+  return draftObjectiveResourceKey?.trim() || primaryKey || resourceKeys[0] || null;
+}
+
 export function objectiveResourceConnection({
   resources,
   resourceKey,

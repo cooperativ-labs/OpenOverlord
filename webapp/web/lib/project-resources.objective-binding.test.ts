@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 
 import type { ProjectResourceDto } from '../../shared/contract.ts';
 
-import { distinctProjectResourceKeys, objectiveResourceConnection } from './project-resources.ts';
+import { distinctProjectResourceKeys, missionDraftResourceBadgeKey, objectiveResourceConnection } from './project-resources.ts';
 
 function resource(
   partial: Partial<ProjectResourceDto> & Pick<ProjectResourceDto, 'resourceKey'>
@@ -64,5 +64,37 @@ describe('distinctProjectResourceKeys', () => {
     ]);
 
     assert.deepEqual(keys, ['mobile', 'openoverlord']);
+  });
+});
+
+describe('missionDraftResourceBadgeKey', () => {
+  it('returns null for single-resource projects', () => {
+    const resources = [resource({ resourceKey: 'openoverlord', isPrimary: true })];
+
+    assert.equal(
+      missionDraftResourceBadgeKey({ resources, draftObjectiveResourceKey: 'mobile' }),
+      null
+    );
+  });
+
+  it('uses the draft objective key when set', () => {
+    const resources = [
+      resource({ resourceKey: 'openoverlord', isPrimary: true }),
+      resource({ resourceKey: 'mobile' })
+    ];
+
+    assert.equal(
+      missionDraftResourceBadgeKey({ resources, draftObjectiveResourceKey: 'mobile' }),
+      'mobile'
+    );
+  });
+
+  it('falls back to the primary resource when the draft inherits it', () => {
+    const resources = [
+      resource({ resourceKey: 'openoverlord', isPrimary: true }),
+      resource({ resourceKey: 'mobile' })
+    ];
+
+    assert.equal(missionDraftResourceBadgeKey({ resources, draftObjectiveResourceKey: null }), 'openoverlord');
   });
 });

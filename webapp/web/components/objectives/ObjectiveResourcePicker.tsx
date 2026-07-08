@@ -1,4 +1,5 @@
 import { Check, ChevronDown, FolderOpen } from 'lucide-react';
+import { useState } from 'react';
 
 import type { ProjectResourceDto } from '../../../shared/contract.ts';
 import { distinctProjectResourceKeys, primaryResourceConnection } from '../../lib/project-resources.ts';
@@ -11,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '../ui/dropdown-menu.tsx';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip.tsx';
 
 type ObjectiveResourcePickerProps = {
   resources: ProjectResourceDto[];
@@ -31,6 +33,7 @@ export function ObjectiveResourcePicker({
   disabled = false,
   className
 }: ObjectiveResourcePickerProps) {
+  const [open, setOpen] = useState(false);
   const resourceKeys = distinctProjectResourceKeys(resources);
   if (resourceKeys.length <= 1) return null;
 
@@ -50,24 +53,30 @@ export function ObjectiveResourcePicker({
   const triggerLabel = `Choose resource: ${currentLabel}`;
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        disabled={disabled}
-        className={cn(
-          'inline-flex h-8 items-center gap-1 rounded-md border border-input bg-background px-2 text-xs text-muted-foreground shadow-sm transition-colors',
-          'max-w-[230px]',
-          disabled
-            ? 'cursor-not-allowed opacity-60'
-            : 'cursor-pointer hover:bg-accent hover:text-accent-foreground',
-          className
-        )}
-        aria-label={triggerLabel}
-        title="Choose resource"
-      >
-        <FolderOpen className="h-3.5 w-3.5 shrink-0" />
-        <span className="max-w-[160px] truncate">{currentLabel}</span>
-        <ChevronDown className="h-3 w-3 shrink-0" />
-      </DropdownMenuTrigger>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <Tooltip open={open ? false : undefined}>
+        <TooltipTrigger
+          render={
+            <DropdownMenuTrigger
+              disabled={disabled}
+              className={cn(
+                'inline-flex h-8 items-center gap-1 rounded-md border border-input bg-background px-2 text-xs text-foreground shadow-sm transition-colors',
+                'max-w-[230px]',
+                disabled
+                  ? 'cursor-not-allowed opacity-60'
+                  : 'cursor-pointer hover:bg-accent hover:text-accent-foreground',
+                className
+              )}
+              aria-label={triggerLabel}
+            >
+              <FolderOpen className="h-3.5 w-3.5 shrink-0" />
+              <span className="max-w-[160px] truncate">{currentLabel}</span>
+              <ChevronDown className="h-3 w-3 shrink-0" />
+            </DropdownMenuTrigger>
+          }
+        />
+        <TooltipContent side="top">Sets which resource the agent will run against.</TooltipContent>
+      </Tooltip>
       <DropdownMenuContent align="end" className="min-w-[180px]">
         <DropdownMenuLabel className="flex items-center">
           <FolderOpen className="h-3.5 w-3.5" />

@@ -13,6 +13,7 @@ import {
   MissionCompleteCheckbox,
   MissionDueDateBadge
 } from './MissionCardPrimitives.tsx';
+import { MissionDraftResourceBadge } from './MissionDraftResourceBadge.tsx';
 
 export function MissionListCard({
   mission,
@@ -89,14 +90,20 @@ export function MissionListCard({
 
       {/* Title */}
       <div className="min-w-0 flex-1">
-        <span
-          className={cn(
-            'block truncate text-sm font-semibold leading-snug text-foreground',
-            mission.statusType === 'complete' && 'text-muted-foreground line-through'
-          )}
-        >
-          {mission.title}
-        </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className={cn(
+              'min-w-0 truncate text-sm font-semibold leading-snug text-foreground',
+              mission.statusType === 'complete' && 'text-muted-foreground line-through'
+            )}
+          >
+            {mission.title}
+          </span>
+          <MissionDraftResourceBadge
+            projectId={projectId}
+            draftObjectiveResourceKey={mission.draftObjectiveResourceKey}
+          />
+        </div>
       </div>
 
       {/* Right metadata row */}
