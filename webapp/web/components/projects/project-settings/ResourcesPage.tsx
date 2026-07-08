@@ -414,7 +414,6 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
               <tr>
-                <th className="px-3 py-2 font-medium">Execution target</th>
                 <th className="px-3 py-2 font-medium">Key</th>
                 <th className="px-3 py-2 font-medium">Path</th>
                 <th className="px-3 py-2 font-medium">Primary</th>
@@ -425,7 +424,7 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
             <tbody>
               {rows.map(resource => (
                 <tr key={resource.id} className="border-t">
-                  <td className="px-3 py-2 text-muted-foreground">{targetLabel(resource)}</td>
+
                   <td className="min-w-44 px-3 py-2">
                     <div className="flex items-center gap-2">
                       <Input
@@ -443,7 +442,7 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
                         aria-label={`Resource key for ${resource.path}`}
                       />
                       {(resourceKeyEdits[resource.id] ?? resource.resourceKey).trim() !==
-                      resource.resourceKey ? (
+                        resource.resourceKey ? (
                         <Button
                           type="button"
                           size="sm"
@@ -458,10 +457,11 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
                     </div>
                   </td>
                   <td
-                    className="max-w-xs truncate px-3 py-2 font-mono text-xs"
+                    className="flex max-w-xs flex-col truncate px-3 py-2 font-mono text-xs gap-1"
                     title={resource.path}
                   >
-                    {resource.path}
+                    <span className="truncate">{resource.path}</span>
+                    <span className="text-xs text-muted-foreground">{targetLabel(resource)}</span>
                   </td>
                   <td className="px-3 py-2">
                     {resource.isPrimary ? (
