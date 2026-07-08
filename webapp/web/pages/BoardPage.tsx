@@ -29,6 +29,7 @@ import {
   storeBoardView
 } from './board-shared.ts';
 import { BoardColumn } from './BoardColumn.tsx';
+import { MissionCalendarView } from './MissionCalendarView.tsx';
 import { MissionListView } from './MissionListView.tsx';
 import { MissionStatusFilterDropdown } from './MissionStatusFilterDropdown.tsx';
 import { MissionsViewToggle } from './MissionsViewToggle.tsx';
@@ -415,6 +416,14 @@ export function BoardPage() {
               </DragOverlay>
             ) : null}
           </DndContext>
+        ) : view === 'calendar' ? (
+          <MissionCalendarView
+            missions={filteredMissions}
+            projectId={projectId}
+            projectColor={projectColor}
+            selectedMissionId={selectedMissionId}
+            onCompleteMission={completeStatusId ? handleCompleteMission : undefined}
+          />
         ) : (
           <MissionListView
             statuses={visibleStatuses}

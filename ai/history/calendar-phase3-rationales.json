@@ -1,0 +1,44 @@
+[
+  {
+    "file_path": "webapp/web/pages/MissionCalendarView.tsx",
+    "label": "Infinite scroll sentinels",
+    "summary": "Replaced the static ±3 month window with expandable monthsBefore/monthsAfter state, IntersectionObserver sentinels at the top and bottom, and scroll-position preservation when prepending months.",
+    "why": "Phase 3 requires infinite scroll so users can browse beyond the initial date window without reloading.",
+    "impact": "Scrolling near the calendar edges loads one additional month at a time while keeping the viewport stable when scrolling upward."
+  },
+  {
+    "file_path": "webapp/web/pages/MissionCalendarCard.tsx",
+    "label": "Selected card styling",
+    "summary": "Added bg-primary/10 to the selected state so calendar cards match list view selection treatment.",
+    "why": "Phase 3 calls for selected-card ring styling consistent with MissionListCard.",
+    "impact": "The open mission card is visually highlighted on the calendar grid."
+  },
+  {
+    "file_path": "webapp/web/lib/calendar-utils.test.ts",
+    "label": "Calendar utils tests",
+    "summary": "Added unit tests for day keys, droppable ids, window range, month iteration, week padding, grouping, and date helpers.",
+    "why": "Phase 3 requires automated coverage for calendar-utils.",
+    "impact": "Calendar date math and mission grouping regressions are caught in CI."
+  },
+  {
+    "file_path": "webapp/web/lib/due-datetime.test.ts",
+    "label": "Due-datetime tests",
+    "summary": "Added unit tests for parseDueDate, date input helpers, and buildDueDatetime time preservation and defaults.",
+    "why": "Phase 3 requires automated coverage for due-datetime helpers shared by calendar DnD and the editor.",
+    "impact": "Due date conversion behavior is verified when moving missions between days."
+  },
+  {
+    "file_path": "webapp/package.json",
+    "label": "Register calendar tests",
+    "summary": "Added calendar-utils.test.ts and due-datetime.test.ts to the yarn test script.",
+    "why": "New test files must run with the existing webapp test suite.",
+    "impact": "yarn test executes the calendar unit tests."
+  },
+  {
+    "file_path": "webapp/docs/ui/02-mission-board.md",
+    "label": "Calendar view documentation",
+    "summary": "Added a Calendar view section covering card contents, drag-and-drop, undated behavior, infinite scroll, sticky headers, today highlight, and view persistence.",
+    "why": "Phase 3 requires board UI docs to describe the new calendar surface.",
+    "impact": "Product docs now document how the calendar view behaves alongside board and list."
+  }
+]

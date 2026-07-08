@@ -1,20 +1,30 @@
-import { LayoutGrid, List } from 'lucide-react';
+import { CalendarDays, LayoutGrid, List } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
 import type { BoardView } from './board-shared.ts';
 
+const VIEW_OPTIONS: Array<{
+  value: BoardView;
+  label: string;
+  icon: typeof LayoutGrid;
+}> = [
+  { value: 'board', label: 'Board', icon: LayoutGrid },
+  { value: 'list', label: 'List', icon: List },
+  { value: 'calendar', label: 'Calendar', icon: CalendarDays }
+];
+
 export function MissionsViewToggle({
   value,
-  onChange
+  onChange,
+  views = ['board', 'list', 'calendar']
 }: {
   value: BoardView;
   onChange: (value: BoardView) => void;
+  /** Subset of views to show; My Missions omits calendar until multi-project support ships. */
+  views?: BoardView[];
 }) {
-  const options: Array<{ value: BoardView; label: string; icon: typeof LayoutGrid }> = [
-    { value: 'board', label: 'Board', icon: LayoutGrid },
-    { value: 'list', label: 'List', icon: List }
-  ];
+  const options = VIEW_OPTIONS.filter(option => views.includes(option.value));
 
   return (
     <div

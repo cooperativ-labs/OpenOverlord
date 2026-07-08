@@ -2,6 +2,12 @@ import { CalendarDays, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { useUpdateMission } from '../../lib/queries.ts';
+import {
+  buildDueDatetime,
+  fromDateInputValue,
+  parseDueDate,
+  toDateInputValue
+} from '../../lib/due-datetime.ts';
 import { cn } from '../../lib/utils.ts';
 import type { ButtonLoadingState } from '../ui/loading-button.tsx';
 import { LoadingButton } from '../ui/loading-button.tsx';
@@ -11,47 +17,6 @@ type DueDateEditorProps = {
   initialDueDatetime: string | null;
   missionId: string;
 };
-
-function parseDueDate(value: string | null): Date | undefined {
-  if (!value) return undefined;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-}
-
-function toDateInputValue(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function fromDateInputValue(value: string): Date {
-  const [year, month, day] = value.split('-').map(Number);
-  return new Date(year ?? 0, (month ?? 1) - 1, day ?? 1);
-}
-
-function buildDueDatetime({
-  selectedDate,
-  currentDueDatetime
-}: {
-  selectedDate: Date;
-  currentDueDatetime: string | null;
-}): string {
-  if (currentDueDatetime) {
-    const current = new Date(currentDueDatetime);
-    const next = new Date(current);
-    next.setUTCFullYear(
-      selectedDate.getFullYear(),
-      selectedDate.getMonth(),
-      selectedDate.getDate()
-    );
-    return next.toISOString();
-  }
-
-  return new Date(
-    Date.UTC(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 12, 0, 0)
-  ).toISOString();
-}
 
 function formatDueDateLabel(value: string | null): string {
   const date = parseDueDate(value);

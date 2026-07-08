@@ -11,7 +11,7 @@ import type { MissionDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
 export const BOARD_VIEW_STORAGE_PREFIX = 'overlord:project-board-view:';
 
-export type BoardView = 'board' | 'list';
+export type BoardView = 'board' | 'list' | 'calendar';
 export type ColumnMap = Record<string, string[]>;
 
 /**
@@ -87,11 +87,13 @@ export function getWorkspaceFilterLabel(
   return `${selectedWorkspaceIds.length} workspaces`;
 }
 
+const BOARD_VIEWS: BoardView[] = ['board', 'list', 'calendar'];
+
 export function readStoredBoardView(projectId: string): BoardView {
   if (typeof window === 'undefined') return 'board';
   try {
     const value = window.localStorage.getItem(`${BOARD_VIEW_STORAGE_PREFIX}${projectId}`);
-    return value === 'list' ? 'list' : 'board';
+    return BOARD_VIEWS.includes(value as BoardView) ? (value as BoardView) : 'board';
   } catch {
     return 'board';
   }
