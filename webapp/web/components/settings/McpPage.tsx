@@ -38,6 +38,18 @@ const MCP_TOOLS = [
   { name: 'overlord_deliver_session', label: 'Deliver session' }
 ] as const;
 
+const MCP_CLI_CONNECTORS = [
+  { label: 'Claude Code CLI', agent: 'claude-code' },
+  { label: 'Codex CLI', agent: 'codex' },
+  { label: 'Cursor Agent CLI', agent: 'cursor' },
+  { label: 'Antigravity CLI', agent: 'antigravity' },
+  { label: 'OpenCode CLI', agent: 'opencode' }
+] as const;
+
+function buildMcpConnectCommand({ mcpUrl, agent }: { mcpUrl: string; agent: string }): string {
+  return `npx -y add-mcp ${mcpUrl} -g -n Overlord -y -a ${agent}`;
+}
+
 type McpPageProps = {
   onNavigateToBackend?: () => void;
   onNavigateToTokens?: () => void;
@@ -188,8 +200,6 @@ export function McpPage({ onNavigateToBackend, onNavigateToTokens }: McpPageProp
   const mcpEnabled = meta.data?.capabilities.mcp === true;
   const baseUrl = resolveMcpBaseUrl();
   const mcpUrl = `${baseUrl}/mcp`;
-  const resourceMetadataUrl = `${baseUrl}/.well-known/oauth-protected-resource/mcp`;
-  const authServerMetadataUrl = `${baseUrl}/.well-known/oauth-authorization-server`;
   const authorizationUrl = `${baseUrl}/oauth/approve`;
 
   if (meta.isLoading && !meta.data) {
@@ -262,20 +272,30 @@ export function McpPage({ onNavigateToBackend, onNavigateToTokens }: McpPageProp
             description="Primary endpoint for remote MCP clients."
           />
           <CopyValueRow
-            label="OAuth resource metadata"
-            value={resourceMetadataUrl}
-            description="Protected-resource metadata advertised to OAuth-aware MCP clients."
-          />
-          <CopyValueRow
-            label="Authorization server metadata"
-            value={authServerMetadataUrl}
-            description="OAuth authorization-server discovery document for sign-in flows."
-          />
-          <CopyValueRow
             label="OAuth approval page"
             value={authorizationUrl}
             description="Browser page shown when an MCP client asks you to approve access."
           />
+        </div>
+      </div>
+
+      <div className="space-y-4 rounded-2xl border bg-card p-5 shadow-sm">
+        <div className="space-y-1">
+          <h3 className="text-sm font-medium">CLI connection commands</h3>
+          <p className="text-xs text-muted-foreground">
+            Run one of these in your terminal to register the hosted Overlord MCP server with your
+            agent CLI. Each command installs globally and skips interactive prompts.
+          </p>
+        </div>
+        <div className="space-y-4">
+          {MCP_CLI_CONNECTORS.map(connector => (
+            <CopyValueRow
+              key={connector.agent}
+              label={connector.label}
+              value={buildMcpConnectCommand({ mcpUrl, agent: connector.agent })}
+              description="Uses add-mcp to write the remote MCP config for this harness."
+            />
+          ))}
         </div>
       </div>
 
