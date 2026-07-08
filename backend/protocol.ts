@@ -231,7 +231,8 @@ const handlers: Record<string, Handler> = {
       modelIdentifier: strFlag(body, '--model') ?? null,
       existingSessionKey: strFlag(body, '--session-key') ?? null,
       externalSessionId: externalSessionId(body),
-      executionRequestId: strFlag(body, '--execution-request-id') ?? null
+      executionRequestId: strFlag(body, '--execution-request-id') ?? null,
+      executionTargetId: strFlag(body, '--execution-target-id') ?? null
     }),
 
   update: (ctx, body) =>
@@ -338,7 +339,8 @@ const handlers: Record<string, Handler> = {
       agentIdentifier: strFlag(body, '--agent') ?? 'unknown',
       modelIdentifier: strFlag(body, '--model') ?? null,
       externalSessionId: externalSessionId(body),
-      summary: resolveInput(body, '--summary', '--summary-file') ?? null
+      summary: resolveInput(body, '--summary', '--summary-file') ?? null,
+      executionTargetId: strFlag(body, '--execution-target-id') ?? null
     }),
 
   // Mission creation and discovery -----------------------------------------
@@ -361,7 +363,11 @@ const handlers: Record<string, Handler> = {
     }),
 
   'load-context': (ctx, body) =>
-    loadMissionContext({ ctx, missionId: requireFlag(body, '--mission-id') }),
+    loadMissionContext({
+      ctx,
+      missionId: requireFlag(body, '--mission-id'),
+      executionTargetId: strFlag(body, '--execution-target-id') ?? null
+    }),
 
   connect: (ctx, body) =>
     connectSession({

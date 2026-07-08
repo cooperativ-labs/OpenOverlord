@@ -6,7 +6,7 @@ import path from 'node:path';
 import type { BackendClient } from './backend-client.js';
 import { CliError } from './errors.js';
 
-async function resolvePreferredExecutionTargetId({
+export async function resolvePreferredExecutionTargetId({
   backend
 }: {
   backend: BackendClient;

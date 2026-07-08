@@ -175,7 +175,10 @@ const tools: ToolEntry[] = [
       'Load structured mission context, objectives, history, artifacts, and shared context.',
     inputSchema: objectSchema(
       {
-        missionId: stringProperty('Mission UUID or workspace display id such as coo:150.')
+        missionId: stringProperty('Mission UUID or workspace display id such as coo:150.'),
+        executionTargetId: stringProperty(
+          'Optional local execution target id for resolving sibling project resource paths.'
+        )
       },
       ['missionId']
     ),
@@ -183,7 +186,12 @@ const tools: ToolEntry[] = [
     handler: args =>
       runProtocolSubcommand(
         'load-context',
-        protocolBody({ '--mission-id': requiredString(args, 'missionId') })
+        protocolBody({
+          '--mission-id': requiredString(args, 'missionId'),
+          ...(optionalString(args, 'executionTargetId')
+            ? { '--execution-target-id': requiredString(args, 'executionTargetId') }
+            : {})
+        })
       )
   },
   {
@@ -223,7 +231,10 @@ const tools: ToolEntry[] = [
       {
         missionId: stringProperty('Mission UUID or workspace display id.'),
         agent: stringProperty('Agent identifier. Defaults to hosted-mcp.'),
-        model: stringProperty('Optional model identifier.')
+        model: stringProperty('Optional model identifier.'),
+        executionTargetId: stringProperty(
+          'Optional local execution target id for resolving sibling project resource paths.'
+        )
       },
       ['missionId']
     ),
@@ -233,7 +244,10 @@ const tools: ToolEntry[] = [
         protocolBody({
           '--mission-id': requiredString(args, 'missionId'),
           '--agent': optionalString(args, 'agent') ?? 'hosted-mcp',
-          ...(optionalString(args, 'model') ? { '--model': requiredString(args, 'model') } : {})
+          ...(optionalString(args, 'model') ? { '--model': requiredString(args, 'model') } : {}),
+          ...(optionalString(args, 'executionTargetId')
+            ? { '--execution-target-id': requiredString(args, 'executionTargetId') }
+            : {})
         })
       )
   },
