@@ -22,6 +22,7 @@ import { clientDeviceFromBody } from './client-device.ts';
 import {
   buildWebappServiceContextForWorkspace,
   getClientDeviceIdentity,
+  newId,
   nowIso,
   recordChange,
   requireDatabaseClient
@@ -119,12 +120,14 @@ type ExecutionRequestRow = {
   mission_id: string;
   objective_id: string;
   execution_target_id: string | null;
+  claimed_by_execution_target_id: string | null;
   requested_agent: string | null;
   requested_model: string | null;
   requested_reasoning_effort: string | null;
   launch_flags_json: string;
   status: string;
   requested_source: string;
+  resolved_resource_id: string | null;
   resolved_working_directory: string | null;
   last_error: string | null;
   created_at: string;
@@ -136,14 +139,16 @@ type BranchPreparedPayload = {
   branchName: string;
   baseBranch: string;
   worktreePath: string;
+  resourceKey: string;
   action: 'create' | 'reuse' | 'new_cycle';
   cycle: number;
 };
 
 const EXECUTION_REQUEST_COLUMNS = `
   id, workspace_id, project_id, mission_id, objective_id, execution_target_id,
-  requested_agent, requested_model, requested_reasoning_effort, launch_flags_json,
-  status, requested_source, resolved_working_directory, last_error, created_at, updated_at, revision
+  claimed_by_execution_target_id, requested_agent, requested_model, requested_reasoning_effort,
+  launch_flags_json, status, requested_source, resolved_resource_id,
+  resolved_working_directory, last_error, created_at, updated_at, revision
 `;
 
 function parseLaunchFlagsObject(json: string): Record<string, unknown> {
@@ -304,15 +309,37 @@ function requireBranchPayload(value: unknown): BranchPreparedPayload {
   const branchName = typeof body.branchName === 'string' ? body.branchName.trim() : '';
   const baseBranch = typeof body.baseBranch === 'string' ? body.baseBranch.trim() : '';
   const worktreePath = typeof body.worktreePath === 'string' ? body.worktreePath.trim() : '';
+  const resourceKey = typeof body.resourceKey === 'string' ? body.resourceKey.trim() : '';
   const action = body.action;
   const cycle = typeof body.cycle === 'number' && Number.isFinite(body.cycle) ? body.cycle : 1;
-  if (!branchName || !baseBranch || !worktreePath) {
-    throw new ApiError(400, 'branchName, baseBranch, and worktreePath are required');
+  if (!branchName || !baseBranch || !worktreePath || !resourceKey) {
+    throw new ApiError(
+      400,
+      'branchName, baseBranch, worktreePath, and resourceKey are required'
+    );
   }
   if (action !== 'create' && action !== 'reuse' && action !== 'new_cycle') {
     throw new ApiError(400, 'Invalid branch preparation action');
   }
-  return { branchName, baseBranch, worktreePath, action, cycle };
+  return { branchName, baseBranch, worktreePath, resourceKey, action, cycle };
+}
+
+async function resolveBranchResourceKey({
+  tx,
+  branch,
+  requestRow
+}: {
+  tx: DatabaseClient;
+  branch: BranchPreparedPayload;
+  requestRow: ExecutionRequestRow | undefined;
+}): Promise<string> {
+  if (branch.resourceKey.trim()) return branch.resourceKey.trim();
+  if (!requestRow?.resolved_resource_id) return 'project';
+  const row = (await tx.get<{ resource_key: string | null }>(
+    `SELECT resource_key FROM project_resources WHERE id = ?`,
+    [requestRow.resolved_resource_id]
+  )) as { resource_key: string | null } | undefined;
+  return row?.resource_key?.trim() || 'project';
 }
 
 async function recordBranchPreparedTx(
@@ -340,17 +367,18 @@ async function recordBranchPreparedTx(
   if (!mission) throw new ApiError(404, 'Mission not found');
 
   let objectiveId: string | null = null;
+  let requestRow: ExecutionRequestRow | undefined;
   if (requestId) {
-    const row = await tx.get<ExecutionRequestRow>(
+    requestRow = await tx.get<ExecutionRequestRow>(
       `SELECT ${EXECUTION_REQUEST_COLUMNS} FROM execution_requests
          WHERE id = ? AND workspace_id = ?`,
       [requestId, workspaceId]
     );
-    if (!row) throw new ApiError(404, 'Execution request not found');
-    objectiveId = row.objective_id;
-    const flags = parseLaunchFlagsObject(row.launch_flags_json);
+    if (!requestRow) throw new ApiError(404, 'Execution request not found');
+    objectiveId = requestRow.objective_id;
+    const flags = parseLaunchFlagsObject(requestRow.launch_flags_json);
     flags.branchAutomation = branch;
-    const revision = row.revision + 1;
+    const revision = requestRow.revision + 1;
     await tx.run(
       `UPDATE execution_requests
           SET launch_flags_json = ?,
@@ -358,18 +386,18 @@ async function recordBranchPreparedTx(
               updated_at = ?,
               revision = ?
         WHERE id = ?`,
-      [JSON.stringify(flags), branch.worktreePath, nowIso(), revision, row.id]
+      [JSON.stringify(flags), branch.worktreePath, nowIso(), revision, requestRow.id]
     );
     await recordChange(
       {
         workspaceId,
         entityType: 'execution_request',
-        entityId: row.id,
+        entityId: requestRow.id,
         operation: 'update',
         entityRevision: revision,
-        projectId: row.project_id,
-        missionId: row.mission_id,
-        objectiveId: row.objective_id,
+        projectId: requestRow.project_id,
+        missionId: requestRow.mission_id,
+        objectiveId: requestRow.objective_id,
         changedFields: ['launch_flags_json', 'resolved_working_directory']
       },
       tx
@@ -440,6 +468,48 @@ async function recordBranchPreparedTx(
     payload: branch as unknown as Record<string, unknown>,
     now
   });
+
+  const executionTargetId =
+    requestRow?.claimed_by_execution_target_id?.trim() ||
+    requestRow?.execution_target_id?.trim() ||
+    null;
+  if (executionTargetId) {
+    const resourceKey = await resolveBranchResourceKey({ tx, branch, requestRow });
+    const existing = await tx.get<{ id: string }>(
+      `SELECT id FROM mission_branch_observations
+        WHERE execution_target_id = ? AND mission_id = ? AND resource_key = ?`,
+      [executionTargetId, mission.id, resourceKey]
+    );
+    if (existing) {
+      await tx.run(
+        `UPDATE mission_branch_observations
+            SET status = ?, dirty = ?, worktree_path = ?, observed_at = ?, updated_at = ?
+          WHERE id = ?`,
+        ['created', 0, branch.worktreePath, now, now, existing.id]
+      );
+    } else {
+      await tx.run(
+        `INSERT INTO mission_branch_observations
+           (id, workspace_id, execution_target_id, mission_id, resource_key, status, dirty,
+            worktree_path, observed_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          newId(),
+          workspaceId,
+          executionTargetId,
+          mission.id,
+          resourceKey,
+          'created',
+          0,
+          branch.worktreePath,
+          now,
+          now,
+          now
+        ]
+      );
+    }
+  }
+
   return { ok: true };
 }
 

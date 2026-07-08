@@ -29,6 +29,7 @@ describe('project metadata', () => {
     assert.deepEqual(readProjectJsonLink(projectJsonPath), {
       projectId: 'project-1',
       resourceId: 'resource-1',
+      resourceKey: null,
       resourceIdsByExecutionTarget: {},
       isPrimary: true
     });
@@ -40,6 +41,7 @@ describe('project metadata', () => {
       directoryPath: directory,
       projectId: 'project-1',
       resourceId: 'resource-local',
+      resourceKey: 'openoverlord',
       executionTargetId: 'target-local',
       isPrimary: true
     });
@@ -48,6 +50,7 @@ describe('project metadata', () => {
       directoryPath: directory,
       projectId: 'project-1',
       resourceId: 'resource-remote',
+      resourceKey: 'openoverlord',
       executionTargetId: 'target-remote',
       isPrimary: true
     });
@@ -55,10 +58,12 @@ describe('project metadata', () => {
     const parsed = JSON.parse(readFileSync(projectJsonPath, 'utf8')) as {
       version: number;
       resourceId: string;
+      resourceKey?: string;
       resourceIdsByExecutionTarget?: Record<string, string>;
     };
     assert.equal(parsed.version, 2);
     assert.equal(parsed.resourceId, 'resource-remote');
+    assert.equal(parsed.resourceKey, 'openoverlord');
     assert.deepEqual(parsed.resourceIdsByExecutionTarget, {
       'target-local': 'resource-local',
       'target-remote': 'resource-remote'
@@ -68,6 +73,11 @@ describe('project metadata', () => {
       readProjectJsonLink(projectJsonPath, { preferredExecutionTargetId: 'target-local' })
         ?.resourceId,
       'resource-local'
+    );
+    assert.equal(
+      readProjectJsonLink(projectJsonPath, { preferredExecutionTargetId: 'target-local' })
+        ?.resourceKey,
+      'openoverlord'
     );
     assert.equal(
       readProjectJsonLink(projectJsonPath, { preferredExecutionTargetId: 'target-remote' })

@@ -84,7 +84,7 @@ Prompts interactively for omitted fields on a TTY; `--no-input` fails fast inste
 | Command | Description | Positional args | Flags |
 | ------- | ----------- | --------------- | ----- |
 | `ovld create-project` | Create a project and optionally link the current directory | — | `--name <name>` (required), `--directory <path>`, `--no-directory`, `--json` |
-| `ovld add-cwd` | Link a checkout directory to a project | — | `--directory <path>` (default: cwd), `--project-id <id-or-name>`, `--primary` (`true`, `false`) (default: true), `--json` |
+| `ovld add-cwd` | Link a checkout directory to a project | — | `--directory <path>` (default: cwd), `--project-id <id-or-name>`, `--key <resourceKey>`, `--primary` (`true`, `false`) (default: true), `--json` |
 
 When `--project-id` is omitted on an interactive terminal, the CLI prompts to pick a project. Non-interactively it uses the first available project.
 

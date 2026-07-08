@@ -25,6 +25,7 @@ export async function reportMissionBranchObservation({
   const observedAt = branch.observedAt ?? new Date().toISOString();
   const observation: MissionBranchObservationInput = {
     missionId,
+    resourceKey: resource.resourceKey,
     status: branch.status,
     dirty: branch.dirty,
     worktreePath: branch.worktreePath,

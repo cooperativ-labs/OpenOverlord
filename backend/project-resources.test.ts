@@ -31,26 +31,33 @@ test('project resource mutations keep primaries scoped per execution target', as
 
   const globalResource = await createProjectResource(project.id, {
     directoryPath: '/tmp/project-global',
+    resourceKey: 'global',
     executionTargetId: null,
     isPrimary: true
   });
   const firstLocalResource = await createProjectResource(project.id, {
     directoryPath: '/tmp/project-local-1',
+    resourceKey: 'local-one',
     executionTargetId: launchSettings.executionTargetId,
     isPrimary: true
   });
   const secondLocalResource = await createProjectResource(project.id, {
     directoryPath: '/tmp/project-local-2',
+    resourceKey: 'local-two',
     executionTargetId: launchSettings.executionTargetId,
     isPrimary: false
   });
 
-  await updateProjectResource(project.id, secondLocalResource.id, { isPrimary: true });
+  await updateProjectResource(project.id, secondLocalResource.id, {
+    isPrimary: true,
+    resourceKey: 'local-primary'
+  });
 
   let rows = await listProjectResources(project.id);
   assert.equal(rows.find(row => row.id === globalResource.id)?.isPrimary, true);
   assert.equal(rows.find(row => row.id === firstLocalResource.id)?.isPrimary, false);
   assert.equal(rows.find(row => row.id === secondLocalResource.id)?.isPrimary, true);
+  assert.equal(rows.find(row => row.id === secondLocalResource.id)?.resourceKey, 'local-primary');
 
   await deleteProjectResource(project.id, secondLocalResource.id);
 
@@ -78,6 +85,7 @@ test('createProject can create an initial primary resource atomically', async ()
   const rows = await listProjectResources(project.id);
   assert.equal(rows.length, 1);
   assert.equal(rows[0]?.path, resourceDir);
+  assert.equal(rows[0]?.resourceKey, path.basename(resourceDir).toLowerCase());
   assert.equal(rows[0]?.isPrimary, true);
   assert.equal(rows[0]?.executionTargetId, launchSettings.executionTargetId);
 });

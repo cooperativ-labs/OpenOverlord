@@ -83,6 +83,7 @@ const api = {
     directoryPath: string;
     projectId: string;
     resourceId: string;
+    resourceKey?: string | null;
     executionTargetId?: string | null;
     isPrimary: boolean;
   }): Promise<boolean> => ipcRenderer.invoke('overlord:write-project-metadata', payload),

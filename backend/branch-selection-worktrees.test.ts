@@ -81,6 +81,7 @@ describe('branch selection and worktree management', () => {
         branchName: 'overlord/custom-pick',
         baseBranch: 'main',
         worktreePath: '/tmp/none',
+        resourceKey: 'primary-repo',
         action: 'create',
         cycle: 1
       }
@@ -128,6 +129,7 @@ describe('branch selection and worktree management', () => {
         branchName: 'overlord/per-objective-1',
         baseBranch: 'main',
         worktreePath: '/tmp/none',
+        resourceKey: 'primary-repo',
         action: 'create',
         cycle: 1
       }

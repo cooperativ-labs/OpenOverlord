@@ -24,8 +24,14 @@ import {
   type ObjectiveSummary,
   type SharedContextEntry
 } from './missions.js';
+import { ensureActingDeviceTarget } from './execution-targets.js';
 import { loadAgentInstructionsForWorkspaceUser } from './profiles.js';
 import { resolveLaunchConfig, resolveLaunchExecutionTarget } from './project-execution-target.js';
+import {
+  buildProjectResourceManifest,
+  formatProjectResourcesInstructions,
+  type ProjectResourceManifestEntry
+} from './project-resource-manifest.js';
 import { discoverProject } from './projects.js';
 import { generateSessionKey, hashSessionKey, newId, nowIso } from './util.js';
 import { enqueueWebhookEvent } from './webhook-events.js';
@@ -51,6 +57,7 @@ export type AttachResponse = {
   attachments: AttachmentSummary[];
   sharedState: SharedContextEntry[];
   agentInstructions: string;
+  projectResources?: ProjectResourceManifestEntry[];
 };
 
 type SessionRow = {
@@ -236,12 +243,14 @@ function assembleAgentInstructions({
   mission,
   objective,
   projectName,
-  agentInstructions
+  agentInstructions,
+  projectResourcesSection = null
 }: {
   mission: MissionSummary;
   objective: ObjectiveSummary;
   projectName: string;
   agentInstructions: string | null;
+  projectResourcesSection?: string | null;
 }): string {
   const objectiveLabel = objective.title?.trim() || `Objective ${objective.position + 1}`;
 
@@ -259,6 +268,8 @@ function assembleAgentInstructions({
     '- Previous and future work are in `previousObjectives` and `futureObjectives`.',
     '- History, attachments, artifacts, and shared context are in their structured top-level fields.',
     '',
+    projectResourcesSection ? '' : null,
+    projectResourcesSection,
     `## Required Protocol Workflow`,
     PROTOCOL_WORKFLOW,
     '',
@@ -273,14 +284,79 @@ function assembleAgentInstructions({
     .join('\n');
 }
 
+async function resolveProtocolExecutionTargetId({
+  ctx,
+  executionTargetId,
+  executionRequestId,
+  missionId,
+  objectiveId
+}: {
+  ctx: ServiceContext;
+  executionTargetId?: string | null;
+  executionRequestId?: string | null;
+  missionId?: string;
+  objectiveId?: string;
+}): Promise<string | null> {
+  const explicit = executionTargetId?.trim();
+  if (explicit) return explicit;
+
+  if (executionRequestId?.trim() && missionId && objectiveId) {
+    const row = (await ctx.db.get(
+      `SELECT claimed_by_execution_target_id, execution_target_id
+         FROM execution_requests
+        WHERE id = ?
+          AND workspace_id = ?
+          AND mission_id = ?
+          AND objective_id = ?
+          AND deleted_at IS NULL`,
+      [executionRequestId.trim(), ctx.workspace.id, missionId, objectiveId]
+    )) as
+      | {
+          claimed_by_execution_target_id: string | null;
+          execution_target_id: string | null;
+        }
+      | undefined;
+    if (row) {
+      return row.claimed_by_execution_target_id ?? row.execution_target_id ?? null;
+    }
+  }
+
+  try {
+    return (await ensureActingDeviceTarget({ ctx })).executionTargetId;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveSessionResourceId({
+  ctx,
+  sessionId
+}: {
+  ctx: ServiceContext;
+  sessionId: string;
+}): Promise<string | null> {
+  const row = (await ctx.db.get(
+    `SELECT resolved_resource_id
+       FROM execution_requests
+      WHERE launched_session_id = ?
+        AND deleted_at IS NULL
+      ORDER BY updated_at DESC
+      LIMIT 1`,
+    [sessionId]
+  )) as { resolved_resource_id: string | null } | undefined;
+  return row?.resolved_resource_id ?? null;
+}
+
 async function contextForObjective({
   ctx,
   mission,
-  objective
+  objective,
+  executionTargetId = null
 }: {
   ctx: ServiceContext;
   mission: MissionSummary;
   objective: ObjectiveSummary;
+  executionTargetId?: string | null;
 }): Promise<Omit<AttachResponse, 'session'>> {
   const objectives = await listObjectives({ ctx, missionId: mission.id });
   const history = await listMissionEvents({ ctx, missionId: mission.id });
@@ -305,6 +381,14 @@ async function contextForObjective({
     workspaceUserId: ctx.actorWorkspaceUserId
   });
 
+  const projectResources = await buildProjectResourceManifest({
+    ctx,
+    projectId: mission.projectId,
+    executionTargetId,
+    currentResourceKey: objective.resourceKey ?? null
+  });
+  const projectResourcesSection = formatProjectResourcesInstructions(projectResources);
+
   return {
     mission,
     objective,
@@ -314,26 +398,41 @@ async function contextForObjective({
     artifacts,
     attachments,
     sharedState,
+    ...(projectResources.length > 0 ? { projectResources } : {}),
     agentInstructions: assembleAgentInstructions({
       mission,
       objective,
       projectName: project.name,
-      agentInstructions
+      agentInstructions,
+      projectResourcesSection
     })
   };
 }
 
 export async function loadMissionContext({
   ctx,
-  missionId
+  missionId,
+  executionTargetId = null
 }: {
   ctx: ServiceContext;
   missionId: string;
+  executionTargetId?: string | null;
 }): Promise<Omit<AttachResponse, 'session'>> {
   const mission = await getMissionSummary({ ctx, missionId });
   const objectives = await listObjectives({ ctx, missionId: mission.id });
   const objective = resolveActiveObjective(objectives);
-  return await contextForObjective({ ctx, mission, objective });
+  const resolvedTargetId = await resolveProtocolExecutionTargetId({
+    ctx,
+    executionTargetId,
+    missionId: mission.id,
+    objectiveId: objective.id
+  });
+  return await contextForObjective({
+    ctx,
+    mission,
+    objective,
+    executionTargetId: resolvedTargetId
+  });
 }
 
 export async function attachSession({
@@ -344,7 +443,8 @@ export async function attachSession({
   connectionMethod = 'cli',
   existingSessionKey,
   externalSessionId,
-  executionRequestId
+  executionRequestId,
+  executionTargetId = null
 }: {
   ctx: ServiceContext;
   missionId: string;
@@ -354,9 +454,24 @@ export async function attachSession({
   existingSessionKey?: string | null;
   externalSessionId?: string | null;
   executionRequestId?: string | null;
+  executionTargetId?: string | null;
 }): Promise<AttachResponse & { sessionKey: string }> {
-  const context = await loadMissionContext({ ctx, missionId });
-  const objective = context.objective;
+  const mission = await getMissionSummary({ ctx, missionId });
+  const objectives = await listObjectives({ ctx, missionId: mission.id });
+  const objective = resolveActiveObjective(objectives);
+  const resolvedTargetId = await resolveProtocolExecutionTargetId({
+    ctx,
+    executionTargetId,
+    executionRequestId,
+    missionId: mission.id,
+    objectiveId: objective.id
+  });
+  const context = await contextForObjective({
+    ctx,
+    mission,
+    objective,
+    executionTargetId: resolvedTargetId
+  });
 
   if (existingSessionKey) {
     const existing = await getSessionByKey(ctx, existingSessionKey);
@@ -377,8 +492,18 @@ export async function attachSession({
       sessionId: existing.id,
       executionRequestId: executionRequestId ?? null
     });
+    const refreshedObjective =
+      (await listObjectives({ ctx, missionId: context.mission.id })).find(
+        candidate => candidate.id === existing.objective_id
+      ) ?? context.objective;
+    const refreshedContext = await contextForObjective({
+      ctx,
+      mission: context.mission,
+      objective: refreshedObjective,
+      executionTargetId: resolvedTargetId
+    });
     return {
-      ...context,
+      ...refreshedContext,
       session: {
         id: existing.id,
         sessionKey: existingSessionKey,
@@ -496,9 +621,15 @@ export async function attachSession({
     objectives: refreshedObjectives,
     currentObjective: refreshedObjective
   });
+  const refreshedContext = await contextForObjective({
+    ctx,
+    mission: refreshedMission,
+    objective: refreshedObjective,
+    executionTargetId: resolvedTargetId
+  });
 
   return {
-    ...context,
+    ...refreshedContext,
     mission: refreshedMission,
     objective: refreshedObjective,
     previousObjectives: refreshedSplit.previousObjectives,
@@ -713,7 +844,8 @@ export async function resumeFollowUp({
   modelIdentifier,
   connectionMethod = 'cli',
   externalSessionId,
-  summary = 'Beginning follow-up work.'
+  summary = 'Beginning follow-up work.',
+  executionTargetId = null
 }: {
   ctx: ServiceContext;
   missionId: string;
@@ -723,6 +855,7 @@ export async function resumeFollowUp({
   connectionMethod?: string;
   externalSessionId?: string | null;
   summary?: string | null;
+  executionTargetId?: string | null;
 }): Promise<AttachResponse & { sessionKey: string }> {
   const trimmedSummary = summary?.trim() || 'Beginning follow-up work.';
   const mission = await getMissionSummary({ ctx, missionId });
@@ -854,7 +987,13 @@ export async function resumeFollowUp({
   const context = await contextForObjective({
     ctx,
     mission: refreshedMission,
-    objective: refreshedObjective
+    objective: refreshedObjective,
+    executionTargetId: await resolveProtocolExecutionTargetId({
+      ctx,
+      executionTargetId,
+      missionId: mission.id,
+      objectiveId: selectedObjective.id
+    })
   });
 
   return {
@@ -937,6 +1076,8 @@ async function upsertChangedFiles({
   eventId: string | null;
   now: string;
 }): Promise<void> {
+  const resourceId = await resolveSessionResourceId({ ctx, sessionId: session.id });
+
   for (const file of files) {
     const normalizedPath = file.filePath.replace(/\\/g, '/');
     const existing = (await ctx.db.get(
@@ -950,17 +1091,18 @@ async function upsertChangedFiles({
         `UPDATE changed_files
            SET vcs_status = ?, current_diff_state = 'present', last_observed_at = ?,
                last_observed_event_id = COALESCE(?, last_observed_event_id),
+               resource_id = COALESCE(?, resource_id),
                updated_at = ?, revision = revision + 1
            WHERE id = ?`,
-        [file.vcsStatus ?? null, now, eventId, now, existing.id]
+        [file.vcsStatus ?? null, now, eventId, resourceId, now, existing.id]
       );
     } else {
       await ctx.db.run(
         `INSERT INTO changed_files
-             (id, workspace_id, project_id, mission_id, objective_id, session_id,
+             (id, workspace_id, project_id, mission_id, objective_id, session_id, resource_id,
               file_path, vcs_status, current_diff_state, first_observed_at, last_observed_at,
               last_observed_event_id, observed_metadata_json, created_at, updated_at, revision)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'present', ?, ?, ?, '{}', ?, ?, 1)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'present', ?, ?, ?, '{}', ?, ?, 1)`,
         [
           newId(),
           ctx.workspace.id,
@@ -968,6 +1110,7 @@ async function upsertChangedFiles({
           mission.id,
           session.objective_id,
           session.id,
+          resourceId,
           normalizedPath,
           file.vcsStatus ?? null,
           now,
@@ -1850,7 +1993,12 @@ export async function protocolCreate({
 }: {
   ctx: ServiceContext;
   projectId?: string | null;
-  objectives: Array<{ objective: string; title?: string | null; autoAdvance?: boolean }>;
+  objectives: Array<{
+    objective: string;
+    title?: string | null;
+    autoAdvance?: boolean;
+    resourceKey?: string | null;
+  }>;
   title?: string | null;
 }): Promise<{ mission: MissionSummary; objectives: ObjectiveSummary[] }> {
   const resolvedProjectId = projectId
@@ -1874,7 +2022,12 @@ export async function protocolPrompt({
 }: {
   ctx: ServiceContext;
   projectId?: string | null;
-  objectives: Array<{ objective: string; title?: string | null; autoAdvance?: boolean }>;
+  objectives: Array<{
+    objective: string;
+    title?: string | null;
+    autoAdvance?: boolean;
+    resourceKey?: string | null;
+  }>;
   title?: string | null;
   agentIdentifier?: string;
   externalSessionId?: string | null;

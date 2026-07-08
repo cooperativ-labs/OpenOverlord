@@ -365,6 +365,7 @@ interface ProjectResourceRow {
   workspace_id: string;
   project_id: string;
   execution_target_id: string | null;
+  resource_key: string;
   type: string;
   label: string | null;
   path: string;
@@ -417,6 +418,7 @@ interface ObjectiveRow {
   assigned_agent: string | null;
   model: string | null;
   reasoning_effort: string | null;
+  resource_key: string | null;
   created_at: string;
   updated_at: string;
   revision: number;
@@ -479,6 +481,7 @@ async function toProjectResourceDto(
     workspaceId: r.workspace_id,
     projectId: r.project_id,
     executionTargetId: r.execution_target_id,
+    resourceKey: r.resource_key,
     type: r.type as ProjectResourceDto['type'],
     label: r.label,
     path: r.path,
@@ -534,7 +537,7 @@ async function getProjectResourceRow(
   await getProject(projectId, db);
   const row = (await db.get(
     `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
-              is_primary, status, created_at, updated_at, revision
+              resource_key, is_primary, status, created_at, updated_at, revision
          FROM project_resources
         WHERE id = ? AND project_id = ? AND deleted_at IS NULL`,
     [resourceId, projectId]
@@ -859,6 +862,11 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
   );
   const projectSlug = await getProjectSlug(row.project_id, row.workspace_id);
   const worktreeRoot = resolveWorktreeRoot();
+  const resourceKey = await primaryResourceKey(
+    row.project_id,
+    row.workspace_id,
+    executionTargetId
+  );
   const overrideBranch = row.branch_override?.trim() || null;
   const worktreePreference = parseWorktreePreference(row.worktree_preference);
   const { automationEnabled, willPrepareBranch, willUseWorktree } = await resolveBranchAutomation(
@@ -874,7 +882,12 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
       branchName: name,
       executionTargetId
     });
-    const canonical = missionWorktreePath({ worktreeRoot, projectSlug, branch: name });
+    const canonical = missionWorktreePath({
+      worktreeRoot,
+      projectSlug,
+      resourceKey,
+      branch: name
+    });
     const worktreePath = await resolvePreparedWorktreePath({
       projectId: row.project_id,
       branchName: name,
@@ -901,7 +914,8 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
     const observations = await loadMissionBranchObservationsForMissions({
       ctx: await buildWebappServiceContextForWorkspace(row.workspace_id),
       executionTargetId,
-      missionIds: [row.id]
+      missionIds: [row.id],
+      resourceKey
     });
     return mergeMissionBranchObservation({
       controlPlaneBranch: branch,
@@ -920,6 +934,7 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
   const preview = previewMissionBranch({
     mission: { title: row.title, sequence: row.sequence_number },
     project: { slug: projectSlug },
+    resourceKey,
     base: baseBranch,
     worktreeRoot
   });
@@ -930,7 +945,12 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
     worktreePath:
       previewName === preview.branch
         ? preview.worktreePath
-        : missionWorktreePath({ worktreeRoot, projectSlug, branch: previewName }),
+        : missionWorktreePath({
+            worktreeRoot,
+            projectSlug,
+            resourceKey,
+            branch: previewName
+          }),
     status: 'pending',
     // No branch/worktree exists yet, so there is nothing to be dirty.
     dirty: false,
@@ -975,7 +995,7 @@ async function primaryResource(
   projectId: string,
   workspaceId: string,
   executionTargetId?: string | null
-): Promise<{ id: string; path: string } | null> {
+): Promise<{ id: string; path: string; resourceKey: string } | null> {
   const targetId =
     executionTargetId === undefined
       ? await resolveProjectResourceScopeTargetId(projectId, workspaceId)
@@ -983,7 +1003,7 @@ async function primaryResource(
 
   const row = (await (targetId === null
     ? requireDatabaseClient().get(
-        `SELECT id, path FROM project_resources
+        `SELECT id, path, resource_key FROM project_resources
             WHERE project_id = ? AND workspace_id = ?
               AND status = 'active' AND deleted_at IS NULL
             ORDER BY is_primary DESC, created_at ASC
@@ -991,7 +1011,7 @@ async function primaryResource(
         [projectId, workspaceId]
       )
     : requireDatabaseClient().get(
-        `SELECT id, path FROM project_resources
+        `SELECT id, path, resource_key FROM project_resources
             WHERE project_id = ? AND workspace_id = ?
               AND (execution_target_id = ? OR execution_target_id IS NULL)
               AND status = 'active' AND deleted_at IS NULL
@@ -1001,8 +1021,70 @@ async function primaryResource(
               created_at ASC
             LIMIT 1`,
         [projectId, workspaceId, targetId, targetId]
-      ))) as { id: string; path: string } | undefined;
-  return row ?? null;
+      ))) as { id: string; path: string; resource_key: string } | undefined;
+  if (!row) return null;
+  return {
+    id: row.id,
+    path: row.path,
+    resourceKey: row.resource_key?.trim() || 'project'
+  };
+}
+
+async function resourceByKey({
+  projectId,
+  workspaceId,
+  resourceKey,
+  executionTargetId
+}: {
+  projectId: string;
+  workspaceId: string;
+  resourceKey: string;
+  executionTargetId?: string | null;
+}): Promise<{ id: string; path: string; resourceKey: string } | null> {
+  const normalizedKey = resourceKey.trim();
+  if (!normalizedKey) return null;
+  const targetId =
+    executionTargetId === undefined
+      ? await resolveProjectResourceScopeTargetId(projectId, workspaceId)
+      : executionTargetId;
+
+  const row = (await (targetId === null
+    ? requireDatabaseClient().get(
+        `SELECT id, path, resource_key FROM project_resources
+            WHERE project_id = ? AND workspace_id = ?
+              AND resource_key = ?
+              AND status = 'active' AND deleted_at IS NULL
+            ORDER BY is_primary DESC, created_at ASC
+            LIMIT 1`,
+        [projectId, workspaceId, normalizedKey]
+      )
+    : requireDatabaseClient().get(
+        `SELECT id, path, resource_key FROM project_resources
+            WHERE project_id = ? AND workspace_id = ?
+              AND resource_key = ?
+              AND (execution_target_id = ? OR execution_target_id IS NULL)
+              AND status = 'active' AND deleted_at IS NULL
+            ORDER BY
+              CASE WHEN execution_target_id = ? THEN 0 ELSE 1 END,
+              is_primary DESC,
+              created_at ASC
+            LIMIT 1`,
+        [projectId, workspaceId, normalizedKey, targetId, targetId]
+      ))) as { id: string; path: string; resource_key: string } | undefined;
+  if (!row) return null;
+  return {
+    id: row.id,
+    path: row.path,
+    resourceKey: row.resource_key?.trim() || normalizedKey
+  };
+}
+
+async function primaryResourceKey(
+  projectId: string,
+  workspaceId: string,
+  executionTargetId?: string | null
+): Promise<string> {
+  return (await primaryResource(projectId, workspaceId, executionTargetId))?.resourceKey ?? 'project';
 }
 
 async function primaryResourcePath(
@@ -1013,7 +1095,10 @@ async function primaryResourcePath(
   return (await primaryResource(projectId, workspaceId, executionTargetId))?.path ?? null;
 }
 
-async function loadBranchActionContext(missionRef: string): Promise<BranchActionContext> {
+async function loadBranchActionContext(
+  missionRef: string,
+  options: { resourceKey?: unknown } = {}
+): Promise<BranchActionContext> {
   const row = await getMissionRow(missionRef, undefined, PERMISSIONS.MISSION_UPDATE);
   const branchName = row.active_branch?.trim();
   if (!branchName) {
@@ -1028,26 +1113,31 @@ async function loadBranchActionContext(missionRef: string): Promise<BranchAction
     row.project_id,
     row.workspace_id
   );
-  const primaryRepoPath = await primaryResourcePath(
-    row.project_id,
-    row.workspace_id,
-    executionTargetId
-  );
-  if (!primaryRepoPath) {
+  const explicitKey = typeof options.resourceKey === 'string' ? options.resourceKey.trim() : '';
+  const resource = explicitKey
+    ? await resourceByKey({
+        projectId: row.project_id,
+        workspaceId: row.workspace_id,
+        resourceKey: explicitKey,
+        executionTargetId
+      })
+    : await primaryResource(row.project_id, row.workspace_id, executionTargetId);
+  if (!resource) {
     throw new ApiError(
       409,
-      'This project has no connected primary working directory on this device.',
+      explicitKey
+        ? `Project resource key "${explicitKey}" is not connected on this device.`
+        : 'This project has no connected primary working directory on this device.',
       undefined,
-      'BRANCH_NO_PRIMARY'
+      explicitKey ? 'BRANCH_RESOURCE_NOT_CONNECTED' : 'BRANCH_NO_PRIMARY'
     );
   }
-  // A worktree-mode mission lives in its dedicated worktree (the canonical path);
-  // a branch-only mission (coo:9) is checked out in the primary repo. Resolve the
-  // location git actually has the branch checked out at so the action operates in
-  // the right place, falling back to the canonical worktree path.
+  const projectSlug = await getProjectSlug(row.project_id, row.workspace_id);
+  const worktreeRoot = resolveWorktreeRoot();
   const canonicalWorktree = missionWorktreePath({
-    worktreeRoot: resolveWorktreeRoot(),
-    projectSlug: await getProjectSlug(row.project_id, row.workspace_id),
+    worktreeRoot,
+    projectSlug,
+    resourceKey: resource.resourceKey,
     branch: branchName
   });
   return {
@@ -1068,7 +1158,7 @@ async function loadBranchActionContext(missionRef: string): Promise<BranchAction
       fallback: canonicalWorktree,
       executionTargetId
     }),
-    primaryRepoPath
+    primaryRepoPath: resource.path
   };
 }
 
@@ -1163,7 +1253,7 @@ export async function performBranchAction(
   ) {
     throw new ApiError(400, 'Invalid branch action.');
   }
-  const ctx = await loadBranchActionContext(missionRef);
+  const ctx = await loadBranchActionContext(missionRef, { resourceKey: body.resourceKey });
   if (
     body.confirmBusy !== true &&
     (await missionHasActiveExecution(ctx.missionId, ctx.workspaceId))
@@ -1446,7 +1536,8 @@ function toObjectiveDto(r: ObjectiveRow): ObjectiveDto {
     updatedAt: r.updated_at,
     revision: r.revision,
     externalSessionId: r.external_session_id ?? null,
-    branch: r.branch ?? null
+    branch: r.branch ?? null,
+    resourceKey: r.resource_key?.trim() || null
   };
 }
 
@@ -1457,6 +1548,41 @@ function slugify(input: string): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 48);
   return base.length > 0 ? base : 'project';
+}
+
+function deriveProjectResourceKey({
+  resourceKey,
+  label,
+  directoryPath
+}: {
+  resourceKey?: string | null;
+  label?: string | null;
+  directoryPath: string;
+}): string {
+  const explicit = resourceKey?.trim();
+  if (explicit) return slugify(explicit);
+  const labelKey = label?.trim();
+  if (labelKey) return slugify(labelKey);
+  return slugify(path.basename(path.resolve(directoryPath)));
+}
+
+async function assertObjectiveResourceKeyOnProject(
+  db: DatabaseClient,
+  projectId: string,
+  resourceKey: string | null | undefined
+): Promise<string | null> {
+  const normalized = resourceKey?.trim() || null;
+  if (!normalized) return null;
+  const row = (await db.get(
+    `SELECT 1 AS ok FROM project_resources
+        WHERE project_id = ? AND resource_key = ? AND deleted_at IS NULL
+        LIMIT 1`,
+    [projectId, normalized]
+  )) as { ok: number } | undefined;
+  if (!row) {
+    throw new ApiError(409, `Project resource key "${normalized}" is not linked to this project.`);
+  }
+  return normalized;
 }
 
 // ---- Projects ------------------------------------------------------------
@@ -2082,7 +2208,7 @@ export async function listProjectResources(projectId: string): Promise<ProjectRe
 
   const rows = (await requireDatabaseClient().all(
     `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
-              is_primary, status, created_at, updated_at, revision
+              resource_key, is_primary, status, created_at, updated_at, revision
          FROM project_resources
         WHERE project_id = ? AND deleted_at IS NULL
         ORDER BY status ASC, is_primary DESC, label ASC, path ASC`,
@@ -2104,6 +2230,11 @@ async function insertProjectResource(
 ): Promise<string> {
   const resourcePath = (body.directoryPath ?? body.path ?? '').trim();
   if (!resourcePath) throw new ApiError(400, pathRequiredMessage);
+  const resourceKey = deriveProjectResourceKey({
+    resourceKey: body.resourceKey,
+    label: body.label,
+    directoryPath: resourcePath
+  });
   const executionTargetId = await resolveResourceExecutionTargetId(db, body.executionTargetId);
 
   const now = nowIso();
@@ -2114,14 +2245,15 @@ async function insertProjectResource(
   const resourceId = newId();
   await db.run(
     `INSERT INTO project_resources
-       (id, workspace_id, project_id, execution_target_id, type, label, path,
+       (id, workspace_id, project_id, execution_target_id, resource_key, type, label, path,
         is_primary, status, metadata_json, created_at, updated_at, revision)
-     VALUES (?, ?, ?, ?, 'local_directory', ?, ?, ?, 'active', '{}', ?, ?, 1)`,
+     VALUES (?, ?, ?, ?, ?, 'local_directory', ?, ?, ?, 'active', '{}', ?, ?, 1)`,
     [
       resourceId,
       project.workspaceId,
       project.id,
       executionTargetId,
+      resourceKey,
       body.label ?? null,
       resourcePath,
       bindBool(DATABASE_DIALECT, body.isPrimary !== false),
@@ -2139,7 +2271,7 @@ async function insertProjectResource(
       operation: 'insert',
       entityRevision: 1,
       projectId: project.id,
-      changedFields: ['path', 'is_primary'],
+      changedFields: ['path', 'resource_key', 'is_primary'],
       workspaceId: project.workspaceId,
       actorWorkspaceUserId: options.actorWorkspaceUserId
     },
@@ -2159,7 +2291,7 @@ export async function createProjectResource(
 
     const row = (await tx.get(
       `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
-                is_primary, status, created_at, updated_at, revision
+                resource_key, is_primary, status, created_at, updated_at, revision
            FROM project_resources
           WHERE id = ?`,
       [id]
@@ -2176,6 +2308,26 @@ export async function updateProjectResource(
   return requireDatabaseClient().transaction(async tx => {
     const existing = await getProjectResourceRow(tx, projectId, resourceId);
     const now = nowIso();
+    const changedFields: string[] = [];
+    let revision = existing.revision;
+
+    if (body.resourceKey !== undefined) {
+      const nextResourceKey = deriveProjectResourceKey({
+        resourceKey: body.resourceKey,
+        label: existing.label,
+        directoryPath: existing.path
+      });
+      if (nextResourceKey !== existing.resource_key) {
+        revision += 1;
+        await tx.run(
+          `UPDATE project_resources
+              SET resource_key = ?, updated_at = ?, revision = ?
+            WHERE id = ?`,
+          [nextResourceKey, now, revision, resourceId]
+        );
+        changedFields.push('resource_key');
+      }
+    }
 
     if (body.isPrimary === true && !isTruthyFlag(existing.is_primary)) {
       await clearPrimaryResourcesForTarget(tx, {
@@ -2185,18 +2337,23 @@ export async function updateProjectResource(
       });
       await tx.run(
         `UPDATE project_resources
-            SET is_primary = ?, updated_at = ?, revision = revision + 1
+            SET is_primary = ?, updated_at = ?, revision = ?
           WHERE id = ?`,
-        [bindBool(DATABASE_DIALECT, true), now, resourceId]
+        [bindBool(DATABASE_DIALECT, true), now, revision + 1, resourceId]
       );
+      revision += 1;
+      changedFields.push('is_primary');
+    }
+
+    if (changedFields.length > 0) {
       await recordChange(
         {
           entityType: 'project_resource',
           entityId: resourceId,
           operation: 'update',
-          entityRevision: existing.revision + 1,
+          entityRevision: revision,
           projectId,
-          changedFields: ['is_primary']
+          changedFields
         },
         tx
       );
@@ -2249,7 +2406,7 @@ async function getProjectRepositoryResource(
   const row = (await (executionTargetId === null
     ? requireDatabaseClient().get(
         `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
-              is_primary, status, created_at, updated_at, revision
+              resource_key, is_primary, status, created_at, updated_at, revision
          FROM project_resources
         WHERE project_id = ?
           AND status = 'active'
@@ -2260,7 +2417,7 @@ async function getProjectRepositoryResource(
       )
     : requireDatabaseClient().get(
         `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
-              is_primary, status, created_at, updated_at, revision
+              resource_key, is_primary, status, created_at, updated_at, revision
          FROM project_resources
         WHERE project_id = ?
           AND (execution_target_id = ? OR execution_target_id IS NULL)
@@ -3240,7 +3397,8 @@ async function createMissionTx(body: CreateMissionBody): Promise<CreateMissionRe
           missionId: id,
           instructionText: item.objective,
           ...(item.title !== undefined ? { title: item.title ?? undefined } : {}),
-          autoAdvance: item.autoAdvance ?? false
+          autoAdvance: item.autoAdvance ?? false,
+          ...(item.resourceKey !== undefined ? { resourceKey: item.resourceKey } : {})
         }
       );
       objectiveIds.push(objective.id);
@@ -4777,6 +4935,12 @@ async function insertObjective(
   )) as { id: string; project_id: string } | undefined;
   if (!mission) throw new ApiError(404, 'Mission not found');
 
+  const normalizedResourceKey = await assertObjectiveResourceKeyOnProject(
+    db,
+    mission.project_id,
+    body.resourceKey
+  );
+
   const requestedState = body.state ?? 'draft';
   if (!VALID_STATES.includes(requestedState)) throw new ApiError(400, 'Invalid objective state');
 
@@ -4820,8 +4984,8 @@ async function insertObjective(
     `INSERT INTO objectives
        (id, workspace_id, project_id, mission_id, position, title, instruction_text, state,
         assigned_agent, model, reasoning_effort, agent_flags_json, auto_advance,
-        execution_metadata_json, created_by_workspace_user_id, created_at, updated_at, revision)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, '{}', ?, ?, ?, 1)`,
+        execution_metadata_json, resource_key, created_by_workspace_user_id, created_at, updated_at, revision)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, '{}', ?, ?, ?, ?, 1)`,
     [
       id,
       workspaceId,
@@ -4836,6 +5000,7 @@ async function insertObjective(
       explicitAgent ? null : launchSelection.selectedModel,
       explicitAgent ? null : launchSelection.selectedReasoningEffort,
       bindBool(DATABASE_DIALECT, body.autoAdvance ?? false),
+      normalizedResourceKey,
       workspaceUserId,
       now,
       now
@@ -5088,6 +5253,16 @@ async function updateObjectiveTx(
       fields.push('reasoning_effort = ?');
       setParams.push(body.reasoningEffort?.trim() || null);
       changed.push('reasoning_effort');
+    }
+    if (body.resourceKey !== undefined) {
+      const nextResourceKey = await assertObjectiveResourceKeyOnProject(
+        tx,
+        existing.project_id,
+        body.resourceKey
+      );
+      fields.push('resource_key = ?');
+      setParams.push(nextResourceKey);
+      changed.push('resource_key');
     }
     if (fields.length === 0) {
       return { objective: toObjectiveDto(existing), regenerateTitle: false };

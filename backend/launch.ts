@@ -42,7 +42,7 @@ import {
   resolveLaunchConfig,
   resolveLaunchExecutionTarget
 } from '../packages/core/service/project-execution-target.ts';
-import { assertPrimaryResourceConnected } from '../packages/core/service/projects.ts';
+import { assertLaunchResourceConnected } from '../packages/core/service/projects.ts';
 import type {
   AgentCatalogAgentDto,
   AgentCatalogDto,
@@ -691,6 +691,7 @@ interface LaunchObjectiveRow {
   model: string | null;
   reasoning_effort: string | null;
   launch_config_json: string | null;
+  resource_key: string | null;
   revision: number;
 }
 
@@ -823,7 +824,7 @@ export async function launchObjective(
 
     const objective = await tx.get<LaunchObjectiveRow>(
       `SELECT id, workspace_id, project_id, mission_id, title, instruction_text, state,
-                assigned_agent, model, reasoning_effort, launch_config_json, revision
+                assigned_agent, model, reasoning_effort, launch_config_json, resource_key, revision
            FROM objectives
           WHERE id = ? AND deleted_at IS NULL`,
       [objectiveId]
@@ -897,9 +898,10 @@ export async function launchObjective(
     const { executionTargetId, agentConfigs } = launchTarget;
     const now = nowIso();
 
-    await assertPrimaryResourceConnected({
+    await assertLaunchResourceConnected({
       ctx: serviceCtx,
       projectId: objective.project_id,
+      objectiveResourceKey: objective.resource_key,
       executionTargetId
     });
 

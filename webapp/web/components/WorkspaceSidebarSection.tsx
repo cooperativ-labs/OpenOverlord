@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { isWorkspaceSectionExpanded, setWorkspaceSectionExpanded } from '@/lib/org-preferences';
-import { useMeta, useProjects, useReorderProjects } from '@/lib/queries';
+import { useProjects, useReorderProjects } from '@/lib/queries';
 
 import type { ProjectDto, WorkspaceDto } from '../../shared/contract.ts';
 

@@ -305,12 +305,14 @@ export type ProjectResourceStatus = 'active' | 'missing' | 'archived';
 
 export interface CreateProjectResourceBody {
   directoryPath: string;
+  resourceKey?: string | null;
   label?: string | null;
   isPrimary?: boolean;
   executionTargetId?: string | null;
 }
 
 export interface UpdateProjectResourceBody {
+  resourceKey?: string | null;
   isPrimary?: boolean;
 }
 
@@ -319,6 +321,7 @@ export interface ProjectResourceDto {
   workspaceId: string;
   projectId: string;
   executionTargetId: string | null;
+  resourceKey: string;
   type: ProjectResourceType;
   label: string | null;
   path: string;
@@ -360,6 +363,7 @@ export interface RecordTargetResourceObservationsResult {
 
 export interface MissionBranchObservationInput {
   missionId: string;
+  resourceKey: string;
   status: Exclude<MissionBranchStatus, 'pending'>;
   dirty: boolean;
   worktreePath?: string | null;
@@ -478,6 +482,8 @@ export interface ObjectiveDto {
    * prepared branch (or when worktree/branch automation is disabled).
    */
   branch: string | null;
+  /** Logical project resource this objective runs in; null inherits the primary. */
+  resourceKey: string | null;
 }
 
 export type ArtifactType =
@@ -1010,6 +1016,8 @@ export interface BranchActionBody {
   action: 'integrate' | 'commit' | 'push_parent' | 'publish';
   /** Commit message for `action: 'commit'` (required and non-empty). */
   message?: string;
+  /** Logical project resource key to target; defaults to the project primary. */
+  resourceKey?: string;
   /** Proceed even if an objective is executing on the branch (re-checked server-side). */
   confirmBusy?: boolean;
   /** When true, git already ran on the client; the server records `summary` only. */
@@ -1113,7 +1121,12 @@ export interface CreateMissionBody {
   /** Optional first objective instruction; creates objective #1 when present. */
   firstObjective?: string;
   /** Optional ordered objective instructions; creates objective #1 as draft and the rest as future. */
-  objectives?: Array<{ objective: string; title?: string | null; autoAdvance?: boolean }>;
+  objectives?: Array<{
+    objective: string;
+    title?: string | null;
+    autoAdvance?: boolean;
+    resourceKey?: string | null;
+  }>;
   /** Optional `project_tags.id` values to assign to the new mission. Must belong to `projectId`. */
   tagIds?: string[];
 }
@@ -1214,6 +1227,7 @@ export interface CreateObjectiveBody {
   title?: string | null;
   state?: ObjectiveState;
   autoAdvance?: boolean;
+  resourceKey?: string | null;
 }
 
 /**
@@ -1237,6 +1251,7 @@ export interface UpdateObjectiveBody {
   assignedAgent?: string | null;
   model?: string | null;
   reasoningEffort?: string | null;
+  resourceKey?: string | null;
 }
 
 /**

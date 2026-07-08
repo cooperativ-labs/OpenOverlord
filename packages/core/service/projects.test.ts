@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 
 import { createServiceContext } from './context.js';
 import { ensureCallerDeviceTarget } from './execution-targets.js';
-import { addProjectResource, createProject } from './projects.js';
+import { addProjectResource, createProject, deriveProjectResourceKey } from './projects.js';
 import { newId, nowIso } from './util.js';
 
 describe('createProject slug reuse', () => {
@@ -23,6 +23,32 @@ describe('createProject slug reuse', () => {
     assert.equal(second.slug, 'overlord');
 
     await db.close();
+  });
+});
+
+describe('deriveProjectResourceKey', () => {
+  it('prefers explicit key, then label, then directory basename', () => {
+    assert.equal(
+      deriveProjectResourceKey({
+        resourceKey: 'Open Overlord',
+        label: 'Ignored',
+        directoryPath: '/tmp/ignored'
+      }),
+      'open-overlord'
+    );
+    assert.equal(
+      deriveProjectResourceKey({
+        label: 'Mobile App',
+        directoryPath: '/tmp/ignored'
+      }),
+      'mobile-app'
+    );
+    assert.equal(
+      deriveProjectResourceKey({
+        directoryPath: '/tmp/OpenOverlord'
+      }),
+      'openoverlord'
+    );
   });
 });
 
@@ -52,18 +78,18 @@ describe('addProjectResource', () => {
 
     await db.run(
       `INSERT INTO project_resources
-         (id, workspace_id, project_id, execution_target_id, type, label, path, is_primary, status,
+         (id, workspace_id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status,
           metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, 'local_directory', 'Old local', '/tmp/old-local', 1, 'active',
+       VALUES (?, ?, ?, ?, 'old-local', 'local_directory', 'Old local', '/tmp/old-local', 1, 'active',
                '{}', ?, ?, 1)`,
       ['old-local-resource', ctx.workspace.id, project.id, localTarget.executionTargetId, now, now]
     );
 
     await db.run(
       `INSERT INTO project_resources
-         (id, workspace_id, project_id, execution_target_id, type, label, path, is_primary, status,
+         (id, workspace_id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status,
           metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, 'local_directory', 'Other target', '/tmp/other-target', 1, 'active',
+       VALUES (?, ?, ?, ?, 'other-target', 'local_directory', 'Other target', '/tmp/other-target', 1, 'active',
                '{}', ?, ?, 1)`,
       ['other-target-resource', ctx.workspace.id, project.id, 'other-target', now, now]
     );
@@ -76,6 +102,7 @@ describe('addProjectResource', () => {
     });
 
     assert.equal(added.executionTargetId, localTarget.executionTargetId);
+    assert.equal(added.resourceKey, path.basename(process.cwd()).toLowerCase());
 
     const rows = (await db.all(
       `SELECT id, execution_target_id, is_primary

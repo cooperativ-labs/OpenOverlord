@@ -177,7 +177,12 @@ function objectiveText(body: ProtocolRequestBody): string {
   throw new ApiError(400, 'Missing objective text (use --objective or a positional argument)');
 }
 
-type ObjectiveInput = { objective: string; title?: string | null; autoAdvance?: boolean };
+type ObjectiveInput = {
+  objective: string;
+  title?: string | null;
+  autoAdvance?: boolean;
+  resourceKey?: string | null;
+};
 
 /** Objective array for create/prompt: `--objectives-json`, else a one-item `--objective`. */
 function objectiveInputs(body: ProtocolRequestBody): ObjectiveInput[] {
@@ -189,7 +194,13 @@ function objectiveInputs(body: ProtocolRequestBody): ObjectiveInput[] {
     }
     return parsed;
   }
-  return [{ objective: objectiveText(body) }];
+  const resourceKey = strFlag(body, '--resource');
+  return [
+    {
+      objective: objectiveText(body),
+      ...(resourceKey ? { resourceKey } : {})
+    }
+  ];
 }
 
 type ArtifactInput = {
@@ -220,7 +231,8 @@ const handlers: Record<string, Handler> = {
       modelIdentifier: strFlag(body, '--model') ?? null,
       existingSessionKey: strFlag(body, '--session-key') ?? null,
       externalSessionId: externalSessionId(body),
-      executionRequestId: strFlag(body, '--execution-request-id') ?? null
+      executionRequestId: strFlag(body, '--execution-request-id') ?? null,
+      executionTargetId: strFlag(body, '--execution-target-id') ?? null
     }),
 
   update: (ctx, body) =>
@@ -327,7 +339,8 @@ const handlers: Record<string, Handler> = {
       agentIdentifier: strFlag(body, '--agent') ?? 'unknown',
       modelIdentifier: strFlag(body, '--model') ?? null,
       externalSessionId: externalSessionId(body),
-      summary: resolveInput(body, '--summary', '--summary-file') ?? null
+      summary: resolveInput(body, '--summary', '--summary-file') ?? null,
+      executionTargetId: strFlag(body, '--execution-target-id') ?? null
     }),
 
   // Mission creation and discovery -----------------------------------------
@@ -350,7 +363,11 @@ const handlers: Record<string, Handler> = {
     }),
 
   'load-context': (ctx, body) =>
-    loadMissionContext({ ctx, missionId: requireFlag(body, '--mission-id') }),
+    loadMissionContext({
+      ctx,
+      missionId: requireFlag(body, '--mission-id'),
+      executionTargetId: strFlag(body, '--execution-target-id') ?? null
+    }),
 
   connect: (ctx, body) =>
     connectSession({
@@ -377,11 +394,9 @@ const handlers: Record<string, Handler> = {
       ctx,
       missionId: requireFlag(body, '--mission-id'),
       objectives:
-        parseJsonInput<Array<{ objective: string; title?: string | null }>>(
-          body,
-          '--objectives-json',
-          '--objectives-file'
-        ) ?? []
+        parseJsonInput<
+          Array<{ objective: string; title?: string | null; resourceKey?: string | null }>
+        >(body, '--objectives-json', '--objectives-file') ?? []
     }),
 
   'record-work': (ctx, body) =>

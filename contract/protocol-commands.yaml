@@ -12,7 +12,7 @@
 # entry) are intentionally not listed here: `record-touched` and `changes`. See
 # CONTRACT.md's contract-version-2 changelog entry for the precedent.
 
-contractVersion: "0"
+contractVersion: "1"
 referenceSpec: "cli/docs/03-agent-protocol.md"
 
 # Transport-level shape shared by every protocol command, independent of subcommand.
@@ -55,6 +55,7 @@ sessionLifecycle:
     optionalFlags:
       - --session-key
       - --execution-request-id
+      - --execution-target-id
     returnsSessionKey: true
     responseShape: attach-response-v3
     clientCapture:
@@ -233,6 +234,8 @@ missionDiscovery:
   loadContext:
     description: "Read mission context without creating a session"
     readOnly: true
+    optionalFlags:
+      - --execution-target-id
 
   connect:
     description: "Create a lightweight session key without full context assembly"
@@ -427,7 +430,9 @@ responseShapes:
       fields (`mission`, `objective`, `previousObjectives`, `futureObjectives`,
       `history`, `attachments`, `artifacts`, and `sharedState`). `agentInstructions`
       is intentionally concise workflow guidance for agents that attach without
-      a richer launch prompt.
+      a richer launch prompt. Contract version 1 keeps this v3 shape and adds
+      optional resource-binding metadata: `projectResources` at the top level and
+      `resourceKey` on current/previous/future objective summaries.
     requiredTopLevelFields:
       - history
       - artifacts
@@ -437,6 +442,8 @@ responseShapes:
       - session
       - sharedState
       - agentInstructions
+    optionalTopLevelFields:
+      projectResources: "Project resource manifest for the current execution target, grouped by logical resource key."
     sessionRequiredFields:
       - sessionKey
       - state
@@ -445,6 +452,8 @@ responseShapes:
       - objective
       - state
       - position
+    objectivesOptionalFields:
+      - resourceKey
     objectivesExcludeCurrent: true
     agentInstructionsRequiredContent:
       - mission ID

@@ -19,6 +19,7 @@ export interface ProjectJsonContents {
   version: number;
   projectId: string;
   resourceId: string;
+  resourceKey?: string;
   resourceIdsByExecutionTarget?: Record<string, string>;
   isPrimary: boolean;
   linkedAt: string;
@@ -31,6 +32,7 @@ export interface ReadProjectJsonOptions {
 export interface ProjectJsonLink {
   projectId: string;
   resourceId: string;
+  resourceKey: string | null;
   resourceIdsByExecutionTarget: Record<string, string>;
   isPrimary: boolean;
 }
@@ -42,6 +44,7 @@ function parseProjectJson(projectJsonPath: string): ProjectJsonContents | null {
     version?: unknown;
     projectId?: unknown;
     resourceId?: unknown;
+    resourceKey?: unknown;
     resourceIdsByExecutionTarget?: unknown;
     isPrimary?: unknown;
     linkedAt?: unknown;
@@ -71,6 +74,10 @@ function parseProjectJson(projectJsonPath: string): ProjectJsonContents | null {
     version: typeof parsed.version === 'number' ? parsed.version : 1,
     projectId: parsed.projectId,
     resourceId: parsed.resourceId,
+    resourceKey:
+      typeof parsed.resourceKey === 'string' && parsed.resourceKey.trim().length > 0
+        ? parsed.resourceKey.trim()
+        : undefined,
     resourceIdsByExecutionTarget,
     isPrimary: parsed.isPrimary === true,
     linkedAt: typeof parsed.linkedAt === 'string' ? parsed.linkedAt : nowIso()
@@ -91,6 +98,7 @@ export function readProjectJsonLink(
   return {
     projectId: parsed.projectId,
     resourceId: preferredResourceId ?? parsed.resourceId,
+    resourceKey: parsed.resourceKey ?? null,
     resourceIdsByExecutionTarget: parsed.resourceIdsByExecutionTarget ?? {},
     isPrimary: parsed.isPrimary
   };
@@ -104,12 +112,14 @@ export function writeProjectJson({
   directoryPath,
   projectId,
   resourceId,
+  resourceKey,
   executionTargetId,
   isPrimary
 }: {
   directoryPath: string;
   projectId: string;
   resourceId: string;
+  resourceKey?: string | null;
   executionTargetId?: string | null;
   isPrimary: boolean;
 }): string {
@@ -135,6 +145,7 @@ export function writeProjectJson({
         version: PROJECT_JSON_VERSION,
         projectId,
         resourceId,
+        ...(resourceKey?.trim() ? { resourceKey: resourceKey.trim() } : {}),
         ...(Object.keys(resourceIdsByExecutionTarget).length > 0
           ? { resourceIdsByExecutionTarget }
           : {}),

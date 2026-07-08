@@ -3,12 +3,18 @@ import { existsSync, mkdirSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { deriveProjectResourceKey } from '@overlord/core/service/projects';
+
 import { type BranchDecision, planMissionBranch } from './branch-planning.js';
 import type { CliRuntime } from './runtime.js';
 
 export type BranchPreparationOptions = {
   missionId: string;
   workingDirectory: string;
+  /** Logical project resource key for worktree path planning. */
+  resourceKey?: string | null;
+  /** Objective being launched; used to resolve resourceKey from the mission payload. */
+  objectiveId?: string | null;
   /**
    * The workspace-wide worktree/branch automation setting. Used as a fallback to
    * recompute the mission's effective decision when the mission DTO does not
@@ -31,6 +37,7 @@ export type BranchAutomationPayload = {
   branchName: string;
   baseBranch: string;
   worktreePath: string;
+  resourceKey: string;
   action: BranchDecision['action'];
   cycle: number;
 };
@@ -42,6 +49,7 @@ export type MissionShape = {
   projectId?: unknown;
   projectSlug?: unknown;
   project?: { slug?: unknown };
+  objectives?: Array<{ id?: unknown; resourceKey?: unknown }>;
   branch?: {
     name?: unknown;
     status?: unknown;
@@ -366,6 +374,29 @@ function resolveBranchDecision(
   return { willPrepareBranch, willUseWorktree };
 }
 
+function resolveLaunchResourceKey({
+  mission,
+  options
+}: {
+  mission: MissionShape;
+  options: BranchPreparationOptions;
+}): string {
+  const explicit = options.resourceKey?.trim();
+  if (explicit) return explicit;
+
+  const objectiveId = options.objectiveId?.trim();
+  if (objectiveId && Array.isArray(mission.objectives)) {
+    const objective = mission.objectives.find(
+      candidate => typeof candidate.id === 'string' && candidate.id === objectiveId
+    );
+    const key =
+      typeof objective?.resourceKey === 'string' ? objective.resourceKey.trim() : '';
+    if (key) return key;
+  }
+
+  return deriveProjectResourceKey({ directoryPath: options.workingDirectory });
+}
+
 export async function prepareMissionBranch({
   runtime,
   options
@@ -403,12 +434,14 @@ export async function prepareMissionBranch({
   // override (set in the mission panel's branch selector).
   const overrideBranch = overrideFlag || missionOverrideBranch(mission);
   const projectSlug = await resolveMissionProjectSlug({ runtime, mission });
+  const resourceKey = resolveLaunchResourceKey({ mission, options });
   const decision = planMissionBranch({
     mission: {
       title: typeof mission.title === 'string' ? mission.title : 'mission',
       sequence: missionSequence(mission, options.missionId)
     },
     project: { slug: projectSlug },
+    resourceKey,
     recordedBranch: recordedMissionBranch(mission),
     base,
     refs,
@@ -424,6 +457,7 @@ export async function prepareMissionBranch({
         branchName: decision.branch,
         baseBranch: decision.baseBranch,
         worktreePath: decision.worktreePath,
+        resourceKey,
         action: decision.action,
         cycle: decision.cycle
       }
@@ -440,6 +474,7 @@ export async function prepareMissionBranch({
       branchName: decision.branch,
       baseBranch: decision.baseBranch,
       worktreePath: gitRoot,
+      resourceKey,
       action: decision.action,
       cycle: decision.cycle
     }

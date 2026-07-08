@@ -93,17 +93,25 @@ Future:
 Working directory resolution order:
 
 1. Explicit `workingDirectory` from the execution request or launch flag.
-2. Selected target resource directory.
+2. Objective `resource_key`, resolved to the active project resource row for the
+   claiming execution target.
 3. Primary resource directory for the project on the local target.
 4. Current working directory if it contains matching `.overlord/project.json`.
 5. Fail with an actionable error.
 
 Requirements:
 
-- `ovld add-cwd` registers the current directory as a project resource.
+- `ovld add-cwd` registers the current directory as a project resource. It accepts
+  optional `--key <resourceKey>`; when omitted, the key is derived from the
+  resource label or path basename.
 - The first directory for a project/device becomes primary by default.
+- An objective with a non-null `resource_key` is launchable on a target only when
+  that target has an active, usable resource row with the same key.
 - Runner must refuse to launch when no usable working directory exists.
 - Error should tell the user to run `ovld add-cwd` or pass `--working-directory`.
+- If an objective-bound resource is missing for the selected target, the runner
+  must refuse with `objective_resource_not_connected` and tell the user to run
+  `ovld add-cwd --key <resourceKey>` from the intended checkout on that device.
 
 ## Mission Branch And Worktree Preparation
 
@@ -121,8 +129,12 @@ Branch names use:
 The worktree lives under:
 
 ```text
-~/.ovld/worktrees/<project-slug>/<branch-name-with-slashes-flattened>
+~/.ovld/worktrees/<project-slug>/<resource-key>/<branch-name-with-slashes-flattened>
 ```
+
+The branch name remains mission-scoped, but the worktree path is resource-scoped.
+This lets two objectives in the same mission use the same branch name in
+different repositories without colliding on disk.
 
 Subsequent launches for the same mission reuse the latest recorded branch read
 from the `missions.active_branch` column (surfaced on the mission detail DTO's
@@ -153,6 +165,11 @@ requests.
 - Export `MISSION_ID`, `OVERLORD_MISSION_ID`, and the resolved `OVERLORD_BACKEND_URL`
   into launched agent terminals so connector hooks can publish prompt and permission
   activity to the same mission/backend.
+- Export `OVERLORD_PROJECT_RESOURCES` as JSON for the launching execution target.
+  The value mirrors attach context's project resource manifest: one entry per
+  logical resource key with label, primary/current flags, local path when known,
+  and availability state. Hooks and pre-commands may use it for context, but the
+  launched session remains rooted in the resolved working directory.
 - Pass concise prompt text or context-file references to the agent.
 - Preserve model/thinking/flags.
 - Support `--branch <name>` and `--no-worktree` with the same semantics as the

@@ -33,6 +33,7 @@ describe('mission branch observations', () => {
       observations: [
         {
           missionId: mission.id,
+          resourceKey: 'branch-observation-project',
           status: 'published',
           dirty: true,
           worktreePath: '/tmp/ovld/worktrees/demo/feature',

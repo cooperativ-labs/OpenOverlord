@@ -15,6 +15,10 @@ import {
   pruneObsoleteMigrationLedgerSqlite,
   resolveAppliedMigrationSqlite
 } from './migration-ledger.js';
+import {
+  finalizeProjectResourcesResourceKeySqlite,
+  isProjectResourcesResourceKeyMigration
+} from './project-resources-resource-key-migration-runtime.js';
 
 const MIGRATION_FILE_PATTERN = /^\d+_[a-z0-9_]+\.sql$/;
 
@@ -76,6 +80,9 @@ function applyMigration(
   db.exec(migration.sql);
   if (isExtEverhourPersistenceMigration(migration)) {
     finalizeExtEverhourMissionLinksSqlite(db);
+  }
+  if (isProjectResourcesResourceKeyMigration(migration)) {
+    finalizeProjectResourcesResourceKeySqlite(db);
   }
   db.prepare(
     `INSERT INTO schema_migrations (version, adapter, component, contract_version, checksum, applied_at)

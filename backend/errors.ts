@@ -23,6 +23,13 @@ export function apiErrorFromDatabaseError(error: unknown): ApiError | null {
   if (!code?.startsWith('SQLITE_CONSTRAINT')) return null;
 
   if (code === 'SQLITE_CONSTRAINT_UNIQUE' && message.includes('project_resources')) {
+    if (message.includes('resource_key') || message.includes('target_key')) {
+      return new ApiError(
+        409,
+        'This resource key is already linked to the project on this execution target.',
+        message
+      );
+    }
     return new ApiError(
       409,
       'This directory is already linked to the project on this device.',

@@ -22,6 +22,7 @@ export type LaunchOptions = {
   flags?: string[];
   preCommand?: string | null;
   executionRequestId?: string | null;
+  executionTargetId?: string | null;
   /**
    * Open the agent in a new terminal window. A built-in name (`iTerm2`,
    * `Terminal`) or a raw prefix command (e.g. `open -a Ghostty --args`).
@@ -52,17 +53,22 @@ type MissionContext = {
 function overlordLaunchEnv({
   backendUrl,
   missionId,
-  executionRequestId
+  executionRequestId,
+  projectResources
 }: {
   backendUrl: string;
   missionId: string;
   executionRequestId?: string | null;
+  projectResources?: unknown[] | null;
 }): Record<string, string> {
   return {
     MISSION_ID: missionId,
     OVERLORD_MISSION_ID: missionId,
     OVERLORD_BACKEND_URL: backendUrl,
-    ...(executionRequestId ? { OVERLORD_EXECUTION_REQUEST_ID: executionRequestId } : {})
+    ...(executionRequestId ? { OVERLORD_EXECUTION_REQUEST_ID: executionRequestId } : {}),
+    ...(projectResources && projectResources.length > 0
+      ? { OVERLORD_PROJECT_RESOURCES: JSON.stringify(projectResources) }
+      : {})
   };
 }
 
@@ -160,6 +166,32 @@ async function loadMissionContext({
   return { displayId, title, launchContext };
 }
 
+async function loadProjectResourcesForLaunch({
+  runtime,
+  missionId,
+  executionTargetId
+}: {
+  runtime: CliRuntime;
+  missionId: string;
+  executionTargetId?: string | null;
+}): Promise<unknown[] | null> {
+  try {
+    const context = await runtime.backend.post<unknown>({
+      path: '/api/protocol/load-context',
+      body: {
+        flags: {
+          '--mission-id': missionId,
+          ...(executionTargetId ? { '--execution-target-id': executionTargetId } : {})
+        }
+      }
+    });
+    const record = asRecord(context);
+    return Array.isArray(record.projectResources) ? record.projectResources : null;
+  } catch {
+    return null;
+  }
+}
+
 function buildAgentCommand({
   agent,
   model,
@@ -236,10 +268,16 @@ export async function buildLaunchPlan({
     ? `${context.launchContext}\nExecution request: ${options.executionRequestId}`
     : context.launchContext;
   writeFileSync(contextFile, `${launchContext}\n`);
+  const projectResources = await loadProjectResourcesForLaunch({
+    runtime,
+    missionId: options.missionId,
+    executionTargetId: options.executionTargetId
+  });
   const launchEnv = overlordLaunchEnv({
     backendUrl: runtime.backend.baseUrl,
     missionId: context.displayId,
-    executionRequestId: options.executionRequestId
+    executionRequestId: options.executionRequestId,
+    projectResources
   });
 
   const prompt =

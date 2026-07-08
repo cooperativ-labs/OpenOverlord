@@ -295,6 +295,7 @@ export interface MissionBranchObservations {
   id: string | null;
   mission_id: string;
   observed_at: string;
+  resource_key: string;
   status: string;
   updated_at: string;
   workspace_id: string;
@@ -418,6 +419,7 @@ export interface Objectives {
   position: number;
   project_id: string;
   reasoning_effort: string | null;
+  resource_key: string | null;
   revision: Generated<number>;
   state: string;
   title: string | null;
@@ -472,6 +474,7 @@ export interface ProjectResources {
   metadata_json: Generated<string>;
   path: string;
   project_id: string;
+  resource_key: string;
   revision: Generated<number>;
   status: string;
   type: string;

@@ -564,6 +564,7 @@ Links projects to directories/resources on execution targets.
 | `project_id` | Id | yes | FK to `projects`. |
 | `execution_target_id` | Id | no | FK to `execution_targets`. Null allowed during import/config repair. |
 | `type` | text | yes | `local_directory`, `remote_directory`, future resource types. |
+| `resource_key` | text | yes | Stable slug identifying the logical resource within the project, shared by rows for the same repository across execution targets. Defaults from an explicit create/update input, else a slugified label, else a slugified path basename. |
 | `label` | text | no |  |
 | `path` | Path | yes | Local or remote path. |
 | `is_primary` | Bool | yes | Primary resource for project/target. |
@@ -578,6 +579,12 @@ Indexes:
 
 - `(project_id, execution_target_id, is_primary)`.
 - Unique active `(project_id, execution_target_id, path)`.
+- Unique active `(project_id, execution_target_id, resource_key)`.
+
+`resource_key` is the target-portable identity objectives bind to. It is
+independent of `label` after creation; label renames do not re-key existing
+resources. Key edits are explicit and must reject collisions with another active
+resource for the same project and execution target.
 
 ### `target_resource_observations`
 
@@ -612,6 +619,7 @@ Latest client-reported git state for a prepared mission branch on a specific exe
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `execution_target_id` | Id | yes | FK to `execution_targets`. |
 | `mission_id` | Id | yes | FK to `missions`. |
+| `resource_key` | text | yes | Logical project resource key whose branch/worktree was observed. |
 | `status` | text | yes | Closed vocabulary: `created`, `published`, `merged_unpushed`, `merged`. Pending branches are not observed because no branch exists yet. |
 | `dirty` | Bool | yes | Whether the target observed uncommitted work in the branch worktree. |
 | `worktree_path` | Path | no | Target-reported worktree path when available. |
@@ -621,7 +629,7 @@ Latest client-reported git state for a prepared mission branch on a specific exe
 
 Indexes:
 
-- Unique `(execution_target_id, mission_id)`.
+- Unique `(execution_target_id, mission_id, resource_key)`.
 - `(mission_id)` for mission detail branch DTO merges.
 
 ### `project_user_preferences`
@@ -803,6 +811,7 @@ One ordered agent pass inside a mission.
 | `reasoning_effort` | text | no | Agent-specific effort/thinking value. |
 | `agent_flags_json` | Json | yes | Launch passthrough flags. |
 | `launch_config_json` | Json | no | Per-objective override for target/user launch config; null means inherit at claim time. |
+| `resource_key` | text | no | Logical project resource this objective runs in. Null means inherit the primary project resource for the claiming target. Non-null values resolve to a concrete `project_resources` row at execution-request creation or claim time. |
 | `auto_advance` | Bool | yes |  |
 | `approval_reason` | text | no | Human-facing reason auto-advance stopped for approval. |
 | `auto_advanced_at` | TimestampUTC | no | Time this objective was queued by auto-advance. |
@@ -822,6 +831,11 @@ Indexes:
 - `(mission_id, state, position)`.
 
 Services should set `completed_at` when an objective enters `complete`. A null `launch_config_json` means the runner should inherit execution-target or user-target launch defaults; a non-null object means the objective intentionally overrides those defaults, even when the override contains empty flags or no pre-command.
+
+Services validate non-null `resource_key` values at submit/launch boundaries
+against the mission project. The column intentionally does not FK to
+`project_resources.id`: resource rows are target-specific, while objective
+bindings must remain portable across execution targets.
 
 ### `project_tags`
 
@@ -1236,7 +1250,7 @@ Update-time file metadata, upserted by session/objective/path.
 | `mission_id` | Id | yes | FK to `missions`. |
 | `objective_id` | Id | yes | FK to `objectives`. |
 | `session_id` | Id | no | FK to `agent_sessions`; null for `record-work` changed-file metadata. |
-| `resource_id` | Id | no | FK to `project_resources` when known. |
+| `resource_id` | Id | no | FK to `project_resources` when known. Protocol update/deliver paths populate this from the session execution request's `resolved_resource_id` when available, so review surfaces can identify which project resource produced the change. |
 | `file_path` | Path | yes | Normalized repo-relative path. |
 | `vcs_status` | text | no | `modified`, `added`, `deleted`, etc. |
 | `current_diff_state` | text | yes | `present`, `resolved`, `unknown`, `unavailable`. |
@@ -1343,6 +1357,13 @@ Indexes:
 - `(project_id, status, created_at)`.
 - `(objective_id, status)`.
 - Unique `(workspace_id, idempotency_key)` where present.
+
+When an objective carries a non-null `resource_key`, execution-request creation
+or claim resolves that logical key to the concrete `project_resources.id` for the
+selected execution target and stores it in `resolved_resource_id`. If the key is
+not connected or is marked unusable for that target, services fail launch with
+`objective_resource_not_connected`; null objective keys continue to resolve to
+the target's primary project resource.
 
 Claiming must happen in one transaction:
 
@@ -2006,10 +2027,11 @@ The REST API should be the primary remote access path. It should expose domain r
 
 Recommended boundary:
 
-- `/projects`, `/projects/:id/resources`, `/projects/:id/repository`, `/missions`, `/missions/:id/objectives`, `/missions/:id/events`, `/missions/:id/context`, `/missions/:id/deliveries`, `/workspaces/:id/objectives.csv`.
+- `/projects`, `/projects/:id/resources`, `/projects/:id/repository`, `/missions`, `/missions/:id/objectives`, `/missions/:id/events`, `/missions/:id/context`, `/missions/:id/deliveries`, `/workspaces/:id/objectives.csv`. Project resource create/update bodies accept additive `resourceKey`; objective DTOs and create/update bodies expose additive `resourceKey`.
 - `/workspace/my-missions` (read: missions assigned to the active actor across the active workspace, with personal `my_mission_positions` ordering) and `/workspace/my-missions/order` (persist a personal column reorder; a cross-column drag is a real mission status change validated by the `(workspace_id, status_id)` composite FK).
 - `/protocol/*` endpoints mirroring `ovld protocol`.
 - `/execution-requests` for runner queue operations.
+- `/missions/:id/branch/action` accepts additive `resourceKey`, defaulting to the project's primary resource, so branch actions target the intended repository in multi-resource projects.
 - `/uploads/:bucketKey` (core upload service) accepts raw image bytes, persists them to the `storage_buckets` backend, records the matching object table row (e.g. `user_images`), and returns the stored descriptor; `/storage/:bucketKey/:storageKey` first authorizes by the logical storage location (`user_image:read`, `workspace_image:read`, or `attachment:read`), then serves bytes only after an exact active metadata lookup for `(storage_bucket_id, storage_key)`.
 - `/sync/changes?after=<seq>` for realtime catch-up and local DB sync, returning `SyncChangesDto { changes, cursor, hasMore }` in ascending `entity_changes.seq` order.
 - `/realtime` SSE/WebSocket endpoint backed by `entity_changes` (with compatibility alias `/api/stream`); compact change DTOs include `changedFields: string[]` parsed from `entity_changes.changed_fields_json`.

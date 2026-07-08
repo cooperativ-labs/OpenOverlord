@@ -90,19 +90,42 @@ connector hook caches and store the result in `agent_sessions.external_session_i
 Runner-launched agents may also carry `OVERLORD_EXECUTION_REQUEST_ID`; the CLI
 forwards it as `--execution-request-id` during `attach` so the backend can link
 `execution_requests.launched_session_id` to the created session.
+`attach` and `load-context` also accept optional `executionTargetId`; the CLI
+uses it when it knows the local execution target so context assembly can resolve
+project resource paths for that target. This is additive and may be omitted.
 
 `attach` must return:
 
 - Mission metadata.
-- Current objective metadata, including objective ID and instruction text.
-- All objective IDs and states in order.
+- Current objective metadata, including objective ID, instruction text, and
+  optional `resourceKey`.
+- All objective IDs, states, and optional `resourceKey` values in order.
 - Session object with `sessionKey`.
 - History/events relevant to the mission.
 - Artifacts.
 - Attachments visible to the active objective.
 - Shared context.
+- `projectResources` when available: the project's logical resources resolved
+  for the relevant execution target.
 - Concise `agentInstructions` with workflow guidance and pointers to structured fields.
 - Pending objective information when relevant.
+
+`projectResources` entries have this shape:
+
+```ts
+{
+  resourceKey: string;
+  label: string | null;
+  isPrimary: boolean;
+  isCurrent: boolean;
+  path: string | null;
+  state: string;
+}
+```
+
+`path` is absolute on the session's execution target when known, and null when
+the target is unknown or has no row for that logical resource. `state` mirrors
+the latest target resource observation for that row, or `unknown`.
 
 The agent instructions should include:
 
@@ -112,6 +135,10 @@ The agent instructions should include:
 - Project identifier/name.
 - Where to find the objective body and related context in the structured JSON.
 - Required protocol workflow instructions.
+- A `Project Resources` section when the project spans multiple logical
+  resources. It identifies the current resource and sibling resources available
+  on the same execution target, and instructs agents to treat siblings as
+  read-only context unless a future objective launches in that resource.
 
 ## Update Requirements
 
@@ -155,11 +182,11 @@ Changed-file tracking requirements:
 - Changed-file records should distinguish mechanically observed file changes from agent-authored rationales.
 - Files that can no longer be observed in the local diff should not be silently deleted from history; they should be marked resolved/no-current-diff or excluded from final coverage according to review rules.
 
-> Concurrency note: the runner resolves all executions for a project to the same
-> working directory, so a raw whole-tree `git status` cannot attribute a change to
-> one run. The baseline-at-attach / delta-at-deliver approach subtracts files that
-> were already dirty when the session began. Exact per-run attribution under
-> concurrency requires per-run worktree isolation (a separate runner change).
+> Concurrency note: the baseline-at-attach / delta-at-deliver approach subtracts
+> files that were already dirty when the session began. Worktree isolation and
+> objective resource binding improve attribution for launched sessions, but agents
+> must still avoid editing sibling resources exposed only for context because those
+> paths are outside the session's resolved working directory.
 
 Supported phases:
 

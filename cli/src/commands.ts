@@ -1,4 +1,7 @@
-import { writeProjectJson } from '@overlord/core/service/local-target/project-metadata';
+import {
+  readProjectJsonLink,
+  writeProjectJson
+} from '@overlord/core/service/local-target/project-metadata';
 import {
   executeLocalTargetMutation,
   parseMutationFromMetadata
@@ -17,7 +20,7 @@ import {
 import { type BranchAutomationPayload, prepareMissionBranch } from './branch-preparation.js';
 import { isLoopbackBackendUrl, loadConfig } from './config.js';
 import { clientDeviceIdentity } from './device-identity.js';
-import { discoverProjectOnClient } from './discover-project-local.js';
+import { discoverProjectOnClient, resolvePreferredExecutionTargetId } from './discover-project-local.js';
 import { CliError } from './errors.js';
 import { launchAgent } from './launch.js';
 import { resolveNativeSessionId } from './native-session.js';
@@ -85,6 +88,7 @@ function writeProjectJsonFromResource({
     directoryPath: directory,
     projectId,
     resourceId: record.id,
+    resourceKey: typeof record.resourceKey === 'string' ? record.resourceKey : undefined,
     executionTargetId:
       typeof record.executionTargetId === 'string' ? record.executionTargetId : undefined,
     isPrimary: record.isPrimary !== false
@@ -800,6 +804,18 @@ export async function runProtocolCommand({
     return;
   }
 
+  if (
+    (subcommand === 'attach' ||
+      subcommand === 'load-context' ||
+      subcommand === 'resume-follow-up') &&
+    typeof flags['--execution-target-id'] !== 'string'
+  ) {
+    const preferredTargetId = await resolvePreferredExecutionTargetId({ backend: runtime.backend });
+    if (preferredTargetId) {
+      flags['--execution-target-id'] = preferredTargetId;
+    }
+  }
+
   const result = await runtime.backend.post<unknown>({
     path: `/api/protocol/${encodeURIComponent(subcommand)}`,
     body: {
@@ -976,6 +992,10 @@ export async function runManagementCommand({
     }
     case 'add-cwd': {
       const directory = flagValue(parsed.flags, '--directory') ?? process.cwd();
+      const existingProjectJson = readProjectJsonLink(
+        path.join(directory, '.overlord', 'project.json')
+      );
+      const resourceKey = flagValue(parsed.flags, '--key') ?? existingProjectJson?.resourceKey;
       let projectId = flagValue(parsed.flags, '--project-id');
       if (!projectId) {
         const projects =
@@ -1003,6 +1023,7 @@ export async function runManagementCommand({
         path: `/api/projects/${encodeURIComponent(projectId)}/resources`,
         body: {
           directoryPath: directory,
+          ...(resourceKey ? { resourceKey } : {}),
           isPrimary: flagValue(parsed.flags, '--primary') !== 'false'
         }
       });
@@ -1024,9 +1045,18 @@ export async function runManagementCommand({
             objective: string;
             title?: string | null;
             autoAdvance?: boolean;
+            resourceKey?: string | null;
           }>)
         : objective
-          ? [{ objective, title: flagValue(parsed.flags, '--title') ?? null }]
+          ? [
+              {
+                objective,
+                title: flagValue(parsed.flags, '--title') ?? null,
+                ...(flagValue(parsed.flags, '--resource')
+                  ? { resourceKey: flagValue(parsed.flags, '--resource') }
+                  : {})
+              }
+            ]
           : [];
       const first = objectives[0];
       if (!first) {
@@ -1342,6 +1372,7 @@ async function runRunnerCommand({
         options: {
           missionId,
           workingDirectory: String(requestRecord.workingDirectory ?? process.cwd()),
+          objectiveId: String(requestRecord.objectiveId ?? ''),
           workspaceAutomationEnabled: await readWorktreeBranchAutomationEnabled(runtime),
           dryRun,
           overrideBranch: flagValue(parsed.flags, '--branch'),
@@ -1374,6 +1405,7 @@ async function runRunnerCommand({
           preCommand:
             typeof launchConfig.preCommand === 'string' ? launchConfig.preCommand : undefined,
           executionRequestId: requestId,
+          executionTargetId: executionTargetId || undefined,
           ...terminal,
           dryRun
         }

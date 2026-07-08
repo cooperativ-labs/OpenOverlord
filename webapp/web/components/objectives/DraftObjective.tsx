@@ -15,7 +15,7 @@ import type {
   ObjectiveDto,
   ObjectiveState
 } from '../../../shared/contract.ts';
-import { useDeleteObjective, useUpdateObjective } from '../../lib/queries.ts';
+import { useDeleteObjective, useProjectResources, useUpdateObjective } from '../../lib/queries.ts';
 import { useRepositoryMentionOptions } from '../../lib/useRepositoryMentionOptions.ts';
 import { cn } from '../../lib/utils.ts';
 import { InlineEditField } from '../InlineEditField.tsx';
@@ -38,6 +38,7 @@ import {
   ObjectiveAttachmentUploadTrigger,
   useObjectiveAttachmentState
 } from './ObjectiveAttachments.tsx';
+import { ObjectiveResourcePicker } from './ObjectiveResourcePicker.tsx';
 import { useObjectiveAgentSelection } from './useObjectiveAgentSelection.ts';
 
 const AUTO_ADVANCE_TOGGLE_STATES: ObjectiveState[] = ['future', 'draft', 'submitted', 'launching'];
@@ -73,6 +74,7 @@ type DraftObjectiveProps = {
 export function DraftObjective({ objective, siblings, executionRequests }: DraftObjectiveProps) {
   const update = useUpdateObjective();
   const remove = useDeleteObjective();
+  const resourcesQ = useProjectResources(objective.projectId);
   const { catalog, agentConfigs, selection, setSelection, commitLaunchConfig, loaded } =
     useObjectiveAgentSelection(objective);
   const { mentionPaths, projectMentionOptions, missionMentionOptions } =
@@ -184,6 +186,13 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
           </PopoverContent>
         </Popover>
       ) : null}
+
+      <ObjectiveResourcePicker
+        resources={resourcesQ.data ?? []}
+        value={objective.resourceKey}
+        disabled={update.isPending}
+        onChange={resourceKey => update.mutate({ id: objective.id, body: { resourceKey } })}
+      />
 
       <AgentModelChooserButton
         catalog={catalog}

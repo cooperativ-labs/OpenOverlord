@@ -40,9 +40,9 @@ async function insertPrimaryResource({
   const now = nowIso();
   await ctx.db.run(
     `INSERT INTO project_resources
-         (id, workspace_id, project_id, execution_target_id, type, label, path, is_primary, status,
+         (id, workspace_id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status,
           metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, 'local_directory', 'Primary', ?, 1, 'active', '{}', ?, ?, 1)`,
+       VALUES (?, ?, ?, ?, 'primary', 'local_directory', 'Primary', ?, 1, 'active', '{}', ?, ?, 1)`,
     [newId(), ctx.workspace.id, projectId, executionTargetId, resourcePath, now, now]
   );
 }

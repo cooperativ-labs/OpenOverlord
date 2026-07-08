@@ -97,11 +97,24 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
     typeof window !== 'undefined' && typeof window.overlord?.chooseDirectory === 'function';
 
   const [directoryPath, setDirectoryPath] = useState('');
+  const [resourceKeyInput, setResourceKeyInput] = useState('');
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
+  const [resourceKeyEdits, setResourceKeyEdits] = useState<Record<string, string>>({});
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProjectResourceDto | null>(null);
+
+  useEffect(() => {
+    const resources = open ? (resourcesQ.data ?? []) : [];
+    setResourceKeyEdits(previous => {
+      const next: Record<string, string> = {};
+      for (const resource of resources) {
+        next[resource.id] = previous[resource.id] ?? resource.resourceKey;
+      }
+      return next;
+    });
+  }, [open, resourcesQ.data]);
 
   // Project default/parent branch (stored in project settings). The input mirrors
   // the saved value; an empty value clears the setting (falls back to `main`).
@@ -184,13 +197,29 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
     try {
       const resource = await createResource.mutateAsync({
         directoryPath: trimmed,
+        resourceKey: resourceKeyInput.trim() || undefined,
         executionTargetId: activeExecutionTargetId,
         isPrimary: !hasLocalPrimary
       });
       await writeLocalProjectMetadata({ directoryPath: trimmed, projectId, resource });
       setDirectoryPath('');
+      setResourceKeyInput('');
     } catch (error) {
       setAddError(error instanceof Error ? error.message : 'Failed to add directory.');
+    }
+  }
+
+  async function handleSaveResourceKey(resource: ProjectResourceDto) {
+    const nextKey = resourceKeyEdits[resource.id]?.trim() ?? '';
+    if (!nextKey || nextKey === resource.resourceKey) return;
+    setRowError(null);
+    try {
+      await updateResource.mutateAsync({
+        resourceId: resource.id,
+        body: { resourceKey: nextKey }
+      });
+    } catch (error) {
+      setRowError(error instanceof Error ? error.message : 'Failed to update resource key.');
     }
   }
 
@@ -318,7 +347,7 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
         <p className="mt-1 text-sm text-muted-foreground">
           New directories are linked to <span className="font-medium">{addTargetLabel}</span>.
         </p>
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_16rem_auto] lg:items-end">
           <div className="grid min-w-0 flex-1 gap-1.5">
             <Label htmlFor="resource-directory-path">Directory path</Label>
             <div className="flex gap-2">
@@ -347,6 +376,19 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
               ) : null}
             </div>
           </div>
+          <div className="grid min-w-0 gap-1.5">
+            <Label htmlFor="resource-key">Resource key</Label>
+            <Input
+              id="resource-key"
+              value={resourceKeyInput}
+              onChange={event => setResourceKeyInput(event.target.value)}
+              placeholder="derived from directory"
+              className="h-8 min-w-0 font-mono text-xs"
+              onKeyDown={event => {
+                if (event.key === 'Enter') void handleAddResource();
+              }}
+            />
+          </div>
           <Button
             type="button"
             size="sm"
@@ -373,6 +415,7 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
             <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 font-medium">Execution target</th>
+                <th className="px-3 py-2 font-medium">Key</th>
                 <th className="px-3 py-2 font-medium">Path</th>
                 <th className="px-3 py-2 font-medium">Primary</th>
                 <th className="px-3 py-2 font-medium">State</th>
@@ -383,6 +426,37 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
               {rows.map(resource => (
                 <tr key={resource.id} className="border-t">
                   <td className="px-3 py-2 text-muted-foreground">{targetLabel(resource)}</td>
+                  <td className="min-w-44 px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={resourceKeyEdits[resource.id] ?? resource.resourceKey}
+                        onChange={event =>
+                          setResourceKeyEdits(previous => ({
+                            ...previous,
+                            [resource.id]: event.target.value
+                          }))
+                        }
+                        onKeyDown={event => {
+                          if (event.key === 'Enter') void handleSaveResourceKey(resource);
+                        }}
+                        className="h-7 min-w-0 font-mono text-xs"
+                        aria-label={`Resource key for ${resource.path}`}
+                      />
+                      {(resourceKeyEdits[resource.id] ?? resource.resourceKey).trim() !==
+                      resource.resourceKey ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7"
+                          disabled={updateResource.isPending}
+                          onClick={() => void handleSaveResourceKey(resource)}
+                        >
+                          Save
+                        </Button>
+                      ) : null}
+                    </div>
+                  </td>
                   <td
                     className="max-w-xs truncate px-3 py-2 font-mono text-xs"
                     title={resource.path}

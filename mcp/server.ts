@@ -150,7 +150,8 @@ const tools: ToolEntry[] = [
       {
         projectId: stringProperty('Required Overlord project id, slug, or name.'),
         objective: stringProperty('Initial objective text.'),
-        title: stringProperty('Optional mission title.')
+        title: stringProperty('Optional mission title.'),
+        resourceKey: stringProperty('Optional logical project resource key for the objective.')
       },
       ['projectId', 'objective']
     ),
@@ -160,7 +161,10 @@ const tools: ToolEntry[] = [
         protocolBody({
           '--project-id': requiredString(args, 'projectId'),
           '--objective': requiredString(args, 'objective'),
-          ...(optionalString(args, 'title') ? { '--title': requiredString(args, 'title') } : {})
+          ...(optionalString(args, 'title') ? { '--title': requiredString(args, 'title') } : {}),
+          ...(optionalString(args, 'resourceKey')
+            ? { '--resource': requiredString(args, 'resourceKey') }
+            : {})
         })
       )
   },
@@ -171,7 +175,10 @@ const tools: ToolEntry[] = [
       'Load structured mission context, objectives, history, artifacts, and shared context.',
     inputSchema: objectSchema(
       {
-        missionId: stringProperty('Mission UUID or workspace display id such as coo:150.')
+        missionId: stringProperty('Mission UUID or workspace display id such as coo:150.'),
+        executionTargetId: stringProperty(
+          'Optional local execution target id for resolving sibling project resource paths.'
+        )
       },
       ['missionId']
     ),
@@ -179,7 +186,12 @@ const tools: ToolEntry[] = [
     handler: args =>
       runProtocolSubcommand(
         'load-context',
-        protocolBody({ '--mission-id': requiredString(args, 'missionId') })
+        protocolBody({
+          '--mission-id': requiredString(args, 'missionId'),
+          ...(optionalString(args, 'executionTargetId')
+            ? { '--execution-target-id': requiredString(args, 'executionTargetId') }
+            : {})
+        })
       )
   },
   {
@@ -191,10 +203,11 @@ const tools: ToolEntry[] = [
         missionId: stringProperty('Mission UUID or workspace display id.'),
         objectives: {
           type: 'array',
-          description: 'Objective objects with objective text and optional title.',
+          description: 'Objective objects with objective text and optional title/resourceKey.',
           items: objectSchema({
             objective: stringProperty('Objective text.'),
-            title: stringProperty('Optional objective title.')
+            title: stringProperty('Optional objective title.'),
+            resourceKey: stringProperty('Optional logical project resource key.')
           })
         }
       },
@@ -218,7 +231,10 @@ const tools: ToolEntry[] = [
       {
         missionId: stringProperty('Mission UUID or workspace display id.'),
         agent: stringProperty('Agent identifier. Defaults to hosted-mcp.'),
-        model: stringProperty('Optional model identifier.')
+        model: stringProperty('Optional model identifier.'),
+        executionTargetId: stringProperty(
+          'Optional local execution target id for resolving sibling project resource paths.'
+        )
       },
       ['missionId']
     ),
@@ -228,7 +244,10 @@ const tools: ToolEntry[] = [
         protocolBody({
           '--mission-id': requiredString(args, 'missionId'),
           '--agent': optionalString(args, 'agent') ?? 'hosted-mcp',
-          ...(optionalString(args, 'model') ? { '--model': requiredString(args, 'model') } : {})
+          ...(optionalString(args, 'model') ? { '--model': requiredString(args, 'model') } : {}),
+          ...(optionalString(args, 'executionTargetId')
+            ? { '--execution-target-id': requiredString(args, 'executionTargetId') }
+            : {})
         })
       )
   },
