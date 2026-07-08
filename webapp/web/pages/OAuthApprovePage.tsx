@@ -1,7 +1,6 @@
-import { AlertTriangle, Cable, Check, ExternalLink, Loader2, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, Check, Loader2, ShieldCheck, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { fetchApi } from '@/lib/api-transport';
@@ -93,29 +92,16 @@ export function OAuthApprovePage() {
   }
 
   return (
-    <main className="grid min-h-dvh place-items-center bg-muted/25 px-4 py-10">
-      <Card className="w-full max-w-xl rounded-xl border bg-background shadow-xl shadow-black/5">
-        <CardHeader className="gap-4">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="rounded-xl border bg-primary/10 p-2.5 text-primary">
-                <Cable className="size-5" />
-              </div>
-              <div>
-                <CardTitle>Connect Overlord MCP</CardTitle>
-                <CardDescription>
-                  Approve a cloud agent connection to this workspace.
-                </CardDescription>
-              </div>
-            </div>
-            <Badge variant="secondary" className="gap-1">
-              <ShieldCheck className="size-3" />
-              OAuth
-            </Badge>
-          </div>
+    <main className="flex h-dvh items-center justify-center overflow-y-auto bg-muted/25 px-4 py-6">
+      <Card className="my-auto w-full max-w-md rounded-xl border bg-background shadow-xl shadow-black/5">
+        <CardHeader className="space-y-1 pb-4">
+          <CardTitle className="text-lg">Approve MCP connection</CardTitle>
+          <CardDescription>
+            Allow this client to access your workspace with the permissions below.
+          </CardDescription>
         </CardHeader>
 
-        <CardContent className="space-y-5">
+        <CardContent className="space-y-4">
           {!requestInfo && !error ? (
             <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
@@ -132,36 +118,25 @@ export function OAuthApprovePage() {
 
           {requestInfo ? (
             <>
-              <div className="rounded-lg border bg-muted/25 p-4">
-                <p className="text-xs font-medium uppercase text-muted-foreground">Client</p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <p className="text-base font-medium">{requestInfo.clientName}</p>
-                  <Badge variant="outline" className="gap-1">
-                    <ExternalLink className="size-3" />
-                    {requestInfo.redirectHost}
-                  </Badge>
-                </div>
-                <p className="mt-2 break-all font-mono text-xs text-muted-foreground">
-                  {requestInfo.redirectUri}
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">{requestInfo.clientName}</p>
+                <p className="text-xs text-muted-foreground">
+                  Redirects to {requestInfo.redirectHost}
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Requested access</p>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {requestInfo.scopes.map(scope => (
-                    <div key={scope} className="rounded-lg border bg-background px-3 py-2 text-sm">
-                      <Check className="mr-2 inline size-3.5 text-primary" />
-                      {scopeLabel(scope)}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <ul className="space-y-1.5 text-sm">
+                {requestInfo.scopes.map(scope => (
+                  <li key={scope} className="flex items-center gap-2">
+                    <Check className="size-3.5 shrink-0 text-primary" />
+                    {scopeLabel(scope)}
+                  </li>
+                ))}
+              </ul>
 
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                Approval creates a scoped Overlord token for this MCP client. It can only use the
-                mission lifecycle capabilities listed here and only within workspaces your account
-                can already access.
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Approval creates a scoped token limited to these capabilities in workspaces you can
+                access.
               </p>
 
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

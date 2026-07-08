@@ -97,13 +97,16 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
   const isLaunching = objective.state === 'launching';
   const isLaunchable = objective.state === 'draft' || isSubmitted || isLaunching;
   const canToggleAutoAdvance = AUTO_ADVANCE_TOGGLE_STATES.includes(objective.state);
-  const hasActiveSibling =
-    siblings.some(o => o.id !== objective.id && ACTIVE_SIBLING_STATES.includes(o.state)) ||
-    executionRequests.some(
+  const activeSiblingObjective =
+    siblings.find(o => o.id !== objective.id && ACTIVE_SIBLING_STATES.includes(o.state)) ?? null;
+  const activeSiblingRequest =
+    executionRequests.find(
       request =>
         request.objectiveId !== objective.id &&
         ACTIVE_EXECUTION_REQUEST_STATES.includes(request.status)
-    );
+    ) ?? null;
+  const hasActiveSibling = Boolean(activeSiblingObjective ?? activeSiblingRequest);
+  const activeSiblingId = activeSiblingObjective?.id ?? activeSiblingRequest?.objectiveId ?? null;
   const activeRequest = executionRequests.find(r => r.objectiveId === objective.id) ?? null;
   const autoAdvancePending =
     update.isPending && update.variables?.id === objective.id
@@ -222,6 +225,7 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
           selection={selection}
           selectionLoaded={loaded}
           hasActiveSibling={hasActiveSibling}
+          activeSiblingId={activeSiblingId}
           activeRequest={activeRequest}
           size="sm"
         />

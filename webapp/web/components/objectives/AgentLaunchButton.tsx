@@ -1,4 +1,4 @@
-import { Bot, Check, CheckCircle2, ChevronDown, Copy, Loader2 } from 'lucide-react';
+import { Bot, Check, CheckCircle2, ChevronDown, Copy, Loader2, MoreVertical } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 import type { ExecutionRequestDto, ObjectiveDto } from '../../../shared/contract.ts';
@@ -31,6 +31,8 @@ type AgentLaunchButtonProps = {
   selectionLoaded: boolean;
   /** True when another objective on the mission is already executing/launching. */
   hasActiveSibling?: boolean;
+  /** Objective id for the active sibling job, when {@link hasActiveSibling} is true. */
+  activeSiblingId?: string | null;
   /** Active execution request already queued for this objective, if any. */
   activeRequest?: ExecutionRequestDto | null;
   size?: AgentLaunchButtonSize;
@@ -71,6 +73,7 @@ export function AgentLaunchButton({
   selection,
   selectionLoaded,
   hasActiveSibling = false,
+  activeSiblingId = null,
   activeRequest = null,
   size = 'sm'
 }: AgentLaunchButtonProps) {
@@ -131,6 +134,26 @@ export function AgentLaunchButton({
       {
         onError: err =>
           setError(err instanceof Error ? err.message : 'Failed to enable auto-advance')
+      }
+    );
+  }
+
+  function disconnectActiveSiblingAndLaunch() {
+    if (!activeSiblingId) {
+      setShowActiveConfirm(false);
+      queueLaunch();
+      return;
+    }
+    setError(null);
+    updateObjective.mutate(
+      { id: activeSiblingId, body: { state: 'future' } },
+      {
+        onSuccess: () => {
+          setShowActiveConfirm(false);
+          queueLaunch();
+        },
+        onError: err =>
+          setError(err instanceof Error ? err.message : 'Failed to disconnect current job')
       }
     );
   }
@@ -204,10 +227,30 @@ export function AgentLaunchButton({
     <Popover open={showActiveConfirm} onOpenChange={setShowActiveConfirm}>
       <PopoverTrigger render={<span className="inline-flex">{runButton}</span>} />
       <PopoverContent side="top" className="w-80 p-3 text-sm">
-        <p className="mb-3 text-foreground">
-          An agent appears to be working this mission already. Enable auto-advance so this objective
-          launches automatically after the current one completes?
-        </p>
+        <div className="mb-3 flex items-start gap-2">
+          <p className="flex-1 text-foreground">
+            An agent appears to be working this mission already. Enable auto-advance so this
+            objective launches automatically after the current one completes?
+          </p>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50"
+              aria-label="More launch options"
+              title="More launch options"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[200px]">
+              <DropdownMenuItem
+                className="gap-2 text-xs"
+                disabled={isLaunching}
+                onClick={disconnectActiveSiblingAndLaunch}
+              >
+                <span>Disconnect current job</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         <div className="flex justify-end gap-2">
           <button
             type="button"
