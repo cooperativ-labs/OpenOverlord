@@ -1,6 +1,5 @@
 import type { ProjectResourceDto } from '../../../shared/contract.ts';
 import { distinctProjectResourceKeys } from '../../lib/project-resources.ts';
-import { cn } from '../../lib/utils.ts';
 
 type ObjectiveResourcePickerProps = {
   resources: ProjectResourceDto[];
@@ -32,21 +31,21 @@ export function ObjectiveResourcePicker({
   }
 
   return (
-    <label className={cn('flex min-w-0 flex-col gap-1', className)}>
-      <span className="text-[11px] font-medium text-muted-foreground">Resource</span>
-      <select
-        className="h-8 min-w-[10rem] rounded-md border border-input bg-background px-2 text-xs shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
-        value={value ?? ''}
-        disabled={disabled}
-        onChange={event => onChange(event.target.value.trim() || null)}
-      >
-        <option value="">Primary (default)</option>
-        {resourceKeys.map(key => (
-          <option key={key} value={key}>
-            {labelsByKey.get(key) ?? key}
-          </option>
-        ))}
-      </select>
-    </label>
+
+
+    <select
+      className="h-8 min-w-40 rounded-md border border-input bg-background px-2 text-xs shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
+      value={value ?? ''}
+      disabled={disabled}
+      onChange={event => onChange(event.target.value.trim() || null)}
+    >
+      <option value="">Primary (default)</option>
+      {resourceKeys.map(key => (
+        <option key={key} value={key}>
+          {labelsByKey.get(key) ?? key}
+        </option>
+      ))}
+    </select>
+
   );
 }
