@@ -14,10 +14,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
+  type DayKey,
   groupMissionsByDay,
   parseCalendarDayDroppableId,
-  parseDayKey,
-  type DayKey
+  parseDayKey
 } from '@/lib/calendar-utils.ts';
 import { buildDueDatetime } from '@/lib/due-datetime.ts';
 
@@ -100,21 +100,18 @@ export function useCalendarDueDateDnd({
   );
 
   const [activeMissionId, setActiveMissionId] = useState<string | null>(null);
-  const [optimisticDayByMissionId, setOptimisticDayByMissionId] = useState<Map<string, DayKey> | null>(
-    null
-  );
-  const [dragStartDayByMissionId, setDragStartDayByMissionId] = useState<Map<string, DayKey> | null>(
-    null
-  );
+  const [optimisticDayByMissionId, setOptimisticDayByMissionId] = useState<Map<
+    string,
+    DayKey
+  > | null>(null);
+  const [dragStartDayByMissionId, setDragStartDayByMissionId] = useState<Map<
+    string,
+    DayKey
+  > | null>(null);
 
   const updateDueDate = useMutation({
-    mutationFn: ({
-      missionId,
-      dueDatetime
-    }: {
-      missionId: string;
-      dueDatetime: string;
-    }) => api.updateMission(missionId, { dueDatetime }),
+    mutationFn: ({ missionId, dueDatetime }: { missionId: string; dueDatetime: string }) =>
+      api.updateMission(missionId, { dueDatetime }),
     onSuccess: data => {
       queryClient.setQueryData(keys.mission(data.id), data);
       invalidateNonEverhourQueries(queryClient);

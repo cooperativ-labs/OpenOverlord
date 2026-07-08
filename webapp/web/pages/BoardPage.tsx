@@ -54,6 +54,7 @@ export function BoardPage() {
   const reorder = useReorderBoardColumn();
   const setMissionStatus = useSetMissionStatus();
   const [modalOpen, setModalOpen] = useState(false);
+  const [defaultDueDate, setDefaultDueDate] = useState<Date | null>(null);
   const [view, setView] = useState<BoardView>(() => readStoredBoardView(projectId));
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedStatusIds, setSelectedStatusIds] = useState<string[]>([]);
@@ -83,6 +84,21 @@ export function BoardPage() {
     setView(nextView);
     storeBoardView(projectId, nextView);
   };
+
+  const handleCalendarDayClick = useCallback((day: Date) => {
+    setDefaultDueDate(day);
+    setModalOpen(true);
+  }, []);
+
+  const handleOpenNewMissionModal = useCallback(() => {
+    setDefaultDueDate(null);
+    setModalOpen(true);
+  }, []);
+
+  const handleCloseNewMissionModal = useCallback(() => {
+    setModalOpen(false);
+    setDefaultDueDate(null);
+  }, []);
 
   const missionById = useMemo(() => {
     const map = new Map<string, MissionDto>();
@@ -380,7 +396,7 @@ export function BoardPage() {
             title="No missions in this project"
             hint="Create a mission to track a unit of work. Each mission holds an ordered list of objectives."
             action={
-              <Button variant="primary" onClick={() => setModalOpen(true)}>
+              <Button variant="primary" onClick={handleOpenNewMissionModal}>
                 + New mission
               </Button>
             }
@@ -423,6 +439,7 @@ export function BoardPage() {
             projectColor={projectColor}
             selectedMissionId={selectedMissionId}
             onCompleteMission={completeStatusId ? handleCompleteMission : undefined}
+            onDayClick={handleCalendarDayClick}
           />
         ) : (
           <MissionListView
@@ -443,8 +460,9 @@ export function BoardPage() {
 
       <NewMissionModal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={handleCloseNewMissionModal}
         defaultProjectId={projectId}
+        defaultDueDate={defaultDueDate}
       />
     </div>
   );

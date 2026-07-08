@@ -13,11 +13,12 @@ import {
   endOfMonth,
   getWeeksForMonth,
   groupMissionsByDay,
-  isoWeekdayIndex,
+  isWeekend,
   parseCalendarDayDroppableId,
   parseDayKey,
   startOfDay,
-  startOfMonth
+  startOfMonth,
+  weekdayIndex
 } from './calendar-utils.ts';
 
 function mission({
@@ -83,10 +84,13 @@ describe('eachMonthInRange', () => {
 });
 
 describe('getWeeksForMonth', () => {
-  it('pads leading and trailing days to full ISO weeks', () => {
+  it('pads leading and trailing days to full Sunday-start weeks', () => {
     const weeks = getWeeksForMonth(new Date(2026, 2, 1));
-    assert.equal(weeks.every(week => week.length === 7), true);
-    assert.equal(isoWeekdayIndex(weeks[0][0]), 0);
+    assert.equal(
+      weeks.every(week => week.length === 7),
+      true
+    );
+    assert.equal(weekdayIndex(weeks[0][0]), 0);
     assert.ok(weeks.length >= 4);
   });
 });

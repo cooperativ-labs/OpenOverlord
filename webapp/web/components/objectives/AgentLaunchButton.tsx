@@ -146,7 +146,7 @@ export function AgentLaunchButton({
     }
     setError(null);
     updateObjective.mutate(
-      { id: activeSiblingId, body: { state: 'future' } },
+      { id: activeSiblingId, body: { state: 'submitted' } },
       {
         onSuccess: () => {
           setShowActiveConfirm(false);
@@ -227,11 +227,11 @@ export function AgentLaunchButton({
     <Popover open={showActiveConfirm} onOpenChange={setShowActiveConfirm}>
       <PopoverTrigger render={<span className="inline-flex">{runButton}</span>} />
       <PopoverContent side="top" className="w-80 p-3 text-sm">
-        <div className="mb-3 flex items-start gap-2">
-          <p className="flex-1 text-foreground">
-            An agent appears to be working this mission already. Enable auto-advance so this
-            objective launches automatically after the current one completes?
-          </p>
+        <p className="mb-3 text-foreground">
+          An agent appears to be working this mission already. Enable auto-advance so this objective
+          launches automatically after the current one completes?
+        </p>
+        <div className="flex items-center justify-end gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger
               className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50"
@@ -250,8 +250,6 @@ export function AgentLaunchButton({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-        <div className="flex justify-end gap-2">
           <button
             type="button"
             className="rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"

@@ -18,6 +18,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu.tsx';
+import { api } from '@/lib/api.ts';
+import { buildDueDatetime } from '@/lib/due-datetime.ts';
 import { readLastUsedProjectId, writeLastUsedProjectId } from '@/lib/last-used-project.ts';
 import {
   executionTargetAvailability,
@@ -45,6 +47,8 @@ type NewMissionModalProps = {
   onClose: () => void;
   defaultProjectId?: string | null;
   defaultStatusId?: string | null;
+  /** When set (e.g. from a calendar day click), the new mission gets this due date on save. */
+  defaultDueDate?: Date | null;
 };
 
 /**
@@ -58,7 +62,8 @@ export function NewMissionModal({
   open,
   onClose,
   defaultProjectId = null,
-  defaultStatusId = null
+  defaultStatusId = null,
+  defaultDueDate = null
 }: NewMissionModalProps) {
   const projectsQ = useProjects();
   const projects = useMemo(() => projectsQ.data ?? [], [projectsQ.data]);
@@ -198,6 +203,14 @@ export function NewMissionModal({
         statusId: defaultStatusId ?? undefined,
         tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined
       });
+      if (defaultDueDate) {
+        await api.updateMission(detail.id, {
+          dueDatetime: buildDueDatetime({
+            selectedDate: defaultDueDate,
+            currentDueDatetime: null
+          })
+        });
+      }
       writeLastUsedProjectId(selectedProjectId);
       const createdObjective = detail.objectives[0];
       if (!createdObjective) {

@@ -1,9 +1,8 @@
+import { deriveProjectResourceKey } from '@overlord/core/service/projects';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-
-import { deriveProjectResourceKey } from '@overlord/core/service/projects';
 
 import { type BranchDecision, planMissionBranch } from './branch-planning.js';
 import type { CliRuntime } from './runtime.js';
@@ -389,8 +388,7 @@ function resolveLaunchResourceKey({
     const objective = mission.objectives.find(
       candidate => typeof candidate.id === 'string' && candidate.id === objectiveId
     );
-    const key =
-      typeof objective?.resourceKey === 'string' ? objective.resourceKey.trim() : '';
+    const key = typeof objective?.resourceKey === 'string' ? objective.resourceKey.trim() : '';
     if (key) return key;
   }
 

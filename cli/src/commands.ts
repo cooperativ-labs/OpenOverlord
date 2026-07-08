@@ -20,7 +20,10 @@ import {
 import { type BranchAutomationPayload, prepareMissionBranch } from './branch-preparation.js';
 import { isLoopbackBackendUrl, loadConfig } from './config.js';
 import { clientDeviceIdentity } from './device-identity.js';
-import { discoverProjectOnClient, resolvePreferredExecutionTargetId } from './discover-project-local.js';
+import {
+  discoverProjectOnClient,
+  resolvePreferredExecutionTargetId
+} from './discover-project-local.js';
 import { CliError } from './errors.js';
 import { launchAgent } from './launch.js';
 import { resolveNativeSessionId } from './native-session.js';
@@ -550,6 +553,19 @@ function firstObjectiveId(mission: unknown): string | undefined {
   const first = objectives[0];
   const id = asRecord(first).id;
   return typeof id === 'string' ? id : undefined;
+}
+
+/** Prefer the objective that would be launched next (matches server launchable states). */
+function launchableObjectiveId(mission: unknown): string | undefined {
+  const objectives = asRecord(mission).objectives;
+  if (!Array.isArray(objectives)) return undefined;
+  const launchableStates = ['executing', 'submitted', 'launching', 'draft'];
+  for (const state of launchableStates) {
+    const match = objectives.find(objective => asRecord(objective).state === state);
+    const id = asRecord(match).id;
+    if (typeof id === 'string') return id;
+  }
+  return firstObjectiveId(mission);
 }
 
 /** The agent already assigned to an objective on a fetched mission payload, if any. */
@@ -1150,11 +1166,20 @@ export async function runManagementCommand({
       const workingDirectory = flagValue(parsed.flags, '--working-directory') ?? process.cwd();
       const terminal = await resolveTerminalLaunchSettings({ runtime, flags: parsed.flags });
       const dryRun = flagBoolean(parsed.flags, '--dry-run');
+      const mission = await runtime.backend.get<unknown>(
+        `/api/missions/${encodeURIComponent(missionId)}`
+      );
+      const objectiveId =
+        flagValue(parsed.flags, '--objective-id') ?? launchableObjectiveId(mission);
+      const executionTargetId = await resolvePreferredExecutionTargetId({
+        backend: runtime.backend
+      });
       const prepared = await prepareMissionBranch({
         runtime,
         options: {
           missionId,
           workingDirectory,
+          objectiveId: objectiveId ?? undefined,
           workspaceAutomationEnabled: await readWorktreeBranchAutomationEnabled(runtime),
           dryRun,
           overrideBranch: flagValue(parsed.flags, '--branch'),
@@ -1176,6 +1201,7 @@ export async function runManagementCommand({
           thinking: flagValue(parsed.flags, '--thinking'),
           flags: repeatedFlagValues(rest, '--flag'),
           preCommand: flagValue(parsed.flags, '--pre-command'),
+          executionTargetId: executionTargetId ?? undefined,
           ...terminal,
           dryRun
         }

@@ -4,7 +4,7 @@ export type DayKey = string;
 
 const CALENDAR_DAY_DROPPABLE_PREFIX = 'day:';
 
-const ISO_WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
 export function calendarDayDroppableId(dayKey: DayKey): string {
   return `${CALENDAR_DAY_DROPPABLE_PREFIX}${dayKey}`;
@@ -47,9 +47,14 @@ export function addDays(date: Date, days: number): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 }
 
-/** Monday = 0 … Sunday = 6 (ISO week). */
-export function isoWeekdayIndex(date: Date): number {
-  return (date.getDay() + 6) % 7;
+/** Sunday = 0 … Saturday = 6. */
+export function weekdayIndex(date: Date): number {
+  return date.getDay();
+}
+
+export function isWeekend(date: Date): boolean {
+  const day = date.getDay();
+  return day === 0 || day === 6;
 }
 
 export function formatMonthLabel(date: Date): string {
@@ -60,8 +65,8 @@ export function formatWeekdayShort(date: Date): string {
   return new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(date);
 }
 
-export function isoWeekdayLabels(): readonly string[] {
-  return ISO_WEEKDAY_LABELS;
+export function weekdayLabels(): readonly string[] {
+  return WEEKDAY_LABELS;
 }
 
 export function eachMonthInRange({ start, end }: { start: Date; end: Date }): Date[] {
@@ -92,7 +97,7 @@ export function calendarWindowRange({
   };
 }
 
-/** Week rows for a month, padded to full ISO weeks with adjacent-month days. */
+/** Week rows for a month, padded to full Sunday-start weeks with adjacent-month days. */
 export function getWeeksForMonth(monthDate: Date): Date[][] {
   const year = monthDate.getFullYear();
   const month = monthDate.getMonth();
@@ -101,7 +106,7 @@ export function getWeeksForMonth(monthDate: Date): Date[][] {
   const weeks: Date[][] = [];
   let currentWeek: Date[] = [];
 
-  const leadingPad = isoWeekdayIndex(firstOfMonth);
+  const leadingPad = weekdayIndex(firstOfMonth);
   for (let offset = leadingPad; offset > 0; offset -= 1) {
     currentWeek.push(addDays(firstOfMonth, -offset));
   }

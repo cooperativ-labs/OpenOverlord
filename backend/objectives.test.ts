@@ -83,6 +83,19 @@ test('realtime catch-up reads changes after the cursor in order', async () => {
   assert.deepEqual(emptyPage, { changes: [], cursor: secondPage.cursor, hasMore: false });
 });
 
+test('completed objectives cannot be moved back to the future queue', async () => {
+  const project = await createProject({ name: 'Complete To Future Guard Test' });
+  const mission = await createMission({ projectId: project.id, firstObjective: 'Done' });
+  const objectiveId = mission.objectives[0]!.id;
+
+  await updateObjective(objectiveId, { state: 'complete' });
+
+  await assert.rejects(
+    () => updateObjective(objectiveId, { state: 'future' }),
+    (error: unknown) => error instanceof ApiError && error.status === 400
+  );
+});
+
 test('clearing a draft objective instruction to empty leaves it blank instead of erroring', async () => {
   const project = await createProject({ name: 'Clear Instruction Test' });
   const mission = await createMission({ projectId: project.id, firstObjective: 'Do the thing' });

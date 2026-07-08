@@ -13,7 +13,7 @@ import type { ServiceContext } from './context.js';
 import { resolveProjectId } from './context.js';
 import { ServiceError } from './errors.js';
 import { ensureActingDeviceTarget } from './execution-targets.js';
-import { initialTitleFromInstruction, newId, nowIso, slugify } from './util.js';
+import { newId, nowIso, slugify } from './util.js';
 
 export type ProjectSummary = {
   id: string;
@@ -333,35 +333,57 @@ export async function listProjectResources({
        WHERE project_id = ? AND deleted_at IS NULL
        ORDER BY is_primary DESC, created_at ASC`,
     [resolvedProjectId]
-  )) as Array<{
-    id: string;
-    project_id: string;
-    execution_target_id: string | null;
-    resource_key: string;
-    type: string;
-    label: string | null;
-    path: string;
-    is_primary: boolean | number;
-    status: string;
-  }>;
+  )) as ProjectResourceRow[];
 
-  return await Promise.all(
-    rows.map(async row => ({
-      id: row.id,
-      projectId: row.project_id,
-      executionTargetId: row.execution_target_id,
-      resourceKey: row.resource_key,
-      type: row.type,
-      label: row.label,
-      path: row.path,
-      isPrimary: isTruthyFlag(row.is_primary),
-      status: await deriveResourceStatus(backendResourceProvider(ctx, row.execution_target_id), {
-        resourceId: row.id,
-        status: row.status,
-        path: row.path
-      })
-    }))
-  );
+  return await Promise.all(rows.map(row => rowToProjectResourceSummary(ctx, row)));
+}
+
+/**
+ * Single-row lookup shared by the primary/key resource finders. A row scoped to
+ * `executionTargetId` wins over a global (NULL-target) row, then creation order
+ * breaks ties — the same precedence launch resolution uses.
+ */
+async function findProjectResourceRow({
+  ctx,
+  projectId,
+  resourceKey = null,
+  primaryOnly = false,
+  executionTargetId = null
+}: {
+  ctx: ServiceContext;
+  projectId: string;
+  resourceKey?: string | null;
+  primaryOnly?: boolean;
+  executionTargetId?: string | null;
+}): Promise<ProjectResourceRow | undefined> {
+  const resolvedProjectId = await resolveProjectId(ctx, projectId);
+  const conditions = ['project_id = ?', 'deleted_at IS NULL'];
+  const params: unknown[] = [resolvedProjectId];
+  if (primaryOnly) {
+    conditions.push('is_primary = ?');
+    params.push(bindBool(ctx.db.dialect, true));
+  }
+  if (resourceKey !== null) {
+    conditions.push('resource_key = ?');
+    params.push(resourceKey);
+  }
+  const orderBy: string[] = [];
+  if (executionTargetId !== null) {
+    conditions.push('(execution_target_id = ? OR execution_target_id IS NULL)');
+    params.push(executionTargetId);
+    orderBy.push('CASE WHEN execution_target_id = ? THEN 0 ELSE 1 END');
+    params.push(executionTargetId);
+  }
+  orderBy.push('created_at ASC');
+
+  return (await ctx.db.get(
+    `SELECT id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status
+       FROM project_resources
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY ${orderBy.join(', ')}
+      LIMIT 1`,
+    params
+  )) as ProjectResourceRow | undefined;
 }
 
 export async function findPrimaryProjectResource({
@@ -373,61 +395,13 @@ export async function findPrimaryProjectResource({
   projectId: string;
   executionTargetId?: string | null;
 }): Promise<ProjectResourceSummary | null> {
-  const resolvedProjectId = await resolveProjectId(ctx, projectId);
-  const isPrimary = bindBool(ctx.db.dialect, true);
-  const row = (await ctx.db.get(
-    executionTargetId === null
-      ? `SELECT id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status
-           FROM project_resources
-          WHERE project_id = ?
-            AND deleted_at IS NULL
-            AND is_primary = ?
-          ORDER BY created_at ASC
-          LIMIT 1`
-      : `SELECT id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status
-           FROM project_resources
-          WHERE project_id = ?
-            AND deleted_at IS NULL
-            AND is_primary = ?
-            AND (execution_target_id = ? OR execution_target_id IS NULL)
-          ORDER BY
-            CASE WHEN execution_target_id = ? THEN 0 ELSE 1 END,
-            created_at ASC
-          LIMIT 1`,
-    executionTargetId === null
-      ? [resolvedProjectId, isPrimary]
-      : [resolvedProjectId, isPrimary, executionTargetId, executionTargetId]
-  )) as
-    | {
-        id: string;
-        project_id: string;
-        execution_target_id: string | null;
-        resource_key: string;
-        type: string;
-        label: string | null;
-        path: string;
-        is_primary: number;
-        status: string;
-      }
-    | undefined;
-
-  if (!row) return null;
-
-  return {
-    id: row.id,
-    projectId: row.project_id,
-    executionTargetId: row.execution_target_id,
-    resourceKey: row.resource_key,
-    type: row.type,
-    label: row.label,
-    path: row.path,
-    isPrimary: true,
-    status: await deriveResourceStatus(backendResourceProvider(ctx, row.execution_target_id), {
-      resourceId: row.id,
-      status: row.status,
-      path: row.path
-    })
-  };
+  const row = await findProjectResourceRow({
+    ctx,
+    projectId,
+    primaryOnly: true,
+    executionTargetId
+  });
+  return row ? await rowToProjectResourceSummary(ctx, row) : null;
 }
 
 export async function assertPrimaryResourceConnected({
@@ -476,7 +450,7 @@ type ProjectResourceRow = {
   type: string;
   label: string | null;
   path: string;
-  is_primary: number;
+  is_primary: boolean | number;
   status: string;
 };
 
@@ -554,36 +528,16 @@ export async function findProjectResourceByKey({
   resourceKey: string;
   executionTargetId?: string | null;
 }): Promise<ProjectResourceSummary | null> {
-  const resolvedProjectId = await resolveProjectId(ctx, projectId);
   const normalizedKey = resourceKey.trim();
   if (!normalizedKey) return null;
 
-  const row = (await ctx.db.get(
-    executionTargetId === null
-      ? `SELECT id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status
-           FROM project_resources
-          WHERE project_id = ?
-            AND resource_key = ?
-            AND deleted_at IS NULL
-          ORDER BY created_at ASC
-          LIMIT 1`
-      : `SELECT id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status
-           FROM project_resources
-          WHERE project_id = ?
-            AND resource_key = ?
-            AND deleted_at IS NULL
-            AND (execution_target_id = ? OR execution_target_id IS NULL)
-          ORDER BY
-            CASE WHEN execution_target_id = ? THEN 0 ELSE 1 END,
-            created_at ASC
-          LIMIT 1`,
-    executionTargetId === null
-      ? [resolvedProjectId, normalizedKey]
-      : [resolvedProjectId, normalizedKey, executionTargetId, executionTargetId]
-  )) as ProjectResourceRow | undefined;
-
-  if (!row) return null;
-  return rowToProjectResourceSummary(ctx, row);
+  const row = await findProjectResourceRow({
+    ctx,
+    projectId,
+    resourceKey: normalizedKey,
+    executionTargetId
+  });
+  return row ? await rowToProjectResourceSummary(ctx, row) : null;
 }
 
 export async function assertObjectiveResourceConnected({
@@ -644,7 +598,10 @@ export async function resolveCwdProjectResource({
   workingDirectory?: string;
 }): Promise<PrimaryResourceConnection | null> {
   const resolvedProjectId = await resolveProjectId(ctx, projectId);
-  const preferredExecutionTargetId = await preferredExecutionTargetIdForDiscovery({ ctx });
+  // Prefer the caller's launch target when picking among multi-target
+  // project.json links; fall back to the acting device.
+  const preferredExecutionTargetId =
+    executionTargetId ?? (await preferredExecutionTargetIdForDiscovery({ ctx }));
   let current = path.resolve(workingDirectory);
 
   while (true) {

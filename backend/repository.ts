@@ -862,11 +862,7 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
   );
   const projectSlug = await getProjectSlug(row.project_id, row.workspace_id);
   const worktreeRoot = resolveWorktreeRoot();
-  const resourceKey = await primaryResourceKey(
-    row.project_id,
-    row.workspace_id,
-    executionTargetId
-  );
+  const resourceKey = await primaryResourceKey(row.project_id, row.workspace_id, executionTargetId);
   const overrideBranch = row.branch_override?.trim() || null;
   const worktreePreference = parseWorktreePreference(row.worktree_preference);
   const { automationEnabled, willPrepareBranch, willUseWorktree } = await resolveBranchAutomation(
@@ -991,37 +987,60 @@ async function resolveProjectResourceScopeTargetId(
   });
 }
 
-async function primaryResource(
-  projectId: string,
-  workspaceId: string,
-  executionTargetId?: string | null
-): Promise<{ id: string; path: string; resourceKey: string } | null> {
+// Shared scoped lookup behind primaryResource/resourceByKey: rows scoped to the
+// resolved execution target beat global (NULL-target) rows, then the primary
+// flag and creation order break ties.
+async function activeResourceRow({
+  projectId,
+  workspaceId,
+  resourceKey = null,
+  executionTargetId
+}: {
+  projectId: string;
+  workspaceId: string;
+  resourceKey?: string | null;
+  executionTargetId?: string | null;
+}): Promise<{ id: string; path: string; resource_key: string } | undefined> {
   const targetId =
     executionTargetId === undefined
       ? await resolveProjectResourceScopeTargetId(projectId, workspaceId)
       : executionTargetId;
 
-  const row = (await (targetId === null
-    ? requireDatabaseClient().get(
-        `SELECT id, path, resource_key FROM project_resources
-            WHERE project_id = ? AND workspace_id = ?
-              AND status = 'active' AND deleted_at IS NULL
-            ORDER BY is_primary DESC, created_at ASC
-            LIMIT 1`,
-        [projectId, workspaceId]
-      )
-    : requireDatabaseClient().get(
-        `SELECT id, path, resource_key FROM project_resources
-            WHERE project_id = ? AND workspace_id = ?
-              AND (execution_target_id = ? OR execution_target_id IS NULL)
-              AND status = 'active' AND deleted_at IS NULL
-            ORDER BY
-              CASE WHEN execution_target_id = ? THEN 0 ELSE 1 END,
-              is_primary DESC,
-              created_at ASC
-            LIMIT 1`,
-        [projectId, workspaceId, targetId, targetId]
-      ))) as { id: string; path: string; resource_key: string } | undefined;
+  const conditions = [
+    'project_id = ?',
+    'workspace_id = ?',
+    `status = 'active'`,
+    'deleted_at IS NULL'
+  ];
+  const params: unknown[] = [projectId, workspaceId];
+  if (resourceKey !== null) {
+    conditions.push('resource_key = ?');
+    params.push(resourceKey);
+  }
+  const orderBy: string[] = [];
+  if (targetId !== null) {
+    conditions.push('(execution_target_id = ? OR execution_target_id IS NULL)');
+    params.push(targetId);
+    orderBy.push('CASE WHEN execution_target_id = ? THEN 0 ELSE 1 END');
+    params.push(targetId);
+  }
+  orderBy.push('is_primary DESC', 'created_at ASC');
+
+  return (await requireDatabaseClient().get(
+    `SELECT id, path, resource_key FROM project_resources
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY ${orderBy.join(', ')}
+        LIMIT 1`,
+    params
+  )) as { id: string; path: string; resource_key: string } | undefined;
+}
+
+async function primaryResource(
+  projectId: string,
+  workspaceId: string,
+  executionTargetId?: string | null
+): Promise<{ id: string; path: string; resourceKey: string } | null> {
+  const row = await activeResourceRow({ projectId, workspaceId, executionTargetId });
   if (!row) return null;
   return {
     id: row.id,
@@ -1043,34 +1062,12 @@ async function resourceByKey({
 }): Promise<{ id: string; path: string; resourceKey: string } | null> {
   const normalizedKey = resourceKey.trim();
   if (!normalizedKey) return null;
-  const targetId =
-    executionTargetId === undefined
-      ? await resolveProjectResourceScopeTargetId(projectId, workspaceId)
-      : executionTargetId;
-
-  const row = (await (targetId === null
-    ? requireDatabaseClient().get(
-        `SELECT id, path, resource_key FROM project_resources
-            WHERE project_id = ? AND workspace_id = ?
-              AND resource_key = ?
-              AND status = 'active' AND deleted_at IS NULL
-            ORDER BY is_primary DESC, created_at ASC
-            LIMIT 1`,
-        [projectId, workspaceId, normalizedKey]
-      )
-    : requireDatabaseClient().get(
-        `SELECT id, path, resource_key FROM project_resources
-            WHERE project_id = ? AND workspace_id = ?
-              AND resource_key = ?
-              AND (execution_target_id = ? OR execution_target_id IS NULL)
-              AND status = 'active' AND deleted_at IS NULL
-            ORDER BY
-              CASE WHEN execution_target_id = ? THEN 0 ELSE 1 END,
-              is_primary DESC,
-              created_at ASC
-            LIMIT 1`,
-        [projectId, workspaceId, normalizedKey, targetId, targetId]
-      ))) as { id: string; path: string; resource_key: string } | undefined;
+  const row = await activeResourceRow({
+    projectId,
+    workspaceId,
+    resourceKey: normalizedKey,
+    executionTargetId
+  });
   if (!row) return null;
   return {
     id: row.id,
@@ -1084,7 +1081,9 @@ async function primaryResourceKey(
   workspaceId: string,
   executionTargetId?: string | null
 ): Promise<string> {
-  return (await primaryResource(projectId, workspaceId, executionTargetId))?.resourceKey ?? 'project';
+  return (
+    (await primaryResource(projectId, workspaceId, executionTargetId))?.resourceKey ?? 'project'
+  );
 }
 
 async function primaryResourcePath(
@@ -1242,6 +1241,7 @@ export async function performBranchAction(
     confirmBusy?: unknown;
     clientExecuted?: unknown;
     summary?: unknown;
+    resourceKey?: unknown;
   }
 ): Promise<MissionDetailDto> {
   const action = String(body.action ?? '') as BranchActionName;
@@ -4747,6 +4747,9 @@ const VALID_STATES = [
   'complete'
 ];
 
+/** Active pipeline states a user can disconnect back to the next-up queue. */
+const DISCONNECT_FROM_STATES = ['launching', 'executing', 'pending_delivery'] as const;
+
 /**
  * Persists objective position changes with a two-phase write so
  * mission_id+position uniqueness is not violated mid-transaction.
@@ -5218,6 +5221,9 @@ async function updateObjectiveTx(
     }
     if (body.state !== undefined) {
       if (!VALID_STATES.includes(body.state)) throw new ApiError(400, 'Invalid objective state');
+      if (existing.state === 'complete' && body.state === 'future') {
+        throw new ApiError(400, 'Completed objectives cannot be moved back to the future queue.');
+      }
       fields.push('state = ?');
       setParams.push(body.state);
       changed.push('state');
@@ -5372,13 +5378,18 @@ async function updateObjectiveTx(
       });
     }
 
+    const disconnectingToSubmitted =
+      body.state === 'submitted' &&
+      body.state !== existing.state &&
+      DISCONNECT_FROM_STATES.includes(existing.state as (typeof DISCONNECT_FROM_STATES)[number]);
+
     // When a user manually moves an objective out of the launch pipeline
-    // (completing it, or disconnecting it back to future/executing/pending),
+    // (completing it, disconnecting it back to submitted, or parking to future),
     // the runner must stop seeing it: clear queued work and end open sessions.
     if (
       body.state !== undefined &&
       body.state !== existing.state &&
-      !LAUNCHABLE_STATES.includes(body.state)
+      (disconnectingToSubmitted || !LAUNCHABLE_STATES.includes(body.state))
     ) {
       await dequeueObjective({
         objectiveId: id,

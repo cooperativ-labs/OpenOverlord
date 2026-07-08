@@ -385,6 +385,7 @@ export function useObservedMissionBranch({
         const recorded = await reportMissionBranchObservation({
           executionTargetId,
           missionId: mission.id,
+          resourceKey: resource.resourceKey,
           branch: observed
         });
         if (recorded > 0) {

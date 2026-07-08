@@ -1,6 +1,5 @@
 import type { ServiceContext } from './context.js';
 import { resolveProjectId } from './context.js';
-import { findPrimaryProjectResource } from './projects.js';
 import { loadTargetResourceObservations } from './target-resource-observations.js';
 
 export type ProjectResourceManifestEntry = {
@@ -18,7 +17,6 @@ type ResourceLike = {
   label: string | null;
   path: string;
   isPrimary: boolean;
-  status: string;
   executionTargetId: string | null;
 };
 
@@ -58,20 +56,17 @@ export function buildProjectResourceManifestEntries({
     byKey.set(key, bucket);
   }
 
-  const resolvedCurrent =
-    currentResourceKey?.trim() ||
-    pickResourceForTarget(
-      resources.filter(resource => resource.isPrimary),
-      executionTargetId
-    )?.resourceKey ||
-    pickResourceForTarget(resources, executionTargetId)?.resourceKey ||
-    null;
-
   const primaryKey =
     pickResourceForTarget(
       resources.filter(resource => resource.isPrimary),
       executionTargetId
     )?.resourceKey ?? null;
+
+  const resolvedCurrent =
+    currentResourceKey?.trim() ||
+    primaryKey ||
+    pickResourceForTarget(resources, executionTargetId)?.resourceKey ||
+    null;
 
   return [...byKey.entries()]
     .map(([resourceKey, bucket]) => {
@@ -88,7 +83,7 @@ export function buildProjectResourceManifestEntries({
         isPrimary: primaryKey !== null ? resourceKey === primaryKey : row.isPrimary,
         isCurrent: resourceKey === resolvedCurrent,
         path: executionTargetId && hasTargetRow ? row.path : null,
-        state: observationState ?? (executionTargetId ? 'unknown' : 'unknown')
+        state: observationState ?? 'unknown'
       };
     })
     .filter((entry): entry is ProjectResourceManifestEntry => entry !== null)
@@ -112,7 +107,7 @@ export async function buildProjectResourceManifest({
 }): Promise<ProjectResourceManifestEntry[]> {
   const resolvedProjectId = await resolveProjectId(ctx, projectId);
   const rows = (await ctx.db.all(
-    `SELECT id, resource_key, label, path, is_primary, execution_target_id, status
+    `SELECT id, resource_key, label, path, is_primary, execution_target_id
        FROM project_resources
       WHERE project_id = ? AND deleted_at IS NULL
       ORDER BY is_primary DESC, created_at ASC`,
@@ -124,7 +119,6 @@ export async function buildProjectResourceManifest({
     path: string;
     is_primary: boolean | number;
     execution_target_id: string | null;
-    status: string;
   }>;
 
   const resources: ResourceLike[] = rows.map(row => ({
@@ -133,45 +127,36 @@ export async function buildProjectResourceManifest({
     label: row.label,
     path: row.path,
     isPrimary: isTruthyPrimary(row.is_primary),
-    status: row.status,
     executionTargetId: row.execution_target_id
   }));
 
-  const selected = [...new Map(resources.map(row => [row.resourceKey, row])).values()]
-    .map(row => pickResourceForTarget(
-      resources.filter(candidate => candidate.resourceKey === row.resourceKey),
-      executionTargetId ?? null
-    ))
-    .filter((row): row is ResourceLike => row !== null);
-
   const observationStatesByResourceId = new Map<string, string>();
-  if (executionTargetId && selected.length > 0) {
-    const observations = await loadTargetResourceObservations({
-      ctx,
-      resourceIds: selected.map(row => row.id!).filter(Boolean)
-    });
-    for (const row of selected) {
-      if (!row.id) continue;
-      const observation = observations.get(row.id);
-      if (observation && observation.executionTargetId === executionTargetId) {
-        observationStatesByResourceId.set(row.id, observation.state);
+  if (executionTargetId && resources.length > 0) {
+    // Observe only the row each key resolves to for this target — the same row
+    // buildProjectResourceManifestEntries will surface.
+    const pickedIds = [...new Set(resources.map(row => row.resourceKey))]
+      .map(
+        key =>
+          pickResourceForTarget(
+            resources.filter(row => row.resourceKey === key),
+            executionTargetId
+          )?.id
+      )
+      .filter((id): id is string => Boolean(id));
+    const observations = await loadTargetResourceObservations({ ctx, resourceIds: pickedIds });
+    for (const [resourceId, observation] of observations) {
+      if (observation.executionTargetId === executionTargetId) {
+        observationStatesByResourceId.set(resourceId, observation.state);
       }
     }
   }
 
-  const normalizedCurrent =
-    currentResourceKey?.trim() ||
-    (await findPrimaryProjectResource({
-      ctx,
-      projectId: resolvedProjectId,
-      executionTargetId: executionTargetId ?? null
-    }))?.resourceKey ||
-    null;
-
   return buildProjectResourceManifestEntries({
     resources,
     executionTargetId: executionTargetId ?? null,
-    currentResourceKey: normalizedCurrent,
+    // Entries fall back to the target-scoped primary key when no explicit
+    // current key is provided, so no separate primary lookup is needed here.
+    currentResourceKey: currentResourceKey?.trim() || null,
     observationStatesByResourceId
   });
 }

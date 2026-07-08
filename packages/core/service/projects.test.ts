@@ -1,16 +1,17 @@
-import { createSqliteClient, openInMemoryDatabase } from '@overlord/database';
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, it } from 'node:test';
 
-import { createServiceContext } from './context.js';
 import { ensureCallerDeviceTarget } from './execution-targets.js';
 import { addProjectResource, createProject, deriveProjectResourceKey } from './projects.js';
+import { createSeededServiceContext } from './test-helpers.js';
 import { newId, nowIso } from './util.js';
 
 describe('createProject slug reuse', () => {
   it('allows reusing a slug after the previous project is soft-deleted', async () => {
-    const db = createSqliteClient(openInMemoryDatabase());
-    const ctx = await createServiceContext({ db, source: 'cli' });
+    const { db, ctx } = await createSeededServiceContext({ source: 'cli' });
 
     const first = await createProject({ ctx, name: 'Overlord', slug: 'overlord' });
     await db.run(
@@ -54,8 +55,7 @@ describe('deriveProjectResourceKey', () => {
 
 describe('addProjectResource', () => {
   it('stores the local execution target and only rewrites primaries within that target', async () => {
-    const db = createSqliteClient(openInMemoryDatabase());
-    const ctx = await createServiceContext({ db, source: 'cli' });
+    const { db, ctx } = await createSeededServiceContext({ source: 'cli' });
     const project = await createProject({ ctx, name: 'Execution target resources' });
     const localTarget = await ensureCallerDeviceTarget({ ctx });
     const now = nowIso();
@@ -94,15 +94,18 @@ describe('addProjectResource', () => {
       ['other-target-resource', ctx.workspace.id, project.id, 'other-target', now, now]
     );
 
+    // Never point a test resource at the real checkout: addProjectResource
+    // writes .overlord/project.json into the directory it links.
+    const addedDir = mkdtempSync(path.join(tmpdir(), 'ovld-added-'));
     const added = await addProjectResource({
       ctx,
       projectId: project.id,
-      directoryPath: process.cwd(),
+      directoryPath: addedDir,
       isPrimary: true
     });
 
     assert.equal(added.executionTargetId, localTarget.executionTargetId);
-    assert.equal(added.resourceKey, path.basename(process.cwd()).toLowerCase());
+    assert.equal(added.resourceKey, path.basename(addedDir).toLowerCase());
 
     const rows = (await db.all(
       `SELECT id, execution_target_id, is_primary

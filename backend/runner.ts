@@ -313,10 +313,7 @@ function requireBranchPayload(value: unknown): BranchPreparedPayload {
   const action = body.action;
   const cycle = typeof body.cycle === 'number' && Number.isFinite(body.cycle) ? body.cycle : 1;
   if (!branchName || !baseBranch || !worktreePath || !resourceKey) {
-    throw new ApiError(
-      400,
-      'branchName, baseBranch, worktreePath, and resourceKey are required'
-    );
+    throw new ApiError(400, 'branchName, baseBranch, worktreePath, and resourceKey are required');
   }
   if (action !== 'create' && action !== 'reuse' && action !== 'new_cycle') {
     throw new ApiError(400, 'Invalid branch preparation action');

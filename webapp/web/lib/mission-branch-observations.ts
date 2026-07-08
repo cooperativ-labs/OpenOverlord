@@ -15,17 +15,19 @@ function isRecordedMissionBranchStatus(
 export async function reportMissionBranchObservation({
   executionTargetId,
   missionId,
+  resourceKey,
   branch
 }: {
   executionTargetId: string;
   missionId: string;
+  resourceKey: string;
   branch: MissionBranchDto;
 }): Promise<number> {
   if (!isRecordedMissionBranchStatus(branch.status)) return 0;
   const observedAt = branch.observedAt ?? new Date().toISOString();
   const observation: MissionBranchObservationInput = {
     missionId,
-    resourceKey: resource.resourceKey,
+    resourceKey,
     status: branch.status,
     dirty: branch.dirty,
     worktreePath: branch.worktreePath,

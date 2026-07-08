@@ -868,15 +868,20 @@ export async function launchObjective(
       ]
     );
     const activeSiblingRequest = await tx.get<{ id: string }>(
-      `SELECT id FROM execution_requests
-          WHERE mission_id = ? AND workspace_id = ? AND objective_id <> ? AND deleted_at IS NULL
-            AND status IN (${ACTIVE_EXECUTION_REQUEST_STATUSES.map(() => '?').join(', ')})
+      `SELECT er.id
+           FROM execution_requests er
+           JOIN objectives o ON o.id = er.objective_id AND o.deleted_at IS NULL
+          WHERE er.mission_id = ? AND er.workspace_id = ? AND er.objective_id <> ?
+            AND er.deleted_at IS NULL
+            AND er.status IN (${ACTIVE_EXECUTION_REQUEST_STATUSES.map(() => '?').join(', ')})
+            AND o.state IN (${ACTIVE_SIBLING_OBJECTIVE_STATES.map(() => '?').join(', ')})
           LIMIT 1`,
       [
         objective.mission_id,
         objective.workspace_id,
         objective.id,
-        ...ACTIVE_EXECUTION_REQUEST_STATUSES
+        ...ACTIVE_EXECUTION_REQUEST_STATUSES,
+        ...ACTIVE_SIBLING_OBJECTIVE_STATES
       ]
     );
     if (activeSiblingObjective || activeSiblingRequest) {

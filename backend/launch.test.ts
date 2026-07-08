@@ -71,6 +71,83 @@ test('launching an objective twice while a request is active returns the same re
   assert.equal(serviceClearEvents.n, 0);
 });
 
+test('parking an active objective to submitted clears its queue and allows launching a sibling', async () => {
+  const project = await createProject({ name: 'Disconnect Park Launch Test' });
+  await createProjectResource(project.id, {
+    directoryPath: mkdtempSync(path.join(tmpdir(), 'overlord-launch-park-resource-')),
+    executionTargetId: null,
+    isPrimary: true
+  });
+  const mission = await createMission({
+    projectId: project.id,
+    firstObjective: 'First objective'
+  });
+  const firstObjectiveId = mission.objectives[0]!.id;
+  const firstRequest = await launchObjective(firstObjectiveId, { agent: 'codex' });
+
+  const second = await createObjective({
+    missionId: mission.id,
+    instructionText: 'Second objective'
+  });
+
+  await assert.rejects(() => launchObjective(second.id, { agent: 'codex' }), /Enable auto-advance/);
+
+  const parked = await updateObjective(firstObjectiveId, { state: 'submitted' });
+  assert.equal(parked.state, 'submitted');
+
+  const cleared = db
+    .prepare(`SELECT status FROM execution_requests WHERE id = ?`)
+    .get(firstRequest.id) as { status: string };
+  assert.equal(cleared.status, 'cleared');
+
+  const secondRequest = await launchObjective(second.id, { agent: 'codex' });
+  assert.equal(secondRequest.objectiveId, second.id);
+});
+
+test('launching ignores stale active requests tied to completed objectives', async () => {
+  const project = await createProject({ name: 'Stale Completed Request Launch Test' });
+  await createProjectResource(project.id, {
+    directoryPath: mkdtempSync(path.join(tmpdir(), 'overlord-launch-stale-resource-')),
+    executionTargetId: null,
+    isPrimary: true
+  });
+  const mission = await createMission({
+    projectId: project.id,
+    firstObjective: 'Completed objective'
+  });
+  const completedObjectiveId = mission.objectives[0]!.id;
+  await updateObjective(completedObjectiveId, { state: 'complete' });
+
+  const now = new Date().toISOString();
+  const staleRequestId = crypto.randomUUID();
+  const missionRow = db
+    .prepare(`SELECT workspace_id, project_id FROM missions WHERE id = ?`)
+    .get(mission.id) as { workspace_id: string; project_id: string };
+  db.prepare(
+    `INSERT INTO execution_requests
+       (id, workspace_id, project_id, mission_id, objective_id, requested_agent, launch_mode,
+        launch_flags_json, target_kind, requested_source, status, metadata_json, created_at,
+        updated_at, revision)
+     VALUES (?, ?, ?, ?, ?, 'codex', 'run', '{}', 'any', 'webapp', 'queued', '{}', ?, ?, 1)`
+  ).run(
+    staleRequestId,
+    missionRow.workspace_id,
+    missionRow.project_id,
+    mission.id,
+    completedObjectiveId,
+    now,
+    now
+  );
+
+  const second = await createObjective({
+    missionId: mission.id,
+    instructionText: 'Next objective'
+  });
+
+  const request = await launchObjective(second.id, { agent: 'codex' });
+  assert.equal(request.objectiveId, second.id);
+});
+
 test('launching another objective while one is active is rejected without queueing', async () => {
   const project = await createProject({ name: 'Busy Mission Launch Test' });
   await createProjectResource(project.id, {

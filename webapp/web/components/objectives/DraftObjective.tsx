@@ -100,13 +100,18 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
   const activeSiblingObjective =
     siblings.find(o => o.id !== objective.id && ACTIVE_SIBLING_STATES.includes(o.state)) ?? null;
   const activeSiblingRequest =
-    executionRequests.find(
-      request =>
-        request.objectiveId !== objective.id &&
-        ACTIVE_EXECUTION_REQUEST_STATES.includes(request.status)
-    ) ?? null;
-  const hasActiveSibling = Boolean(activeSiblingObjective ?? activeSiblingRequest);
-  const activeSiblingId = activeSiblingObjective?.id ?? activeSiblingRequest?.objectiveId ?? null;
+    executionRequests.find(request => {
+      if (request.objectiveId === objective.id) return false;
+      if (!ACTIVE_EXECUTION_REQUEST_STATES.includes(request.status)) return false;
+      const requestObjective = siblings.find(o => o.id === request.objectiveId);
+      return Boolean(requestObjective && ACTIVE_SIBLING_STATES.includes(requestObjective.state));
+    }) ?? null;
+  const resolvedActiveSibling =
+    activeSiblingObjective ??
+    siblings.find(o => o.id === activeSiblingRequest?.objectiveId) ??
+    null;
+  const hasActiveSibling = Boolean(resolvedActiveSibling);
+  const activeSiblingId = resolvedActiveSibling?.id ?? null;
   const activeRequest = executionRequests.find(r => r.objectiveId === objective.id) ?? null;
   const autoAdvancePending =
     update.isPending && update.variables?.id === objective.id

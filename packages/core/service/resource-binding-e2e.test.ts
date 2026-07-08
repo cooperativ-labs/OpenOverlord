@@ -1,27 +1,19 @@
-import { createSqliteClient, openInMemoryDatabase } from '@overlord/database';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 
 import { canonicalMissionBranch, previewMissionBranch } from '../../../cli/src/branch-planning.ts';
-import { createServiceContext } from './context.js';
+
+import type { ServiceContext } from './context.js';
 import { createExecutionRequest } from './execution-requests.js';
 import { ensureCallerDeviceTarget } from './execution-targets.js';
 import { recordMissionBranchObservations } from './mission-branch-observations.js';
 import { createMissionWithObjectives } from './missions.js';
-import {
-  addProjectResource,
-  createProject,
-  resolveObjectiveWorkingDirectory
-} from './projects.js';
 import { buildProjectResourceManifest } from './project-resource-manifest.js';
-import {
-  attachSession,
-  deliverSession,
-  loadMissionContext,
-  updateSession
-} from './protocol.js';
+import { addProjectResource, createProject, resolveObjectiveWorkingDirectory } from './projects.js';
+import { attachSession, deliverSession, loadMissionContext, updateSession } from './protocol.js';
 import { recordTargetResourceObservations } from './target-resource-observations.js';
+import { createSeededServiceContext } from './test-helpers.js';
 
 const WORKTREE_ROOT = '/tmp/ovld-worktrees';
 const OPENOVERLORD_DIR = '/tmp/openoverlord-checkout';
@@ -31,7 +23,7 @@ async function seedCrossRepoProject({
   ctx,
   executionTargetId
 }: {
-  ctx: Awaited<ReturnType<typeof createServiceContext>>;
+  ctx: ServiceContext;
   executionTargetId: string;
 }) {
   const project = await createProject({ ctx, name: 'OpenOverlord + Mobile', slug: 'coo' });
@@ -65,8 +57,7 @@ async function seedCrossRepoProject({
 
 describe('resource binding end-to-end (simulated cross-repo mission)', () => {
   it('resolves distinct worktrees, sibling manifests, and resource-scoped changed files across two objectives', async () => {
-    const db = createSqliteClient(openInMemoryDatabase());
-    const ctx = await createServiceContext({ db, source: 'protocol' });
+    const { db, ctx } = await createSeededServiceContext();
     const target = await ensureCallerDeviceTarget({ ctx });
     const { project, openoverlord, mobile } = await seedCrossRepoProject({
       ctx,
@@ -83,10 +74,9 @@ describe('resource binding end-to-end (simulated cross-repo mission)', () => {
       ]
     });
 
-    const missionRow = (await db.get(
-      `SELECT sequence_number, title FROM missions WHERE id = ?`,
-      [mission.id]
-    )) as { sequence_number: number; title: string };
+    const missionRow = (await db.get(`SELECT sequence_number, title FROM missions WHERE id = ?`, [
+      mission.id
+    ])) as { sequence_number: number; title: string };
     const branchLeaf = canonicalMissionBranch({
       title: missionRow.title,
       sequence: missionRow.sequence_number
@@ -108,10 +98,7 @@ describe('resource binding end-to-end (simulated cross-repo mission)', () => {
     }).worktreePath;
 
     assert.notEqual(expectedOpenWorktree, expectedMobileWorktree);
-    assert.equal(
-      expectedOpenWorktree,
-      path.join(WORKTREE_ROOT, 'coo', 'openoverlord', branchLeaf)
-    );
+    assert.equal(expectedOpenWorktree, path.join(WORKTREE_ROOT, 'coo', 'openoverlord', branchLeaf));
     assert.equal(expectedMobileWorktree, path.join(WORKTREE_ROOT, 'coo', 'mobile', branchLeaf));
 
     for (const [index, objective] of objectives.entries()) {

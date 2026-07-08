@@ -588,7 +588,8 @@ export async function claimNextExecutionRequest({
         'claimed_by_execution_target_id',
         'claimed_at',
         'claim_expires_at',
-        'resolved_working_directory'
+        'resolved_working_directory',
+        ...(resourceId ? (['resolved_resource_id'] as const) : [])
       ]
     });
     await appendExecutionRequestEvent({

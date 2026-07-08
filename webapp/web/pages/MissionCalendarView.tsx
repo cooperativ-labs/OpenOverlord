@@ -1,16 +1,16 @@
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import { EmptyState } from '@/components/ui.tsx';
 import {
   calendarWindowRange,
   dayKeyFromDate,
   eachMonthInRange,
   formatMonthLabel,
   getWeeksForMonth,
-  isoWeekdayLabels,
-  startOfDay
+  startOfDay,
+  weekdayLabels
 } from '@/lib/calendar-utils.ts';
+import { cn } from '@/lib/utils';
 
 import type { MissionDto } from '../../shared/contract.ts';
 
@@ -39,13 +39,15 @@ export function MissionCalendarView({
   projectId,
   projectColor,
   selectedMissionId,
-  onCompleteMission
+  onCompleteMission,
+  onDayClick
 }: {
   missions: MissionDto[];
   projectId: string;
   projectColor: string | null;
   selectedMissionId?: string;
   onCompleteMission?: (missionId: string) => void;
+  onDayClick?: (day: Date) => void;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const topSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -103,8 +105,7 @@ export function MissionCalendarView({
     expandingRef.current = false;
   }, [monthsAfter]);
 
-  const weekdayLabels = isoWeekdayLabels();
-  const hasScheduledMissions = calendarDnd.displayMissionsByDay.size > 0;
+  const headerWeekdayLabels = weekdayLabels();
 
   const activeMission = useMemo(
     () =>
@@ -147,15 +148,6 @@ export function MissionCalendarView({
     return () => observer.disconnect();
   }, [expandMonthsAfter, expandMonthsBefore, months.length]);
 
-  if (!hasScheduledMissions) {
-    return (
-      <EmptyState
-        title="No scheduled missions"
-        hint="Set due dates in the mission panel to see missions on the calendar."
-      />
-    );
-  }
-
   return (
     <DndContext {...calendarDnd.dndContextProps}>
       <div ref={rootRef} className="pb-8">
@@ -166,8 +158,14 @@ export function MissionCalendarView({
         />
 
         <div className="sticky top-0 z-20 grid grid-cols-7 border-b border-border bg-background/95 text-center text-xs font-medium text-muted-foreground backdrop-blur-sm">
-          {weekdayLabels.map(label => (
-            <div key={label} className="border-r border-border px-1 py-2 last:border-r-0">
+          {headerWeekdayLabels.map((label, index) => (
+            <div
+              key={label}
+              className={cn(
+                'border-r border-border px-1 py-2 last:border-r-0',
+                (index === 0 || index === 6) && 'bg-muted/25 dark:bg-muted/40'
+              )}
+            >
               {label}
             </div>
           ))}
@@ -210,6 +208,7 @@ export function MissionCalendarView({
                         onCompleteMission={onCompleteMission}
                         activeMissionId={calendarDnd.activeMissionId}
                         draggable
+                        onDayClick={onDayClick}
                       />
                     );
                   })}

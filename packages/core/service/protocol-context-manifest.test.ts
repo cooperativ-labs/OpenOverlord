@@ -1,14 +1,14 @@
-import { createServiceContext } from './context.js';
-import { createMissionWithObjectives } from './missions.js';
-import { addProjectResource, createProject } from './projects.js';
-import { attachSession, loadMissionContext } from './protocol.js';
-import { buildProjectResourceManifestEntries } from './project-resource-manifest.js';
-import { createSqliteClient, openInMemoryDatabase } from '@overlord/database';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
+
+import { createMissionWithObjectives } from './missions.js';
+import { buildProjectResourceManifestEntries } from './project-resource-manifest.js';
+import { addProjectResource, createProject } from './projects.js';
+import { attachSession, loadMissionContext, updateSession } from './protocol.js';
+import { createSeededServiceContext } from './test-helpers.js';
 
 describe('protocol context manifest', () => {
   it('buildProjectResourceManifestEntries marks current resource and omits instructions for single repo', () => {
@@ -20,7 +20,6 @@ describe('protocol context manifest', () => {
           label: 'Backend',
           path: '/tmp/backend',
           isPrimary: true,
-          status: 'active',
           executionTargetId: 'target-1'
         }
       ],
@@ -36,8 +35,7 @@ describe('protocol context manifest', () => {
   });
 
   it('loadMissionContext includes projectResources and instructions for multi-resource projects', async () => {
-    const db = createSqliteClient(openInMemoryDatabase());
-    const ctx = await createServiceContext({ db, source: 'protocol' });
+    const { db, ctx } = await createSeededServiceContext();
     const project = await createProject({ ctx, name: 'Multi Repo Project' });
     const backendDir = mkdtempSync(path.join(tmpdir(), 'ovld-backend-'));
     const mobileDir = mkdtempSync(path.join(tmpdir(), 'ovld-mobile-'));
@@ -57,7 +55,7 @@ describe('protocol context manifest', () => {
       isPrimary: false
     });
 
-    const { mission, objectives } = createMissionWithObjectives({
+    const { mission, objectives } = await createMissionWithObjectives({
       ctx,
       projectId: project.id,
       objectives: [{ objective: 'Cross-repo work', resourceKey: 'backend' }]
@@ -73,25 +71,69 @@ describe('protocol context manifest', () => {
   });
 
   it('attachSession omits project resources instructions for single-resource projects', async () => {
-    const db = createSqliteClient(openInMemoryDatabase());
-    const ctx = await createServiceContext({ db, source: 'protocol' });
+    const { db, ctx } = await createSeededServiceContext();
     const project = await createProject({ ctx, name: 'Single Repo Project' });
+    // Never point a test resource at the real checkout: addProjectResource
+    // writes .overlord/project.json into the directory it links.
     await addProjectResource({
       ctx,
       projectId: project.id,
-      directoryPath: process.cwd(),
+      directoryPath: mkdtempSync(path.join(tmpdir(), 'ovld-single-')),
       isPrimary: true
     });
 
-    const { mission, objectives } = createMissionWithObjectives({
+    const { mission, objectives } = await createMissionWithObjectives({
       ctx,
       projectId: project.id,
       objectives: [{ objective: 'Single repo work' }]
     });
     await db.run(`UPDATE objectives SET state = 'submitted' WHERE id = ?`, [objectives[0]?.id]);
 
-    const attached = await attachSession({ ctx, missionId: mission.id, agentIdentifier: 'test-agent' });
+    const attached = await attachSession({
+      ctx,
+      missionId: mission.id,
+      agentIdentifier: 'test-agent'
+    });
     assert.doesNotMatch(attached.agentInstructions, /## Project Resources/);
     assert.equal(attached.projectResources?.length, 1);
+  });
+
+  it('updateSession stamps changed_files.resource_id from objective resourceKey without execution request', async () => {
+    const { db, ctx } = await createSeededServiceContext();
+    const project = await createProject({ ctx, name: 'Resource id fallback' });
+    const resource = await addProjectResource({
+      ctx,
+      projectId: project.id,
+      directoryPath: mkdtempSync(path.join(tmpdir(), 'ovld-fallback-')),
+      resourceKey: 'backend',
+      isPrimary: true
+    });
+
+    const { mission, objectives } = await createMissionWithObjectives({
+      ctx,
+      projectId: project.id,
+      objectives: [{ objective: 'Direct attach', resourceKey: 'backend' }]
+    });
+    await db.run(`UPDATE objectives SET state = 'submitted' WHERE id = ?`, [objectives[0]?.id]);
+
+    const attached = await attachSession({
+      ctx,
+      missionId: mission.id,
+      agentIdentifier: 'test-agent'
+    });
+    await updateSession({
+      ctx,
+      missionId: mission.displayId,
+      sessionKey: attached.sessionKey,
+      summary: 'Recorded a change',
+      changedFiles: [{ filePath: 'src/fallback.ts', vcsStatus: 'modified' }]
+    });
+
+    const changedFile = (await db.get(
+      `SELECT resource_id FROM changed_files WHERE session_id = ? AND deleted_at IS NULL`,
+      [attached.session.id]
+    )) as { resource_id: string | null };
+    assert.equal(changedFile.resource_id, resource.id);
+    await db.close();
   });
 });

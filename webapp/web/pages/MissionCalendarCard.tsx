@@ -2,6 +2,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { useNavigate } from '@tanstack/react-router';
 
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 import type { MissionDto } from '../../shared/contract.ts';
@@ -77,20 +78,26 @@ export function MissionCalendarCard({
         />
       </span>
       <div className="min-w-0 flex-1">
-        <span
-          className={cn(
-            'block truncate text-xs font-medium leading-snug text-foreground',
-            completed && 'text-muted-foreground line-through'
-          )}
-        >
-          {mission.title}
-        </span>
-        <span
-          className="font-mono text-[10px] tabular-nums text-muted-foreground"
-          title={`Mission ID: ${mission.displayId}`}
-        >
-          {mission.displayId}
-        </span>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span
+                className={cn(
+                  'block truncate text-xs font-medium leading-snug text-foreground',
+                  completed && 'text-muted-foreground line-through'
+                )}
+              >
+                {mission.title}
+              </span>
+            }
+          />
+          <TooltipContent>
+            <div className="flex max-w-xs flex-col gap-0.5">
+              <span>{mission.title}</span>
+              <span className="font-mono tabular-nums opacity-80">{mission.displayId}</span>
+            </div>
+          </TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );
