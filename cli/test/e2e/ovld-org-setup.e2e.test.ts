@@ -69,7 +69,7 @@ function mintHeadlessToken(dbPath: string, userId: string): string {
 before(async () => {
   if (process.env.OVLD_PROTOCOL_E2E !== '1') return;
 
-  const dir = mkdtempSync(path.join('/tmp', 'open-overlord-e2e-org-setup-'));
+  const dir = mkdtempSync(path.join('/tmp', 'overlord-cli-e2e-org-setup-'));
   sqlitePath = path.join(dir, 'Overlord.sqlite');
 
   serverProcess = spawn(

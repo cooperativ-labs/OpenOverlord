@@ -1,6 +1,6 @@
 # CLI Command Reference
 
-Exhaustive reference for the `ovld` command surface. Primary command name is `ovld` (alias: `open-overlord` when installed from npm).
+Exhaustive reference for the `ovld` command surface. Primary command name is `ovld` (alias: `overlord-cli` when installed from npm).
 
 For behavioral specs and acceptance criteria, see the other docs in this folder. For protocol workflow guidance, run `ovld protocol help`.
 
@@ -32,7 +32,7 @@ For behavioral specs and acceptance criteria, see the other docs in this folder.
 | `ovld` | Same as `ovld help` | — | — |
 | `ovld help` | Print top-level command summary | — | — |
 | `ovld version` | Print installed CLI version | — | `--json` |
-| `ovld update` | Check for or install the latest published `open-overlord` via npm | — | `--check` (compare only), `--force` (install even when current), `--json` |
+| `ovld update` | Check for or install the latest published `overlord-cli` via npm | — | `--check` (compare only), `--force` (install even when current), `--json` |
 | `ovld init` | Create `overlord.toml` with a local backend URL | — | `--json` |
 | `ovld serve` | Boot the web/REST server (repo/local backend package; not in published npm workflow) | — | `--host <h>`, `--port <p>`, `--db <path>`, `--json` |
 | `ovld doctor` | Validate backend reachability, connector installs, agent binaries, credentials sync-root warnings | — | `--json` |

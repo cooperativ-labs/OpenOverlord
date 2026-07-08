@@ -32,7 +32,7 @@ queue operations all reach persistence through the backend URL you configure —
 
 Install the published package:
 ```bash
-npm install -g --no-fund open-overlord
+npm install -g --no-fund overlord-cli
 ```
 
 After installing the published package:
@@ -202,7 +202,7 @@ Notes for headless use:
 These commands work without a backend: `ovld help`, `ovld version`,
 `ovld update`, `ovld config ...`, `ovld prune`, and connector setup/inspection commands that only touch local
 files. `ovld update --check` compares the installed package version with the latest
-published npm version, and `ovld update` upgrades the global `open-overlord`
+published npm version, and `ovld update` upgrades the global `overlord-cli`
 install through npm. Commands that read or mutate Overlord state — projects, missions,
 protocol calls, runner queue operations, and launch context assembly — call the
 configured backend URL.

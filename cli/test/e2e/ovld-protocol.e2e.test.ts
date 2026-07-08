@@ -9,7 +9,7 @@ import { runOvld } from '../../../test/support/cli.ts';
 const protocolE2e = process.env.OVLD_PROTOCOL_E2E === '1' ? test : test.skip;
 
 function tempDatabaseEnv(): NodeJS.ProcessEnv {
-  const dir = mkdtempSync(path.join('/tmp', 'open-overlord-e2e-'));
+  const dir = mkdtempSync(path.join('/tmp', 'overlord-cli-e2e-'));
   return {
     OVERLORD_ALLOW_CONFIG_WRITE: '1',
     OVERLORD_BACKEND_URL: undefined,

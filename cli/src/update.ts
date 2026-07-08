@@ -5,7 +5,7 @@ import { CliError } from './errors.js';
 import { printJson } from './output.js';
 import { getCliVersion } from './version.js';
 
-const PACKAGE_NAME = 'open-overlord';
+const PACKAGE_NAME = 'overlord-cli';
 
 export const DEFAULT_UPDATE_INSTALL_ARGS = [
   'install',

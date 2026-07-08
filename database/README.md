@@ -26,7 +26,7 @@ Overlord stores projects, missions, objectives, events, and other data behind a
 backend service. Local mode uses a backend running on your machine (Desktop
 today, and possibly a future db-only local backend) that owns SQLite and
 migrations. Cloud mode uses a hosted backend that owns Postgres. The published
-`open-overlord` CLI is a client of one of those backends; it does not open
+`overlord-cli` CLI is a client of one of those backends; it does not open
 SQLite directly or ship `better-sqlite3`.
 
 Configure the backend target in `overlord.toml` (`backend_url`) or through
@@ -93,7 +93,7 @@ rather than cross-folder relative imports:
   PostgreSQL from the `overlord.toml` `database_url` admin setting or the
   `DATABASE_URL` environment variable so auth and the service layer never disagree.
 
-The published `open-overlord` CLI does not bundle this package. It talks to a
+The published `overlord-cli` CLI does not bundle this package. It talks to a
 configured backend URL; local/cloud backend packages own database adapters and
 migrations.
 

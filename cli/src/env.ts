@@ -37,7 +37,7 @@ export function isInstalledModulePath(moduleDir: string): boolean {
 /**
  * True when the invoked `ovld` entrypoint came from an installed package path.
  * Node resolves package symlinks before exposing `import.meta.url`, so a globally
- * linked `open-overlord` package can otherwise look like the in-repo source build.
+ * linked `overlord-cli` package can otherwise look like the in-repo source build.
  */
 export function isInstalledCliEntrypointPath(entrypointPath: string): boolean {
   if (!entrypointPath) return false;

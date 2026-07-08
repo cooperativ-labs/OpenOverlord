@@ -24,7 +24,7 @@ test('isInstalledModulePath flags installed packages but not the source build', 
   // An installed/published CLI runs as production and must never read the dev-only
   // OVERLORD_BACKEND_URL_DEV; the in-repo source build stays development.
   assert.equal(
-    isInstalledModulePath('/Users/x/.nvm/versions/node/v24/lib/node_modules/open-overlord/dist'),
+    isInstalledModulePath('/Users/x/.nvm/versions/node/v24/lib/node_modules/overlord-cli/dist'),
     true
   );
   assert.equal(isInstalledModulePath('/Users/x/Development/OpenOverlord/cli/dist'), false);
@@ -34,12 +34,12 @@ test('isInstalledModulePath flags installed packages but not the source build', 
 test('isInstalledCliEntrypointPath treats global bin symlinks as installed', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'overlord-bin-'));
   const binDir = path.join(dir, 'bin');
-  const packageBinDir = path.join(dir, 'lib', 'node_modules', 'open-overlord', 'bin');
+  const packageBinDir = path.join(dir, 'lib', 'node_modules', 'overlord-cli', 'bin');
   mkdirSync(binDir, { recursive: true });
   mkdirSync(packageBinDir, { recursive: true });
 
   const binPath = path.join(binDir, 'ovld');
-  symlinkSync('../lib/node_modules/open-overlord/bin/ovld.mjs', binPath);
+  symlinkSync('../lib/node_modules/overlord-cli/bin/ovld.mjs', binPath);
 
   assert.equal(isInstalledCliEntrypointPath(binPath), true);
   assert.equal(

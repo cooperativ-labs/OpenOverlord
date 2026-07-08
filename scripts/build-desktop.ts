@@ -252,7 +252,7 @@ function main(): void {
   run('yarn', ['workspace', '@overlord/database', 'build']);
   run('yarn', ['workspace', '@overlord/auth', 'build']);
   run('yarn', ['workspace', '@overlord/automations', 'build']);
-  run('yarn', ['workspace', 'open-overlord', 'build']);
+  run('yarn', ['workspace', 'overlord-cli', 'build']);
   // SPA + server bundle.
   run('yarn', ['workspace', '@overlord/webapp', 'build']);
   run('yarn', ['workspace', '@overlord/backend', 'build:server']);

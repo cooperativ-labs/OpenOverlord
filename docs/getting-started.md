@@ -23,7 +23,7 @@ mission in about ten minutes.
 
   ```bash
   # From a release tarball
-  npm install -g --no-fund open-overlord-<version>.tgz
+  npm install -g --no-fund overlord-cli-<version>.tgz
 
   # From source (builds the CLI, then symlinks or adds to PATH)
   yarn build:cli:prod

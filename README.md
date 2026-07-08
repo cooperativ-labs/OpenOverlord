@@ -43,7 +43,7 @@ The result is a Kanban-style workflow where humans plan and agents execute, with
 
 You can use Overlord locally on MacOS for free by following these steps:
 1. [Download the Desktop App](https://github.com/cooperativ-labs/OpenOverlord/releases)
-2. Download the CLI: `npm install -g open-overlord`.
+2. Download the CLI: `npm install -g overlord-cli`.
 3. Open the desktop app and create an account with an email and password
 4. Create a project and link a repository
 5. Run `ovld setup` in your terminal to configure and log into the CLI
@@ -78,7 +78,7 @@ use separate env vars (`OVERLORD_BACKEND_URL_DEV` vs `OVERLORD_BACKEND_URL`) so
 `yarn dev` and Desktop can run side by side.
 
 In-repo development uses `.env.local` and `yarn ovld:dev`; an installed
-`open-overlord` package never reads the dev channel. See
+`overlord-cli` package never reads the dev channel. See
 [Getting Started](docs/getting-started.md) and
 [Custom Instance Setup](docs/custom-instance-setup.md) for full detail.
 
@@ -229,7 +229,7 @@ Common tasks (every command is run from the repo root):
 | `yarn db:start` | Launch the local SQLite database |
 | `yarn db:reset` | Wipe local state and relaunch the database |
 | `yarn db:codegen` | Regenerate `packages/core/types/db.ts` from the local schema |
-| `yarn pack:cli:prod` | Produce the publishable `open-overlord` tarball |
+| `yarn pack:cli:prod` | Produce the publishable `overlord-cli` tarball |
 
 To work inside a single package, use `yarn workspace <name> <script>`
 (e.g. `yarn workspace @overlord/webapp dev`). Because the tree is synced across

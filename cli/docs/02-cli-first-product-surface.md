@@ -14,7 +14,7 @@ Requirements:
 - `ovld version`: print CLI and local runtime version.
 - `ovld doctor`: validate backend reachability, connector installs, supported agent binaries, project metadata, and common permission/path problems. Also warns when the credentials directory (`~/.ovld` / `OVLD_HOME`) is nested inside a known cloud-sync root (iCloud Drive, Dropbox, OneDrive, Google Drive), since that silently replicates the plaintext token off-device. On hosted backends, warns when execution targets are still stamped with the backend/container host fingerprint (see `docs/upgrading-client-checkout-bridge.md`).
 - `ovld serve [--host <h>] [--port <p>] [--db <path>] [--json]`: local/backend-package command, not required in the published npm CLI. It boots the web/REST server that owns SQLite for local mode. The desktop app can ship and supervise this backend; a future db-only/local backend app may do the same.
-- `ovld update [--check] [--force] [--json]`: check npm for the latest published `open-overlord` version and, unless `--check` is passed, update the globally installed CLI via `npm install -g --no-fund open-overlord@latest`.
+- `ovld update [--check] [--force] [--json]`: check npm for the latest published `overlord-cli` version and, unless `--check` is passed, update the globally installed CLI via `npm install -g --no-fund overlord-cli@latest`.
 
 ### Configuration Commands
 
