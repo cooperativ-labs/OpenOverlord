@@ -53,16 +53,16 @@ test('planMissionBranch matches conformance vectors', () => {
   }
 });
 
-// Sanity check that worktree paths are derived under the configured root.
-test('worktree path nests under the worktree root and project slug', () => {
+test('worktree path nests under the worktree root, project slug, and resource key', () => {
   const decision = previewMissionBranch({
     mission: { title: 'Automate worktree branching', sequence: 16 },
     project: { slug: 'coo' },
+    resourceKey: 'openoverlord',
     base: 'main',
     worktreeRoot: path.join('/tmp', 'ovld-worktrees')
   });
   assert.equal(
     decision.worktreePath,
-    path.join('/tmp', 'ovld-worktrees', 'coo', 'automate-worktree-branching-16')
+    path.join('/tmp', 'ovld-worktrees', 'coo', 'openoverlord', 'automate-worktree-branching-16')
   );
 });

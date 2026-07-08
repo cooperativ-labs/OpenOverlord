@@ -295,6 +295,7 @@ export interface MissionBranchObservations {
   id: string | null;
   mission_id: string;
   observed_at: string;
+  resource_key: string;
   status: string;
   updated_at: string;
   workspace_id: string;

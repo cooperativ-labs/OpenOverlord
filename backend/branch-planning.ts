@@ -13,6 +13,7 @@ export type BranchAutomationAction = 'create' | 'reuse' | 'new_cycle';
 export type BranchDecisionInput = {
   mission: { title: string; sequence: number };
   project: { slug: string };
+  resourceKey: string;
   recordedBranch: string | null;
   base: string;
   refs: { local: string[]; remote: string[]; merged: string[]; checkedOut?: string[] };
@@ -47,7 +48,7 @@ export type BranchDecision =
 
 export type MissionBranchPreviewInput = Pick<
   BranchDecisionInput,
-  'mission' | 'project' | 'base' | 'worktreeRoot'
+  'mission' | 'project' | 'resourceKey' | 'base' | 'worktreeRoot'
 >;
 
 const TITLE_SLUG_MAX = 48;
@@ -101,13 +102,16 @@ function branchLeaf(branch: string): string {
 export function missionWorktreePath({
   worktreeRoot,
   projectSlug,
+  resourceKey,
   branch
 }: {
   worktreeRoot: string;
   projectSlug: string;
+  resourceKey: string;
   branch: string;
 }): string {
-  return path.join(worktreeRoot, projectSlug || 'project', branchLeaf(branch));
+  const key = resourceKey.trim() || 'project';
+  return path.join(worktreeRoot, projectSlug || 'project', key, branchLeaf(branch));
 }
 
 function normalizeRemoteRef(ref: string): string {
@@ -144,6 +148,7 @@ function withWorktreeFields(input: BranchDecisionInput, branch: string) {
     worktreePath: missionWorktreePath({
       worktreeRoot: input.worktreeRoot,
       projectSlug: input.project.slug,
+      resourceKey: input.resourceKey,
       branch
     }),
     baseBranch: input.base,

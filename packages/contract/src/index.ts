@@ -363,6 +363,7 @@ export interface RecordTargetResourceObservationsResult {
 
 export interface MissionBranchObservationInput {
   missionId: string;
+  resourceKey: string;
   status: Exclude<MissionBranchStatus, 'pending'>;
   dirty: boolean;
   worktreePath?: string | null;
@@ -1015,6 +1016,8 @@ export interface BranchActionBody {
   action: 'integrate' | 'commit' | 'push_parent' | 'publish';
   /** Commit message for `action: 'commit'` (required and non-empty). */
   message?: string;
+  /** Logical project resource key to target; defaults to the project primary. */
+  resourceKey?: string;
   /** Proceed even if an objective is executing on the branch (re-checked server-side). */
   confirmBusy?: boolean;
   /** When true, git already ran on the client; the server records `summary` only. */

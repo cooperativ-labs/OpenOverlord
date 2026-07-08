@@ -862,6 +862,11 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
   );
   const projectSlug = await getProjectSlug(row.project_id, row.workspace_id);
   const worktreeRoot = resolveWorktreeRoot();
+  const resourceKey = await primaryResourceKey(
+    row.project_id,
+    row.workspace_id,
+    executionTargetId
+  );
   const overrideBranch = row.branch_override?.trim() || null;
   const worktreePreference = parseWorktreePreference(row.worktree_preference);
   const { automationEnabled, willPrepareBranch, willUseWorktree } = await resolveBranchAutomation(
@@ -877,7 +882,12 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
       branchName: name,
       executionTargetId
     });
-    const canonical = missionWorktreePath({ worktreeRoot, projectSlug, branch: name });
+    const canonical = missionWorktreePath({
+      worktreeRoot,
+      projectSlug,
+      resourceKey,
+      branch: name
+    });
     const worktreePath = await resolvePreparedWorktreePath({
       projectId: row.project_id,
       branchName: name,
@@ -904,7 +914,8 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
     const observations = await loadMissionBranchObservationsForMissions({
       ctx: await buildWebappServiceContextForWorkspace(row.workspace_id),
       executionTargetId,
-      missionIds: [row.id]
+      missionIds: [row.id],
+      resourceKey
     });
     return mergeMissionBranchObservation({
       controlPlaneBranch: branch,
@@ -923,6 +934,7 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
   const preview = previewMissionBranch({
     mission: { title: row.title, sequence: row.sequence_number },
     project: { slug: projectSlug },
+    resourceKey,
     base: baseBranch,
     worktreeRoot
   });
@@ -933,7 +945,12 @@ async function missionBranchDto(row: MissionRow): Promise<MissionBranchDto> {
     worktreePath:
       previewName === preview.branch
         ? preview.worktreePath
-        : missionWorktreePath({ worktreeRoot, projectSlug, branch: previewName }),
+        : missionWorktreePath({
+            worktreeRoot,
+            projectSlug,
+            resourceKey,
+            branch: previewName
+          }),
     status: 'pending',
     // No branch/worktree exists yet, so there is nothing to be dirty.
     dirty: false,
@@ -978,7 +995,7 @@ async function primaryResource(
   projectId: string,
   workspaceId: string,
   executionTargetId?: string | null
-): Promise<{ id: string; path: string } | null> {
+): Promise<{ id: string; path: string; resourceKey: string } | null> {
   const targetId =
     executionTargetId === undefined
       ? await resolveProjectResourceScopeTargetId(projectId, workspaceId)
@@ -986,7 +1003,7 @@ async function primaryResource(
 
   const row = (await (targetId === null
     ? requireDatabaseClient().get(
-        `SELECT id, path FROM project_resources
+        `SELECT id, path, resource_key FROM project_resources
             WHERE project_id = ? AND workspace_id = ?
               AND status = 'active' AND deleted_at IS NULL
             ORDER BY is_primary DESC, created_at ASC
@@ -994,7 +1011,7 @@ async function primaryResource(
         [projectId, workspaceId]
       )
     : requireDatabaseClient().get(
-        `SELECT id, path FROM project_resources
+        `SELECT id, path, resource_key FROM project_resources
             WHERE project_id = ? AND workspace_id = ?
               AND (execution_target_id = ? OR execution_target_id IS NULL)
               AND status = 'active' AND deleted_at IS NULL
@@ -1004,8 +1021,70 @@ async function primaryResource(
               created_at ASC
             LIMIT 1`,
         [projectId, workspaceId, targetId, targetId]
-      ))) as { id: string; path: string } | undefined;
-  return row ?? null;
+      ))) as { id: string; path: string; resource_key: string } | undefined;
+  if (!row) return null;
+  return {
+    id: row.id,
+    path: row.path,
+    resourceKey: row.resource_key?.trim() || 'project'
+  };
+}
+
+async function resourceByKey({
+  projectId,
+  workspaceId,
+  resourceKey,
+  executionTargetId
+}: {
+  projectId: string;
+  workspaceId: string;
+  resourceKey: string;
+  executionTargetId?: string | null;
+}): Promise<{ id: string; path: string; resourceKey: string } | null> {
+  const normalizedKey = resourceKey.trim();
+  if (!normalizedKey) return null;
+  const targetId =
+    executionTargetId === undefined
+      ? await resolveProjectResourceScopeTargetId(projectId, workspaceId)
+      : executionTargetId;
+
+  const row = (await (targetId === null
+    ? requireDatabaseClient().get(
+        `SELECT id, path, resource_key FROM project_resources
+            WHERE project_id = ? AND workspace_id = ?
+              AND resource_key = ?
+              AND status = 'active' AND deleted_at IS NULL
+            ORDER BY is_primary DESC, created_at ASC
+            LIMIT 1`,
+        [projectId, workspaceId, normalizedKey]
+      )
+    : requireDatabaseClient().get(
+        `SELECT id, path, resource_key FROM project_resources
+            WHERE project_id = ? AND workspace_id = ?
+              AND resource_key = ?
+              AND (execution_target_id = ? OR execution_target_id IS NULL)
+              AND status = 'active' AND deleted_at IS NULL
+            ORDER BY
+              CASE WHEN execution_target_id = ? THEN 0 ELSE 1 END,
+              is_primary DESC,
+              created_at ASC
+            LIMIT 1`,
+        [projectId, workspaceId, normalizedKey, targetId, targetId]
+      ))) as { id: string; path: string; resource_key: string } | undefined;
+  if (!row) return null;
+  return {
+    id: row.id,
+    path: row.path,
+    resourceKey: row.resource_key?.trim() || normalizedKey
+  };
+}
+
+async function primaryResourceKey(
+  projectId: string,
+  workspaceId: string,
+  executionTargetId?: string | null
+): Promise<string> {
+  return (await primaryResource(projectId, workspaceId, executionTargetId))?.resourceKey ?? 'project';
 }
 
 async function primaryResourcePath(
@@ -1016,7 +1095,10 @@ async function primaryResourcePath(
   return (await primaryResource(projectId, workspaceId, executionTargetId))?.path ?? null;
 }
 
-async function loadBranchActionContext(missionRef: string): Promise<BranchActionContext> {
+async function loadBranchActionContext(
+  missionRef: string,
+  options: { resourceKey?: unknown } = {}
+): Promise<BranchActionContext> {
   const row = await getMissionRow(missionRef, undefined, PERMISSIONS.MISSION_UPDATE);
   const branchName = row.active_branch?.trim();
   if (!branchName) {
@@ -1031,26 +1113,31 @@ async function loadBranchActionContext(missionRef: string): Promise<BranchAction
     row.project_id,
     row.workspace_id
   );
-  const primaryRepoPath = await primaryResourcePath(
-    row.project_id,
-    row.workspace_id,
-    executionTargetId
-  );
-  if (!primaryRepoPath) {
+  const explicitKey = typeof options.resourceKey === 'string' ? options.resourceKey.trim() : '';
+  const resource = explicitKey
+    ? await resourceByKey({
+        projectId: row.project_id,
+        workspaceId: row.workspace_id,
+        resourceKey: explicitKey,
+        executionTargetId
+      })
+    : await primaryResource(row.project_id, row.workspace_id, executionTargetId);
+  if (!resource) {
     throw new ApiError(
       409,
-      'This project has no connected primary working directory on this device.',
+      explicitKey
+        ? `Project resource key "${explicitKey}" is not connected on this device.`
+        : 'This project has no connected primary working directory on this device.',
       undefined,
-      'BRANCH_NO_PRIMARY'
+      explicitKey ? 'BRANCH_RESOURCE_NOT_CONNECTED' : 'BRANCH_NO_PRIMARY'
     );
   }
-  // A worktree-mode mission lives in its dedicated worktree (the canonical path);
-  // a branch-only mission (coo:9) is checked out in the primary repo. Resolve the
-  // location git actually has the branch checked out at so the action operates in
-  // the right place, falling back to the canonical worktree path.
+  const projectSlug = await getProjectSlug(row.project_id, row.workspace_id);
+  const worktreeRoot = resolveWorktreeRoot();
   const canonicalWorktree = missionWorktreePath({
-    worktreeRoot: resolveWorktreeRoot(),
-    projectSlug: await getProjectSlug(row.project_id, row.workspace_id),
+    worktreeRoot,
+    projectSlug,
+    resourceKey: resource.resourceKey,
     branch: branchName
   });
   return {
@@ -1071,7 +1158,7 @@ async function loadBranchActionContext(missionRef: string): Promise<BranchAction
       fallback: canonicalWorktree,
       executionTargetId
     }),
-    primaryRepoPath
+    primaryRepoPath: resource.path
   };
 }
 
@@ -1166,7 +1253,7 @@ export async function performBranchAction(
   ) {
     throw new ApiError(400, 'Invalid branch action.');
   }
-  const ctx = await loadBranchActionContext(missionRef);
+  const ctx = await loadBranchActionContext(missionRef, { resourceKey: body.resourceKey });
   if (
     body.confirmBusy !== true &&
     (await missionHasActiveExecution(ctx.missionId, ctx.workspaceId))
