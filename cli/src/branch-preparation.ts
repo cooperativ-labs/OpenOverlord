@@ -4,6 +4,8 @@ import { existsSync, mkdirSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { deriveProjectResourceKey } from '@overlord/core/service/project-resource-key';
+
 import { type BranchDecision, planMissionBranch } from './branch-planning.js';
 import type { CliRuntime } from './runtime.js';
 

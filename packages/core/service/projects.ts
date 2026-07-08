@@ -13,7 +13,10 @@ import type { ServiceContext } from './context.js';
 import { resolveProjectId } from './context.js';
 import { ServiceError } from './errors.js';
 import { ensureActingDeviceTarget } from './execution-targets.js';
-import { newId, nowIso, slugify } from './util.js';
+import { deriveProjectResourceKey } from './project-resource-key.js';
+import { initialTitleFromInstruction, newId, nowIso, slugify } from './util.js';
+
+export { deriveProjectResourceKey } from './project-resource-key.js';
 
 export type ProjectSummary = {
   id: string;
@@ -51,22 +54,6 @@ export type PrimaryResourceConnection = {
 
 function isTruthyFlag(value: unknown): boolean {
   return value === true || value === 1;
-}
-
-export function deriveProjectResourceKey({
-  resourceKey,
-  label,
-  directoryPath
-}: {
-  resourceKey?: string | null;
-  label?: string | null;
-  directoryPath: string;
-}): string {
-  const explicit = resourceKey?.trim();
-  if (explicit) return slugify(explicit);
-  const labelKey = label?.trim();
-  if (labelKey) return slugify(labelKey);
-  return slugify(path.basename(path.resolve(directoryPath)));
 }
 
 /**
