@@ -57,13 +57,15 @@ const VIEW_STORAGE_KEY = 'overlord:my-missions-view';
 function readStoredView(): BoardView {
   if (typeof window === 'undefined') return 'board';
   try {
-    return window.localStorage.getItem(VIEW_STORAGE_KEY) === 'list' ? 'list' : 'board';
+    const value = window.localStorage.getItem(VIEW_STORAGE_KEY);
+    return value === 'list' ? 'list' : 'board';
   } catch {
     return 'board';
   }
 }
 
 function storeView(view: BoardView) {
+  if (view === 'calendar') return;
   try {
     window.localStorage.setItem(VIEW_STORAGE_KEY, view);
   } catch {
@@ -517,7 +519,11 @@ export function MyMissionsPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2 border-(--color-border) px-5 mt-5">
           <div className="flex flex-wrap items-center gap-2">
-            <MissionsViewToggle value={view} onChange={handleViewChange} />
+            <MissionsViewToggle
+              value={view}
+              onChange={handleViewChange}
+              views={['board', 'list']}
+            />
             <MissionWorkspaceFilterDropdown
               workspaces={workspaceFilterOptions}
               selectedWorkspaceIds={selectedWorkspaceIds}

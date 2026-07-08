@@ -71,9 +71,63 @@ ID       Title                 Status    Pri    Objectives  Agent       Updated 
 
 ---
 
+## Calendar view
+
+Scrollable day grid for missions with due dates. View preference is persisted in
+`localStorage` per project (same key as board/list); filters from the board header
+apply identically.
+
+```
+Board · Open0 · Calendar                 [filters as above]      [+ New mission]
+        Mon   Tue   Wed   Thu   Fri   Sat   Sun
+──── March 2026 ───────────────────────────────── (sticky)
+  2     3     4     5     6     7     8
+        ┌─────────┐
+        │□ 1:1429│
+        │ Build…  │
+        └─────────┘
+──── April 2026 ──────────────────────────────── (sticky)
+  ...
+```
+
+### MissionCalendarCard contents
+
+| Element | Source | Notes |
+| --- | --- | --- |
+| Background tint | project color | ~14% opacity with project-color border |
+| Checkbox | `MissionCompleteCheckbox` | marks complete via workspace `complete` status |
+| Title | `missions.title` | single line, strikethrough when complete |
+| `display_id` | `missions.display_id` | mono, optional |
+| Click | card body | opens mission detail panel |
+| Drag | entire card (not checkbox) | drop on another day to change due date |
+
+### Movement
+
+- **Drag/drop** between day cells updates `missions.due_datetime` through
+  `PATCH /missions/:id`. The card moves optimistically and reverts on error.
+  Time-of-day is preserved when the mission already had a due date; otherwise noon
+  UTC is used.
+- **Within-day order** follows `board_position` then `sequence_number`; no
+  within-day reorder in v1.
+- Missions **without** a due date are omitted from the grid. When filters leave
+  dated missions, the calendar shows them; when none have due dates, an empty state
+  prompts users to set dates in the mission panel.
+
+### Scroll & layout
+
+- Vertical infinite scroll: sentinel observers extend the visible month window by
+  one month when the user nears the top or bottom edge (initial window: today
+  ±3 months).
+- Sticky weekday row and month headers remain visible while scrolling.
+- Today is highlighted on its day cell; the selected mission card uses the same
+  `bg-primary/10` ring treatment as list view.
+- On first mount, the view scrolls to center today.
+
+---
+
 ## Filters & search
 
-A single filter bar shared by both views, all reflected in URL search params:
+A single filter bar shared by all views, all reflected in URL search params:
 
 - **Status** (multi-select over `project_statuses`)
 - **Priority** (`low/normal/high/urgent`)
@@ -165,7 +219,8 @@ to a single card/row mutation so the board reflects agent activity with no refre
   manual refresh.
 - A mission with a pending `ask` or a failed launch is visually flagged on its card
   and counted in the topbar attention cluster.
-- Filters and the chosen view (kanban/list) survive reload via URL state.
+- Filters and the chosen view (kanban/list/calendar) survive reload via URL state
+  for filters; view mode is stored in `localStorage` per project.
 - A user can create a mission with one or several ordered objectives, optionally
   queue the first for execution, and the quick-run path surfaces a repair when no
   working directory is linked.

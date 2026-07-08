@@ -1,0 +1,51 @@
+[
+  {
+    "file_path": "webapp/web/lib/due-datetime.ts",
+    "label": "Shared due-datetime helpers",
+    "summary": "New module with parseDueDate, toDateInputValue, fromDateInputValue, and buildDueDatetime extracted from DueDateEditor.",
+    "why": "Calendar drag-and-drop and the due date editor need the same date-to-ISO conversion logic.",
+    "impact": "Due date changes from the calendar and mission panel use identical time-preservation rules."
+  },
+  {
+    "file_path": "webapp/web/components/scheduling/DueDateEditor.tsx",
+    "label": "Use shared due-datetime util",
+    "summary": "Removed inline date helpers and import them from webapp/web/lib/due-datetime.ts.",
+    "why": "Avoid duplicating buildDueDatetime after extracting it for calendar DnD.",
+    "impact": "No behavior change for the due date editor."
+  },
+  {
+    "file_path": "webapp/web/lib/calendar-utils.ts",
+    "label": "Calendar droppable id helpers",
+    "summary": "Added calendarDayDroppableId and parseCalendarDayDroppableId for day:YYYY-MM-DD droppable ids.",
+    "why": "Calendar DnD needs stable droppable ids that do not collide with mission draggable ids.",
+    "impact": "Day cells are addressable as drop targets during drag operations."
+  },
+  {
+    "file_path": "webapp/web/pages/useCalendarDueDateDnd.ts",
+    "label": "Calendar due-date DnD hook",
+    "summary": "New hook managing drag state, optimistic day grouping, PATCH dueDatetime on drop, and revert on mutation error.",
+    "why": "Calendar moves missions between days orthogonally to board column reordering.",
+    "impact": "Dragging a MissionCalendarCard to another day updates its due date with optimistic UI."
+  },
+  {
+    "file_path": "webapp/web/pages/CalendarDayCell.tsx",
+    "label": "Droppable day cell",
+    "summary": "New component wrapping each calendar day with useDroppable, drop highlight, and stacked mission cards.",
+    "why": "Encapsulates per-day drop target behavior separate from the month grid layout.",
+    "impact": "Day cells highlight when a mission is dragged over them."
+  },
+  {
+    "file_path": "webapp/web/pages/MissionCalendarCard.tsx",
+    "label": "Draggable calendar card",
+    "summary": "Wired useDraggable on the card with checkbox pointer isolation, drag opacity, and drag-overlay support.",
+    "why": "Users drag entire mission cards between days except the complete checkbox.",
+    "impact": "Mission cards can be picked up and dropped onto other calendar days."
+  },
+  {
+    "file_path": "webapp/web/pages/MissionCalendarView.tsx",
+    "label": "Calendar DnD integration",
+    "summary": "Wrapped grid in DndContext, uses useCalendarDueDateDnd display grouping, DragOverlay, and undated-missions EmptyState.",
+    "why": "Phase 2 requires drag-and-drop wiring and empty state when no missions have due dates.",
+    "impact": "Calendar view supports interactive due-date changes and shows guidance when nothing is scheduled."
+  }
+]

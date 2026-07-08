@@ -85,6 +85,12 @@ function missionCheckboxColors(color: string | null | undefined) {
   return { accent, tint, checkColor };
 }
 
+/** Project-color tint and border accent reused by calendar mission cards. */
+export function projectColorTint(color: string | null | undefined) {
+  const { accent, tint } = missionCheckboxColors(color);
+  return { accent, tint };
+}
+
 // Replaces the static project-color square in the list row with an interactive
 // checkbox tinted in the project color. Clicking an unchecked box marks the
 // mission complete; a completed box renders filled with a checkmark.
