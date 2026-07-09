@@ -157,9 +157,9 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
           height: container.offsetHeight,
           barOffsetTop: Math.round(barTop - containerTop)
         })
-        .catch(() => {});
+        .catch(() => { });
     } else {
-      quickTaskApi.setHeight(container.offsetHeight).catch(() => {});
+      quickTaskApi.setHeight(container.offsetHeight).catch(() => { });
     }
   }, [resolveTextarea]);
 
@@ -208,7 +208,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
   const handleClose = useCallback(() => {
     const quickTaskApi = getQuickTaskApi();
     if (quickTaskApi) {
-      quickTaskApi.close().catch(() => {});
+      quickTaskApi.close().catch(() => { });
       return;
     }
     setObjective('');
@@ -368,7 +368,9 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
       <div
         className={cn(
           'flex w-full flex-col gap-2 rounded-2xl border border-border/40',
-          'bg-background/95 px-4 py-3 shadow-2xl backdrop-blur-md'
+          'bg-neutral-50/95 px-4 py-3 shadow-2xl backdrop-blur-md',
+          'overflow-hidden'
+
         )}
       >
         {selectedProject ? (
