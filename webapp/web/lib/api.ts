@@ -386,9 +386,14 @@ export const api = {
       `/api/execution-targets/${executionTargetId}/mission-branch-observations`,
       body
     ),
-  getProjectRepository: (id: string, executionTargetId?: string | null) => {
+  getProjectRepository: (
+    id: string,
+    executionTargetId?: string | null,
+    resourceKey?: string | null
+  ) => {
     const params = new URLSearchParams();
     if (executionTargetId) params.set('executionTargetId', executionTargetId);
+    if (resourceKey) params.set('resourceKey', resourceKey);
     const query = params.toString();
     return request<ProjectRepositoryDto>(
       'GET',

@@ -23,6 +23,7 @@ import {
   useLocalTargetCapabilityAvailable
 } from './local-target-client.ts';
 import { reportMissionBranchObservation } from './mission-branch-observations.ts';
+import { resolveResourceForKey } from './project-resources.ts';
 
 export {
   useLocalTargetCapabilityAvailable,
@@ -51,26 +52,7 @@ export function resolvePrimaryResourceForTarget({
   resources: ProjectResourceDto[];
   executionTargetId: string | null;
 }): ProjectResourceDto | null {
-  const active = resources.filter(
-    resource => resource.status === 'active' && resource.type === 'local_directory'
-  );
-  if (active.length === 0) return null;
-
-  const forTarget =
-    executionTargetId === null
-      ? active
-      : active.filter(
-          resource =>
-            resource.executionTargetId === executionTargetId || resource.executionTargetId === null
-        );
-  if (forTarget.length === 0) return null;
-
-  return (
-    forTarget.find(resource => resource.isPrimary) ??
-    forTarget.find(resource => resource.executionTargetId === executionTargetId) ??
-    forTarget[0] ??
-    null
-  );
+  return resolveResourceForKey({ resources, executionTargetId, resourceKey: null });
 }
 
 export interface ClientBranchActionContext {

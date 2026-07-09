@@ -1085,7 +1085,11 @@ app.get(
         typeof req.query.executionTargetId === 'string' && req.query.executionTargetId.trim()
           ? req.query.executionTargetId.trim()
           : null;
-      return getProjectRepository(req.params.id, executionTargetId);
+      const resourceKey =
+        typeof req.query.resourceKey === 'string' && req.query.resourceKey.trim()
+          ? req.query.resourceKey.trim()
+          : null;
+      return getProjectRepository(req.params.id, executionTargetId, resourceKey);
     },
     { requires: PERMISSIONS.PROJECT_READ }
   )

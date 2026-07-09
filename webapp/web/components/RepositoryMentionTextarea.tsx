@@ -18,11 +18,17 @@ type RepositoryMentionTextareaProps = Omit<
 > & {
   /** Project whose git tree supplies the `@`-mention file list. */
   projectId: string;
+  /**
+   * Resource key whose linked directory supplies the `@`-mention file tree. Lets a
+   * multi-resource project's mentions follow the selected resource; a null/blank
+   * key uses the project primary resource.
+   */
+  resourceKey?: string | null;
 };
 
 /**
  * A {@link MentionableTextarea} wired to project context, so typing:
- *   - `@` offers the project's tracked repository files,
+ *   - `@` offers the selected resource's tracked repository files,
  *   - `#` offers any project by name (inserted as `#[name]`),
  *   - `$` offers a mission in the current project by display id (inserted as `$<displayId>`).
  *
@@ -30,12 +36,13 @@ type RepositoryMentionTextareaProps = Omit<
  */
 export function RepositoryMentionTextarea({
   projectId,
+  resourceKey = null,
   className,
   menuOwnerId,
   ...props
 }: RepositoryMentionTextareaProps) {
   const { mentionPaths, projectMentionOptions, missionMentionOptions } =
-    useRepositoryMentionOptions(projectId);
+    useRepositoryMentionOptions(projectId, resourceKey);
 
   return (
     <MentionableTextarea

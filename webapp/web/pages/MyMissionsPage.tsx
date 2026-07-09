@@ -19,6 +19,7 @@ import {
 } from '../components/ui/dialog.tsx';
 import { api } from '../lib/api.ts';
 import { readLastUsedProjectId, writeLastUsedProjectId } from '../lib/last-used-project.ts';
+import { firstObjectiveCreatePayload } from '../lib/project-resources.ts';
 import {
   keys,
   useCreateMission,
@@ -417,7 +418,7 @@ export function MyMissionsPage() {
       const tagIds = options?.tagIds ?? [];
       const detail = await createMission.mutateAsync({
         projectId: targetProjectId,
-        firstObjective: objective,
+        ...firstObjectiveCreatePayload(objective, options?.resourceKey),
         ...(statusId ? { statusId } : {}),
         ...(tagIds.length > 0 ? { tagIds } : {})
       });

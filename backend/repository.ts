@@ -2403,8 +2403,12 @@ export async function deleteProjectResource(projectId: string, resourceId: strin
 
 async function getProjectRepositoryResource(
   projectId: string,
-  executionTargetId: string | null
+  executionTargetId: string | null,
+  resourceKey: string | null
 ): Promise<ProjectResourceDto | null> {
+  // A non-null `resourceKey` sorts matching resources first; when the key isn't
+  // linked (or is null) `resource_key = NULL` is never true, so the CASE collapses
+  // to 1 for every row and ordering falls back to the project primary.
   const row = (await (executionTargetId === null
     ? requireDatabaseClient().get(
         `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
@@ -2413,9 +2417,12 @@ async function getProjectRepositoryResource(
         WHERE project_id = ?
           AND status = 'active'
           AND deleted_at IS NULL
-        ORDER BY is_primary DESC, created_at ASC
+        ORDER BY
+          CASE WHEN resource_key = ? THEN 0 ELSE 1 END,
+          is_primary DESC,
+          created_at ASC
         LIMIT 1`,
-        [projectId]
+        [projectId, resourceKey]
       )
     : requireDatabaseClient().get(
         `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
@@ -2426,23 +2433,25 @@ async function getProjectRepositoryResource(
           AND status = 'active'
           AND deleted_at IS NULL
         ORDER BY
+          CASE WHEN resource_key = ? THEN 0 ELSE 1 END,
           CASE WHEN execution_target_id = ? THEN 0 ELSE 1 END,
           is_primary DESC,
           created_at ASC
         LIMIT 1`,
-        [projectId, executionTargetId, executionTargetId]
+        [projectId, executionTargetId, resourceKey, executionTargetId]
       ))) as ProjectResourceRow | undefined;
   return row ? await toProjectResourceDto(row) : null;
 }
 
 export async function getProjectRepository(
   projectId: string,
-  executionTargetId: string | null
+  executionTargetId: string | null,
+  resourceKey: string | null = null
 ): Promise<ProjectRepositoryDto> {
   await getProject(projectId);
 
   const scannedAt = nowIso();
-  const resource = await getProjectRepositoryResource(projectId, executionTargetId);
+  const resource = await getProjectRepositoryResource(projectId, executionTargetId, resourceKey);
   if (!resource) {
     return {
       projectId,

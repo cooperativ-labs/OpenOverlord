@@ -109,8 +109,14 @@ export const keys = {
       : (['workspace', 'statuses'] as const),
   projectResources: (id: string) => ['project', id, 'resources'] as const,
   projectTags: (id: string) => ['project', id, 'tags'] as const,
-  projectRepository: (id: string, executionTargetId: string | null) =>
-    ['project', id, 'repository', executionTargetId ?? 'primary'] as const,
+  projectRepository: (id: string, executionTargetId: string | null, resourceKey?: string | null) =>
+    [
+      'project',
+      id,
+      'repository',
+      executionTargetId ?? 'primary',
+      resourceKey ?? 'primary'
+    ] as const,
   missions: (projectId: string) => ['project', projectId, 'missions'] as const,
   myMissions: ['workspace', 'my-missions'] as const,
   mission: (id: string) => ['mission', id] as const,
@@ -230,10 +236,14 @@ export const useProjectTags = (id: string | null) =>
     enabled: Boolean(id)
   });
 
-export const useProjectRepository = (id: string, executionTargetId: string | null) =>
+export const useProjectRepository = (
+  id: string,
+  executionTargetId: string | null,
+  resourceKey?: string | null
+) =>
   useQuery({
-    queryKey: keys.projectRepository(id, executionTargetId),
-    queryFn: () => api.getProjectRepository(id, executionTargetId)
+    queryKey: keys.projectRepository(id, executionTargetId, resourceKey ?? null),
+    queryFn: () => api.getProjectRepository(id, executionTargetId, resourceKey ?? null)
   });
 
 export const useMissions = (projectId: string) =>

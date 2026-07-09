@@ -1,4 +1,4 @@
-import { ChevronDown, Tag } from 'lucide-react';
+import { Check, ChevronDown, FolderOpen, Tag } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { RepositoryMentionTextarea } from '@/components/RepositoryMentionTextarea.tsx';
@@ -13,7 +13,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu.tsx';
-import { useProjects, useProjectTags } from '@/lib/queries.ts';
+import {
+  distinctProjectResourceKeys,
+  primaryResourceConnection,
+  projectResourceLabel
+} from '@/lib/project-resources.ts';
+import { useProjectResources, useProjects, useProjectTags } from '@/lib/queries.ts';
 import type { TextareaHandle } from '@/lib/types/text-control';
 import { cn } from '@/lib/utils.ts';
 
@@ -61,6 +66,11 @@ export type BlankMissionCreateOptions = {
   projectId?: string;
   /** `project_tags.id` values to assign to the new mission. */
   tagIds?: string[];
+  /**
+   * Resource key bound to the new mission's first objective, or null/undefined to
+   * inherit the project primary resource. Also drives the `@`-mention file source.
+   */
+  resourceKey?: string | null;
 };
 
 type BlankMissionCardProps = {
@@ -102,6 +112,8 @@ export function BlankMissionCard({
   const [isCreating, setIsCreating] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState(projectId);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  // Null means "inherit the project primary resource"; a key binds to that resource.
+  const [selectedResourceKey, setSelectedResourceKey] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const overlayOwnerId = inputId;
   const valueRef = useRef(value);
@@ -113,15 +125,29 @@ export function BlankMissionCard({
   const projects = useMemo(() => projectsQ.data ?? [], [projectsQ.data]);
   const tagsQ = useProjectTags(selectedProjectId);
   const activeTags = useMemo(() => (tagsQ.data ?? []).filter(tag => tag.active), [tagsQ.data]);
+  const resourcesQ = useProjectResources(selectedProjectId);
+  const resources = useMemo(() => resourcesQ.data ?? [], [resourcesQ.data]);
 
   const selectedProject = projects.find(project => project.id === selectedProjectId) ?? null;
   const showProjectPicker = projects.length > 1;
   const showTagPicker = Boolean(selectedProjectId) && activeTags.length > 0;
 
+  const resourceKeys = distinctProjectResourceKeys(resources);
+  const showResourcePicker = resourceKeys.length > 1;
+  const primaryResourceKey = primaryResourceConnection(resources).primary?.resourceKey ?? null;
+  const effectiveResourceKey = selectedResourceKey ?? primaryResourceKey ?? resourceKeys[0] ?? null;
+  const currentResourceLabel = effectiveResourceKey
+    ? projectResourceLabel({ resources, resourceKey: effectiveResourceKey })
+    : 'primary';
+
   // Keep the option refs current so the dismiss/submit callbacks below read the
   // latest selections without being torn down and rebuilt on every change.
   const optionsRef = useRef<BlankMissionCreateOptions>({ projectId, tagIds: [] });
-  optionsRef.current = { projectId: selectedProjectId, tagIds: selectedTagIds };
+  optionsRef.current = {
+    projectId: selectedProjectId,
+    tagIds: selectedTagIds,
+    resourceKey: selectedResourceKey
+  };
 
   // Project boards can only keep their column status when the selected project
   // matches the board. Workspace boards use workspace-scoped statuses, so they
@@ -129,9 +155,10 @@ export function BlankMissionCard({
   const statusForSelection =
     statusScope === 'workspace' || selectedProjectId === projectId ? statusId : '';
 
-  // Tags are project-scoped: clear the selection whenever the project changes.
+  // Tags and resources are project-scoped: clear both when the project changes.
   useEffect(() => {
     setSelectedTagIds([]);
+    setSelectedResourceKey(null);
   }, [selectedProjectId]);
 
   useEffect(() => {
@@ -281,6 +308,7 @@ export function BlankMissionCard({
           id={inputId}
           autoFocus
           projectId={selectedProjectId}
+          resourceKey={selectedResourceKey}
           menuOwnerId={overlayOwnerId}
           value={value}
           onValueChange={setValue}
@@ -308,12 +336,13 @@ export function BlankMissionCard({
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-6 gap-1.5 px-1.5 text-xs"
+                      className="h-6 gap-1 px-1.5 text-xs"
                       aria-label={
                         selectedProject
                           ? `Project: ${selectedProject.name}`
                           : 'Choose project for new mission'
                       }
+                      title={selectedProject?.name ?? 'Choose project'}
                       disabled={isCreating}
                     />
                   }
@@ -325,7 +354,6 @@ export function BlankMissionCard({
                       borderColor: selectedProject?.color ?? undefined
                     }}
                   />
-                  <span className="max-w-32 truncate">{selectedProject?.name ?? 'Project'}</span>
                   <ChevronDown className="h-3 w-3 opacity-60" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
@@ -349,6 +377,50 @@ export function BlankMissionCard({
                         }}
                       />
                       <span className="truncate">{project.name}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+            {showResourcePicker ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className={cn('h-6 w-6 shrink-0', selectedResourceKey && 'text-foreground')}
+                      aria-label={`Resource: ${currentResourceLabel}`}
+                      title={`Resource: ${currentResourceLabel}`}
+                      disabled={isCreating}
+                    />
+                  }
+                >
+                  <FolderOpen className="h-3.5 w-3.5" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="w-48"
+                  data-blank-mission-card-owner={overlayOwnerId}
+                >
+                  <DropdownMenuLabel>Resource</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {resourceKeys.map(key => (
+                    <DropdownMenuItem
+                      key={key}
+                      onClick={() =>
+                        setSelectedResourceKey(key === primaryResourceKey ? null : key)
+                      }
+                      className="gap-2"
+                    >
+                      <FolderOpen className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                      <span className="truncate">
+                        {projectResourceLabel({ resources, resourceKey: key })}
+                      </span>
+                      {effectiveResourceKey === key ? (
+                        <Check className="ml-auto h-3 w-3 text-muted-foreground" />
+                      ) : null}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>

@@ -15,6 +15,7 @@ const {
   createProject,
   createProjectResource,
   deleteProjectResource,
+  getProjectRepository,
   listProjectResources,
   updateProjectResource
 } = await import('./repository.ts');
@@ -68,6 +69,46 @@ test('project resource mutations keep primaries scoped per execution target', as
   );
   assert.equal(rows.find(row => row.id === globalResource.id)?.isPrimary, true);
   assert.equal(rows.find(row => row.id === firstLocalResource.id)?.isPrimary, true);
+});
+
+test('getProjectRepository selects the resource matching the requested key', async () => {
+  const primaryDir = mkdtempSync(path.join(tempDir, 'repo-primary-'));
+  const secondaryDir = mkdtempSync(path.join(tempDir, 'repo-secondary-'));
+  const project = await createProject({ name: 'Repo resource selection' });
+  const launchSettings = await getLaunchSettings();
+
+  await createProjectResource(project.id, {
+    directoryPath: primaryDir,
+    resourceKey: 'primary-key',
+    executionTargetId: launchSettings.executionTargetId,
+    isPrimary: true
+  });
+  await createProjectResource(project.id, {
+    directoryPath: secondaryDir,
+    resourceKey: 'secondary-key',
+    executionTargetId: launchSettings.executionTargetId,
+    isPrimary: false
+  });
+
+  // No key resolves the project primary.
+  const primary = await getProjectRepository(project.id, launchSettings.executionTargetId, null);
+  assert.equal(primary.resource?.resourceKey, 'primary-key');
+
+  // A bound key selects the matching resource.
+  const bound = await getProjectRepository(
+    project.id,
+    launchSettings.executionTargetId,
+    'secondary-key'
+  );
+  assert.equal(bound.resource?.resourceKey, 'secondary-key');
+
+  // An unlinked key falls back to the primary rather than returning no resource.
+  const fallback = await getProjectRepository(
+    project.id,
+    launchSettings.executionTargetId,
+    'missing-key'
+  );
+  assert.equal(fallback.resource?.resourceKey, 'primary-key');
 });
 
 test('createProject can create an initial primary resource atomically', async () => {

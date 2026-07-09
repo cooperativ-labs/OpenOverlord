@@ -2,13 +2,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
 import type { RepositoryTreeResult } from '../../../packages/core/service/local-target/types.ts';
-import type { ProjectResourceDto } from '../../shared/contract.ts';
 import type {
   MissionMentionOption,
   ProjectMentionOption
 } from '../components/MentionableTextarea.tsx';
 
 import { hasDesktopLocalTargetBridge, invokeLocalTarget } from './local-target-client.ts';
+import { resolveResourceForKey } from './project-resources.ts';
 import {
   useMissions,
   useProjectExecutionTarget,
@@ -17,69 +17,49 @@ import {
   useProjects
 } from './queries.ts';
 
-function resolvePrimaryResource({
-  resources,
-  executionTargetId
-}: {
-  resources: ProjectResourceDto[];
-  executionTargetId: string | null;
-}): ProjectResourceDto | null {
-  const active = resources.filter(
-    resource => resource.status === 'active' && resource.type === 'local_directory'
-  );
-  if (active.length === 0) return null;
-
-  const forTarget =
-    executionTargetId === null
-      ? active
-      : active.filter(
-          resource =>
-            resource.executionTargetId === executionTargetId || resource.executionTargetId === null
-        );
-  if (forTarget.length === 0) return null;
-
-  return (
-    forTarget.find(resource => resource.isPrimary) ??
-    forTarget.find(resource => resource.executionTargetId === executionTargetId) ??
-    forTarget[0] ??
-    null
-  );
-}
-
 /**
  * File, project, and mission mention options for a project's repository context.
  * Shared by {@link RepositoryMentionTextarea} and inline objective editors.
  *
+ * `resourceKey` selects which linked resource supplies the `@`-mention file tree,
+ * so a multi-resource project's mentions follow the objective's resource binding.
+ * A null/blank key resolves the project primary resource.
+ *
  * File paths use the unified desktop local-target bridge when available; otherwise
  * the REST repository tree (loopback SQLite dev fallback).
  */
-export function useRepositoryMentionOptions(projectId: string) {
+export function useRepositoryMentionOptions(projectId: string, resourceKey?: string | null) {
   const executionTarget = useProjectExecutionTarget(projectId);
   const selectedExecutionTargetId = executionTarget.data?.selectedExecutionTargetId ?? null;
   const resources = useProjectResources(projectId);
-  const repository = useProjectRepository(projectId, selectedExecutionTargetId);
+  const repository = useProjectRepository(
+    projectId,
+    selectedExecutionTargetId,
+    resourceKey ?? null
+  );
   const projects = useProjects();
   const missions = useMissions(projectId);
 
-  const primaryResource = useMemo(
+  const mentionResource = useMemo(
     () =>
-      resolvePrimaryResource({
+      resolveResourceForKey({
         resources: resources.data ?? [],
-        executionTargetId: selectedExecutionTargetId
+        executionTargetId: selectedExecutionTargetId,
+        resourceKey: resourceKey ?? null
       }),
-    [resources.data, selectedExecutionTargetId]
+    [resources.data, selectedExecutionTargetId, resourceKey]
   );
 
-  const useBridgePaths = hasDesktopLocalTargetBridge() && Boolean(primaryResource?.path);
+  const useBridgePaths = hasDesktopLocalTargetBridge() && Boolean(mentionResource?.path);
 
   const bridgeMentions = useQuery({
-    queryKey: ['repository-mention-paths', projectId, primaryResource?.id, primaryResource?.path],
+    queryKey: ['repository-mention-paths', projectId, mentionResource?.id, mentionResource?.path],
     queryFn: async () => {
       const result = await invokeLocalTarget<RepositoryTreeResult>({
         capability: 'readRepositoryTree',
         input: {
-          resourceId: primaryResource!.id,
-          repoPath: primaryResource!.path
+          resourceId: mentionResource!.id,
+          repoPath: mentionResource!.path
         }
       });
       if (!result.ok) return [];

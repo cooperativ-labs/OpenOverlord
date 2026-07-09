@@ -3,7 +3,13 @@ import { describe, it } from 'node:test';
 
 import type { ProjectResourceDto } from '../../shared/contract.ts';
 
-import { distinctProjectResourceKeys, missionDraftResourceBadgeKey, objectiveResourceConnection } from './project-resources.ts';
+import {
+  distinctProjectResourceKeys,
+  firstObjectiveCreatePayload,
+  missionDraftResourceBadgeKey,
+  objectiveResourceConnection,
+  resolveResourceForKey
+} from './project-resources.ts';
 
 function resource(
   partial: Partial<ProjectResourceDto> & Pick<ProjectResourceDto, 'resourceKey'>
@@ -12,7 +18,8 @@ function resource(
     id: partial.id ?? 'resource-id',
     workspaceId: 'workspace-id',
     projectId: 'project-id',
-    executionTargetId: partial.executionTargetId ?? 'target-id',
+    executionTargetId:
+      'executionTargetId' in partial ? (partial.executionTargetId ?? null) : 'target-id',
     resourceKey: partial.resourceKey,
     type: 'local_directory',
     label: partial.label ?? partial.resourceKey,
@@ -67,6 +74,88 @@ describe('distinctProjectResourceKeys', () => {
   });
 });
 
+describe('resolveResourceForKey', () => {
+  it('selects the resource matching the bound key', () => {
+    const resources = [
+      resource({ id: 'oo', resourceKey: 'openoverlord', isPrimary: true, path: '/tmp/oo' }),
+      resource({ id: 'mob', resourceKey: 'mobile', path: '/tmp/mob' })
+    ];
+
+    const resolved = resolveResourceForKey({
+      resources,
+      executionTargetId: 'target-id',
+      resourceKey: 'mobile'
+    });
+
+    assert.equal(resolved?.id, 'mob');
+  });
+
+  it('falls back to the primary when the bound key is not linked', () => {
+    const resources = [
+      resource({ id: 'oo', resourceKey: 'openoverlord', isPrimary: true, path: '/tmp/oo' })
+    ];
+
+    const resolved = resolveResourceForKey({
+      resources,
+      executionTargetId: 'target-id',
+      resourceKey: 'mobile'
+    });
+
+    assert.equal(resolved?.id, 'oo');
+  });
+
+  it('resolves the primary resource when no key is given', () => {
+    const resources = [
+      resource({ id: 'mob', resourceKey: 'mobile', path: '/tmp/mob' }),
+      resource({ id: 'oo', resourceKey: 'openoverlord', isPrimary: true, path: '/tmp/oo' })
+    ];
+
+    const resolved = resolveResourceForKey({ resources, executionTargetId: null });
+
+    assert.equal(resolved?.id, 'oo');
+  });
+
+  it('prefers a target-scoped match for the bound key', () => {
+    const resources = [
+      resource({ id: 'mob-a', resourceKey: 'mobile', executionTargetId: null, path: '/tmp/a' }),
+      resource({
+        id: 'mob-b',
+        resourceKey: 'mobile',
+        executionTargetId: 'target-id',
+        path: '/tmp/b'
+      })
+    ];
+
+    const resolved = resolveResourceForKey({
+      resources,
+      executionTargetId: 'target-id',
+      resourceKey: 'mobile'
+    });
+
+    assert.equal(resolved?.id, 'mob-b');
+  });
+});
+
+describe('firstObjectiveCreatePayload', () => {
+  it('binds the resource key when one is chosen', () => {
+    assert.deepEqual(firstObjectiveCreatePayload('Do the thing', 'mobile'), {
+      objectives: [{ objective: 'Do the thing', resourceKey: 'mobile' }]
+    });
+  });
+
+  it('uses the simple first objective shape when unbound', () => {
+    assert.deepEqual(firstObjectiveCreatePayload('Do the thing', null), {
+      firstObjective: 'Do the thing'
+    });
+    assert.deepEqual(firstObjectiveCreatePayload('Do the thing', '  '), {
+      firstObjective: 'Do the thing'
+    });
+    assert.deepEqual(firstObjectiveCreatePayload('Do the thing'), {
+      firstObjective: 'Do the thing'
+    });
+  });
+});
+
 describe('missionDraftResourceBadgeKey', () => {
   it('returns null for single-resource projects', () => {
     const resources = [resource({ resourceKey: 'openoverlord', isPrimary: true })];
@@ -95,6 +184,9 @@ describe('missionDraftResourceBadgeKey', () => {
       resource({ resourceKey: 'mobile' })
     ];
 
-    assert.equal(missionDraftResourceBadgeKey({ resources, draftObjectiveResourceKey: null }), 'openoverlord');
+    assert.equal(
+      missionDraftResourceBadgeKey({ resources, draftObjectiveResourceKey: null }),
+      'openoverlord'
+    );
   });
 });

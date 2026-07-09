@@ -7,6 +7,7 @@ import { NewMissionModal } from '@/components/NewMissionModal.tsx';
 import type { MissionDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 import { ProjectSettingsSection } from '../components/projects/ProjectSettingsSection.tsx';
 import { Button, EmptyState, Spinner } from '../components/ui.tsx';
+import { firstObjectiveCreatePayload } from '../lib/project-resources.ts';
 import {
   useCreateMission,
   useMissions,
@@ -221,7 +222,7 @@ export function BoardPage() {
       const tagIds = options?.tagIds ?? [];
       const detail = await createMission.mutateAsync({
         projectId: targetProjectId,
-        firstObjective: objective,
+        ...firstObjectiveCreatePayload(objective, options?.resourceKey),
         ...(statusId ? { statusId } : {}),
         ...(tagIds.length > 0 ? { tagIds } : {})
       });

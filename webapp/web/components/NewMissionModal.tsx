@@ -287,6 +287,7 @@ export function NewMissionModal({
             autoFocus
             rows={4}
             projectId={selectedProjectId}
+            resourceKey={resourceKey}
             value={instruction}
             placeholder="Describe what the agent should do… (@ file, # project, $ mission)"
             onValueChange={setInstruction}
