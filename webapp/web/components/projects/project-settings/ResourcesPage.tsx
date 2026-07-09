@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useProjectRepositoryContext } from '@/components/projects/ProjectRepositoryContext.tsx';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Dialog,
   DialogContent,
@@ -21,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
+import { useCopyToClipboard } from '@/lib/hooks/use-copy-to-clipboard';
 import { writeLocalProjectMetadata } from '@/lib/project-metadata';
 import {
   useCreateProjectResource,
@@ -62,6 +64,35 @@ function targetOptionLabel(target: EligibleExecutionTargetDto): string {
   const device = target.deviceLabel?.trim();
   const base = target.label.trim() || target.executionTargetId;
   return device && device !== base ? `${base} (${device})` : base;
+}
+
+function ResourcePathCell({ path, targetLabel }: { path: string; targetLabel: string }) {
+  const { copied, copy } = useCopyToClipboard();
+
+  return (
+    <td className="max-w-xs px-3 py-2">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              className="flex w-full min-w-0 cursor-pointer flex-col gap-1 text-left font-mono text-xs hover:opacity-80"
+              onClick={() => void copy(path)}
+              aria-label={`Copy path ${path}`}
+            >
+              <span className="block truncate" dir="rtl">
+                {path}
+              </span>
+              <span className="text-xs text-muted-foreground">{targetLabel}</span>
+            </button>
+          }
+        />
+        <TooltipContent side="top" className="max-w-md break-all font-mono">
+          {copied ? 'Copied to clipboard' : path}
+        </TooltipContent>
+      </Tooltip>
+    </td>
+  );
 }
 
 export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
@@ -455,13 +486,7 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
                       ) : null}
                     </div>
                   </td>
-                  <td
-                    className="flex max-w-xs flex-col truncate px-3 py-2 font-mono text-xs gap-1"
-                    title={resource.path}
-                  >
-                    <span className="truncate">{resource.path}</span>
-                    <span className="text-xs text-muted-foreground">{targetLabel(resource)}</span>
-                  </td>
+                  <ResourcePathCell path={resource.path} targetLabel={targetLabel(resource)} />
                   <td className="px-3 py-2">
                     {resource.isPrimary ? (
                       <Badge variant="secondary">Primary</Badge>

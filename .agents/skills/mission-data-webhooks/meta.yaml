@@ -1,0 +1,10 @@
+slug: mission-data-webhooks
+name: mission-data-webhooks
+description: Points to the user-facing documentation and reference example for
+  Overlord's mission-data webhooks feature. Invoke when building, debugging,
+  or explaining a webhook consumer, when asked how to receive mission events
+  (delivery, status change, blocked) outside this repository, or when
+  touching webhook_subscriptions/outbox_messages/webhook-dispatcher code.
+tags: []
+compat: []
+sha256: 3908b6d2aa61aaecda3a343cd7f1764f6216c8743a27b4dfb4a074564b705af1

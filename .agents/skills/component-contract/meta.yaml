@@ -1,0 +1,8 @@
+slug: component-contract
+name: component-contract
+description: Enforce the Overlord component interaction contract. Invoke
+  before any cross-module implementation or change that touches a component
+  interface.
+tags: []
+compat: []
+sha256: 9f781c487a36fef2af10bc621c5ab75b14e1585f9f181e49307729409e1ecf0b
