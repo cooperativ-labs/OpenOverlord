@@ -499,7 +499,7 @@ See [`contract/extension-points.yaml`](contract/extension-points.yaml) for machi
 - `idempotency_keys.status`: `in_progress`, `completed`, `failed`
 - `audit_log.result`: `allowed`, `denied`, `failed`
 - `workspace_invitations.status`: `pending`, `accepted`, `revoked`, `expired`
-- RBAC role names (`role_assignments.role_key` core, non-extension values; enumerated in `auth/src/rbac/types.ts`'s `Role` enum and `openoverlord.rbac.toml`): `ADMIN`, `MANAGER`, `MEMBER`, `PUBLIC`
+- RBAC role names (`role_assignments.role_key` core, non-extension values; enumerated in `auth/src/rbac/types.ts`'s `Role` enum and `overlord.rbac.toml`): `ADMIN`, `MANAGER`, `MEMBER`, `PUBLIC`
 
 ### Open (extensions may add namespaced values)
 

@@ -21,8 +21,8 @@ describe('objective resource binding', () => {
     await addProjectResource({
       ctx,
       projectId: project.id,
-      directoryPath: '/tmp/openoverlord-primary',
-      resourceKey: 'openoverlord',
+      directoryPath: '/tmp/overlord-primary',
+      resourceKey: 'overlord',
       isPrimary: true
     });
     await addProjectResource({
@@ -70,8 +70,8 @@ describe('objective resource binding', () => {
     await addProjectResource({
       ctx,
       projectId: project.id,
-      directoryPath: '/tmp/openoverlord-primary',
-      resourceKey: 'openoverlord',
+      directoryPath: '/tmp/overlord-primary',
+      resourceKey: 'overlord',
       isPrimary: true
     });
 

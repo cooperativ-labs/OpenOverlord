@@ -3,7 +3,7 @@
 # Driven by `scripts/build-desktop.ts` (`yarn desktop:package:prod`), which stages the
 # server bundle, SPA, and CLI into this workspace before invoking electron-builder
 # and toggles signing/notarization via flags + env. See desktop/docs/desktop-app.md.
-appId: io.cooperativ.openoverlord
+appId: io.cooperativ.overlord
 productName: Overlord
 copyright: Copyright © Cooperativ Labs
 artifactName: "${productName}-${version}-${os}-${arch}.${ext}"

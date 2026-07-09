@@ -35,11 +35,28 @@ function migrationComponent(fileName: string): string {
   return match ? `ext:${match[1]}` : 'core';
 }
 
-function applySqliteMigrationFile(db: OverlordDatabase, fileName: string): void {
+type PendingMigrationRecord = {
+  version: string;
+  component: string;
+  checksum: string;
+};
+
+/**
+ * Mirrors `migrateDatabase`'s pre-ledger buffering: migrations that run before
+ * `schema_migrations` exists are held and recorded once the ledger table appears
+ * (created by `002_initial_core.sql`). Without this, `001_better_auth` is applied
+ * but never ledgered, and a later `migrateDatabase` call re-runs it.
+ */
+function applySqliteMigrationFile(
+  db: OverlordDatabase,
+  fileName: string,
+  pendingMigrationRecords: PendingMigrationRecord[] = []
+): void {
   const version = fileName.split('_', 1)[0] ?? fileName;
   const sql = readFileSync(path.join(sqliteMigrationsDir(), fileName), 'utf8');
   const component = migrationComponent(fileName);
   const checksum = createHash('sha256').update(sql).digest('hex');
+  const migration = { version, component, checksum };
 
   const hasLedger = Boolean(
     db
@@ -50,7 +67,7 @@ function applySqliteMigrationFile(db: OverlordDatabase, fileName: string): void 
   if (hasLedger) {
     const applied = resolveAppliedMigrationSqlite({
       db,
-      migration: { version, component, checksum }
+      migration
     });
     if (applied) {
       assert.equal(applied.checksum, checksum);
@@ -66,22 +83,37 @@ function applySqliteMigrationFile(db: OverlordDatabase, fileName: string): void 
     finalizeProjectResourcesResourceKeySqlite(db);
   }
 
-  if (
+  const createdLedger = Boolean(
     db
       .prepare(`SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'schema_migrations'`)
       .get()
-  ) {
+  );
+  if (!createdLedger) {
+    pendingMigrationRecords.push(migration);
+    return;
+  }
+
+  const toRecord = hasLedger ? [migration] : [...pendingMigrationRecords, migration];
+  for (const pending of toRecord) {
     db.prepare(
       `INSERT INTO schema_migrations (version, adapter, component, contract_version, checksum, applied_at)
        VALUES (?, 'sqlite', ?, ?, ?, ?)`
-    ).run(version, component, CONTRACT_VERSION, checksum, new Date().toISOString());
+    ).run(
+      pending.version,
+      pending.component,
+      CONTRACT_VERSION,
+      pending.checksum,
+      new Date().toISOString()
+    );
   }
+  pendingMigrationRecords.length = 0;
 }
 
 function migrateUpToExtEverhour(db: OverlordDatabase): void {
+  const pendingMigrationRecords: PendingMigrationRecord[] = [];
   for (const fileName of listSqliteMigrationFiles()) {
     if (fileName === EXT_EVERHOUR_MIGRATION) break;
-    applySqliteMigrationFile(db, fileName);
+    applySqliteMigrationFile(db, fileName, pendingMigrationRecords);
   }
 }
 

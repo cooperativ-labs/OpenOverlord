@@ -79,7 +79,7 @@ test('ovld add-cwd writes local project metadata after resource creation', async
         return {
           id: 'resource-1',
           projectId: 'project-1',
-          resourceKey: 'openoverlord',
+          resourceKey: 'overlord',
           executionTargetId: 'target-1',
           path: directory,
           isPrimary: true
@@ -129,7 +129,7 @@ test('ovld add-cwd writes local project metadata after resource creation', async
   assert.equal(projectJson.version, 2);
   assert.equal(projectJson.projectId, 'project-1');
   assert.equal(projectJson.resourceId, 'resource-1');
-  assert.equal(projectJson.resourceKey, 'openoverlord');
+  assert.equal(projectJson.resourceKey, 'overlord');
   assert.deepEqual(projectJson.resourceIdsByExecutionTarget, { 'target-1': 'resource-1' });
   assert.equal(projectJson.isPrimary, true);
 });

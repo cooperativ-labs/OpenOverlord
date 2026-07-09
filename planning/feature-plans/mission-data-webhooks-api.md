@@ -60,7 +60,7 @@ and the protocol/CLI service core (`packages/core/service/*`) both mutate missio
 `insertEntityChange`, the webhook-enqueue helper must live in `packages/core` and be called from
 both paths, or REST-originated deliveries would silently never fire webhooks.
 - **RBAC gives the limiting mechanism.** Permissions are domain strings (`mission:read`,
-`event:create`…) resolved through a config-backed provider (`openoverlord.rbac.toml`), checked
+`event:create`…) resolved through a config-backed provider (`overlord.rbac.toml`), checked
 via `requirePermission` on every REST route. Permission names are an **open vocabulary** — new
 `webhook:*` permissions need no contract version bump. `user_tokens` (with the new
 `user_token_scopes` table) already confer a user's — optionally narrowed — permissions to
@@ -192,7 +192,7 @@ already requires `outbox_messages.payload_json` to be secret-redacted.
 - **RBAC at both edges.**
   - *Managing* subscriptions requires new open-vocabulary permissions `webhook:create`,
   `webhook:read`, `webhook:update`, `webhook:delete` — granted to `ADMIN` by default in
-  `openoverlord.rbac.toml` (instances can extend `MEMBER`).
+  `overlord.rbac.toml` (instances can extend `MEMBER`).
   - *Payloads are actor-bound.* Each subscription records `created_by_workspace_user_id`. At
   enqueue/dispatch time the payload builder resolves that actor and reads through the same
   service functions REST uses, so it sees exactly what its owner may see (`mission:read`,

@@ -1842,7 +1842,7 @@ Closed values:
 - `idempotency_keys.status`: `in_progress`, `completed`, `failed`.
 - `audit_log.result`: `allowed`, `denied`, `failed`.
 - `workspace_invitations.status`: `pending`, `accepted`, `revoked`, `expired`.
-- `role_assignments.role_key` (core, non-extension values; see `auth/src/rbac/types.ts` `Role` enum and `openoverlord.rbac.toml`): `ADMIN`, `MANAGER`, `MEMBER`, `PUBLIC`. `MANAGER` grants everything `MEMBER` does plus `workspace:update` and project management, and may invite/remove/promote other members up to (but not including) `ADMIN`; only `ADMIN` may grant or revoke `ADMIN` itself.
+- `role_assignments.role_key` (core, non-extension values; see `auth/src/rbac/types.ts` `Role` enum and `overlord.rbac.toml`): `ADMIN`, `MANAGER`, `MEMBER`, `PUBLIC`. `MANAGER` grants everything `MEMBER` does plus `workspace:update` and project management, and may invite/remove/promote other members up to (but not including) `ADMIN`; only `ADMIN` may grant or revoke `ADMIN` itself.
 
 Open extension values:
 

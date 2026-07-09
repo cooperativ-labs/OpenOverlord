@@ -26,7 +26,7 @@ three facts that together let one user read another user's tickets:
    `workspace_users` row joining them **and** grants them ADMIN
    (`grantWorkspaceAdminRole`). No invitation, no approval.
 
-3. **RBAC governs actions, not tenancy.** `openoverlord.rbac.toml` /
+3. **RBAC governs actions, not tenancy.** `overlord.rbac.toml` /
    `backend/rbac.ts` decide *what actions* a role may perform (`mission:read`,
    `mission:*`, …). The MEMBER role already grants `mission:*` and auto-joined
    users are ADMIN anyway, so every check passes. Nothing gates *whether a user
@@ -167,7 +167,7 @@ Goal: the only way to add another user to a workspace, using the existing
    If the email has no account yet, funnel through signup first, then accept.
 6. `listWorkspaceInvitations(workspaceId)` / `revokeWorkspaceInvitation(id)` for
    settings management, ADMIN-gated.
-7. New permissions in `openoverlord.rbac.toml` and `backend/rbac.ts`
+7. New permissions in `overlord.rbac.toml` and `backend/rbac.ts`
    (`member:invite`, `member:remove`, `invitation:read`, `invitation:revoke`) and
    corresponding `PERMISSIONS.*` constants used by the `handle(...)` route gate.
 
@@ -195,7 +195,7 @@ with the granted role. A user who was never invited cannot join.
 ## Phase 4 — Roles, removal, and least privilege
 
 1. **Stop defaulting everyone to ADMIN.** Invited members default to `MEMBER`
-   (per `openoverlord.rbac.toml`), not ADMIN. Only workspace creators and
+   (per `overlord.rbac.toml`), not ADMIN. Only workspace creators and
    explicitly promoted members are ADMIN.
 2. **Role management UI/API** for ADMINs: promote/demote members
    (`role_assignments`, `003_rbac.sql:14-33`), remove members (soft-delete the

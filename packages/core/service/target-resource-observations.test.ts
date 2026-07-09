@@ -1,4 +1,3 @@
-import { createSqliteClient, openInMemoryDatabase } from '@overlord/database';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -6,7 +5,6 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 
 import { mapObservationToResourceStatus } from './local-target/resource-status.ts';
-import { createServiceContext } from './context.ts';
 import { ensureCallerDeviceTarget } from './execution-targets.ts';
 import { createProject } from './projects.ts';
 import {
@@ -14,6 +12,7 @@ import {
   mergeResourceStatusWithObservation,
   recordTargetResourceObservations
 } from './target-resource-observations.ts';
+import { createSeededServiceContext } from './test-helpers.ts';
 import { nowIso } from './util.ts';
 
 describe('target resource observations', () => {
@@ -25,8 +24,7 @@ describe('target resource observations', () => {
   });
 
   it('records observations and merges them into resource list status', async () => {
-    const db = createSqliteClient(openInMemoryDatabase());
-    const ctx = await createServiceContext({ db, source: 'cli' });
+    const { db, ctx } = await createSeededServiceContext({ source: 'cli' });
     const project = await createProject({ ctx, name: 'Observation project' });
     const target = await ensureCallerDeviceTarget({ ctx });
     const resourceDir = mkdtempSync(path.join(tmpdir(), 'ovld-resource-obs-'));

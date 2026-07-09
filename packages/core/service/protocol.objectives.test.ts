@@ -1,17 +1,15 @@
-import { createSqliteClient, openInMemoryDatabase } from '@overlord/database';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { createServiceContext } from './context.js';
 import { createMissionWithObjectives, insertObjective } from './missions.js';
 import { createProject } from './projects.js';
 import { attachSession, protocolCreate, protocolPrompt } from './protocol.js';
+import { createSeededServiceContext } from './test-helpers.js';
 import { newId, nowIso } from './util.js';
 
 describe('protocol objective creation', () => {
   it('creates ordered objectives from an array payload', async () => {
-    const db = createSqliteClient(openInMemoryDatabase());
-    const ctx = await createServiceContext({ db, source: 'protocol' });
+    const { db, ctx } = await createSeededServiceContext({ source: 'protocol' });
     const project = await createProject({ ctx, name: 'Protocol Objectives' });
 
     const result = await protocolCreate({
@@ -33,8 +31,7 @@ describe('protocol objective creation', () => {
   });
 
   it('allows blank inline-authored draft and future objective slots', async () => {
-    const db = createSqliteClient(openInMemoryDatabase());
-    const ctx = await createServiceContext({ db, source: 'protocol' });
+    const { db, ctx } = await createSeededServiceContext({ source: 'protocol' });
     const project = await createProject({ ctx, name: 'Blank Objective Slots' });
     const { mission } = await createMissionWithObjectives({
       ctx,
@@ -69,8 +66,7 @@ describe('protocol objective creation', () => {
   });
 
   it('rejects blank submitted objectives', async () => {
-    const db = createSqliteClient(openInMemoryDatabase());
-    const ctx = await createServiceContext({ db, source: 'protocol' });
+    const { db, ctx } = await createSeededServiceContext({ source: 'protocol' });
     const project = await createProject({ ctx, name: 'Submitted Objective Validation' });
     const { mission } = await createMissionWithObjectives({
       ctx,
@@ -92,8 +88,7 @@ describe('protocol objective creation', () => {
   });
 
   it('prompts with multiple objectives and attaches to the first one', async () => {
-    const db = createSqliteClient(openInMemoryDatabase());
-    const ctx = await createServiceContext({ db, source: 'protocol' });
+    const { db, ctx } = await createSeededServiceContext({ source: 'protocol' });
     const project = await createProject({ ctx, name: 'Protocol Prompt Objectives' });
 
     const result = await protocolPrompt({
@@ -119,8 +114,7 @@ describe('protocol objective creation', () => {
   });
 
   it('creates a blank draft slot when attach consumes the only next-up objective', async () => {
-    const db = createSqliteClient(openInMemoryDatabase());
-    const ctx = await createServiceContext({ db, source: 'protocol' });
+    const { db, ctx } = await createSeededServiceContext({ source: 'protocol' });
     const project = await createProject({ ctx, name: 'Attach Refill' });
     const { mission, objectives } = await createMissionWithObjectives({
       ctx,
@@ -156,8 +150,7 @@ describe('protocol objective creation', () => {
   });
 
   it('promotes the earliest future objective when attach consumes the next-up objective', async () => {
-    const db = createSqliteClient(openInMemoryDatabase());
-    const ctx = await createServiceContext({ db, source: 'protocol' });
+    const { db, ctx } = await createSeededServiceContext({ source: 'protocol' });
     const project = await createProject({ ctx, name: 'Attach Future Refill' });
     const { mission, objectives } = await createMissionWithObjectives({
       ctx,
@@ -187,8 +180,7 @@ describe('protocol objective creation', () => {
   });
 
   it('promotes a future objective over a blank draft placeholder when attach begins execution', async () => {
-    const db = createSqliteClient(openInMemoryDatabase());
-    const ctx = await createServiceContext({ db, source: 'protocol' });
+    const { db, ctx } = await createSeededServiceContext({ source: 'protocol' });
     const project = await createProject({ ctx, name: 'Attach Future Before Placeholder' });
     const { mission, objectives } = await createMissionWithObjectives({
       ctx,
@@ -231,8 +223,7 @@ describe('protocol objective creation', () => {
   });
 
   it('splits completed prior work into previousObjectives, excluding the current objective', async () => {
-    const db = createSqliteClient(openInMemoryDatabase());
-    const ctx = await createServiceContext({ db, source: 'protocol' });
+    const { db, ctx } = await createSeededServiceContext({ source: 'protocol' });
     const project = await createProject({ ctx, name: 'Attach Previous Split' });
     const { mission, objectives } = await createMissionWithObjectives({
       ctx,
@@ -270,8 +261,7 @@ describe('protocol objective creation', () => {
   });
 
   it('keeps history in structured fields instead of duplicating it in agent instructions', async () => {
-    const db = createSqliteClient(openInMemoryDatabase());
-    const ctx = await createServiceContext({ db, source: 'protocol' });
+    const { db, ctx } = await createSeededServiceContext({ source: 'protocol' });
     const project = await createProject({ ctx, name: 'Attach History Filter' });
     const { mission } = await createMissionWithObjectives({
       ctx,

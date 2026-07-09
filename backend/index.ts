@@ -732,7 +732,7 @@ app.post(
 // ---- Webhooks (coo:115) ---------------------------------------------------
 //
 // Workspace-scoped webhook subscription management. ADMIN-gated by default
-// (see openoverlord.rbac.toml -> permission_groups.webhook_management).
+// (see overlord.rbac.toml -> permission_groups.webhook_management).
 // Deliveries themselves are dispatched by the in-process worker in
 // backend/webhook-dispatcher.ts, not from these handlers.
 

@@ -57,12 +57,12 @@ test('worktree path nests under the worktree root, project slug, and resource ke
   const decision = previewMissionBranch({
     mission: { title: 'Automate worktree branching', sequence: 16 },
     project: { slug: 'coo' },
-    resourceKey: 'openoverlord',
+    resourceKey: 'overlord',
     base: 'main',
     worktreeRoot: path.join('/tmp', 'ovld-worktrees')
   });
   assert.equal(
     decision.worktreePath,
-    path.join('/tmp', 'ovld-worktrees', 'coo', 'openoverlord', 'automate-worktree-branching-16')
+    path.join('/tmp', 'ovld-worktrees', 'coo', 'overlord', 'automate-worktree-branching-16')
   );
 });

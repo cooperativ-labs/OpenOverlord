@@ -123,7 +123,7 @@ Ask, in order:
 3. **Do you have compliance/forensic needs (who approved/denied what)?** If yes
    → add the audit trail (`audit_log`).
 
-Roles come from `openoverlord.rbac.toml` (copy and edit to customize):
+Roles come from `overlord.rbac.toml` (copy and edit to customize):
 
 - `ADMIN` — full instance administrator (`grants = ["*"]`).
 - `MEMBER` — standard user or persistent agent account (scoped grants:
@@ -282,7 +282,7 @@ export DATABASE_URL="postgres://overlord:***@db.internal:5432/overlord"
 ```
 
 Migrations: core + Group 1 (auth/tokens) + Group 2 (audit) + Group 5 (tagging).
-Copy `openoverlord.rbac.toml` and grant each user `ADMIN` or `MEMBER`.
+Copy `overlord.rbac.toml` and grant each user `ADMIN` or `MEMBER`.
 
 ### C. Organization with distributed runners (PostgreSQL service)
 
@@ -318,7 +318,7 @@ files or running migrations:
 9. **Q10** — local-only or remote execution targets.
 
 Then: write `overlord.toml`, set environment variables, copy/edit
-`openoverlord.rbac.toml` if multi-user, run migrations for the confirmed groups,
+`overlord.rbac.toml` if multi-user, run migrations for the confirmed groups,
 `ovld agent-setup <agent>` the chosen connectors, and `ovld doctor` to verify.
 
 > Any à la carte schema group can be added later with additive-only migrations,

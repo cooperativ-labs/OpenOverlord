@@ -37,10 +37,10 @@ Extends the existing `authorizer.test.ts`.
   a custom auth provider must return the **same shape** (contract auth-provider
   constraint) — asserted by a shared shape test.
 - **Default roles present.** `ADMIN` and `MEMBER` exist with the documented
-  default permission sets (matches `openoverlord.rbac.toml`).
+  default permission sets (matches `overlord.rbac.toml`).
 
 ### A3. RBAC config loading
-- `openoverlord.rbac.toml` parses into the documented roles/permissions; an unknown
+- `overlord.rbac.toml` parses into the documented roles/permissions; an unknown
   permission or malformed role fails loudly.
 
 ---

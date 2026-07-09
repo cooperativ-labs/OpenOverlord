@@ -35,7 +35,7 @@ function resource(
 describe('objectiveResourceConnection', () => {
   it('uses the bound resource key when present', () => {
     const resources = [
-      resource({ resourceKey: 'openoverlord', isPrimary: true, path: '/tmp/openoverlord' }),
+      resource({ resourceKey: 'overlord', isPrimary: true, path: '/tmp/overlord' }),
       resource({ resourceKey: 'mobile', path: '/tmp/mobile' })
     ];
 
@@ -49,7 +49,7 @@ describe('objectiveResourceConnection', () => {
   });
 
   it('reports missing objective-bound resources', () => {
-    const resources = [resource({ resourceKey: 'openoverlord', isPrimary: true })];
+    const resources = [resource({ resourceKey: 'overlord', isPrimary: true })];
 
     const connection = objectiveResourceConnection({
       resources,
@@ -65,19 +65,19 @@ describe('distinctProjectResourceKeys', () => {
   it('returns unique active resource keys', () => {
     const keys = distinctProjectResourceKeys([
       resource({ resourceKey: 'mobile' }),
-      resource({ resourceKey: 'openoverlord', isPrimary: true }),
+      resource({ resourceKey: 'overlord', isPrimary: true }),
       resource({ resourceKey: 'mobile', executionTargetId: 'other-target' }),
       resource({ resourceKey: 'archived', status: 'archived' })
     ]);
 
-    assert.deepEqual(keys, ['mobile', 'openoverlord']);
+    assert.deepEqual(keys, ['mobile', 'overlord']);
   });
 });
 
 describe('resolveResourceForKey', () => {
   it('selects the resource matching the bound key', () => {
     const resources = [
-      resource({ id: 'oo', resourceKey: 'openoverlord', isPrimary: true, path: '/tmp/oo' }),
+      resource({ id: 'oo', resourceKey: 'overlord', isPrimary: true, path: '/tmp/oo' }),
       resource({ id: 'mob', resourceKey: 'mobile', path: '/tmp/mob' })
     ];
 
@@ -92,7 +92,7 @@ describe('resolveResourceForKey', () => {
 
   it('falls back to the primary when the bound key is not linked', () => {
     const resources = [
-      resource({ id: 'oo', resourceKey: 'openoverlord', isPrimary: true, path: '/tmp/oo' })
+      resource({ id: 'oo', resourceKey: 'overlord', isPrimary: true, path: '/tmp/oo' })
     ];
 
     const resolved = resolveResourceForKey({
@@ -107,7 +107,7 @@ describe('resolveResourceForKey', () => {
   it('resolves the primary resource when no key is given', () => {
     const resources = [
       resource({ id: 'mob', resourceKey: 'mobile', path: '/tmp/mob' }),
-      resource({ id: 'oo', resourceKey: 'openoverlord', isPrimary: true, path: '/tmp/oo' })
+      resource({ id: 'oo', resourceKey: 'overlord', isPrimary: true, path: '/tmp/oo' })
     ];
 
     const resolved = resolveResourceForKey({ resources, executionTargetId: null });
@@ -158,7 +158,7 @@ describe('firstObjectiveCreatePayload', () => {
 
 describe('missionDraftResourceBadgeKey', () => {
   it('returns null for single-resource projects', () => {
-    const resources = [resource({ resourceKey: 'openoverlord', isPrimary: true })];
+    const resources = [resource({ resourceKey: 'overlord', isPrimary: true })];
 
     assert.equal(
       missionDraftResourceBadgeKey({ resources, draftObjectiveResourceKey: 'mobile' }),
@@ -168,7 +168,7 @@ describe('missionDraftResourceBadgeKey', () => {
 
   it('uses the draft objective key when set', () => {
     const resources = [
-      resource({ resourceKey: 'openoverlord', isPrimary: true }),
+      resource({ resourceKey: 'overlord', isPrimary: true }),
       resource({ resourceKey: 'mobile' })
     ];
 
@@ -180,13 +180,13 @@ describe('missionDraftResourceBadgeKey', () => {
 
   it('falls back to the primary resource when the draft inherits it', () => {
     const resources = [
-      resource({ resourceKey: 'openoverlord', isPrimary: true }),
+      resource({ resourceKey: 'overlord', isPrimary: true }),
       resource({ resourceKey: 'mobile' })
     ];
 
     assert.equal(
       missionDraftResourceBadgeKey({ resources, draftObjectiveResourceKey: null }),
-      'openoverlord'
+      'overlord'
     );
   });
 });

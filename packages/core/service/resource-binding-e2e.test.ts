@@ -16,7 +16,7 @@ import { recordTargetResourceObservations } from './target-resource-observations
 import { createSeededServiceContext } from './test-helpers.js';
 
 const WORKTREE_ROOT = '/tmp/ovld-worktrees';
-const OPENOVERLORD_DIR = '/tmp/openoverlord-checkout';
+const OPENOVERLORD_DIR = '/tmp/overlord-checkout';
 const MOBILE_DIR = '/tmp/overlord-mobile-checkout';
 
 async function seedCrossRepoProject({
@@ -27,11 +27,11 @@ async function seedCrossRepoProject({
   executionTargetId: string;
 }) {
   const project = await createProject({ ctx, name: 'OpenOverlord + Mobile', slug: 'coo' });
-  const openoverlord = await addProjectResource({
+  const overlord = await addProjectResource({
     ctx,
     projectId: project.id,
     directoryPath: OPENOVERLORD_DIR,
-    resourceKey: 'openoverlord',
+    resourceKey: 'overlord',
     isPrimary: true
   });
   const mobile = await addProjectResource({
@@ -47,19 +47,19 @@ async function seedCrossRepoProject({
     ctx,
     executionTargetId,
     observations: [
-      { resourceId: openoverlord.id, state: 'available', observedAt },
+      { resourceId: overlord.id, state: 'available', observedAt },
       { resourceId: mobile.id, state: 'available', observedAt }
     ]
   });
 
-  return { project, openoverlord, mobile };
+  return { project, overlord, mobile };
 }
 
 describe('resource binding end-to-end (simulated cross-repo mission)', () => {
   it('resolves distinct worktrees, sibling manifests, and resource-scoped changed files across two objectives', async () => {
     const { db, ctx } = await createSeededServiceContext();
     const target = await ensureCallerDeviceTarget({ ctx });
-    const { project, openoverlord, mobile } = await seedCrossRepoProject({
+    const { project, overlord, mobile } = await seedCrossRepoProject({
       ctx,
       executionTargetId: target.executionTargetId
     });
@@ -69,7 +69,7 @@ describe('resource binding end-to-end (simulated cross-repo mission)', () => {
       projectId: project.id,
       title: 'Cross-repo resource binding verification',
       objectives: [
-        { objective: 'Change OpenOverlord backend', resourceKey: 'openoverlord' },
+        { objective: 'Change OpenOverlord backend', resourceKey: 'overlord' },
         { objective: 'Change OverlordMobile app', resourceKey: 'mobile' }
       ]
     });
@@ -85,7 +85,7 @@ describe('resource binding end-to-end (simulated cross-repo mission)', () => {
     const expectedOpenWorktree = previewMissionBranch({
       mission: { title: missionRow.title, sequence: missionRow.sequence_number },
       project: { slug: 'coo' },
-      resourceKey: 'openoverlord',
+      resourceKey: 'overlord',
       base: 'main',
       worktreeRoot: WORKTREE_ROOT
     }).worktreePath;
@@ -98,12 +98,12 @@ describe('resource binding end-to-end (simulated cross-repo mission)', () => {
     }).worktreePath;
 
     assert.notEqual(expectedOpenWorktree, expectedMobileWorktree);
-    assert.equal(expectedOpenWorktree, path.join(WORKTREE_ROOT, 'coo', 'openoverlord', branchLeaf));
+    assert.equal(expectedOpenWorktree, path.join(WORKTREE_ROOT, 'coo', 'overlord', branchLeaf));
     assert.equal(expectedMobileWorktree, path.join(WORKTREE_ROOT, 'coo', 'mobile', branchLeaf));
 
     for (const [index, objective] of objectives.entries()) {
-      const resourceKey = index === 0 ? 'openoverlord' : 'mobile';
-      const resourceId = index === 0 ? openoverlord.id : mobile.id;
+      const resourceKey = index === 0 ? 'overlord' : 'mobile';
+      const resourceId = index === 0 ? overlord.id : mobile.id;
       const workingDirectory = index === 0 ? OPENOVERLORD_DIR : MOBILE_DIR;
       const expectedWorktree = index === 0 ? expectedOpenWorktree : expectedMobileWorktree;
 

@@ -1,15 +1,14 @@
-import { createSqliteClient, openInMemoryDatabase } from '@overlord/database';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { createServiceContext, type ServiceContext } from './context.js';
+import type { ServiceContext } from './context.js';
 import { createMissionWithObjectives, searchMissions } from './missions.js';
 import { createProject } from './projects.js';
+import { createSeededServiceContext } from './test-helpers.js';
 import { newId, nowIso } from './util.js';
 
 async function setup(): Promise<{ ctx: ServiceContext; projectId: string }> {
-  const db = createSqliteClient(openInMemoryDatabase());
-  const ctx = await createServiceContext({ db, source: 'cli' });
+  const { ctx } = await createSeededServiceContext({ source: 'cli' });
   const project = await createProject({ ctx, name: 'Search Project' });
   return { ctx, projectId: project.id };
 }

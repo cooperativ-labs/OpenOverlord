@@ -1,26 +1,18 @@
-import { createServiceContext } from '@overlord/core/service/context';
 import {
   addObjectivesToMission,
   createMissionWithObjectives
 } from '@overlord/core/service/missions';
 import { createProject } from '@overlord/core/service/projects';
-import { migrateDatabase } from '@overlord/database';
-import Database from 'better-sqlite3';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-function createContext() {
-  const db = new Database(':memory:');
-  db.pragma('foreign_keys = ON');
-  migrateDatabase(db);
-  return { db, ctx: createServiceContext({ db, source: 'cli' }) };
-}
+import { createSeededCliContext } from './support/seeded-context.ts';
 
-test('mission creation creates one draft objective and future objectives for the rest', () => {
-  const { db, ctx } = createContext();
-  const project = createProject({ ctx, name: 'Objective Creation Test' });
+test('mission creation creates one draft objective and future objectives for the rest', async () => {
+  const { db, ctx } = await createSeededCliContext();
+  const project = await createProject({ ctx, name: 'Objective Creation Test' });
 
-  const { objectives } = createMissionWithObjectives({
+  const { objectives } = await createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [
@@ -35,19 +27,19 @@ test('mission creation creates one draft objective and future objectives for the
     ['draft', 'future', 'future']
   );
 
-  db.close();
+  await db.close();
 });
 
-test('adding objectives to a mission with a draft creates future objectives', () => {
-  const { db, ctx } = createContext();
-  const project = createProject({ ctx, name: 'Add Objectives Test' });
-  const { mission } = createMissionWithObjectives({
+test('adding objectives to a mission with a draft creates future objectives', async () => {
+  const { db, ctx } = await createSeededCliContext();
+  const project = await createProject({ ctx, name: 'Add Objectives Test' });
+  const { mission } = await createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [{ objective: 'Existing draft' }]
   });
 
-  const added = addObjectivesToMission({
+  const added = await addObjectivesToMission({
     ctx,
     missionId: mission.id,
     objectives: [{ objective: 'Additional objective' }, { objective: 'Another objective' }]
@@ -58,20 +50,20 @@ test('adding objectives to a mission with a draft creates future objectives', ()
     ['future', 'future']
   );
 
-  db.close();
+  await db.close();
 });
 
-test('adding objectives to a mission without a draft creates exactly one draft', () => {
-  const { db, ctx } = createContext();
-  const project = createProject({ ctx, name: 'Refill Draft Test' });
-  const { mission, objectives } = createMissionWithObjectives({
+test('adding objectives to a mission without a draft creates exactly one draft', async () => {
+  const { db, ctx } = await createSeededCliContext();
+  const project = await createProject({ ctx, name: 'Refill Draft Test' });
+  const { mission, objectives } = await createMissionWithObjectives({
     ctx,
     projectId: project.id,
     objectives: [{ objective: 'Existing objective' }]
   });
-  ctx.db.prepare(`UPDATE objectives SET state = 'submitted' WHERE id = ?`).run(objectives[0]?.id);
+  await ctx.db.run(`UPDATE objectives SET state = 'submitted' WHERE id = ?`, [objectives[0]?.id]);
 
-  const added = addObjectivesToMission({
+  const added = await addObjectivesToMission({
     ctx,
     missionId: mission.id,
     objectives: [{ objective: 'New next-up' }, { objective: 'Future follow-up' }]
@@ -82,5 +74,5 @@ test('adding objectives to a mission without a draft creates exactly one draft',
     ['draft', 'future']
   );
 
-  db.close();
+  await db.close();
 });

@@ -1,9 +1,7 @@
-import { createSqliteClient, openInMemoryDatabase } from '@overlord/database';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { describe, it } from 'node:test';
 
-import { createServiceContext } from './context.ts';
 import {
   isStaleBackendHostDeviceFingerprint,
   loadExecutionTargetMigrationDiagnostics
@@ -11,6 +9,7 @@ import {
 import { backendHostFingerprint, ensureCallerDeviceTarget } from './execution-targets.ts';
 import { createMissionWithObjectives } from './missions.ts';
 import { createProject } from './projects.ts';
+import { createSeededServiceContext } from './test-helpers.ts';
 import { nowIso } from './util.ts';
 
 describe('execution target migration diagnostics', () => {
@@ -20,8 +19,7 @@ describe('execution target migration diagnostics', () => {
   });
 
   it('returns no stale targets on co-located sqlite backends', async () => {
-    const db = createSqliteClient(openInMemoryDatabase());
-    const ctx = await createServiceContext({ db, source: 'cli' });
+    const { ctx } = await createSeededServiceContext({ source: 'cli' });
     await ensureCallerDeviceTarget({ ctx });
 
     const diagnostics = await loadExecutionTargetMigrationDiagnostics({ ctx });
@@ -31,8 +29,7 @@ describe('execution target migration diagnostics', () => {
   });
 
   it('detects backend-host execution targets and queued requests on hosted backends', async () => {
-    const db = createSqliteClient(openInMemoryDatabase());
-    const ctx = await createServiceContext({ db, source: 'webapp' });
+    const { db, ctx } = await createSeededServiceContext({ source: 'webapp' });
     const target = await ensureCallerDeviceTarget({ ctx });
     const project = await createProject({ ctx, name: 'Migration project' });
     const mission = await createMissionWithObjectives({

@@ -21,6 +21,7 @@ import {
 } from './project-execution-target.js';
 import { findPrimaryProjectResource } from './projects.js';
 import { claimNextQueuedRequest, recoverStaleExecutionRequests } from './queue-runtime.js';
+import { seedServiceOperator } from './test-helpers.js';
 
 /**
  * Adapter conformance for the hosted-backend runtime path (mission `coo:5`,
@@ -35,6 +36,7 @@ import { claimNextQueuedRequest, recoverStaleExecutionRequests } from './queue-r
  */
 
 const WORKSPACE_ID = 'local-workspace';
+const WORKSPACE_DRAFT_STATUS_ID = `${WORKSPACE_ID}-status-draft`;
 const ISO = (offsetMs = 0): string => new Date(Date.now() + offsetMs).toISOString();
 
 // ---- Adapter factories ---------------------------------------------------
@@ -52,6 +54,7 @@ const sqliteFactory: AdapterFactory = {
   label: 'sqlite',
   create: async () => {
     const client = createSqliteClient(openInMemoryDatabase());
+    await seedServiceOperator({ db: client, workspaceId: WORKSPACE_ID });
     return { client, teardown: () => client.close() };
   }
 };
@@ -78,6 +81,7 @@ function postgresFactory(connectionString: string): AdapterFactory {
       await session.query(`SET search_path TO ${schema}`);
       const client = createPostgresSessionClient(session);
       await migratePostgres(client);
+      await seedServiceOperator({ db: client, workspaceId: WORKSPACE_ID });
 
       return {
         client,
@@ -133,7 +137,7 @@ async function seedGraph(client: DatabaseClient): Promise<{
     `INSERT INTO missions
        (id, workspace_id, project_id, display_id, sequence_number, title,
         status_id, status_type, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'local-workspace-status-backlog', 'draft', ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
     [
       missionId,
       WORKSPACE_ID,
@@ -141,6 +145,7 @@ async function seedGraph(client: DatabaseClient): Promise<{
       `coo:test-${missionId.slice(-6)}`,
       sequenceNumber,
       'Conformance Mission',
+      WORKSPACE_DRAFT_STATUS_ID,
       now,
       now
     ]

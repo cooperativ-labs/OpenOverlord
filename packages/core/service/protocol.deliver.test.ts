@@ -1,4 +1,3 @@
-import { createSqliteClient, openInMemoryDatabase } from '@overlord/database';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -6,7 +5,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 
 import { listChangedFilesForReview } from './changes.js';
-import { createServiceContext } from './context.js';
+import type { ServiceContext } from './context.js';
 import { ServiceError } from './errors.js';
 import { createMissionWithObjectives, insertObjective } from './missions.js';
 import { addProjectResource, createProject } from './projects.js';
@@ -17,18 +16,14 @@ import {
   resumeFollowUp,
   updateSession
 } from './protocol.js';
+import { createSeededServiceContext } from './test-helpers.js';
 import { nowIso } from './util.js';
 
 async function setup() {
-  const db = createSqliteClient(openInMemoryDatabase());
-  const ctx = await createServiceContext({ db, source: 'cli' });
-  return { db, ctx };
+  return createSeededServiceContext({ source: 'cli' });
 }
 
-async function submittedMission(
-  ctx: Awaited<ReturnType<typeof createServiceContext>>,
-  name: string
-) {
+async function submittedMission(ctx: ServiceContext, name: string) {
   const project = await createProject({ ctx, name });
   const { mission, objectives } = await createMissionWithObjectives({
     ctx,
@@ -39,11 +34,7 @@ async function submittedMission(
   return { project, mission, objectiveId: objectives[0]?.id as string };
 }
 
-async function entityChangesFor(
-  ctx: Awaited<ReturnType<typeof createServiceContext>>,
-  entityType: string,
-  entityId: string
-) {
+async function entityChangesFor(ctx: ServiceContext, entityType: string, entityId: string) {
   return (await ctx.db.all(
     `SELECT entity_type, entity_id, operation, entity_revision, changed_fields_json,
             project_id, mission_id, objective_id

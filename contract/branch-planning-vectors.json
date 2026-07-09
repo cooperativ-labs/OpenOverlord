@@ -36,14 +36,14 @@
       "input": {
         "mission": { "title": "Automate worktree branching", "sequence": 16 },
         "project": { "slug": "coo" },
-        "resourceKey": "openoverlord",
+        "resourceKey": "overlord",
         "base": "main",
         "worktreeRoot": "/tmp/ovld-worktrees"
       },
       "expected": {
         "action": "create",
         "branch": "automate-worktree-branching-16",
-        "worktreePath": "/tmp/ovld-worktrees/coo/openoverlord/automate-worktree-branching-16",
+        "worktreePath": "/tmp/ovld-worktrees/coo/overlord/automate-worktree-branching-16",
         "baseBranch": "main",
         "cycle": 1,
         "from": "main"
@@ -56,7 +56,7 @@
       "input": {
         "mission": { "title": "Automate worktree branching", "sequence": 16 },
         "project": { "slug": "coo" },
-        "resourceKey": "openoverlord",
+        "resourceKey": "overlord",
         "base": "main",
         "worktreeRoot": "/tmp/ovld-worktrees",
         "recordedBranch": null,
@@ -65,7 +65,7 @@
       "expected": {
         "action": "create",
         "branch": "automate-worktree-branching-16",
-        "worktreePath": "/tmp/ovld-worktrees/coo/openoverlord/automate-worktree-branching-16",
+        "worktreePath": "/tmp/ovld-worktrees/coo/overlord/automate-worktree-branching-16",
         "baseBranch": "main",
         "cycle": 1,
         "from": "main"
@@ -76,7 +76,7 @@
       "input": {
         "mission": { "title": "Automate worktree branching", "sequence": 16 },
         "project": { "slug": "coo" },
-        "resourceKey": "openoverlord",
+        "resourceKey": "overlord",
         "base": "main",
         "worktreeRoot": "/tmp/ovld-worktrees",
         "recordedBranch": "automate-worktree-branching-16",
@@ -89,7 +89,7 @@
       "expected": {
         "action": "reuse",
         "branch": "automate-worktree-branching-16",
-        "worktreePath": "/tmp/ovld-worktrees/coo/openoverlord/automate-worktree-branching-16",
+        "worktreePath": "/tmp/ovld-worktrees/coo/overlord/automate-worktree-branching-16",
         "baseBranch": "main",
         "cycle": 1
       }
@@ -104,11 +104,7 @@
         "worktreeRoot": "/tmp/ovld-worktrees",
         "recordedBranch": "automate-worktree-branching-16",
         "refs": {
-          "local": [
-            "main",
-            "automate-worktree-branching-16",
-            "automate-worktree-branching-16-2"
-          ],
+          "local": ["main", "automate-worktree-branching-16", "automate-worktree-branching-16-2"],
           "remote": ["origin/automate-worktree-branching-16-3"],
           "merged": ["automate-worktree-branching-16"],
           "checkedOut": ["automate-worktree-branching-16-4"]
@@ -128,7 +124,7 @@
       "input": {
         "mission": { "title": "Automate worktree branching", "sequence": 16 },
         "project": { "slug": "coo" },
-        "resourceKey": "openoverlord",
+        "resourceKey": "overlord",
         "base": "main",
         "worktreeRoot": "/tmp/ovld-worktrees",
         "recordedBranch": null,
@@ -138,7 +134,7 @@
       "expected": {
         "action": "reuse",
         "branch": "feature/manual",
-        "worktreePath": "/tmp/ovld-worktrees/coo/openoverlord/feature-manual",
+        "worktreePath": "/tmp/ovld-worktrees/coo/overlord/feature-manual",
         "baseBranch": "main",
         "cycle": 1
       }

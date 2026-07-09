@@ -9,7 +9,7 @@
 
 | Check | Result | Notes |
 | --- | --- | --- |
-| **Branch-planning vectors (CLI)** | **Pass** | `cli/test/branch-planning.test.ts` — 5/5 including distinct `openoverlord` vs `mobile` worktree paths |
+| **Branch-planning vectors (CLI)** | **Pass** | `cli/test/branch-planning.test.ts` — 5/5 including distinct `overlord` vs `mobile` worktree paths |
 | **Branch-planning vectors (backend)** | **Pass** | `backend/branch-planning.test.ts` — 5/5 |
 | **Simulated cross-repo mission (core)** | **Blocked here** | `packages/core/service/resource-binding-e2e.test.ts` added; requires `@overlord/database` build + better-sqlite3 (unavailable in cloud pod) |
 | **Existing objective binding tests** | **Blocked here** | `objective-resource-binding.test.ts`, `protocol-context-manifest.test.ts` — same SQLite blocker |
@@ -22,7 +22,7 @@
 
 New integration test `packages/core/service/resource-binding-e2e.test.ts` simulates the plan’s cross-repo scenario in memory:
 
-1. One project with `openoverlord` (primary) and `mobile` resources on the same execution target.
+1. One project with `overlord` (primary) and `mobile` resources on the same execution target.
 2. One mission with one objective per resource key.
 3. For each objective sequentially:
    - `resolveObjectiveWorkingDirectory` → distinct checkout paths.
@@ -45,7 +45,7 @@ From `contract/branch-planning-vectors.json` for mission sequence 16:
 
 | Resource key | Worktree path |
 | --- | --- |
-| `openoverlord` | `/tmp/ovld-worktrees/coo/openoverlord/automate-worktree-branching-16` |
+| `overlord` | `/tmp/ovld-worktrees/coo/overlord/automate-worktree-branching-16` |
 | `mobile` | `/tmp/ovld-worktrees/coo/mobile/automate-worktree-branching-16-5` (cycle scenario) or `/tmp/ovld-worktrees/coo/mobile/feature-other` (override scenario) |
 
 Same branch leaf, different resource segment — no collision between repos.
@@ -56,10 +56,10 @@ Same branch leaf, different resource segment — no collision between repos.
 
 **Steps:**
 
-1. On Mac, link OpenOverlord: `ovld add-cwd --key openoverlord` from OpenOverlord checkout.
+1. On Mac, link OpenOverlord: `ovld add-cwd --key overlord` from OpenOverlord checkout.
 2. Link OverlordMobile: `ovld add-cwd --project-id <id> --key mobile` from OverlordMobile checkout.
-3. Create mission with two objectives (`--resource openoverlord` then `--resource mobile`).
-4. Launch objective 1 via runner; confirm worktree under `.../openoverlord/...` and cwd = OpenOverlord path.
+3. Create mission with two objectives (`--resource overlord` then `--resource mobile`).
+4. Launch objective 1 via runner; confirm worktree under `.../overlord/...` and cwd = OpenOverlord path.
 5. Deliver; launch objective 2; confirm worktree under `.../mobile/...` and cwd = OverlordMobile path.
 6. Attach each run; confirm `projectResources` lists sibling path + state; confirm `OVERLORD_PROJECT_RESOURCES` env on launch.
 

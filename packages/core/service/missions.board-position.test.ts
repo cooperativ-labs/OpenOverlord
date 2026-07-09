@@ -1,15 +1,13 @@
-import { createSqliteClient, type DatabaseClient, openInMemoryDatabase } from '@overlord/database';
+import type { DatabaseClient } from '@overlord/database';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { createServiceContext } from './context.js';
 import { createMissionWithObjectives, moveMissionToReview } from './missions.js';
 import { createProject } from './projects.js';
+import { createSeededServiceContext } from './test-helpers.js';
 
 async function setup() {
-  const db = createSqliteClient(openInMemoryDatabase());
-  const ctx = await createServiceContext({ db, source: 'cli' });
-  return { db, ctx };
+  return createSeededServiceContext({ source: 'cli' });
 }
 
 async function boardPosition(db: DatabaseClient, missionId: string): Promise<number> {

@@ -1,22 +1,15 @@
 {
   "name": "overlord",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "Overlord mission protocol workflow for Cursor — attach/update/ask/deliver, slash commands, MCP bridge, and follow-up capture.",
   "author": {
     "name": "Cooperativ",
     "url": "https://github.com/cooperativ-labs"
   },
   "homepage": "https://www.ovld.ai",
-  "repository": "https://github.com/cooperativ-labs/openoverlord",
+  "repository": "https://github.com/cooperativ-labs/overlord",
   "license": "UNLICENSED",
-  "keywords": [
-    "overlord",
-    "cursor",
-    "workflow",
-    "mcp",
-    "tickets",
-    "protocol"
-  ],
+  "keywords": ["overlord", "cursor", "mcp", "ticket", "agents", "mission", "workflow", "protocol"],
   "skills": "./skills/",
   "mcpServers": "./mcp.json",
   "interface": {
@@ -25,10 +18,7 @@
     "longDescription": "Connect Cursor to Overlord's local mission workflow through the ovld protocol CLI. Includes workflow rules, slash commands, MCP bridge tools, and follow-up capture.",
     "developerName": "Cooperativ",
     "category": "Productivity",
-    "capabilities": [
-      "Interactive",
-      "Write"
-    ],
+    "capabilities": ["Interactive", "Write"],
     "websiteURL": "https://www.ovld.ai/docs",
     "privacyPolicyURL": "https://www.ovld.ai/privacy",
     "termsOfServiceURL": "https://www.ovld.ai/terms"

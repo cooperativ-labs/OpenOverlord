@@ -189,7 +189,7 @@ CLI, and a runtime-only `.env.prod`, then runs electron-builder:
 - Targets: `dmg` + `zip` (mac, arm64 + x64), `AppImage` + `deb` (linux).
 - Before electron-builder runs, the script deletes and recreates `desktop/release`
   so each package build starts from a clean release directory.
-- `appId: io.cooperativ.openoverlord`, hardened runtime + entitlements
+- `appId: io.cooperativ.overlord`, hardened runtime + entitlements
   (`build/entitlements.mac.plist`), no App Sandbox (the app spawns agents and
   reads repos).
 - `better-sqlite3` is rebuilt for the Electron ABI and `asarUnpack`'d alongside
