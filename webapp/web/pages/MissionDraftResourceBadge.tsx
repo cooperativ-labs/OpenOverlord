@@ -1,11 +1,8 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
+import { missionDraftResourceBadgeKey, projectResourceLabel } from '@/lib/project-resources.ts';
 import { useProjectResources } from '@/lib/queries.ts';
-import {
-  missionDraftResourceBadgeKey,
-  projectResourceLabel
-} from '@/lib/project-resources.ts';
 import { cn } from '@/lib/utils.ts';
 
 export function MissionDraftResourceBadge({

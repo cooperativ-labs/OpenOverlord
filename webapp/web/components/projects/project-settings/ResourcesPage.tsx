@@ -424,7 +424,6 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
             <tbody>
               {rows.map(resource => (
                 <tr key={resource.id} className="border-t">
-
                   <td className="min-w-44 px-3 py-2">
                     <div className="flex items-center gap-2">
                       <Input
@@ -442,7 +441,7 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
                         aria-label={`Resource key for ${resource.path}`}
                       />
                       {(resourceKeyEdits[resource.id] ?? resource.resourceKey).trim() !==
-                        resource.resourceKey ? (
+                      resource.resourceKey ? (
                         <Button
                           type="button"
                           size="sm"

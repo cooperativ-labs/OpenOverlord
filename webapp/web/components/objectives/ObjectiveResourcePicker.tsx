@@ -2,7 +2,10 @@ import { Check, ChevronDown, FolderOpen } from 'lucide-react';
 import { useState } from 'react';
 
 import type { ProjectResourceDto } from '../../../shared/contract.ts';
-import { distinctProjectResourceKeys, primaryResourceConnection } from '../../lib/project-resources.ts';
+import {
+  distinctProjectResourceKeys,
+  primaryResourceConnection
+} from '../../lib/project-resources.ts';
 import { cn } from '../../lib/utils.ts';
 import {
   DropdownMenu,

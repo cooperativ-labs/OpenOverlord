@@ -7,13 +7,13 @@ import type { MissionDto, WorkspaceMemberDto } from '../../shared/contract.ts';
 
 import { getMissionTags } from './board-shared.ts';
 import { MissionCardHoverFooter } from './MissionCardHoverFooter.tsx';
-import { MissionDraftResourceBadge } from './MissionDraftResourceBadge.tsx';
 import {
   MissionAssigneeSummary,
   MissionDueDateBadge,
   ProjectColorDot
 } from './MissionCardPrimitives.tsx';
 import { MissionCardState } from './missionCardState.ts';
+import { MissionDraftResourceBadge } from './MissionDraftResourceBadge.tsx';
 
 export function MissionCardBody({
   mission,
