@@ -87,7 +87,7 @@ export function ProjectSidebarMenuItem({
       buttonClassName="items-center text-foreground/80 font-medium group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:pb-0"
       link={<Link to="/projects/$projectId" params={{ projectId: project.id }} />}
       menuLabel="Project options"
-      menuSide="left"
+      dragHandleSide="left"
       menuOpen={menuOpen}
       onMenuOpenChange={setMenuOpen}
       menuDisabled={updateProject.isPending}

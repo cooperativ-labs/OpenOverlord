@@ -28,6 +28,7 @@ type SidebarLinkMenuButtonProps = {
   menuContent: React.ReactNode;
   menuLabel?: string;
   menuSide?: 'left' | 'right';
+  dragHandleSide?: 'left' | 'right';
   menuOpen?: boolean;
   onMenuOpenChange?: (open: boolean) => void;
   menuDisabled?: boolean;
@@ -47,6 +48,7 @@ export function SidebarLinkMenuButton({
   menuContent,
   menuLabel = 'Options',
   menuSide = 'right',
+  dragHandleSide = 'right',
   menuOpen,
   onMenuOpenChange,
   menuDisabled = false,
@@ -71,7 +73,7 @@ export function SidebarLinkMenuButton({
         isActive={isActive}
         tooltip={tooltip}
         className={cn(
-          dragHandle && 'group-has-data-[sidebar=menu-action]/menu-item:pr-14',
+          dragHandle && dragHandleSide === 'right' && 'group-has-data-[sidebar=menu-action]/menu-item:pr-14',
           buttonClassName
         )}
       >
@@ -85,7 +87,7 @@ export function SidebarLinkMenuButton({
           disabled={dragHandle.disabled}
           className={cn(
             'absolute top-1.5 flex aspect-square w-5 touch-none items-center justify-center rounded-md text-sidebar-foreground/40 opacity-0 outline-hidden transition-opacity group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:hidden disabled:cursor-not-allowed disabled:opacity-40 md:cursor-grab md:active:cursor-grabbing [&>svg]:size-4',
-            menuSide === 'left' ? 'right-1' : 'right-7'
+            dragHandleSide === 'left' ? 'left-2' : menuSide === 'left' ? 'right-1' : 'right-7'
           )}
           {...dragHandle.attributes}
           {...dragHandle.listeners}
