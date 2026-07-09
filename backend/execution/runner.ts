@@ -1,8 +1,8 @@
 import { PERMISSIONS } from '@overlord/auth';
 import type { DatabaseClient } from '@overlord/database';
 
-import type { ServiceContext } from '../packages/core/service/context.ts';
-import { ServiceError } from '../packages/core/service/errors.ts';
+import type { ServiceContext } from '../../packages/core/service/context.ts';
+import { ServiceError } from '../../packages/core/service/errors.ts';
 import {
   claimNextExecutionRequest,
   clearExecutionRequests,
@@ -13,12 +13,12 @@ import {
   markExecutionFailed,
   markExecutionLaunched,
   markExecutionLaunching
-} from '../packages/core/service/execution-requests.ts';
-import type { CapabilityResult } from '../packages/core/service/local-target/types.ts';
-import { completeLocalTargetMutationRequest } from '../packages/core/service/local-target-mutations.ts';
+} from '../../packages/core/service/execution-requests.ts';
+import type { CapabilityResult } from '../../packages/core/service/local-target/types.ts';
+import { completeLocalTargetMutationRequest } from '../../packages/core/service/local-target-mutations.ts';
 
-import { recordRunnerBranchEvent } from './branch-activity.ts';
-import { clientDeviceFromBody } from './client-device.ts';
+import { recordRunnerBranchEvent } from '../branching/branch-activity.ts';
+import { clientDeviceFromBody } from '../http/client-device.ts';
 import {
   buildWebappServiceContextForWorkspace,
   getClientDeviceIdentity,
@@ -26,10 +26,10 @@ import {
   nowIso,
   recordChange,
   requireDatabaseClient
-} from './db.ts';
-import { ApiError } from './errors.ts';
-import { requireWorkspacePermission } from './rbac.ts';
-import { callerMembershipsInActiveOrganization } from './repository.ts';
+} from '../db.ts';
+import { ApiError } from '../errors.ts';
+import { requireWorkspacePermission } from '../rbac.ts';
+import { callerMembershipsInActiveOrganization } from '../repository.ts';
 
 type ClientDeviceBody = {
   deviceFingerprint?: string | null;

@@ -88,7 +88,7 @@ import type {
 } from '../webapp/shared/contract.ts';
 
 import { missionWorktreePath, previewMissionBranch } from './branch-planning.ts';
-import { generateCommitMessageFromDiff } from './commit-message-automation.ts';
+import { generateCommitMessageFromDiff } from './automation/commit-message-automation.ts';
 import {
   buildWebappServiceContext,
   buildWebappServiceContextForWorkspace,
@@ -111,12 +111,12 @@ import {
   LAUNCHABLE_STATES,
   listMissionExecutionRequests,
   readWorktreeBranchAutomationEnabled
-} from './launch.ts';
+} from './execution/launch.ts';
 import {
   queueLocalTargetMutation,
   resolveMutationAnchorMissionId,
   resolveRemoteMutationTarget
-} from './local-target-mutation-queue.ts';
+} from './execution/local-target-mutation-queue.ts';
 import { getActiveOrganizationIdOrNull } from './organizations.ts';
 import {
   actorCan,
@@ -129,7 +129,7 @@ import {
   initialTitleFromInstruction,
   scheduleMissionTitleGeneration,
   scheduleObjectiveTitleGeneration
-} from './title-automation.ts';
+} from './automation/title-automation.ts';
 
 export { ApiError };
 

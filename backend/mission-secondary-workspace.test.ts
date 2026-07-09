@@ -219,9 +219,9 @@ describe('runner claims and drives executions in a secondary (non-active) worksp
     const { createWorkspace } = await import('./workspaces.ts');
     const { createProject, createProjectResource, createMission, getMissionDetail } =
       await import('./repository.ts');
-    const { launchObjective } = await import('./launch.ts');
+    const { launchObjective } = await import('./execution/launch.ts');
     const { claimRunnerRequest, updateRunnerRequestStatus, runnerStatus, recordBranchPrepared } =
-      await import('./runner.ts');
+      await import('./execution/runner.ts');
 
     const secondary = await createWorkspace({
       organizationId: DEFAULT_TEST_ORGANIZATION_ID,

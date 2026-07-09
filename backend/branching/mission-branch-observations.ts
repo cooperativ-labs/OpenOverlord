@@ -1,10 +1,10 @@
 import { PERMISSIONS } from '@overlord/auth';
 
-import { recordMissionBranchObservations } from '../packages/core/service/mission-branch-observations.ts';
+import { recordMissionBranchObservations } from '../../packages/core/service/mission-branch-observations.ts';
 
-import { buildWebappServiceContext } from './db.ts';
-import { ApiError } from './errors.ts';
-import { actorCan } from './rbac.ts';
+import { buildWebappServiceContext } from '../db.ts';
+import { ApiError } from '../errors.ts';
+import { actorCan } from '../rbac.ts';
 
 export async function postMissionBranchObservations({
   executionTargetId,

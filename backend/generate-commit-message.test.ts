@@ -8,14 +8,14 @@ import { describe, it } from 'node:test';
 describe('generate commit message', () => {
   async function setup(): Promise<{
     api: typeof import('./repository.ts');
-    runner: typeof import('./runner.ts');
+    runner: typeof import('./execution/runner.ts');
   }> {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-gcm-db-'));
     delete process.env.GEMINI_API_KEY;
     const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
     await bootstrapIntegrationTestDb({ sqlitePath: path.join(dir, 'Overlord.sqlite') });
     const api = await import('./repository.ts');
-    const runner = await import('./runner.ts');
+    const runner = await import('./execution/runner.ts');
     return { api, runner };
   }
 

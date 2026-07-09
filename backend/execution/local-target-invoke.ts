@@ -5,11 +5,11 @@ import path from 'node:path';
 import {
   invokeLocalTargetCapability,
   type LocalTargetBridgeCall
-} from '../packages/core/service/local-target/desktop-bridge.ts';
-import { InProcessProvider } from '../packages/core/service/local-target/in-process-provider.ts';
-import { isCoLocatedBackend } from '../packages/core/service/local-target/resource-status.ts';
-import { fail } from '../packages/core/service/local-target/result.ts';
-import type { CapabilityResult } from '../packages/core/service/local-target/types.ts';
+} from '../../packages/core/service/local-target/desktop-bridge.ts';
+import { InProcessProvider } from '../../packages/core/service/local-target/in-process-provider.ts';
+import { isCoLocatedBackend } from '../../packages/core/service/local-target/resource-status.ts';
+import { fail } from '../../packages/core/service/local-target/result.ts';
+import type { CapabilityResult } from '../../packages/core/service/local-target/types.ts';
 
 import { isDevInProcessLocalTargetEnabled } from './local-target-capability.ts';
 

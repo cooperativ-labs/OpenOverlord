@@ -15,7 +15,7 @@ describe('branch preparation recording', () => {
 
     const { createProject, createMission, getMissionDetail, listMissionEvents } =
       await import('./repository.ts');
-    const { recordBranchPrepared } = await import('./runner.ts');
+    const { recordBranchPrepared } = await import('./execution/runner.ts');
 
     const project = await createProject({ name: 'Branch Prepared Test' });
     const mission = await createMission({

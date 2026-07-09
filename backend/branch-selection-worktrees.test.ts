@@ -45,8 +45,8 @@ describe('branch selection and worktree management', () => {
   async function setup(): Promise<{
     worktreeRoot: string;
     api: typeof import('./repository.ts');
-    launch: typeof import('./launch.ts');
-    runner: typeof import('./runner.ts');
+    launch: typeof import('./execution/launch.ts');
+    runner: typeof import('./execution/runner.ts');
     primary: string;
   }> {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-bsw-db-'));
@@ -55,8 +55,8 @@ describe('branch selection and worktree management', () => {
     const { bootstrapIntegrationTestDb } = await import('./test-helpers.ts');
     await bootstrapIntegrationTestDb({ sqlitePath: path.join(dir, 'Overlord.sqlite') });
     const api = await import('./repository.ts');
-    const launch = await import('./launch.ts');
-    const runner = await import('./runner.ts');
+    const launch = await import('./execution/launch.ts');
+    const runner = await import('./execution/runner.ts');
     const primary = initPrimaryWithRemote();
     return { worktreeRoot, api, launch, runner, primary };
   }

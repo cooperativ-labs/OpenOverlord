@@ -4,8 +4,8 @@ import {
   generateObjectiveTitle
 } from '@overlord/automations';
 
-import { nowIso, recordChange, requireDatabaseClient } from './db.ts';
-import { realtime } from './realtime.ts';
+import { nowIso, recordChange, requireDatabaseClient } from '../db.ts';
+import { realtime } from '../realtime.ts';
 
 type ObjectiveContext = {
   objectiveId: string;

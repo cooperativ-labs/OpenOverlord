@@ -10,11 +10,11 @@
  * than living in either) so neither service module needs to import the other.
  */
 
-import type { MetaDto } from '../webapp/shared/contract.ts';
+import type { MetaDto } from '../../webapp/shared/contract.ts';
 
-import { getActiveProfileId, getActiveWorkspaceIdOrNull } from './db.ts';
-import { getActiveOrganizationIdOrNull, listOrganizationsForUser } from './organizations.ts';
-import { listWorkspacesForOrganization } from './workspaces.ts';
+import { getActiveProfileId, getActiveWorkspaceIdOrNull } from '../db.ts';
+import { getActiveOrganizationIdOrNull, listOrganizationsForUser } from '../organizations.ts';
+import { listWorkspacesForOrganization } from '../workspaces.ts';
 
 export async function buildMeta(): Promise<MetaDto> {
   const profileId = getActiveProfileId();

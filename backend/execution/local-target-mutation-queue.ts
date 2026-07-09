@@ -1,21 +1,21 @@
-import type { ServiceContext } from '../packages/core/service/context.ts';
-import { findActingDeviceExecutionTargetId } from '../packages/core/service/execution-targets.ts';
+import type { ServiceContext } from '../../packages/core/service/context.ts';
+import { findActingDeviceExecutionTargetId } from '../../packages/core/service/execution-targets.ts';
 import {
   createLocalTargetMutationRequest,
   type LocalTargetMutationCapability,
   type LocalTargetMutationKind,
   parseLocalTargetMutation
-} from '../packages/core/service/local-target-mutations.ts';
-import { resolveProjectExecutionTargetForLaunch } from '../packages/core/service/project-execution-target.ts';
+} from '../../packages/core/service/local-target-mutations.ts';
+import { resolveProjectExecutionTargetForLaunch } from '../../packages/core/service/project-execution-target.ts';
 
-import { recordRunnerBranchEvent } from './branch-activity.ts';
+import { recordRunnerBranchEvent } from '../branching/branch-activity.ts';
 import {
   buildWebappServiceContext,
   buildWebappServiceContextForWorkspace,
   nowIso,
   recordChange
-} from './db.ts';
-import { ApiError } from './errors.ts';
+} from '../db.ts';
+import { ApiError } from '../errors.ts';
 
 export async function resolveRemoteMutationTarget({
   ctx,

@@ -8,7 +8,7 @@ import { describe, it } from 'node:test';
 describe('branch actions', () => {
   async function setup(): Promise<{
     api: typeof import('./repository.ts');
-    runner: typeof import('./runner.ts');
+    runner: typeof import('./execution/runner.ts');
     db: import('better-sqlite3').Database;
   }> {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-ba-db-'));
@@ -17,7 +17,7 @@ describe('branch actions', () => {
       sqlitePath: path.join(dir, 'Overlord.sqlite')
     });
     const api = await import('./repository.ts');
-    const runner = await import('./runner.ts');
+    const runner = await import('./execution/runner.ts');
     return { api, runner, db };
   }
 

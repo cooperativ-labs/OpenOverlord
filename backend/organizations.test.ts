@@ -36,7 +36,7 @@ const {
   removeOrganizationAdmin,
   updateOrganization
 } = await import('./organizations.ts');
-const { buildMeta } = await import('./meta.ts');
+const { buildMeta } = await import('./http/meta.ts');
 
 const operatorWorkspaceUserId = seedAuthenticatedOperator({ db });
 setActiveWorkspaceUser(operatorWorkspaceUserId);

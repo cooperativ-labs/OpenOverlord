@@ -13,7 +13,7 @@ describe('branch status derivation', () => {
 
     const { createProject, createMission, getMissionDetail, createProjectResource } =
       await import('./repository.ts');
-    const { recordBranchPrepared } = await import('./runner.ts');
+    const { recordBranchPrepared } = await import('./execution/runner.ts');
 
     const project = await createProject({ name: 'Branch Status Test' });
     await createProjectResource(project.id, {
@@ -94,7 +94,7 @@ describe('branch status derivation', () => {
 
     const { createProject, createMission, createProjectResource, getMissionDetail } =
       await import('./repository.ts');
-    const { recordBranchPrepared } = await import('./runner.ts');
+    const { recordBranchPrepared } = await import('./execution/runner.ts');
 
     const project = await createProject({ name: 'Prepared Base Test' });
     await createProjectResource(project.id, {
@@ -127,8 +127,8 @@ describe('branch status derivation', () => {
 
     const { createProject, createMission, createProjectResource, getMissionDetail } =
       await import('./repository.ts');
-    const { postMissionBranchObservations } = await import('./mission-branch-observations.ts');
-    const { recordBranchPrepared } = await import('./runner.ts');
+    const { postMissionBranchObservations } = await import('./branching/mission-branch-observations.ts');
+    const { recordBranchPrepared } = await import('./execution/runner.ts');
 
     const project = await createProject({ name: 'Branch Observation DTO Test' });
     const resource = await createProjectResource(project.id, {

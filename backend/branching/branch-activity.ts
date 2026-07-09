@@ -1,6 +1,6 @@
 import type { DatabaseClient } from '@overlord/database';
 
-import { newId, nowIso } from './db.ts';
+import { newId, nowIso } from '../db.ts';
 
 /**
  * Insert the single `mission_events` row both runner-side branch recorders emit

@@ -13,7 +13,7 @@ const { db } = await bootstrapIntegrationTestDb({
 });
 const { createProject, createProjectResource, createMission, createObjective, updateObjective } =
   await import('./repository.ts');
-const { launchObjective, getAgentCatalog, updateAgentCatalog } = await import('./launch.ts');
+const { launchObjective, getAgentCatalog, updateAgentCatalog } = await import('./execution/launch.ts');
 
 after(() => {
   db.close();

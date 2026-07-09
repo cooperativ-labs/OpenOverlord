@@ -1,6 +1,6 @@
 import type { Request } from 'express';
 
-import type { ClientDeviceIdentity } from '../packages/core/service/device-identity.ts';
+import type { ClientDeviceIdentity } from '../../packages/core/service/device-identity.ts';
 
 export const DEVICE_FINGERPRINT_HEADER = 'x-overlord-device-fingerprint';
 export const DEVICE_LABEL_HEADER = 'x-overlord-device-label';

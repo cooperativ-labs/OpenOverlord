@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { isAllowedBrowserOrigin, resolveAllowedBrowserOrigins } from './browser-origins.ts';
+import { isAllowedBrowserOrigin, resolveAllowedBrowserOrigins } from './http/browser-origins.ts';
 
 describe('resolveAllowedBrowserOrigins', () => {
   it('includes desktop loopback shell origins for cross-origin cloud auth', () => {

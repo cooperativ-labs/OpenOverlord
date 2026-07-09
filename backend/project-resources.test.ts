@@ -19,7 +19,7 @@ const {
   listProjectResources,
   updateProjectResource
 } = await import('./repository.ts');
-const { getLaunchSettings } = await import('./launch.ts');
+const { getLaunchSettings } = await import('./execution/launch.ts');
 
 test.after(() => {
   db.close();

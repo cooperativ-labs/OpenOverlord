@@ -72,7 +72,7 @@ describe('local-target invoke dev proxy', () => {
 
   it('rejects invoke when dev proxy is disabled', async () => {
     delete process.env.OVERLORD_DEV_IN_PROCESS_LOCAL_TARGET;
-    const { invokeLocalTargetOnServer } = await import('./local-target-invoke.ts');
+    const { invokeLocalTargetOnServer } = await import('./execution/local-target-invoke.ts');
     const result = await invokeLocalTargetOnServer({
       dialect: 'sqlite',
       call: {
@@ -91,7 +91,7 @@ describe('local-target invoke dev proxy', () => {
     const primary = initPrimaryWithRemote();
     git(primary, ['branch', 'feature/x']);
 
-    const { invokeLocalTargetOnServer } = await import('./local-target-invoke.ts');
+    const { invokeLocalTargetOnServer } = await import('./execution/local-target-invoke.ts');
 
     const branches = (await invokeLocalTargetOnServer({
       dialect: 'sqlite',
@@ -137,7 +137,7 @@ describe('local-target invoke dev proxy', () => {
     const branchName = 'overlord/auto-remove';
     const worktreePath = makeBranchWorktree(primary, worktreeRoot, 'auto', branchName);
 
-    const { invokeLocalTargetOnServer } = await import('./local-target-invoke.ts');
+    const { invokeLocalTargetOnServer } = await import('./execution/local-target-invoke.ts');
 
     const integrate = await invokeLocalTargetOnServer({
       dialect: 'sqlite',

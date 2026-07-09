@@ -14,7 +14,7 @@ const { entityChangeDtoFromRow, parseChangedFields, readChangesAfter } =
   await import('./realtime.ts');
 const { createMission, createProject, createObjective, reorderFutureObjectives, updateObjective } =
   await import('./repository.ts');
-const { updateLaunchPreference } = await import('./launch.ts');
+const { updateLaunchPreference } = await import('./execution/launch.ts');
 const { ApiError } = await import('./errors.ts');
 
 // Operator is seeded by bootstrapIntegrationTestDb.

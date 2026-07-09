@@ -4,7 +4,7 @@ import { afterEach, describe, it } from 'node:test';
 import {
   isDevInProcessLocalTargetEnabled,
   resolveLocalTargetServerCapability
-} from './local-target-capability.ts';
+} from './execution/local-target-capability.ts';
 
 describe('local-target server capability', () => {
   const previous = process.env.OVERLORD_DEV_IN_PROCESS_LOCAL_TARGET;

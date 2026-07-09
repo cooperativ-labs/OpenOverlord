@@ -16,7 +16,7 @@ describe('per-mission worktree preference', () => {
 
     const { createProject, createMission, getMissionDetail, updateMission } =
       await import('./repository.ts');
-    const { updateWorktreeBranchAutomation } = await import('./launch.ts');
+    const { updateWorktreeBranchAutomation } = await import('./execution/launch.ts');
 
     const project = await createProject({ name: 'Worktree Preference Test' });
 
@@ -83,7 +83,7 @@ describe('per-mission worktree preference', () => {
     await bootstrapIntegrationTestDb({ sqlitePath: path.join(dir, 'Overlord.sqlite') });
 
     const { createProject, createMission, updateMission } = await import('./repository.ts');
-    const { recordBranchPrepared } = await import('./runner.ts');
+    const { recordBranchPrepared } = await import('./execution/runner.ts');
 
     const project = await createProject({ name: 'Reset Active Branch' });
     const mission = await createMission({ projectId: project.id, firstObjective: 'Switch later' });

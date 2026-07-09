@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { resolveServeSpa } from './serve-spa.ts';
+import { resolveServeSpa } from './http/serve-spa.ts';
 
 describe('resolveServeSpa', () => {
   it('defaults to serving the SPA on the SQLite local edition', () => {

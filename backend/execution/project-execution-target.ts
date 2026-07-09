@@ -1,17 +1,17 @@
 import type { DatabaseClient } from '@overlord/database';
 
-import { ServiceError } from '../packages/core/service/errors.ts';
+import { ServiceError } from '../../packages/core/service/errors.ts';
 import {
   getProjectExecutionTargetSelection,
   updateProjectExecutionTargetSelection
-} from '../packages/core/service/project-execution-target.ts';
+} from '../../packages/core/service/project-execution-target.ts';
 import type {
   ProjectExecutionTargetDto,
   UpdateProjectExecutionTargetBody
-} from '../webapp/shared/contract.ts';
+} from '../../webapp/shared/contract.ts';
 
-import { buildWebappServiceContext, requireDatabaseClient, serviceDatabaseClient } from './db.ts';
-import { ApiError } from './errors.ts';
+import { buildWebappServiceContext, requireDatabaseClient, serviceDatabaseClient } from '../db.ts';
+import { ApiError } from '../errors.ts';
 
 function serviceContext(client: DatabaseClient = serviceDatabaseClient()) {
   return buildWebappServiceContext(client);

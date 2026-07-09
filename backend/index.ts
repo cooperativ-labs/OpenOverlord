@@ -20,7 +20,7 @@ import {
   getAllowedBrowserOrigins,
   requireAuthenticatedSession
 } from './auth.ts';
-import { isAllowedBrowserOrigin } from './browser-origins.ts';
+import { isAllowedBrowserOrigin } from './http/browser-origins.ts';
 import {
   DATABASE_DIALECT,
   DATABASE_PATH,
@@ -32,7 +32,7 @@ import {
 } from './db.ts';
 import { ENV_PROFILE, REPO_ROOT } from './env-profile.ts';
 import { apiErrorFromDatabaseError } from './errors.ts';
-import { getExecutionTargetMigrationDiagnostics } from './execution-target-migration.ts';
+import { getExecutionTargetMigrationDiagnostics } from './execution/execution-target-migration.ts';
 import {
   getAgentCatalog,
   getLaunchPreference,
@@ -45,12 +45,12 @@ import {
   updateLaunchPreference,
   updateTerminalProfile,
   updateWorktreeBranchAutomation
-} from './launch.ts';
+} from './execution/launch.ts';
 import { loadRepoEnvForProfile } from './load-repo-env.ts';
-import { resolveLocalTargetServerCapability } from './local-target-capability.ts';
-import { invokeLocalTargetOnServer } from './local-target-invoke.ts';
-import { buildMeta } from './meta.ts';
-import { postMissionBranchObservations } from './mission-branch-observations.ts';
+import { resolveLocalTargetServerCapability } from './execution/local-target-capability.ts';
+import { invokeLocalTargetOnServer } from './execution/local-target-invoke.ts';
+import { buildMeta } from './http/meta.ts';
+import { postMissionBranchObservations } from './branching/mission-branch-observations.ts';
 import {
   handleOAuthApprove,
   handleOAuthRegister,
@@ -71,7 +71,7 @@ import {
 import {
   getProjectExecutionTarget,
   updateProjectExecutionTarget
-} from './project-execution-target.ts';
+} from './execution/project-execution-target.ts';
 import { runProtocolSubcommand } from './protocol.ts';
 import { requirePermission } from './rbac.ts';
 import { readChangesAfter, realtime } from './realtime.ts';
@@ -141,13 +141,13 @@ import {
   recordBranchPrepared,
   runnerStatus,
   updateRunnerRequestStatus
-} from './runner.ts';
-import { resolveServeSpa } from './serve-spa.ts';
+} from './execution/runner.ts';
+import { resolveServeSpa } from './http/serve-spa.ts';
 import {
   getSqlStudioState,
   initSqlStudioManager,
   syncSqlStudioForWorkspace
-} from './sql-studio-manager.ts';
+} from './sql-studio/sql-studio-manager.ts';
 import {
   deleteObjectiveAttachment,
   listObjectiveAttachments,
@@ -161,7 +161,7 @@ import {
   uploadUserImage,
   uploadWorkspaceImage
 } from './storage.ts';
-import { postExecutionTargetObservations } from './target-resource-observations.ts';
+import { postExecutionTargetObservations } from './branching/target-resource-observations.ts';
 import { webhookDispatcher } from './webhook-dispatcher.ts';
 import {
   createWebhookSubscription,

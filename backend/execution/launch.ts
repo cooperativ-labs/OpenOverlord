@@ -20,29 +20,29 @@ import { PERMISSIONS } from '@overlord/auth';
 import type { TerminalProfile } from '@overlord/core/service/terminal-profile-types';
 import type { DatabaseClient } from '@overlord/database';
 
-import { resolveInstanceAgentCatalog } from '../cli/src/agent-catalog.ts';
-import { loadConfig } from '../cli/src/config.ts';
+import { resolveInstanceAgentCatalog } from '../../cli/src/agent-catalog.ts';
+import { loadConfig } from '../../cli/src/config.ts';
 import {
   ACTIVE_EXECUTION_REQUEST_STATUSES,
   clearExecutionRequests,
   createExecutionRequest,
   type ExecutionRequestSummary
-} from '../packages/core/service/execution-requests.ts';
+} from '../../packages/core/service/execution-requests.ts';
 import {
   ensureActingDeviceTarget,
   updateTerminalProfile as persistTerminalProfile
-} from '../packages/core/service/execution-targets.ts';
+} from '../../packages/core/service/execution-targets.ts';
 import {
   LOCAL_TARGET_MUTATION_REQUESTED_SOURCE,
   parseLocalTargetMutation
-} from '../packages/core/service/local-target-mutations.ts';
+} from '../../packages/core/service/local-target-mutations.ts';
 import {
   parseAgentConfigs,
   readProjectUserPreferenceRow,
   resolveLaunchConfig,
   resolveLaunchExecutionTarget
-} from '../packages/core/service/project-execution-target.ts';
-import { assertLaunchResourceConnected } from '../packages/core/service/projects.ts';
+} from '../../packages/core/service/project-execution-target.ts';
+import { assertLaunchResourceConnected } from '../../packages/core/service/projects.ts';
 import type {
   AgentCatalogAgentDto,
   AgentCatalogDto,
@@ -59,7 +59,7 @@ import type {
   UpdateLaunchPreferenceBody,
   UpdateTerminalProfileBody,
   UpdateWorktreeBranchAutomationBody
-} from '../webapp/shared/contract.ts';
+} from '../../webapp/shared/contract.ts';
 
 import {
   buildWebappServiceContext,
@@ -73,9 +73,9 @@ import {
   resolveActiveProfileId,
   serviceDatabaseClient,
   WORKSPACE
-} from './db.ts';
-import { ApiError } from './errors.ts';
-import { actorCan, requireProjectPermission } from './rbac.ts';
+} from '../db.ts';
+import { ApiError } from '../errors.ts';
+import { actorCan, requireProjectPermission } from '../rbac.ts';
 
 // ---- Instance default catalog ----------------------------------------------
 //
