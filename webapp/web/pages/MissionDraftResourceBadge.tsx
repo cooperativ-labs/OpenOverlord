@@ -24,7 +24,7 @@ export function MissionDraftResourceBadge({
   return (
     <Badge
       className={cn(
-        'pointer-events-none h-5 shrink-0 rounded-sm border-foreground/80 bg-foreground/10 px-2 py-0 text-[10px] font-medium text-foreground',
+        'pointer-events-none h-5 shrink-0 rounded-sm border-foreground/50 bg-muted/5 px-2 py-0 text-[10px] font-medium text-foreground',
         className
       )}
       title={`Draft objective resource: ${label}`}
