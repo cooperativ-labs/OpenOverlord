@@ -18,7 +18,7 @@ function ProjectColorDot({ color }: { color: string | null }) {
   if (!color) return null;
   return (
     <span
-      className="size-2 shrink-0 rounded-full ring-1 ring-sidebar-border group-data-[collapsible=icon]:size-3.5"
+      className="size-2 shrink-0 rounded-full ring-1 ring-sidebar-border transition-opacity group-focus-within/menu-item:opacity-0 group-hover/menu-item:opacity-0 group-data-[collapsible=icon]:size-3.5 group-data-[collapsible=icon]:opacity-100"
       style={{ backgroundColor: color }}
       aria-hidden
     />
@@ -84,9 +84,10 @@ export function ProjectSidebarMenuItem({
     <SidebarLinkMenuButton
       isActive={isActive}
       tooltip={project.name}
-      buttonClassName="group-data-[collapsible=icon]:flex-col items-center text-foreground/80 font-medium group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:pb-0"
+      buttonClassName="items-center text-foreground/80 font-medium group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:pb-0"
       link={<Link to="/projects/$projectId" params={{ projectId: project.id }} />}
       menuLabel="Project options"
+      menuSide="left"
       menuOpen={menuOpen}
       onMenuOpenChange={setMenuOpen}
       menuDisabled={updateProject.isPending}
