@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 
 import { BackendLoginPanel } from '@/components/auth/BackendLoginPanel';
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
@@ -14,6 +14,8 @@ type AuthScreenProps = {
   onAuthenticated: () => Promise<void> | void;
 };
 
+const AUTH_MODE_SEARCH_PARAM = 'mode';
+
 function authErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'message' in error) {
     const message = String((error as { message?: unknown }).message ?? '').trim();
@@ -22,8 +24,30 @@ function authErrorMessage(error: unknown): string {
   return 'Authentication failed.';
 }
 
+function parseAuthModeFromSearch(search: string): AuthMode {
+  const params = new URLSearchParams(search);
+  const rawMode = params.get(AUTH_MODE_SEARCH_PARAM)?.trim().toLowerCase();
+  if (
+    rawMode === 'create-account' ||
+    rawMode === 'create' ||
+    rawMode === 'sign-up' ||
+    rawMode === 'signup'
+  ) {
+    return 'create-account';
+  }
+  return 'sign-in';
+}
+
+function syncAuthModeSearchParam(mode: AuthMode) {
+  const url = new URL(window.location.href);
+  url.searchParams.set(AUTH_MODE_SEARCH_PARAM, mode);
+  window.history.replaceState(window.history.state, '', url);
+}
+
 export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
-  const [mode, setMode] = useState<AuthMode>('sign-in');
+  const [mode, setMode] = useState<AuthMode>(() =>
+    typeof window === 'undefined' ? 'sign-in' : parseAuthModeFromSearch(window.location.search)
+  );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +63,21 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
   // its separator instead of rendering an empty inset box.
   const hasBackendChooser =
     typeof window !== 'undefined' && Boolean(window.overlord?.switchBackend);
+
+  useEffect(() => {
+    syncAuthModeSearchParam(mode);
+  }, [mode]);
+
+  useEffect(() => {
+    function handlePopState() {
+      setMode(parseAuthModeFromSearch(window.location.search));
+    }
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
