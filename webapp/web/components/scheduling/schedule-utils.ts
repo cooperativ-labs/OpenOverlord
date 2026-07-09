@@ -1,4 +1,4 @@
-import type { PeriodType, WeekDayType } from '@overlord/automations';
+import type { PeriodType, WeekDayType } from '@overlord/automations/scheduling-engine';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 const DAY_LABELS_FULL = [

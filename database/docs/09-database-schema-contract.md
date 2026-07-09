@@ -1943,6 +1943,7 @@ Project-scoped binding from an Overlord project to an Everhour project/section.
 | `everhour_project_id` | text | yes | Upstream Everhour project ID. |
 | `everhour_project_name` | text | yes | Display name captured at link time. |
 | `everhour_section_id` | text | no | Upstream section used when creating mission tasks. |
+| `everhour_general_task_id` | text | no | Upstream Everhour task ID for the project-level `general` timer task. |
 | `created_at` | TimestampUTC | yes |  |
 | `updated_at` | TimestampUTC | yes |  |
 | `deleted_at` | TimestampUTC | no | Tombstone. |

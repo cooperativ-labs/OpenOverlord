@@ -4,6 +4,7 @@ import type {
   LinkProjectEverhourBody,
   MissionEverhourStateDto,
   ProjectEverhourLinkDto,
+  ProjectEverhourStateDto,
   UpdateEverhourTimeBody
 } from '@overlord/contract/ext/everhour';
 
@@ -515,6 +516,25 @@ export const api = {
     request<ProjectEverhourLinkDto>('GET', `/ext/everhour/projects/${projectId}/link`),
   linkProjectEverhour: (projectId: string, body: LinkProjectEverhourBody) =>
     request<ProjectEverhourLinkDto>('PUT', `/ext/everhour/projects/${projectId}/link`, body),
+  getProjectEverhour: (projectId: string) =>
+    request<ProjectEverhourStateDto>('GET', `/ext/everhour/projects/${projectId}`),
+  startProjectTimer: (projectId: string) =>
+    request<ProjectEverhourStateDto>('POST', `/ext/everhour/projects/${projectId}/timer/start`),
+  stopProjectTimer: (projectId: string) =>
+    request<ProjectEverhourStateDto>('POST', `/ext/everhour/projects/${projectId}/timer/stop`),
+  addProjectTime: (projectId: string, body: CreateEverhourTimeBody) =>
+    request<ProjectEverhourStateDto>('POST', `/ext/everhour/projects/${projectId}/time`, body),
+  updateProjectTime: (projectId: string, recordId: string, body: UpdateEverhourTimeBody) =>
+    request<ProjectEverhourStateDto>(
+      'PATCH',
+      `/ext/everhour/projects/${projectId}/time/${recordId}`,
+      body
+    ),
+  deleteProjectTime: (projectId: string, recordId: string) =>
+    request<ProjectEverhourStateDto>(
+      'DELETE',
+      `/ext/everhour/projects/${projectId}/time/${recordId}`
+    ),
   getMissionEverhour: (missionId: string) =>
     request<MissionEverhourStateDto>('GET', `/ext/everhour/missions/${missionId}`),
   startMissionTimer: (missionId: string) =>

@@ -252,6 +252,7 @@ export interface ExtEverhourMissionLinks {
 export interface ExtEverhourProjectLinks {
   created_at: string;
   deleted_at: string | null;
+  everhour_general_task_id: string | null;
   everhour_project_id: string;
   everhour_project_name: string;
   everhour_section_id: string | null;

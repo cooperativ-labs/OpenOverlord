@@ -1,4 +1,7 @@
-import { deriveObjectiveLifecycleView, objectiveHasInstructionText } from '@overlord/automations';
+import {
+  deriveObjectiveLifecycleView,
+  objectiveHasInstructionText
+} from '@overlord/automations/objective-manager';
 import { useNavigate } from '@tanstack/react-router';
 import { ArrowRightToLine, Loader2, Sparkles } from 'lucide-react';
 import { useRef, useState } from 'react';

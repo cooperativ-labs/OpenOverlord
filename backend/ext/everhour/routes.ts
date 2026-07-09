@@ -3,16 +3,22 @@ import { type NextFunction, type Request, type Response, Router } from 'express'
 
 import {
   addMissionTime,
+  addProjectTime,
   clearEverhourApiKey,
   deleteMissionTime,
+  deleteProjectTime,
   getEverhourIntegration,
   getMissionEverhourState,
   getProjectEverhourLink,
+  getProjectEverhourState,
   linkProjectEverhour,
   setEverhourApiKey,
   startMissionTimer,
+  startProjectTimer,
   stopMissionTimer,
-  updateMissionTime
+  stopProjectTimer,
+  updateMissionTime,
+  updateProjectTime
 } from './service.ts';
 
 type RouteHandler = (
@@ -55,6 +61,47 @@ export function createEverhourExtensionRouter(handle: RouteHandler): Router {
     '/projects/:projectId/link',
     handle(req => getProjectEverhourLink(req.params.projectId), {
       requires: PERMISSIONS.PROJECT_READ
+    })
+  );
+  router.get(
+    '/projects/:projectId',
+    handle(req => getProjectEverhourState(req.params.projectId), {
+      requires: PERMISSIONS.PROJECT_READ
+    })
+  );
+  router.post(
+    '/projects/:projectId/timer/start',
+    handle(req => startProjectTimer(req.params.projectId), {
+      mutates: true,
+      requires: PERMISSIONS.PROJECT_UPDATE
+    })
+  );
+  router.post(
+    '/projects/:projectId/timer/stop',
+    handle(req => stopProjectTimer(req.params.projectId), {
+      mutates: true,
+      requires: PERMISSIONS.PROJECT_UPDATE
+    })
+  );
+  router.post(
+    '/projects/:projectId/time',
+    handle(req => addProjectTime(req.params.projectId, req.body), {
+      mutates: true,
+      requires: PERMISSIONS.PROJECT_UPDATE
+    })
+  );
+  router.patch(
+    '/projects/:projectId/time/:recordId',
+    handle(req => updateProjectTime(req.params.projectId, req.params.recordId, req.body), {
+      mutates: true,
+      requires: PERMISSIONS.PROJECT_UPDATE
+    })
+  );
+  router.delete(
+    '/projects/:projectId/time/:recordId',
+    handle(req => deleteProjectTime(req.params.projectId, req.params.recordId), {
+      mutates: true,
+      requires: PERMISSIONS.PROJECT_UPDATE
     })
   );
   router.get(

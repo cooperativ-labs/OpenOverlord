@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { shouldShowOnboarding } from './router-gates.ts';
+import {
+  buildAddCwdCommand,
+  clearOnboardingSetupPending,
+  markOnboardingSetupPending
+} from './onboarding-setup.ts';
+import { shouldShowOnboarding, shouldShowOnboardingSetup } from './router-gates.ts';
 
 describe('organization sidebar layout', () => {
   it('maps each accessible workspace in meta to a sidebar section id', () => {
@@ -37,5 +42,43 @@ describe('shouldShowOnboarding', () => {
       }),
       false
     );
+  });
+});
+
+describe('buildAddCwdCommand', () => {
+  it('includes the project id in the ovld add-cwd command', () => {
+    assert.equal(
+      buildAddCwdCommand({ projectId: 'proj-123' }),
+      'ovld add-cwd --project-id proj-123'
+    );
+  });
+});
+
+describe('shouldShowOnboardingSetup', () => {
+  const metaWithOrg = {
+    organizations: [
+      {
+        id: 'org-1',
+        name: 'Acme',
+        logoUrl: null,
+        workspaceCount: 1,
+        isActive: true,
+        createdAt: '2026-01-01T00:00:00.000Z'
+      }
+    ]
+  };
+
+  it('returns false when desktop setup is not pending', () => {
+    clearOnboardingSetupPending();
+    assert.equal(shouldShowOnboardingSetup(metaWithOrg), false);
+  });
+
+  it('returns true when desktop setup is pending and the user has an organization', () => {
+    markOnboardingSetupPending();
+    try {
+      assert.equal(shouldShowOnboardingSetup(metaWithOrg), true);
+    } finally {
+      clearOnboardingSetupPending();
+    }
   });
 });

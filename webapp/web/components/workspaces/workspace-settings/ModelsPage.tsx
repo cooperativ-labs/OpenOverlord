@@ -66,14 +66,20 @@ function reasoningOptionsFromInput(value: string): string[] {
     .filter(option => option.length > 0);
 }
 
+function createModelRowKey(): string {
+  return `model-row-${crypto.randomUUID()}`;
+}
+
 function SortableModelRow({
   agentKey,
+  rowKey,
   model,
   onChange,
   onDelete,
   disabled
 }: {
   agentKey: string;
+  rowKey: string;
   model: DraftAgent['models'][number];
   onChange: (next: DraftAgent['models'][number]) => void;
   onDelete: () => void;
@@ -87,7 +93,7 @@ function SortableModelRow({
     transform,
     transition,
     isDragging
-  } = useSortable({ id: model.id });
+  } = useSortable({ id: rowKey });
 
   return (
     <tr
@@ -161,27 +167,30 @@ function AgentModelsSection({
   onChange: (next: DraftAgent) => void;
   disabled: boolean;
 }) {
-  const [modelOrder, setModelOrder] = useState(() => agent.models.map(model => model.id));
+  const [modelOrder, setModelOrder] = useState(() => agent.models.map(() => createModelRowKey()));
 
   useEffect(() => {
-    const incomingIds = agent.models.map(model => model.id);
     setModelOrder(previous => {
-      const previousSet = new Set(previous);
-      const incomingSet = new Set(incomingIds);
-      const sameMembership =
-        previous.length === incomingIds.length && previous.every(id => incomingSet.has(id));
-      if (sameMembership) return previous;
-      const kept = previous.filter(id => incomingSet.has(id));
-      const additions = incomingIds.filter(id => !previousSet.has(id));
-      return [...kept, ...additions];
+      if (previous.length === agent.models.length) return previous;
+      if (previous.length < agent.models.length) {
+        const additions = Array.from({ length: agent.models.length - previous.length }, () =>
+          createModelRowKey()
+        );
+        return [...previous, ...additions];
+      }
+      return previous.slice(0, agent.models.length);
     });
-  }, [agent.models]);
+  }, [agent.models.length]);
 
   const orderedModels = useMemo(() => {
-    const byId = new Map(agent.models.map(model => [model.id, model]));
     return modelOrder
-      .map(id => byId.get(id))
-      .filter((model): model is DraftAgent['models'][number] => Boolean(model));
+      .map((rowKey, index) => {
+        const model = agent.models[index];
+        return model ? { rowKey, model } : null;
+      })
+      .filter((entry): entry is { rowKey: string; model: DraftAgent['models'][number] } =>
+        Boolean(entry)
+      );
   }, [agent.models, modelOrder]);
 
   const sensors = useSensors(
@@ -203,13 +212,13 @@ function AgentModelsSection({
 
     const nextOrder = arrayMove(modelOrder, oldIndex, newIndex);
     setModelOrder(nextOrder);
-    const byId = new Map(agent.models.map(model => [model.id, model]));
-    updateModels(nextOrder.map(id => byId.get(id)).filter(Boolean) as DraftAgent['models']);
+    updateModels(arrayMove(agent.models, oldIndex, newIndex));
   }
 
   function handleAddModel() {
     const suffix = agent.models.length + 1;
     const id = `model-${suffix}`;
+    setModelOrder(previous => [...previous, createModelRowKey()]);
     updateModels([...agent.models, { id, displayName: `Model ${suffix}`, reasoningOptions: [] }]);
   }
 
@@ -298,26 +307,22 @@ function AgentModelsSection({
             </thead>
             <tbody>
               <SortableContext items={modelOrder} strategy={verticalListSortingStrategy}>
-                {orderedModels.map(model => (
+                {orderedModels.map(({ rowKey, model }, index) => (
                   <SortableModelRow
-                    key={model.id}
+                    key={rowKey}
+                    rowKey={rowKey}
                     agentKey={agent.key}
                     model={model}
                     disabled={disabled}
                     onChange={next => {
-                      const models = agent.models.map(existing =>
-                        existing.id === model.id ? next : existing
+                      updateModels(
+                        agent.models.map((existing, i) => (i === index ? next : existing))
                       );
-                      if (next.id !== model.id) {
-                        setModelOrder(previous =>
-                          previous.map(id => (id === model.id ? next.id : id))
-                        );
-                      }
-                      updateModels(models);
                     }}
-                    onDelete={() =>
-                      updateModels(agent.models.filter(existing => existing.id !== model.id))
-                    }
+                    onDelete={() => {
+                      setModelOrder(previous => previous.filter((_, i) => i !== index));
+                      updateModels(agent.models.filter((_, i) => i !== index));
+                    }}
                   />
                 ))}
               </SortableContext>

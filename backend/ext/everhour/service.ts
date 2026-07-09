@@ -5,6 +5,7 @@ import type {
   EverhourTimeRecordDto,
   MissionEverhourStateDto,
   ProjectEverhourLinkDto,
+  ProjectEverhourStateDto,
   UpdateEverhourTimeBody
 } from '@overlord/contract/ext/everhour';
 import type { DatabaseClient } from '@overlord/database';
@@ -171,8 +172,12 @@ interface ProjectLinkRow {
   everhour_project_id: string;
   everhour_project_name: string;
   everhour_section_id: string | null;
+  everhour_general_task_id: string | null;
   revision: number;
 }
+
+/** Fixed Everhour task name used for per-project (non-mission) time tracking. */
+const PROJECT_GENERAL_TASK_NAME = 'general';
 
 interface MissionLinkRow {
   id: string;
@@ -323,7 +328,7 @@ async function readProjectLink(
 ): Promise<ProjectLinkRow | null> {
   const row = await client.get<ProjectLinkRow>(
     `SELECT id, project_id, everhour_project_id, everhour_project_name,
-            everhour_section_id, revision
+            everhour_section_id, everhour_general_task_id, revision
        FROM ext_everhour_project_links
       WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
     [projectId, WORKSPACE.id]
@@ -391,15 +396,20 @@ async function writeProjectLink(
     const now = nowIso();
     if (existing) {
       const revision = existing.revision + 1;
+      // Clear the cached general task when the Everhour project changes so the
+      // next project-timer start re-resolves (or creates) "general" in the new project.
+      const projectChanged = existing.everhour_project_id !== everhourProjectId;
+      const generalTaskId = projectChanged ? null : existing.everhour_general_task_id;
       await tx.run(
         `UPDATE ext_everhour_project_links
             SET everhour_project_id = ?, everhour_project_name = ?, everhour_section_id = ?,
-                updated_at = ?, revision = ?
+                everhour_general_task_id = ?, updated_at = ?, revision = ?
           WHERE id = ? AND workspace_id = ? AND revision = ?`,
         [
           everhourProjectId,
           everhourProjectName,
           everhourSectionId,
+          generalTaskId,
           now,
           revision,
           existing.id,
@@ -407,6 +417,8 @@ async function writeProjectLink(
           existing.revision
         ]
       );
+      const changedFields = ['everhourProjectId', 'everhourProjectName', 'everhourSectionId'];
+      if (projectChanged) changedFields.push('everhourGeneralTaskId');
       await recordChange(
         {
           entityType: 'everhour:project_link',
@@ -414,7 +426,7 @@ async function writeProjectLink(
           operation: 'update',
           entityRevision: revision,
           projectId,
-          changedFields: ['everhourProjectId', 'everhourProjectName', 'everhourSectionId']
+          changedFields
         },
         tx
       );
@@ -425,8 +437,8 @@ async function writeProjectLink(
     await tx.run(
       `INSERT INTO ext_everhour_project_links
          (id, workspace_id, project_id, everhour_project_id, everhour_project_name,
-          everhour_section_id, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+          everhour_section_id, everhour_general_task_id, created_at, updated_at, revision)
+       VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, 1)`,
       [
         id,
         WORKSPACE.id,
@@ -446,6 +458,38 @@ async function writeProjectLink(
         entityRevision: 1,
         projectId,
         changedFields: ['linked', 'everhourProjectId', 'everhourProjectName', 'everhourSectionId']
+      },
+      tx
+    );
+  });
+}
+
+async function writeProjectGeneralTaskId(projectId: string, taskId: string): Promise<void> {
+  await requireDatabaseClient().transaction(async tx => {
+    const existing = await readProjectLink(projectId, tx);
+    if (!existing) {
+      throw new ApiError(
+        400,
+        'Link this project to an Everhour project in project settings before tracking time.'
+      );
+    }
+    if (existing.everhour_general_task_id === taskId) return;
+    const now = nowIso();
+    const revision = existing.revision + 1;
+    await tx.run(
+      `UPDATE ext_everhour_project_links
+          SET everhour_general_task_id = ?, updated_at = ?, revision = ?
+        WHERE id = ? AND workspace_id = ? AND revision = ?`,
+      [taskId, now, revision, existing.id, WORKSPACE.id, existing.revision]
+    );
+    await recordChange(
+      {
+        entityType: 'everhour:project_link',
+        entityId: existing.id,
+        operation: 'update',
+        entityRevision: revision,
+        projectId,
+        changedFields: ['everhourGeneralTaskId']
       },
       tx
     );
@@ -703,6 +747,106 @@ async function ensureMissionTask(apiKey: string, missionId: string): Promise<str
   return task.id;
 }
 
+async function findProjectTaskByName({
+  apiKey,
+  everhourProjectId,
+  taskName
+}: {
+  apiKey: string;
+  everhourProjectId: string;
+  taskName: string;
+}): Promise<EverhourTask | null> {
+  const matchesName = (task: EverhourTask) => task.name?.trim().toLowerCase() === taskName;
+  try {
+    const search = await everhourFetch<EverhourTask[]>(
+      apiKey,
+      `/projects/${encodeURIComponent(everhourProjectId)}/tasks/search?query=${encodeURIComponent(taskName)}&limit=50`
+    );
+    return unwrapArray<EverhourTask>(search).find(matchesName) ?? null;
+  } catch (err) {
+    // Some Everhour accounts/versions lack project task search; fall back to list.
+    if (!(err instanceof ApiError) || (err.status !== 404 && err.status !== 405)) throw err;
+  }
+
+  const listed = await everhourFetch<EverhourTask[]>(
+    apiKey,
+    `/projects/${encodeURIComponent(everhourProjectId)}/tasks?limit=100`
+  );
+  return unwrapArray<EverhourTask>(listed).find(matchesName) ?? null;
+}
+
+/**
+ * Ensure the project has a linked Everhour task named "general", creating one in
+ * the project's linked Everhour project on first use. Throws when the project
+ * isn't linked to a native Everhour project.
+ */
+async function ensureProjectGeneralTask(apiKey: string, projectId: string): Promise<string> {
+  await assertProjectExists(projectId);
+  const link = await readProjectLink(projectId);
+  if (!link?.everhour_project_id) {
+    throw new ApiError(
+      400,
+      'Link this project to an Everhour project in project settings before tracking time.'
+    );
+  }
+  if (link.everhour_general_task_id) return link.everhour_general_task_id;
+
+  const everhourProjectId = link.everhour_project_id;
+  if (!isNativeEverhourProjectId(everhourProjectId)) {
+    throw new ApiError(
+      400,
+      'This project is linked to an integration-backed Everhour project (e.g. GitHub or Jira), ' +
+        'which does not allow creating tasks via the API. Re-link it to a native Everhour project ' +
+        'in project settings to track project time.'
+    );
+  }
+
+  // Prefer an existing "general" task so re-linking / restarts don't create duplicates.
+  const existingTask = await findProjectTaskByName({
+    apiKey,
+    everhourProjectId,
+    taskName: PROJECT_GENERAL_TASK_NAME
+  });
+  if (existingTask?.id) {
+    await writeProjectGeneralTaskId(projectId, existingTask.id);
+    return existingTask.id;
+  }
+
+  const resolvedSectionId =
+    link.everhour_section_id ?? (await resolveSectionId(apiKey, everhourProjectId));
+  if (!resolvedSectionId) {
+    throw new ApiError(
+      502,
+      'Could not find or create an Everhour section to hold the general task. ' +
+        'Re-link the project to a native Everhour project in project settings, then try again.'
+    );
+  }
+
+  let task: EverhourTask;
+  try {
+    task = await everhourFetch<EverhourTask>(
+      apiKey,
+      `/projects/${encodeURIComponent(everhourProjectId)}/tasks`,
+      {
+        method: 'POST',
+        body: { name: PROJECT_GENERAL_TASK_NAME, section: Number(resolvedSectionId) }
+      }
+    );
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 403) {
+      throw new ApiError(
+        403,
+        `Everhour denied creating the general task (${err.message}). Confirm the linked ` +
+          'Everhour project is a native project your API key can write to.'
+      );
+    }
+    throw err;
+  }
+  if (!task?.id) throw new ApiError(502, 'Everhour did not return a task id.');
+  await writeProjectGeneralTaskId(projectId, task.id);
+  return task.id;
+}
+
 // ---- timer + time records -------------------------------------------------
 
 function todayIso(): string {
@@ -788,6 +932,103 @@ export async function stopMissionTimer(missionId: string): Promise<MissionEverho
     if (!(err instanceof ApiError) || (err.status !== 404 && err.status !== 400)) throw err;
   }
   return getMissionEverhourState(missionId);
+}
+
+/** Full Everhour state for one project's fixed `general` task. */
+export async function getProjectEverhourState(projectId: string): Promise<ProjectEverhourStateDto> {
+  const apiKey = await readEverhourApiKey();
+  await assertProjectExists(projectId);
+  const link = await readProjectLink(projectId);
+  const taskId = link?.everhour_general_task_id ?? null;
+  const base: ProjectEverhourStateDto = {
+    connected: Boolean(apiKey),
+    projectLinked: Boolean(link?.everhour_project_id),
+    taskId,
+    records: [],
+    totalSeconds: 0,
+    runningTimer: null
+  };
+  if (!apiKey || !taskId) return base;
+
+  const [records, timer] = await Promise.all([
+    listTaskRecords(apiKey, taskId),
+    getCurrentTimer(apiKey)
+  ]);
+  const runningDto = timer ? toTimerDto(timer) : null;
+  return {
+    ...base,
+    records,
+    totalSeconds: records.reduce((sum, r) => sum + r.timeSeconds, 0),
+    runningTimer: runningDto && runningDto.taskId === taskId ? runningDto : null
+  };
+}
+
+/** Start (or restart) the Everhour timer for this project's `general` task. */
+export async function startProjectTimer(projectId: string): Promise<ProjectEverhourStateDto> {
+  const apiKey = await requireApiKey();
+  const taskId = await ensureProjectGeneralTask(apiKey, projectId);
+  await everhourFetch(apiKey, '/timers', { method: 'POST', body: { task: taskId } });
+  return getProjectEverhourState(projectId);
+}
+
+/** Stop the currently running Everhour timer (regardless of which task it's on). */
+export async function stopProjectTimer(projectId: string): Promise<ProjectEverhourStateDto> {
+  const apiKey = await requireApiKey();
+  try {
+    await everhourFetch(apiKey, '/timers/current', { method: 'DELETE' });
+  } catch (err) {
+    if (!(err instanceof ApiError) || (err.status !== 404 && err.status !== 400)) throw err;
+  }
+  return getProjectEverhourState(projectId);
+}
+
+export async function addProjectTime(
+  projectId: string,
+  body: CreateEverhourTimeBody
+): Promise<ProjectEverhourStateDto> {
+  const apiKey = await requireApiKey();
+  if (!Number.isFinite(body.timeSeconds) || body.timeSeconds <= 0) {
+    throw new ApiError(400, 'Enter a positive duration.');
+  }
+  const taskId = await ensureProjectGeneralTask(apiKey, projectId);
+  await everhourFetch(apiKey, '/time', {
+    method: 'POST',
+    body: {
+      task: taskId,
+      date: body.date?.trim() || todayIso(),
+      time: Math.round(body.timeSeconds),
+      ...(body.comment?.trim() ? { comment: body.comment.trim() } : {})
+    }
+  });
+  return getProjectEverhourState(projectId);
+}
+
+export async function updateProjectTime(
+  projectId: string,
+  recordId: string,
+  body: UpdateEverhourTimeBody
+): Promise<ProjectEverhourStateDto> {
+  const apiKey = await requireApiKey();
+  if (!Number.isFinite(body.timeSeconds) || body.timeSeconds <= 0) {
+    throw new ApiError(400, 'Enter a positive duration.');
+  }
+  await everhourFetch(apiKey, `/time/${encodeURIComponent(recordId)}`, {
+    method: 'PUT',
+    body: {
+      time: Math.round(body.timeSeconds),
+      ...(body.comment !== undefined ? { comment: body.comment?.trim() ?? '' } : {})
+    }
+  });
+  return getProjectEverhourState(projectId);
+}
+
+export async function deleteProjectTime(
+  projectId: string,
+  recordId: string
+): Promise<ProjectEverhourStateDto> {
+  const apiKey = await requireApiKey();
+  await everhourFetch(apiKey, `/time/${encodeURIComponent(recordId)}`, { method: 'DELETE' });
+  return getProjectEverhourState(projectId);
 }
 
 export async function addMissionTime(

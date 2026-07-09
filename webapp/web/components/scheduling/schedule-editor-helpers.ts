@@ -1,4 +1,4 @@
-import type { PeriodType, WeekDayType } from '@overlord/automations';
+import type { PeriodType, WeekDayType } from '@overlord/automations/scheduling-engine';
 
 import type { ScheduleInput } from '../../../shared/contract.ts';
 

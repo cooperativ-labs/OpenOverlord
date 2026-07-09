@@ -17,9 +17,11 @@ const {
   getEverhourIntegration,
   getMissionEverhourState,
   getProjectEverhourLink,
+  getProjectEverhourState,
   linkProjectEverhour,
   setEverhourApiKey,
-  startMissionTimer
+  startMissionTimer,
+  startProjectTimer
 } = await import('./service.ts');
 
 const originalFetch = globalThis.fetch;
@@ -275,4 +277,78 @@ test('addMissionTime rejects non-positive durations', async () => {
     () => addMissionTime(mission.id, { timeSeconds: 0 }),
     (err: unknown) => err instanceof ApiError && err.status === 400
   );
+});
+
+test('getProjectEverhourState returns a disconnected baseline without an API key', async () => {
+  await clearEverhourApiKey();
+  const project = await createProject({ name: 'Project State Project' });
+
+  const state = await getProjectEverhourState(project.id);
+  assert.equal(state.connected, false);
+  assert.equal(state.projectLinked, false);
+  assert.equal(state.taskId, null);
+  assert.deepEqual(state.records, []);
+  assert.equal(state.totalSeconds, 0);
+  assert.equal(state.runningTimer, null);
+});
+
+test('startProjectTimer creates a general task and starts the Everhour timer', async () => {
+  const project = await createProject({ name: 'General Timer Project' });
+
+  installEverhourFetchMock([
+    {
+      match: url => url.endsWith('/users/me'),
+      respond: () => Response.json({ id: 21, name: 'Project Timer User' }, { status: 200 })
+    },
+    {
+      match: url => url.includes('/projects?'),
+      respond: () =>
+        Response.json([{ id: 'ev:proj', name: 'General Board', type: 'board', users: [21] }], {
+          status: 200
+        })
+    },
+    {
+      match: url => url.includes('/projects/ev%3Aproj/sections'),
+      respond: () => Response.json([{ id: 3, name: 'Main' }], { status: 200 })
+    },
+    {
+      match: url => url.includes('/projects/ev%3Aproj/tasks/search'),
+      respond: () => Response.json([], { status: 200 })
+    },
+    {
+      match: (url, init) => url.includes('/projects/ev%3Aproj/tasks') && init?.method === 'POST',
+      respond: (_url, init) => {
+        const body = JSON.parse(String(init?.body ?? '{}')) as { name?: string };
+        assert.equal(body.name, 'general');
+        return Response.json({ id: 'ev:general-1', name: 'general' }, { status: 201 });
+      }
+    },
+    {
+      match: (url, init) => url.endsWith('/timers') && init?.method === 'POST',
+      respond: () => new Response(null, { status: 204 })
+    },
+    {
+      match: url => url.includes('/tasks/ev%3Ageneral-1/time?'),
+      respond: () => Response.json([], { status: 200 })
+    },
+    {
+      match: url => url.endsWith('/timers/current'),
+      respond: () => Response.json({ status: 'inactive' }, { status: 200 })
+    }
+  ]);
+  await setEverhourApiKey('project-timer-key');
+  await linkProjectEverhour(project.id, 'General Board');
+
+  const state = await startProjectTimer(project.id);
+  assert.equal(state.connected, true);
+  assert.equal(state.projectLinked, true);
+  assert.equal(state.taskId, 'ev:general-1');
+
+  const projectLink = db
+    .prepare(
+      `SELECT everhour_general_task_id FROM ext_everhour_project_links
+        WHERE project_id = ? AND deleted_at IS NULL`
+    )
+    .get(project.id) as { everhour_general_task_id: string };
+  assert.equal(projectLink.everhour_general_task_id, 'ev:general-1');
 });

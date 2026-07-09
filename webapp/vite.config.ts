@@ -91,6 +91,28 @@ export default defineConfig({
             return 'vendor-icons';
           }
 
+          if (
+            packagePath.startsWith('better-auth/') ||
+            packagePath.startsWith('@better-auth/') ||
+            packagePath.startsWith('@better-fetch/')
+          ) {
+            return 'vendor-auth';
+          }
+
+          if (packagePath.startsWith('zod/') || packagePath.startsWith('zod@')) {
+            return 'vendor-zod';
+          }
+
+          if (
+            packagePath.startsWith('@floating-ui/') ||
+            packagePath.startsWith('class-variance-authority/') ||
+            packagePath.startsWith('clsx/') ||
+            packagePath.startsWith('tailwind-merge/') ||
+            packagePath.startsWith('next-themes/')
+          ) {
+            return 'vendor-ui-utils';
+          }
+
           return 'vendor';
         }
       }

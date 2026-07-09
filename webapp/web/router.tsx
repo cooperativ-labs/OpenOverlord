@@ -2,6 +2,7 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  lazyRouteComponent,
   Outlet,
   redirect,
   useRouterState
@@ -14,14 +15,7 @@ import { ProjectCreatorModal } from './components/projects/ProjectCreatorModal.t
 import { OrganizationOnboardingScreen } from './components/setup/OrganizationOnboardingScreen.tsx';
 import { SidebarInset, SidebarProvider } from './components/ui/sidebar.tsx';
 import { useMeta, useProjects, useWorkspaceMyMissions } from './lib/queries.ts';
-import { shouldShowOnboarding } from './lib/router-gates.ts';
-import { AcceptInvitePage } from './pages/AcceptInvitePage.tsx';
-import { MissionPanelRoute } from './pages/MissionPage.tsx';
-import { MyMissionsShell, WorkspaceMissionPanelRoute } from './pages/MyMissionsShell.tsx';
-import { OAuthApprovePage } from './pages/OAuthApprovePage.tsx';
-import { ProjectBoardShell } from './pages/ProjectBoardShell.tsx';
-import { ProjectsPage } from './pages/ProjectsPage.tsx';
-import { QuickTaskPage } from './pages/QuickTaskPage.tsx';
+import { shouldShowOnboarding, shouldShowOnboardingSetup } from './lib/router-gates.ts';
 
 function EmptyWorkspaceModal() {
   const projects = useProjects();
@@ -54,6 +48,7 @@ function RootLayout() {
     select: state => state.location.pathname === '/oauth/approve'
   });
   const meta = useMeta();
+  const [onboardingSetupDismissed, setOnboardingSetupDismissed] = useState(false);
 
   if (isQuickTask || isAcceptInvite || isOAuthApprove) {
     return <Outlet />;
@@ -62,6 +57,13 @@ function RootLayout() {
   if (meta.isPending) return null;
   if (shouldShowOnboarding(meta.data)) {
     return <OrganizationOnboardingScreen />;
+  }
+  if (!onboardingSetupDismissed && shouldShowOnboardingSetup(meta.data)) {
+    return (
+      <OrganizationOnboardingScreen
+        onDesktopSetupComplete={() => setOnboardingSetupDismissed(true)}
+      />
+    );
   }
 
   return (
@@ -89,19 +91,19 @@ const quickTaskShellRoute = createRoute({
 const quickTaskRoute = createRoute({
   getParentRoute: () => quickTaskShellRoute,
   path: '/quick-task',
-  component: QuickTaskPage
+  component: lazyRouteComponent(() => import('./pages/QuickTaskPage.tsx'), 'QuickTaskPage')
 });
 
 const acceptInviteRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/accept-invite',
-  component: AcceptInvitePage
+  component: lazyRouteComponent(() => import('./pages/AcceptInvitePage.tsx'), 'AcceptInvitePage')
 });
 
 const oauthApproveRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/oauth/approve',
-  component: OAuthApprovePage
+  component: lazyRouteComponent(() => import('./pages/OAuthApprovePage.tsx'), 'OAuthApprovePage')
 });
 
 const indexRoute = createRoute({
@@ -115,13 +117,13 @@ const indexRoute = createRoute({
 const projectsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects',
-  component: ProjectsPage
+  component: lazyRouteComponent(() => import('./pages/ProjectsPage.tsx'), 'ProjectsPage')
 });
 
 const myMissionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/user',
-  component: MyMissionsShell
+  component: lazyRouteComponent(() => import('./pages/MyMissionsShell.tsx'), 'MyMissionsShell')
 });
 
 const workspaceLegacyRedirectRoute = createRoute({
@@ -143,19 +145,22 @@ const workspaceMissionLegacyRedirectRoute = createRoute({
 const myMissionsPanelRoute = createRoute({
   getParentRoute: () => myMissionsRoute,
   path: 'missions/$missionId',
-  component: WorkspaceMissionPanelRoute
+  component: lazyRouteComponent(
+    () => import('./pages/MyMissionsShell.tsx'),
+    'WorkspaceMissionPanelRoute'
+  )
 });
 
 const boardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects/$projectId',
-  component: ProjectBoardShell
+  component: lazyRouteComponent(() => import('./pages/ProjectBoardShell.tsx'), 'ProjectBoardShell')
 });
 
 const missionRoute = createRoute({
   getParentRoute: () => boardRoute,
   path: 'missions/$missionId',
-  component: MissionPanelRoute
+  component: lazyRouteComponent(() => import('./pages/MissionPage.tsx'), 'MissionPanelRoute')
 });
 
 export const routeTree = rootRoute.addChildren([

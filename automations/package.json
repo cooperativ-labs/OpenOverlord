@@ -13,6 +13,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./objective-manager": {
+      "types": "./dist/objective-manager/index.d.ts",
+      "default": "./dist/objective-manager/index.js"
+    },
+    "./scheduling-engine": {
+      "types": "./dist/scheduling-engine/index.d.ts",
+      "default": "./dist/scheduling-engine/index.js"
     }
   },
   "files": [

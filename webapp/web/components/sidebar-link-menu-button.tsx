@@ -48,7 +48,7 @@ export function SidebarLinkMenuButton({
   menuContent,
   menuLabel = 'Options',
   menuSide = 'right',
-  dragHandleSide = 'right',
+
   menuOpen,
   onMenuOpenChange,
   menuDisabled = false,
@@ -72,10 +72,7 @@ export function SidebarLinkMenuButton({
         render={link}
         isActive={isActive}
         tooltip={tooltip}
-        className={cn(
-          dragHandle && dragHandleSide === 'right' && 'group-has-data-[sidebar=menu-action]/menu-item:pr-14',
-          buttonClassName
-        )}
+        className={cn(buttonClassName)}
       >
         {children}
       </SidebarMenuButton>
@@ -86,8 +83,7 @@ export function SidebarLinkMenuButton({
           aria-label={dragHandle.label}
           disabled={dragHandle.disabled}
           className={cn(
-            'absolute top-1.5 flex aspect-square w-5 touch-none items-center justify-center rounded-md text-sidebar-foreground/40 opacity-0 outline-hidden transition-opacity group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:hidden disabled:cursor-not-allowed disabled:opacity-40 md:cursor-grab md:active:cursor-grabbing [&>svg]:size-4',
-            dragHandleSide === 'left' ? 'left-2' : menuSide === 'left' ? 'right-1' : 'right-7'
+            'absolute top-1.5 flex aspect-square w-5 touch-none items-center justify-center rounded-md text-sidebar-foreground/40 opacity-0 outline-hidden transition-opacity group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:hidden disabled:cursor-not-allowed disabled:opacity-40 md:cursor-grab md:active:cursor-grabbing [&>svg]:size-4'
           )}
           {...dragHandle.attributes}
           {...dragHandle.listeners}
@@ -96,15 +92,7 @@ export function SidebarLinkMenuButton({
         </button>
       ) : null}
       <DropdownMenu open={open} onOpenChange={setOpen}>
-        <DropdownMenuTrigger
-          render={
-            <SidebarMenuAction
-              showOnHover
-              disabled={menuDisabled}
-              className={menuSide === 'left' ? 'left-0.5 right-auto' : undefined}
-            />
-          }
-        >
+        <DropdownMenuTrigger render={<SidebarMenuAction showOnHover disabled={menuDisabled} />}>
           <MoreHorizontal />
           <span className="sr-only">{menuLabel}</span>
         </DropdownMenuTrigger>

@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { deriveObjectiveLifecycleView } from '@overlord/automations';
+import { deriveObjectiveLifecycleView } from '@overlord/automations/objective-manager';
 import { GripVertical } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 

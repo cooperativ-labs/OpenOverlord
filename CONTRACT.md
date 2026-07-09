@@ -402,6 +402,7 @@ These are the **only sanctioned paths** between components. Bypassing these surf
 ### Service → Automations (Automation Surface)
 
 - **Transport**: Service-layer function calls to the automations module's exported package API (`@overlord/automations`)
+- **Browser-safe subpaths**: SPA / renderer callers that need pure lifecycle or scheduling helpers MUST import `@overlord/automations/objective-manager` or `@overlord/automations/scheduling-engine` instead of the package root. The root barrel also re-exports Gemini-backed title tools and therefore pulls `@google/genai` into the client graph when imported from the webapp.
 - **Configuration**: Environment variables documented in `.env.prod.example` / `.env.local.example` (`GEMINI_API_KEY`, optional model override)
 - **Rule**: Automations must not read or write domain tables directly; persistence goes through caller-supplied store interfaces (e.g. `ObjectiveTitleStore`)
 - **Fallback**: When a provider is unavailable or a call fails, automations return `null` and callers use deterministic local fallbacks

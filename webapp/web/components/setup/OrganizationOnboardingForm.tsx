@@ -70,21 +70,7 @@ export function OrganizationOnboardingForm({ onSuccess }: OrganizationOnboarding
   }
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="onboarding-organization-name">Organization name</Label>
-        <Input
-          id="onboarding-organization-name"
-          autoFocus
-          value={organizationName}
-          onChange={event => setOrganizationName(event.target.value)}
-          placeholder="e.g. Cooperativ"
-          onKeyDown={event => {
-            if (event.key === 'Enter') void handleSubmit();
-          }}
-        />
-      </div>
-
+    <div className="flex flex-col gap-5">
       <div className="flex items-center gap-4">
         <ImageDropzone
           onSelect={file => {
@@ -103,6 +89,19 @@ export function OrganizationOnboardingForm({ onSuccess }: OrganizationOnboarding
           Optional. Uploaded after your organization is created.
         </p>
       </div>
+      <div className="space-y-2">
+        <Label htmlFor="onboarding-organization-name">Organization name</Label>
+        <Input
+          id="onboarding-organization-name"
+          autoFocus
+          value={organizationName}
+          onChange={event => setOrganizationName(event.target.value)}
+          placeholder="e.g. Cooperativ"
+          onKeyDown={event => {
+            if (event.key === 'Enter') void handleSubmit();
+          }}
+        />
+      </div>
 
       <div className="space-y-2">
         <Label htmlFor="onboarding-workspace-name">Workspace name</Label>
@@ -116,29 +115,22 @@ export function OrganizationOnboardingForm({ onSuccess }: OrganizationOnboarding
           }}
         />
       </div>
-
-      <Collapsible>
-        <CollapsibleTrigger className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ChevronDown className="size-4" />
-          Advanced
-        </CollapsibleTrigger>
-        <CollapsibleContent className="space-y-2 pt-3">
-          <Label htmlFor="onboarding-workspace-slug">Workspace slug</Label>
-          <Input
-            id="onboarding-workspace-slug"
-            value={slugTouched ? slug : suggestedSlug}
-            onChange={event => {
-              setSlugTouched(true);
-              setSlug(sanitizeWorkspaceSlugInput(event.target.value));
-            }}
-            placeholder={suggestedSlug}
-            className="font-mono"
-          />
-          <p className="text-xs text-muted-foreground">
-            Mission identifiers use this slug, for example {resolvedSlug || 'gen'}:1.
-          </p>
-        </CollapsibleContent>
-      </Collapsible>
+      <div className="space-y-2">
+        <Label htmlFor="onboarding-workspace-slug">Workspace slug</Label>
+        <Input
+          id="onboarding-workspace-slug"
+          value={slugTouched ? slug : suggestedSlug}
+          onChange={event => {
+            setSlugTouched(true);
+            setSlug(sanitizeWorkspaceSlugInput(event.target.value));
+          }}
+          placeholder={suggestedSlug}
+          className="font-mono"
+        />
+        <p className="text-xs text-muted-foreground">
+          Mission identifiers use this slug, for example {resolvedSlug || 'gen'}:1.
+        </p>
+      </div>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {logoError ? <p className="text-sm text-amber-600 dark:text-amber-400">{logoError}</p> : null}

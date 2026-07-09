@@ -1,6 +1,7 @@
 import { Settings } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+import { ProjectTimerPopover } from '@/components/everhour/ProjectTimerPopover';
 import {
   DEFAULT_PROJECT_COLOR,
   ProjectColorSetter
@@ -206,6 +207,7 @@ export function ProjectSettingsSection({
                 <TooltipContent>{openInIdeLabel}</TooltipContent>
               </Tooltip>
             ) : null}
+            <ProjectTimerPopover projectId={projectId} />
           </div>
         </div>
       </div>

@@ -76,6 +76,25 @@ export interface MissionEverhourStateDto {
   runningTimer: EverhourTimerDto | null;
 }
 
+/**
+ * Everhour state for one Overlord project's fixed `general` task: connection,
+ * project link, time records, and whether the project timer is running.
+ */
+export interface ProjectEverhourStateDto {
+  /** True when a workspace Everhour API key is configured. */
+  connected: boolean;
+  /** True when this project has a linked Everhour project. */
+  projectLinked: boolean;
+  /** Everhour task id for the project's `general` task, or `null` if not created yet. */
+  taskId: string | null;
+  /** Time records for the `general` task (empty when not linked). */
+  records: EverhourTimeRecordDto[];
+  /** Total recorded time across `records`, in seconds. */
+  totalSeconds: number;
+  /** The running timer when it belongs to this project's `general` task, else `null`. */
+  runningTimer: EverhourTimerDto | null;
+}
+
 /** Body for `POST /ext/everhour/missions/:missionId/time` - add manual time. */
 export interface CreateEverhourTimeBody {
   /** Duration in seconds (must be > 0). */

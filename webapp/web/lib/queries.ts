@@ -86,7 +86,8 @@ import {
 import { persistActiveOrganizationId } from './org-preferences.ts';
 import {
   invalidateMissionEverhourQueries,
-  invalidateNonEverhourQueries
+  invalidateNonEverhourQueries,
+  invalidateProjectEverhourQueries
 } from './query-invalidation.ts';
 
 export const keys = {
@@ -134,6 +135,7 @@ export const keys = {
     ['project', projectId, 'execution-target'] as const,
   everhourIntegration: ['integrations', 'everhour'] as const,
   projectEverhourLink: (projectId: string) => ['project', projectId, 'everhour-link'] as const,
+  projectEverhour: (projectId: string) => ['project', projectId, 'everhour'] as const,
   missionEverhour: (id: string) => ['mission', id, 'everhour'] as const
 };
 
@@ -1458,6 +1460,7 @@ export function useSetEverhourApiKey() {
     onSuccess: data => {
       qc.setQueryData(keys.everhourIntegration, data);
       invalidateMissionEverhourQueries(qc);
+      invalidateProjectEverhourQueries(qc);
     }
   });
 }
@@ -1469,6 +1472,7 @@ export function useClearEverhourApiKey() {
     onSuccess: data => {
       qc.setQueryData(keys.everhourIntegration, data);
       invalidateMissionEverhourQueries(qc);
+      invalidateProjectEverhourQueries(qc);
     }
   });
 }
@@ -1480,6 +1484,7 @@ export function useLinkProjectEverhour(projectId: string) {
     onSuccess: data => {
       qc.setQueryData(keys.projectEverhourLink(projectId), data);
       invalidateMissionEverhourQueries(qc);
+      invalidateProjectEverhourQueries(qc);
     }
   });
 }
@@ -1490,6 +1495,70 @@ export const useProjectEverhourLink = (projectId: string, options: { enabled?: b
     queryFn: () => api.getProjectEverhourLink(projectId),
     enabled: options.enabled ?? true
   });
+
+/**
+ * Everhour state for one project's fixed `general` task. Only enabled once we
+ * know the workspace is connected. Polls while the caller opts in (e.g. a
+ * running timer) to keep elapsed time roughly fresh.
+ */
+export const useProjectEverhour = (
+  projectId: string,
+  options: { enabled?: boolean; poll?: boolean } = {}
+) =>
+  useQuery({
+    queryKey: keys.projectEverhour(projectId),
+    queryFn: () => api.getProjectEverhour(projectId),
+    enabled: options.enabled ?? true,
+    staleTime: options.poll ? 0 : 5 * 60_000,
+    refetchInterval: options.poll ? 15_000 : false
+  });
+
+export function useStartProjectTimer(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.startProjectTimer(projectId),
+    onSuccess: data => {
+      qc.setQueryData(keys.projectEverhour(projectId), data);
+      invalidateMissionEverhourQueries(qc);
+    }
+  });
+}
+
+export function useStopProjectTimer(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.stopProjectTimer(projectId),
+    onSuccess: data => {
+      qc.setQueryData(keys.projectEverhour(projectId), data);
+      invalidateMissionEverhourQueries(qc);
+    }
+  });
+}
+
+export function useAddProjectTime(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateEverhourTimeBody) => api.addProjectTime(projectId, body),
+    onSuccess: data => qc.setQueryData(keys.projectEverhour(projectId), data)
+  });
+}
+
+export function useUpdateProjectTime(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ recordId, body }: { recordId: string; body: UpdateEverhourTimeBody }) =>
+      api.updateProjectTime(projectId, recordId, body),
+    onSuccess: data => qc.setQueryData(keys.projectEverhour(projectId), data)
+  });
+}
+
+export function useDeleteProjectTime(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (recordId: string) => api.deleteProjectTime(projectId, recordId),
+    onSuccess: data => qc.setQueryData(keys.projectEverhour(projectId), data)
+  });
+}
 
 /**
  * Everhour state for one mission. Only enabled once we know the workspace is
@@ -1512,7 +1581,10 @@ export function useStartMissionTimer(missionId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.startMissionTimer(missionId),
-    onSuccess: data => qc.setQueryData(keys.missionEverhour(missionId), data)
+    onSuccess: data => {
+      qc.setQueryData(keys.missionEverhour(missionId), data);
+      invalidateProjectEverhourQueries(qc);
+    }
   });
 }
 
@@ -1520,7 +1592,10 @@ export function useStopMissionTimer(missionId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.stopMissionTimer(missionId),
-    onSuccess: data => qc.setQueryData(keys.missionEverhour(missionId), data)
+    onSuccess: data => {
+      qc.setQueryData(keys.missionEverhour(missionId), data);
+      invalidateProjectEverhourQueries(qc);
+    }
   });
 }
 

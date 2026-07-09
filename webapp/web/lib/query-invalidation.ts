@@ -15,6 +15,7 @@ export function isEverhourQueryKey(queryKey: QueryKey): boolean {
   return (
     (queryKey[0] === 'integrations' && queryKey[1] === 'everhour') ||
     (queryKey[0] === 'project' && queryKey[2] === 'everhour-link') ||
+    (queryKey[0] === 'project' && queryKey[2] === 'everhour') ||
     (queryKey[0] === 'mission' && queryKey[2] === 'everhour')
   );
 }
@@ -28,5 +29,11 @@ export function invalidateNonEverhourQueries(queryClient: QueryInvalidator): voi
 export function invalidateMissionEverhourQueries(queryClient: QueryInvalidator): void {
   void queryClient.invalidateQueries({
     predicate: query => query.queryKey[0] === 'mission' && query.queryKey[2] === 'everhour'
+  });
+}
+
+export function invalidateProjectEverhourQueries(queryClient: QueryInvalidator): void {
+  void queryClient.invalidateQueries({
+    predicate: query => query.queryKey[0] === 'project' && query.queryKey[2] === 'everhour'
   });
 }

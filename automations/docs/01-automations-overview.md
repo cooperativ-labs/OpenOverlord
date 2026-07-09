@@ -27,6 +27,17 @@ type Automation<TInput, TOutput> = {
 Built-in automations register in `automations/src/registry.ts`. Callers can also register
 custom automations with `registerAutomation` during module initialization.
 
+## Package Entry Points
+
+| Import path | Safe for browser SPA? | Contents |
+| --- | --- | --- |
+| `@overlord/automations` | No (pulls Gemini client) | Full barrel: registry, title summarizer, objective-manager, scheduling-engine |
+| `@overlord/automations/objective-manager` | Yes | Pure objective lifecycle helpers (`deriveObjectiveLifecycleView`, etc.) |
+| `@overlord/automations/scheduling-engine` | Yes | Schedule date generation and schedule types |
+
+Browser / Electron renderer code must use the subpath exports when it only needs lifecycle or
+scheduling helpers so Vite does not bundle `@google/genai` into the SPA.
+
 ## Built-In Automations
 
 | Automation ID | Purpose |

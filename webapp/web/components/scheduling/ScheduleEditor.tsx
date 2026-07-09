@@ -1,4 +1,4 @@
-import type { PeriodType, WeekDayType } from '@overlord/automations';
+import type { PeriodType, WeekDayType } from '@overlord/automations/scheduling-engine';
 import { CalendarClock, Loader2, Trash2, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 

@@ -1,4 +1,4 @@
-import type { WeekDayType } from '@overlord/automations';
+import type { WeekDayType } from '@overlord/automations/scheduling-engine';
 
 import { cn } from '../../lib/utils.ts';
 

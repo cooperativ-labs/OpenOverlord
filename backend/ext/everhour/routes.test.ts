@@ -141,3 +141,19 @@ test('GET /ext/everhour/missions/:missionId requires mission:read', async () => 
     assert.equal(response.status, 403);
   });
 });
+
+test('GET /ext/everhour/projects/:projectId requires project:read', async () => {
+  setActiveWorkspaceUser(operatorWorkspaceUserId);
+  const project = await createProject({ name: 'Project Timer Route Project' });
+
+  setActiveTokenAuth({
+    workspaceUserId: operatorWorkspaceUserId,
+    tokenId: 'tok-project-timer-read-test',
+    scopeGrants: ['workspace:read', 'mission:read']
+  });
+
+  await withEverhourServer(async baseUrl => {
+    const response = await fetch(`${baseUrl}/ext/everhour/projects/${project.id}`);
+    assert.equal(response.status, 403);
+  });
+});
