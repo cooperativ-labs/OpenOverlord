@@ -175,6 +175,8 @@ function ServiceControls() {
       {status?.lastError ? <p className="text-xs text-destructive">{status.lastError}</p> : null}
 
       <div className="flex flex-wrap gap-2">
+        {/* Primary Enable/Disable toggle: installing the service enables the
+            persistent runner, uninstalling disables it. */}
         {!installed ? (
           <Button size="sm" onClick={() => void run('install')} disabled={busy !== null}>
             {busy === 'install' ? (
@@ -186,6 +188,19 @@ function ServiceControls() {
           </Button>
         ) : (
           <>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void run('uninstall')}
+              disabled={busy !== null}
+            >
+              {busy === 'uninstall' ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Power className="size-3.5" />
+              )}
+              Disable
+            </Button>
             {running ? (
               <Button
                 size="sm"
@@ -222,15 +237,6 @@ function ServiceControls() {
                 <RotateCw className="size-3.5" />
               )}
               Restart
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void run('uninstall')}
-              disabled={busy !== null}
-            >
-              <Power className="size-3.5" />
-              Disable
             </Button>
           </>
         )}

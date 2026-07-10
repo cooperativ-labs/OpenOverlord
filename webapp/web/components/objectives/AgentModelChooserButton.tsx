@@ -59,7 +59,7 @@ export function AgentModelChooserButton({
               disabled={disabled || !catalog}
               className={cn(
                 'inline-flex h-8 items-center gap-1 rounded-md border border-input bg-background px-2 text-xs text-foreground shadow-sm transition-colors',
-                compact ? 'shrink-0' : 'max-w-[230px]',
+                compact ? 'shrink-0' : 'max-w-[230px] @max-[460px]/objective-toolbar:px-2',
                 disabled || !catalog
                   ? 'cursor-not-allowed opacity-60'
                   : 'cursor-pointer hover:bg-accent hover:text-accent-foreground'
@@ -79,8 +79,17 @@ export function AgentModelChooserButton({
               ) : (
                 <Bot className="h-3.5 w-3.5 shrink-0" />
               )}
-              {compact ? null : <span className="max-w-[160px] truncate">{label}</span>}
-              <ChevronDown className="h-3 w-3 shrink-0" />
+              {compact ? null : (
+                <span className="max-w-[160px] truncate @max-[460px]/objective-toolbar:hidden">
+                  {label}
+                </span>
+              )}
+              <ChevronDown
+                className={cn(
+                  'h-3 w-3 shrink-0',
+                  !compact && '@max-[460px]/objective-toolbar:hidden'
+                )}
+              />
             </PopoverTrigger>
           }
         />

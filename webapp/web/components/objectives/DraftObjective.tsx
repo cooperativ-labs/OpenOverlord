@@ -326,7 +326,7 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
             </ObjectiveAttachmentUploadTrigger>
           </>
         ) : (
-          <div className="flex flex-wrap items-center justify-end gap-2 px-3 py-2">
+          <div className="@container/objective-toolbar flex min-w-0 flex-wrap items-center justify-end gap-2 px-3 py-2">
             <div className="grow" />
             {toolbarActions}
           </div>

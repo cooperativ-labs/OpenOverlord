@@ -238,7 +238,11 @@ export function ObjectiveAttachmentUploadTrigger({
         </span>
       ) : null}
       <input ref={inputRef} type="file" multiple className="hidden" onChange={onInputChange} />
-      {children ? <div className="flex shrink-0 items-center gap-2">{children}</div> : null}
+      {children ? (
+        <div className="@container/objective-toolbar flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+          {children}
+        </div>
+      ) : null}
     </div>
   );
 }
