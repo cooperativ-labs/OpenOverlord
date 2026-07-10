@@ -5,6 +5,8 @@ Open-source management layer for AI coding agents. Overlord persists work as
 **device**, and records **change rationales** so every agent session builds on
 the last.
 
+To sign up for a hosted account, visit [Overlord | AI Agent Management](https://www.ovld.ai/)
+
 ## Table of Contents
 
 - [For Users](#for-users)
