@@ -40,6 +40,8 @@ export interface CreateAuthOptions {
   database: AuthDatabaseConfig;
   /** Origins allowed to call Better Auth (e.g. the Vite dev server in split-port dev). */
   trustedOrigins?: string[];
+  /** Public HTTPS origin for Better Auth cookies, redirects, and CSRF checks. */
+  baseURL?: string;
   /**
    * Called from the `deleteUser` `beforeDelete` hook with the Better Auth
    * user id (`profiles.id`) before the user row — and everything that
@@ -174,6 +176,7 @@ export function createAuth(dbPathOrOptions?: string | CreateAuthOptions) {
 
   const auth = betterAuth({
     database: createBetterAuthDatabase(options.database),
+    ...(options.baseURL ? { baseURL: options.baseURL } : {}),
     ...(options.trustedOrigins ? { trustedOrigins: options.trustedOrigins } : {}),
     // `requireEmailVerification` also gates sign-in for unverified accounts,
     // so it must only be enabled alongside a real `sendVerificationEmail`

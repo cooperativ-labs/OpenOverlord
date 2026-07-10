@@ -3,7 +3,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const backendUrl = process.env.OVERLORD_BACKEND_URL?.trim() ?? '';
+const backendUrl =
+  process.env.OVERLORD_BACKEND_URL?.trim() ||
+  process.env.BETTER_AUTH_URL?.trim() ||
+  '';
 const webappUrl = normalizePublicUrl(
   process.env.OVERLORD_WEBAPP_PUBLIC_URL?.trim() ||
     process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||

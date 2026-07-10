@@ -80,6 +80,7 @@ export function getAllowedBrowserOrigins(): string[] {
 
 export const auth = createAuth({
   database: authDatabaseFromAdapter(resolveAdapter({ databasePath: DATABASE_PATH })),
+  baseURL: authBaseUrl,
   trustedOrigins: getAllowedBrowserOrigins(),
   onDeleteUser: cascadeDeleteAccount,
   sendVerificationEmail: verificationEmailSenderFromEnv(),
