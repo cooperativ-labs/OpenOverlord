@@ -295,7 +295,7 @@ export function AgentLaunchButton({
   if (isManual) {
     const isCompleting = updateObjective.isPending;
     return (
-      <div className="relative">
+      <div className="relative shrink-0">
         <button
           type="button"
           className={cn(
@@ -324,7 +324,7 @@ export function AgentLaunchButton({
   }
 
   return (
-    <div className="relative">
+    <div className="relative shrink-0">
       {/* {!primaryConnection.connected && selectionLoaded ? (
         <div
           role="alert"
@@ -336,7 +336,7 @@ export function AgentLaunchButton({
       ) : null} */}
       <div
         className={cn(
-          'inline-flex items-stretch rounded-md border border-input bg-background text-sm shadow-sm transition-all',
+          'inline-flex shrink-0 items-stretch rounded-md border border-input bg-background text-sm shadow-sm transition-all',
           !isDisabled && 'hover:bg-accent hover:text-accent-foreground',
           isQueued && 'border-sky-400/60 ring-1 ring-sky-400/40'
         )}

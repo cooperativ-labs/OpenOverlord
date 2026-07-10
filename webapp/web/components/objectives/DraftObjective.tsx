@@ -1,62 +1,19 @@
-import {
-  ArrowUpCircle,
-  Check,
-  ChevronUp,
-  FastForward,
-  Loader2,
-  MoreVertical,
-  PauseCircle,
-  Trash2
-} from 'lucide-react';
+import { ChevronUp } from 'lucide-react';
 import { useState } from 'react';
 
-import type {
-  ExecutionRequestDto,
-  ObjectiveDto,
-  ObjectiveState
-} from '../../../shared/contract.ts';
-import { useDeleteObjective, useProjectResources, useUpdateObjective } from '../../lib/queries.ts';
+import type { ExecutionRequestDto, ObjectiveDto } from '../../../shared/contract.ts';
+import { useDeleteObjective, useUpdateObjective } from '../../lib/queries.ts';
 import { useRepositoryMentionOptions } from '../../lib/useRepositoryMentionOptions.ts';
 import { cn } from '../../lib/utils.ts';
 import { InlineEditField } from '../InlineEditField.tsx';
-import { Button, OBJECTIVE_STATE_LABEL } from '../ui.tsx';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from '../ui/dropdown-menu.tsx';
 import { FileDropZone } from '../ui/file-drop-zone.tsx';
-import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover.tsx';
-import { Switch } from '../ui/switch.tsx';
 
-import { AgentLaunchButton } from './AgentLaunchButton.tsx';
-import { AgentModelChooserButton } from './AgentModelChooserButton.tsx';
 import {
   ObjectiveAttachmentList,
   ObjectiveAttachmentUploadTrigger,
   useObjectiveAttachmentState
 } from './ObjectiveAttachments.tsx';
-import { ObjectiveResourcePicker } from './ObjectiveResourcePicker.tsx';
-import { useObjectiveAgentSelection } from './useObjectiveAgentSelection.ts';
-
-const AUTO_ADVANCE_TOGGLE_STATES: ObjectiveState[] = ['future', 'draft', 'submitted', 'launching'];
-const ACTIVE_SIBLING_STATES: ObjectiveState[] = ['launching', 'executing', 'pending_delivery'];
-const ACTIVE_EXECUTION_REQUEST_STATES: ExecutionRequestDto['status'][] = [
-  'queued',
-  'claimed',
-  'launching'
-];
-const OBJECTIVE_STATES: ObjectiveState[] = [
-  'future',
-  'draft',
-  'submitted',
-  'launching',
-  'executing',
-  'pending_delivery',
-  'complete'
-];
+import { DraftObjectiveToolbar } from './DraftObjectiveToolbar.tsx';
 
 type DraftObjectiveProps = {
   objective: ObjectiveDto;
@@ -74,9 +31,6 @@ type DraftObjectiveProps = {
 export function DraftObjective({ objective, siblings, executionRequests }: DraftObjectiveProps) {
   const update = useUpdateObjective();
   const remove = useDeleteObjective();
-  const resourcesQ = useProjectResources(objective.projectId);
-  const { catalog, agentConfigs, selection, setSelection, commitLaunchConfig, loaded } =
-    useObjectiveAgentSelection(objective);
   const { mentionPaths, projectMentionOptions, missionMentionOptions } =
     useRepositoryMentionOptions(objective.projectId, objective.resourceKey);
   const [isFutureExpanded, setIsFutureExpanded] = useState(false);
@@ -93,150 +47,7 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
     handleRemove,
     dragState
   } = useObjectiveAttachmentState(objective.id, { dropDisabled: isFuture });
-  const isSubmitted = objective.state === 'submitted';
   const isLaunching = objective.state === 'launching';
-  const isLaunchable = objective.state === 'draft' || isSubmitted || isLaunching;
-  const canToggleAutoAdvance = AUTO_ADVANCE_TOGGLE_STATES.includes(objective.state);
-  const activeSiblingObjective =
-    siblings.find(o => o.id !== objective.id && ACTIVE_SIBLING_STATES.includes(o.state)) ?? null;
-  const activeSiblingRequest =
-    executionRequests.find(request => {
-      if (request.objectiveId === objective.id) return false;
-      if (!ACTIVE_EXECUTION_REQUEST_STATES.includes(request.status)) return false;
-      const requestObjective = siblings.find(o => o.id === request.objectiveId);
-      return Boolean(requestObjective && ACTIVE_SIBLING_STATES.includes(requestObjective.state));
-    }) ?? null;
-  const resolvedActiveSibling =
-    activeSiblingObjective ??
-    siblings.find(o => o.id === activeSiblingRequest?.objectiveId) ??
-    null;
-  const hasActiveSibling = Boolean(resolvedActiveSibling);
-  const activeSiblingId = resolvedActiveSibling?.id ?? null;
-  const activeRequest = executionRequests.find(r => r.objectiveId === objective.id) ?? null;
-  const autoAdvancePending =
-    update.isPending && update.variables?.id === objective.id
-      ? update.variables.body.autoAdvance !== undefined
-      : false;
-
-  function handlePromote() {
-    update.mutate({ id: objective.id, body: { state: 'draft' } });
-  }
-
-  const toolbarActions = (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50"
-          aria-label="Objective actions"
-          title="Objective actions"
-        >
-          <MoreVertical className="h-3.5 w-3.5" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-[160px]">
-          {OBJECTIVE_STATES.map(s => (
-            <DropdownMenuItem
-              key={s}
-              className="gap-2 text-xs"
-              onClick={() => update.mutate({ id: objective.id, body: { state: s } })}
-            >
-              <span>{OBJECTIVE_STATE_LABEL[s]}</span>
-              {s === objective.state && <Check className="ml-auto h-3 w-3 text-muted-foreground" />}
-            </DropdownMenuItem>
-          ))}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            className="gap-2 text-xs text-red-600 focus:text-red-600"
-            onClick={() => {
-              if (confirm('Delete this objective?')) remove.mutate(objective.id);
-            }}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            <span>Delete objective</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {canToggleAutoAdvance ? (
-        <Popover>
-          <PopoverTrigger
-            className={cn(
-              'inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs transition-colors hover:bg-accent',
-              objective.autoAdvance ? 'text-emerald-600' : 'text-amber-600'
-            )}
-            aria-label={objective.autoAdvance ? 'Auto-advance on' : 'Auto-advance off'}
-            title={objective.autoAdvance ? 'Auto-advance ON' : 'Auto-advance OFF'}
-          >
-            {autoAdvancePending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : objective.autoAdvance ? (
-              <FastForward className="h-3.5 w-3.5" />
-            ) : (
-              <PauseCircle className="h-3.5 w-3.5" />
-            )}
-          </PopoverTrigger>
-          <PopoverContent className="w-64" align="end">
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium">Auto-advance</span>
-                <Switch
-                  checked={objective.autoAdvance}
-                  disabled={autoAdvancePending}
-                  onCheckedChange={next =>
-                    update.mutate({ id: objective.id, body: { autoAdvance: next } })
-                  }
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                When enabled, this objective will automatically start executing after the previous
-                one completes. When disabled, it will wait for manual approval before starting.
-              </p>
-            </div>
-          </PopoverContent>
-        </Popover>
-      ) : null}
-
-      <ObjectiveResourcePicker
-        resources={resourcesQ.data ?? []}
-        value={objective.resourceKey}
-        disabled={update.isPending}
-        onChange={resourceKey => update.mutate({ id: objective.id, body: { resourceKey } })}
-      />
-
-      <AgentModelChooserButton
-        catalog={catalog}
-        selection={selection}
-        onChange={setSelection}
-        agentConfigs={agentConfigs}
-        onLaunchConfigCommit={commitLaunchConfig}
-      />
-
-      {isFuture ? (
-        <Button
-          variant="secondary"
-          className="h-8 gap-1.5 px-3 text-xs"
-          disabled={update.isPending}
-          onClick={handlePromote}
-        >
-          {update.isPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <ArrowUpCircle className="h-3.5 w-3.5" />
-          )}
-          Promote
-        </Button>
-      ) : isLaunchable ? (
-        <AgentLaunchButton
-          objective={objective}
-          selection={selection}
-          selectionLoaded={loaded}
-          hasActiveSibling={hasActiveSibling}
-          activeSiblingId={activeSiblingId}
-          activeRequest={activeRequest}
-          size="sm"
-        />
-      ) : null}
-    </>
-  );
 
   return (
     <FileDropZone
@@ -322,13 +133,21 @@ export function DraftObjective({ objective, siblings, executionRequests }: Draft
               onInputChange={handleInputChange}
               disabled={isUploading}
             >
-              {toolbarActions}
+              <DraftObjectiveToolbar
+                objective={objective}
+                siblings={siblings}
+                executionRequests={executionRequests}
+              />
             </ObjectiveAttachmentUploadTrigger>
           </>
         ) : (
           <div className="@container/objective-toolbar flex min-w-0 flex-wrap items-center justify-end gap-2 px-3 py-2">
             <div className="grow" />
-            {toolbarActions}
+            <DraftObjectiveToolbar
+              objective={objective}
+              siblings={siblings}
+              executionRequests={executionRequests}
+            />
           </div>
         )}
       </div>
