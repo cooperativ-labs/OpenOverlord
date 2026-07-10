@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Run a command with the repo's production `.env.prod` applied. Used for
-// packaging/publish workflows that need build-time production secrets without
+// packaging workflows that need build-time production secrets without
 // leaking development defaults into packaged CLI behavior.
 //
 // Usage: node scripts/with-prod-env.mjs <command> [args...]
@@ -13,10 +13,6 @@ import { loadRepoEnvForProfile } from './load-repo-env.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 loadRepoEnvForProfile({ repoRoot: path.resolve(scriptDir, '..'), profile: 'production' });
-
-if (!process.env.YARN_NPM_AUTH_TOKEN?.trim() && process.env.NPM_TOKEN?.trim()) {
-  process.env.YARN_NPM_AUTH_TOKEN = process.env.NPM_TOKEN;
-}
 
 const [, , command, ...args] = process.argv;
 if (!command) {

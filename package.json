@@ -47,7 +47,7 @@
     "contract:build:prod": "yarn workspace @overlord/contract build",
     "cli:build:prod": "yarn workspace overlord-cli build",
     "cli:pack:prod": "yarn cli:build:prod && yarn workspace overlord-cli pack",
-    "cli:publish": "yarn cli:build:prod && node scripts/with-prod-env.mjs yarn workspace overlord-cli npm publish",
+    "cli:publish": "yarn cli:build:prod && node --import tsx scripts/publish-cli.ts",
     "db:path": "tsx scripts/print-db-path.ts",
     "db:start": "node scripts/with-dev-env.mjs sh -c 'OVERLORD_SQLITE_PATH=\"$(tsx scripts/print-db-path.ts)\" tsx database/src/launch-local.ts'",
     "db:clean": "tsx scripts/clean-local-state.ts",
