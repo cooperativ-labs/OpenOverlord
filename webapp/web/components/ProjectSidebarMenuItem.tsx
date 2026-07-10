@@ -139,7 +139,7 @@ export function ProjectSidebarMenuItem({
         <span className="truncate">{project.name}</span>
         {hasRunningTimer ? (
           <span
-            className="inline-flex shrink-0 text-red-700"
+            className="inline-flex shrink-0 text-red-700 h-4 w-4"
             aria-label="Running project timer"
             title="Running project timer"
           >
