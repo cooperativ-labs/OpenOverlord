@@ -1,15 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  Check,
-  Copy,
-  Loader2,
-  Play,
-  Power,
-  RefreshCw,
-  RotateCw,
-  Square,
-  Trash2
-} from 'lucide-react';
+import { Check, Copy, Loader2, Power, RefreshCw, RotateCw, Square, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -136,7 +126,7 @@ function ServiceControls() {
     try {
       const op =
         action === 'install'
-          ? runnerService.install()
+          ? runnerService.install({ noStart: true })
           : action === 'start'
             ? runnerService.start()
             : action === 'stop'
@@ -175,8 +165,6 @@ function ServiceControls() {
       {status?.lastError ? <p className="text-xs text-destructive">{status.lastError}</p> : null}
 
       <div className="flex flex-wrap gap-2">
-        {/* Primary Enable/Disable toggle: installing the service enables the
-            persistent runner, uninstalling disables it. */}
         {!installed ? (
           <Button size="sm" onClick={() => void run('install')} disabled={busy !== null}>
             {busy === 'install' ? (
@@ -184,52 +172,30 @@ function ServiceControls() {
             ) : (
               <Power className="size-3.5" />
             )}
-            Enable
+            Install service
           </Button>
         ) : (
           <>
             <Button
               size="sm"
-              variant="outline"
-              onClick={() => void run('uninstall')}
+              variant={running ? 'outline' : 'default'}
+              onClick={() => void run(running ? 'stop' : 'start')}
               disabled={busy !== null}
             >
-              {busy === 'uninstall' ? (
+              {busy === 'start' || busy === 'stop' ? (
                 <Loader2 className="size-3.5 animate-spin" />
+              ) : running ? (
+                <Square className="size-3.5" />
               ) : (
                 <Power className="size-3.5" />
               )}
-              Disable
+              {running ? 'Disable' : 'Enable'}
             </Button>
-            {running ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void run('stop')}
-                disabled={busy !== null}
-              >
-                {busy === 'stop' ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Square className="size-3.5" />
-                )}
-                Stop
-              </Button>
-            ) : (
-              <Button size="sm" onClick={() => void run('start')} disabled={busy !== null}>
-                {busy === 'start' ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Play className="size-3.5" />
-                )}
-                Start
-              </Button>
-            )}
             <Button
               size="sm"
               variant="outline"
               onClick={() => void run('restart')}
-              disabled={busy !== null}
+              disabled={busy !== null || !running}
             >
               {busy === 'restart' ? (
                 <Loader2 className="size-3.5 animate-spin" />
@@ -237,6 +203,20 @@ function ServiceControls() {
                 <RotateCw className="size-3.5" />
               )}
               Restart
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-destructive hover:text-destructive"
+              onClick={() => void run('uninstall')}
+              disabled={busy !== null}
+            >
+              {busy === 'uninstall' ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
+              Uninstall service
             </Button>
           </>
         )}
