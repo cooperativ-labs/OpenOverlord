@@ -11,6 +11,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { createAuth } from '../auth/src/auth/config.ts';
 
 import { resolveAllowedBrowserOrigins } from './http/browser-origins.ts';
+import { resolveAuthBaseUrl } from './http/public-backend-url.ts';
 import { clientDeviceFromRequest } from './http/client-device.ts';
 import { cascadeDeleteAccount } from './account-deletion.ts';
 import {
@@ -67,17 +68,12 @@ export function getRequestedWorkspaceId(req: Request): string | null {
   return getCookieValue(req, ACTIVE_WORKSPACE_COOKIE);
 }
 
-const authBaseHost =
-  process.env.OVERLORD_WEB_HOST && process.env.OVERLORD_WEB_HOST !== '0.0.0.0'
-    ? process.env.OVERLORD_WEB_HOST
-    : '127.0.0.1';
-const authBasePort = process.env.OVERLORD_WEB_PORT ?? '4310';
-const authBaseUrl = process.env.BETTER_AUTH_URL ?? `http://${authBaseHost}:${authBasePort}`;
+const authBaseUrl = resolveAuthBaseUrl();
 process.env.BETTER_AUTH_URL ??= authBaseUrl;
 
 export function getAllowedBrowserOrigins(): string[] {
   return resolveAllowedBrowserOrigins({
-    baseUrl: authBaseUrl,
+    baseUrl: resolveAuthBaseUrl(),
     devPort: process.env.OVERLORD_WEB_DEV_PORT
   });
 }

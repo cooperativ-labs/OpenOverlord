@@ -2,8 +2,18 @@ import { Check, Cloud, Copy, Loader2, Plus, Server, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import type { ButtonLoadingState } from '@/components/ui/loading-button';
+import { LoadingButton } from '@/components/ui/loading-button';
 import { DEFAULT_CLOUD_BACKEND_URL } from '@/lib/backend-defaults';
 import { useCopyToClipboard } from '@/lib/hooks/use-copy-to-clipboard';
 
@@ -56,6 +66,9 @@ export function BackendPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  const [backendToRemove, setBackendToRemove] = useState<BackendProfileRow | null>(null);
+  const [removeState, setRemoveState] = useState<ButtonLoadingState>('default');
 
   const refresh = useCallback(async () => {
     if (!bridge?.listBackends || !bridge.getActiveBackend) return;
@@ -103,17 +116,25 @@ export function BackendPage() {
     }
   }
 
-  async function handleRemove(id: string) {
-    if (!bridge?.removeBackend) return;
+  function handleOpenRemoveDialog(profile: BackendProfileRow) {
+    setBackendToRemove(profile);
+    setRemoveState('default');
+    setRemoveConfirmOpen(true);
+  }
+
+  async function handleRemove() {
+    if (!bridge?.removeBackend || !backendToRemove) return;
     setError(null);
-    setBusy(true);
+    setRemoveState('loading');
     try {
-      await bridge.removeBackend(id);
+      await bridge.removeBackend(backendToRemove.id);
+      setRemoveState('success');
+      setRemoveConfirmOpen(false);
+      setBackendToRemove(null);
       await refresh();
     } catch (err) {
+      setRemoveState('error');
       setError(err instanceof Error ? err.message : 'Could not remove backend.');
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -175,7 +196,7 @@ export function BackendPage() {
                     size="sm"
                     variant="ghost"
                     disabled={Boolean(switchingId) || busy}
-                    onClick={() => void handleRemove(profile.id)}
+                    onClick={() => handleOpenRemoveDialog(profile)}
                   >
                     <Trash2 className="size-4" />
                   </Button>
@@ -226,6 +247,48 @@ export function BackendPage() {
           {error}
         </div>
       ) : null}
+
+      <Dialog
+        open={removeConfirmOpen}
+        onOpenChange={open => {
+          setRemoveConfirmOpen(open);
+          if (!open) {
+            setBackendToRemove(null);
+            setRemoveState('default');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Remove {backendToRemove?.label ?? 'backend'}?</DialogTitle>
+            <DialogDescription>
+              This removes the saved cloud backend profile from this desktop app. Your data on the
+              server is not affected. You can add the backend again later.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setRemoveConfirmOpen(false);
+                setBackendToRemove(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <LoadingButton
+              buttonState={removeState}
+              setButtonState={setRemoveState}
+              text="Remove backend"
+              loadingText="Removing…"
+              errorText="Retry"
+              variant="destructive"
+              onClick={() => void handleRemove()}
+            />
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

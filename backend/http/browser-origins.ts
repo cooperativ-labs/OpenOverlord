@@ -1,3 +1,5 @@
+import { readConfiguredPublicBackendUrls } from './public-backend-url.ts';
+
 export function resolveAllowedBrowserOrigins({
   baseUrl,
   devPort
@@ -5,7 +7,7 @@ export function resolveAllowedBrowserOrigins({
   baseUrl: string;
   devPort: string | undefined;
 }): string[] {
-  const origins = new Set<string>([baseUrl]);
+  const origins = new Set<string>([baseUrl, ...readConfiguredPublicBackendUrls()]);
   const vitePort = devPort ?? '5173';
   // Vite dev server runs on a separate port; localhost and 127.0.0.1 are distinct origins.
   origins.add(`http://localhost:${vitePort}`);

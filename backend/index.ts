@@ -1,3 +1,5 @@
+import './bootstrap-env.ts';
+
 import { type Permission, PERMISSIONS } from '@overlord/auth';
 import { loadExternalAutomations } from '@overlord/automations';
 import cors from 'cors';
@@ -67,9 +69,8 @@ import {
   initDatabase,
   WORKSPACE
 } from './db.ts';
-import { ENV_PROFILE, REPO_ROOT } from './env-profile.ts';
+import { ENV_PROFILE } from './env-profile.ts';
 import { apiErrorFromDatabaseError } from './errors.ts';
-import { loadRepoEnvForProfile } from './load-repo-env.ts';
 import {
   handleOAuthApprove,
   handleOAuthRegister,
@@ -215,7 +216,6 @@ function assertSupportedBackendNodeVersion(): void {
 // reads `.env.prod` only (shared detection in `./env-profile.ts`). Explicit shell
 // exports win over both.
 assertSupportedBackendNodeVersion();
-loadRepoEnvForProfile(REPO_ROOT, ENV_PROFILE);
 
 const config = loadConfig(undefined, ENV_PROFILE);
 
