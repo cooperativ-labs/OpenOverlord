@@ -47,7 +47,7 @@ export function ProjectSidebarMenuItem({
   const integration = useEverhourIntegration();
   const everhourConnected = integration.data?.connected ?? false;
   const projectEverhour = useProjectEverhour(project.id, { enabled: everhourConnected });
-  const hasRunningTimer = Boolean(projectEverhour.data?.runningTimer);
+  const hasRunningTimer = Boolean(projectEverhour.data?.hasRunningTimerInProject);
 
   const {
     attributes,
@@ -138,10 +138,11 @@ export function ProjectSidebarMenuItem({
       <span className="inline-flex min-w-0 items-center gap-1.5 group-data-[collapsible=icon]:hidden">
         <span className="truncate">{project.name}</span>
         {hasRunningTimer ? (
-
-          <Clock3 aria-hidden className="h-4 w-4 text-red-700" aria-label="Running project timer"
-            size={12} />
-
+          <Clock3
+            className="h-4 w-4 text-red-700"
+            size={12}
+            aria-label="Running Everhour timer in this project"
+          />
         ) : null}
       </span>
     </SidebarLinkMenuButton>

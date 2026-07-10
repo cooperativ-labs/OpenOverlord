@@ -616,6 +616,29 @@ async function getProjectEverhour(projectId: string): Promise<{
   };
 }
 
+async function listProjectEverhourTaskIds(
+  projectId: string,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<Set<string>> {
+  const taskIds = new Set<string>();
+  const link = await readProjectLink(projectId, client);
+  if (link?.everhour_general_task_id) {
+    taskIds.add(link.everhour_general_task_id);
+  }
+
+  const missionTasks = await client.all<{ everhour_task_id: string }>(
+    `SELECT everhour_task_id
+       FROM ext_everhour_mission_links
+      WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+    [projectId, WORKSPACE.id]
+  );
+  for (const row of missionTasks) {
+    taskIds.add(row.everhour_task_id);
+  }
+
+  return taskIds;
+}
+
 async function readMissionLink(
   missionId: string,
   client: DatabaseClient = requireDatabaseClient()
@@ -946,20 +969,26 @@ export async function getProjectEverhourState(projectId: string): Promise<Projec
     taskId,
     records: [],
     totalSeconds: 0,
-    runningTimer: null
+    runningTimer: null,
+    hasRunningTimerInProject: false
   };
-  if (!apiKey || !taskId) return base;
+  if (!apiKey) return base;
 
-  const [records, timer] = await Promise.all([
-    listTaskRecords(apiKey, taskId),
-    getCurrentTimer(apiKey)
+  const [records, timer, projectTaskIds] = await Promise.all([
+    taskId ? listTaskRecords(apiKey, taskId) : Promise.resolve([]),
+    getCurrentTimer(apiKey),
+    listProjectEverhourTaskIds(projectId)
   ]);
   const runningDto = timer ? toTimerDto(timer) : null;
+  const hasRunningTimerInProject = Boolean(
+    runningDto && projectTaskIds.has(runningDto.taskId)
+  );
   return {
     ...base,
     records,
     totalSeconds: records.reduce((sum, r) => sum + r.timeSeconds, 0),
-    runningTimer: runningDto && runningDto.taskId === taskId ? runningDto : null
+    runningTimer: runningDto && runningDto.taskId === taskId ? runningDto : null,
+    hasRunningTimerInProject
   };
 }
 

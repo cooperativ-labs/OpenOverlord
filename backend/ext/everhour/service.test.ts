@@ -290,6 +290,7 @@ test('getProjectEverhourState returns a disconnected baseline without an API key
   assert.deepEqual(state.records, []);
   assert.equal(state.totalSeconds, 0);
   assert.equal(state.runningTimer, null);
+  assert.equal(state.hasRunningTimerInProject, false);
 });
 
 test('startProjectTimer creates a general task and starts the Everhour timer', async () => {
@@ -351,4 +352,63 @@ test('startProjectTimer creates a general task and starts the Everhour timer', a
     )
     .get(project.id) as { everhour_general_task_id: string };
   assert.equal(projectLink.everhour_general_task_id, 'ev:general-1');
+});
+
+test('getProjectEverhourState reports mission timers as running within the project', async () => {
+  const project = await createProject({ name: 'Mission Timer Sidebar Project' });
+  const mission = await createMission({
+    projectId: project.id,
+    firstObjective: 'Sidebar indicator mission'
+  });
+
+  installEverhourFetchMock([
+    {
+      match: url => url.endsWith('/users/me'),
+      respond: () => Response.json({ id: 31, name: 'Sidebar User' }, { status: 200 })
+    },
+    {
+      match: url => url.includes('/projects?'),
+      respond: () =>
+        Response.json(
+          [{ id: 'ev:sidebar', name: 'Sidebar Board', type: 'board', users: [31] }],
+          { status: 200 }
+        )
+    },
+    {
+      match: url => url.includes('/projects/ev%3Asidebar/sections'),
+      respond: () => Response.json([{ id: 4, name: 'Main' }], { status: 200 })
+    },
+    {
+      match: (url, init) => url.includes('/projects/ev%3Asidebar/tasks') && init?.method === 'POST',
+      respond: () => Response.json({ id: 'ev:mission-task', name: mission.title }, { status: 201 })
+    },
+    {
+      match: (url, init) => url.endsWith('/timers') && init?.method === 'POST',
+      respond: () => new Response(null, { status: 204 })
+    },
+    {
+      match: url => url.includes('/tasks/ev%3Amission-task/time?'),
+      respond: () => Response.json([], { status: 200 })
+    },
+    {
+      match: url => url.endsWith('/timers/current'),
+      respond: () =>
+        Response.json(
+          {
+            status: 'active',
+            duration: 125,
+            startedAt: '2026-07-10 10:00:00',
+            task: { id: 'ev:mission-task', name: mission.title }
+          },
+          { status: 200 }
+        )
+    }
+  ]);
+  await setEverhourApiKey('sidebar-timer-key');
+  await linkProjectEverhour(project.id, 'Sidebar Board');
+  await startMissionTimer(mission.id);
+
+  const state = await getProjectEverhourState(project.id);
+  assert.equal(state.runningTimer, null);
+  assert.equal(state.hasRunningTimerInProject, true);
 });

@@ -93,6 +93,11 @@ export interface ProjectEverhourStateDto {
   totalSeconds: number;
   /** The running timer when it belongs to this project's `general` task, else `null`. */
   runningTimer: EverhourTimerDto | null;
+  /**
+   * True when the workspace user has an active Everhour timer on any task linked
+   * to this project (the `general` task or a mission task).
+   */
+  hasRunningTimerInProject: boolean;
 }
 
 /** Body for `POST /ext/everhour/missions/:missionId/time` - add manual time. */
