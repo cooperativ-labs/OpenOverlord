@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowUp, Bot, ChevronDown, Loader2, Plus } from 'lucide-react';
+import { AlertTriangle, ArrowUp, Bot, ChevronDown, FolderOpen, Loader2, Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AgentIcon } from '@/components/objectives/AgentIcon.tsx';
@@ -9,7 +9,13 @@ import {
 import { RepositoryMentionTextarea } from '@/components/RepositoryMentionTextarea.tsx';
 import { api } from '@/lib/api.ts';
 import { getAgentIcon } from '@/lib/helpers/agent-icons.ts';
-import { executionTargetAvailability, primaryResourceConnection } from '@/lib/project-resources.ts';
+import {
+  distinctProjectResourceKeys,
+  executionTargetAvailability,
+  firstObjectiveCreatePayload,
+  primaryResourceConnection,
+  projectResourceLabel
+} from '@/lib/project-resources.ts';
 import {
   useAgentCatalog,
   useCreateMission,
@@ -37,6 +43,7 @@ import {
   readStoredDefaultProjectId,
   writeStoredDefaultProjectId
 } from './quick-task-page-state.ts';
+import { ResourcePickerPanel } from './ResourcePickerPanel.tsx';
 import { StagedFilesRow } from './StagedFilesRow.tsx';
 
 type QuickTaskBarProps = {
@@ -69,7 +76,8 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
   );
   const [stagedFiles, setStagedFiles] = useState<StagedFile[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeMenu, setActiveMenu] = useState<'project' | 'agent' | null>(null);
+  const [activeMenu, setActiveMenu] = useState<'project' | 'agent' | 'resource' | null>(null);
+  const [selectedResourceKey, setSelectedResourceKey] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -123,6 +131,14 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
   const selectedAgentIconKey = selectedAgentDef?.key ?? objectiveSelection.agent;
   const hasSelectedAgentIcon = getAgentIcon(selectedAgentIconKey) !== null;
   const primaryConnection = primaryResourceConnection(resourcesQ.data ?? []);
+  const resources = resourcesQ.data ?? [];
+  const resourceKeys = distinctProjectResourceKeys(resources);
+  const hasMultipleResources = resourceKeys.length > 1;
+  const primaryResourceKey = primaryConnection.primary?.resourceKey ?? null;
+  const effectiveResourceKey = selectedResourceKey ?? primaryResourceKey ?? resourceKeys[0] ?? null;
+  const selectedResourceLabel = effectiveResourceKey
+    ? projectResourceLabel({ resources, resourceKey: effectiveResourceKey })
+    : null;
   const executionTargetQ = useProjectExecutionTarget(selectedProjectId);
   const targetAvailability = executionTargetAvailability({
     primaryConnected: primaryConnection.connected,
@@ -137,6 +153,15 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
       return resolvedDefaultProjectId;
     });
   }, [projects, resolvedDefaultProjectId]);
+
+  // Drop a bound resource key once it no longer maps to a resource on the
+  // selected project (e.g. after switching projects), falling back to inherit
+  // the project primary.
+  useEffect(() => {
+    if (selectedResourceKey && !resourceKeys.includes(selectedResourceKey)) {
+      setSelectedResourceKey(null);
+    }
+  }, [resourceKeys, selectedResourceKey]);
 
   const autoResize = useCallback(() => {
     const el = resolveTextarea();
@@ -194,6 +219,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
       requestAnimationFrame(() => {
         setSelectedProjectId(resolvedDefaultProjectId);
         setObjectiveSelection(defaultSelection);
+        setSelectedResourceKey(null);
         setActiveMenu(null);
         setSubmitError(null);
         resolveTextarea()?.focus();
@@ -289,7 +315,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
 
       const detail = await createMission.mutateAsync({
         projectId: selectedProject.id,
-        firstObjective: trimmed
+        ...firstObjectiveCreatePayload(trimmed, selectedResourceKey)
       });
       const createdObjective = detail.objectives[0];
       if (!createdObjective) {
@@ -331,6 +357,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
 
       setObjective('');
       setStagedFiles([]);
+      setSelectedResourceKey(null);
       handleClose();
     } catch (error) {
       console.error('Failed to create quick task:', error);
@@ -453,6 +480,31 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
               </span>
             </button>
 
+            {hasMultipleResources ? (
+              <button
+                type="button"
+                aria-label={`Choose resource: ${selectedResourceLabel ?? 'default'}`}
+                aria-expanded={activeMenu === 'resource'}
+                title={selectedResourceLabel ?? undefined}
+                onClick={() =>
+                  setActiveMenu(current => (current === 'resource' ? null : 'resource'))
+                }
+                disabled={isSubmitting}
+                className={cn(
+                  'electron-no-drag flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2 text-sm text-muted-foreground transition-colors',
+                  activeMenu === 'resource' && 'bg-muted text-foreground',
+                  isSubmitting
+                    ? 'cursor-not-allowed opacity-60'
+                    : 'cursor-pointer hover:bg-muted hover:text-foreground'
+                )}
+              >
+                <FolderOpen className="h-3.5 w-3.5 shrink-0" />
+                <span className="max-w-[110px] truncate text-foreground/80">
+                  {selectedResourceLabel}
+                </span>
+              </button>
+            ) : null}
+
             <button
               type="button"
               aria-label={`Choose agent and model: ${selectedAgentFullLabel}`}
@@ -528,6 +580,16 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
           selectedProjectId={selectedProjectId}
           onSelect={projectId => {
             setSelectedProjectId(projectId);
+            setSelectedResourceKey(null);
+            setActiveMenu(null);
+          }}
+        />
+      ) : activeMenu === 'resource' && hasMultipleResources ? (
+        <ResourcePickerPanel
+          resources={resources}
+          value={selectedResourceKey}
+          onSelect={resourceKey => {
+            setSelectedResourceKey(resourceKey);
             setActiveMenu(null);
           }}
         />

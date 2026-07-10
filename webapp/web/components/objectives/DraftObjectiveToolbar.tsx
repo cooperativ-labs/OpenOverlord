@@ -9,8 +9,8 @@ import { useProjectResources, useUpdateObjective } from '../../lib/queries.ts';
 import { Button } from '../ui.tsx';
 
 import { AgentLaunchButton } from './AgentLaunchButton.tsx';
-import { DraftObjectiveActions } from './DraftObjectiveActions.tsx';
 import { AgentModelChooserButton } from './AgentModelChooserButton.tsx';
+import { DraftObjectiveActions } from './DraftObjectiveActions.tsx';
 import { ObjectiveResourcePicker } from './ObjectiveResourcePicker.tsx';
 import { useObjectiveAgentSelection } from './useObjectiveAgentSelection.ts';
 

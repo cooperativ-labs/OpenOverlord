@@ -10,10 +10,10 @@ import type { NextFunction, Request, Response } from 'express';
 
 import { createAuth } from '../auth/src/auth/config.ts';
 
-import { resolveAllowedBrowserOrigins } from './http/browser-origins.ts';
 import { resolveSessionFromBrowserRequest } from './http/bearer-session.ts';
-import { resolveAuthBaseUrl } from './http/public-backend-url.ts';
+import { resolveAllowedBrowserOrigins } from './http/browser-origins.ts';
 import { clientDeviceFromRequest } from './http/client-device.ts';
+import { resolveAuthBaseUrl } from './http/public-backend-url.ts';
 import { cascadeDeleteAccount } from './account-deletion.ts';
 import {
   type ActiveWorkspace,

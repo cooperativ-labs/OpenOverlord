@@ -980,9 +980,7 @@ export async function getProjectEverhourState(projectId: string): Promise<Projec
     listProjectEverhourTaskIds(projectId)
   ]);
   const runningDto = timer ? toTimerDto(timer) : null;
-  const hasRunningTimerInProject = Boolean(
-    runningDto && projectTaskIds.has(runningDto.taskId)
-  );
+  const hasRunningTimerInProject = Boolean(runningDto && projectTaskIds.has(runningDto.taskId));
   return {
     ...base,
     records,

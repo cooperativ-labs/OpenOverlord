@@ -8,12 +8,12 @@ import { cn } from '../../lib/utils.ts';
 import { InlineEditField } from '../InlineEditField.tsx';
 import { FileDropZone } from '../ui/file-drop-zone.tsx';
 
+import { DraftObjectiveToolbar } from './DraftObjectiveToolbar.tsx';
 import {
   ObjectiveAttachmentList,
   ObjectiveAttachmentUploadTrigger,
   useObjectiveAttachmentState
 } from './ObjectiveAttachments.tsx';
-import { DraftObjectiveToolbar } from './DraftObjectiveToolbar.tsx';
 
 type DraftObjectiveProps = {
   objective: ObjectiveDto;

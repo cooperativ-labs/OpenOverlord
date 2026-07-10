@@ -369,10 +369,9 @@ test('getProjectEverhourState reports mission timers as running within the proje
     {
       match: url => url.includes('/projects?'),
       respond: () =>
-        Response.json(
-          [{ id: 'ev:sidebar', name: 'Sidebar Board', type: 'board', users: [31] }],
-          { status: 200 }
-        )
+        Response.json([{ id: 'ev:sidebar', name: 'Sidebar Board', type: 'board', users: [31] }], {
+          status: 200
+        })
     },
     {
       match: url => url.includes('/projects/ev%3Asidebar/sections'),

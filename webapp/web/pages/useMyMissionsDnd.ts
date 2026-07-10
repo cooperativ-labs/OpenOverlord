@@ -10,9 +10,14 @@ import {
   useSensors
 } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { type BoardDndResult, type ColumnMap, columnMapsEqual } from './board-shared.ts';
+
+function findColumn(columns: ColumnMap, id: string): string | undefined {
+  if (id in columns) return id;
+  return Object.keys(columns).find(columnId => columns[columnId]?.includes(id));
+}
 
 /** Destination of a completed drop, handed to the page to persist. */
 export interface MyMissionsDropTarget {
@@ -45,13 +50,23 @@ export function useMyMissionsDnd({
 }): BoardDndResult {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [override, setOverride] = useState<ColumnMap | null>(null);
+  // DnD Kit can deliver `onDragEnd` immediately after `onDragOver`, before
+  // React has rendered the state update from the latter. Keep the active board
+  // layout in a ref as well so a cross-column drop always persists the card in
+  // its destination column rather than the stale pre-drag list.
+  const overrideRef = useRef<ColumnMap | null>(null);
+
+  const setOptimisticOverride = useCallback((next: ColumnMap | null) => {
+    overrideRef.current = next;
+    setOverride(next);
+  }, []);
 
   // Drop the optimistic override once the real columns catch up to it.
   useEffect(() => {
     if (activeId === null && override !== null && columnMapsEqual(override, columns)) {
-      setOverride(null);
+      setOptimisticOverride(null);
     }
-  }, [activeId, override, columns]);
+  }, [activeId, override, columns, setOptimisticOverride]);
 
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -67,20 +82,12 @@ export function useMyMissionsDnd({
 
   const displayColumns = override ?? columns;
 
-  const findColumn = useCallback(
-    (id: string): string | undefined => {
-      if (id in displayColumns) return id;
-      return Object.keys(displayColumns).find(statusId => displayColumns[statusId]?.includes(id));
-    },
-    [displayColumns]
-  );
-
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
       setActiveId(String(event.active.id));
-      setOverride(columns);
+      setOptimisticOverride(columns);
     },
-    [columns]
+    [columns, setOptimisticOverride]
   );
 
   const handleDragOver = useCallback(
@@ -89,40 +96,38 @@ export function useMyMissionsDnd({
       if (!over) return;
       const activeMissionId = String(active.id);
       const overId = String(over.id);
-      const fromCol = findColumn(activeMissionId);
-      const toCol = findColumn(overId);
+      const source = overrideRef.current ?? columns;
+      const fromCol = findColumn(source, activeMissionId);
+      const toCol = findColumn(source, overId);
       if (!fromCol || !toCol || fromCol === toCol) return;
 
-      setOverride(prev => {
-        const source = prev ?? columns;
-        const fromItems = source[fromCol] ?? [];
-        const toItems = source[toCol] ?? [];
-        const overIndex = toItems.indexOf(overId);
-        const insertAt = overIndex >= 0 ? overIndex : toItems.length;
-        return {
-          ...source,
-          [fromCol]: fromItems.filter(id => id !== activeMissionId),
-          [toCol]: [...toItems.slice(0, insertAt), activeMissionId, ...toItems.slice(insertAt)]
-        };
+      const fromItems = source[fromCol] ?? [];
+      const toItems = source[toCol] ?? [];
+      const overIndex = toItems.indexOf(overId);
+      const insertAt = overIndex >= 0 ? overIndex : toItems.length;
+      setOptimisticOverride({
+        ...source,
+        [fromCol]: fromItems.filter(id => id !== activeMissionId),
+        [toCol]: [...toItems.slice(0, insertAt), activeMissionId, ...toItems.slice(insertAt)]
       });
     },
-    [columns, findColumn]
+    [columns, setOptimisticOverride]
   );
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
       const id = String(active.id);
-      const dropColumn = over ? findColumn(String(over.id)) : undefined;
+      const source = overrideRef.current ?? columns;
+      const dropColumn = over ? findColumn(source, String(over.id)) : undefined;
 
       setActiveId(null);
 
       if (!dropColumn) {
-        setOverride(null);
+        setOptimisticOverride(null);
         return;
       }
 
-      const source = override ?? columns;
       const items = source[dropColumn] ?? [];
       const fromIndex = items.indexOf(id);
       const overIndex =
@@ -133,10 +138,10 @@ export function useMyMissionsDnd({
           : items;
 
       const finalColumns: ColumnMap = { ...source, [dropColumn]: finalItems };
-      setOverride(finalColumns);
+      setOptimisticOverride(finalColumns);
 
       if (columnMapsEqual(finalColumns, columns)) {
-        setOverride(null);
+        setOptimisticOverride(null);
         return;
       }
 
@@ -146,15 +151,15 @@ export function useMyMissionsDnd({
         movedMissionId: id,
         dropColumnKey: dropColumn,
         orderedMissionIds: finalItems
-      }).catch(() => setOverride(null));
+      }).catch(() => setOptimisticOverride(null));
     },
-    [columns, findColumn, onDrop, override]
+    [columns, onDrop, setOptimisticOverride]
   );
 
   const handleDragCancel = useCallback(() => {
     setActiveId(null);
-    setOverride(null);
-  }, []);
+    setOptimisticOverride(null);
+  }, [setOptimisticOverride]);
 
   return {
     activeId,
