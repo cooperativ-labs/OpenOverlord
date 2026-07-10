@@ -231,7 +231,6 @@ export function ObjectiveAttachmentUploadTrigger({
       >
         <Plus size={18} />
       </Button>
-      <div className="min-w-0 flex-1" />
       {attachmentsCount > 0 ? (
         <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums leading-none">
           {attachmentsCount}
