@@ -3,30 +3,35 @@ import { useState } from 'react';
 
 import { RunnerStatusModal } from '@/components/runner/RunnerStatusModal';
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
-import { useRunnerStatus } from '@/lib/queries';
+import { useRunnerServiceStatus, useRunnerStatus } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
-type RunnerState = 'active' | 'idle' | 'error';
+type RunnerState = 'active' | 'ready' | 'idle' | 'error';
 
 function deriveState({
   isError,
-  activeCount
+  activeCount,
+  serviceRunning
 }: {
   isError: boolean;
   activeCount: number;
+  serviceRunning: boolean;
 }): RunnerState {
   if (isError) return 'error';
-  return activeCount > 0 ? 'active' : 'idle';
+  if (activeCount > 0) return 'active';
+  return serviceRunning ? 'ready' : 'idle';
 }
 
 const STATE_LABEL: Record<RunnerState, string> = {
   active: 'Runner active',
+  ready: 'Runner ready',
   idle: 'Runner idle',
   error: 'Runner unavailable'
 };
 
 const DOT_CLASS: Record<RunnerState, string> = {
   active: 'bg-emerald-500',
+  ready: 'bg-emerald-500/70',
   idle: 'bg-muted-foreground/40',
   error: 'bg-amber-500'
 };
@@ -34,13 +39,17 @@ const DOT_CLASS: Record<RunnerState, string> = {
 /**
  * Subtle runner status box for the sidebar footer (between Settings and the user
  * menu). Shows a quiet indicator of the runner queue; clicking opens a modal
- * with detail and control over the persistent runner service.
+ * with detail and control over the persistent runner service. In the desktop
+ * shell the local service state feeds in too, so a running persistent runner
+ * reads as "ready" instead of "idle" while it waits for work.
  */
 export function RunnerStatusBox() {
   const [open, setOpen] = useState(false);
   const runner = useRunnerStatus();
+  const service = useRunnerServiceStatus();
   const activeCount = runner.data?.activeCount ?? 0;
-  const state = deriveState({ isError: runner.isError, activeCount });
+  const serviceRunning = service.data?.running === 'running';
+  const state = deriveState({ isError: runner.isError, activeCount, serviceRunning });
 
   return (
     <>

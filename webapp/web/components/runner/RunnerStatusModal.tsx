@@ -72,6 +72,7 @@ function CommandRow({ command }: { command: string }) {
 function ServiceControls() {
   const bridge = typeof window === 'undefined' ? undefined : window.overlord;
   const runnerService = bridge?.runnerService;
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<ServiceStatus | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -84,12 +85,18 @@ function ServiceControls() {
       const result = await runnerService.getStatus();
       if (!result.ok) setError(result.error ?? 'Failed to read runner service status.');
       setStatus((result.status as ServiceStatus | null) ?? null);
+      // Keep the sidebar runner box (useRunnerServiceStatus) in step with what
+      // the control panel just observed, without waiting for its next poll.
+      queryClient.setQueryData(
+        keys.runnerServiceStatus,
+        result.ok ? (result.status ?? null) : null
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to read runner service status.');
     } finally {
       setBusy(null);
     }
-  }, [runnerService]);
+  }, [runnerService, queryClient]);
 
   useEffect(() => {
     void refresh();

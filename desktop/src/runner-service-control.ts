@@ -37,6 +37,10 @@ export interface RunnerServiceControlResult {
  */
 function resolveControlEnv({ shellOrigin }: { shellOrigin: string }): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
+  // The bundled CLI is executed through the Electron binary (`process.execPath`).
+  // Without this flag Electron boots a second GUI app instance instead of running
+  // the script, so every control call would flash a dock icon and return nothing.
+  env.ELECTRON_RUN_AS_NODE = '1';
   try {
     const active = getPublicActiveBackend({ shellOrigin });
     env.OVERLORD_BACKEND_URL = active.backendUrl;

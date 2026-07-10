@@ -235,6 +235,9 @@ function runOvldCommand({
     const child = spawn(invocation.command, [...invocation.argsPrefix, ...args], {
       env: {
         ...process.env,
+        // The bundled-CLI fallback runs the script through the Electron binary;
+        // without this flag Electron opens a new GUI instance instead of the CLI.
+        ELECTRON_RUN_AS_NODE: '1',
         OVERLORD_DESKTOP_VERSION: app.getVersion()
       },
       stdio: ['ignore', 'pipe', 'pipe']

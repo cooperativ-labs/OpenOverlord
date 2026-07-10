@@ -249,6 +249,17 @@ service that runs the supervisor loop in the background.
   uninstall through the `window.overlord.runnerService` bridge, which spawns these
   same CLI commands. The desktop app never claims queue work or supervises the
   loop itself.
+- **Publisher identity (macOS)**: macOS attributes a LaunchAgent's background item,
+  login item, and automation prompt to the code-signing identity of its program.
+  When the Overlord desktop app is present, both desktop-driven installs and plain
+  `ovld runner service install` runs execute the supervisor through the signed
+  Overlord app binary (as Node, via `ELECTRON_RUN_AS_NODE`), so the service
+  registers under **Overlord** rather than the plain `node` binary's **Node.js
+  Foundation** signature. A CLI-only install with no desktop app present falls back
+  to the `node` binary and registers under "Node.js Foundation"; `ovld runner
+  service status` reports the resolved `publisher` and, when applicable, a
+  `reinstallHint` to re-register it under Overlord by reinstalling with the desktop
+  app present.
 
 ## Acceptance Criteria
 

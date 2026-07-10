@@ -147,7 +147,7 @@ function main(): void {
   const args = parseArgs(process.argv.slice(2));
   const version = resolveCliVersion();
   const publishEnv = stripAuthTokens();
-  const publishArgs = ['publish', ...(args.otp ? [`--otp=${args.otp}`] : [])];
+  const publishArgs = ['publish', '--tag', 'latest', ...(args.otp ? [`--otp=${args.otp}`] : [])];
 
   ensureBuildOutput();
 

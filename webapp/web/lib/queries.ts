@@ -130,6 +130,7 @@ export const keys = {
   objectiveAttachments: (objectiveId: string) => ['objective', objectiveId, 'attachments'] as const,
   agentCatalog: ['agent-catalog'] as const,
   runnerStatus: ['runner', 'status'] as const,
+  runnerServiceStatus: ['runner', 'service-status'] as const,
   launchSettings: ['launch-settings'] as const,
   launchPreference: (projectId: string) => ['project', projectId, 'launch-preference'] as const,
   projectExecutionTarget: (projectId: string) =>
@@ -169,6 +170,27 @@ export const useRunnerStatus = (options?: { enabled?: boolean; refetchInterval?:
     enabled: options?.enabled ?? true,
     refetchInterval: options?.refetchInterval ?? 15_000
   });
+
+/**
+ * Local persistent-runner service state via the desktop bridge (`ovld runner
+ * service status`). Resolves to null in a plain browser or when the bridge call
+ * fails, so consumers can quietly fall back to queue-only signals.
+ */
+export const useRunnerServiceStatus = (options?: { enabled?: boolean }) => {
+  const runnerService = typeof window === 'undefined' ? undefined : window.overlord?.runnerService;
+  return useQuery({
+    queryKey: keys.runnerServiceStatus,
+    queryFn: async () => {
+      if (!runnerService) return null;
+      const result = await runnerService.getStatus();
+      return result.ok ? (result.status ?? null) : null;
+    },
+    enabled: (options?.enabled ?? true) && Boolean(runnerService),
+    // Each read spawns a CLI process; poll gently and reuse across consumers.
+    refetchInterval: 60_000,
+    staleTime: 30_000
+  });
+};
 
 export const useUserTokens = () =>
   useQuery({ queryKey: keys.userTokens, queryFn: api.listUserTokens });

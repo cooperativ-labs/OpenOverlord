@@ -36,6 +36,7 @@ import { reportRunnerResourceObservations } from './resource-observations.js';
 import {
   applyPollJitter,
   buildRunnerServiceEnv,
+  describeServicePublisher,
   patchRunnerServiceState,
   readRunnerServiceState,
   resolveOvldInvocation,
@@ -1556,6 +1557,13 @@ async function runRunnerServiceCommand({
   if (action === 'status') {
     const runState = await manager.status();
     const state = readRunnerServiceState();
+    const { publisher, needsReinstallForOverlord } = describeServicePublisher({
+      execProgram: state.execProgram
+    });
+    const reinstallHint =
+      runState.installed && needsReinstallForOverlord
+        ? 'This service is registered under "Node.js Foundation" because it runs the plain node binary. Reinstall it from the Overlord desktop app (or with the desktop app present) to re-register it under "Overlord".'
+        : null;
     const payload = {
       supported: true,
       kind: manager.kind,
@@ -1569,7 +1577,9 @@ async function runRunnerServiceCommand({
       lastClaimedAt: state.lastClaimedAt,
       lastLaunchedAt: state.lastLaunchedAt,
       lastError: state.lastError,
-      currentPollIntervalMs: state.currentPollIntervalMs
+      currentPollIntervalMs: state.currentPollIntervalMs,
+      publisher,
+      reinstallHint
     };
     if (json) printJson(payload);
     else {
@@ -1577,6 +1587,7 @@ async function runRunnerServiceCommand({
         Service: `${manager.kind} (${manager.identifier})`,
         Installed: runState.installed ? 'yes' : 'no',
         Running: runState.running,
+        Publisher: publisher === 'unknown' ? '(unknown)' : publisher,
         Backend: state.backendUrl ?? '(unknown)',
         'Last heartbeat': state.lastHeartbeatAt ?? '(never)',
         'Last launched': state.lastLaunchedAt ?? '(never)',
@@ -1585,6 +1596,7 @@ async function runRunnerServiceCommand({
           : '(idle)',
         'Last error': state.lastError ?? '(none)'
       });
+      if (reinstallHint) console.log(`\nNote: ${reinstallHint}`);
     }
     return;
   }
@@ -1593,7 +1605,10 @@ async function runRunnerServiceCommand({
     const config = loadConfig();
     const backendUrl = resolveBackendUrl(config);
     const invocation = resolveOvldInvocation();
-    const env = buildRunnerServiceEnv({ backendUrl });
+    const env = buildRunnerServiceEnv({
+      backendUrl,
+      runAsElectronNode: invocation.runAsElectronNode
+    });
     const autoStart = !flagBoolean(parsed.flags, '--no-start');
     await manager.install({ invocation, env, autoStart });
     writeRunnerServiceState({

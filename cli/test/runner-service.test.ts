@@ -7,6 +7,7 @@ import test from 'node:test';
 import {
   applyPollJitter,
   buildRunnerServiceEnv,
+  describeServicePublisher,
   emptyRunnerServiceState,
   FAST_POLL_INTERVAL_MS,
   IDLE_BACKOFF_MS,
@@ -15,6 +16,7 @@ import {
   readRunnerServiceState,
   renderLaunchdPlist,
   renderSystemdUnit,
+  resolveOverlordAppInvocation,
   resolveOvldInvocation,
   resolveServiceManager,
   selectBasePollIntervalMs,
@@ -74,10 +76,109 @@ test('resolveOvldInvocation prefers an explicit override, otherwise re-runs the 
   }
 });
 
+test('resolveOverlordAppInvocation finds the installed app binary + CLI on macOS', () => {
+  const home = '/Users/tester';
+  const appDir = `${home}/Applications/Overlord.app`;
+  const program = `${appDir}/Contents/MacOS/Overlord`;
+  const script = `${appDir}/Contents/Resources/cli/bin/ovld.mjs`;
+  const present = new Set([program, script]);
+  const resolved = resolveOverlordAppInvocation({
+    platform: 'darwin',
+    homedir: home,
+    exists: (candidate: string) => present.has(candidate)
+  });
+  assert.deepEqual(resolved, {
+    program,
+    args: [script, 'runner', 'supervise'],
+    runAsElectronNode: true
+  });
+});
+
+test('resolveOverlordAppInvocation returns null off macOS or when the app is absent', () => {
+  assert.equal(resolveOverlordAppInvocation({ platform: 'linux', exists: () => true }), null);
+  assert.equal(resolveOverlordAppInvocation({ platform: 'darwin', exists: () => false }), null);
+});
+
+test('resolveOvldInvocation keeps the Electron binary when the installer runs as Node', () => {
+  const priorExec = process.env.OVLD_RUNNER_EXEC;
+  const priorElectron = process.env.ELECTRON_RUN_AS_NODE;
+  try {
+    delete process.env.OVLD_RUNNER_EXEC;
+    process.env.ELECTRON_RUN_AS_NODE = '1';
+    const resolved = resolveOvldInvocation(
+      ['/App/Contents/MacOS/Overlord', '/App/Contents/Resources/cli/bin/ovld.mjs'],
+      '/App/Contents/MacOS/Overlord'
+    );
+    assert.equal(resolved.program, '/App/Contents/MacOS/Overlord');
+    assert.equal(resolved.runAsElectronNode, true);
+  } finally {
+    if (priorExec === undefined) delete process.env.OVLD_RUNNER_EXEC;
+    else process.env.OVLD_RUNNER_EXEC = priorExec;
+    if (priorElectron === undefined) delete process.env.ELECTRON_RUN_AS_NODE;
+    else process.env.ELECTRON_RUN_AS_NODE = priorElectron;
+  }
+});
+
+test('describeServicePublisher flags node-attributed macOS services for reinstall', () => {
+  assert.deepEqual(
+    describeServicePublisher({ execProgram: '/usr/local/bin/node', platform: 'darwin' }),
+    { publisher: 'node', needsReinstallForOverlord: true }
+  );
+  assert.deepEqual(
+    describeServicePublisher({
+      execProgram: '/Applications/Overlord.app/Contents/MacOS/Overlord',
+      platform: 'darwin'
+    }),
+    { publisher: 'overlord', needsReinstallForOverlord: false }
+  );
+  assert.deepEqual(describeServicePublisher({ execProgram: null, platform: 'darwin' }), {
+    publisher: 'unknown',
+    needsReinstallForOverlord: false
+  });
+  assert.deepEqual(describeServicePublisher({ execProgram: '/usr/bin/node', platform: 'linux' }), {
+    publisher: 'unknown',
+    needsReinstallForOverlord: false
+  });
+});
+
+test('buildRunnerServiceEnv forwards ELECTRON_RUN_AS_NODE for app-binary invocations', () => {
+  const prior = process.env.ELECTRON_RUN_AS_NODE;
+  try {
+    delete process.env.ELECTRON_RUN_AS_NODE;
+    assert.equal(
+      buildRunnerServiceEnv({ backendUrl: 'https://api.example.test', runAsElectronNode: true })
+        .ELECTRON_RUN_AS_NODE,
+      '1'
+    );
+  } finally {
+    if (prior === undefined) delete process.env.ELECTRON_RUN_AS_NODE;
+    else process.env.ELECTRON_RUN_AS_NODE = prior;
+  }
+});
+
 test('buildRunnerServiceEnv captures the backend URL and a non-empty PATH', () => {
   const env = buildRunnerServiceEnv({ backendUrl: 'https://api.example.test' });
   assert.equal(env.OVERLORD_BACKEND_URL, 'https://api.example.test');
   assert.ok(env.PATH && env.PATH.length > 0);
+});
+
+test('buildRunnerServiceEnv forwards ELECTRON_RUN_AS_NODE only when the installer runs under it', () => {
+  const prior = process.env.ELECTRON_RUN_AS_NODE;
+  try {
+    delete process.env.ELECTRON_RUN_AS_NODE;
+    assert.equal(
+      buildRunnerServiceEnv({ backendUrl: 'https://api.example.test' }).ELECTRON_RUN_AS_NODE,
+      undefined
+    );
+    process.env.ELECTRON_RUN_AS_NODE = '1';
+    assert.equal(
+      buildRunnerServiceEnv({ backendUrl: 'https://api.example.test' }).ELECTRON_RUN_AS_NODE,
+      '1'
+    );
+  } finally {
+    if (prior === undefined) delete process.env.ELECTRON_RUN_AS_NODE;
+    else process.env.ELECTRON_RUN_AS_NODE = prior;
+  }
 });
 
 test('renderLaunchdPlist embeds the label, program args, and env, and escapes XML', () => {

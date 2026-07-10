@@ -151,6 +151,48 @@ export function applyPollJitter(intervalMs: number, random: () => number = Math.
 export interface RunnerServiceInvocation {
   program: string;
   args: string[];
+  /**
+   * True when `program` is the Electron/Overlord app binary and must be run as
+   * Node (`ELECTRON_RUN_AS_NODE=1`) instead of booting the GUI. Recording the
+   * Overlord binary also makes macOS register the background item, login item,
+   * and automation prompt under "Overlord" rather than the plain `node`
+   * binary's "Node.js Foundation" signature.
+   */
+  runAsElectronNode?: boolean;
+}
+
+/**
+ * If the Overlord desktop app is installed, resolve an invocation that runs the
+ * persistent service through the app's own bundled binary and CLI (as Node).
+ * macOS attributes a LaunchAgent's background item / automation prompt to the
+ * code-signing identity of `ProgramArguments[0]`; using the signed Overlord
+ * binary registers the service under "Overlord" instead of "Node.js Foundation".
+ * Both the binary and the app-bundled CLI script are used so the runtime and its
+ * native modules match the app's Electron ABI. Returns null when the app is not
+ * found (e.g. a CLI-only install with no desktop app present).
+ */
+export function resolveOverlordAppInvocation({
+  platform = process.platform,
+  homedir = os.homedir(),
+  exists = existsSync
+}: {
+  platform?: NodeJS.Platform;
+  homedir?: string;
+  exists?: (candidate: string) => boolean;
+} = {}): RunnerServiceInvocation | null {
+  if (platform !== 'darwin') return null;
+  const appDirs = [
+    '/Applications/Overlord.app',
+    path.join(homedir, 'Applications', 'Overlord.app')
+  ];
+  for (const appDir of appDirs) {
+    const program = path.join(appDir, 'Contents', 'MacOS', 'Overlord');
+    const script = path.join(appDir, 'Contents', 'Resources', 'cli', 'bin', 'ovld.mjs');
+    if (exists(program) && exists(script)) {
+      return { program, args: [script, 'runner', 'supervise'], runAsElectronNode: true };
+    }
+  }
+  return null;
 }
 
 /**
@@ -159,6 +201,11 @@ export interface RunnerServiceInvocation {
  * re-run the current CLI entrypoint under the same Node runtime. Persistent
  * services start with a sparse environment, so we always record an absolute
  * program path rather than relying on `PATH` resolution of a bare `ovld`.
+ *
+ * When the installer already runs under Electron-as-Node (the desktop app path),
+ * `process.execPath` is the Overlord binary — keep using it. Otherwise, for a
+ * plain terminal install, prefer the installed Overlord app binary when present
+ * so the service registers under "Overlord" rather than "Node.js Foundation".
  */
 export function resolveOvldInvocation(
   argv: string[] = process.argv,
@@ -169,10 +216,40 @@ export function resolveOvldInvocation(
     return { program: override, args: ['runner', 'supervise'] };
   }
   const scriptPath = argv[1] ? path.resolve(argv[1]) : '';
+  if (process.env.ELECTRON_RUN_AS_NODE) {
+    return scriptPath
+      ? { program: execPath, args: [scriptPath, 'runner', 'supervise'], runAsElectronNode: true }
+      : { program: execPath, args: ['runner', 'supervise'], runAsElectronNode: true };
+  }
+  const appInvocation = resolveOverlordAppInvocation();
+  if (appInvocation) return appInvocation;
   if (scriptPath) {
     return { program: execPath, args: [scriptPath, 'runner', 'supervise'] };
   }
   return { program: execPath, args: ['runner', 'supervise'] };
+}
+
+/**
+ * Describe which code-signing identity macOS will attribute the installed
+ * service to, based on the recorded exec program. Terminal installs that predate
+ * app-binary resolution still run the plain `node` binary and register under
+ * "Node.js Foundation"; reinstalling from a machine with the desktop app present
+ * re-registers them under "Overlord". A no-op on non-macOS hosts.
+ */
+export function describeServicePublisher({
+  execProgram,
+  platform = process.platform
+}: {
+  execProgram: string | null;
+  platform?: NodeJS.Platform;
+}): { publisher: 'overlord' | 'node' | 'unknown'; needsReinstallForOverlord: boolean } {
+  if (platform !== 'darwin' || !execProgram) {
+    return { publisher: 'unknown', needsReinstallForOverlord: false };
+  }
+  if (execProgram.includes('.app/Contents/MacOS/')) {
+    return { publisher: 'overlord', needsReinstallForOverlord: false };
+  }
+  return { publisher: 'node', needsReinstallForOverlord: true };
 }
 
 /**
@@ -182,10 +259,12 @@ export function resolveOvldInvocation(
  */
 export function buildRunnerServiceEnv({
   backendUrl,
-  overlordHome
+  overlordHome,
+  runAsElectronNode
 }: {
   backendUrl: string;
   overlordHome?: string | null;
+  runAsElectronNode?: boolean;
 }): Record<string, string> {
   const env: Record<string, string> = {
     OVERLORD_BACKEND_URL: backendUrl,
@@ -195,6 +274,13 @@ export function buildRunnerServiceEnv({
   if (home) env.OVLD_HOME = path.resolve(home);
   const token = process.env.OVERLORD_USER_TOKEN?.trim() || process.env.OVLD_USER_TOKEN?.trim();
   if (token) env.OVERLORD_USER_TOKEN = token;
+  // When the service program is the Overlord/Electron binary — either because the
+  // install ran inside the desktop shell (Electron executing this script as Node)
+  // or because a terminal install resolved the installed app binary — the unit
+  // must carry this flag or launchd/systemd would boot GUI app instances on a
+  // KeepAlive loop instead of the supervisor. It also makes macOS register the
+  // background item and automation prompt under "Overlord" rather than "Node".
+  if (runAsElectronNode || process.env.ELECTRON_RUN_AS_NODE) env.ELECTRON_RUN_AS_NODE = '1';
   return env;
 }
 

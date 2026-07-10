@@ -133,7 +133,7 @@ When `--project-id` is omitted on an interactive terminal, the CLI prompts to pi
 | `ovld runner supervise` | Long-lived adaptive-polling loop for the persistent runner service; delegates each poll to the same claim-and-launch path as `ovld runner once` | — | `--json` |
 | `ovld runner service install` | Register and (by default) start the OS-level persistent runner service | — | `--no-start`, `--json` |
 | `ovld runner service start` / `stop` / `restart` | Control the registered persistent runner service | — | `--json` |
-| `ovld runner service status` | Show installed/running state, backend, last heartbeat/launch, and poll interval | — | `--json` |
+| `ovld runner service status` | Show installed/running state, macOS publisher attribution, backend, last heartbeat/launch, and poll interval | — | `--json` |
 | `ovld runner service uninstall` | Remove the OS-level persistent runner service | — | `--json` |
 
 The persistent runner service runs `ovld runner supervise` under a macOS `launchd`
