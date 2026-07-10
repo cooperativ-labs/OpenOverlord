@@ -5,12 +5,13 @@ import {
   verifyUserToken
 } from '@overlord/auth';
 import { resolveAdapter } from '@overlord/database';
-import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
+import { toNodeHandler } from 'better-auth/node';
 import type { NextFunction, Request, Response } from 'express';
 
 import { createAuth } from '../auth/src/auth/config.ts';
 
 import { resolveAllowedBrowserOrigins } from './http/browser-origins.ts';
+import { resolveSessionFromBrowserRequest } from './http/bearer-session.ts';
 import { resolveAuthBaseUrl } from './http/public-backend-url.ts';
 import { clientDeviceFromRequest } from './http/client-device.ts';
 import { cascadeDeleteAccount } from './account-deletion.ts';
@@ -214,7 +215,7 @@ export async function requireAuthenticatedSession(
       // 1. Browser session auth (Better Auth cookies). The CLI protocol/runner
       //    surface never carries cookies, so skip the session lookup for it.
       if (!nonBrowser) {
-        const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+        const session = await resolveSessionFromBrowserRequest({ auth, req });
         if (session) {
           setActiveProfileId(session.user.id);
           // `null` means the profile has no active workspace membership at all

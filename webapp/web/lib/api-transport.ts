@@ -3,6 +3,7 @@ import {
   clearInMemoryAuthTokens,
   getActiveWorkspaceHeader,
   getAuthorizationHeader,
+  isRemoteBackend,
   resolveApiUrl
 } from './api-base.ts';
 import { remoteBackendDeviceHeaders } from './device-identity.ts';
@@ -40,6 +41,10 @@ export async function fetchApi(path: string, init: RequestInit = {}): Promise<Re
   });
 
   if (response.status !== 401 || !sentAuthorization) return response;
+
+  // Cross-origin cloud clients cannot recover via cookies; clearing the bearer
+  // token here would strand an otherwise valid hosted-web session.
+  if (isRemoteBackend()) return response;
 
   clearInMemoryAuthTokens();
   const retryHeaders = new Headers(init.headers);
