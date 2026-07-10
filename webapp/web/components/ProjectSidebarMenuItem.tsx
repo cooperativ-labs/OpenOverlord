@@ -138,13 +138,14 @@ export function ProjectSidebarMenuItem({
       <span className="inline-flex min-w-0 items-center gap-1.5 group-data-[collapsible=icon]:hidden">
         <span className="truncate">{project.name}</span>
         {hasRunningTimer ? (
-          <span
-            className="inline-flex shrink-0 text-red-700 h-4 w-4"
-            aria-label="Running project timer"
-            title="Running project timer"
-          >
-            <Clock3 size={4} aria-hidden />
-          </span>
+          // <span
+          //   className="inline-flex shrink-0 text-red-700 h-4 w-4"
+          //   aria-label="Running project timer"
+          //   title="Running project timer"
+          // >
+          <Clock3 aria-hidden className="h-4 w-4" aria-label="Running project timer"
+            size={16} />
+          // </span>
         ) : null}
       </span>
     </SidebarLinkMenuButton>
