@@ -1,4 +1,4 @@
-import { Settings } from 'lucide-react';
+import { ChevronDown, Settings } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { ProjectTimerPopover } from '@/components/everhour/ProjectTimerPopover';
@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
@@ -38,7 +39,7 @@ export function ProjectSettingsSection({
 }: ProjectSettingsSectionProps) {
   const updateProject = useUpdateProject(projectId);
   const projectSettings = useProjectSettings();
-  const { repository } = useProjectRepositoryContext();
+  const { repository, resources } = useProjectRepositoryContext();
   const profileQ = useProfile();
   const [name, setName] = useState(initialName);
   const [savedName, setSavedName] = useState(initialName);
@@ -118,6 +119,19 @@ export function ProjectSettingsSection({
   const ideIcon = getEditorSchemeIcon(editorScheme);
   const openInIdeLabel = `Open in ${ideLabel}`;
 
+  const ideResources = resources
+    .filter(resource => resource.path)
+    .map(resource => ({
+      id: resource.id,
+      label: resource.label?.trim() || resource.resourceKey,
+      href: buildEditorFileHref(resource.path, editorScheme)
+    }));
+  const hasMultipleIdeResources = ideResources.length > 1;
+
+  function openInIde(href: string) {
+    window.open(href, '_blank', 'noopener,noreferrer');
+  }
+
   return (
     <section className="border-b border-(--color-border) px-5 py-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -179,33 +193,66 @@ export function ProjectSettingsSection({
               </Button>
             ) : null}
             {ideHref ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size={ideIcon ? 'icon-sm' : 'sm'}
-                      className={cn('shrink-0', !ideIcon && 'gap-1.5')}
-                      onClick={() => window.open(ideHref, '_blank', 'noopener,noreferrer')}
-                      aria-label={openInIdeLabel}
-                    >
-                      {ideIcon ? (
-                        <img
-                          src={ideIcon.src}
-                          alt=""
-                          width={14}
-                          height={14}
-                          className={cn('shrink-0', ideIcon.invertDark ? 'dark:invert' : '')}
-                        />
-                      ) : (
-                        <>Open in {ideLabel}</>
-                      )}
-                    </Button>
-                  }
-                />
-                <TooltipContent>{openInIdeLabel}</TooltipContent>
-              </Tooltip>
+              <div className="flex shrink-0 items-center">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size={ideIcon ? 'icon-sm' : 'sm'}
+                        className={cn(
+                          'shrink-0',
+                          !ideIcon && 'gap-1.5',
+                          hasMultipleIdeResources && 'rounded-r-none border-r-0'
+                        )}
+                        onClick={() => openInIde(ideHref)}
+                        aria-label={openInIdeLabel}
+                      >
+                        {ideIcon ? (
+                          <img
+                            src={ideIcon.src}
+                            alt=""
+                            width={14}
+                            height={14}
+                            className={cn('shrink-0', ideIcon.invertDark ? 'dark:invert' : '')}
+                          />
+                        ) : (
+                          <>Open in {ideLabel}</>
+                        )}
+                      </Button>
+                    }
+                  />
+                  <TooltipContent>{openInIdeLabel}</TooltipContent>
+                </Tooltip>
+                {hasMultipleIdeResources ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-sm"
+                          className="w-6 shrink-0 rounded-l-none px-0"
+                          aria-label={`Open a resource in ${ideLabel}`}
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </Button>
+                      }
+                    />
+                    <DropdownMenuContent align="start">
+                      {ideResources.map(resource => (
+                        <DropdownMenuItem
+                          key={resource.id}
+                          onClick={() => openInIde(resource.href)}
+                        >
+                          {resource.label}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : null}
+              </div>
             ) : null}
             <ProjectTimerPopover projectId={projectId} />
           </div>

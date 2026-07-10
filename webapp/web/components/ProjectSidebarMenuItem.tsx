@@ -143,7 +143,7 @@ export function ProjectSidebarMenuItem({
             aria-label="Running project timer"
             title="Running project timer"
           >
-            <Clock3 className="size-3" aria-hidden />
+            <Clock3 className="size-2" aria-hidden />
           </span>
         ) : null}
       </span>
