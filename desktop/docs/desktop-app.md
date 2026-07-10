@@ -65,7 +65,10 @@ stays out of the way.
    `OVERLORD_WEBAPP_DIST` set and SQL Studio disabled.
 4. Poll `GET /api/health` until ready (30s budget), then load
    `http://<host>:<port>/`. On failure, show a Retry/Quit dialog.
-5. On `before-quit`, stop the server. Closing the window quits the app.
+5. On `before-quit`, stop the server. Closing the main window leaves the shell
+   running when its hidden Quick Task window is present; activating the app or
+   launching it again restores or recreates the main window. Quitting the app
+   stops the server.
 
 The server is the **same bundle** `ovld serve` runs. Using a `utilityProcess`
 (rather than a separate Node binary) means a single runtime is shipped, signed,

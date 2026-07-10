@@ -53,10 +53,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+    showOrCreateMainWindow();
   });
 
   app
@@ -142,8 +139,19 @@ async function boot(): Promise<void> {
   cliUpdater.startAutomaticChecks();
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) void openMainWindow({ reloadExisting: false });
+    showOrCreateMainWindow();
   });
+}
+
+function showOrCreateMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    void openMainWindow({ reloadExisting: false });
+    return;
+  }
+
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
 }
 
 function configureSessionPolicy(active: ReturnType<typeof resolveActiveBackend>): void {
