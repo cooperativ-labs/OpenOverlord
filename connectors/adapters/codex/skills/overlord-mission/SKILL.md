@@ -11,7 +11,7 @@ description: Codex adapter for the shared Overlord mission workflow.
 - Follow-up capture: the installed `UserPromptSubmit` hook records ordinary post-delivery user messages. Do not manually publish `user_follow_up` unless the hook is unavailable.
 - Permission capture: the installed `PermissionRequest` hook publishes permission activity through `ovld protocol`.
 - Native resume: the follow-up hook reports Codex thread/session IDs from `CODEX_THREAD_ID`, `CODEX_SESSION_ID`, or rollout files under `~/.codex/sessions`.
-- MCP bridge: the installed `overlord` MCP server exposes attach, update, and deliver helpers backed by `ovld protocol`.
+- MCP bridge: the installed `overlord` MCP server exposes the hosted-compatible `overlord_*` mission tool catalog backed by `ovld protocol`.
 - Authentication: use shared `ovld auth` credentials, Overlord-launched environment variables, or `Overlord_USER_TOKEN` / `OVLD_USER_TOKEN`.
 - Do not create or rely on a repository-local `AGENTS.md` for Overlord itself.
 

@@ -53,6 +53,11 @@ The current tool catalog is mission-first:
 - `overlord_update_session`
 - `overlord_deliver_session`
 
+The local connector MCP bridge scripts for Codex, Cursor, and Antigravity
+advertise the same canonical tool names and input contract shape. Backend tests
+compare those local `tools/list` responses against this hosted registry so a new
+hosted tool cannot be added without updating shipped connector shims.
+
 Hosted MCP cannot observe an agent's local current working directory. Tools
 that create missions require explicit `projectId`; clients should call
 `overlord_resolve_project` first when project identity comes from an exposed

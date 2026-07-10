@@ -102,6 +102,8 @@ A minimal, audited surface the SPA **feature-detects** (`if (window.overlord)`):
 | `version` | the app version |
 | `chooseDirectory()` | native directory picker → absolute path or `null` |
 | `writeProjectMetadata(payload)` | write `.overlord/project.json` for a locally linked checkout after the backend resource is created |
+| `runnerService.getStatus()` | run `ovld runner service status --json` and return the parsed persistent-runner status |
+| `runnerService.install(opts)` / `start()` / `stop()` / `restart()` / `uninstall()` | drive the CLI-owned `ovld runner service <action>` operations as a subprocess (the shell never supervises the runner loop or generates service files itself) |
 | `openExternal(url)` | open an http(s) URL in the system browser |
 | `revealInFinder(path)` | reveal a path in the OS file manager |
 | `setNativeThemeSource(source)` | mirror the SPA theme (`light` / `dark` / `system`) to Electron `nativeTheme` for macOS vibrancy |

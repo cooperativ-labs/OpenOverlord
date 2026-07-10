@@ -130,6 +130,20 @@ When `--project-id` is omitted on an interactive terminal, the CLI prompts to pi
 | `ovld runner status` | Show runner identity and visible queue | — | `--json` |
 | `ovld runner clear` | Clear one active execution request | `objective_id` | `--project-id <id>`, `--json` |
 | `ovld runner clear-all` | Clear every active request visible to the runner | — | `--project-id <id>`, `--json` |
+| `ovld runner supervise` | Long-lived adaptive-polling loop for the persistent runner service; delegates each poll to the same claim-and-launch path as `ovld runner once` | — | `--json` |
+| `ovld runner service install` | Register and (by default) start the OS-level persistent runner service | — | `--no-start`, `--json` |
+| `ovld runner service start` / `stop` / `restart` | Control the registered persistent runner service | — | `--json` |
+| `ovld runner service status` | Show installed/running state, backend, last heartbeat/launch, and poll interval | — | `--json` |
+| `ovld runner service uninstall` | Remove the OS-level persistent runner service | — | `--json` |
+
+The persistent runner service runs `ovld runner supervise` under a macOS `launchd`
+LaunchAgent (`io.overlord.runner`) or a Linux `systemd --user` unit
+(`overlord-runner.service`). It backs off from 3s to 10s polling after two hours
+with no launched job and stores local diagnostic state in
+`~/.ovld/runner-service.json`. Windows is not yet supported; use `ovld runner start`
+for a foreground runner there. Service definition files embed a captured
+environment snapshot including the user token, so they are written owner-only
+(mode `0600`).
 
 ---
 

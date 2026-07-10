@@ -18,7 +18,7 @@ import {
   requireFlag
 } from './args.js';
 import { type BranchAutomationPayload, prepareMissionBranch } from './branch-preparation.js';
-import { isLoopbackBackendUrl, loadConfig } from './config.js';
+import { isLoopbackBackendUrl, loadConfig, resolveBackendUrl } from './config.js';
 import { clientDeviceIdentity } from './device-identity.js';
 import {
   discoverProjectOnClient,
@@ -33,6 +33,16 @@ import { pruneStaleProjectTmp } from './project-tmp.js';
 import { printProtocolHelp } from './protocol-help.js';
 import { recordTouchedFromPayload } from './record-touched.js';
 import { reportRunnerResourceObservations } from './resource-observations.js';
+import {
+  applyPollJitter,
+  buildRunnerServiceEnv,
+  patchRunnerServiceState,
+  readRunnerServiceState,
+  resolveOvldInvocation,
+  resolveServiceManager,
+  selectBasePollIntervalMs,
+  writeRunnerServiceState
+} from './runner-service.js';
 import type { CliRuntime } from './runtime.js';
 import { promptForProject } from './select-prompt.js';
 import {
@@ -1322,9 +1332,14 @@ async function runRunnerCommand({
     else console.log(`Cleared ${asRecord(result).cleared ?? 0} execution request(s).`);
     return;
   }
-  if (sub !== 'once' && sub !== 'start') {
+  if (sub === 'service') {
+    await runRunnerServiceCommand({ parsed, json });
+    return;
+  }
+  if (sub !== 'once' && sub !== 'start' && sub !== 'supervise') {
     throw new CliError({
-      message: 'Usage: ovld runner once|start|status|clear <objective_id>|clear-all'
+      message:
+        'Usage: ovld runner once|start|supervise|status|clear <objective_id>|clear-all|service <install|start|stop|restart|status|uninstall>'
     });
   }
 
@@ -1464,10 +1479,163 @@ async function runRunnerCommand({
     return;
   }
 
+  if (sub === 'supervise') {
+    await runRunnerSupervisor({ runOnce, json });
+    return;
+  }
+
   const intervalMs = Number.parseInt(flagValue(parsed.flags, '--poll-interval-ms') ?? '3000', 10);
   if (!json) console.log(`Runner started. Polling every ${intervalMs}ms for execution requests.`);
   while (true) {
     await runOnce();
     await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
+}
+
+/**
+ * The persistent-runner supervisor loop behind `ovld runner supervise`. It owns
+ * only the long-lived loop and adaptive polling; each poll delegates to the same
+ * one-shot claim-and-launch closure used by `ovld runner once`, so claim,
+ * worktree, terminal, and launch behavior are never duplicated. Backoff uses the
+ * "last launched job" clock (see planning/feature-plans/persistent-runner-cli.md).
+ */
+async function runRunnerSupervisor({
+  runOnce,
+  json
+}: {
+  runOnce: () => Promise<boolean>;
+  json: boolean;
+}): Promise<void> {
+  if (!json) console.log('Runner supervisor started. Adaptive polling for execution requests.');
+  for (;;) {
+    const now = new Date();
+    let launched = false;
+    let lastError: string | null = null;
+    try {
+      launched = await runOnce();
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+    const state = readRunnerServiceState();
+    const base = selectBasePollIntervalMs({
+      lastLaunchedAt: launched ? now.toISOString() : state.lastLaunchedAt,
+      now: now.getTime()
+    });
+    patchRunnerServiceState({
+      lastHeartbeatAt: now.toISOString(),
+      lastClaimedAt: launched ? now.toISOString() : state.lastClaimedAt,
+      lastLaunchedAt: launched ? now.toISOString() : state.lastLaunchedAt,
+      lastError: lastError ?? state.lastError,
+      currentPollIntervalMs: base
+    });
+    await new Promise(resolve => setTimeout(resolve, applyPollJitter(base)));
+  }
+}
+
+/**
+ * `ovld runner service <install|start|stop|restart|status|uninstall>` — manage
+ * the OS-level persistent runner service. The desktop Settings panel and the
+ * sidebar runner control invoke exactly these operations, so this is the single
+ * owner of local service lifecycle.
+ */
+async function runRunnerServiceCommand({
+  parsed,
+  json
+}: {
+  parsed: ReturnType<typeof parseArgs>;
+  json: boolean;
+}): Promise<void> {
+  const action = parsed.positional[1] ?? 'status';
+  const manager = resolveServiceManager();
+  if (!manager) {
+    throw new CliError({
+      message: `Persistent runner service is not supported on ${process.platform} yet. Use \`ovld runner start\` for a foreground runner.`
+    });
+  }
+
+  if (action === 'status') {
+    const runState = await manager.status();
+    const state = readRunnerServiceState();
+    const payload = {
+      supported: true,
+      kind: manager.kind,
+      identifier: manager.identifier,
+      unitPath: manager.unitPath(),
+      installed: runState.installed,
+      running: runState.running,
+      backendUrl: state.backendUrl,
+      installedAt: state.installedAt,
+      lastHeartbeatAt: state.lastHeartbeatAt,
+      lastClaimedAt: state.lastClaimedAt,
+      lastLaunchedAt: state.lastLaunchedAt,
+      lastError: state.lastError,
+      currentPollIntervalMs: state.currentPollIntervalMs
+    };
+    if (json) printJson(payload);
+    else {
+      printKeyValue({
+        Service: `${manager.kind} (${manager.identifier})`,
+        Installed: runState.installed ? 'yes' : 'no',
+        Running: runState.running,
+        Backend: state.backendUrl ?? '(unknown)',
+        'Last heartbeat': state.lastHeartbeatAt ?? '(never)',
+        'Last launched': state.lastLaunchedAt ?? '(never)',
+        'Poll interval': state.currentPollIntervalMs ? `${state.currentPollIntervalMs}ms` : '(idle)',
+        'Last error': state.lastError ?? '(none)'
+      });
+    }
+    return;
+  }
+
+  if (action === 'install') {
+    const config = loadConfig();
+    const backendUrl = resolveBackendUrl(config);
+    const invocation = resolveOvldInvocation();
+    const env = buildRunnerServiceEnv({ backendUrl });
+    const autoStart = !flagBoolean(parsed.flags, '--no-start');
+    await manager.install({ invocation, env, autoStart });
+    writeRunnerServiceState({
+      ...readRunnerServiceState(),
+      serviceKind: manager.kind,
+      serviceIdentifier: manager.identifier,
+      execProgram: invocation.program,
+      execArgs: invocation.args,
+      backendUrl,
+      installedAt: new Date().toISOString(),
+      lastError: null
+    });
+    const runState = await manager.status();
+    if (json) printJson({ started: autoStart, ...runState });
+    else
+      console.log(
+        `Persistent runner installed (${manager.kind}) and ${autoStart ? 'started' : 'not started'}.`
+      );
+    return;
+  }
+
+  if (action === 'start' || action === 'stop' || action === 'restart') {
+    await manager[action]();
+    const runState = await manager.status();
+    if (json) printJson({ action, ...runState });
+    else console.log(`Persistent runner ${action} complete (running: ${runState.running}).`);
+    return;
+  }
+
+  if (action === 'uninstall') {
+    await manager.uninstall();
+    writeRunnerServiceState({
+      ...readRunnerServiceState(),
+      serviceKind: null,
+      serviceIdentifier: null,
+      installedAt: null
+    });
+    if (json) printJson({ uninstalled: true });
+    else console.log('Persistent runner uninstalled.');
+    return;
+  }
+
+  throw new CliError({
+    message:
+      'Usage: ovld runner service <install|start|stop|restart|status|uninstall> [--no-start] [--json]'
+  });
 }

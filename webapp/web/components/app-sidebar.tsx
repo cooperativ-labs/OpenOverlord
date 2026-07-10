@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 import { NavUser } from '@/components/nav-user';
 import { OrganizationSwitcher } from '@/components/organization-switcher';
+import { RunnerStatusBox } from '@/components/runner/RunnerStatusBox';
 import { SettingsModal, type SettingsNavSection } from '@/components/settings/SettingsModal.tsx';
 import {
   Sidebar,
@@ -92,6 +93,8 @@ export function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
+
+          <RunnerStatusBox />
 
           <SidebarSeparator className="mx-0" />
           <NavUser onOpenSettings={openSettings} />

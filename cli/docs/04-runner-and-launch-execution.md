@@ -215,9 +215,46 @@ Manual Run:
 - Source should be recorded as `manual_run`, `api`, `cli`, or similar.
 - Repeated manual launches are allowed when intentionally requested.
 
+## Persistent Runner Service
+
+`ovld runner once` and `ovld runner start` require a terminal to stay open. The
+persistent runner service removes that requirement by installing an OS-level user
+service that runs the supervisor loop in the background.
+
+- `ovld runner supervise` is the long-lived loop. Each poll delegates to the same
+  one-shot claim-and-launch implementation used by `ovld runner once` — claim,
+  resource resolution, branch/worktree preparation, and terminal launch behavior
+  are never duplicated.
+- **Adaptive polling**: poll every 3 seconds while any job launched within the
+  last two hours, and every 10 seconds after two hours with no launched job.
+  Backoff is keyed on the "last launched job" clock (not "last poll with work"),
+  so a long run of empty polls does not keep the runner hot. Each interval adds
+  ~10% jitter so many local runners do not wake in lockstep against a shared
+  backend.
+- **Host integration**: macOS uses a user `launchd` LaunchAgent
+  (`~/Library/LaunchAgents/io.overlord.runner.plist`); Linux uses a
+  `systemd --user` unit (`~/.config/systemd/user/overlord-runner.service`).
+  Windows is deferred; use `ovld runner start` there. The installed service
+  invokes the resolved `ovld` executable with an explicit environment snapshot
+  (`OVERLORD_BACKEND_URL`, `OVLD_HOME` when set, the user token when present, and
+  a minimal `PATH`) because persistent services do not source interactive shell
+  startup files.
+- **Local state**: `~/.ovld/runner-service.json` records the installed service
+  kind/identifier, resolved exec path, backend URL, last heartbeat/claim/launch
+  timestamps, last error, and current poll interval. This is local diagnostic
+  state only, not a backend source of truth.
+- **Security**: the rendered service definition embeds the user token in its
+  environment, so the plist/unit file is written owner read/write only.
+- **Desktop control**: Overlord Desktop exposes install/start/stop/restart/status/
+  uninstall through the `window.overlord.runnerService` bridge, which spawns these
+  same CLI commands. The desktop app never claims queue work or supervises the
+  loop itself.
+
 ## Acceptance Criteria
 
 - `ovld runner once` can pick up a queued objective and launch the requested agent locally.
+- `ovld runner supervise` polls adaptively and delegates to the same claim-and-launch path as `ovld runner once`.
+- `ovld runner service install` registers a background service that survives terminal exit on macOS and Linux.
 - `ovld runner status` explains why a queued request is or is not claimable.
 - A missing primary directory produces a clear repair command.
 - Auto-advance queues the next objective without requiring a desktop app.

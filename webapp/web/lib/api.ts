@@ -163,6 +163,26 @@ async function parseErrorResponse(res: Response): Promise<ApiRequestError> {
   return new ApiRequestError(message, res.status, code, detail);
 }
 
+/** One queued/active execution request as surfaced by `/api/runner/status`. */
+export interface RunnerQueueRequest {
+  id: string;
+  projectId: string | null;
+  missionId: string | null;
+  objectiveId: string | null;
+  requestedAgent: string | null;
+  status: string;
+  workingDirectory: string | null;
+  lastError: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+/** Response shape of `GET /api/runner/status`. */
+export interface RunnerQueueStatus {
+  queue: RunnerQueueRequest[];
+  activeCount: number;
+}
+
 async function request<T>(
   method: string,
   url: string,
@@ -401,6 +421,9 @@ export const api = {
       `/api/projects/${id}/repository${query ? `?${query}` : ''}`
     );
   },
+  getRunnerStatus: () => request<RunnerQueueStatus>('GET', '/api/runner/status'),
+  clearRunnerQueue: (body: { objectiveId?: string; projectId?: string } = {}) =>
+    request<{ cleared: number }>('POST', '/api/runner/clear', body),
   listMissions: (projectId: string) =>
     request<MissionDto[]>('GET', `/api/projects/${projectId}/missions`),
   reorderBoardColumn: (projectId: string, body: ReorderBoardColumnBody) =>

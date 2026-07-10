@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
+import { DEFAULT_CLOUD_BACKEND_URL } from '@/lib/backend-defaults';
 import { cn } from '@/lib/utils';
 
 type BackendProfileRow = {
@@ -36,7 +37,7 @@ export function BackendLoginPanel({ embedded = false }: BackendLoginPanelProps) 
   const [activeUrl, setActiveUrl] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [label, setLabel] = useState('Overlord Cloud');
-  const [backendUrl, setBackendUrl] = useState('');
+  const [backendUrl, setBackendUrl] = useState(DEFAULT_CLOUD_BACKEND_URL);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
@@ -78,7 +79,7 @@ export function BackendLoginPanel({ embedded = false }: BackendLoginPanelProps) 
     setBusy(true);
     try {
       const created = await bridge.addBackend({ label, backendUrl });
-      setBackendUrl('');
+      setBackendUrl(DEFAULT_CLOUD_BACKEND_URL);
       setShowAddForm(false);
       await bridge.switchBackend?.(created.id);
     } catch (err) {
@@ -149,7 +150,7 @@ export function BackendLoginPanel({ embedded = false }: BackendLoginPanelProps) 
             <Label htmlFor="auth-backend-url">Backend URL</Label>
             <Input
               id="auth-backend-url"
-              placeholder="https://overlord-backend-production.up.railway.app"
+              placeholder={DEFAULT_CLOUD_BACKEND_URL}
               value={backendUrl}
               onChange={event => setBackendUrl(event.target.value)}
               disabled={isBusy}
@@ -170,6 +171,7 @@ export function BackendLoginPanel({ embedded = false }: BackendLoginPanelProps) 
               disabled={isBusy}
               onClick={() => {
                 setShowAddForm(false);
+                setBackendUrl(DEFAULT_CLOUD_BACKEND_URL);
                 setError(null);
               }}
             >
@@ -184,7 +186,10 @@ export function BackendLoginPanel({ embedded = false }: BackendLoginPanelProps) 
           variant="secondary"
           className="w-full"
           disabled={isBusy}
-          onClick={() => setShowAddForm(true)}
+          onClick={() => {
+            setBackendUrl(DEFAULT_CLOUD_BACKEND_URL);
+            setShowAddForm(true);
+          }}
         >
           <Plus className="size-4" />
           Add backend

@@ -37,6 +37,13 @@ declare global {
     updateCommand: string;
   };
 
+  /** Parsed result of a `ovld runner service <action>` control command. */
+  type RunnerServiceControlResult = {
+    ok: boolean;
+    status: Record<string, unknown> | null;
+    error: string | null;
+  };
+
   type DesktopBackendMode = 'local' | 'remote';
 
   type DesktopBackendInfo = {
@@ -78,6 +85,14 @@ declare global {
       executionTargetId?: string | null;
       isPrimary: boolean;
     }) => Promise<boolean>;
+    runnerService?: {
+      getStatus: () => Promise<RunnerServiceControlResult>;
+      install: (opts?: { noStart?: boolean }) => Promise<RunnerServiceControlResult>;
+      start: () => Promise<RunnerServiceControlResult>;
+      stop: () => Promise<RunnerServiceControlResult>;
+      restart: () => Promise<RunnerServiceControlResult>;
+      uninstall: () => Promise<RunnerServiceControlResult>;
+    };
     openExternal: (url: string) => Promise<boolean>;
     revealInFinder: (path: string) => Promise<boolean>;
     showNotification?: (payload: { title: string; body: string; tag?: string }) => Promise<boolean>;

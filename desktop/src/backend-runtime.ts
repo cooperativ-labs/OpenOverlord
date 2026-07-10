@@ -1,4 +1,4 @@
-import type { BrowserWindow } from 'electron';
+import { session, type BrowserWindow } from 'electron';
 
 import { activeBackendForRenderer, syncOverlordTomlForProfile } from './backend-config.js';
 import {
@@ -93,7 +93,18 @@ export function createBackendRuntimeController({
       active = resolveActiveBackend({ shellOrigin });
       const healthy = await bootServersForActiveProfile();
       if (!healthy) {
-        throw new Error(`Could not reach backend for profile ${profileId}`);
+        await clearDesktopAuthForProfile(active.id);
+        if (!devConnect && active.mode === 'local') {
+          const profile =
+            getBackendProfile(active.id) ?? getBackendProfile(LOCAL_BACKEND_PROFILE_ID)!;
+          stopServer();
+          shellOrigin = `http://${host}:${await findFreePort(preferredPort, host)}`;
+          active = resolveActiveBackend({ shellOrigin });
+          syncOverlordTomlForProfile({ profile, shellOrigin: active.shellOrigin });
+          startStaticServer({ host, port: portOf(active.shellOrigin) });
+        }
+        await recreateWindow({ shellOrigin, active });
+        return;
       }
       if (active.mode === 'local') {
         hydrateLocalDesktopSessionFromCliAuth({ backendUrl: active.apiBaseUrl });
@@ -184,6 +195,14 @@ function hostOf(origin: string): string {
 function portOf(origin: string): number {
   const { port } = new URL(origin);
   return port ? Number(port) : 80;
+}
+
+async function clearDesktopAuthForProfile(profileId: string): Promise<void> {
+  clearBearerToken(profileId);
+  clearSessionToken(profileId);
+  await session.fromPartition(sessionPartitionForProfile(profileId)).clearStorageData({
+    storages: ['cookies', 'localstorage', 'indexdb']
+  });
 }
 
 export async function resolveInitialShellOrigin({

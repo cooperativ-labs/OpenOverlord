@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { DEFAULT_CLOUD_BACKEND_URL } from '@/lib/backend-defaults';
 import { useCopyToClipboard } from '@/lib/hooks/use-copy-to-clipboard';
 
 function cliConfigCommand({ mode, backendUrl }: { mode: 'local' | 'remote'; backendUrl: string }) {
@@ -51,7 +52,7 @@ export function BackendPage() {
   const [profiles, setProfiles] = useState<BackendProfileRow[]>([]);
   const [activeId, setActiveId] = useState<string>('local');
   const [label, setLabel] = useState('Overlord Cloud');
-  const [backendUrl, setBackendUrl] = useState('');
+  const [backendUrl, setBackendUrl] = useState(DEFAULT_CLOUD_BACKEND_URL);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
@@ -81,7 +82,7 @@ export function BackendPage() {
     setBusy(true);
     try {
       await bridge.addBackend({ label, backendUrl });
-      setBackendUrl('');
+      setBackendUrl(DEFAULT_CLOUD_BACKEND_URL);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add backend.');
@@ -204,7 +205,7 @@ export function BackendPage() {
             <Label htmlFor="backend-url">Backend URL</Label>
             <Input
               id="backend-url"
-              placeholder="https://overlord-backend-production.up.railway.app"
+              placeholder={DEFAULT_CLOUD_BACKEND_URL}
               value={backendUrl}
               onChange={event => setBackendUrl(event.target.value)}
               disabled={busy || Boolean(switchingId)}

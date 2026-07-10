@@ -21,6 +21,10 @@ import { readDesktopDeviceIdentity } from './device-identity.js';
 import { invokeDesktopLocalTarget } from './local-target-bridge.js';
 import { isNativeThemeSource, setNativeThemeSource } from './native-theme.js';
 import {
+  type RunnerServiceAction,
+  runRunnerServiceControl
+} from './runner-service-control.js';
+import {
   DEFAULT_QUICK_TASK_HOTKEY,
   getStoredQuickTaskHotkey,
   hideQuickTaskWindow,
@@ -72,6 +76,31 @@ export function registerIpc({
       throw new Error('A local-target capability call is required.');
     }
     return invokeDesktopLocalTarget(call as Parameters<typeof invokeDesktopLocalTarget>[0]);
+  });
+
+  const RUNNER_SERVICE_ACTIONS: readonly RunnerServiceAction[] = [
+    'status',
+    'install',
+    'start',
+    'stop',
+    'restart',
+    'uninstall'
+  ];
+  ipcMain.handle('overlord:runner-service:invoke', (_event, payload: unknown) => {
+    const action =
+      payload && typeof payload === 'object' && 'action' in payload
+        ? (payload as { action?: unknown }).action
+        : undefined;
+    if (typeof action !== 'string' || !RUNNER_SERVICE_ACTIONS.includes(action as RunnerServiceAction)) {
+      throw new Error('A valid runner-service action is required.');
+    }
+    const noStart =
+      payload && typeof payload === 'object' && (payload as { noStart?: unknown }).noStart === true;
+    return runRunnerServiceControl({
+      action: action as RunnerServiceAction,
+      shellOrigin: getShellOrigin(),
+      extraArgs: action === 'install' && noStart ? ['--no-start'] : []
+    });
   });
 
   ipcMain.handle('overlord:write-project-metadata', async (_event, payload: unknown) => {

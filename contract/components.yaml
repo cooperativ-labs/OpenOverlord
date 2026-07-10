@@ -98,6 +98,7 @@ components:
       - 'mission branch base resolution for runner preparation: project-configured base first, then the repository main worktree checkout, then the repo default'
       - 'deterministic branch/worktree planning algorithm (cli/src/branch-planning.ts), co-owned with the service layer and pinned to contract/branch-planning-vectors.json'
       - 'ovld runner commands'
+      - 'persistent runner service: ovld runner supervise (adaptive-polling loop delegating to the same claim-and-launch path as ovld runner once) and ovld runner service <install|start|stop|restart|status|uninstall> managing an OS-level user service (macOS launchd io.overlord.runner, Linux systemd --user overlord-runner.service); 3s/10s adaptive backoff keyed on last-launched-job with ~10% jitter; local diagnostic state in ~/.ovld/runner-service.json; owner-only service files; Windows deferred'
       - 'execution target selection logic'
       - 'runner queue REST operations used by ovld runner: GET /api/runner/status, POST /api/runner/claim, POST /api/runner/clear, POST /api/runner/requests/:id/launching, POST /api/runner/requests/:id/launched, POST /api/runner/requests/:id/failed'
       - 'branch-preparation acknowledgement through POST /api/missions/:id/branch-prepared'
@@ -198,7 +199,7 @@ components:
       - 'profile-scoped CSP (loopback in Local mode; remote REST + wss origins added in Remote mode), single-instance lock, shell-local navigation guard, external-navigation handling'
       - 'process supervision of the bundled web/REST server (Node utilityProcess) in Local mode only; Remote mode does not fork the embedded server'
       - 'backend profiles ({ id, label, mode: local|remote, backendUrl } + active id) in userData/settings.json, per-profile Electron session partitions (persist:backend-<id>), per-backend bearer-token storage via safeStorage, and the reload-and-login switcher / first-run chooser (additive; Local is the default unchanged behavior)'
-      - 'the minimal window.overlord preload bridge surface (feature-detected by the SPA, never required by it), incl. getActiveBackend/listBackends/addBackend/removeBackend/switchBackend/writeProjectMetadata/invokeLocalTarget'
+      - 'the minimal window.overlord preload bridge surface (feature-detected by the SPA, never required by it), incl. getActiveBackend/listBackends/addBackend/removeBackend/switchBackend/writeProjectMetadata/invokeLocalTarget and runnerService.{getStatus,install,start,stop,restart,uninstall} which drive the CLI-owned ovld runner service operations as a subprocess without supervising the runner itself'
       - 'desktop packaging metadata and the build/sign/notarize pipeline (electron-builder, entitlements, app-data layout)'
     dependsOn:
       - rest

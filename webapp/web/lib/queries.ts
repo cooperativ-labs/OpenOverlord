@@ -129,6 +129,7 @@ export const keys = {
   missionFileChanges: (id: string) => ['mission', id, 'file-changes'] as const,
   objectiveAttachments: (objectiveId: string) => ['objective', objectiveId, 'attachments'] as const,
   agentCatalog: ['agent-catalog'] as const,
+  runnerStatus: ['runner', 'status'] as const,
   launchSettings: ['launch-settings'] as const,
   launchPreference: (projectId: string) => ['project', projectId, 'launch-preference'] as const,
   projectExecutionTarget: (projectId: string) =>
@@ -155,6 +156,19 @@ function persistActiveWorkspaceFromList(workspaces: WorkspaceDto[]) {
 export const useMeta = () => useQuery({ queryKey: keys.meta, queryFn: api.meta });
 
 export const useProfile = () => useQuery({ queryKey: keys.profile, queryFn: api.getProfile });
+
+/**
+ * Live runner queue status for the sidebar runner box. Polls on a light
+ * interval so the subtle status indicator stays current without a realtime
+ * subscription.
+ */
+export const useRunnerStatus = (options?: { enabled?: boolean; refetchInterval?: number }) =>
+  useQuery({
+    queryKey: keys.runnerStatus,
+    queryFn: api.getRunnerStatus,
+    enabled: options?.enabled ?? true,
+    refetchInterval: options?.refetchInterval ?? 15_000
+  });
 
 export const useUserTokens = () =>
   useQuery({ queryKey: keys.userTokens, queryFn: api.listUserTokens });

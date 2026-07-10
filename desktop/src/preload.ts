@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 import type { LocalTargetBridgeCall } from '../../packages/core/service/local-target/desktop-bridge.ts';
 import type { CapabilityResult } from '../../packages/core/service/local-target/types.ts';
+import type { RunnerServiceControlResult } from './runner-service-control.ts';
 
 export type DesktopUpdateState =
   | 'idle'
@@ -78,6 +79,28 @@ const api = {
   /** Unified local-target capability bridge for checkout-local git/fs work. */
   invokeLocalTarget: (call: LocalTargetBridgeCall): Promise<CapabilityResult<unknown>> =>
     ipcRenderer.invoke('overlord:invoke-local-target', call),
+  /**
+   * Control the CLI-owned persistent runner service. Each call runs the same
+   * `ovld runner service <action>` operation a user could run manually and
+   * returns its parsed JSON status.
+   */
+  runnerService: {
+    getStatus: (): Promise<RunnerServiceControlResult> =>
+      ipcRenderer.invoke('overlord:runner-service:invoke', { action: 'status' }),
+    install: (opts?: { noStart?: boolean }): Promise<RunnerServiceControlResult> =>
+      ipcRenderer.invoke('overlord:runner-service:invoke', {
+        action: 'install',
+        noStart: opts?.noStart === true
+      }),
+    start: (): Promise<RunnerServiceControlResult> =>
+      ipcRenderer.invoke('overlord:runner-service:invoke', { action: 'start' }),
+    stop: (): Promise<RunnerServiceControlResult> =>
+      ipcRenderer.invoke('overlord:runner-service:invoke', { action: 'stop' }),
+    restart: (): Promise<RunnerServiceControlResult> =>
+      ipcRenderer.invoke('overlord:runner-service:invoke', { action: 'restart' }),
+    uninstall: (): Promise<RunnerServiceControlResult> =>
+      ipcRenderer.invoke('overlord:runner-service:invoke', { action: 'uninstall' })
+  },
   /** Write local `.overlord/project.json` metadata for a linked checkout. */
   writeProjectMetadata: (payload: {
     directoryPath: string;
