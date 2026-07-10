@@ -6,7 +6,11 @@ import {
   recordHookEvent,
   updateSession
 } from '@overlord/core/service/protocol';
-import { listSqliteMigrationFiles, migrateDatabase, openInMemoryDatabase } from '@overlord/database';
+import {
+  listSqliteMigrationFiles,
+  migrateDatabase,
+  openInMemoryDatabase
+} from '@overlord/database';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -96,9 +100,10 @@ test('attach records and clears native external session id', async () => {
     externalSessionId: 'claude-native-123'
   });
 
-  let sessionRow = (await ctx.db.get(`SELECT external_session_id FROM agent_sessions WHERE id = ?`, [
-    attached.session.id
-  ])) as { external_session_id: string | null };
+  let sessionRow = (await ctx.db.get(
+    `SELECT external_session_id FROM agent_sessions WHERE id = ?`,
+    [attached.session.id]
+  )) as { external_session_id: string | null };
   assert.equal(sessionRow.external_session_id, 'claude-native-123');
 
   await attachSession({

@@ -9,6 +9,7 @@ type OAuthRequestInfo = {
   clientName: string;
   redirectUri: string;
   redirectHost: string;
+  resource: string;
   scopes: string[];
 };
 
@@ -23,10 +24,16 @@ function oauthParams(): Record<string, string> {
 async function parseJsonResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => null)) as {
     error?: string;
+    error_description?: string;
     detail?: string;
   } | null;
   if (!response.ok) {
-    throw new Error(payload?.error ?? `${response.status} ${response.statusText}`);
+    throw new Error(
+      payload?.error_description ??
+        payload?.detail ??
+        payload?.error ??
+        `${response.status} ${response.statusText}`
+    );
   }
   return payload as T;
 }
@@ -122,6 +129,9 @@ export function OAuthApprovePage() {
                 <p className="text-sm font-medium">{requestInfo.clientName}</p>
                 <p className="text-xs text-muted-foreground">
                   Redirects to {requestInfo.redirectHost}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Connects to {new URL(requestInfo.resource).host}
                 </p>
               </div>
 

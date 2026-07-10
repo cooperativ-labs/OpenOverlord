@@ -84,7 +84,9 @@ export function runnerServiceStatePath(dataDir: string = resolveGlobalDataDir())
   return path.join(dataDir, RUNNER_SERVICE_STATE_FILENAME);
 }
 
-export function readRunnerServiceState(dataDir: string = resolveGlobalDataDir()): RunnerServiceState {
+export function readRunnerServiceState(
+  dataDir: string = resolveGlobalDataDir()
+): RunnerServiceState {
   const filePath = runnerServiceStatePath(dataDir);
   if (!existsSync(filePath)) return emptyRunnerServiceState();
   try {
@@ -222,8 +224,7 @@ export function renderLaunchdPlist({
     .join('\n');
   const envEntries = Object.entries(env)
     .map(
-      ([key, value]) =>
-        `    <key>${xmlEscape(key)}</key>\n    <string>${xmlEscape(value)}</string>`
+      ([key, value]) => `    <key>${xmlEscape(key)}</key>\n    <string>${xmlEscape(value)}</string>`
     )
     .join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -359,7 +360,11 @@ class LaunchdManager implements RunnerServiceManager {
     try {
       await runCommand('launchctl', ['load', '-w', this.unitPath()]);
     } catch {
-      await runCommand('launchctl', ['kickstart', '-k', `gui/${process.getuid?.() ?? ''}/${LAUNCHD_LABEL}`]);
+      await runCommand('launchctl', [
+        'kickstart',
+        '-k',
+        `gui/${process.getuid?.() ?? ''}/${LAUNCHD_LABEL}`
+      ]);
     }
   }
 
@@ -454,11 +459,7 @@ class SystemdUserManager implements RunnerServiceManager {
   async status(): Promise<RunnerServiceRunState> {
     const installed = existsSync(this.unitPath());
     try {
-      const { stdout } = await runCommand('systemctl', [
-        '--user',
-        'is-active',
-        this.identifier
-      ]);
+      const { stdout } = await runCommand('systemctl', ['--user', 'is-active', this.identifier]);
       return { installed, running: stdout.trim() === 'active' ? 'running' : 'stopped' };
     } catch {
       // `is-active` exits non-zero when inactive/failed.

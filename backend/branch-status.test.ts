@@ -127,7 +127,8 @@ describe('branch status derivation', () => {
 
     const { createProject, createMission, createProjectResource, getMissionDetail } =
       await import('./repository.ts');
-    const { postMissionBranchObservations } = await import('./branching/mission-branch-observations.ts');
+    const { postMissionBranchObservations } =
+      await import('./branching/mission-branch-observations.ts');
     const { recordBranchPrepared } = await import('./execution/runner.ts');
 
     const project = await createProject({ name: 'Branch Observation DTO Test' });

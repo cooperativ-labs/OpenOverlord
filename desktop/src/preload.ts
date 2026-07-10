@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 import type { LocalTargetBridgeCall } from '../../packages/core/service/local-target/desktop-bridge.ts';
 import type { CapabilityResult } from '../../packages/core/service/local-target/types.ts';
+
 import type { RunnerServiceControlResult } from './runner-service-control.ts';
 
 export type DesktopUpdateState =

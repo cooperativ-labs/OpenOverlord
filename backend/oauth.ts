@@ -29,6 +29,7 @@ type RegisteredClient = {
 type AuthorizationCode = {
   clientId: string;
   redirectUri: string;
+  resource: string;
   scope: string;
   codeChallenge: string;
   expiresAt: number;
@@ -167,6 +168,7 @@ function validateAuthorizationRequest(req: Request): {
   client: RegisteredClient;
   clientId: string;
   redirectUri: string;
+  resource: string;
   scope: string;
   state: string;
   codeChallenge: string;
@@ -202,10 +204,22 @@ function validateAuthorizationRequest(req: Request): {
     throw new ApiError(400, 'OAuth PKCE with S256 is required', undefined, 'invalid_request');
   }
 
+  const canonicalResource = `${webPublicBaseUrl(req)}/mcp`;
+  const resource = requestParam(req, 'resource') || canonicalResource;
+  if (resource !== canonicalResource) {
+    throw new ApiError(
+      400,
+      'OAuth resource must match this Overlord MCP server',
+      undefined,
+      'invalid_target'
+    );
+  }
+
   return {
     client,
     clientId,
     redirectUri,
+    resource,
     scope: requestedScopes(requestParam(req, 'scope')),
     state: requestParam(req, 'state'),
     codeChallenge
@@ -320,6 +334,7 @@ export function handleOAuthRequestInfo(req: Request, res: Response): void {
     clientName: parsed.client.clientName,
     redirectUri: parsed.redirectUri,
     redirectHost: new URL(parsed.redirectUri).host,
+    resource: parsed.resource,
     scopes: parsed.scope.split(/\s+/),
     state: parsed.state
   });
@@ -355,6 +370,7 @@ export async function handleOAuthApprove(req: Request, res: Response): Promise<v
   authorizationCodes.set(code, {
     clientId: parsed.clientId,
     redirectUri: parsed.redirectUri,
+    resource: parsed.resource,
     scope: parsed.scope,
     codeChallenge: parsed.codeChallenge,
     expiresAt: Date.now() + AUTH_CODE_TTL_MS,
@@ -381,6 +397,7 @@ export async function handleOAuthToken(req: Request, res: Response): Promise<voi
   const clientId = bodyString(req, 'client_id');
   const redirectUri = bodyString(req, 'redirect_uri');
   const codeVerifier = bodyString(req, 'code_verifier');
+  const resource = bodyString(req, 'resource');
   const entry = await consumeAuthorizationCode(code);
   if (!entry) {
     jsonError(res, 400, 'invalid_grant', 'Authorization code is invalid or expired.');
@@ -391,6 +408,11 @@ export async function handleOAuthToken(req: Request, res: Response): Promise<voi
   if (entry.clientId !== clientId || entry.redirectUri !== redirectUri) {
     await revokeOrphanedAccessToken(entry.accessToken);
     jsonError(res, 400, 'invalid_grant', 'Authorization code request does not match.');
+    return;
+  }
+  if (resource !== entry.resource) {
+    await revokeOrphanedAccessToken(entry.accessToken);
+    jsonError(res, 400, 'invalid_target', 'OAuth resource does not match the authorization code.');
     return;
   }
 

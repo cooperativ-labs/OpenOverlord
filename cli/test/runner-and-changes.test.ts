@@ -120,7 +120,10 @@ test('claiming a queued request fails when the primary resource is missing', asy
 
   assert.equal(await claimNextExecutionRequest({ ctx }), null);
 
-  const failed = (await ctx.db.get(`SELECT status, last_error FROM execution_requests WHERE id = ?`, [requestId])) as { status: string; last_error: string };
+  const failed = (await ctx.db.get(
+    `SELECT status, last_error FROM execution_requests WHERE id = ?`,
+    [requestId]
+  )) as { status: string; last_error: string };
   assert.equal(failed.status, 'failed');
   assert.match(failed.last_error, /Primary working directory is missing/);
 
@@ -130,7 +133,12 @@ test('claiming a queued request fails when the primary resource is missing', asy
 test('execution request queue can create, claim, launch, and clear active requests', async () => {
   const { db, ctx } = await createContext();
   const project = await createProject({ ctx, name: 'Runner Test' });
-  await addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
+  await addProjectResource({
+    ctx,
+    projectId: project.id,
+    directoryPath: process.cwd(),
+    isPrimary: true
+  });
   const { mission, objectives } = await createMissionWithObjectives({
     ctx,
     projectId: project.id,
@@ -165,14 +173,20 @@ test('execution request queue can create, claim, launch, and clear active reques
   assert.ok(claimed.claimedByExecutionTargetId);
   assert.ok(claimed.claimExpiresAt);
 
-  const claimEvent = (await ctx.db.get(`SELECT id FROM mission_events
+  const claimEvent = await ctx.db.get(
+    `SELECT id FROM mission_events
         WHERE mission_id = ? AND objective_id = ? AND type = 'status_change'
-          AND summary = 'Runner claimed execution request.'`, [mission.id, objectives[0]?.id]));
+          AND summary = 'Runner claimed execution request.'`,
+    [mission.id, objectives[0]?.id]
+  );
   assert.ok(claimEvent, 'claim should write a mission status event');
 
-  const claimChange = (await ctx.db.get(`SELECT changed_fields_json FROM entity_changes
+  const claimChange = (await ctx.db.get(
+    `SELECT changed_fields_json FROM entity_changes
         WHERE entity_type = 'execution_request' AND entity_id = ? AND operation = 'update'
-        ORDER BY occurred_at DESC LIMIT 1`, [claimed.id])) as { changed_fields_json: string } | undefined;
+        ORDER BY occurred_at DESC LIMIT 1`,
+    [claimed.id]
+  )) as { changed_fields_json: string } | undefined;
   assert.ok(claimChange, 'claim should write an entity change');
   assert.match(claimChange.changed_fields_json, /claimed_by_device_id/);
 
@@ -200,7 +214,12 @@ test('execution request queue can create, claim, launch, and clear active reques
 test('execution request state machine rejects illegal launch transitions', async () => {
   const { db, ctx } = await createContext();
   const project = await createProject({ ctx, name: 'Runner Illegal Transition Test' });
-  await addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
+  await addProjectResource({
+    ctx,
+    projectId: project.id,
+    directoryPath: process.cwd(),
+    isPrimary: true
+  });
   const { mission, objectives } = await createMissionWithObjectives({
     ctx,
     projectId: project.id,
@@ -229,7 +248,12 @@ test('execution request state machine rejects illegal launch transitions', async
 test('stale claims expire with event and change records', async () => {
   const { db, ctx } = await createContext();
   const project = await createProject({ ctx, name: 'Runner Claim Expiry Test' });
-  await addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
+  await addProjectResource({
+    ctx,
+    projectId: project.id,
+    directoryPath: process.cwd(),
+    isPrimary: true
+  });
   const { mission, objectives } = await createMissionWithObjectives({
     ctx,
     projectId: project.id,
@@ -251,7 +275,10 @@ test('stale claims expire with event and change records', async () => {
   ]);
 
   assert.equal((await expireStaleExecutionRequests({ ctx })).expired, 1);
-  const expired = (await ctx.db.get(`SELECT status, last_error FROM execution_requests WHERE id = ?`, [request.id])) as { status: string; last_error: string };
+  const expired = (await ctx.db.get(
+    `SELECT status, last_error FROM execution_requests WHERE id = ?`,
+    [request.id]
+  )) as { status: string; last_error: string };
   assert.equal(expired.status, 'expired');
   assert.match(expired.last_error, /expired before launch started/);
 
@@ -261,7 +288,12 @@ test('stale claims expire with event and change records', async () => {
 test('launched requests expire when no agent attaches before the deadline', async () => {
   const { db, ctx } = await createContext();
   const project = await createProject({ ctx, name: 'Runner Launch Expiry Test' });
-  await addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
+  await addProjectResource({
+    ctx,
+    projectId: project.id,
+    directoryPath: process.cwd(),
+    isPrimary: true
+  });
   const { mission, objectives } = await createMissionWithObjectives({
     ctx,
     projectId: project.id,
@@ -287,9 +319,10 @@ test('launched requests expire when no agent attaches before the deadline', asyn
   ]);
 
   assert.equal((await expireStaleExecutionRequests({ ctx })).expired, 1);
-  const expired = (await ctx.db.get(`SELECT status, last_error FROM execution_requests WHERE id = ?`, [
-    request.id
-  ])) as { status: string; last_error: string };
+  const expired = (await ctx.db.get(
+    `SELECT status, last_error FROM execution_requests WHERE id = ?`,
+    [request.id]
+  )) as { status: string; last_error: string };
   assert.equal(expired.status, 'expired');
   assert.match(expired.last_error, /expired before the launched agent attached/);
 
@@ -299,7 +332,12 @@ test('launched requests expire when no agent attaches before the deadline', asyn
 test('a launched request linked to a session is not expired', async () => {
   const { db, ctx } = await createContext();
   const project = await createProject({ ctx, name: 'Runner Launch Linked Test' });
-  await addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
+  await addProjectResource({
+    ctx,
+    projectId: project.id,
+    directoryPath: process.cwd(),
+    isPrimary: true
+  });
   const { mission, objectives } = await createMissionWithObjectives({
     ctx,
     projectId: project.id,
@@ -330,7 +368,9 @@ test('a launched request linked to a session is not expired', async () => {
   ]);
 
   assert.equal((await expireStaleExecutionRequests({ ctx })).expired, 0);
-  const survived = (await ctx.db.get(`SELECT status FROM execution_requests WHERE id = ?`, [request.id])) as { status: string };
+  const survived = (await ctx.db.get(`SELECT status FROM execution_requests WHERE id = ?`, [
+    request.id
+  ])) as { status: string };
   assert.equal(survived.status, 'launched');
 
   await db.close();
@@ -339,7 +379,12 @@ test('a launched request linked to a session is not expired', async () => {
 test('attach links a launched execution request to the created session', async () => {
   const { db, ctx } = await createContext();
   const project = await createProject({ ctx, name: 'Attach Request Link Test' });
-  await addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
+  await addProjectResource({
+    ctx,
+    projectId: project.id,
+    directoryPath: process.cwd(),
+    isPrimary: true
+  });
   const { mission, objectives } = await createMissionWithObjectives({
     ctx,
     projectId: project.id,
@@ -363,7 +408,10 @@ test('attach links a launched execution request to the created session', async (
     executionRequestId: request.id
   });
 
-  const linked = (await ctx.db.get(`SELECT launched_session_id FROM execution_requests WHERE id = ?`, [request.id])) as { launched_session_id: string | null };
+  const linked = (await ctx.db.get(
+    `SELECT launched_session_id FROM execution_requests WHERE id = ?`,
+    [request.id]
+  )) as { launched_session_id: string | null };
   assert.equal(linked.launched_session_id, attached.session.id);
 
   await db.close();
@@ -372,7 +420,12 @@ test('attach links a launched execution request to the created session', async (
 test('runner does not claim a queued request for a soft-deleted objective', async () => {
   const { db, ctx } = await createContext();
   const project = await createProject({ ctx, name: 'Deleted Objective Test' });
-  await addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
+  await addProjectResource({
+    ctx,
+    projectId: project.id,
+    directoryPath: process.cwd(),
+    isPrimary: true
+  });
   const { mission, objectives } = await createMissionWithObjectives({
     ctx,
     projectId: project.id,
@@ -390,7 +443,10 @@ test('runner does not claim a queued request for a soft-deleted objective', asyn
 
   // Mirror a UI disconnect/delete that soft-deletes the objective. The runner
   // must skip the orphaned request rather than launch retired work.
-  await ctx.db.run(`UPDATE objectives SET deleted_at = ? WHERE id = ?`, [new Date().toISOString(), objectives[0]?.id]);
+  await ctx.db.run(`UPDATE objectives SET deleted_at = ? WHERE id = ?`, [
+    new Date().toISOString(),
+    objectives[0]?.id
+  ]);
 
   assert.equal(await claimNextExecutionRequest({ ctx }), null);
 
@@ -400,7 +456,12 @@ test('runner does not claim a queued request for a soft-deleted objective', asyn
 test('delivery auto-advance queues next objective when enabled', async () => {
   const { db, ctx } = await createContext();
   const project = await createProject({ ctx, name: 'Auto Advance Test' });
-  await addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
+  await addProjectResource({
+    ctx,
+    projectId: project.id,
+    directoryPath: process.cwd(),
+    isPrimary: true
+  });
   const { mission, objectives } = await createMissionWithObjectives({
     ctx,
     projectId: project.id,
@@ -412,10 +473,13 @@ test('delivery auto-advance queues next objective when enabled', async () => {
   // The first objective ran with an explicit agent/model (as a launch would
   // persist). The auto-advanced draft has no agent of its own and must inherit
   // it rather than fall back to the runner's hardcoded default.
-  await ctx.db.run(`UPDATE objectives
+  await ctx.db.run(
+    `UPDATE objectives
           SET state = 'submitted', assigned_agent = 'claude', model = 'claude-opus-4-8',
               reasoning_effort = 'high'
-        WHERE id = ?`, [objectives[0]?.id]);
+        WHERE id = ?`,
+    [objectives[0]?.id]
+  );
 
   const attached = await attachSession({ ctx, missionId: mission.displayId });
   await deliverSession({
@@ -454,7 +518,12 @@ test('delivery auto-advance queues next objective when enabled', async () => {
 test('delivery auto-advance keeps the next objective explicit agent', async () => {
   const { db, ctx } = await createContext();
   const project = await createProject({ ctx, name: 'Auto Advance Explicit Agent' });
-  await addProjectResource({ ctx, projectId: project.id, directoryPath: process.cwd(), isPrimary: true });
+  await addProjectResource({
+    ctx,
+    projectId: project.id,
+    directoryPath: process.cwd(),
+    isPrimary: true
+  });
   const { mission, objectives } = await createMissionWithObjectives({
     ctx,
     projectId: project.id,
@@ -463,10 +532,15 @@ test('delivery auto-advance keeps the next objective explicit agent', async () =
       { objective: 'Second objective', autoAdvance: true }
     ]
   });
-  await ctx.db.run(`UPDATE objectives SET state = 'submitted', assigned_agent = 'codex' WHERE id = ?`, [objectives[0]?.id]);
+  await ctx.db.run(
+    `UPDATE objectives SET state = 'submitted', assigned_agent = 'codex' WHERE id = ?`,
+    [objectives[0]?.id]
+  );
   // The next objective was deliberately assigned a different agent; auto-advance
   // must honor its own assignment instead of inheriting the delivered one.
-  await ctx.db.run(`UPDATE objectives SET assigned_agent = 'claude' WHERE id = ?`, [objectives[1]?.id]);
+  await ctx.db.run(`UPDATE objectives SET assigned_agent = 'claude' WHERE id = ?`, [
+    objectives[1]?.id
+  ]);
 
   const attached = await attachSession({ ctx, missionId: mission.displayId });
   await deliverSession({
@@ -503,8 +577,9 @@ test('change review reports missing and covered rationales', async () => {
     changedFiles: [{ filePath: 'src/example.ts', vcsStatus: 'M' }]
   });
   assert.equal(
-    (await listChangedFilesForReview({ ctx, missionId: mission.displayId, includeCurrent: false }))[0]
-      ?.coverage,
+    (
+      await listChangedFilesForReview({ ctx, missionId: mission.displayId, includeCurrent: false })
+    )[0]?.coverage,
     'missing_rationale'
   );
 

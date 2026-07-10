@@ -21,10 +21,6 @@ import { readDesktopDeviceIdentity } from './device-identity.js';
 import { invokeDesktopLocalTarget } from './local-target-bridge.js';
 import { isNativeThemeSource, setNativeThemeSource } from './native-theme.js';
 import {
-  type RunnerServiceAction,
-  runRunnerServiceControl
-} from './runner-service-control.js';
-import {
   DEFAULT_QUICK_TASK_HOTKEY,
   getStoredQuickTaskHotkey,
   hideQuickTaskWindow,
@@ -32,6 +28,7 @@ import {
   setQuickTaskWindowBounds,
   setQuickTaskWindowSize
 } from './quick-task-window.js';
+import { type RunnerServiceAction, runRunnerServiceControl } from './runner-service-control.js';
 import type { DesktopUpdater } from './updater.js';
 
 /**
@@ -91,7 +88,10 @@ export function registerIpc({
       payload && typeof payload === 'object' && 'action' in payload
         ? (payload as { action?: unknown }).action
         : undefined;
-    if (typeof action !== 'string' || !RUNNER_SERVICE_ACTIONS.includes(action as RunnerServiceAction)) {
+    if (
+      typeof action !== 'string' ||
+      !RUNNER_SERVICE_ACTIONS.includes(action as RunnerServiceAction)
+    ) {
       throw new Error('A valid runner-service action is required.');
     }
     const noStart =

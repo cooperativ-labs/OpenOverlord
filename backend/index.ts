@@ -13,25 +13,8 @@ import { ServiceError } from '../packages/core/service/errors.ts';
 import type { LocalTargetBridgeCall } from '../packages/core/service/local-target/desktop-bridge.ts';
 import type { StoredImageDto } from '../webapp/shared/contract.ts';
 
-import { createEverhourExtensionRouter } from './ext/everhour/routes.ts';
-import {
-  ACTIVE_WORKSPACE_COOKIE,
-  authNodeHandler,
-  getAllowedBrowserOrigins,
-  requireAuthenticatedSession
-} from './auth.ts';
-import { isAllowedBrowserOrigin } from './http/browser-origins.ts';
-import {
-  DATABASE_DIALECT,
-  DATABASE_PATH,
-  getActiveProfileId,
-  getActiveWorkspaceIdOrNull,
-  getActorWorkspaceUserId,
-  initDatabase,
-  WORKSPACE
-} from './db.ts';
-import { ENV_PROFILE, REPO_ROOT } from './env-profile.ts';
-import { apiErrorFromDatabaseError } from './errors.ts';
+import { postMissionBranchObservations } from './branching/mission-branch-observations.ts';
+import { postExecutionTargetObservations } from './branching/target-resource-observations.ts';
 import { getExecutionTargetMigrationDiagnostics } from './execution/execution-target-migration.ts';
 import {
   getAgentCatalog,
@@ -46,11 +29,47 @@ import {
   updateTerminalProfile,
   updateWorktreeBranchAutomation
 } from './execution/launch.ts';
-import { loadRepoEnvForProfile } from './load-repo-env.ts';
 import { resolveLocalTargetServerCapability } from './execution/local-target-capability.ts';
 import { invokeLocalTargetOnServer } from './execution/local-target-invoke.ts';
+import {
+  getProjectExecutionTarget,
+  updateProjectExecutionTarget
+} from './execution/project-execution-target.ts';
+import {
+  claimRunnerRequest,
+  clearRunnerRequests,
+  completeRunnerMutationRequest,
+  recordBranchPrepared,
+  runnerStatus,
+  updateRunnerRequestStatus
+} from './execution/runner.ts';
+import { createEverhourExtensionRouter } from './ext/everhour/routes.ts';
+import { isAllowedBrowserOrigin } from './http/browser-origins.ts';
 import { buildMeta } from './http/meta.ts';
-import { postMissionBranchObservations } from './branching/mission-branch-observations.ts';
+import { resolveServeSpa } from './http/serve-spa.ts';
+import {
+  getSqlStudioState,
+  initSqlStudioManager,
+  syncSqlStudioForWorkspace
+} from './sql-studio/sql-studio-manager.ts';
+import {
+  ACTIVE_WORKSPACE_COOKIE,
+  authNodeHandler,
+  getAllowedBrowserOrigins,
+  requireAuthenticatedSession
+} from './auth.ts';
+import {
+  DATABASE_DIALECT,
+  DATABASE_PATH,
+  getActiveProfileId,
+  getActiveWorkspaceIdOrNull,
+  getActorWorkspaceUserId,
+  initDatabase,
+  WORKSPACE
+} from './db.ts';
+import { ENV_PROFILE, REPO_ROOT } from './env-profile.ts';
+import { apiErrorFromDatabaseError } from './errors.ts';
+import { loadRepoEnvForProfile } from './load-repo-env.ts';
 import {
   handleOAuthApprove,
   handleOAuthRegister,
@@ -68,10 +87,6 @@ import {
   removeOrganizationAdmin,
   updateOrganization
 } from './organizations.ts';
-import {
-  getProjectExecutionTarget,
-  updateProjectExecutionTarget
-} from './execution/project-execution-target.ts';
 import { runProtocolSubcommand } from './protocol.ts';
 import { requirePermission } from './rbac.ts';
 import { readChangesAfter, realtime } from './realtime.ts';
@@ -135,20 +150,6 @@ import {
   upsertMissionSchedule
 } from './repository.ts';
 import {
-  claimRunnerRequest,
-  clearRunnerRequests,
-  completeRunnerMutationRequest,
-  recordBranchPrepared,
-  runnerStatus,
-  updateRunnerRequestStatus
-} from './execution/runner.ts';
-import { resolveServeSpa } from './http/serve-spa.ts';
-import {
-  getSqlStudioState,
-  initSqlStudioManager,
-  syncSqlStudioForWorkspace
-} from './sql-studio/sql-studio-manager.ts';
-import {
   deleteObjectiveAttachment,
   listObjectiveAttachments,
   MAX_ATTACHMENT_BYTES,
@@ -161,7 +162,6 @@ import {
   uploadUserImage,
   uploadWorkspaceImage
 } from './storage.ts';
-import { postExecutionTargetObservations } from './branching/target-resource-observations.ts';
 import { webhookDispatcher } from './webhook-dispatcher.ts';
 import {
   createWebhookSubscription,

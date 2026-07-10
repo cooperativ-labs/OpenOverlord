@@ -33,12 +33,13 @@ where a surface differs by edition this document calls it out explicitly.
 
 ## Contract Version
 
-Current version: `1`
+Current version: `2`
 
 The contract version is incremented when any stable interface changes. All conformance manifests must declare the contract version they were validated against.
 
 | Version | Changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `2`     | ChatGPT Apps publication surface (coo:224). Adds explicit MCP tool output schemas and safety annotations, standard `ui://overlord/*` MCP Apps widget resources, structured tool results, and OAuth resource binding across approval and token exchange. Hosted MCP errors now distinguish tool failures from transport failures without exposing local checkout or runner capabilities. |
 | `1`     | Resource-bound objectives and sibling resource context (coo:169). Adds logical `project_resources.resource_key`, target-portable `objectives.resource_key`, resource-scoped mission branch observations, additive `attach-response-v3` project resource manifest fields, optional `executionTargetId` protocol context input, `.overlord/project.json` `resourceKey`, `ovld add-cwd --key`, branch-action `resourceKey`, and resource-scoped worktree-path vectors. The worktree path algorithm now includes `resourceKey`, forcing this contract version bump. |
 | `0`     | Initial public release baseline (coo:144). Describes the full component registry (including the MCP Server), interaction surfaces, stable interfaces (`attach-response-v3`, webhook delivery, organization → workspace → project hierarchy, multi-target `.overlord/project.json` linking, target-workspace project APIs, deliver `observedDirtyPaths` reconciliation, and `ovld protocol changes` preflight), extension points, and controlled vocabularies as shipped in Open Overlord v0. Pre-release contract versions 1–8 were consolidated into this baseline at public release. |
 
@@ -196,7 +197,7 @@ Owns:
 - Self-service account deletion trigger (`user.deleteUser`), delegating the cascade to a backend-supplied callback
 - Sign-up/sign-in email verification: an optional `sendVerificationEmail` callback (`CreateAuthOptions.sendVerificationEmail`) delegates delivery to a backend-supplied sender, mirroring the `onDeleteUser` delegation pattern. When provided, Better Auth also enables `emailAndPassword.requireEmailVerification` so unverified accounts cannot sign in. When omitted (the default, e.g. Local/offline editions with no configured email provider), verification stays fully disabled and behavior is unchanged. The backend's concrete sender (`backend/email-verification.ts`) uses Resend, configured via the `RESEND_API_KEY` env var and the `notifications.cooperativ.io` sending domain
 - Numeric one-time codes (OTP): an optional `sendEmailOTP` callback (`CreateAuthOptions.sendEmailOTP`) enables Better Auth's `emailOTP` plugin (6-digit codes, 1-hour expiry), the same caller-supplied-callback pattern as `sendVerificationEmail`. When enabled, the sign-up verification email carries **both** the existing magic link **and** a real 6-digit code minted via `auth.api.createVerificationOTP` and passed to `sendVerificationEmail` as `otp` — replacing the previous behavior of showing the raw (untypable) verification link token in the code block. The plugin also exposes `/api/auth/email-otp/*` server endpoints (notably `verify-email`, `check-verification-otp`, `send-verification-otp`, `sign-in/email-otp`, `forget-password`/`reset-password`) and the corresponding `authClient.emailOtp.*` client methods for typed-code sign-in and password reset. When `sendEmailOTP` is omitted, the plugin is left off and no OTP endpoints exist. The backend sender is `emailOTPSenderFromEnv()` in `backend/email-verification.ts` (Resend-backed)
-- Hosted MCP OAuth consent and token issuance: OAuth approval creates a scoped `USER_TOKEN` with the `mission_lifecycle` preset after an authenticated browser session approves the request. Authorization codes are short-lived, single-use, PKCE-protected, and exchanged for bearer access tokens; refresh tokens are not issued through contract version `1`. A code that expires unexchanged, or whose exchange fails its client/PKCE checks, revokes the `USER_TOKEN` it would have delivered, so no orphaned active token outlives its authorization code.
+- Hosted MCP OAuth consent and token issuance: OAuth approval creates a scoped `USER_TOKEN` with the `mission_lifecycle` preset after an authenticated browser session approves the request. Authorization codes are short-lived, single-use, PKCE-protected, and exchanged for bearer access tokens; refresh tokens are not issued through contract version `2`. A code that expires unexchanged, or whose exchange fails its client/PKCE/resource checks, revokes the `USER_TOKEN` it would have delivered, so no orphaned active token outlives its authorization code.
 
 Does NOT own:
 
@@ -287,8 +288,12 @@ is enabled only when `OVERLORD_MCP_ENABLED=true`.
 Owns:
 
 - MCP endpoint path (`/mcp`) and supported MCP protocol-version advertisement
-- MCP tool names, tool input schemas, resource URI patterns, prompt names, and
-  MCP JSON-RPC response shaping
+- MCP tool names, input/output schemas, safety annotations, MCP Apps resource
+  URI patterns, prompt names, and MCP JSON-RPC response shaping. The public
+  ChatGPT surface is mission-first: project resolution and selection, mission
+  search, mission-context reads, and explicit mission/session writes. Widget
+  resources are presentation-only and consume the structured result of a
+  corresponding render tool; they never call local filesystem or runner APIs.
 - OAuth protected-resource metadata for the hosted MCP resource
 - Mapping MCP tool calls to existing service/protocol operations
 
@@ -368,6 +373,11 @@ These are the **only sanctioned paths** between components. Bypassing these surf
   `GET /.well-known/oauth-protected-resource/mcp` advertise the MCP resource URL
   and authorization-server metadata locations
 - **Authorization server**: OAuth-aware clients use dynamic registration (`POST /oauth/register`), browser approval (`GET /oauth/authorize` redirecting to the web approval page), authorization-code + PKCE token exchange (`POST /oauth/token`), and token revocation (`POST /oauth/revoke`). The web app may serve same-domain `.well-known` metadata and proxy `/mcp` plus `/oauth/*` traffic to the backend when deployed separately from the backend.
+- **OAuth resource binding**: when an OAuth client supplies the RFC 8707
+  `resource` parameter, approval and token exchange bind it to the canonical
+  hosted `/mcp` resource; a mismatched resource is an OAuth `invalid_target`
+  error. This prevents an authorization code minted for Overlord from being
+  replayed against a different resource.
 - **Rule**: MCP handlers must resolve the caller through the Auth Layer before
   listing or invoking tools. A request that is missing or fails authentication
   returns an OAuth-compatible `WWW-Authenticate: Bearer` challenge.
@@ -388,6 +398,10 @@ These are the **only sanctioned paths** between components. Bypassing these surf
   a tool error, not an implicit default selection.
 - **Locality**: Hosted MCP must not expose local filesystem/worktree inspection,
   runner queue claiming, execution target mutation, or branch-action tools.
+- **Widget safety**: MCP Apps resources use `ui://overlord/*` URIs and return
+  self-contained HTML. They may render only the associated tool's
+  `structuredContent`; resources must not embed third-party frames, browser
+  credentials, secrets, or unrestricted network access.
 
 ### Auth → Database (Identity Bridge)
 

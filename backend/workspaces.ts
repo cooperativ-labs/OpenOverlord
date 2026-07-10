@@ -14,6 +14,7 @@ import type {
   WorkspaceMemberDto
 } from '../webapp/shared/contract.ts';
 
+import { syncSqlStudioForWorkspace } from './sql-studio/sql-studio-manager.ts';
 import {
   findActiveMembershipId,
   getActiveProfileId,
@@ -34,7 +35,6 @@ import { invitationEmailSenderFromEnv, inviteAcceptUrl } from './email-invitatio
 import { ApiError } from './errors.ts';
 import { deleteOrganizationIfEmpty } from './organizations.ts';
 import { actorIsAdmin, isOrganizationAdmin, listOrganizationAdminProfileIds } from './rbac.ts';
-import { syncSqlStudioForWorkspace } from './sql-studio/sql-studio-manager.ts';
 import {
   readSqlStudioEnabled,
   sqlStudioEnabledFromSettingsJson,

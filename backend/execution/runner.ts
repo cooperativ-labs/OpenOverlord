@@ -16,9 +16,7 @@ import {
 } from '../../packages/core/service/execution-requests.ts';
 import type { CapabilityResult } from '../../packages/core/service/local-target/types.ts';
 import { completeLocalTargetMutationRequest } from '../../packages/core/service/local-target-mutations.ts';
-
 import { recordRunnerBranchEvent } from '../branching/branch-activity.ts';
-import { clientDeviceFromBody } from '../http/client-device.ts';
 import {
   buildWebappServiceContextForWorkspace,
   getClientDeviceIdentity,
@@ -28,6 +26,7 @@ import {
   requireDatabaseClient
 } from '../db.ts';
 import { ApiError } from '../errors.ts';
+import { clientDeviceFromBody } from '../http/client-device.ts';
 import { requireWorkspacePermission } from '../rbac.ts';
 import { callerMembershipsInActiveOrganization } from '../repository.ts';
 

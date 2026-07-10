@@ -20,13 +20,7 @@ const execFileAsync = promisify(execFile);
  * owner of local service lifecycle — the shell only starts/stops/monitors it.
  */
 
-export type RunnerServiceAction =
-  | 'status'
-  | 'install'
-  | 'start'
-  | 'stop'
-  | 'restart'
-  | 'uninstall';
+export type RunnerServiceAction = 'status' | 'install' | 'start' | 'stop' | 'restart' | 'uninstall';
 
 export interface RunnerServiceControlResult {
   ok: boolean;
@@ -96,6 +90,10 @@ export async function runRunnerServiceControl({
     // execFile rejects with stderr attached on non-zero exit; surface it.
     const err = error as { stderr?: Buffer | string; message?: string };
     const stderr = err.stderr ? err.stderr.toString().trim() : '';
-    return { ok: false, status: null, error: stderr || err.message || 'Runner service command failed.' };
+    return {
+      ok: false,
+      status: null,
+      error: stderr || err.message || 'Runner service command failed.'
+    };
   }
 }

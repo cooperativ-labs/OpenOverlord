@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '1'
+contractVersion: '2'
 
 components:
   protocol:
@@ -151,7 +151,7 @@ components:
       - 'Better Auth implementation tables: user, session, account, verification, apikey'
       - 'self-service account deletion trigger (user.deleteUser), delegating the cascade to a backend-supplied callback'
       - 'sign-up/sign-in email verification via an optional backend-supplied sendVerificationEmail callback (Resend-backed, RESEND_API_KEY, notifications.cooperativ.io); disabled by default when unset'
-      - 'hosted MCP OAuth consent and token issuance: browser approval creates scoped mission_lifecycle USER_TOKEN access tokens; authorization codes are short-lived, single-use, and PKCE-protected; refresh tokens are not issued through contract version 1'
+      - 'hosted MCP OAuth consent and token issuance: browser approval creates scoped mission_lifecycle USER_TOKEN access tokens; authorization codes are short-lived, single-use, PKCE-protected, and resource-bound; refresh tokens are not issued through contract version 2'
     dependsOn:
       - database
     interactionSurfaces:
@@ -218,7 +218,8 @@ components:
     owns:
       - 'hosted MCP endpoint path: GET/POST /mcp'
       - 'supported MCP protocol version advertisement'
-      - 'MCP tool names, tool input schemas, resource URI patterns, prompt names, and MCP JSON-RPC response shaping'
+      - 'MCP tool names, input/output schemas, safety annotations, MCP Apps resource URI patterns, prompt names, and MCP JSON-RPC response shaping'
+      - 'public ChatGPT mission-first surface: project resolution/selection, mission search/context reads, explicit mission/session writes, and presentation-only widget resources'
       - 'OAuth protected-resource metadata for the hosted MCP resource'
       - 'mapping MCP tool calls to existing service/protocol operations'
     dependsOn:
@@ -325,7 +326,8 @@ interactionSurfaces:
       - 'Missing or failed authentication returns an OAuth-compatible WWW-Authenticate: Bearer challenge'
       - 'The active workspace is resolved by the Auth Layer from the bearer credential plus X-Overlord-Active-Workspace when supplied'
       - 'MCP must not silently select another workspace after auth'
-      - 'OAuth approval creates mission_lifecycle-scoped USER_TOKEN access tokens and does not issue refresh tokens through contract version 1'
+      - 'OAuth approval creates mission_lifecycle-scoped USER_TOKEN access tokens and does not issue refresh tokens through contract version 2'
+      - 'OAuth resource parameters, when supplied, are bound through approval and token exchange to the canonical hosted /mcp resource; mismatches return invalid_target'
 
   mcpToService:
     description: 'MCP tool handlers call existing service/protocol functions and never write tables directly'
@@ -337,6 +339,7 @@ interactionSurfaces:
       - 'Every tool call must pass through the same RBAC gates as the corresponding REST or protocol operation'
       - 'Mission creation tools require explicit projectId or a prior resolved project identity; missing or ambiguous project context is a tool error'
       - 'Hosted MCP must not expose local filesystem/worktree inspection, runner queue claiming, execution target mutation, or branch-action tools'
+      - 'MCP Apps widget resources use ui://overlord/* URIs, self-contained HTML, and associated tool structuredContent only; no third-party frames, secrets, or unrestricted network access'
 
   authToDatabase:
     description: 'Auth layer accesses auth tables via the configured Better Auth database adapter; reads role_assignments and workspace_users for identity bridging'

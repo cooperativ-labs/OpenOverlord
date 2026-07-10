@@ -2,7 +2,9 @@ import type { NextFunction, Request, Response } from 'express';
 
 import type { ProtocolRequestBody } from '../backend/protocol.ts';
 import { runProtocolSubcommand } from '../backend/protocol.ts';
+
 import { hostedMcpToolDefinitions, type ToolDefinition } from './tool-catalog.ts';
+import { hostedMcpWidgetResources, readHostedMcpWidget } from './widgets.ts';
 
 const MCP_PROTOCOL_VERSION = '2025-11-25';
 
@@ -23,6 +25,7 @@ type JsonRpcError = {
 
 type ToolCallResult = {
   content: Array<{ type: 'text'; text: string }>;
+  structuredContent?: unknown;
   isError?: boolean;
 };
 
@@ -58,7 +61,17 @@ function jsonText(value: unknown): ToolCallResult {
         type: 'text',
         text: JSON.stringify(value, null, 2)
       }
-    ]
+    ],
+    structuredContent: value
+  };
+}
+
+function toolErrorText(error: unknown): ToolCallResult {
+  const message =
+    error instanceof Error ? error.message : 'Overlord could not complete this tool call.';
+  return {
+    content: [{ type: 'text', text: message }],
+    isError: true
   };
 }
 
@@ -192,7 +205,30 @@ async function callTool(params: unknown): Promise<ToolCallResult> {
   const name = typeof params.name === 'string' ? params.name : '';
   const tool = tools.find(candidate => candidate.name === name);
   if (!tool) throw new Error(`Unknown MCP tool: ${name}`);
-  return jsonText(await tool.handler(params.arguments));
+  try {
+    return jsonText(await tool.handler(params.arguments));
+  } catch (error) {
+    return toolErrorText(error);
+  }
+}
+
+function readResource(params: unknown): Record<string, unknown> {
+  if (!isRecord(params) || typeof params.uri !== 'string') {
+    throw new Error('resources/read requires params.uri');
+  }
+  const resource = readHostedMcpWidget(params.uri);
+  if (!resource) throw new Error(`Unknown MCP resource: ${params.uri}`);
+  return {
+    contents: [
+      {
+        uri: resource.uri,
+        name: resource.name,
+        mimeType: resource.mimeType,
+        text: resource.text,
+        _meta: resource._meta
+      }
+    ]
+  };
 }
 
 async function dispatch(request: JsonRpcRequest): Promise<Record<string, unknown> | null> {
@@ -206,7 +242,9 @@ async function dispatch(request: JsonRpcRequest): Promise<Record<string, unknown
         return success(request.id, {
           protocolVersion: MCP_PROTOCOL_VERSION,
           serverInfo: { name: 'overlord', version: '0.1.0' },
-          capabilities: { tools: {} }
+          instructions:
+            'Overlord manages explicit user-authorized work. Resolve project identity before creating work, use read tools before writes, and call session lifecycle tools only when the user explicitly asks to begin, update, or deliver mission work.',
+          capabilities: { tools: {}, resources: {} }
         });
       case 'notifications/initialized':
         return null;
@@ -216,6 +254,10 @@ async function dispatch(request: JsonRpcRequest): Promise<Record<string, unknown
         return success(request.id, { tools: toolDefinitions() });
       case 'tools/call':
         return success(request.id, await callTool(request.params));
+      case 'resources/list':
+        return success(request.id, { resources: hostedMcpWidgetResources });
+      case 'resources/read':
+        return success(request.id, readResource(request.params));
       default:
         return failure(request.id, {
           code: -32601,
@@ -239,7 +281,9 @@ export function mcpServerInfo(req: Request): Record<string, unknown> {
     name: 'overlord',
     protocolVersion: MCP_PROTOCOL_VERSION,
     endpoint: resource,
-    capabilities: { tools: toolDefinitions() }
+    capabilities: { tools: toolDefinitions(), resources: hostedMcpWidgetResources },
+    instructions:
+      'Resolve project identity before creating work. Use read tools before writes. Mission and session writes require explicit user intent.'
   };
 }
 

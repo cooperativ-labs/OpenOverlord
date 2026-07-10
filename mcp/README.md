@@ -18,6 +18,12 @@ The first hosted implementation is mounted by the backend when
 - `POST /oauth/token`
 - `POST /oauth/revoke`
 
+The public ChatGPT Apps surface uses Apps SDK-compatible metadata: every tool
+has an input/output schema and safety annotation, and read tools may point at
+the bundled `ui://overlord/*` widget resources. The widgets are self-contained
+MCP Apps HTML; they render only a tool result's `structuredContent` and make no
+third-party network or iframe requests.
+
 The endpoint is intentionally backend-hosted, not a CLI shim. Local connector
 MCP scripts for Codex, Claude Code, Cursor, and Antigravity continue to use
 `ovld protocol` for checkout-local workflows.
@@ -33,6 +39,11 @@ authorization-code + PKCE flow. Approval happens in the web app at
 `/oauth/approve`; approving creates a scoped `USER_TOKEN` with the
 `mission_lifecycle` preset and exchanges the one-time authorization code for a
 bearer access token. Refresh tokens are not issued in contract version `0`.
+
+When a client supplies an OAuth `resource` parameter, Overlord binds it to the
+canonical hosted `/mcp` URL at approval and token exchange. A mismatch returns
+`invalid_target`, while missing, denied, expired, revoked, or malformed access
+credentials receive an OAuth-compatible `401` challenge at `/mcp`.
 
 When the SPA is deployed separately from the backend, the hosted web build can
 serve same-domain OAuth discovery metadata and proxy `/mcp` plus OAuth token
@@ -52,6 +63,14 @@ The current tool catalog is mission-first:
 - `overlord_attach_session`
 - `overlord_update_session`
 - `overlord_deliver_session`
+
+Widgets are attached to project resolution, mission search, mission-context,
+and delivery results:
+
+- `ui://overlord/project-selector.html`
+- `ui://overlord/mission-list.html`
+- `ui://overlord/objective-viewer.html`
+- `ui://overlord/file-changes.html`
 
 The local connector MCP bridge scripts for Codex, Cursor, and Antigravity
 advertise the same canonical tool names and input contract shape. Backend tests

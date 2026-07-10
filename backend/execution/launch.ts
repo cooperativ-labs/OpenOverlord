@@ -60,7 +60,6 @@ import type {
   UpdateTerminalProfileBody,
   UpdateWorktreeBranchAutomationBody
 } from '../../webapp/shared/contract.ts';
-
 import {
   buildWebappServiceContext,
   buildWebappServiceContextForWorkspace,

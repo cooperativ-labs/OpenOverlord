@@ -11,7 +11,6 @@
  */
 
 import type { MetaDto } from '../../webapp/shared/contract.ts';
-
 import { getActiveProfileId, getActiveWorkspaceIdOrNull } from '../db.ts';
 import { getActiveOrganizationIdOrNull, listOrganizationsForUser } from '../organizations.ts';
 import { listWorkspacesForOrganization } from '../workspaces.ts';

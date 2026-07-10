@@ -9,7 +9,6 @@ import type {
   ProjectExecutionTargetDto,
   UpdateProjectExecutionTargetBody
 } from '../../webapp/shared/contract.ts';
-
 import { buildWebappServiceContext, requireDatabaseClient, serviceDatabaseClient } from '../db.ts';
 import { ApiError } from '../errors.ts';
 

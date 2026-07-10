@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { hostedMcpToolDefinitions } from '../mcp/tool-catalog.ts';
+import { hostedMcpWidgetResources, readHostedMcpWidget } from '../mcp/widgets.ts';
 
 const repoRoot = path.resolve(import.meta.dirname, '..');
 
@@ -93,5 +94,40 @@ test('local MCP bridge tools stay in sync with hosted MCP registry', async () =>
 
   for (const relativePath of scripts) {
     assert.deepEqual(await localToolContracts(path.join(repoRoot, relativePath)), expected);
+  }
+});
+
+test('hosted MCP tool metadata is publication-ready', () => {
+  for (const tool of hostedMcpToolDefinitions) {
+    assert.match(tool.description, /^Use this /, `${tool.name} has a scoped tool description`);
+    assert.equal(tool.inputSchema.type, 'object', `${tool.name} has an input object schema`);
+    assert.equal(tool.outputSchema.type, 'object', `${tool.name} has an output object schema`);
+    assert.equal(typeof tool.annotations?.readOnlyHint, 'boolean', `${tool.name} labels reads`);
+    assert.equal(
+      typeof tool.annotations?.destructiveHint,
+      'boolean',
+      `${tool.name} labels destructive behavior`
+    );
+    assert.equal(
+      typeof tool.annotations?.openWorldHint,
+      'boolean',
+      `${tool.name} labels external publication behavior`
+    );
+  }
+});
+
+test('hosted MCP widget resources are self-contained and readable', () => {
+  assert.deepEqual(hostedMcpWidgetResources.map(resource => resource.uri).sort(), [
+    'ui://overlord/file-changes.html',
+    'ui://overlord/mission-list.html',
+    'ui://overlord/objective-viewer.html',
+    'ui://overlord/project-selector.html'
+  ]);
+  for (const resource of hostedMcpWidgetResources) {
+    const loaded = readHostedMcpWidget(resource.uri);
+    assert.ok(loaded);
+    assert.equal(loaded.mimeType, 'text/html;profile=mcp-app');
+    assert.match(loaded.text, /ui\/notifications\/tool-result/);
+    assert.doesNotMatch(loaded.text, /<iframe/i);
   }
 });

@@ -87,8 +87,26 @@ import type {
   WorktreeDto
 } from '../webapp/shared/contract.ts';
 
-import { missionWorktreePath, previewMissionBranch } from './branch-planning.ts';
 import { generateCommitMessageFromDiff } from './automation/commit-message-automation.ts';
+import {
+  generateMissionTitleNow,
+  initialTitleFromInstruction,
+  scheduleMissionTitleGeneration,
+  scheduleObjectiveTitleGeneration
+} from './automation/title-automation.ts';
+import {
+  dequeueObjective,
+  getLaunchPreference,
+  LAUNCHABLE_STATES,
+  listMissionExecutionRequests,
+  readWorktreeBranchAutomationEnabled
+} from './execution/launch.ts';
+import {
+  queueLocalTargetMutation,
+  resolveMutationAnchorMissionId,
+  resolveRemoteMutationTarget
+} from './execution/local-target-mutation-queue.ts';
+import { missionWorktreePath, previewMissionBranch } from './branch-planning.ts';
 import {
   buildWebappServiceContext,
   buildWebappServiceContextForWorkspace,
@@ -105,18 +123,6 @@ import {
   resolveActiveProfileId
 } from './db.ts';
 import { ApiError } from './errors.ts';
-import {
-  dequeueObjective,
-  getLaunchPreference,
-  LAUNCHABLE_STATES,
-  listMissionExecutionRequests,
-  readWorktreeBranchAutomationEnabled
-} from './execution/launch.ts';
-import {
-  queueLocalTargetMutation,
-  resolveMutationAnchorMissionId,
-  resolveRemoteMutationTarget
-} from './execution/local-target-mutation-queue.ts';
 import { getActiveOrganizationIdOrNull } from './organizations.ts';
 import {
   actorCan,
@@ -124,12 +130,6 @@ import {
   requireProjectPermission,
   requireWorkspacePermission
 } from './rbac.ts';
-import {
-  generateMissionTitleNow,
-  initialTitleFromInstruction,
-  scheduleMissionTitleGeneration,
-  scheduleObjectiveTitleGeneration
-} from './automation/title-automation.ts';
 
 export { ApiError };
 

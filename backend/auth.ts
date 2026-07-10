@@ -10,9 +10,9 @@ import type { NextFunction, Request, Response } from 'express';
 
 import { createAuth } from '../auth/src/auth/config.ts';
 
-import { cascadeDeleteAccount } from './account-deletion.ts';
 import { resolveAllowedBrowserOrigins } from './http/browser-origins.ts';
 import { clientDeviceFromRequest } from './http/client-device.ts';
+import { cascadeDeleteAccount } from './account-deletion.ts';
 import {
   type ActiveWorkspace,
   authDomainDatabase,

@@ -1,4 +1,4 @@
-import { session, type BrowserWindow } from 'electron';
+import { type BrowserWindow, session } from 'electron';
 
 import { activeBackendForRenderer, syncOverlordTomlForProfile } from './backend-config.js';
 import {

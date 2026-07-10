@@ -18,6 +18,7 @@ const oauth = await import('./oauth.ts');
 const { hashUserTokenSecret, USER_TOKEN_PREFIX } = await import('@overlord/auth');
 
 const REDIRECT_URI = 'http://127.0.0.1:9876/callback';
+const MCP_RESOURCE = 'https://overlord.example.test/mcp';
 const CODE_VERIFIER = 'test-code-verifier-0123456789';
 const CODE_CHALLENGE = createHash('sha256').update(CODE_VERIFIER).digest('base64url');
 
@@ -43,7 +44,12 @@ function mockResponse(): MockResponse {
 }
 
 function requestWith(body: Record<string, unknown>): Request {
-  return { body, query: {} } as unknown as Request;
+  return {
+    body,
+    query: {},
+    protocol: 'https',
+    get: (name: string) => (name.toLowerCase() === 'host' ? 'overlord.example.test' : undefined)
+  } as unknown as Request;
 }
 
 function registerClient(clientName: string): string {
@@ -65,6 +71,7 @@ async function approveAndGetCode(clientId: string): Promise<string> {
       redirect_uri: REDIRECT_URI,
       code_challenge_method: 'S256',
       code_challenge: CODE_CHALLENGE,
+      resource: MCP_RESOURCE,
       state: 'test-state',
       decision: 'approve'
     }),
@@ -81,6 +88,7 @@ async function exchangeCode(params: {
   clientId: string;
   redirectUri?: string;
   codeVerifier?: string;
+  resource?: string;
 }): Promise<MockResponse> {
   const res = mockResponse();
   await oauth.handleOAuthToken(
@@ -89,7 +97,8 @@ async function exchangeCode(params: {
       code: params.code,
       client_id: params.clientId,
       redirect_uri: params.redirectUri ?? REDIRECT_URI,
-      code_verifier: params.codeVerifier ?? CODE_VERIFIER
+      code_verifier: params.codeVerifier ?? CODE_VERIFIER,
+      resource: params.resource ?? MCP_RESOURCE
     }),
     res
   );
@@ -153,6 +162,20 @@ test('a client mismatch on exchange revokes the minted token', async () => {
   assert.equal(failed.statusCode, 400);
   assert.equal((failed.payload as { error: string }).error, 'invalid_grant');
   assert.equal(mintedTokenRow('Mismatch Client').status, 'revoked');
+});
+
+test('a resource mismatch on exchange revokes the minted token', async () => {
+  const clientId = registerClient('Resource Mismatch Client');
+  const code = await approveAndGetCode(clientId);
+
+  const failed = await exchangeCode({
+    code,
+    clientId,
+    resource: 'https://another.example.test/mcp'
+  });
+  assert.equal(failed.statusCode, 400);
+  assert.equal((failed.payload as { error: string }).error, 'invalid_target');
+  assert.equal(mintedTokenRow('Resource Mismatch Client').status, 'revoked');
 });
 
 test('an expired unexchanged code revokes its token instead of orphaning it', async () => {

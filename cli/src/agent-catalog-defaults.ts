@@ -53,6 +53,21 @@ export const BUNDLED_AGENT_CATALOG: Record<string, CatalogAgent> = {
         id: 'gpt-5.5',
         displayName: 'GPT-5.5',
         reasoningOptions: ['low', 'medium', 'high', 'xhigh']
+      },
+      {
+        id: 'gpt-5.6-sol',
+        displayName: 'GPT-5.6 Sol',
+        reasoningOptions: ['low', 'medium', 'high', 'xhigh', 'max']
+      },
+      {
+        id: 'gpt-5.6-luna',
+        displayName: 'GPT-5.6 Luna',
+        reasoningOptions: ['low', 'medium', 'high', 'xhigh', 'max']
+      },
+      {
+        id: 'gpt-5.6-terra',
+        displayName: 'GPT-5.6 Terra',
+        reasoningOptions: ['none', 'low', 'medium', 'high', 'xhigh', 'max']
       }
     ],
     defaultModel: 'gpt-5.4',
@@ -64,7 +79,58 @@ export const BUNDLED_AGENT_CATALOG: Record<string, CatalogAgent> = {
     availableByDefault: true,
     models: [
       { id: 'auto', displayName: 'Auto', reasoningOptions: [] },
-      { id: 'composer-2.5', displayName: 'Composer 2.5', reasoningOptions: [] }
+      { id: 'composer-2.5', displayName: 'Composer 2.5', reasoningOptions: [] },
+      {
+        id: 'grok-4.5-fast-high',
+        displayName: 'Grok 4.5 Fast High',
+        reasoningOptions: []
+      },
+      {
+        id: 'grok-4.5-fast-medium',
+        displayName: 'Grok 4.5 Fast Medium',
+        reasoningOptions: []
+      },
+      {
+        id: 'grok-4.5-fast-xhigh',
+        displayName: 'Grok 4.5 Fast Xhigh',
+        reasoningOptions: []
+      },
+      {
+        id: 'grok-4.5-high',
+        displayName: 'Grok 4.5 High',
+        reasoningOptions: []
+      },
+      {
+        id: 'grok-4.5-medium',
+        displayName: 'Grok 4.5 Medium',
+        reasoningOptions: []
+      },
+      {
+        id: 'grok-4.5-xhigh',
+        displayName: 'Grok 4.5 Xhigh',
+        reasoningOptions: []
+      },
+      {
+        id: 'glm-5.2-high',
+        displayName: 'GLM 5.2 High',
+        reasoningOptions: []
+      },
+      {
+        id: 'gpt-5.6-sol',
+        displayName: 'GPT-5.6 Sol',
+        reasoningOptions: []
+      },
+
+      {
+        id: 'gpt-5.6-terra',
+        displayName: 'GPT-5.6 Terra',
+        reasoningOptions: []
+      },
+      {
+        id: 'gpt-5.6-luna',
+        displayName: 'GPT-5.6 Luna',
+        reasoningOptions: []
+      }
     ],
     defaultModel: 'auto',
     defaultReasoningEffort: null,

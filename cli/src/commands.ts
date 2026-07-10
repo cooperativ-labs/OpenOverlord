@@ -1580,7 +1580,9 @@ async function runRunnerServiceCommand({
         Backend: state.backendUrl ?? '(unknown)',
         'Last heartbeat': state.lastHeartbeatAt ?? '(never)',
         'Last launched': state.lastLaunchedAt ?? '(never)',
-        'Poll interval': state.currentPollIntervalMs ? `${state.currentPollIntervalMs}ms` : '(idle)',
+        'Poll interval': state.currentPollIntervalMs
+          ? `${state.currentPollIntervalMs}ms`
+          : '(idle)',
         'Last error': state.lastError ?? '(none)'
       });
     }

@@ -1,7 +1,6 @@
 import { PERMISSIONS } from '@overlord/auth';
 
 import { recordTargetResourceObservations } from '../../packages/core/service/target-resource-observations.ts';
-
 import { buildWebappServiceContext } from '../db.ts';
 import { ApiError } from '../errors.ts';
 import { actorCan } from '../rbac.ts';

@@ -1,0 +1,5 @@
+contractVersion: "2"
+componentType: mcp-server
+componentKey: overlord
+label: "Overlord Hosted MCP Server"
+description: "OAuth-protected, mission-first MCP server for hosted ChatGPT Apps and other MCP clients."

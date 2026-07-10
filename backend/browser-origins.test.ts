@@ -6,13 +6,13 @@ import { isAllowedBrowserOrigin, resolveAllowedBrowserOrigins } from './http/bro
 describe('resolveAllowedBrowserOrigins', () => {
   it('includes desktop loopback shell origins for cross-origin cloud auth', () => {
     const origins = resolveAllowedBrowserOrigins({
-      baseUrl: 'https://overlord-backend-production.up.railway.app',
+      baseUrl: 'https://backend.ovld.ai',
       devPort: '5173'
     });
 
     assert.ok(origins.includes('http://127.0.0.1:4310'));
     assert.ok(origins.includes('http://localhost:4310'));
-    assert.ok(origins.includes('https://overlord-backend-production.up.railway.app'));
+    assert.ok(origins.includes('https://backend.ovld.ai'));
   });
 
   it('includes comma-separated hosted web origins from OVERLORD_WEB_ORIGINS', () => {
@@ -22,7 +22,7 @@ describe('resolveAllowedBrowserOrigins', () => {
 
     try {
       const origins = resolveAllowedBrowserOrigins({
-        baseUrl: 'https://overlord-backend-production.up.railway.app',
+        baseUrl: 'https://backend.ovld.ai',
         devPort: '5173'
       });
 
@@ -36,7 +36,7 @@ describe('resolveAllowedBrowserOrigins', () => {
 
   it('matches wildcard hosted web origins', () => {
     const origins = resolveAllowedBrowserOrigins({
-      baseUrl: 'https://overlord-backend-production.up.railway.app',
+      baseUrl: 'https://backend.ovld.ai',
       devPort: '5173'
     });
     origins.push('https://overlord-webapp-*.vercel.app');

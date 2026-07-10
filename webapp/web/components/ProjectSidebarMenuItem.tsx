@@ -1,7 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
-import { Archive, Settings } from 'lucide-react';
+import { Archive, Clock3, Settings } from 'lucide-react';
 import { useState } from 'react';
 
 import {
@@ -10,7 +10,7 @@ import {
 } from '@/components/projects/ProjectColorSetter';
 import { SidebarLinkMenuButton } from '@/components/sidebar-link-menu-button';
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { useUpdateProject } from '@/lib/queries';
+import { useEverhourIntegration, useProjectEverhour, useUpdateProject } from '@/lib/queries';
 
 import type { ProjectDto } from '../../shared/contract.ts';
 
@@ -44,6 +44,10 @@ export function ProjectSidebarMenuItem({
   const params = useParams({ strict: false }) as { projectId?: string };
   const [menuOpen, setMenuOpen] = useState(false);
   const savedColor = project.color ?? DEFAULT_PROJECT_COLOR;
+  const integration = useEverhourIntegration();
+  const everhourConnected = integration.data?.connected ?? false;
+  const projectEverhour = useProjectEverhour(project.id, { enabled: everhourConnected });
+  const hasRunningTimer = Boolean(projectEverhour.data?.runningTimer);
 
   const {
     attributes,
@@ -131,7 +135,18 @@ export function ProjectSidebarMenuItem({
       }
     >
       <ProjectColorDot color={project.color} />
-      <span className="group-data-[collapsible=icon]:hidden">{project.name}</span>
+      <span className="inline-flex min-w-0 items-center gap-1.5 group-data-[collapsible=icon]:hidden">
+        <span className="truncate">{project.name}</span>
+        {hasRunningTimer ? (
+          <span
+            className="inline-flex shrink-0 text-red-500"
+            aria-label="Running project timer"
+            title="Running project timer"
+          >
+            <Clock3 className="size-3.5" aria-hidden />
+          </span>
+        ) : null}
+      </span>
     </SidebarLinkMenuButton>
   );
 }

@@ -11,7 +11,7 @@
 "$id": "openoverllord/conformance-manifest/v1"
 title: "Overlord Conformance Manifest"
 description: >
-  Every connector, extension, database adapter, auth provider, or REST module that ships
+  Every connector, extension, database adapter, auth provider, REST module, desktop shell, or MCP server that ships
   against Overlord must provide a conformance-manifest.yaml at its root.
   The manifest declares which contract version the component was validated against,
   what kind of component it is, and which extension points and vocabulary values it uses.
@@ -43,6 +43,7 @@ properties:
       - rest-module
       - rest-consumer
       - desktop-shell
+      - mcp-server
     description: "The kind of component being shipped"
 
   componentKey:
