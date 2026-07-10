@@ -254,7 +254,9 @@ export function ProjectSettingsSection({
                 ) : null}
               </div>
             ) : null}
-            <ProjectTimerPopover projectId={projectId} />
+            <div className="ml-3">
+              <ProjectTimerPopover projectId={projectId} />
+            </div>
           </div>
         </div>
       </div>
