@@ -10,7 +10,6 @@ import {
   Palette,
   Plug,
   ShieldCheck,
-  Terminal,
   User,
   Webhook
 } from 'lucide-react';
@@ -21,7 +20,6 @@ import { AccountPage } from '@/components/settings/AccountPage';
 import { ApplicationPage } from '@/components/settings/ApplicationPage';
 import { BackendPage } from '@/components/settings/BackendPage';
 import { DesktopUpdatesPage } from '@/components/settings/DesktopUpdatesPage';
-import { ExecutionTargetsPage } from '@/components/settings/ExecutionTargetsPage';
 import { HotkeysPage } from '@/components/settings/HotkeysPage';
 import { IdePage } from '@/components/settings/IdePage';
 import { IntegrationsPage } from '@/components/settings/IntegrationsPage';
@@ -47,7 +45,6 @@ type SettingsModalProps = {
 
 const workflowNavItems: SettingsNavItem[] = [
   { name: 'Terminal & IDE', icon: Code2 },
-  { name: 'Execution Targets', icon: Terminal },
   { name: 'Worktrees', icon: GitBranch },
   { name: 'MCP', icon: Cable }
 ];
@@ -153,7 +150,6 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
       {activeNav === 'Integrations' && <IntegrationsPage />}
       {activeNav === 'Webhooks' && <WebhooksPage open={open} />}
       {activeNav === 'Notifications' && <NotificationsPage />}
-      {activeNav === 'Execution Targets' && <ExecutionTargetsPage />}
       {activeNav === 'Worktrees' && <WorktreesPage />}
       {activeNav === 'MCP' && (
         <McpPage
@@ -169,12 +165,7 @@ export function SettingsModal({ open, onOpenChange, initialNav }: SettingsModalP
       {activeNav === 'Account' && <AccountPage open={open} />}
       {activeNav === 'Tokens' && <UserTokensPage open={open} />}
       {activeNav === 'Hotkeys' && <HotkeysPage />}
-      {activeNav === 'Terminal & IDE' && (
-        <IdePage
-          open={open}
-          onNavigateToExecutionTargets={() => setActiveNav('Execution Targets')}
-        />
-      )}
+      {activeNav === 'Terminal & IDE' && <IdePage open={open} />}
     </SettingsDialogShell>
   );
 }

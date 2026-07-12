@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '5'
+contractVersion: '6'
 
 components:
   protocol:
@@ -131,7 +131,7 @@ components:
       - 'organization management endpoints: list organizations for the caller, update an organization (org-admin gated), list/add/remove organization admins (add/remove maintains the invariant that an org admin is ADMIN of every constituent workspace)'
       - 'shared onboarding endpoint (POST /api/onboarding, zero-membership users only): creates an organization, a default workspace, membership, and ADMIN role in one transaction; used verbatim by the web onboarding screen and the ovld org-setup CLI command'
       - 'project APIs support explicit target workspace context for multi-workspace organization UIs: CreateProjectBody.workspaceId and GET /api/workspaces/:id/statuses'
-      - "workspace execution-target projection: GET /api/workspaces/:id/execution-targets returns all non-deleted target identity/status/owner display metadata, reachability, and active workspace-member access count to an authenticated member; never connection_json, credentials, target registration, creation, or access mutation; project selection remains limited to the acting member's eligible targets"
+      - "workspace execution-target projection: GET /api/workspaces/:id/execution-targets returns all non-deleted target identity/status/owner display metadata, reachability, and active workspace-member access count to an authenticated member; never connection_json, credentials, target registration, creation, or access mutation; project selection remains limited to the acting member's eligible targets. Workspace admins may rename a target label via PATCH /api/workspaces/:id/execution-targets/:targetId { label }"
       - 'storage routes for the organization-images bucket key (/api/storage/organization-images/…) with a PUBLIC organization_image:read grant'
       - 'hosted MCP OAuth endpoints: POST /oauth/register, POST /oauth/token, POST /oauth/revoke, GET /oauth/authorize, POST /oauth/authorize/request, POST /oauth/authorize/approve'
       - 'versioned virtual-target gateway route family (/api/virtual-targets/v1/*): PUT …/registration, POST …/claim, POST …/requests/:id/progress, POST …/requests/:id/launched, POST …/requests/:id/failed, POST …/grants/:id/exchange, GET …/missions/:id/resources, POST …/missions/:id/actions; owns DTO shapes, target-authenticated auth/RBAC, per-request idempotency, and bounded/redacted output; the immutable VirtualExecutionQueueItemV1 payload + digest are built by the service layer at queue time and returned only to the authenticated claiming gateway; local /api/runner/* routes are unchanged'

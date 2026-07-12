@@ -16,9 +16,12 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog';
-import { LoadingButton, type ButtonLoadingState } from '@/components/ui/loading-button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { type ButtonLoadingState, LoadingButton } from '@/components/ui/loading-button';
 import {
   useDeleteWorkspaceExecutionTarget,
+  useRenameWorkspaceExecutionTarget,
   useWorkspaceExecutionTargets,
   useWorkspaceMembers
 } from '@/lib/queries';
@@ -28,6 +31,72 @@ import type { WorkspaceExecutionTargetDto } from '../../../../shared/contract.ts
 function targetStatusLabel(status: string, reachable: boolean): string {
   if (status !== 'active') return status;
   return reachable ? 'online' : 'offline';
+}
+
+function ExecutionTargetNameEditor({
+  workspaceId,
+  target
+}: {
+  workspaceId: string;
+  target: WorkspaceExecutionTargetDto;
+}) {
+  const rename = useRenameWorkspaceExecutionTarget(workspaceId);
+  const [label, setLabel] = useState(target.label);
+  const [error, setError] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<ButtonLoadingState>('default');
+  const trimmed = label.trim();
+  const isDirty = trimmed !== target.label && trimmed.length > 0;
+
+  async function handleSave() {
+    if (!isDirty) return;
+    setSaveState('loading');
+    setError(null);
+    try {
+      await rename.mutateAsync({ executionTargetId: target.id, label: trimmed });
+      setSaveState('success');
+      setTimeout(() => setSaveState('default'), 1200);
+    } catch (err) {
+      setSaveState('error');
+      setError(err instanceof Error ? err.message : 'Failed to rename execution target.');
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <Label
+        htmlFor={`execution-target-name-${target.id}`}
+        className="text-xs text-muted-foreground"
+      >
+        Name
+      </Label>
+      <div className="flex items-center gap-2">
+        <Input
+          id={`execution-target-name-${target.id}`}
+          value={label}
+          onChange={event => {
+            setLabel(event.target.value);
+            setError(null);
+          }}
+          onKeyDown={event => {
+            if (event.key === 'Enter') void handleSave();
+          }}
+          className="h-8 max-w-sm"
+        />
+        <LoadingButton
+          buttonState={saveState}
+          text="Save"
+          loadingText="Saving…"
+          successText="Saved"
+          errorText="Retry"
+          size="sm"
+          className="h-8"
+          disabled={!isDirty}
+          onClick={() => void handleSave()}
+        />
+      </div>
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+    </div>
+  );
 }
 
 export function ExecutionTargetsPage({ workspaceId }: { workspaceId: string }) {
@@ -53,9 +122,7 @@ export function ExecutionTargetsPage({ workspaceId }: { workspaceId: string }) {
       setTimeout(() => setDeleteState('default'), 1200);
     } catch (error) {
       setDeleteState('error');
-      setDeleteError(
-        error instanceof Error ? error.message : 'Failed to delete execution target.'
-      );
+      setDeleteError(error instanceof Error ? error.message : 'Failed to delete execution target.');
     }
   }
 
@@ -138,7 +205,10 @@ export function ExecutionTargetsPage({ workspaceId }: { workspaceId: string }) {
                     </Button>
                   ) : null}
                 </div>
-                <AccordionContent className="pt-2">
+                <AccordionContent className="space-y-4 pt-2">
+                  {canManageTargets ? (
+                    <ExecutionTargetNameEditor workspaceId={workspaceId} target={target} />
+                  ) : null}
                   <dl className="grid gap-3 text-sm sm:grid-cols-2">
                     <div className="space-y-1">
                       <dt className="text-xs text-muted-foreground">Owner</dt>

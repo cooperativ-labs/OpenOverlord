@@ -236,6 +236,18 @@ export function useDeleteWorkspaceExecutionTarget(workspaceId: string) {
   });
 }
 
+export function useRenameWorkspaceExecutionTarget(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ executionTargetId, label }: { executionTargetId: string; label: string }) =>
+      api.updateWorkspaceExecutionTarget(workspaceId, executionTargetId, { label }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.workspaceExecutionTargets(workspaceId) });
+      invalidateNonEverhourQueries(qc);
+    }
+  });
+}
+
 export const useAccessibleWorkspaces = () => {
   const meta = useMeta();
   return meta.data?.workspaces ?? [];

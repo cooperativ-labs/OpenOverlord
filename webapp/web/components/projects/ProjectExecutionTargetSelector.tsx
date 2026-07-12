@@ -21,6 +21,28 @@ import {
 import { useUpdateProjectExecutionTarget } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
+import type { EligibleExecutionTargetDto } from '../../../shared/contract.ts';
+
+function ExecutionTargetOption({ target }: { target: EligibleExecutionTargetDto }) {
+  const statusSuffix = executionTargetOptionStatusSuffix(target).trim();
+  return (
+    <span className="flex min-w-0 flex-col gap-0.5">
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="truncate">{executionTargetOptionLabel(target)}</span>
+        <span className="shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          {target.type}
+        </span>
+        {statusSuffix ? (
+          <span className="shrink-0 text-xs text-muted-foreground">{statusSuffix}</span>
+        ) : null}
+      </span>
+      <span className="truncate font-mono text-[10px] text-muted-foreground">
+        {target.executionTargetId}
+      </span>
+    </span>
+  );
+}
+
 type ProjectExecutionTargetSelectorProps = {
   projectId: string;
   selectId?: string;
@@ -48,6 +70,14 @@ export function ProjectExecutionTargetSelector({
     selectedExecutionTargetId,
     eligibleTargets
   });
+
+  const selectedTarget = eligibleTargets.find(target => target.executionTargetId === selectorValue);
+  const triggerLabel =
+    selectorValue === ANY_ELIGIBLE_EXECUTION_TARGET_VALUE
+      ? 'Any eligible target'
+      : selectedTarget
+        ? executionTargetOptionLabel(selectedTarget)
+        : null;
 
   function handleChange(value: string | null) {
     if (!value || value === selectorValue) return;
@@ -85,7 +115,7 @@ export function ProjectExecutionTargetSelector({
                 className="h-7 max-w-52"
                 aria-invalid={error ? true : undefined}
               >
-                <SelectValue placeholder="Execution target" />
+                <SelectValue placeholder="Execution target">{triggerLabel}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {eligibleTargets.length > 1 ? (
@@ -99,8 +129,7 @@ export function ProjectExecutionTargetSelector({
                     value={target.executionTargetId}
                     disabled={!target.reachable || !target.primaryResourceConnected}
                   >
-                    {executionTargetOptionLabel(target)}
-                    {executionTargetOptionStatusSuffix(target)}
+                    <ExecutionTargetOption target={target} />
                   </SelectItem>
                 ))}
               </SelectContent>

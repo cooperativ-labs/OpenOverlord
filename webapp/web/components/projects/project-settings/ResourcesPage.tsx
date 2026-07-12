@@ -2,6 +2,12 @@ import { AlertTriangle, FolderOpen, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { useProjectRepositoryContext } from '@/components/projects/ProjectRepositoryContext.tsx';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger
+} from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,7 +28,6 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { useCopyToClipboard } from '@/lib/hooks/use-copy-to-clipboard';
 import {
   ANY_ELIGIBLE_EXECUTION_TARGET_VALUE,
   executionTargetOptionLabel,
@@ -30,6 +35,7 @@ import {
   parseExecutionTargetSelectorValue,
   resolveExecutionTargetSelectorValue
 } from '@/lib/execution-target-selection';
+import { useCopyToClipboard } from '@/lib/hooks/use-copy-to-clipboard';
 import { writeLocalProjectMetadata } from '@/lib/project-metadata';
 import {
   useCreateProjectResource,
@@ -89,83 +95,196 @@ function sourceDescriptorValue(source: ProjectResourceSourceDto): string {
   return '';
 }
 
-function ResourceSourcesCell({
-  sources,
-  fallbackPath,
-  targetLabelForId
+function targetLabelForId({
+  executionTargetId,
+  eligibleTargets,
+  localExecutionTargetId,
+  deviceLabel
 }: {
-  sources: ProjectResourceSourceDto[];
-  fallbackPath: string;
-  targetLabelForId: (executionTargetId: string | null) => string;
-}) {
-  const { copied, copy } = useCopyToClipboard();
-  const entries =
-    sources.length > 0
-      ? sources
-      : fallbackPath
-        ? [
-            {
-              id: 'fallback',
-              executionTargetId: null,
-              sourceKind: 'local_checkout',
-              descriptor: { path: fallbackPath },
-              observedRevision: null,
-              observedContentDigest: null
-            } satisfies ProjectResourceSourceDto
-          ]
-        : [];
+  executionTargetId: string | null;
+  eligibleTargets: EligibleExecutionTargetDto[];
+  localExecutionTargetId: string | null;
+  deviceLabel: string;
+}): string {
+  if (executionTargetId === null) return 'Any target';
+  const match = eligibleTargets.find(target => target.executionTargetId === executionTargetId);
+  if (match) return executionTargetOptionLabel(match);
+  if (executionTargetId === localExecutionTargetId) {
+    return `${deviceLabel} (this device)`;
+  }
+  return executionTargetId;
+}
 
-  if (entries.length === 0) {
-    return (
-      <td className="max-w-xs px-3 py-2 text-xs text-muted-foreground">No sources linked</td>
-    );
+function SourceRow({ source, label }: { source: ProjectResourceSourceDto; label: string }) {
+  const { copied, copy } = useCopyToClipboard();
+  const value = sourceDescriptorValue(source);
+  return (
+    <li className="min-w-0">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              className="flex w-full min-w-0 cursor-pointer flex-col gap-1 rounded-md border px-3 py-2 text-left hover:bg-muted/40"
+              onClick={() => {
+                if (value) void copy(value);
+              }}
+              aria-label={value ? `Copy ${value}` : `Source ${sourceKindLabel(source.sourceKind)}`}
+              disabled={!value}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <Badge variant="outline" className="shrink-0 font-normal">
+                  {sourceKindLabel(source.sourceKind)}
+                </Badge>
+                {value ? (
+                  <span className="block min-w-0 truncate font-mono text-xs" dir="rtl">
+                    {value}
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">No descriptor</span>
+                )}
+              </span>
+              <span className="text-xs text-muted-foreground">{label}</span>
+            </button>
+          }
+        />
+        <TooltipContent side="top" className="max-w-md break-all font-mono">
+          {copied ? 'Copied to clipboard' : value || sourceKindLabel(source.sourceKind)}
+        </TooltipContent>
+      </Tooltip>
+    </li>
+  );
+}
+
+function AddSourceForm({
+  projectId,
+  resource,
+  eligibleTargets,
+  defaultTargetValue,
+  onAdded
+}: {
+  projectId: string;
+  resource: ProjectResourceDto;
+  eligibleTargets: EligibleExecutionTargetDto[];
+  defaultTargetValue: string;
+  onAdded: () => void;
+}) {
+  const createResource = useCreateProjectResource(projectId);
+  const [directoryPath, setDirectoryPath] = useState('');
+  const [targetValue, setTargetValue] = useState(defaultTargetValue);
+  const [isBrowsing, setIsBrowsing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const canBrowseDirectories =
+    typeof window !== 'undefined' && typeof window.overlord?.chooseDirectory === 'function';
+
+  useEffect(() => {
+    setTargetValue(defaultTargetValue);
+  }, [defaultTargetValue]);
+
+  async function handleBrowseDirectory() {
+    const chooseDirectory = window.overlord?.chooseDirectory;
+    if (!chooseDirectory) return;
+    setError(null);
+    setIsBrowsing(true);
+    try {
+      const chosen = await chooseDirectory();
+      if (chosen) setDirectoryPath(chosen);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to choose directory.');
+    } finally {
+      setIsBrowsing(false);
+    }
+  }
+
+  async function handleAddSource() {
+    const trimmed = directoryPath.trim();
+    if (!trimmed) {
+      setError('Enter a directory path.');
+      return;
+    }
+    setError(null);
+    try {
+      const executionTargetId = parseExecutionTargetSelectorValue(targetValue);
+      const created = await createResource.mutateAsync({
+        directoryPath: trimmed,
+        resourceKey: resource.resourceKey,
+        executionTargetId,
+        isPrimary: resource.isPrimary
+      });
+      await writeLocalProjectMetadata({ directoryPath: trimmed, projectId, resource: created });
+      setDirectoryPath('');
+      onAdded();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add source.');
+    }
   }
 
   return (
-    <td className="max-w-md px-3 py-2">
-      <ul className="space-y-2">
-        {entries.map(source => {
-          const value = sourceDescriptorValue(source);
-          const targetLabel = targetLabelForId(source.executionTargetId);
-          return (
-            <li key={source.id} className="min-w-0">
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      className="flex w-full min-w-0 cursor-pointer flex-col gap-1 text-left hover:opacity-80"
-                      onClick={() => {
-                        if (value) void copy(value);
-                      }}
-                      aria-label={value ? `Copy ${value}` : `Source ${sourceKindLabel(source.sourceKind)}`}
-                      disabled={!value}
-                    >
-                      <span className="flex min-w-0 items-center gap-2">
-                        <Badge variant="outline" className="shrink-0 font-normal">
-                          {sourceKindLabel(source.sourceKind)}
-                        </Badge>
-                        {value ? (
-                          <span className="block min-w-0 truncate font-mono text-xs" dir="rtl">
-                            {value}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">No descriptor</span>
-                        )}
-                      </span>
-                      <span className="text-xs text-muted-foreground">{targetLabel}</span>
-                    </button>
-                  }
-                />
-                <TooltipContent side="top" className="max-w-md break-all font-mono">
-                  {copied ? 'Copied to clipboard' : value || sourceKindLabel(source.sourceKind)}
-                </TooltipContent>
-              </Tooltip>
-            </li>
-          );
-        })}
-      </ul>
-    </td>
+    <div className="rounded-lg border border-dashed p-3">
+      <h4 className="text-xs font-medium text-muted-foreground">Add source</h4>
+      <div className="mt-2 grid gap-3 lg:grid-cols-[minmax(0,1fr)_16rem_auto] lg:items-end">
+        <div className="grid min-w-0 gap-1.5">
+          <Label htmlFor={`add-source-path-${resource.id}`} className="text-xs">
+            Directory path
+          </Label>
+          <div className="flex gap-2">
+            <Input
+              id={`add-source-path-${resource.id}`}
+              value={directoryPath}
+              onChange={event => setDirectoryPath(event.target.value)}
+              placeholder="/path/to/checkout"
+              className="h-8 min-w-0 flex-1 font-mono text-xs"
+              onKeyDown={event => {
+                if (event.key === 'Enter') void handleAddSource();
+              }}
+            />
+            {canBrowseDirectories ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 shrink-0 gap-1.5"
+                disabled={isBrowsing}
+                onClick={() => void handleBrowseDirectory()}
+              >
+                <FolderOpen className="size-3.5" />
+                Browse
+              </Button>
+            ) : null}
+          </div>
+        </div>
+        <div className="grid min-w-0 gap-1.5">
+          <Label htmlFor={`add-source-target-${resource.id}`} className="text-xs">
+            Execution target
+          </Label>
+          <Select value={targetValue} onValueChange={value => setTargetValue(value ?? targetValue)}>
+            <SelectTrigger id={`add-source-target-${resource.id}`} className="h-8">
+              <SelectValue placeholder="Execution target" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ANY_ELIGIBLE_EXECUTION_TARGET_VALUE}>Any target</SelectItem>
+              {eligibleTargets.map(target => (
+                <SelectItem key={target.executionTargetId} value={target.executionTargetId}>
+                  {executionTargetOptionLabel(target)}
+                  {executionTargetOptionStatusSuffix(target)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          className="h-8 gap-1.5"
+          disabled={createResource.isPending}
+          onClick={() => void handleAddSource()}
+        >
+          <Plus className="size-3.5" />
+          Add source
+        </Button>
+      </div>
+      {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
+    </div>
   );
 }
 
@@ -176,7 +295,6 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
   const launchSettingsQ = useLaunchSettings();
   const projectQ = useProject(projectId);
   const updateProject = useUpdateProject(projectId);
-  const createResource = useCreateProjectResource(projectId);
   const updateResource = useUpdateProjectResource(projectId);
   const deleteResource = useDeleteProjectResource(projectId);
 
@@ -184,27 +302,11 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
   const localExecutionTargetId = launchSettingsQ.data?.executionTargetId ?? null;
   const deviceLabel = launchSettingsQ.data?.deviceLabel ?? 'This device';
   const activeExecutionTargetId = selectedExecutionTargetId ?? localExecutionTargetId;
-  const activeTarget = eligibleTargets.find(
-    target => target.executionTargetId === activeExecutionTargetId
-  );
-  const addTargetLabel = activeTarget ? executionTargetOptionLabel(activeTarget) : deviceLabel;
   const hasMissingPrimary = rows.some(
     resource => resource.isPrimary && resource.status === 'missing'
   );
-  const hasLocalPrimary =
-    activeExecutionTargetId !== null &&
-    rows.some(
-      resource => resource.executionTargetId === activeExecutionTargetId && resource.isPrimary
-    );
 
   const [targetError, setTargetError] = useState<string | null>(null);
-  const canBrowseDirectories =
-    typeof window !== 'undefined' && typeof window.overlord?.chooseDirectory === 'function';
-
-  const [directoryPath, setDirectoryPath] = useState('');
-  const [resourceKeyInput, setResourceKeyInput] = useState('');
-  const [isBrowsing, setIsBrowsing] = useState(false);
-  const [addError, setAddError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const [resourceKeyEdits, setResourceKeyEdits] = useState<Record<string, string>>({});
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -246,14 +348,13 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
     }
   }
 
-  function targetLabelForId(executionTargetId: string | null): string {
-    if (executionTargetId === null) return 'Any target';
-    const match = eligibleTargets.find(target => target.executionTargetId === executionTargetId);
-    if (match) return executionTargetOptionLabel(match);
-    if (executionTargetId === localExecutionTargetId) {
-      return `${deviceLabel} (this device)`;
-    }
-    return executionTargetId;
+  function resolveTargetLabel(executionTargetId: string | null): string {
+    return targetLabelForId({
+      executionTargetId,
+      eligibleTargets,
+      localExecutionTargetId,
+      deviceLabel
+    });
   }
 
   function handleExecutionTargetChange(value: string | null) {
@@ -274,44 +375,12 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
     selectedExecutionTargetId,
     eligibleTargets
   });
-  async function handleBrowseDirectory() {
-    const chooseDirectory = window.overlord?.chooseDirectory;
-    if (!chooseDirectory) return;
-
-    setAddError(null);
-    setIsBrowsing(true);
-    try {
-      const chosen = await chooseDirectory();
-      if (chosen) setDirectoryPath(chosen);
-    } catch (error) {
-      setAddError(error instanceof Error ? error.message : 'Failed to choose directory.');
-    } finally {
-      setIsBrowsing(false);
-    }
-  }
-
-  async function handleAddResource() {
-    const trimmed = directoryPath.trim();
-    if (!trimmed) {
-      setAddError('Enter a directory path.');
-      return;
-    }
-
-    setAddError(null);
-    try {
-      const resource = await createResource.mutateAsync({
-        directoryPath: trimmed,
-        resourceKey: resourceKeyInput.trim() || undefined,
-        ...(activeExecutionTargetId ? { executionTargetId: activeExecutionTargetId } : {}),
-        isPrimary: !hasLocalPrimary
-      });
-      await writeLocalProjectMetadata({ directoryPath: trimmed, projectId, resource });
-      setDirectoryPath('');
-      setResourceKeyInput('');
-    } catch (error) {
-      setAddError(error instanceof Error ? error.message : 'Failed to add directory.');
-    }
-  }
+  // Sources added from within a resource default to the project's active target.
+  const addSourceDefaultValue =
+    activeExecutionTargetId &&
+    eligibleTargets.some(target => target.executionTargetId === activeExecutionTargetId)
+      ? activeExecutionTargetId
+      : ANY_ELIGIBLE_EXECUTION_TARGET_VALUE;
 
   async function handleSaveResourceKey(resource: ProjectResourceDto) {
     const nextKey = resourceKeyEdits[resource.id]?.trim() ?? '';
@@ -344,17 +413,17 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
       await deleteResource.mutateAsync(deleteTarget.id);
       setDeleteTarget(null);
     } catch (error) {
-      setDeleteError(error instanceof Error ? error.message : 'Failed to remove directory.');
+      setDeleteError(error instanceof Error ? error.message : 'Failed to remove resource.');
     }
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-medium">Resource directories</h2>
+        <h2 className="text-base font-medium">Resources</h2>
         <p className="text-sm text-muted-foreground">
-          Choose where agents run for this project, then manage working directories per execution
-          target.
+          Choose where agents run for this project, then manage each resource and the checkout
+          sources that back it per execution target.
         </p>
       </div>
 
@@ -441,171 +510,133 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
         <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <p>
-            A primary working directory is missing. Set another directory as primary before
-            launching agents from this project.
+            A primary working directory is missing. Set another resource as primary before launching
+            agents from this project.
           </p>
         </div>
       ) : null}
-
-      <div className="rounded-lg border p-4">
-        <h3 className="text-sm font-medium">Add directory</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          New directories are linked to <span className="font-medium">{addTargetLabel}</span>.
-        </p>
-        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_16rem_auto] lg:items-end">
-          <div className="grid min-w-0 flex-1 gap-1.5">
-            <Label htmlFor="resource-directory-path">Directory path</Label>
-            <div className="flex gap-2">
-              <Input
-                id="resource-directory-path"
-                value={directoryPath}
-                onChange={event => setDirectoryPath(event.target.value)}
-                placeholder="/path/to/checkout"
-                className="h-8 min-w-0 flex-1"
-                onKeyDown={event => {
-                  if (event.key === 'Enter') void handleAddResource();
-                }}
-              />
-              {canBrowseDirectories ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 shrink-0 gap-1.5"
-                  disabled={isBrowsing}
-                  onClick={() => void handleBrowseDirectory()}
-                >
-                  <FolderOpen className="size-3.5" />
-                  Browse
-                </Button>
-              ) : null}
-            </div>
-          </div>
-          <div className="grid min-w-0 gap-1.5">
-            <Label htmlFor="resource-key">Resource key</Label>
-            <Input
-              id="resource-key"
-              value={resourceKeyInput}
-              onChange={event => setResourceKeyInput(event.target.value)}
-              placeholder="derived from directory"
-              className="h-8 min-w-0 font-mono text-xs"
-              onKeyDown={event => {
-                if (event.key === 'Enter') void handleAddResource();
-              }}
-            />
-          </div>
-          <Button
-            type="button"
-            size="sm"
-            className="h-8 gap-1.5"
-            disabled={createResource.isPending || launchSettingsQ.isLoading}
-            onClick={() => void handleAddResource()}
-          >
-            <Plus className="size-3.5" />
-            Add directory
-          </Button>
-        </div>
-        {addError ? <p className="mt-2 text-xs text-destructive">{addError}</p> : null}
-      </div>
 
       {resourcesQ.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading resources…</p>
       ) : rows.length === 0 ? (
         <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-          No directories linked yet.
+          No resources linked yet.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2 font-medium">Key</th>
-                <th className="px-3 py-2 font-medium">Sources</th>
-                <th className="px-3 py-2 font-medium">Primary</th>
-                <th className="px-3 py-2 font-medium">State</th>
-                <th className="px-3 py-2 font-medium" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(resource => (
-                <tr key={resource.id} className="border-t">
-                  <td className="min-w-44 px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={resourceKeyEdits[resource.id] ?? resource.resourceKey}
-                        onChange={event =>
-                          setResourceKeyEdits(previous => ({
-                            ...previous,
-                            [resource.id]: event.target.value
-                          }))
-                        }
-                        onKeyDown={event => {
-                          if (event.key === 'Enter') void handleSaveResourceKey(resource);
-                        }}
-                        className="h-7 min-w-0 font-mono text-xs"
-                        aria-label={`Resource key for ${resource.path}`}
-                      />
-                      {(resourceKeyEdits[resource.id] ?? resource.resourceKey).trim() !==
-                      resource.resourceKey ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="h-7"
-                          disabled={updateResource.isPending}
-                          onClick={() => void handleSaveResourceKey(resource)}
-                        >
-                          Save
-                        </Button>
-                      ) : null}
-                    </div>
-                  </td>
-                  <ResourceSourcesCell
-                    sources={resource.sources}
-                    fallbackPath={resource.path}
-                    targetLabelForId={targetLabelForId}
-                  />
-                  <td className="px-3 py-2">
+        <Accordion multiple className="overflow-hidden rounded-lg border px-4">
+          {rows.map(resource => (
+            <AccordionItem key={resource.id} value={resource.id}>
+              <div className="flex items-center gap-1">
+                <AccordionTrigger className="flex-1 hover:no-underline">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate font-mono text-sm">{resource.resourceKey}</span>
                     {resource.isPrimary ? (
-                      <Badge variant="secondary">Primary</Badge>
-                    ) : (
+                      <Badge variant="secondary" className="shrink-0">
+                        Primary
+                      </Badge>
+                    ) : null}
+                    <Badge
+                      variant={resource.status === 'missing' ? 'destructive' : 'outline'}
+                      className="shrink-0 font-normal"
+                    >
+                      {resourceStatusLabel(resource.status)}
+                    </Badge>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {resource.sources.length}{' '}
+                      {resource.sources.length === 1 ? 'source' : 'sources'}
+                    </span>
+                  </span>
+                </AccordionTrigger>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="size-7 shrink-0 text-destructive hover:text-destructive"
+                  onClick={() => {
+                    setDeleteError(null);
+                    setDeleteTarget(resource);
+                  }}
+                  aria-label={`Remove ${resource.resourceKey}`}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+              <AccordionContent className="space-y-4 pt-2">
+                <div className="grid gap-1.5 sm:max-w-md">
+                  <Label htmlFor={`resource-key-${resource.id}`} className="text-xs">
+                    Resource key
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id={`resource-key-${resource.id}`}
+                      value={resourceKeyEdits[resource.id] ?? resource.resourceKey}
+                      onChange={event =>
+                        setResourceKeyEdits(previous => ({
+                          ...previous,
+                          [resource.id]: event.target.value
+                        }))
+                      }
+                      onKeyDown={event => {
+                        if (event.key === 'Enter') void handleSaveResourceKey(resource);
+                      }}
+                      className="h-8 min-w-0 font-mono text-xs"
+                    />
+                    {(resourceKeyEdits[resource.id] ?? resource.resourceKey).trim() !==
+                    resource.resourceKey ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        disabled={updateResource.isPending}
+                        onClick={() => void handleSaveResourceKey(resource)}
+                      >
+                        Save
+                      </Button>
+                    ) : null}
+                    {!resource.isPrimary ? (
                       <Button
                         type="button"
                         size="sm"
                         variant="ghost"
-                        className="h-7"
+                        className="h-8"
                         disabled={updateResource.isPending}
                         onClick={() => void handleSetPrimary(resource)}
                       >
                         Make primary
                       </Button>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    <Badge variant={resource.status === 'missing' ? 'destructive' : 'secondary'}>
-                      {resourceStatusLabel(resource.status)}
-                    </Badge>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className="size-7 text-destructive hover:text-destructive"
-                      onClick={() => {
-                        setDeleteError(null);
-                        setDeleteTarget(resource);
-                      }}
-                      aria-label={`Remove ${resource.path}`}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="text-xs font-medium text-muted-foreground">Sources</h4>
+                  {resource.sources.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No sources linked yet.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {resource.sources.map(source => (
+                        <SourceRow
+                          key={source.id}
+                          source={source}
+                          label={resolveTargetLabel(source.executionTargetId)}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <AddSourceForm
+                  projectId={projectId}
+                  resource={resource}
+                  eligibleTargets={eligibleTargets}
+                  defaultTargetValue={addSourceDefaultValue}
+                  onAdded={() => void resourcesQ.refetch()}
+                />
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
       )}
 
       {rowError ? <p className="text-xs text-destructive">{rowError}</p> : null}
@@ -621,18 +652,17 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove directory</DialogTitle>
+            <DialogTitle>Remove resource</DialogTitle>
             <DialogDescription>
-              Remove resource &ldquo;{deleteTarget?.resourceKey}&rdquo; from this project?
+              Remove resource &ldquo;{deleteTarget?.resourceKey}&rdquo; and all of its sources from
+              this project?
               {deleteTarget?.sources.length ? (
                 <span className="mt-2 block font-mono text-xs text-muted-foreground">
                   {deleteTarget.sources
-                    .map(source => sourceDescriptorValue(source) || sourceKindLabel(source.sourceKind))
+                    .map(
+                      source => sourceDescriptorValue(source) || sourceKindLabel(source.sourceKind)
+                    )
                     .join(' · ')}
-                </span>
-              ) : deleteTarget?.path ? (
-                <span className="mt-2 block font-mono text-xs text-muted-foreground">
-                  {deleteTarget.path}
                 </span>
               ) : null}
             </DialogDescription>
@@ -648,7 +678,7 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
               disabled={deleteResource.isPending}
               onClick={() => void handleDeleteResource()}
             >
-              Remove directory
+              Remove resource
             </Button>
           </DialogFooter>
         </DialogContent>

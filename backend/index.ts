@@ -37,7 +37,8 @@ import {
   getProjectExecutionTarget,
   getWorkspaceExecutionTargets,
   removeWorkspaceExecutionTarget,
-  updateProjectExecutionTarget
+  updateProjectExecutionTarget,
+  updateWorkspaceExecutionTarget
 } from './execution/project-execution-target.ts';
 import {
   claimRunnerRequest,
@@ -654,6 +655,12 @@ app.get(
 app.get(
   '/api/workspaces/:id/execution-targets',
   handle(req => getWorkspaceExecutionTargets(req.params.id))
+);
+app.patch(
+  '/api/workspaces/:id/execution-targets/:targetId',
+  handle(req => updateWorkspaceExecutionTarget(req.params.id, req.params.targetId, req.body), {
+    mutates: true
+  })
 );
 app.delete(
   '/api/workspaces/:id/execution-targets/:targetId',

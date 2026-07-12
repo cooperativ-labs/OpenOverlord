@@ -604,7 +604,7 @@ export async function resolveLaunchExecutionTarget({
 const ACTIVE_QUEUE_STATUSES = ['queued', 'claimed', 'launching'] as const;
 
 /**
- * Soft-delete a workspace execution target and detach dependent preferences/resources.
+ * Soft-delete a workspace execution target and detach dependent preferences/source links.
  * Does not hard-delete historical queue rows or observations.
  */
 export async function deleteWorkspaceExecutionTarget({
@@ -656,7 +656,7 @@ export async function deleteWorkspaceExecutionTarget({
   );
 
   await ctx.db.run(
-    `UPDATE project_resources
+    `UPDATE project_resource_sources
         SET deleted_at = ?, updated_at = ?, revision = revision + 1
       WHERE workspace_id = ? AND execution_target_id = ? AND deleted_at IS NULL`,
     [now, now, ctx.workspace.id, id]
@@ -700,4 +700,58 @@ export async function deleteWorkspaceExecutionTarget({
     entityRevision: null,
     changedFields: ['deleted_at']
   });
+}
+
+/** Rename an execution target that belongs to the acting workspace. */
+export async function renameWorkspaceExecutionTarget({
+  ctx,
+  executionTargetId,
+  label
+}: {
+  ctx: ServiceContext;
+  executionTargetId: string;
+  label: string;
+}): Promise<WorkspaceExecutionTarget> {
+  const id = executionTargetId.trim();
+  if (!id) {
+    throw new ServiceError('executionTargetId is required', 'validation_error', 400);
+  }
+
+  const nextLabel = label.trim();
+  if (!nextLabel) {
+    throw new ServiceError('label is required', 'validation_error', 400);
+  }
+
+  const target = (await ctx.db.get(
+    `SELECT id FROM execution_targets
+        WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+    [id, ctx.workspace.id]
+  )) as { id: string } | undefined;
+  if (!target) {
+    throw new ServiceError('Execution target not found', 'not_found', 404);
+  }
+
+  const now = nowIso();
+  await ctx.db.run(
+    `UPDATE execution_targets
+        SET label = ?, updated_at = ?, revision = revision + 1
+      WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+    [nextLabel, now, id, ctx.workspace.id]
+  );
+
+  await recordChange({
+    ctx,
+    entityType: 'execution_target',
+    entityId: id,
+    operation: 'update',
+    entityRevision: null,
+    changedFields: ['label']
+  });
+
+  const targets = await listWorkspaceExecutionTargets({ ctx });
+  const updated = targets.find(entry => entry.id === id);
+  if (!updated) {
+    throw new ServiceError('Execution target not found', 'not_found', 404);
+  }
+  return updated;
 }

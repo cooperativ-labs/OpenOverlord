@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 
+import { AgentLaunchFooter } from '@/components/objectives/AgentLaunchFooter';
+import { HotkeyCaptureButton } from '@/components/settings/HotkeyCaptureButton';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { LoadingButton } from '@/components/ui/loading-button';
@@ -11,79 +14,236 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { acceleratorToTerminalChord, terminalChordToAccelerator } from '@/lib/accelerator';
 import {
   DEFAULT_EDITOR_SCHEME,
   EDITOR_SCHEME_OPTIONS,
   getEditorSchemeLabel
 } from '@/lib/helpers/editor-scheme';
-import { useProfile, useUpdateProfile } from '@/lib/queries';
+import {
+  useAgentCatalog,
+  useLaunchSettings,
+  useProfile,
+  useRefreshAgentCatalog,
+  useUpdateAgentLaunchConfig,
+  useUpdateProfile,
+  useUpdateTerminalProfile
+} from '@/lib/queries';
+
+import type { TerminalProfileDto } from '../../../shared/contract.ts';
 
 type IdePageProps = {
   open: boolean;
-  onNavigateToExecutionTargets: () => void;
 };
 
-export function IdePage({ open, onNavigateToExecutionTargets }: IdePageProps) {
+const INLINE_LAUNCHER = '__inline__';
+const CUSTOM_LAUNCHER = '__custom__';
+
+const TERMINAL_OPTIONS = [
+  { label: 'Terminal', launcher: 'Terminal' },
+  { label: 'iTerm2', launcher: 'iTerm2' },
+  { label: 'Ghostty', launcher: "open -a 'Ghostty' --args" },
+  { label: 'Warp', launcher: "open -a 'Warp' --args" },
+  { label: 'WezTerm', launcher: "open -a 'WezTerm' --args" },
+  { label: 'Alacritty', launcher: "open -a 'Alacritty' --args" },
+  { label: 'Kitty', launcher: "open -a 'kitty' --args" },
+  { label: 'Inline in this terminal', launcher: INLINE_LAUNCHER },
+  { label: 'Custom launcher command', launcher: CUSTOM_LAUNCHER }
+] as const;
+
+function getTerminalLauncherLabel(launcher: string) {
+  const preset = TERMINAL_OPTIONS.find(option => option.launcher === launcher);
+  return preset ? preset.label : launcher;
+}
+
+function profileToDraft(profile: TerminalProfileDto) {
+  const preset = TERMINAL_OPTIONS.find(option => option.launcher === profile.launcher);
+  return {
+    launcherChoice: profile.launcher
+      ? preset
+        ? profile.launcher
+        : CUSTOM_LAUNCHER
+      : INLINE_LAUNCHER,
+    customLauncher: profile.launcher && !preset ? profile.launcher : '',
+    placement: profile.placement,
+    chord: profile.chord ?? ''
+  };
+}
+
+function normalizeProfile({
+  launcherChoice,
+  customLauncher,
+  placement,
+  chord
+}: {
+  launcherChoice: string;
+  customLauncher: string;
+  placement: TerminalProfileDto['placement'];
+  chord: string;
+}): TerminalProfileDto {
+  const launcher =
+    launcherChoice === INLINE_LAUNCHER
+      ? null
+      : launcherChoice === CUSTOM_LAUNCHER
+        ? customLauncher.trim() || null
+        : launcherChoice;
+  return {
+    launcher,
+    placement: launcher ? placement : 'window',
+    chord: launcher && placement === 'chord' ? chord.trim() || null : null
+  };
+}
+
+export function IdePage({ open }: IdePageProps) {
   const profile = useProfile();
   const updateProfile = useUpdateProfile();
+  const catalog = useAgentCatalog();
+  const launchSettings = useLaunchSettings();
+  const refreshCatalog = useRefreshAgentCatalog();
+  const updateAgentLaunchConfig = useUpdateAgentLaunchConfig();
+  const updateTerminalProfile = useUpdateTerminalProfile();
 
   const [editorScheme, setEditorScheme] = useState(DEFAULT_EDITOR_SCHEME);
-  const [saved, setSaved] = useState(DEFAULT_EDITOR_SCHEME);
-  const [saveState, setSaveState] = useState<ButtonLoadingState>('default');
-  const [error, setError] = useState<string | null>(null);
+  const [savedScheme, setSavedScheme] = useState(DEFAULT_EDITOR_SCHEME);
+  const [schemeSaveState, setSchemeSaveState] = useState<ButtonLoadingState>('default');
+  const [schemeError, setSchemeError] = useState<string | null>(null);
+
+  const [launcherChoice, setLauncherChoice] = useState<string>('Terminal');
+  const [customLauncher, setCustomLauncher] = useState('');
+  const [placement, setPlacement] = useState<TerminalProfileDto['placement']>('window');
+  const [chord, setChord] = useState('');
+  const [terminalError, setTerminalError] = useState<string | null>(null);
+  const [agentError, setAgentError] = useState<string | null>(null);
+  const [terminalButtonState, setTerminalButtonState] = useState<ButtonLoadingState>('default');
 
   useEffect(() => {
     const value = profile.data?.editorScheme ?? DEFAULT_EDITOR_SCHEME;
     setEditorScheme(value);
-    setSaved(value);
+    setSavedScheme(value);
   }, [profile.data?.editorScheme]);
+
+  useEffect(() => {
+    const activeProfile = launchSettings.data?.terminalProfile;
+    if (!activeProfile) return;
+    const next = profileToDraft(activeProfile);
+    setLauncherChoice(next.launcherChoice);
+    setCustomLauncher(next.customLauncher);
+    setPlacement(next.placement);
+    setChord(next.chord);
+  }, [launchSettings.data?.terminalProfile]);
 
   if (!open) return null;
 
   if (profile.isLoading && !profile.data) {
-    return <p className="text-sm text-muted-foreground">Loading IDE settings…</p>;
+    return <p className="text-sm text-muted-foreground">Loading terminal &amp; IDE settings…</p>;
   }
 
   if (profile.isError || !profile.data) {
     return (
       <p className="text-sm text-destructive">
-        {(profile.error as Error | undefined)?.message ?? 'IDE settings are unavailable right now.'}
+        {(profile.error as Error | undefined)?.message ??
+          'Terminal &amp; IDE settings are unavailable right now.'}
       </p>
     );
   }
 
-  async function handleSave() {
-    if (editorScheme === saved) return;
-    setSaveState('loading');
-    setError(null);
+  const savedProfile = launchSettings.data?.terminalProfile ?? null;
+  const draftProfile = normalizeProfile({ launcherChoice, customLauncher, placement, chord });
+  const terminalIsDirty =
+    savedProfile !== null &&
+    (savedProfile.launcher !== draftProfile.launcher ||
+      savedProfile.placement !== draftProfile.placement ||
+      savedProfile.chord !== draftProfile.chord);
+  const requiresCustomLauncher =
+    launcherChoice === CUSTOM_LAUNCHER && draftProfile.launcher === null;
+  const agents = [...(catalog.data?.agents ?? [])].sort((a, b) => a.label.localeCompare(b.label));
+
+  async function handleSaveScheme() {
+    if (editorScheme === savedScheme) return;
+    setSchemeSaveState('loading');
+    setSchemeError(null);
     try {
       await updateProfile.mutateAsync({ editorScheme });
-      setSaved(editorScheme);
-      setSaveState('success');
+      setSavedScheme(editorScheme);
+      setSchemeSaveState('success');
     } catch (err) {
-      setSaveState('error');
-      setError(err instanceof Error ? err.message : 'Failed to save your IDE preference.');
+      setSchemeSaveState('error');
+      setSchemeError(err instanceof Error ? err.message : 'Failed to save your IDE preference.');
+    }
+  }
+
+  async function saveTerminalProfile() {
+    if (requiresCustomLauncher) {
+      setTerminalButtonState('error');
+      setTerminalError('Enter a launcher command or choose one of the built-in terminals.');
+      return;
+    }
+    setTerminalButtonState('loading');
+    setTerminalError(null);
+    try {
+      await updateTerminalProfile.mutateAsync(draftProfile);
+      setTerminalButtonState('success');
+      setTimeout(() => setTerminalButtonState('default'), 1600);
+    } catch (error) {
+      setTerminalButtonState('error');
+      setTerminalError(
+        error instanceof Error ? error.message : 'Failed to save the terminal profile.'
+      );
+    }
+  }
+
+  async function commitAgentConfig(
+    agentKey: string,
+    config: { preCommand: string; flags: string[] }
+  ) {
+    setAgentError(null);
+    try {
+      await updateAgentLaunchConfig.mutateAsync({ agentKey, body: config });
+    } catch (error) {
+      setAgentError(
+        error instanceof Error ? error.message : 'Failed to save the agent launch defaults.'
+      );
     }
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
         <h2 className="text-base font-medium">Terminal &amp; IDE</h2>
         <p className="text-sm text-muted-foreground">
-          Choose the editor Overlord should use to open files and artifacts for you.
+          Per-user launch and editor defaults for this machine. These preferences are shared with
+          the CLI and runner for the local execution target.
         </p>
       </div>
 
-      <div className="max-w-xl space-y-3 rounded-lg border border-border bg-card p-4">
-        <p className="text-sm text-muted-foreground">
-          Terminal launch settings are now configured per device on the Execution Targets page, so
-          you can choose how Overlord opens a terminal for each machine you run agents on.
-        </p>
-        <Button type="button" variant="outline" size="sm" onClick={onNavigateToExecutionTargets}>
-          Go to Execution Targets
-        </Button>
-      </div>
+      {launchSettings.data ? (
+        <div className="rounded-lg border p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium">Local execution target</h3>
+              <p className="text-sm text-muted-foreground">
+                Launches queue against this device unless an objective overrides the target.
+              </p>
+            </div>
+            <span className="rounded-full border px-2.5 py-1 text-xs font-medium text-muted-foreground">
+              local
+            </span>
+          </div>
+          <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
+            <div className="space-y-1">
+              <dt className="text-muted-foreground">Device label</dt>
+              <dd className="font-medium">{launchSettings.data.deviceLabel}</dd>
+            </div>
+            <div className="space-y-1">
+              <dt className="text-muted-foreground">Execution target ID</dt>
+              <dd className="break-all font-mono text-xs">
+                {launchSettings.data.executionTargetId}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      ) : null}
 
       <div className="max-w-xl space-y-2">
         <Label htmlFor="editor-scheme-select">Preferred IDE</Label>
@@ -107,21 +267,185 @@ export function IdePage({ open, onNavigateToExecutionTargets }: IdePageProps) {
         <p className="text-xs text-muted-foreground">
           File links will open in {getEditorSchemeLabel(editorScheme)}.
         </p>
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {schemeError ? <p className="text-sm text-destructive">{schemeError}</p> : null}
         <div className="flex justify-end">
           <LoadingButton
-            buttonState={saveState}
-            setButtonState={setSaveState}
+            buttonState={schemeSaveState}
+            setButtonState={setSchemeSaveState}
             text="Save IDE"
             loadingText="Saving…"
             successText="Saved"
             errorText="Retry"
             reset
             variant="outline"
-            onClick={handleSave}
-            disabled={editorScheme === saved}
+            onClick={handleSaveScheme}
+            disabled={editorScheme === savedScheme}
           />
         </div>
+      </div>
+
+      <div className="space-y-4 rounded-lg border p-4">
+        <div className="space-y-1">
+          <h3 className="text-sm font-medium">Terminal launch</h3>
+          <p className="text-sm text-muted-foreground">
+            Choose how agent runs open on this machine.
+          </p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="execution-target-launcher">Terminal</Label>
+            <Select
+              value={launcherChoice}
+              onValueChange={value => setLauncherChoice(value ?? INLINE_LAUNCHER)}
+            >
+              <SelectTrigger id="execution-target-launcher">
+                <SelectValue>{getTerminalLauncherLabel(launcherChoice)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {TERMINAL_OPTIONS.map(option => (
+                  <SelectItem key={option.launcher} value={option.launcher}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="execution-target-placement">Placement</Label>
+            <Select
+              value={placement}
+              disabled={draftProfile.launcher === null}
+              onValueChange={value =>
+                setPlacement((value as TerminalProfileDto['placement'] | null) ?? 'window')
+              }
+            >
+              <SelectTrigger id="execution-target-placement">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="window">New window</SelectItem>
+                <SelectItem value="tab">New tab</SelectItem>
+                <SelectItem value="chord">Keyboard shortcut</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {launcherChoice === CUSTOM_LAUNCHER ? (
+          <div className="space-y-2">
+            <Label htmlFor="execution-target-custom-launcher">Custom launcher command</Label>
+            <Input
+              id="execution-target-custom-launcher"
+              value={customLauncher}
+              onChange={event => setCustomLauncher(event.target.value)}
+              placeholder="open -a 'Ghostty' --args"
+            />
+            <p className="text-xs text-muted-foreground">
+              Use the same prefix you would pass to `ovld --terminal`.
+            </p>
+          </div>
+        ) : null}
+
+        {draftProfile.launcher !== null && placement === 'chord' ? (
+          <div className="space-y-2">
+            <Label>Shortcut</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <HotkeyCaptureButton
+                value={chord ? terminalChordToAccelerator(chord) : ''}
+                onCapture={accel => setChord(acceleratorToTerminalChord(accel))}
+                placeholder="Press to set"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Click the button and press the shortcut your terminal uses to split or open a new
+              pane, for example ⌘ D in iTerm2.
+            </p>
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <LoadingButton
+            buttonState={terminalButtonState}
+            text="Save terminal profile"
+            loadingText="Saving…"
+            successText="Saved"
+            errorText="Save failed"
+            onClick={saveTerminalProfile}
+            disabled={!terminalIsDirty && !requiresCustomLauncher}
+          />
+          <p className="text-xs text-muted-foreground">
+            {draftProfile.launcher === null
+              ? 'No launcher configured: runs stay inline in the current terminal.'
+              : 'Saved changes apply to future launches from the web app and CLI.'}
+          </p>
+        </div>
+        {terminalError ? <p className="text-sm text-destructive">{terminalError}</p> : null}
+      </div>
+
+      <div className="space-y-4 rounded-lg border p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <h3 className="text-sm font-medium">Agent launch defaults</h3>
+            <p className="text-sm text-muted-foreground">
+              Store per-agent pre-commands and extra CLI flags for this machine.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void refreshCatalog.mutateAsync()}
+            disabled={refreshCatalog.isPending}
+          >
+            {refreshCatalog.isPending ? 'Refreshing…' : 'Refresh catalog'}
+          </Button>
+        </div>
+
+        {catalog.isLoading && !catalog.data ? (
+          <p className="text-sm text-muted-foreground">Loading agent catalog…</p>
+        ) : null}
+        {catalog.isError ? (
+          <p className="text-sm text-destructive">
+            {(catalog.error as Error | undefined)?.message ?? 'Failed to load the agent catalog.'}
+          </p>
+        ) : null}
+        {agentError ? <p className="text-sm text-destructive">{agentError}</p> : null}
+
+        {agents.map((agent, index) => {
+          const config = launchSettings.data?.agentConfigs[agent.key] ?? {
+            preCommand: '',
+            flags: []
+          };
+          return (
+            <div key={agent.key} className="space-y-3">
+              {index > 0 ? <Separator /> : null}
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="text-sm font-medium">{agent.label}</h4>
+                  {!agent.availableByDefault ? (
+                    <span className="rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      hidden by workspace default
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {agent.defaultModel ? `Default model: ${agent.defaultModel}. ` : ''}
+                  These values are used when this agent is launched on this machine.
+                </p>
+              </div>
+              <AgentLaunchFooter
+                key={`${agent.key}:${config.preCommand}:${config.flags.join('\u0000')}`}
+                agentKey={agent.key}
+                preCommand={config.preCommand}
+                flags={config.flags}
+                onCommit={next => void commitAgentConfig(agent.key, next)}
+                sourceHint="Saved to your per-target launch preferences."
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );

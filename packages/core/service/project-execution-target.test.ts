@@ -17,6 +17,7 @@ import {
   listEligibleProjectExecutionTargets,
   listWorkspaceExecutionTargets,
   PROJECT_EXECUTION_TARGET_PREFERENCE_KEY,
+  renameWorkspaceExecutionTarget,
   resolveLaunchExecutionTarget,
   resolveProjectExecutionTargetForLaunch,
   updateProjectExecutionTargetSelection
@@ -45,12 +46,29 @@ async function insertPrimaryResource({
   resourcePath: string;
 }): Promise<void> {
   const now = nowIso();
+  const resourceId = newId();
   await ctx.db.run(
     `INSERT INTO project_resources
-         (id, workspace_id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status,
+         (id, workspace_id, project_id, resource_key, label, is_primary, status,
           metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, 'primary', 'local_directory', 'Primary', ?, 1, 'active', '{}', ?, ?, 1)`,
-    [newId(), ctx.workspace.id, projectId, executionTargetId, resourcePath, now, now]
+       VALUES (?, ?, ?, 'primary', 'Primary', 1, 'active', '{}', ?, ?, 1)`,
+    [resourceId, ctx.workspace.id, projectId, now, now]
+  );
+  await ctx.db.run(
+    `INSERT INTO project_resource_sources
+         (id, workspace_id, project_id, resource_id, execution_target_id, source_kind, descriptor_json,
+          created_at, updated_at, revision)
+       VALUES (?, ?, ?, ?, ?, 'local_checkout', ?, ?, ?, 1)`,
+    [
+      newId(),
+      ctx.workspace.id,
+      projectId,
+      resourceId,
+      executionTargetId,
+      JSON.stringify({ path: resourcePath }),
+      now,
+      now
+    ]
   );
 }
 
@@ -334,6 +352,12 @@ describe('execution target lifecycle', () => {
     const { ctx, db } = await setup();
     const project = await createProject({ ctx, name: 'Delete target project' });
     const staleTargetId = await seedSecondTarget(ctx, 'stale-runner');
+    await insertPrimaryResource({
+      ctx,
+      projectId: project.id,
+      executionTargetId: staleTargetId,
+      resourcePath: mkdtempSync(path.join(tmpdir(), 'ovld-delete-target-'))
+    });
     await updateProjectExecutionTargetSelection({
       ctx,
       projectId: project.id,
@@ -348,8 +372,42 @@ describe('execution target lifecycle', () => {
     )) as { deleted_at: string | null };
     assert.ok(row.deleted_at);
 
+    const sourceRow = (await db.get(
+      `SELECT deleted_at FROM project_resource_sources
+        WHERE execution_target_id = ? AND deleted_at IS NOT NULL`,
+      [staleTargetId]
+    )) as { deleted_at: string | null } | undefined;
+    assert.ok(sourceRow?.deleted_at);
+
     const selection = await getProjectExecutionTargetSelection({ ctx, projectId: project.id });
     assert.equal(selection.selectedExecutionTargetId, null);
+  });
+
+  it('renames a workspace execution target', async () => {
+    const { ctx, db } = await setup();
+    const targetId = await seedSecondTarget(ctx, 'old-name');
+
+    const updated = await renameWorkspaceExecutionTarget({
+      ctx,
+      executionTargetId: targetId,
+      label: 'renamed-runner'
+    });
+    assert.equal(updated.id, targetId);
+    assert.equal(updated.label, 'renamed-runner');
+
+    const row = (await db.get(`SELECT label FROM execution_targets WHERE id = ?`, [targetId])) as {
+      label: string;
+    };
+    assert.equal(row.label, 'renamed-runner');
+  });
+
+  it('rejects renaming with a blank label', async () => {
+    const { ctx } = await setup();
+    const targetId = await seedSecondTarget(ctx, 'keep-name');
+    await assert.rejects(
+      () => renameWorkspaceExecutionTarget({ ctx, executionTargetId: targetId, label: '   ' }),
+      (error: unknown) => error instanceof ServiceError && error.code === 'validation_error'
+    );
   });
 
   it('blocks delete when active queue rows reference the target', async () => {

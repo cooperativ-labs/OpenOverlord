@@ -3,10 +3,11 @@ import type { DatabaseClient } from '@overlord/database';
 
 import { ServiceError } from '../../packages/core/service/errors.ts';
 import {
+  deleteWorkspaceExecutionTarget,
   getProjectExecutionTargetSelection,
   listWorkspaceExecutionTargets,
-  updateProjectExecutionTargetSelection,
-  deleteWorkspaceExecutionTarget
+  renameWorkspaceExecutionTarget,
+  updateProjectExecutionTargetSelection
 } from '../../packages/core/service/project-execution-target.ts';
 import type {
   ProjectExecutionTargetDto,
@@ -89,6 +90,30 @@ export async function removeWorkspaceExecutionTarget(
     if (error instanceof ServiceError) {
       if (error.status === 404) throw new ApiError(404, 'Execution target not found');
       if (error.status === 409) throw new ApiError(409, error.message, undefined, error.code);
+    }
+    throw error;
+  }
+}
+
+export async function updateWorkspaceExecutionTarget(
+  workspaceId: string,
+  executionTargetId: string,
+  body: { label?: unknown },
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<WorkspaceExecutionTargetDto> {
+  const label = typeof body.label === 'string' ? body.label : '';
+  const workspaceUserId = await requireWorkspacePermission({
+    workspaceId,
+    permission: PERMISSIONS.WORKSPACE_UPDATE,
+    db: client
+  });
+  const ctx = await buildWebappServiceContextForWorkspace(workspaceId, client, workspaceUserId);
+  try {
+    return await renameWorkspaceExecutionTarget({ ctx, executionTargetId, label });
+  } catch (error) {
+    if (error instanceof ServiceError) {
+      if (error.status === 404) throw new ApiError(404, 'Execution target not found');
+      if (error.status === 400) throw new ApiError(400, error.message, undefined, error.code);
     }
     throw error;
   }

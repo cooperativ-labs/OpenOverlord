@@ -535,6 +535,16 @@ export const api = {
       'GET',
       `/api/workspaces/${workspaceId}/execution-targets`
     ),
+  updateWorkspaceExecutionTarget: (
+    workspaceId: string,
+    executionTargetId: string,
+    body: { label: string }
+  ) =>
+    request<WorkspaceExecutionTargetDto>(
+      'PATCH',
+      `/api/workspaces/${workspaceId}/execution-targets/${executionTargetId}`,
+      body
+    ),
   deleteWorkspaceExecutionTarget: (workspaceId: string, executionTargetId: string) =>
     request<{ ok: true }>(
       'DELETE',
