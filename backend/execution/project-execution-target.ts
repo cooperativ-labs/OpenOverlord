@@ -3,14 +3,23 @@ import type { DatabaseClient } from '@overlord/database';
 import { ServiceError } from '../../packages/core/service/errors.ts';
 import {
   getProjectExecutionTargetSelection,
+  listWorkspaceExecutionTargets,
   updateProjectExecutionTargetSelection
 } from '../../packages/core/service/project-execution-target.ts';
 import type {
   ProjectExecutionTargetDto,
-  UpdateProjectExecutionTargetBody
+  UpdateProjectExecutionTargetBody,
+  WorkspaceExecutionTargetDto
 } from '../../webapp/shared/contract.ts';
-import { buildWebappServiceContext, requireDatabaseClient, serviceDatabaseClient } from '../db.ts';
+import {
+  buildWebappServiceContext,
+  buildWebappServiceContextForWorkspace,
+  requireDatabaseClient,
+  serviceDatabaseClient
+} from '../db.ts';
 import { ApiError } from '../errors.ts';
+import { requireWorkspacePermission } from '../rbac.ts';
+import { PERMISSIONS } from '@overlord/auth';
 
 function serviceContext(client: DatabaseClient = serviceDatabaseClient()) {
   return buildWebappServiceContext(client);
@@ -46,6 +55,20 @@ export async function getProjectExecutionTarget(
     }
     throw error;
   }
+}
+
+/** Read-only workspace settings projection; access and target mutation stay on their existing flows. */
+export async function getWorkspaceExecutionTargets(
+  workspaceId: string,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<WorkspaceExecutionTargetDto[]> {
+  const workspaceUserId = await requireWorkspacePermission({
+    workspaceId,
+    permission: PERMISSIONS.WORKSPACE_READ,
+    db: client
+  });
+  const ctx = await buildWebappServiceContextForWorkspace(workspaceId, client, workspaceUserId);
+  return listWorkspaceExecutionTargets({ ctx });
 }
 
 export async function updateProjectExecutionTarget(

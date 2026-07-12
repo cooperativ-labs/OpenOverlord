@@ -35,6 +35,7 @@ import { resolveLocalTargetServerCapability } from './execution/local-target-cap
 import { invokeLocalTargetOnServer } from './execution/local-target-invoke.ts';
 import {
   getProjectExecutionTarget,
+  getWorkspaceExecutionTargets,
   updateProjectExecutionTarget
 } from './execution/project-execution-target.ts';
 import {
@@ -648,6 +649,10 @@ app.get(
 app.get(
   '/api/workspaces/:id/statuses',
   handle(req => listWorkspaceStatusesForWorkspace(req.params.id))
+);
+app.get(
+  '/api/workspaces/:id/execution-targets',
+  handle(req => getWorkspaceExecutionTargets(req.params.id))
 );
 // Workspace-scoped status CRUD. Unlike the legacy `/api/workspace/statuses`
 // routes (active-workspace only), these target the `:id` workspace and

@@ -16,7 +16,15 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   buildEditorFileHref,
@@ -32,6 +40,8 @@ type ProjectSettingsSectionProps = {
   initialColor: string | null;
 };
 
+const ANY_TARGET_VALUE = '__any_eligible_target__';
+
 export function ProjectSettingsSection({
   projectId,
   initialName,
@@ -39,7 +49,14 @@ export function ProjectSettingsSection({
 }: ProjectSettingsSectionProps) {
   const updateProject = useUpdateProject(projectId);
   const projectSettings = useProjectSettings();
-  const { repository, resources } = useProjectRepositoryContext();
+  const {
+    repository,
+    resources,
+    eligibleTargets,
+    isLoading: isRepositoryLoading,
+    selectedExecutionTargetId,
+    setSelectedExecutionTargetId
+  } = useProjectRepositoryContext();
   const profileQ = useProfile();
   const [name, setName] = useState(initialName);
   const [savedName, setSavedName] = useState(initialName);
@@ -127,6 +144,7 @@ export function ProjectSettingsSection({
       href: buildEditorFileHref(resource.path, editorScheme)
     }));
   const hasMultipleIdeResources = ideResources.length > 1;
+  const executionTargetSelectorValue = selectedExecutionTargetId ?? ANY_TARGET_VALUE;
 
   function openInIde(href: string) {
     window.open(href, '_blank', 'noopener,noreferrer');
@@ -191,6 +209,43 @@ export function ProjectSettingsSection({
               >
                 <Settings className="h-3.5 w-3.5" />
               </Button>
+            ) : null}
+            {eligibleTargets.length > 0 ? (
+              <div className="flex shrink-0 items-center gap-1.5">
+                <Label htmlFor="project-header-execution-target" className="sr-only">
+                  Execution target
+                </Label>
+                <Select
+                  value={executionTargetSelectorValue}
+                  disabled={isRepositoryLoading}
+                  onValueChange={value =>
+                    setSelectedExecutionTargetId(value === ANY_TARGET_VALUE ? null : value)
+                  }
+                >
+                  <SelectTrigger id="project-header-execution-target" className="h-7 max-w-48">
+                    <SelectValue placeholder="Execution target" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {eligibleTargets.length > 1 ? (
+                      <SelectItem value={ANY_TARGET_VALUE}>Any eligible target</SelectItem>
+                    ) : null}
+                    {eligibleTargets.map(target => (
+                      <SelectItem
+                        key={target.executionTargetId}
+                        value={target.executionTargetId}
+                        disabled={!target.reachable || !target.primaryResourceConnected}
+                      >
+                        {target.label}
+                        {target.deviceLabel ? ` · ${target.deviceLabel}` : ''}
+                        {!target.reachable ? ' (offline)' : ''}
+                        {target.reachable && !target.primaryResourceConnected
+                          ? ' (no primary resource)'
+                          : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             ) : null}
             {ideHref ? (
               <div className="flex shrink-0 items-center">

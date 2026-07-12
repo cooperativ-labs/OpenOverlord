@@ -95,6 +95,7 @@ import type {
   WorkspaceDto,
   WorkspaceInvitationDto,
   WorkspaceMemberDto,
+  WorkspaceExecutionTargetDto,
   WorkspaceStatusDto,
   WorktreeDto
 } from '../../shared/contract.ts';
@@ -529,6 +530,11 @@ export const api = {
     request<ProjectExecutionTargetDto>('GET', `/api/projects/${projectId}/execution-target`),
   updateProjectExecutionTarget: (projectId: string, body: UpdateProjectExecutionTargetBody) =>
     request<ProjectExecutionTargetDto>('PUT', `/api/projects/${projectId}/execution-target`, body),
+  getWorkspaceExecutionTargets: (workspaceId: string) =>
+    request<WorkspaceExecutionTargetDto[]>(
+      'GET',
+      `/api/workspaces/${workspaceId}/execution-targets`
+    ),
 
   // ---- Everhour integration ----------------------------------------------
   getEverhourIntegration: () => request<EverhourIntegrationDto>('GET', '/ext/everhour/integration'),

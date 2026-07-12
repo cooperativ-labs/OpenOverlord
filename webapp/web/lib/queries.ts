@@ -54,6 +54,7 @@ import type {
   UpdateWorkspaceStatusBody,
   UpdateWorktreeBranchAutomationBody,
   WorkspaceDto,
+  WorkspaceExecutionTargetDto,
   WorkspaceStatusDto
 } from '../../shared/contract.ts';
 
@@ -100,6 +101,7 @@ export const keys = {
   organizationAdmins: (id: string) => ['organization', id, 'admins'] as const,
   workspaces: ['workspaces'] as const,
   workspaceMembers: (id: string) => ['workspace', id, 'members'] as const,
+  workspaceExecutionTargets: (id: string) => ['workspace', id, 'execution-targets'] as const,
   workspaceInvitations: (id: string) => ['workspace', id, 'invitations'] as const,
   projects: (workspaceId?: string) =>
     workspaceId ? (['workspace', workspaceId, 'projects'] as const) : (['projects'] as const),
@@ -213,6 +215,13 @@ export const useOrganizationAdmins = (id: string | null) =>
     queryKey: keys.organizationAdmins(id ?? '__none__'),
     queryFn: () => api.listOrganizationAdmins(id ?? ''),
     enabled: Boolean(id)
+  });
+
+export const useWorkspaceExecutionTargets = (workspaceId: string) =>
+  useQuery<WorkspaceExecutionTargetDto[]>({
+    queryKey: keys.workspaceExecutionTargets(workspaceId),
+    queryFn: () => api.getWorkspaceExecutionTargets(workspaceId),
+    staleTime: 30_000
   });
 
 export const useAccessibleWorkspaces = () => {

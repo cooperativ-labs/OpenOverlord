@@ -884,6 +884,21 @@ export interface UpdateProjectExecutionTargetBody {
   executionTargetId: string | null;
 }
 
+/** Safe workspace-settings projection of an execution target. */
+export interface WorkspaceExecutionTargetDto {
+  id: string;
+  type: ExecutionTargetType;
+  label: string;
+  status: string;
+  ownerDisplayName: string | null;
+  reachable: boolean;
+  lastSeenAt: string | null;
+  /** Number of active workspace members granted access to this target. */
+  activeMemberAccessCount: number;
+  /** Whether the caller can select this target for project launch settings. */
+  hasCurrentUserAccess: boolean;
+}
+
 export type ExecutionRequestStatus =
   | 'queued'
   | 'claimed'

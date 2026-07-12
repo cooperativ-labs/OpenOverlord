@@ -43,6 +43,18 @@ export type ProjectExecutionTargetSelection = {
   eligibleTargets: EligibleExecutionTarget[];
 };
 
+export type WorkspaceExecutionTarget = {
+  id: string;
+  type: string;
+  label: string;
+  status: string;
+  ownerDisplayName: string | null;
+  reachable: boolean;
+  lastSeenAt: string | null;
+  activeMemberAccessCount: number;
+  hasCurrentUserAccess: boolean;
+};
+
 function requireActor(ctx: ServiceContext): string {
   if (!ctx.actorWorkspaceUserId) {
     throw new ServiceError(
@@ -123,6 +135,91 @@ function isTargetReachable({
   if (isCallerDevice) return true;
   if (!lastSeenAt) return false;
   return Date.now() - new Date(lastSeenAt).getTime() < TARGET_REACHABLE_STALE_MS;
+}
+
+/**
+ * Safe workspace-wide target projection for settings. The caller must already
+ * be authorized as a member of `ctx.workspace`; this function intentionally
+ * exposes neither connection metadata nor any target/access mutation.
+ */
+export async function listWorkspaceExecutionTargets({
+  ctx
+}: {
+  ctx: ServiceContext;
+}): Promise<WorkspaceExecutionTarget[]> {
+  const callerExecutionTargetId = await findActingDeviceExecutionTargetId({ ctx });
+  const rows = (await ctx.db.all(
+    `SELECT et.id, et.type, et.label, et.status,
+            owner_profile.display_name AS owner_display_name,
+            d.last_seen_at AS device_last_seen_at,
+            registration.health AS virtual_health,
+            registration.last_heartbeat_at AS virtual_last_heartbeat_at,
+            (SELECT COUNT(*)
+               FROM workspace_user_execution_targets access_count
+              WHERE access_count.workspace_id = et.workspace_id
+                AND access_count.execution_target_id = et.id
+                AND access_count.deleted_at IS NULL
+                AND access_count.access_status = 'active') AS active_member_access_count,
+            CASE WHEN EXISTS (
+              SELECT 1
+                FROM workspace_user_execution_targets current_access
+               WHERE current_access.workspace_id = et.workspace_id
+                 AND current_access.execution_target_id = et.id
+                 AND current_access.workspace_user_id = ?
+                 AND current_access.deleted_at IS NULL
+                 AND current_access.access_status = 'active'
+            ) THEN 1 ELSE 0 END AS has_current_user_access
+       FROM execution_targets et
+       LEFT JOIN workspace_users owner_member
+         ON owner_member.id = et.owner_workspace_user_id
+        AND owner_member.workspace_id = et.workspace_id
+        AND owner_member.deleted_at IS NULL
+       LEFT JOIN profiles owner_profile ON owner_profile.id = owner_member.profile_id
+       LEFT JOIN devices d
+         ON d.id = et.device_id
+        AND d.workspace_id = et.workspace_id
+        AND d.deleted_at IS NULL
+       LEFT JOIN execution_target_registrations registration
+         ON registration.execution_target_id = et.id
+        AND registration.workspace_id = et.workspace_id
+        AND registration.deleted_at IS NULL
+      WHERE et.workspace_id = ? AND et.deleted_at IS NULL
+      ORDER BY et.label ASC, et.created_at ASC`,
+    [ctx.actorWorkspaceUserId, ctx.workspace.id]
+  )) as Array<{
+    id: string;
+    type: string;
+    label: string;
+    status: string;
+    owner_display_name: string | null;
+    device_last_seen_at: string | null;
+    virtual_health: string | null;
+    virtual_last_heartbeat_at: string | null;
+    active_member_access_count: number | string;
+    has_current_user_access: number | boolean;
+  }>;
+
+  return rows.map(row => {
+    const isCallerTarget = row.id === callerExecutionTargetId;
+    const lastSeenAt =
+      row.type === 'virtual' ? row.virtual_last_heartbeat_at : row.device_last_seen_at;
+    const reachable =
+      row.type === 'virtual'
+        ? (row.virtual_health === 'healthy' || row.virtual_health === 'degraded') &&
+          isTargetReachable({ lastSeenAt, isCallerDevice: false })
+        : isTargetReachable({ lastSeenAt, isCallerDevice: isCallerTarget });
+    return {
+      id: row.id,
+      type: row.type,
+      label: row.label,
+      status: row.status,
+      ownerDisplayName: row.owner_display_name,
+      reachable,
+      lastSeenAt,
+      activeMemberAccessCount: Number(row.active_member_access_count),
+      hasCurrentUserAccess: Boolean(row.has_current_user_access)
+    };
+  });
 }
 
 async function resolveProjectId(ctx: ServiceContext, projectId: string): Promise<string> {

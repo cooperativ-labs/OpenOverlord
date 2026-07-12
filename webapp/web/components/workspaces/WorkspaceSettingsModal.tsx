@@ -1,4 +1,4 @@
-import { Archive, Bot, GitBranch, Settings, Trash2, Users } from 'lucide-react';
+import { Archive, Bot, GitBranch, MonitorCog, Settings, Trash2, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import {
@@ -8,6 +8,7 @@ import {
 import { StatusesPage } from '@/components/settings/StatusesPage';
 import { ArchivedProjectsPage } from '@/components/workspaces/workspace-settings/ArchivedProjectsPage.tsx';
 import { DangerZonePage } from '@/components/workspaces/workspace-settings/DangerZonePage.tsx';
+import { ExecutionTargetsPage } from '@/components/workspaces/workspace-settings/ExecutionTargetsPage.tsx';
 import { GeneralPage } from '@/components/workspaces/workspace-settings/GeneralPage.tsx';
 import { MembersPage } from '@/components/workspaces/workspace-settings/MembersPage.tsx';
 import { ModelsPage } from '@/components/workspaces/workspace-settings/ModelsPage.tsx';
@@ -17,6 +18,7 @@ const navItems: SettingsNavItem[] = [
   { name: 'General', icon: Settings },
   { name: 'Members', icon: Users },
   { name: 'Models', icon: Bot },
+  { name: 'Execution targets', icon: MonitorCog },
   { name: 'Card statuses', icon: GitBranch },
   { name: 'Archived projects', icon: Archive },
   { name: 'Danger zone', icon: Trash2 }
@@ -91,6 +93,7 @@ export function WorkspaceSettingsModal({
                 Switch to this workspace to manage its model catalog.
               </p>
             ))}
+          {activeNav === 'Execution targets' && <ExecutionTargetsPage workspaceId={workspace.id} />}
           {activeNav === 'Card statuses' && (
             // Statuses are managed through the workspace-scoped routes
             // (`/api/workspaces/:id/statuses`), so any org workspace's statuses
