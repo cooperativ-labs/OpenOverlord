@@ -107,16 +107,19 @@ export async function buildProjectResourceManifest({
 }): Promise<ProjectResourceManifestEntry[]> {
   const resolvedProjectId = await resolveProjectId(ctx, projectId);
   const rows = (await ctx.db.all(
-    `SELECT id, resource_key, label, path, is_primary, execution_target_id
-       FROM project_resources
-      WHERE project_id = ? AND deleted_at IS NULL
-      ORDER BY is_primary DESC, created_at ASC`,
+    `SELECT pr.id, pr.resource_key, pr.label, prs.source_kind, prs.descriptor_json,
+            pr.is_primary, prs.execution_target_id
+       FROM project_resources pr
+       LEFT JOIN project_resource_sources prs ON prs.resource_id = pr.id AND prs.deleted_at IS NULL
+      WHERE pr.project_id = ? AND pr.deleted_at IS NULL
+      ORDER BY pr.is_primary DESC, pr.created_at ASC`,
     [resolvedProjectId]
   )) as Array<{
     id: string;
     resource_key: string;
     label: string | null;
-    path: string;
+    source_kind: string | null;
+    descriptor_json: string | null;
     is_primary: boolean | number;
     execution_target_id: string | null;
   }>;
@@ -125,7 +128,15 @@ export async function buildProjectResourceManifest({
     id: row.id,
     resourceKey: row.resource_key,
     label: row.label,
-    path: row.path,
+    path: (() => {
+      if (row.source_kind !== 'local_checkout' || !row.descriptor_json) return '';
+      try {
+        const value = (JSON.parse(row.descriptor_json) as { path?: unknown }).path;
+        return typeof value === 'string' ? value : '';
+      } catch {
+        return '';
+      }
+    })(),
     isPrimary: isTruthyPrimary(row.is_primary),
     executionTargetId: row.execution_target_id
   }));

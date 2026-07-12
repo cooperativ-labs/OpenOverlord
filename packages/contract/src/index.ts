@@ -300,8 +300,18 @@ export interface ReorderWorkspaceStatusesBody {
   orderedStatusIds: string[];
 }
 
-export type ProjectResourceType = 'local_directory' | 'remote_directory';
+export type ProjectResourceType = 'local_directory' | 'remote_directory' | 'git' | 'source_bundle';
 export type ProjectResourceStatus = 'active' | 'missing' | 'archived';
+
+/** A target-specific (or global) way to materialize a logical project resource. */
+export interface ProjectResourceSourceDto {
+  id: string;
+  executionTargetId: string | null;
+  sourceKind: string;
+  descriptor: Record<string, unknown>;
+  observedRevision: string | null;
+  observedContentDigest: string | null;
+}
 
 export interface CreateProjectResourceBody {
   directoryPath: string;
@@ -334,6 +344,8 @@ export interface ProjectResourceDto {
   createdAt: string;
   updatedAt: string;
   revision: number;
+  /** All materialization descriptors for this logical resource. */
+  sources: ProjectResourceSourceDto[];
 }
 
 export type TargetObservationState =
@@ -1543,4 +1555,354 @@ export interface WebhookDeliveryAttemptDto {
 export interface WebhookDeliveryAttemptsPageDto {
   attempts: WebhookDeliveryAttemptDto[];
   hasMore: boolean;
+}
+
+// ---- Virtual execution targets (coo:258, contract v3) ----------------------
+//
+// Provider-neutral virtual execution targets: a selectable Overlord target that
+// a gateway (Racecar first) realizes only after it claims an existing execution
+// request over the documented `/api/virtual-targets/v1/*` REST surface. These
+// DTOs are the stable, versioned contract shared by the REST server, the SPA,
+// and — vendored as a public subset — an external `rest-consumer` gateway. See
+// the Virtual Target Queue Surface in CONTRACT.md and the Virtual Execution
+// Targets section of the schema contract.
+//
+// Invariants encoded here: the queue payload is immutable and returned only to
+// the authenticated claiming gateway; it carries opaque handles and grant
+// *references*, never filesystem paths or raw secrets; preparation is
+// append-only observation data, never a new `execution_requests.status`.
+
+/**
+ * Documented core `execution_targets.type` values. Open vocabulary — adapters
+ * may add namespaced values, so a `string` is always accepted on the wire.
+ */
+export type ExecutionTargetType = 'local' | 'ssh' | 'virtual' | (string & {});
+
+/** Gateway health as reported through registration/heartbeat. */
+export type VirtualTargetHealth = 'healthy' | 'degraded' | 'unreachable' | 'unknown';
+
+/** Source input kinds a gateway can materialize. Open (namespaced) beyond these. */
+export type VirtualSourceKind = 'git' | 'local_checkout' | 'source_bundle' | (string & {});
+
+/** Append-only observation kinds recorded under a request. */
+export type VirtualObservationKind =
+  | 'progress'
+  | 'launch'
+  | 'failure'
+  | 'lifecycle_resource'
+  | (string & {});
+
+/** Opaque grant kinds. Values are references/scopes only — never bearer secrets. */
+export type VirtualGrantKind =
+  | 'launch'
+  | 'attachment'
+  | 'download'
+  | 'credential_reference'
+  | (string & {});
+
+/** Per-resource source-compatibility result surfaced to UI/agent context. */
+export type VirtualSourceCompatibility = 'compatible' | 'degraded' | 'incompatible';
+
+/** Phase a typed failure occurred in. */
+export type VirtualFailurePhase = 'claim' | 'source' | 'environment' | 'launch' | (string & {});
+
+/** Delegated lifecycle actions a UI may request against a virtual target. */
+export type VirtualTargetActionKind =
+  | 'start'
+  | 'stop'
+  | 'archive'
+  | 'delete'
+  | 'enqueue'
+  | 'retry'
+  | 'dequeue';
+
+/** Advertised gateway/target capabilities (non-secret). */
+export interface VirtualTargetCapabilitiesDto {
+  /** Whether the target can consume an opaque `local_checkout` source. */
+  localCheckoutSource: boolean;
+  /** Whether the target can fetch an uploaded `source_bundle`. */
+  sourceBundleSource: boolean;
+  /** Whether the target can proxy a browser terminal (later, separately authorized). */
+  browserTerminal: boolean;
+  /** Additional namespaced capability hints. */
+  [capability: string]: boolean | undefined;
+}
+
+/**
+ * Body for `PUT /api/virtual-targets/v1/registration`. Registers or refreshes
+ * exactly one selected virtual target and serves as its heartbeat. Secrets are
+ * never included; gateway credentials are configured out of band.
+ */
+export interface VirtualTargetRegistrationBody {
+  executionTargetId: string;
+  /** Namespaced adapter key (e.g. `racecar`); identifies the gateway, not a target type. */
+  gatewayKey: string;
+  /** Stable per-installation gateway identity; a match replaces (not duplicates) the registration. */
+  gatewayInstanceId: string;
+  gatewayVersion?: string | null;
+  capabilities: VirtualTargetCapabilitiesDto;
+  /** Agent identifiers this gateway can launch. */
+  supportedAgents: string[];
+  /** Queue schema versions the gateway understands (e.g. `["v1"]`). */
+  supportedQueueVersions: string[];
+  /** Non-secret gateway configuration echoed back to operators. */
+  connection?: Record<string, unknown>;
+}
+
+/** Read model of a registered virtual target (no secrets). */
+export interface VirtualTargetRegistrationDto {
+  executionTargetId: string;
+  gatewayKey: string;
+  gatewayInstanceId: string;
+  gatewayVersion: string | null;
+  capabilities: VirtualTargetCapabilitiesDto;
+  supportedAgents: string[];
+  supportedQueueVersions: string[];
+  health: VirtualTargetHealth;
+  lastHeartbeatAt: string | null;
+  lastErrorCode: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * A typed source descriptor inside a queue item. Carries a credential-reference
+ * ID and/or opaque target-relative handle — never a raw token or a
+ * server-readable filesystem path.
+ */
+export interface VirtualSourceDescriptorV1 {
+  kind: VirtualSourceKind;
+  /** `git`: repository URL the gateway clones (credential resolved via `credentialRef`). */
+  url?: string;
+  /** `git`: branch/ref to materialize. */
+  ref?: string;
+  /** `git`: exact commit to check out, when pinned. */
+  commit?: string;
+  /** Reference ID for a credential the gateway exchanges via a grant; never the secret itself. */
+  credentialRef?: string | null;
+  /** `local_checkout`: opaque, target-relative handle. Never a readable path. */
+  targetRelativeRef?: string | null;
+  /** `source_bundle`: opaque download handle exchanged via a grant. */
+  bundleRef?: string | null;
+  /** Observed content digest for drift detection, when known. */
+  observedContentDigest?: string | null;
+}
+
+/** A project resource as carried in the immutable queue item. */
+export interface VirtualProjectResourceV1 {
+  resourceId: string;
+  resourceKey: string;
+  label: string | null;
+  source: VirtualSourceDescriptorV1;
+  /** True only for the single active resource that seeds the initial working directory. */
+  active: boolean;
+}
+
+/** A required source input that must be satisfiable or launch is blocked. */
+export interface VirtualSourceRequirementV1 {
+  resourceKey: string;
+  kind: VirtualSourceKind;
+  /** Human-safe description of why this source is required. */
+  reason: string;
+}
+
+/** A non-blocking informational reference preserved for agent context. */
+export interface VirtualInformationalReferenceV1 {
+  resourceKey: string;
+  compatibility: VirtualSourceCompatibility;
+  /** Bounded, redacted excerpt preserved for agent context. */
+  excerpt: string | null;
+}
+
+/** The immutable desired environment referenced by a queue item. */
+export interface VirtualEnvironmentV1 {
+  definitionId: string;
+  version: number;
+  /** Stable fingerprint across lockfiles/resources. */
+  fingerprint: string;
+  /** SHA-256 over the canonical environment definition. */
+  digest: string;
+}
+
+/** An opaque, request-scoped grant reference handed to the claiming gateway. */
+export interface VirtualGrantReferenceV1 {
+  grantId: string;
+  kind: VirtualGrantKind;
+  expiresAt: string;
+}
+
+/**
+ * `VirtualExecutionQueueItemV1` — the exact versioned, immutable payload returned
+ * only to the authenticated claiming gateway. Its canonical JSON and SHA-256
+ * digest are persisted when the request is queued and never rebuilt from mutable
+ * rows at retry time.
+ */
+export interface VirtualExecutionQueueItemV1 {
+  schemaVersion: 'v1';
+  executionRequestId: string;
+  executionTargetId: string;
+  workspaceId: string;
+  projectId: string;
+  missionId: string;
+  objectiveId: string;
+  /** Immutable desired environment for this request. */
+  environment: VirtualEnvironmentV1;
+  /** Every project resource; exactly one is `active`. */
+  resources: VirtualProjectResourceV1[];
+  /** Resource key of the single active resource (initial directory). */
+  activeResourceKey: string;
+  /** Required source inputs that block launch when unsatisfiable. */
+  sourceRequirements: VirtualSourceRequirementV1[];
+  /** Non-blocking informational references preserved for agent context. */
+  informationalReferences: VirtualInformationalReferenceV1[];
+  /** Agent + model + reasoning to launch. */
+  agent: string;
+  model: string | null;
+  reasoningEffort: string | null;
+  /** Resolved launch-config snapshot (flags/pre-command). */
+  launchConfig: AgentLaunchConfigDto;
+  /** Only request-scoped grant *references*; no bearer values. */
+  grants: VirtualGrantReferenceV1[];
+  /** SHA-256 of this payload's canonical JSON; echoed at `launched` for verification. */
+  payloadDigest: string;
+}
+
+/** Body for `POST /api/virtual-targets/v1/claim`. */
+export interface VirtualTargetClaimBody {
+  executionTargetId: string;
+  gatewayInstanceId: string;
+}
+
+/**
+ * Response to a successful claim. Replaying the same gateway+request returns the
+ * same `claimId` and `queueItem`.
+ */
+export interface VirtualTargetClaimResponseDto {
+  claimId: string;
+  expiresAt: string;
+  queueItem: VirtualExecutionQueueItemV1;
+}
+
+/**
+ * Body for `POST /api/virtual-targets/v1/requests/:id/progress`. Bounded and
+ * monotonic; does not transition status. `sequence` makes it idempotent.
+ */
+export interface VirtualTargetProgressObservationBody {
+  claimId: string;
+  sequence: number;
+  /** Short preparation stage identifier (e.g. `cloning`, `building`). */
+  stage: string;
+  /** Bounded, redacted human-safe message. */
+  message?: string | null;
+  /** Optional 0–100 progress hint. */
+  percent?: number | null;
+  observedAt: string;
+}
+
+/**
+ * Body for `POST /api/virtual-targets/v1/requests/:id/launched`. Records the
+ * launch observation and drives the `launching → launched` transition exactly
+ * once. `payloadDigest` must match the claimed snapshot.
+ */
+export interface VirtualTargetLaunchObservationV1 {
+  claimId: string;
+  sequence: number;
+  /** Must equal the claimed `VirtualExecutionQueueItemV1.payloadDigest`. */
+  payloadDigest: string;
+  /** Opaque external run/environment identifiers the gateway realized. */
+  externalRunId?: string | null;
+  externalEnvironmentId?: string | null;
+  observedAt: string;
+}
+
+/**
+ * Body for `POST /api/virtual-targets/v1/requests/:id/failed`. Typed and
+ * redacted; `retryable` informs retry policy but does not itself requeue.
+ */
+export interface VirtualTargetFailureV1 {
+  claimId: string;
+  sequence: number;
+  /** Typed failure code (open vocabulary, e.g. `source_incompatible`). */
+  failureCode: string;
+  failurePhase: VirtualFailurePhase;
+  retryable: boolean;
+  /** Bounded, redacted human-safe summary. */
+  message?: string | null;
+  observedAt: string;
+}
+
+/** Body for `POST /api/virtual-targets/v1/grants/:id/exchange`. */
+export interface VirtualGrantExchangeBody {
+  claimId: string;
+  gatewayInstanceId: string;
+}
+
+/**
+ * Result of a grant exchange. Returns narrowly scoped, short-lived material
+ * bound to the request/target/gateway — never the user's Overlord token.
+ */
+export interface VirtualGrantExchangeResultDto {
+  grantId: string;
+  kind: VirtualGrantKind;
+  expiresAt: string;
+  /** For `download`/`attachment` grants: a scoped, expiring URL. */
+  downloadUrl?: string | null;
+  /** For `credential_reference` grants: scoped, short-lived credential material. */
+  credential?: Record<string, unknown> | null;
+}
+
+/**
+ * Summarized external lifecycle resource (`mission_target_resources`) surfaced to
+ * mission views. References opaque external IDs only.
+ */
+export interface MissionTargetResourceDto {
+  id: string;
+  missionId: string;
+  executionTargetId: string;
+  /** Adapter resource kind (`car`, `environment`, `run`, …). */
+  kind: string;
+  /** Opaque external identifier; never a path or secret. */
+  externalId: string;
+  /** Summarized, bounded adapter state. */
+  state: string;
+  /** Latest summarized observation for the mission view. */
+  latestObservation: unknown | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * `GET /api/virtual-targets/v1/missions/:id/resources` response: reusable
+ * car/environment/run summaries plus per-resource source-compatibility.
+ */
+export interface VirtualTargetMissionResourcesDto {
+  resources: MissionTargetResourceDto[];
+  sourceCompatibility: VirtualInformationalReferenceV1[];
+}
+
+/**
+ * Body for `POST /api/virtual-targets/v1/missions/:id/actions`. Authorizes a
+ * single delegated lifecycle action; destructive kinds require `confirm`.
+ */
+export interface VirtualTargetActionBody {
+  executionTargetId: string;
+  action: VirtualTargetActionKind;
+  /** Target the action at a specific external resource, when applicable. */
+  externalResourceId?: string | null;
+  /** Required acknowledgement for destructive actions (`delete`, `archive`). */
+  confirm?: boolean;
+}
+
+/**
+ * Result of a delegated action. The action's outcome is recorded as an
+ * observation; it can never change mission completion.
+ */
+export interface VirtualTargetActionResultDto {
+  action: VirtualTargetActionKind;
+  /** Whether the target accepted the delegated action. */
+  accepted: boolean;
+  /** `synchronous` when applied immediately, `queued` when deferred to async work. */
+  disposition: 'synchronous' | 'queued';
+  /** The observation recorded for this action, when produced synchronously. */
+  observation?: MissionTargetResourceDto | null;
 }

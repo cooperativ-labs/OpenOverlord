@@ -187,21 +187,50 @@ export interface EntityChanges {
   workspace_id: string;
 }
 
+export interface ExecutionRequestGrants {
+  consumed_at: string | null;
+  created_at: string;
+  execution_request_id: string;
+  expires_at: string;
+  grant_hash: string;
+  id: string | null;
+  kind: string;
+  revoked_at: string | null;
+  scope_json: Generated<string>;
+  updated_at: string;
+  workspace_id: string;
+}
+
+export interface ExecutionRequestObservations {
+  created_at: string;
+  execution_request_id: string;
+  id: string | null;
+  kind: string;
+  observation_json: Generated<string>;
+  observed_at: string;
+  sequence: number;
+  workspace_id: string;
+}
+
 export interface ExecutionRequests {
   attempt_count: Generated<number>;
   claim_expires_at: string | null;
   claimed_at: string | null;
   claimed_by_device_id: string | null;
   claimed_by_execution_target_id: string | null;
+  claimed_by_gateway_instance_id: string | null;
   created_at: string;
   deleted_at: string | null;
   execution_target_id: string | null;
+  failure_code: string | null;
+  failure_phase: string | null;
   id: string | null;
   idempotency_key: string | null;
   last_error: string | null;
   launch_completed_at: string | null;
   launch_flags_json: Generated<string>;
   launch_mode: string;
+  launch_snapshot_id: string | null;
   launch_started_at: string | null;
   launched_session_id: string | null;
   metadata_json: Generated<string>;
@@ -218,6 +247,36 @@ export interface ExecutionRequests {
   revision: Generated<number>;
   status: string;
   target_kind: string;
+  updated_at: string;
+  workspace_id: string;
+}
+
+export interface ExecutionRequestSnapshots {
+  created_at: string;
+  execution_request_id: string;
+  id: string | null;
+  payload_digest: string;
+  payload_json: Generated<string>;
+  schema_version: string;
+  workspace_id: string;
+}
+
+export interface ExecutionTargetRegistrations {
+  capabilities_json: Generated<string>;
+  connection_json: Generated<string>;
+  created_at: string;
+  deleted_at: string | null;
+  execution_target_id: string;
+  gateway_instance_id: string;
+  gateway_key: string;
+  gateway_version: string | null;
+  health: string;
+  id: string | null;
+  last_error_code: string | null;
+  last_heartbeat_at: string | null;
+  revision: Generated<number>;
+  supported_agents_json: Generated<string>;
+  supported_queue_versions_json: Generated<string>;
   updated_at: string;
   workspace_id: string;
 }
@@ -368,6 +427,21 @@ export interface MissionTags {
   tag_id: string;
 }
 
+export interface MissionTargetResources {
+  created_at: string;
+  deleted_at: string | null;
+  execution_target_id: string;
+  external_id: string;
+  id: string | null;
+  kind: string;
+  latest_observation_json: Generated<string>;
+  mission_id: string;
+  revision: Generated<number>;
+  state: string;
+  updated_at: string;
+  workspace_id: string;
+}
+
 export interface MyMissionPositions {
   created_at: string;
   id: string | null;
@@ -465,20 +539,47 @@ export interface Profiles {
   updated_at: string;
 }
 
+export interface ProjectEnvironmentDefinitions {
+  archived_at: string | null;
+  created_at: string;
+  definition_json: Generated<string>;
+  digest: string;
+  fingerprint: string;
+  id: string | null;
+  project_id: string;
+  revision: Generated<number>;
+  updated_at: string;
+  version: number;
+  workspace_id: string;
+}
+
 export interface ProjectResources {
   created_at: string;
   deleted_at: string | null;
-  execution_target_id: string | null;
   id: string | null;
   is_primary: Generated<number>;
   label: string | null;
   metadata_json: Generated<string>;
-  path: string;
   project_id: string;
-  resource_key: string | null;
+  resource_key: string;
   revision: Generated<number>;
   status: string;
-  type: string;
+  updated_at: string;
+  workspace_id: string;
+}
+
+export interface ProjectResourceSources {
+  created_at: string;
+  deleted_at: string | null;
+  descriptor_json: Generated<string>;
+  execution_target_id: string | null;
+  id: string | null;
+  observed_content_digest: string | null;
+  observed_revision: string | null;
+  project_id: string;
+  resource_id: string;
+  revision: Generated<number>;
+  source_kind: string;
   updated_at: string;
   workspace_id: string;
 }
@@ -897,7 +998,11 @@ export interface DB {
   deliveries: Deliveries;
   devices: Devices;
   entity_changes: EntityChanges;
+  execution_request_grants: ExecutionRequestGrants;
+  execution_request_observations: ExecutionRequestObservations;
+  execution_request_snapshots: ExecutionRequestSnapshots;
   execution_requests: ExecutionRequests;
+  execution_target_registrations: ExecutionTargetRegistrations;
   execution_targets: ExecutionTargets;
   ext_everhour_mission_links: ExtEverhourMissionLinks;
   ext_everhour_project_links: ExtEverhourProjectLinks;
@@ -907,6 +1012,7 @@ export interface DB {
   mission_events: MissionEvents;
   mission_sequences: MissionSequences;
   mission_tags: MissionTags;
+  mission_target_resources: MissionTargetResources;
   missions: Missions;
   my_mission_positions: MyMissionPositions;
   objective_attachments: ObjectiveAttachments;
@@ -914,6 +1020,8 @@ export interface DB {
   organizations: Organizations;
   outbox_messages: OutboxMessages;
   profiles: Profiles;
+  project_environment_definitions: ProjectEnvironmentDefinitions;
+  project_resource_sources: ProjectResourceSources;
   project_resources: ProjectResources;
   project_tags: ProjectTags;
   project_user_preferences: ProjectUserPreferences;

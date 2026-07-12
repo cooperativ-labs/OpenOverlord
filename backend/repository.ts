@@ -364,16 +364,49 @@ interface ProjectResourceRow {
   id: string;
   workspace_id: string;
   project_id: string;
-  execution_target_id: string | null;
   resource_key: string;
-  type: string;
   label: string | null;
-  path: string;
   is_primary: number;
   status: string;
   created_at: string;
   updated_at: string;
   revision: number;
+}
+
+interface ProjectResourceSourceRow {
+  id: string;
+  resource_id: string;
+  execution_target_id: string | null;
+  source_kind: string;
+  descriptor_json: string;
+  observed_revision: string | null;
+  observed_content_digest: string | null;
+}
+
+function sourcePath(source: ProjectResourceSourceRow | null | undefined): string {
+  if (!source || source.source_kind !== 'local_checkout') return '';
+  try {
+    const value = (JSON.parse(source.descriptor_json) as { path?: unknown }).path;
+    return typeof value === 'string' ? value : '';
+  } catch {
+    return '';
+  }
+}
+
+function toSourceDto(source: ProjectResourceSourceRow) {
+  let descriptor: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(source.descriptor_json);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) descriptor = parsed;
+  } catch {}
+  return {
+    id: source.id,
+    executionTargetId: source.execution_target_id,
+    sourceKind: source.source_kind,
+    descriptor,
+    observedRevision: source.observed_revision,
+    observedContentDigest: source.observed_content_digest
+  };
 }
 
 interface MissionRow {
@@ -470,29 +503,32 @@ function isTruthyFlag(value: unknown): boolean {
 
 async function toProjectResourceDto(
   r: ProjectResourceRow,
-  observationsByResourceId: Map<string, TargetResourceObservationRow> = new Map()
+  observationsByResourceId: Map<string, TargetResourceObservationRow> = new Map(),
+  sources: ProjectResourceSourceRow[] = []
 ): Promise<ProjectResourceDto> {
+  const source = sources.find(item => item.source_kind === 'local_checkout') ?? sources[0] ?? null;
   const merged = mergeResourceStatusWithObservation({
     lifecycleStatus: r.status,
-    resourceExecutionTargetId: r.execution_target_id,
+    resourceExecutionTargetId: source?.execution_target_id ?? null,
     observation: observationsByResourceId.get(r.id)
   });
   return {
     id: r.id,
     workspaceId: r.workspace_id,
     projectId: r.project_id,
-    executionTargetId: r.execution_target_id,
+    executionTargetId: source?.execution_target_id ?? null,
     resourceKey: r.resource_key,
-    type: r.type as ProjectResourceDto['type'],
+    type: (source?.source_kind === 'local_checkout' ? 'local_directory' : source?.source_kind ?? 'remote_directory') as ProjectResourceDto['type'],
     label: r.label,
-    path: r.path,
+    path: sourcePath(source),
     isPrimary: isTruthyFlag(r.is_primary),
     status: merged.status as ProjectResourceDto['status'],
     observedAt: merged.observedAt,
     observationSource: merged.observedAt ? 'client' : null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
-    revision: r.revision
+    revision: r.revision,
+    sources: sources.map(toSourceDto)
   };
 }
 
@@ -537,8 +573,8 @@ async function getProjectResourceRow(
 ): Promise<ProjectResourceRow> {
   await getProject(projectId, db);
   const row = (await db.get(
-    `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
-              resource_key, is_primary, status, created_at, updated_at, revision
+    `SELECT id, workspace_id, project_id, resource_key, label,
+              is_primary, status, created_at, updated_at, revision
          FROM project_resources
         WHERE id = ? AND project_id = ? AND deleted_at IS NULL`,
     [resourceId, projectId]
@@ -551,95 +587,42 @@ async function clearPrimaryResourcesForTarget(
   db: DatabaseClient,
   {
     projectId,
-    executionTargetId,
     now
   }: {
     projectId: string;
-    executionTargetId: string | null;
     now: string;
   }
 ): Promise<void> {
-  if (executionTargetId === null) {
-    await db.run(
-      `UPDATE project_resources
-        SET is_primary = ?, updated_at = ?, revision = revision + 1
-      WHERE project_id = ?
-        AND deleted_at IS NULL
-        AND is_primary = ?
-        AND execution_target_id IS NULL`,
-      [bindBool(DATABASE_DIALECT, false), now, projectId, bindBool(DATABASE_DIALECT, true)]
-    );
-  } else {
-    await db.run(
-      `UPDATE project_resources
-        SET is_primary = ?, updated_at = ?, revision = revision + 1
-      WHERE project_id = ?
-        AND deleted_at IS NULL
-        AND is_primary = ?
-        AND execution_target_id = ?`,
-      [
-        bindBool(DATABASE_DIALECT, false),
-        now,
-        projectId,
-        bindBool(DATABASE_DIALECT, true),
-        executionTargetId
-      ]
-    );
-  }
+  await db.run(
+    `UPDATE project_resources
+      SET is_primary = ?, updated_at = ?, revision = revision + 1
+    WHERE project_id = ? AND deleted_at IS NULL AND is_primary = ?`,
+    [bindBool(DATABASE_DIALECT, false), now, projectId, bindBool(DATABASE_DIALECT, true)]
+  );
 }
 
 async function promoteFallbackPrimary(
   db: DatabaseClient,
   {
     projectId,
-    executionTargetId,
     now
   }: {
     projectId: string;
-    executionTargetId: string | null;
     now: string;
   }
 ): Promise<void> {
-  const primary = (await (executionTargetId === null
-    ? db.get(
-        `SELECT id FROM project_resources
-        WHERE project_id = ?
-          AND deleted_at IS NULL
-          AND is_primary = ?
-          AND execution_target_id IS NULL
-        LIMIT 1`,
-        [projectId, bindBool(DATABASE_DIALECT, true)]
-      )
-    : db.get(
-        `SELECT id FROM project_resources
-        WHERE project_id = ?
-          AND deleted_at IS NULL
-          AND is_primary = ?
-          AND execution_target_id = ?
-        LIMIT 1`,
-        [projectId, bindBool(DATABASE_DIALECT, true), executionTargetId]
-      ))) as { id: string } | undefined;
+  const primary = (await db.get(
+    `SELECT id FROM project_resources
+      WHERE project_id = ? AND deleted_at IS NULL AND is_primary = ? LIMIT 1`,
+    [projectId, bindBool(DATABASE_DIALECT, true)]
+  )) as { id: string } | undefined;
   if (primary) return;
 
-  const fallback = (await (executionTargetId === null
-    ? db.get(
-        `SELECT id FROM project_resources
-        WHERE project_id = ?
-          AND deleted_at IS NULL
-          AND execution_target_id IS NULL
-        ORDER BY created_at ASC
-        LIMIT 1`,
-        [projectId]
-      )
-    : db.get(
-        `SELECT id FROM project_resources
-        WHERE project_id = ?
-          AND deleted_at IS NULL
-          AND execution_target_id = ?
-        ORDER BY created_at ASC
-        LIMIT 1`,
-        [projectId, executionTargetId]
-      ))) as { id: string } | undefined;
+  const fallback = (await db.get(
+    `SELECT id FROM project_resources
+      WHERE project_id = ? AND deleted_at IS NULL ORDER BY created_at ASC LIMIT 1`,
+    [projectId]
+  )) as { id: string } | undefined;
   if (!fallback) return;
 
   await db.run(
@@ -1009,27 +992,32 @@ async function activeResourceRow({
       : executionTargetId;
 
   const conditions = [
-    'project_id = ?',
-    'workspace_id = ?',
-    `status = 'active'`,
-    'deleted_at IS NULL'
+    'pr.project_id = ?',
+    'pr.workspace_id = ?',
+    `pr.status = 'active'`,
+    'pr.deleted_at IS NULL',
+    `prs.source_kind = 'local_checkout'`
   ];
   const params: unknown[] = [projectId, workspaceId];
   if (resourceKey !== null) {
-    conditions.push('resource_key = ?');
+    conditions.push('pr.resource_key = ?');
     params.push(resourceKey);
   }
   const orderBy: string[] = [];
   if (targetId !== null) {
-    conditions.push('(execution_target_id = ? OR execution_target_id IS NULL)');
+    conditions.push('(prs.execution_target_id = ? OR prs.execution_target_id IS NULL)');
     params.push(targetId);
-    orderBy.push('CASE WHEN execution_target_id = ? THEN 0 ELSE 1 END');
+    orderBy.push('CASE WHEN prs.execution_target_id = ? THEN 0 ELSE 1 END');
     params.push(targetId);
   }
-  orderBy.push('is_primary DESC', 'created_at ASC');
+  orderBy.push('pr.is_primary DESC', 'pr.created_at ASC');
 
+  const pathExpression = DATABASE_DIALECT === 'postgres'
+    ? "prs.descriptor_json->>'path'"
+    : "json_extract(prs.descriptor_json, '$.path')";
   return (await requireDatabaseClient().get(
-    `SELECT id, path, resource_key FROM project_resources
+    `SELECT pr.id, ${pathExpression} AS path, pr.resource_key FROM project_resources pr
+        JOIN project_resource_sources prs ON prs.resource_id = pr.id AND prs.deleted_at IS NULL
         WHERE ${conditions.join(' AND ')}
         ORDER BY ${orderBy.join(', ')}
         LIMIT 1`,
@@ -2208,19 +2196,33 @@ export async function deleteProjectTag(projectId: string, tagId: string): Promis
 export async function listProjectResources(projectId: string): Promise<ProjectResourceDto[]> {
   await getProject(projectId);
 
-  const rows = (await requireDatabaseClient().all(
-    `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
-              resource_key, is_primary, status, created_at, updated_at, revision
+  const db = requireDatabaseClient();
+  const rows = (await db.all(
+    `SELECT id, workspace_id, project_id, resource_key, label,
+              is_primary, status, created_at, updated_at, revision
          FROM project_resources
         WHERE project_id = ? AND deleted_at IS NULL
-        ORDER BY status ASC, is_primary DESC, label ASC, path ASC`,
+        ORDER BY status ASC, is_primary DESC, label ASC, resource_key ASC`,
     [projectId]
   )) as ProjectResourceRow[];
+  const sources = (await db.all(
+    `SELECT id, resource_id, execution_target_id, source_kind, descriptor_json,
+            observed_revision, observed_content_digest
+       FROM project_resource_sources
+      WHERE project_id = ? AND deleted_at IS NULL`,
+    [projectId]
+  )) as ProjectResourceSourceRow[];
+  const sourcesByResourceId = new Map<string, ProjectResourceSourceRow[]>();
+  for (const source of sources) {
+    const bucket = sourcesByResourceId.get(source.resource_id) ?? [];
+    bucket.push(source);
+    sourcesByResourceId.set(source.resource_id, bucket);
+  }
   const observations = await loadTargetResourceObservations({
     ctx: buildWebappServiceContext(),
     resourceIds: rows.map(row => row.id)
   });
-  return await Promise.all(rows.map(row => toProjectResourceDto(row, observations)));
+  return await Promise.all(rows.map(row => toProjectResourceDto(row, observations, sourcesByResourceId.get(row.id) ?? [])));
 }
 
 async function insertProjectResource(
@@ -2240,28 +2242,31 @@ async function insertProjectResource(
   const executionTargetId = await resolveResourceExecutionTargetId(db, body.executionTargetId);
 
   const now = nowIso();
-  if (body.isPrimary !== false) {
-    await clearPrimaryResourcesForTarget(db, { projectId: project.id, executionTargetId, now });
-  }
+  if (body.isPrimary !== false) await clearPrimaryResourcesForTarget(db, { projectId: project.id, now });
 
   const resourceId = newId();
   await db.run(
     `INSERT INTO project_resources
-       (id, workspace_id, project_id, execution_target_id, resource_key, type, label, path,
+       (id, workspace_id, project_id, resource_key, label,
         is_primary, status, metadata_json, created_at, updated_at, revision)
-     VALUES (?, ?, ?, ?, ?, 'local_directory', ?, ?, ?, 'active', '{}', ?, ?, 1)`,
+     VALUES (?, ?, ?, ?, ?, ?, 'active', '{}', ?, ?, 1)`,
     [
       resourceId,
       project.workspaceId,
       project.id,
-      executionTargetId,
       resourceKey,
       body.label ?? null,
-      resourcePath,
       bindBool(DATABASE_DIALECT, body.isPrimary !== false),
       now,
       now
     ]
+  );
+  await db.run(
+    `INSERT INTO project_resource_sources
+       (id, workspace_id, project_id, resource_id, execution_target_id, source_kind, descriptor_json,
+        created_at, updated_at, revision)
+     VALUES (?, ?, ?, ?, ?, 'local_checkout', ?, ?, ?, 1)`,
+    [newId(), project.workspaceId, project.id, resourceId, executionTargetId, JSON.stringify({ path: resourcePath }), now, now]
   );
 
   // Client/desktop owns `.overlord/project.json` on linked paths (WS-F3).
@@ -2292,13 +2297,19 @@ export async function createProjectResource(
     const id = await insertProjectResource(tx, project, body, 'directoryPath is required');
 
     const row = (await tx.get(
-      `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
-                resource_key, is_primary, status, created_at, updated_at, revision
+    `SELECT id, workspace_id, project_id, resource_key, label,
+                is_primary, status, created_at, updated_at, revision
            FROM project_resources
           WHERE id = ?`,
       [id]
     )) as ProjectResourceRow;
-    return await toProjectResourceDto(row);
+    const sources = (await tx.all(
+      `SELECT id, resource_id, execution_target_id, source_kind, descriptor_json,
+              observed_revision, observed_content_digest
+         FROM project_resource_sources WHERE resource_id = ? AND deleted_at IS NULL`,
+      [id]
+    )) as ProjectResourceSourceRow[];
+    return await toProjectResourceDto(row, new Map(), sources);
   });
 }
 
@@ -2317,7 +2328,7 @@ export async function updateProjectResource(
       const nextResourceKey = deriveProjectResourceKey({
         resourceKey: body.resourceKey,
         label: existing.label,
-        directoryPath: existing.path
+        directoryPath: existing.resource_key
       });
       if (nextResourceKey !== existing.resource_key) {
         revision += 1;
@@ -2334,7 +2345,6 @@ export async function updateProjectResource(
     if (body.isPrimary === true && !isTruthyFlag(existing.is_primary)) {
       await clearPrimaryResourcesForTarget(tx, {
         projectId,
-        executionTargetId: existing.execution_target_id,
         now
       });
       await tx.run(
@@ -2361,7 +2371,13 @@ export async function updateProjectResource(
       );
     }
 
-    return await toProjectResourceDto(await getProjectResourceRow(tx, projectId, resourceId));
+    const sources = (await tx.all(
+      `SELECT id, resource_id, execution_target_id, source_kind, descriptor_json,
+              observed_revision, observed_content_digest
+         FROM project_resource_sources WHERE resource_id = ? AND deleted_at IS NULL`,
+      [resourceId]
+    )) as ProjectResourceSourceRow[];
+    return await toProjectResourceDto(await getProjectResourceRow(tx, projectId, resourceId), new Map(), sources);
   });
 }
 
@@ -2378,13 +2394,8 @@ export async function deleteProjectResource(projectId: string, resourceId: strin
       [now, now, revision, resourceId]
     );
 
-    const deleted = await tx.get<{ execution_target_id: string | null }>(
-      `SELECT execution_target_id FROM project_resources WHERE id = ?`,
-      [resourceId]
-    );
     await promoteFallbackPrimary(tx, {
       projectId,
-      executionTargetId: deleted?.execution_target_id ?? null,
       now
     });
 
@@ -2409,38 +2420,25 @@ async function getProjectRepositoryResource(
   // A non-null `resourceKey` sorts matching resources first; when the key isn't
   // linked (or is null) `resource_key = NULL` is never true, so the CASE collapses
   // to 1 for every row and ordering falls back to the project primary.
-  const row = (await (executionTargetId === null
-    ? requireDatabaseClient().get(
-        `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
-              resource_key, is_primary, status, created_at, updated_at, revision
-         FROM project_resources
-        WHERE project_id = ?
-          AND status = 'active'
-          AND deleted_at IS NULL
-        ORDER BY
-          CASE WHEN resource_key = ? THEN 0 ELSE 1 END,
-          is_primary DESC,
-          created_at ASC
-        LIMIT 1`,
-        [projectId, resourceKey]
-      )
-    : requireDatabaseClient().get(
-        `SELECT id, workspace_id, project_id, execution_target_id, type, label, path,
-              resource_key, is_primary, status, created_at, updated_at, revision
-         FROM project_resources
-        WHERE project_id = ?
-          AND (execution_target_id = ? OR execution_target_id IS NULL)
-          AND status = 'active'
-          AND deleted_at IS NULL
-        ORDER BY
-          CASE WHEN resource_key = ? THEN 0 ELSE 1 END,
-          CASE WHEN execution_target_id = ? THEN 0 ELSE 1 END,
-          is_primary DESC,
-          created_at ASC
-        LIMIT 1`,
-        [projectId, executionTargetId, resourceKey, executionTargetId]
-      ))) as ProjectResourceRow | undefined;
-  return row ? await toProjectResourceDto(row) : null;
+  const db = requireDatabaseClient();
+  const row = (await db.get(
+    `SELECT id, workspace_id, project_id, resource_key, label,
+            is_primary, status, created_at, updated_at, revision
+       FROM project_resources
+      WHERE project_id = ? AND status = 'active' AND deleted_at IS NULL
+      ORDER BY CASE WHEN resource_key = ? THEN 0 ELSE 1 END, is_primary DESC, created_at ASC LIMIT 1`,
+    [projectId, resourceKey]
+  )) as ProjectResourceRow | undefined;
+  if (!row) return null;
+  const sources = (await db.all(
+    `SELECT id, resource_id, execution_target_id, source_kind, descriptor_json,
+            observed_revision, observed_content_digest
+       FROM project_resource_sources
+      WHERE resource_id = ? AND deleted_at IS NULL
+      ORDER BY CASE WHEN execution_target_id = ? THEN 0 WHEN execution_target_id IS NULL THEN 1 ELSE 2 END`,
+    [row.id, executionTargetId]
+  )) as ProjectResourceSourceRow[];
+  return await toProjectResourceDto(row, new Map(), sources);
 }
 
 export async function getProjectRepository(

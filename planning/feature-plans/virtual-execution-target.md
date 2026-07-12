@@ -32,7 +32,7 @@ does not complete an objective; an agent protocol delivery does.
 | `claimNextExecutionRequest` | Atomically claims a target-compatible queued request | Resolves a host filesystem path before claim and assumes `ClientDeviceIdentity`; cannot let a remote gateway perform source/environment realization |
 | Runner REST endpoints | `/api/runner/claim` and launching/launched/failed transitions already model the needed durable lifecycle | Authentication is local-runner shaped; responses lack virtual payload; outputs only accept a free-text failure; no progress endpoint/idempotency sequence |
 | Local-target capabilities | A clean, typed boundary for local checkout work and a target-aware registry | The interface is specifically local/path-based and includes worktree/agent spawning operations; it is not a virtual gateway contract |
-| Project resources | Logical `resource_key`, target-scoped resource rows, observations, and multi-resource attach manifest | Git/source-bundle/local-checkout source descriptors, immutable source revisions/digests, source requirements, and target-relative opaque workspace references |
+| Project resources | Logical `resource_key`, project-scoped resource identities, source descriptors, observations, and multi-resource attach manifest | Immutable source revisions/digests, source requirements, and target-relative opaque workspace references |
 | Protocol | Attach/deliver remains provider-independent and can link a launched request to an agent session | No gateway launch grant exchange or mission lifecycle-resource representation |
 | Web/Desktop UI | Target selection, resource availability, runner queue, and mission detail already exist | Capability-aware selection, source compatibility warnings/overrides, preparation progress, external environment/run cards, lifecycle actions, and terminal delegation |
 
@@ -55,8 +55,9 @@ credentials must never cross that boundary.
 4. A virtual claim is target-authenticated, not device-authenticated. Keep local
    `claimed_by_device_id` nullable and use `claimed_by_execution_target_id` as
    the universal claimant identity.
-5. `project_resources.path` remains valid only for local targets. A virtual queue
-   item carries a typed source descriptor; `targetRelativeRef` and
+5. `project_resources` has no path or target columns. A local checkout path lives
+   only in its `project_resource_sources` descriptor; a virtual queue item carries
+   a typed source descriptor; `targetRelativeRef` and
    `workspaceRef` are opaque handles, never server-readable filesystem paths.
 6. Use only short-lived, request-scoped grants and credential-reference IDs in
    payloads. Provider tokens, Git tokens, user tokens, and agent secrets never
@@ -310,4 +311,3 @@ gateway end-to-end suite. At minimum verify:
    lifecycle default values balance responsiveness with remote/offline gateways?
 5. Which adapter action results are synchronous observations versus asynchronous
    queued work, and how are destructive actions confirmed?
-

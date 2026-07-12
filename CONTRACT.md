@@ -1,6 +1,6 @@
 # Overlord Component Interaction Contract
 
-Contract Version: `1`
+Contract Version: `3`
 
 ## Purpose
 
@@ -33,12 +33,13 @@ where a surface differs by edition this document calls it out explicitly.
 
 ## Contract Version
 
-Current version: `2`
+Current version: `3`
 
 The contract version is incremented when any stable interface changes. All conformance manifests must declare the contract version they were validated against.
 
 | Version | Changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `3`     | Provider-neutral virtual execution targets and resource identity/source split (coo:258, coo:263). Adds `virtual` as a documented core `execution_targets.type`, the external **Virtual Target Gateway** boundary and its versioned `/api/virtual-targets/v1/*` REST surface (registration, claim, progress, launched, failed, grant exchange, mission resources, delegated actions), the `rest-consumer` conformance component type, seven new core tables (`execution_target_registrations`, `project_environment_definitions`, `project_resource_sources`, `execution_request_snapshots`, `execution_request_grants`, `execution_request_observations`, `mission_target_resources`) plus `execution_requests` snapshot/failure/gateway columns. `project_resources` is one project-scoped logical identity (`resource_key`, label, primary/lifecycle metadata) and `project_resource_sources` owns all target-specific/global materialization descriptors (local checkout paths, Git, bundles, opaque handles). Existing resource rows and observations are intentionally discarded so users re-add sources. The immutable `VirtualExecutionQueueItemV1` carries resource identities plus typed sources, not paths; `execution_requests.status` and every other closed vocabulary are unchanged. |
 | `2`     | ChatGPT Apps publication surface (coo:224). Adds explicit MCP tool output schemas and safety annotations, standard `ui://overlord/*` MCP Apps widget resources, structured tool results, and OAuth resource binding across approval and token exchange. Hosted MCP errors now distinguish tool failures from transport failures without exposing local checkout or runner capabilities. |
 | `1`     | Resource-bound objectives and sibling resource context (coo:169). Adds logical `project_resources.resource_key`, target-portable `objectives.resource_key`, resource-scoped mission branch observations, additive `attach-response-v3` project resource manifest fields, optional `executionTargetId` protocol context input, `.overlord/project.json` `resourceKey`, `ovld add-cwd --key`, branch-action `resourceKey`, and resource-scoped worktree-path vectors. The worktree path algorithm now includes `resourceKey`, forcing this contract version bump. |
 | `0`     | Initial public release baseline (coo:144). Describes the full component registry (including the MCP Server), interaction surfaces, stable interfaces (`attach-response-v3`, webhook delivery, organization → workspace → project hierarchy, multi-target `.overlord/project.json` linking, target-workspace project APIs, deliver `observedDirtyPaths` reconciliation, and `ovld protocol changes` preflight), extension points, and controlled vocabularies as shipped in Open Overlord v0. Pre-release contract versions 1–8 were consolidated into this baseline at public release. |
@@ -82,6 +83,7 @@ Owns:
 
 - Table definitions, column types, indexes, foreign keys, CHECK constraints
 - The `organizations` table (grouping layer above `workspaces`: `id` uuid, `name`, `settings_json` incl. `logoUrl`, timestamps, `deleted_at`, `revision`) and the required `workspaces.organization_id` FK; workspaces remain the sole RBAC layer, and slugs are unique per organization, not instance-wide
+- The virtual execution target core tables (`execution_target_registrations`, `project_environment_definitions`, `project_resource_sources`, `execution_request_snapshots`, `execution_request_grants`, `execution_request_observations`, `mission_target_resources`) and the additive `execution_requests` snapshot/failure/gateway columns — these are **core** (not `ext_` extension) because they drive queue status, audit, authorization, and UI. The immutable `execution_request_snapshots` row (canonical `payload_json` + SHA-256 `payload_digest`) is created in the same transaction as its `queued` request and is never updated; retrying only increments `attempt_count`. Grant records store hashes/opaque IDs, never bearer values
 - Controlled vocabularies (closed and open sets)
 - Soft-delete and revision semantics
 - Migration versioning via `schema_migrations`
@@ -154,6 +156,7 @@ Does NOT own:
 
 - Protocol session lifecycle (→ Protocol Layer)
 - Connector installation (→ Connector Layer)
+- Virtual execution target claiming and environment realization (→ REST **Virtual Target Queue Surface** + external gateway). The runner claims and launches only local/device execution targets; it never resolves a working directory for a `virtual` target
 
 ### 6. REST API Layer
 
@@ -176,6 +179,7 @@ Owns:
 - Storage routes for the `organization-images` bucket key (`/api/storage/organization-images/…`) with a `PUBLIC organization_image:read` grant, mirroring `workspace_image:read`
 - Workspace agent catalog management (`GET /api/agent-catalog`, `PUT /api/agent-catalog`, `POST /api/agent-catalog/refresh`) for `workspaces.settings_json.agentCatalog`
 - Hosted MCP OAuth endpoints: dynamic client registration (`POST /oauth/register`), authorization-code + PKCE token exchange (`POST /oauth/token`), revocation (`POST /oauth/revoke`), browser authorization redirect (`GET /oauth/authorize` → web approval UI), and authenticated approval helpers (`POST /oauth/authorize/request`, `POST /oauth/authorize/approve`)
+- The versioned **virtual-target gateway route family** (`/api/virtual-targets/v1/*`): `PUT …/registration`, `POST …/claim`, `POST …/requests/:id/progress`, `POST …/requests/:id/launched`, `POST …/requests/:id/failed`, `POST …/grants/:id/exchange`, `GET …/missions/:id/resources`, and `POST …/missions/:id/actions`. REST owns the DTO shapes, target-authenticated auth/RBAC enforcement, per-request idempotency, and bounded/redacted output for this surface. The immutable `VirtualExecutionQueueItemV1` payload and its digest are built by the service layer at queue time and returned only to the authenticated claiming gateway; the local `/api/runner/*` routes are unchanged
 
 Does NOT own:
 
@@ -359,6 +363,17 @@ These are the **only sanctioned paths** between components. Bypassing these surf
 - **State transitions**: `queued → claimed → launching → launched|failed`; active requests may be cleared; stale claims and launched-without-attach requests may move to `expired`; other terminal statuses are sinks unless a new request is explicitly queued
 - **Attach correlation**: Protocol attach links the launched request to `agent_sessions` via `execution_requests.launched_session_id` when the launched context supplies an execution request id
 
+### Virtual Gateway → REST (Virtual Target Queue Surface)
+
+- **Transport**: HTTPS/JSON to the configured backend under the versioned `/api/virtual-targets/v1/*` route family
+- **Authentication**: A gateway principal credential scoped to exactly one `execution_targets` row of type `virtual` (target-authenticated, **not** device-authenticated). A gateway cannot enumerate, claim, or observe another target's work; `execution_requests.claimed_by_execution_target_id` is the universal claimant identity and `claimed_by_device_id` stays nullable for virtual claims
+- **Registration**: `PUT /api/virtual-targets/v1/registration` registers/refreshes the target's gateway identity (`gateway_key`, `gateway_instance_id`), advertised capabilities, supported agents, supported queue schema versions, adapter key/version, and heartbeat. Registration **replaces** rather than creates a target when a stable gateway identity matches
+- **Claiming**: `POST /api/virtual-targets/v1/claim` atomically claims a queued request assigned to the caller's target and returns the immutable `VirtualExecutionQueueItemV1` snapshot, a `claimId`, an expiry, and only request-scoped opaque launch-grant references — never filesystem paths or raw secrets. Replaying the same gateway + request returns the same claim and payload. `resolveWorkingDirectory` never runs on a virtual claim
+- **Observed state**: `POST …/requests/:id/progress` appends a bounded, monotonic preparation observation and does **not** change status; `POST …/requests/:id/launched` validates request/claim/target/digest, records a `VirtualTargetLaunchObservationV1`, then makes the normal `launching → launched` transition exactly once; `POST …/requests/:id/failed` records a typed, redacted `VirtualTargetFailureV1` and makes the allowed transition to `failed` (its `retryable` flag informs existing retry policy but does not itself requeue). All three are idempotent by request and observation `sequence`
+- **Grants**: `POST …/grants/:id/exchange` swaps an authenticated, unexpired opaque grant for narrowly scoped credentials or attachment-download access, bound to request + target + gateway instance; every exchange is audited and never returns the user's Overlord token
+- **Mission resources / actions**: `GET …/missions/:id/resources` returns summarized opaque lifecycle resources and source-compatibility observations; `POST …/missions/:id/actions` authorizes an explicit `start`/`stop`/`archive`/`delete`/`enqueue`/`retry`/`dequeue` action and delegates it to the target. Delegated-action output becomes an observation and can **never** change mission completion — only an agent protocol delivery completes an objective
+- **Boundary rule**: Desired launch state (Overlord's immutable snapshot) and observed realization state (gateway reports) are kept separate. Paths and raw credentials never cross this boundary. The gateway owns source/environment realization and observed-state reporting; Overlord owns durable queue delivery, leases/retries, and status transitions
+
 ### REST API → Database (HTTP Surface)
 
 - **Transport**: Service layer function calls; same service layer as CLI and Protocol
@@ -451,7 +466,7 @@ Any component, connector, or extension that ships against Overlord must:
 
 1. **Provide a conformance manifest** (`conformance-manifest.yaml`) at its root declaring:
    - `contractVersion`: the version this component was validated against
-   - `componentType`: one of `connector`, `extension`, `database-adapter`, `auth-provider`, `rest-module`, `desktop-shell`, `mcp-server`
+   - `componentType`: one of `connector`, `extension`, `database-adapter`, `auth-provider`, `rest-module`, `rest-consumer`, `desktop-shell`, `mcp-server`
    - `componentKey`: stable lowercase identifier
    - All capabilities and extension points it uses
 
@@ -464,7 +479,16 @@ Any component, connector, or extension that ships against Overlord must:
 
 5. **Declare all vocabulary extensions** from open vocabularies in its conformance manifest
 
-See [`contract/conformance-manifest.schema.yaml`](contract/conformance-manifest.schema.yaml) for the required manifest shape.
+### Virtual Target Gateway conformance
+
+A **Virtual Target Gateway** is a `rest-consumer` (e.g. Racecar) that realizes virtual execution requests. In addition to the requirements above, it must:
+
+1. **Never access the Overlord database directly.** It interacts only through the documented `/api/virtual-targets/v1/*` REST surface; no direct DB access is possible or required.
+2. **Be idempotent by `executionRequestId`.** Claim, retry, duplicate delivery, and gateway restart for the same request must yield exactly one realized environment and one run; a post-launch gateway crash must not destroy or duplicate the environment.
+3. **Preserve the normal protocol lifecycle.** A gateway records observations and drives the `launching → launched|failed` transition, but it never completes an objective — only an agent protocol delivery does. It must not introduce a parallel request state machine.
+4. **Vendor the published virtual-target DTOs**, validate against this contract version, and declare its called endpoints and its namespaced adapter key (e.g. `racecar`) in its `conformance-manifest.yaml` (`componentType: rest-consumer`). The adapter key is an open-vocabulary value, not a new `execution_targets.type`.
+
+See [`contract/conformance-manifest.schema.yaml`](contract/conformance-manifest.schema.yaml) for the required manifest shape, and [`contract/examples/rest-consumer-racecar-conformance-manifest.yaml`](contract/examples/rest-consumer-racecar-conformance-manifest.yaml) for a Virtual Target Gateway template.
 
 ---
 
@@ -520,7 +544,8 @@ See [`contract/extension-points.yaml`](contract/extension-points.yaml) for machi
 ### Open (extensions may add namespaced values)
 
 - `workspaces.kind`, `profiles.kind`
-- `execution_targets.type`, `project_resources.type`
+- `execution_targets.type` (documents `local`, `ssh`, and now `virtual` as core values; a virtual target is realized by an external gateway over the Virtual Target Queue Surface), `project_resource_sources.source_kind`
+- Gateway **adapter keys** (e.g. `racecar`) and virtual source/observation/failure/grant/action kinds — namespaced open-vocabulary values declared in a gateway's `rest-consumer` conformance manifest, never new closed-vocabulary values or `execution_targets.type` values
 - `artifacts.type`
 - `mission_events.source`, `entity_changes.entity_type`, `entity_changes.source`
 - `outbox_messages.topic`, `worker_jobs.type`

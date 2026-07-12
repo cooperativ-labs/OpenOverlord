@@ -10,14 +10,19 @@ type RunnerState = 'active' | 'ready' | 'idle' | 'error';
 
 function deriveState({
   isError,
+  serviceError,
   activeCount,
   serviceRunning
 }: {
   isError: boolean;
+  serviceError: boolean;
   activeCount: number;
   serviceRunning: boolean;
 }): RunnerState {
-  if (isError) return 'error';
+  // Surface both a failed queue fetch and a persistent-runner service error
+  // (e.g. "authentication required") so the sidebar dot warns the user to open
+  // the modal instead of quietly reading as "ready".
+  if (isError || serviceError) return 'error';
   if (activeCount > 0) return 'active';
   return serviceRunning ? 'ready' : 'idle';
 }
@@ -26,14 +31,14 @@ const STATE_LABEL: Record<RunnerState, string> = {
   active: 'Runner active',
   ready: 'Runner ready',
   idle: 'Runner idle',
-  error: 'Runner unavailable'
+  error: 'Runner error'
 };
 
 const DOT_CLASS: Record<RunnerState, string> = {
   active: 'bg-emerald-500',
   ready: 'bg-emerald-500/70',
   idle: 'bg-muted-foreground/40',
-  error: 'bg-amber-500'
+  error: 'bg-red-500'
 };
 
 /**
@@ -49,7 +54,17 @@ export function RunnerStatusBox() {
   const service = useRunnerServiceStatus();
   const activeCount = runner.data?.activeCount ?? 0;
   const serviceRunning = service.data?.running === 'running';
-  const state = deriveState({ isError: runner.isError, activeCount, serviceRunning });
+  const serviceError = Boolean(service.data?.lastError);
+  const state = deriveState({
+    isError: runner.isError,
+    serviceError,
+    activeCount,
+    serviceRunning
+  });
+  // Prefer the concrete service error text in the tooltip so a hover hints at
+  // what's wrong (e.g. "authentication required") before opening the modal.
+  const tooltip =
+    state === 'error' && serviceError ? (service.data?.lastError ?? STATE_LABEL.error) : STATE_LABEL[state];
 
   return (
     <>
@@ -57,7 +72,7 @@ export function RunnerStatusBox() {
         <SidebarMenuItem>
           <SidebarMenuButton
             onClick={() => setOpen(true)}
-            tooltip={STATE_LABEL[state]}
+            tooltip={tooltip}
             className="text-muted-foreground"
           >
             <span className="relative flex size-4 items-center justify-center">

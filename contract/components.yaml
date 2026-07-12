@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '2'
+contractVersion: '3'
 
 components:
   protocol:
@@ -36,6 +36,8 @@ components:
       - 'table definitions, column types, indexes, foreign keys, CHECK constraints'
       - 'organizations table (grouping layer above workspaces) and the required workspaces.organization_id FK; workspaces remain the sole RBAC layer; slugs are unique per organization, not instance-wide'
       - 'controlled vocabularies (closed and open sets)'
+      - 'project_resources as project-scoped logical identities and project_resource_sources as the sole target/source materialization descriptors (local checkout paths, Git, bundles, or opaque virtual handles); existing resource rows are intentionally discarded by the contract-v4 migration rather than carried through a legacy compatibility shape'
+      - 'virtual execution target core tables (execution_target_registrations, project_environment_definitions, project_resource_sources, execution_request_snapshots, execution_request_grants, execution_request_observations, mission_target_resources) and additive execution_requests snapshot/failure/gateway columns; immutable snapshot (payload_json + SHA-256 payload_digest) created in the same transaction as the queued request and never updated; grant records store hashes/opaque IDs, never bearer values'
       - 'soft-delete and revision semantics'
       - 'migration versioning via schema_migrations'
       - 'extension table naming: ext_<name>_'
@@ -131,11 +133,13 @@ components:
       - 'project APIs support explicit target workspace context for multi-workspace organization UIs: CreateProjectBody.workspaceId and GET /api/workspaces/:id/statuses'
       - 'storage routes for the organization-images bucket key (/api/storage/organization-images/…) with a PUBLIC organization_image:read grant'
       - 'hosted MCP OAuth endpoints: POST /oauth/register, POST /oauth/token, POST /oauth/revoke, GET /oauth/authorize, POST /oauth/authorize/request, POST /oauth/authorize/approve'
+      - 'versioned virtual-target gateway route family (/api/virtual-targets/v1/*): PUT …/registration, POST …/claim, POST …/requests/:id/progress, POST …/requests/:id/launched, POST …/requests/:id/failed, POST …/grants/:id/exchange, GET …/missions/:id/resources, POST …/missions/:id/actions; owns DTO shapes, target-authenticated auth/RBAC, per-request idempotency, and bounded/redacted output; the immutable VirtualExecutionQueueItemV1 payload + digest are built by the service layer at queue time and returned only to the authenticated claiming gateway; local /api/runner/* routes are unchanged'
     dependsOn:
       - database
       - auth
     interactionSurfaces:
       - restApiToDatabase
+      - virtualGatewayToRest
 
   auth:
     label: 'Auth Layer'
@@ -292,6 +296,27 @@ interactionSurfaces:
       - 'Protocol attach links execution_requests.launched_session_id when launch context supplies an execution request id'
       - 'Runner launches agents locally after a successful claim'
       - 'Runner reports launching/launched/failed state back through backend endpoints'
+      - 'Runner claims and launches only local/device execution targets; virtual targets are claimed and realized by an external gateway over virtualGatewayToRest, and resolveWorkingDirectory never runs for a virtual claim'
+
+  virtualGatewayToRest:
+    description: 'An external Virtual Target Gateway (e.g. Racecar) claims and realizes virtual execution requests through the documented REST surface only — never the database'
+    from: gateway
+    to: rest
+    transport: https-json
+    authMechanism: target-scoped-gateway-principal
+    routeFamily: '/api/virtual-targets/v1/*'
+    rules:
+      - 'A gateway principal is scoped to exactly one execution_targets row of type virtual (target-authenticated, not device-authenticated); it cannot enumerate, claim, or observe another target''s work'
+      - 'claimed_by_execution_target_id is the universal claimant identity; claimed_by_device_id stays nullable for virtual claims'
+      - 'PUT …/registration registers/refreshes gateway identity (gateway_key, gateway_instance_id), capabilities, supported agents, supported queue schema versions, adapter key/version, and heartbeat; a matching stable gateway identity replaces rather than creates a target'
+      - 'POST …/claim atomically claims a queued request for the caller''s target and returns the immutable VirtualExecutionQueueItemV1 snapshot, claimId, expiry, and only request-scoped opaque launch-grant references — never filesystem paths or raw secrets; replaying the same gateway+request returns the same claim and payload'
+      - 'POST …/requests/:id/progress appends a bounded, monotonic preparation observation and does not change status'
+      - 'POST …/requests/:id/launched validates request/claim/target/digest, records VirtualTargetLaunchObservationV1, then makes the normal launching → launched transition exactly once'
+      - 'POST …/requests/:id/failed records a typed, redacted VirtualTargetFailureV1 and makes the allowed transition to failed; retryable informs retry policy but does not itself requeue'
+      - 'progress/launched/failed are idempotent by request and observation sequence'
+      - 'POST …/grants/:id/exchange swaps an authenticated, unexpired opaque grant for narrowly scoped credentials/attachment-download access bound to request+target+gateway instance; every exchange is audited and never returns the user''s Overlord token'
+      - 'GET …/missions/:id/resources returns summarized opaque lifecycle resources and source-compatibility observations; POST …/missions/:id/actions authorizes an explicit start/stop/archive/delete/enqueue/retry/dequeue action and delegates it; delegated-action output becomes an observation and can never change mission completion'
+      - 'The gateway must never access the database directly; it must be idempotent by executionRequestId, and it must not introduce a parallel request state machine'
 
   restApiToDatabase:
     description: 'REST handlers use service layer after auth check'

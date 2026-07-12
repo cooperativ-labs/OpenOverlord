@@ -555,21 +555,20 @@ Indexes:
 
 ### `project_resources`
 
-Links projects to directories/resources on execution targets.
+One stable, project-scoped logical resource identity. Materialization details
+(paths, URLs, Git revisions, bundles, and opaque target handles) belong only in
+`project_resource_sources`; `project_resources` never varies by execution target.
 
 | Column | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | Id | yes |  |
 | `workspace_id` | Id | yes | FK to `workspaces`. |
 | `project_id` | Id | yes | FK to `projects`. |
-| `execution_target_id` | Id | no | FK to `execution_targets`. Null allowed during import/config repair. |
-| `type` | text | yes | `local_directory`, `remote_directory`, future resource types. |
-| `resource_key` | text | yes | Stable slug identifying the logical resource within the project, shared by rows for the same repository across execution targets. Defaults from an explicit create/update input, else a slugified label, else a slugified path basename. |
+| `resource_key` | text | yes | Stable slug identifying the logical resource within the project. Defaults from an explicit create/update input, else a slugified label, else a source descriptor basename. |
 | `label` | text | no |  |
-| `path` | Path | yes | Local or remote path. |
-| `is_primary` | Bool | yes | Primary resource for project/target. |
-| `status` | text | yes | `active`, `missing`, `archived`. |
-| `metadata_json` | Json | yes | `.overlord/project.json` details, VCS hints. |
+| `is_primary` | Bool | yes | The project-wide initial resource. |
+| `status` | text | yes | `active`, `archived`. Availability is target/source observation data, never identity lifecycle. |
+| `metadata_json` | Json | yes | Logical resource metadata only; no target path or credential material. |
 | `created_at` | TimestampUTC | yes |  |
 | `updated_at` | TimestampUTC | yes |  |
 | `deleted_at` | TimestampUTC | no | Tombstone. |
@@ -577,14 +576,15 @@ Links projects to directories/resources on execution targets.
 
 Indexes:
 
-- `(project_id, execution_target_id, is_primary)`.
-- Unique active `(project_id, execution_target_id, path)`.
-- Unique active `(project_id, execution_target_id, resource_key)`.
+- `(project_id, is_primary)`.
+- Unique active `(project_id, resource_key)`.
 
 `resource_key` is the target-portable identity objectives bind to. It is
 independent of `label` after creation; label renames do not re-key existing
 resources. Key edits are explicit and must reject collisions with another active
-resource for the same project and execution target.
+resource for the same project. The contract-v3 migration intentionally clears
+previous resource and observation data; users re-add source descriptors instead
+of relying on a legacy path-row conversion.
 
 ### `target_resource_observations`
 
@@ -597,7 +597,7 @@ Latest client-reported availability for a linked resource on a specific executio
 | `execution_target_id` | Id | yes | FK to `execution_targets`. |
 | `resource_id` | Id | yes | FK to `project_resources`. |
 | `state` | text | yes | Open vocabulary: `available`, `missing`, `unreachable`, `permission_denied`, `not_git_repository`, `unknown` (§5 target observation). |
-| `git_root` | Path | no | Observed git root when `state = available`. |
+| `git_root` | Path | no | Observed git root when `state = available`; only valid for a local checkout source on this target. |
 | `branch` | text | no | Observed branch when available. |
 | `git_commit` | text | no | Observed commit SHA when available. |
 | `observed_at` | TimestampUTC | yes | When the target made the observation. |
@@ -1342,7 +1342,11 @@ Durable queue for manual run and auto-advance.
 | `launch_completed_at` | TimestampUTC | no |  |
 | `launched_session_id` | Id | no | FK to `agent_sessions` when known. |
 | `resolved_resource_id` | Id | no | FK to `project_resources`. |
-| `resolved_working_directory` | Path | no | No repository contents. |
+| `resolved_working_directory` | Path | no | No repository contents. Never set for a `virtual` target. |
+| `launch_snapshot_id` | Id | no | FK to `execution_request_snapshots`; set for virtual targets when the immutable `VirtualExecutionQueueItemV1` payload is built in the same transaction the request is queued. Null for local targets. |
+| `failure_code` | text | no | Typed virtual-target failure code (open vocabulary, e.g. `source_incompatible`); `last_error` remains the human-safe summary. |
+| `failure_phase` | text | no | Phase the typed failure occurred in (e.g. `claim`, `source`, `environment`, `launch`). |
+| `claimed_by_gateway_instance_id` | text | no | Gateway instance holding the current claim, for virtual claims; nullable for local claims. |
 | `last_error` | text | no |  |
 | `attempt_count` | integer | yes | Increment on each claim/launch attempt. |
 | `metadata_json` | Json | yes |  |
@@ -1371,6 +1375,16 @@ Claiming must happen in one transaction:
 2. Verify the objective is launchable.
 3. Update status to `claimed`, set `claimed_by_execution_target_id`, optional `claimed_by_device_id`, `claimed_at`, and `claim_expires_at`.
 4. Append `mission_events` and `entity_changes`.
+
+A **virtual** target claim is target-authenticated, not device-authenticated:
+`claimed_by_execution_target_id` is the universal claimant identity,
+`claimed_by_device_id` stays null, and `claimed_by_gateway_instance_id` records
+the claiming gateway instance. The claim returns the immutable
+`execution_request_snapshots.payload_json` (never rebuilt from mutable
+project/objective rows) and only request-scoped grant references. The local
+`resolveWorkingDirectory` path never runs for a virtual claim. `status` stays
+within the existing closed vocabulary; virtual preparation is recorded as
+append-only `execution_request_observations`, **not** as new status values.
 
 ### `idempotency_keys`
 
@@ -1422,6 +1436,204 @@ Indexes:
 
 - `(workspace_id, status, run_after, priority)`.
 - `(locked_until)`.
+
+## Virtual Execution Targets
+
+The following tables support **provider-neutral virtual execution targets** — a
+selectable target realized by an external gateway (the first is Racecar) that
+claims an Overlord execution request over the documented `/api/virtual-targets/v1/*`
+REST surface and never touches this database. They are **core** tables (not
+`ext_` extension tables) because they drive queue status, audit, authorization,
+and UI. The decisive rule is separation of **desired launch state** (Overlord's
+immutable snapshot) from **observed realization state** (gateway reports): paths
+and raw credentials never cross that boundary.
+
+### `execution_target_registrations`
+
+Gateway-owned registration and health for one `virtual` execution target. A
+matching stable gateway identity **replaces** rather than creates a target.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `execution_target_id` | Id | yes | FK to `execution_targets` (type `virtual`). |
+| `gateway_key` | text | yes | Namespaced adapter key (open vocabulary, e.g. `racecar`). Identifies the gateway implementation, not the target type. |
+| `gateway_instance_id` | text | yes | Stable per-installation gateway identity used to replace (not duplicate) a registration. |
+| `gateway_version` | text | no | Adapter/gateway version string. |
+| `capabilities_json` | Json | yes | Advertised capability booleans/hints (e.g. `localCheckoutSource`, browser terminal). Non-secret. |
+| `supported_agents_json` | Json | yes | Agent identifiers this gateway can launch. |
+| `supported_queue_versions_json` | Json | yes | Queue schema versions the gateway understands (e.g. `["v1"]`). |
+| `connection_json` | Json | yes | Non-secret gateway configuration. Secrets remain in credential storage, never here. |
+| `health` | text | yes | Open vocabulary: `healthy`, `degraded`, `unreachable`, `unknown`. |
+| `last_heartbeat_at` | TimestampUTC | no | Selection requires health within the operator-configured heartbeat TTL. |
+| `last_error_code` | text | no | Redacted, bounded latest error code. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `deleted_at` | TimestampUTC | no | Tombstone. |
+| `revision` | integer | yes |  |
+
+Indexes:
+
+- Unique active `(execution_target_id)`.
+- Unique active `(gateway_key, gateway_instance_id)`.
+- `(workspace_id, health, last_heartbeat_at)`.
+
+### `project_environment_definitions`
+
+Provider-neutral, immutable desired environment for a project. An execution
+request references the exact definition it was queued against.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `project_id` | Id | yes | FK to `projects`. |
+| `version` | integer | yes | Immutable; a new authoring pass creates a new version. |
+| `definition_json` | Json | yes | Canonical provider-neutral environment definition. |
+| `digest` | text | yes | SHA-256 over canonical `definition_json`. |
+| `fingerprint` | text | yes | Stable environment fingerprint across lockfiles/resources. |
+| `archived_at` | TimestampUTC | no | Set when a newer active definition supersedes this one. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `revision` | integer | yes |  |
+
+Indexes:
+
+- Unique active `(project_id, fingerprint)` (one active definition per fingerprint).
+- Unique `(project_id, version)`.
+
+### `project_resource_sources`
+
+Typed source descriptor for a project resource: how a gateway materializes the
+resource without Overlord persisting remote paths or secrets. A resource may
+have target-specific descriptors.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `project_id` | Id | yes | FK to `projects`. |
+| `resource_id` | Id | yes | FK to `project_resources`. |
+| `execution_target_id` | Id | no | FK to `execution_targets` when the descriptor is target-specific; null is a project-global descriptor. |
+| `source_kind` | text | yes | Open vocabulary: `git`, `local_checkout`, `source_bundle`, or namespaced kinds. |
+| `descriptor_json` | Json | yes | Canonical source descriptor (e.g. git URL + credential-reference ID; opaque `targetRelativeRef`). No raw secrets, no server-readable filesystem paths. |
+| `observed_revision` | text | no | Gateway-observed commit/revision. |
+| `observed_content_digest` | text | no | Gateway-observed content digest. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `deleted_at` | TimestampUTC | no | Tombstone. |
+| `revision` | integer | yes |  |
+
+Indexes:
+
+- Unique active `(resource_id, execution_target_id, source_kind)` when target-scoped, and unique active `(resource_id, source_kind)` when global.
+- `(project_id, source_kind)`.
+
+### `execution_request_snapshots`
+
+Immutable `VirtualExecutionQueueItemV1` payload for one queued request. Created
+in the **same transaction** as the queued request; never updated. Retrying only
+increments `execution_requests.attempt_count` and reuses this row.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `execution_request_id` | Id | yes | FK to `execution_requests`; unique. |
+| `schema_version` | text | yes | Queue payload schema version (e.g. `v1`). |
+| `payload_json` | Json | yes | Canonical `VirtualExecutionQueueItemV1`. Contains only opaque handles and grant references — no paths, no raw secrets. |
+| `payload_digest` | text | yes | SHA-256 over canonical `payload_json`; verified at `launched`. |
+| `created_at` | TimestampUTC | yes |  |
+
+Indexes:
+
+- Unique `(execution_request_id)`.
+- `(workspace_id, created_at)`.
+
+### `execution_request_grants`
+
+Opaque, request-scoped grant records (launch/attachment/download/credential
+reference). Stores hashes or opaque IDs, **never** bearer values.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `execution_request_id` | Id | yes | FK to `execution_requests`. |
+| `kind` | text | yes | Open vocabulary: `launch`, `attachment`, `download`, `credential_reference`, or namespaced kinds. |
+| `scope_json` | Json | yes | Narrow scope the grant authorizes (request/target/gateway-instance bound). |
+| `grant_hash` | text | yes | Hash or opaque ID of the grant; the raw value is never persisted. |
+| `expires_at` | TimestampUTC | yes | Short-lived; single-purpose. |
+| `consumed_at` | TimestampUTC | no | Set on exchange. |
+| `revoked_at` | TimestampUTC | no | Cancellation/retry revokes unconsumed grants. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+
+Indexes:
+
+- `(execution_request_id, kind)`.
+- `(workspace_id, expires_at)`.
+
+### `execution_request_observations`
+
+Append-only gateway observations for one request: progress, launch observation,
+typed failure, and lifecycle-resource observations. A monotonic per-request
+`sequence` rejects duplicate/out-of-order writes and makes progress idempotent.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `execution_request_id` | Id | yes | FK to `execution_requests`. |
+| `sequence` | integer | yes | Monotonic per request; unique `(execution_request_id, sequence)`. |
+| `kind` | text | yes | Open vocabulary: `progress`, `launch`, `failure`, `lifecycle_resource`, or namespaced kinds. |
+| `observation_json` | Json | yes | Bounded, redacted observation payload. Never changes `execution_requests.status` by itself. |
+| `observed_at` | TimestampUTC | yes | When the gateway made the observation. |
+| `created_at` | TimestampUTC | yes | Server receipt time. |
+
+Indexes:
+
+- Unique `(execution_request_id, sequence)`.
+- `(workspace_id, created_at)`.
+
+### `mission_target_resources`
+
+Durable, summarized external lifecycle-resource state (car/environment/run/…)
+for mission views and delegated actions. References opaque external IDs only.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes |  |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `mission_id` | Id | yes | FK to `missions`. |
+| `execution_target_id` | Id | yes | FK to `execution_targets` (type `virtual`). |
+| `kind` | text | yes | Open vocabulary adapter resource kind (e.g. `car`, `environment`, `run`), namespaced for adapter-specific kinds. |
+| `external_id` | text | yes | Opaque external identifier; never a server-readable path or secret. |
+| `state` | text | yes | Summarized adapter state (bounded, redacted). |
+| `latest_observation_json` | Json | yes | Latest summarized observation for mission views. |
+| `created_at` | TimestampUTC | yes |  |
+| `updated_at` | TimestampUTC | yes |  |
+| `deleted_at` | TimestampUTC | no | Tombstone. |
+| `revision` | integer | yes |  |
+
+Indexes:
+
+- Unique active `(mission_id, execution_target_id, kind, external_id)`.
+- `(workspace_id, execution_target_id, kind)`.
+
+**Service-level pre-queue checks (virtual targets).** Before a request enters
+`queued` for a virtual target, services must verify — in the same transaction
+that builds the snapshot — that the selected target is active, healthy within
+its heartbeat TTL, authorized for the project, supports the requested agent and
+every declared source kind, has exactly one active resource, and supports the
+queue schema version. All resource IDs are validated against the project before
+snapshot creation, and target registration/authorization ownership is enforced
+transactionally. A required source the target cannot satisfy blocks launch with
+a typed `source_incompatible` failure (not an agent failure); an explicit,
+attributed, request-snapshotted override may proceed and is shown in UI/audit
+history. The first increment supports Git-only sources; `local_checkout` and
+`source_bundle` follow once grant and storage paths are verified.
 
 ## Connector And Hook Records
 
@@ -1847,7 +2059,10 @@ Closed values:
 Open extension values:
 
 - `workspaces.kind`, `profiles.kind`, `execution_targets.type`, `project_resources.type`, `storage_buckets.storage_backend`, `artifacts.type`, `mission_events.source`, `entity_changes.entity_type`, `entity_changes.source`, `outbox_messages.topic`, `worker_jobs.type`, RBAC permission names, connector identifiers, and `webhook_subscriptions.event_types_json` values (the webhook event catalog).
+- `execution_targets.type` documents `local`, `ssh`, and now `virtual` as core values. A `virtual` target is realized by an external gateway over the Virtual Target Queue Surface.
+- Virtual execution target open vocabularies: `execution_target_registrations.gateway_key` (namespaced adapter key, e.g. `racecar` — **not** an `execution_targets.type`), `execution_target_registrations.health` (`healthy`, `degraded`, `unreachable`, `unknown`), `project_resource_sources.source_kind` (`git`, `local_checkout`, `source_bundle`, …), `execution_request_observations.kind` (`progress`, `launch`, `failure`, `lifecycle_resource`, …), `execution_request_grants.kind` (`launch`, `attachment`, `download`, `credential_reference`, …), `execution_requests.failure_code` (typed, e.g. `source_incompatible`), `execution_requests.failure_phase` (`claim`, `source`, `environment`, `launch`, …), and `mission_target_resources.kind` (`car`, `environment`, `run`, …).
 - Extension values must be namespaced unless they are accepted into core documentation.
+- `execution_requests.status` remains the **closed** vocabulary above and is **not** extended by virtual targets: preparation and realization are recorded as append-only `execution_request_observations`, not as new statuses.
 
 ### Webhook event catalog
 
@@ -2032,6 +2247,15 @@ Recommended boundary:
 - `/workspace/my-missions` (read: missions assigned to the active actor across the active workspace, with personal `my_mission_positions` ordering) and `/workspace/my-missions/order` (persist a personal column reorder; a cross-column drag is a real mission status change validated by the `(workspace_id, status_id)` composite FK).
 - `/protocol/*` endpoints mirroring `ovld protocol`.
 - `/execution-requests` for runner queue operations.
+- `/api/virtual-targets/v1/*` — the versioned **Virtual Target Queue Surface** consumed by an external gateway (target-authenticated, never the database):
+  - `PUT /api/virtual-targets/v1/registration` — gateway registers/refreshes one selected virtual target's capabilities, supported agents, supported queue versions, adapter key/version, and heartbeat. Requires target-management authorization or a provisioned gateway credential.
+  - `POST /api/virtual-targets/v1/claim` — atomically claims a request assigned to the caller's target and returns `VirtualExecutionQueueItemV1`, `claimId`, expiry, and only request-scoped launch-grant references. Same gateway/request replay returns the same claim/payload.
+  - `POST /api/virtual-targets/v1/requests/:id/progress` — records a bounded, monotonic V1 preparation observation. Does not transition status.
+  - `POST /api/virtual-targets/v1/requests/:id/launched` — validates request/claim/target/digest, records `VirtualTargetLaunchObservationV1`, then makes the normal `launching → launched` transition atomically. Idempotent by request and observation sequence.
+  - `POST /api/virtual-targets/v1/requests/:id/failed` — records a typed, redacted `VirtualTargetFailureV1` and makes the allowed transition to `failed`. `retryable` informs retry policy but does not itself requeue.
+  - `POST /api/virtual-targets/v1/grants/:id/exchange` — exchanges an authenticated, unexpired opaque grant for narrowly scoped credentials/attachment-download access. Every exchange is audited; never returns the user's Overlord token.
+  - `GET /api/virtual-targets/v1/missions/:id/resources` — returns summarized opaque lifecycle resources and source-compatibility observations to authorized UI/gateway callers.
+  - `POST /api/virtual-targets/v1/missions/:id/actions` — authorizes an explicit `start`/`stop`/`archive`/`delete`/`enqueue`/`retry`/`dequeue` action and delegates it to the target. Target output becomes an observation and cannot change mission completion.
 - `/missions/:id/branch/action` accepts additive `resourceKey`, defaulting to the project's primary resource, so branch actions target the intended repository in multi-resource projects.
 - `/uploads/:bucketKey` (core upload service) accepts raw image bytes, persists them to the `storage_buckets` backend, records the matching object table row (e.g. `user_images`), and returns the stored descriptor; `/storage/:bucketKey/:storageKey` first authorizes by the logical storage location (`user_image:read`, `workspace_image:read`, or `attachment:read`), then serves bytes only after an exact active metadata lookup for `(storage_bucket_id, storage_key)`.
 - `/sync/changes?after=<seq>` for realtime catch-up and local DB sync, returning `SyncChangesDto { changes, cursor, hasMore }` in ascending `entity_changes.seq` order.
@@ -2098,6 +2322,8 @@ Conflict handling can start simple:
 - Change tracking stores paths, VCS statuses, rationale text, and hunk headers, not full file contents.
 - Hook payloads, audit metadata, and outbox payloads must be secret-redacted before persistence.
 - Authorization grants use domain capabilities, not table names.
+- **Virtual execution targets.** Provider tokens, Git tokens, user tokens, and agent secrets never appear in `execution_request_snapshots.payload_json`, observations, grants, events, logs, or UI DTOs. `execution_request_grants` stores only hashes/opaque IDs and short-lived, single-purpose, request/target/gateway-bound scopes; grant exchange is audited and never returns the user's Overlord token. `project_resource_sources.descriptor_json` carries credential-reference IDs and opaque `targetRelativeRef`/`workspaceRef` handles, never server-readable filesystem paths. Free-text gateway error details are bounded and redacted before persistence, with safe `failure_code`s returned to the UI. Registrations, claims, grant exchanges, source-compatibility overrides, and delegated lifecycle actions are all audited.
+- **Retention (virtual targets).** `execution_request_observations` retention is bounded by operator policy; cancellation/retry revokes unconsumed `execution_request_grants`; uploaded source bundles are expiration-deleted by a worker/outbox effect and are secret-scanned before a gateway may fetch them.
 
 ## First Migration Slice
 
@@ -2153,4 +2379,5 @@ To keep this contract up to date:
 
 ## Changelog
 
+- Virtual execution targets (coo:258, contract `3`): new core tables `execution_target_registrations`, `project_environment_definitions`, `project_resource_sources`, `execution_request_snapshots`, `execution_request_grants`, `execution_request_observations`, and `mission_target_resources`; additive `execution_requests` columns `launch_snapshot_id`, `failure_code`, `failure_phase`, and `claimed_by_gateway_instance_id`; new open vocabularies for gateway adapter keys, source kinds, observation kinds, grant kinds, and typed failure codes/phases; virtual-target redaction/retention rules; the `/api/virtual-targets/v1/*` REST boundary. `execution_requests.status` and all other closed vocabularies are unchanged.
 - `0`: Initial public release baseline (portable SQLite/Postgres schema, extensions, vocabularies, and conformance requirements).

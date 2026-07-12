@@ -9,7 +9,7 @@
 # IMPORTANT: Adding a new capability flag, extension point, or vocabulary change
 # requires a contract version update in CONTRACT.md and components.yaml.
 
-contractVersion: "0"
+contractVersion: "3"
 
 # Sanctioned extension points — the only ways to extend Overlord
 extensionPoints:
@@ -97,6 +97,25 @@ extensionPoints:
       - "Must not override or shadow core endpoint paths"
       - "Must use the service layer for database access — no direct table writes"
       - "Must use Auth Layer for authentication and authorization"
+
+  restConsumer:
+    id: rest-consumer
+    description: "Integrate an external service as a documented client of the Overlord REST surface, with no database access. The sanctioned integration mechanism for a Virtual Target Gateway (e.g. Racecar)"
+    mechanism: "Vendored @overlord/contract subset + documented REST calls + conformance-manifest.yaml (componentType: rest-consumer)"
+    ownedBy: rest
+    manifestRequirements:
+      componentType: rest-consumer
+      requiredFields:
+        - restConsumer.authMechanisms
+        - restConsumer.vendoredContractPath
+        - restConsumer.endpoints
+        - restConsumer.exportedTypes
+    constraints:
+      - "Must interact only through documented REST endpoints — no direct database, service-layer, runner-claim, or host filesystem access"
+      - "A Virtual Target Gateway must be idempotent by executionRequestId so claim/retry/duplicate-delivery/restart yield exactly one realized environment and run"
+      - "Must preserve the normal protocol lifecycle: record observations and drive launching → launched|failed, but never complete an objective and never add a parallel request state machine"
+      - "Must vendor the published virtual-target DTOs and validate against the declared contractVersion"
+      - "Adapter keys and any source/observation/failure/grant/action kinds must be namespaced open-vocabulary values declared in the manifest — never new closed-vocabulary values or execution_targets.type values"
 
   customAutomation:
     id: custom-automation
@@ -227,8 +246,14 @@ closedVocabularies:
 openVocabularies:
   - workspaces.kind            # e.g. local, hosted, or adapter-defined
   - users.kind                 # e.g. human, service, or adapter-defined
-  - execution_targets.type     # e.g. local, ssh, or adapter-defined
+  - execution_targets.type     # core values: local, ssh, virtual (virtual realized by an external gateway over the Virtual Target Queue Surface); adapter-defined values namespaced
   - project_resources.type     # e.g. local_directory, remote_directory, or adapter-defined
+  - execution_target_registrations.gateway_key   # namespaced gateway adapter key (e.g. racecar); not an execution_targets.type
+  - project_resource_sources.source_kind         # git, local_checkout, source_bundle, or namespaced source kinds
+  - execution_request_observations.kind          # virtual preparation/launch/failure/lifecycle-resource observation kinds
+  - execution_request_grants.kind                # launch/attachment/download/credential_reference grant kinds
+  - execution_requests.failure_code              # typed virtual-target failure codes (e.g. source_incompatible); namespaced for adapter-specific codes
+  - mission_target_resources.kind                # adapter lifecycle-resource kinds (car/environment/run/…), referencing opaque external IDs only
   - artifacts.type             # e.g. test_results, next_steps, note, url, decision, migration, or namespaced extension
   - mission_events.source       # e.g. cli, api, hook, runner, web, or namespaced extension
   - entity_changes.entity_type # e.g. mission, objective, session, or namespaced extension

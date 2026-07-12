@@ -1,0 +1,89 @@
+# Example: Virtual Target Gateway (rest-consumer) conformance manifest
+# This is the template an external gateway — Racecar is the first — ships in its
+# OWN repository root to declare conformance as a `rest-consumer` (coo:258,
+# contract v3). It documents that the gateway integrates ONLY through the
+# published `/api/virtual-targets/v1/*` REST surface, vendors the virtual-target
+# DTOs from @overlord/contract, and never touches the Overlord database.
+#
+# Validate with: ovld contract check conformance-manifest.yaml
+# See CONTRACT.md → "Virtual Target Gateway conformance" and the Virtual Target
+# Queue Surface interaction surface.
+
+contractVersion: "3"
+componentType: rest-consumer
+componentKey: racecar
+label: "Racecar Virtual Target Gateway"
+description: >
+  Realizes provider-neutral virtual execution requests by claiming them over the
+  documented Overlord REST surface, materializing source and environment, and
+  launching the agent. Idempotent by executionRequestId; preserves the normal
+  protocol lifecycle (records observations and drives launching → launched|failed,
+  never completes an objective).
+
+restConsumer:
+  authMechanisms:
+    - bearer-token
+  # Repo-relative path to the vendored public subset of @overlord/contract that
+  # Racecar type-checks against (the virtual-target DTOs listed in exportedTypes).
+  vendoredContractPath: src/lib/overlord-contract.ts
+  # Canonical source these types are vendored from, for drift review.
+  upstreamContractRef: packages/contract/src/index.ts
+  endpoints:
+    - method: PUT
+      path: /api/virtual-targets/v1/registration
+      requestBodyType: VirtualTargetRegistrationBody
+      responseType: VirtualTargetRegistrationDto
+    - method: POST
+      path: /api/virtual-targets/v1/claim
+      requestBodyType: VirtualTargetClaimBody
+      responseType: VirtualTargetClaimResponseDto
+    - method: POST
+      path: /api/virtual-targets/v1/requests/:id/progress
+      requestBodyType: VirtualTargetProgressObservationBody
+    - method: POST
+      path: /api/virtual-targets/v1/requests/:id/launched
+      requestBodyType: VirtualTargetLaunchObservationV1
+    - method: POST
+      path: /api/virtual-targets/v1/requests/:id/failed
+      requestBodyType: VirtualTargetFailureV1
+    - method: POST
+      path: /api/virtual-targets/v1/grants/:id/exchange
+      requestBodyType: VirtualGrantExchangeBody
+      responseType: VirtualGrantExchangeResultDto
+    - method: GET
+      path: /api/virtual-targets/v1/missions/:id/resources
+      responseType: VirtualTargetMissionResourcesDto
+    - method: POST
+      path: /api/virtual-targets/v1/missions/:id/actions
+      requestBodyType: VirtualTargetActionBody
+      responseType: VirtualTargetActionResultDto
+  exportedTypes:
+    - VirtualExecutionQueueItemV1
+    - VirtualSourceDescriptorV1
+    - VirtualProjectResourceV1
+    - VirtualSourceRequirementV1
+    - VirtualInformationalReferenceV1
+    - VirtualEnvironmentV1
+    - VirtualGrantReferenceV1
+    - VirtualTargetCapabilitiesDto
+    - VirtualTargetRegistrationBody
+    - VirtualTargetRegistrationDto
+    - VirtualTargetClaimBody
+    - VirtualTargetClaimResponseDto
+    - VirtualTargetProgressObservationBody
+    - VirtualTargetLaunchObservationV1
+    - VirtualTargetFailureV1
+    - VirtualGrantExchangeBody
+    - VirtualGrantExchangeResultDto
+    - MissionTargetResourceDto
+    - VirtualTargetMissionResourcesDto
+    - VirtualTargetActionBody
+    - VirtualTargetActionResultDto
+
+# The gateway adapter key and the virtual source/observation/failure/grant/action
+# kinds it introduces are namespaced open-vocabulary values — declared here, never
+# added to a closed vocabulary or to execution_targets.type.
+vocabularyExtensions:
+  - vocabulary: "execution_target_registrations.gateway_key"
+    value: "racecar"
+    description: "Adapter key identifying the Racecar virtual target gateway."
