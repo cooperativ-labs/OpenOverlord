@@ -1,4 +1,13 @@
-import { Check, CheckCircle2, Copy, MoreVertical, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import {
+  Check,
+  CheckCircle2,
+  Copy,
+  MessageSquare,
+  MoreVertical,
+  Pencil,
+  RotateCcw,
+  Trash2
+} from 'lucide-react';
 
 import type { ObjectiveState } from '../../../shared/contract.ts';
 import { useCopyToClipboard } from '../../lib/hooks/use-copy-to-clipboard.ts';
@@ -14,6 +23,14 @@ type ObjectiveMenuButtonProps = {
   objectiveId: string;
   state: ObjectiveState;
   onEditTitle?: () => void;
+  /**
+   * Shell command that reopens the agent's native session for this objective
+   * (e.g. `claude --resume <id>`). When present, the menu offers a copy action
+   * so the user can continue the agent's own conversation in a terminal to
+   * discuss what happened — this stays entirely outside Overlord (no execution
+   * request, session, or objective state change). Omitted/null hides the item.
+   */
+  resumeCommand?: string | null;
 };
 
 /**
@@ -22,10 +39,16 @@ type ObjectiveMenuButtonProps = {
  * explicit menu items ("Mark complete" / "Mark draft") alongside delete, so the
  * objective row reads as a summary rather than an editable control.
  */
-export function ObjectiveMenuButton({ objectiveId, state, onEditTitle }: ObjectiveMenuButtonProps) {
+export function ObjectiveMenuButton({
+  objectiveId,
+  state,
+  onEditTitle,
+  resumeCommand = null
+}: ObjectiveMenuButtonProps) {
   const update = useUpdateObjective();
   const remove = useDeleteObjective();
   const { copied, copy } = useCopyToClipboard();
+  const { copied: resumeCopied, copy: copyResume } = useCopyToClipboard();
 
   const pending = update.isPending || remove.isPending;
 
@@ -42,6 +65,10 @@ export function ObjectiveMenuButton({ objectiveId, state, onEditTitle }: Objecti
 
   async function handleCopyId() {
     await copy(objectiveId);
+  }
+
+  async function handleCopyResume() {
+    if (resumeCommand) await copyResume(resumeCommand);
   }
 
   return (
@@ -89,6 +116,16 @@ export function ObjectiveMenuButton({ objectiveId, state, onEditTitle }: Objecti
           )}
           Copy objective ID
         </DropdownMenuItem>
+        {resumeCommand ? (
+          <DropdownMenuItem className="gap-2 text-xs" onClick={handleCopyResume}>
+            {resumeCopied ? (
+              <Check className="h-3.5 w-3.5 text-green-600" />
+            ) : (
+              <MessageSquare className="h-3.5 w-3.5" />
+            )}
+            Copy resume command
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem
           className="gap-2 text-xs"
           variant="destructive"

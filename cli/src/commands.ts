@@ -37,6 +37,7 @@ import {
   applyPollJitter,
   buildRunnerServiceEnv,
   describeServicePublisher,
+  nextRunnerLastError,
   patchRunnerServiceState,
   readRunnerServiceState,
   resolveOvldInvocation,
@@ -1543,7 +1544,9 @@ async function runRunnerSupervisor({
       lastHeartbeatAt: now.toISOString(),
       lastClaimedAt: launched ? now.toISOString() : state.lastClaimedAt,
       lastLaunchedAt: launched ? now.toISOString() : state.lastLaunchedAt,
-      lastError: lastError ?? state.lastError,
+      // Reflect the latest poll's outcome so a resolved failure (e.g. an auth
+      // error from before the user logged in) clears instead of sticking.
+      lastError: nextRunnerLastError(lastError),
       currentPollIntervalMs: base
     });
     await new Promise(resolve => setTimeout(resolve, applyPollJitter(base)));

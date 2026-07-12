@@ -44,12 +44,8 @@ export function executionTargetSelectorDisplayLabel({
   includeStatusSuffix?: boolean;
 }): string {
   if (selectorValue === ANY_ELIGIBLE_EXECUTION_TARGET_VALUE) return anyLabel;
-  const selectedTarget = eligibleTargets.find(
-    target => target.executionTargetId === selectorValue
-  );
+  const selectedTarget = eligibleTargets.find(target => target.executionTargetId === selectorValue);
   if (!selectedTarget) return placeholder;
-  const statusSuffix = includeStatusSuffix
-    ? executionTargetOptionStatusSuffix(selectedTarget)
-    : '';
+  const statusSuffix = includeStatusSuffix ? executionTargetOptionStatusSuffix(selectedTarget) : '';
   return `${executionTargetOptionLabel(selectedTarget)}${statusSuffix}`;
 }

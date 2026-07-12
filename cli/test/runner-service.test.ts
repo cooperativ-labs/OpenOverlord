@@ -12,6 +12,7 @@ import {
   FAST_POLL_INTERVAL_MS,
   IDLE_BACKOFF_MS,
   LAUNCHD_LABEL,
+  nextRunnerLastError,
   patchRunnerServiceState,
   readRunnerServiceState,
   renderLaunchdPlist,
@@ -49,6 +50,14 @@ test('selectBasePollIntervalMs is fast within the idle window and slow afterward
     selectBasePollIntervalMs({ lastLaunchedAt: 'not-a-date', now }),
     SLOW_POLL_INTERVAL_MS
   );
+});
+
+test('nextRunnerLastError reflects the latest poll, clearing a resolved error', () => {
+  // A failing poll records its error...
+  assert.equal(nextRunnerLastError('authentication required'), 'authentication required');
+  // ...and a subsequent successful poll clears it instead of leaving it sticky,
+  // so the runner status box stops reading a stale auth error after login.
+  assert.equal(nextRunnerLastError(null), null);
 });
 
 test('applyPollJitter stays within +/-10 percent of the base interval', () => {

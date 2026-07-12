@@ -146,6 +146,22 @@ export function applyPollJitter(intervalMs: number, random: () => number = Math.
   return Math.round(intervalMs + (random() * 2 - 1) * spread);
 }
 
+/**
+ * The `lastError` to persist after a poll. It reflects the outcome of the most
+ * recent poll: a failed poll records its error, a successful poll clears it.
+ *
+ * This must NOT fall back to the previously stored error on success. Doing so
+ * makes the error sticky — e.g. an "authentication required" failure from before
+ * the user logged in would never clear, so the desktop runner status box keeps
+ * reading `serviceError` and showing "Runner error" long after the runner is
+ * authenticated and polling cleanly. Surfacing the latest poll's result keeps a
+ * genuine persistent failure visible (it re-throws every poll) while letting a
+ * recovered runner self-heal on its next successful poll.
+ */
+export function nextRunnerLastError(pollError: string | null): string | null {
+  return pollError;
+}
+
 // ---- Service invocation resolution -----------------------------------------
 
 export interface RunnerServiceInvocation {

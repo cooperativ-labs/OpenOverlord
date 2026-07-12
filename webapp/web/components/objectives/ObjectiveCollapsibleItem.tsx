@@ -12,6 +12,7 @@ import { useState } from 'react';
 
 import type { ObjectiveDto } from '../../../shared/contract.ts';
 import { getAgentIcon } from '../../lib/helpers/agent-icons.ts';
+import { buildAgentResumeCommand } from '../../lib/helpers/agent-resume-command.ts';
 import { useCopyToClipboard } from '../../lib/hooks/use-copy-to-clipboard.ts';
 import { useAgentCatalog, useObjectiveAttachments, useUpdateObjective } from '../../lib/queries.ts';
 import { cn } from '../../lib/utils.ts';
@@ -62,6 +63,14 @@ export function ObjectiveCollapsibleItem({
   const hasAgentIcon = objective.assignedAgent
     ? getAgentIcon(objective.assignedAgent) !== null
     : false;
+  // Lets the user reopen the agent's own conversation thread in a terminal to
+  // discuss what happened in this objective — outside Overlord entirely (no
+  // execution request or session). Only available once the objective recorded a
+  // native session id and its agent has a known resume command.
+  const resumeCommand = buildAgentResumeCommand({
+    agent: objective.assignedAgent,
+    sessionId: objective.externalSessionId
+  });
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -142,7 +151,11 @@ export function ObjectiveCollapsibleItem({
               )}
             </button>
           ) : null}
-          <ObjectiveMenuButton objectiveId={objective.id} state={objective.state} />
+          <ObjectiveMenuButton
+            objectiveId={objective.id}
+            state={objective.state}
+            resumeCommand={resumeCommand}
+          />
         </div>
         <CollapsibleContent className="border-b px-3 pb-2 pt-1">
           {objective.branch ? (
