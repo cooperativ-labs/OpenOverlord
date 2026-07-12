@@ -6,11 +6,9 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 
 import { createServiceContext } from './context.js';
-import {
-  ensureClientDeviceTarget,
-  ensureCallerDeviceTarget
-} from './execution-targets.js';
 import { ServiceError } from './errors.js';
+import { ensureCallerDeviceTarget, ensureClientDeviceTarget } from './execution-targets.js';
+import { createMissionWithObjectives } from './missions.js';
 import {
   deleteWorkspaceExecutionTarget,
   getProjectExecutionTargetSelection,
@@ -23,7 +21,6 @@ import {
   updateProjectExecutionTargetSelection
 } from './project-execution-target.js';
 import { addProjectResource, createProject } from './projects.js';
-import { createMissionWithObjectives } from './missions.js';
 import { seedServiceOperator } from './test-helpers.js';
 import { newId, nowIso } from './util.js';
 
@@ -366,10 +363,9 @@ describe('execution target lifecycle', () => {
 
     await deleteWorkspaceExecutionTarget({ ctx, executionTargetId: staleTargetId });
 
-    const row = (await db.get(
-      `SELECT deleted_at FROM execution_targets WHERE id = ?`,
-      [staleTargetId]
-    )) as { deleted_at: string | null };
+    const row = (await db.get(`SELECT deleted_at FROM execution_targets WHERE id = ?`, [
+      staleTargetId
+    ])) as { deleted_at: string | null };
     assert.ok(row.deleted_at);
 
     const sourceRow = (await db.get(

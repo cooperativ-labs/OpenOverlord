@@ -32,6 +32,7 @@ import {
   ANY_ELIGIBLE_EXECUTION_TARGET_VALUE,
   executionTargetOptionLabel,
   executionTargetOptionStatusSuffix,
+  executionTargetSelectorDisplayLabel,
   parseExecutionTargetSelectorValue,
   resolveExecutionTargetSelectorValue
 } from '@/lib/execution-target-selection';
@@ -359,7 +360,13 @@ function AddSourceForm({
               onValueChange={value => setTargetValue(value ?? targetValue)}
             >
               <SelectTrigger id={`add-source-target-${resource.id}`} className="h-8">
-                <SelectValue placeholder="Execution target" />
+                <SelectValue placeholder="Execution target">
+                  {executionTargetSelectorDisplayLabel({
+                    selectorValue: targetValue,
+                    eligibleTargets,
+                    anyLabel: 'Any target'
+                  })}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ANY_ELIGIBLE_EXECUTION_TARGET_VALUE}>Any target</SelectItem>
@@ -539,7 +546,13 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
             <Label htmlFor="project-execution-target">Run agents on</Label>
             <Select value={selectorValue} onValueChange={handleExecutionTargetChange}>
               <SelectTrigger id="project-execution-target" className="h-8">
-                <SelectValue placeholder="Select execution target" />
+                <SelectValue placeholder="Select execution target">
+                  {executionTargetSelectorDisplayLabel({
+                    selectorValue,
+                    eligibleTargets,
+                    placeholder: 'Select execution target'
+                  })}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {eligibleTargets.length > 1 ? (

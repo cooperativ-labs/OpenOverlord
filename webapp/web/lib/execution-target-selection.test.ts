@@ -7,13 +7,12 @@ import {
   ANY_ELIGIBLE_EXECUTION_TARGET_VALUE,
   executionTargetOptionLabel,
   executionTargetOptionStatusSuffix,
+  executionTargetSelectorDisplayLabel,
   parseExecutionTargetSelectorValue,
   resolveExecutionTargetSelectorValue
 } from './execution-target-selection.ts';
 
-function target(
-  partial: Partial<EligibleExecutionTargetDto> = {}
-): EligibleExecutionTargetDto {
+function target(partial: Partial<EligibleExecutionTargetDto> = {}): EligibleExecutionTargetDto {
   return {
     executionTargetId: 'et-1',
     type: 'local',
@@ -69,4 +68,43 @@ test('resolveExecutionTargetSelectorValue handles unset and single-target cases'
 test('parseExecutionTargetSelectorValue maps any-target sentinel to null', () => {
   assert.equal(parseExecutionTargetSelectorValue(ANY_ELIGIBLE_EXECUTION_TARGET_VALUE), null);
   assert.equal(parseExecutionTargetSelectorValue('et-1'), 'et-1');
+});
+
+test('executionTargetSelectorDisplayLabel resolves selector values to human labels', () => {
+  assert.equal(
+    executionTargetSelectorDisplayLabel({
+      selectorValue: ANY_ELIGIBLE_EXECUTION_TARGET_VALUE,
+      eligibleTargets: [target()]
+    }),
+    'Any eligible target'
+  );
+  assert.equal(
+    executionTargetSelectorDisplayLabel({
+      selectorValue: ANY_ELIGIBLE_EXECUTION_TARGET_VALUE,
+      eligibleTargets: [target()],
+      anyLabel: 'Any target'
+    }),
+    'Any target'
+  );
+  assert.equal(
+    executionTargetSelectorDisplayLabel({
+      selectorValue: 'et-1',
+      eligibleTargets: [target()]
+    }),
+    'JCL-MBP.local'
+  );
+  assert.equal(
+    executionTargetSelectorDisplayLabel({
+      selectorValue: 'et-1',
+      eligibleTargets: [target({ reachable: false })]
+    }),
+    'JCL-MBP.local (offline)'
+  );
+  assert.equal(
+    executionTargetSelectorDisplayLabel({
+      selectorValue: 'missing',
+      eligibleTargets: [target()]
+    }),
+    'Execution target'
+  );
 });

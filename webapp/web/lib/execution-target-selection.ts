@@ -29,3 +29,27 @@ export function resolveExecutionTargetSelectorValue({
 export function parseExecutionTargetSelectorValue(value: string): string | null {
   return value === ANY_ELIGIBLE_EXECUTION_TARGET_VALUE ? null : value;
 }
+
+export function executionTargetSelectorDisplayLabel({
+  selectorValue,
+  eligibleTargets,
+  anyLabel = 'Any eligible target',
+  placeholder = 'Execution target',
+  includeStatusSuffix = true
+}: {
+  selectorValue: string;
+  eligibleTargets: EligibleExecutionTargetDto[];
+  anyLabel?: string;
+  placeholder?: string;
+  includeStatusSuffix?: boolean;
+}): string {
+  if (selectorValue === ANY_ELIGIBLE_EXECUTION_TARGET_VALUE) return anyLabel;
+  const selectedTarget = eligibleTargets.find(
+    target => target.executionTargetId === selectorValue
+  );
+  if (!selectedTarget) return placeholder;
+  const statusSuffix = includeStatusSuffix
+    ? executionTargetOptionStatusSuffix(selectedTarget)
+    : '';
+  return `${executionTargetOptionLabel(selectedTarget)}${statusSuffix}`;
+}
