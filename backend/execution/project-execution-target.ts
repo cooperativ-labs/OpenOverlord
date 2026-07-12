@@ -1,3 +1,4 @@
+import { PERMISSIONS } from '@overlord/auth';
 import type { DatabaseClient } from '@overlord/database';
 
 import { ServiceError } from '../../packages/core/service/errors.ts';
@@ -19,7 +20,6 @@ import {
 } from '../db.ts';
 import { ApiError } from '../errors.ts';
 import { requireWorkspacePermission } from '../rbac.ts';
-import { PERMISSIONS } from '@overlord/auth';
 
 function serviceContext(client: DatabaseClient = serviceDatabaseClient()) {
   return buildWebappServiceContext(client);

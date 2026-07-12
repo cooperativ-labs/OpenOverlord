@@ -29,6 +29,7 @@ const KNOWN_COMMANDS = new Set([
   'create-project',
   'org-setup',
   'add-cwd',
+  'add-url',
   'create',
   'prompt',
   'attach',

@@ -64,7 +64,9 @@ export function RunnerStatusBox() {
   // Prefer the concrete service error text in the tooltip so a hover hints at
   // what's wrong (e.g. "authentication required") before opening the modal.
   const tooltip =
-    state === 'error' && serviceError ? (service.data?.lastError ?? STATE_LABEL.error) : STATE_LABEL[state];
+    state === 'error' && serviceError
+      ? (service.data?.lastError ?? STATE_LABEL.error)
+      : STATE_LABEL[state];
 
   return (
     <>

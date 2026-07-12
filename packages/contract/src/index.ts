@@ -314,7 +314,9 @@ export interface ProjectResourceSourceDto {
 }
 
 export interface CreateProjectResourceBody {
-  directoryPath: string;
+  directoryPath?: string;
+  /** Git URL used to create a project-global `git` source. */
+  sourceUrl?: string;
   resourceKey?: string | null;
   label?: string | null;
   isPrimary?: boolean;

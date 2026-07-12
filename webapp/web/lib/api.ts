@@ -93,9 +93,9 @@ import type {
   WebhookDeliveryAttemptsPageDto,
   WebhookSubscriptionDto,
   WorkspaceDto,
+  WorkspaceExecutionTargetDto,
   WorkspaceInvitationDto,
   WorkspaceMemberDto,
-  WorkspaceExecutionTargetDto,
   WorkspaceStatusDto,
   WorktreeDto
 } from '../../shared/contract.ts';

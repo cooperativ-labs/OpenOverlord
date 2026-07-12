@@ -398,7 +398,9 @@ function toSourceDto(source: ProjectResourceSourceRow) {
   try {
     const parsed = JSON.parse(source.descriptor_json);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) descriptor = parsed;
-  } catch {}
+  } catch {
+    descriptor = {};
+  }
   return {
     id: source.id,
     executionTargetId: source.execution_target_id,
@@ -518,7 +520,9 @@ async function toProjectResourceDto(
     projectId: r.project_id,
     executionTargetId: source?.execution_target_id ?? null,
     resourceKey: r.resource_key,
-    type: (source?.source_kind === 'local_checkout' ? 'local_directory' : source?.source_kind ?? 'remote_directory') as ProjectResourceDto['type'],
+    type: (source?.source_kind === 'local_checkout'
+      ? 'local_directory'
+      : (source?.source_kind ?? 'remote_directory')) as ProjectResourceDto['type'],
     label: r.label,
     path: sourcePath(source),
     isPrimary: isTruthyFlag(r.is_primary),
@@ -1012,9 +1016,10 @@ async function activeResourceRow({
   }
   orderBy.push('pr.is_primary DESC', 'pr.created_at ASC');
 
-  const pathExpression = DATABASE_DIALECT === 'postgres'
-    ? "prs.descriptor_json->>'path'"
-    : "json_extract(prs.descriptor_json, '$.path')";
+  const pathExpression =
+    DATABASE_DIALECT === 'postgres'
+      ? "prs.descriptor_json->>'path'"
+      : "json_extract(prs.descriptor_json, '$.path')";
   return (await requireDatabaseClient().get(
     `SELECT pr.id, ${pathExpression} AS path, pr.resource_key FROM project_resources pr
         JOIN project_resource_sources prs ON prs.resource_id = pr.id AND prs.deleted_at IS NULL
@@ -2222,7 +2227,9 @@ export async function listProjectResources(projectId: string): Promise<ProjectRe
     ctx: buildWebappServiceContext(),
     resourceIds: rows.map(row => row.id)
   });
-  return await Promise.all(rows.map(row => toProjectResourceDto(row, observations, sourcesByResourceId.get(row.id) ?? [])));
+  return await Promise.all(
+    rows.map(row => toProjectResourceDto(row, observations, sourcesByResourceId.get(row.id) ?? []))
+  );
 }
 
 async function insertProjectResource(
@@ -2233,41 +2240,81 @@ async function insertProjectResource(
   options: { actorWorkspaceUserId?: string | null } = {}
 ): Promise<string> {
   const resourcePath = (body.directoryPath ?? body.path ?? '').trim();
-  if (!resourcePath) throw new ApiError(400, pathRequiredMessage);
+  const sourceUrl = body.sourceUrl?.trim() ?? '';
+  if (!resourcePath && !sourceUrl) throw new ApiError(400, pathRequiredMessage);
+  if (sourceUrl && !/^https?:\/\//.test(sourceUrl) && !/^git@[^:]+:.+/.test(sourceUrl)) {
+    throw new ApiError(400, 'sourceUrl must be an http(s) or SSH Git URL');
+  }
   const resourceKey = deriveProjectResourceKey({
     resourceKey: body.resourceKey,
     label: body.label,
-    directoryPath: resourcePath
+    directoryPath: resourcePath || sourceUrl
   });
-  const executionTargetId = await resolveResourceExecutionTargetId(db, body.executionTargetId);
+  const sourceKind = sourceUrl ? 'git' : 'local_checkout';
+  const executionTargetId = sourceUrl
+    ? (body.executionTargetId ?? null)
+    : await resolveResourceExecutionTargetId(db, body.executionTargetId);
 
   const now = nowIso();
-  if (body.isPrimary !== false) await clearPrimaryResourcesForTarget(db, { projectId: project.id, now });
+  if (body.isPrimary !== false)
+    await clearPrimaryResourcesForTarget(db, { projectId: project.id, now });
 
-  const resourceId = newId();
-  await db.run(
-    `INSERT INTO project_resources
-       (id, workspace_id, project_id, resource_key, label,
-        is_primary, status, metadata_json, created_at, updated_at, revision)
-     VALUES (?, ?, ?, ?, ?, ?, 'active', '{}', ?, ?, 1)`,
-    [
-      resourceId,
-      project.workspaceId,
-      project.id,
-      resourceKey,
-      body.label ?? null,
-      bindBool(DATABASE_DIALECT, body.isPrimary !== false),
-      now,
-      now
-    ]
-  );
-  await db.run(
-    `INSERT INTO project_resource_sources
-       (id, workspace_id, project_id, resource_id, execution_target_id, source_kind, descriptor_json,
-        created_at, updated_at, revision)
-     VALUES (?, ?, ?, ?, ?, 'local_checkout', ?, ?, ?, 1)`,
-    [newId(), project.workspaceId, project.id, resourceId, executionTargetId, JSON.stringify({ path: resourcePath }), now, now]
-  );
+  const existing = (await db.get(
+    `SELECT id FROM project_resources WHERE project_id = ? AND resource_key = ? AND deleted_at IS NULL`,
+    [project.id, resourceKey]
+  )) as { id: string } | undefined;
+  const resourceId = existing?.id ?? newId();
+  if (!existing) {
+    await db.run(
+      `INSERT INTO project_resources
+         (id, workspace_id, project_id, resource_key, label, is_primary, status, metadata_json, created_at, updated_at, revision)
+       VALUES (?, ?, ?, ?, ?, ?, 'active', '{}', ?, ?, 1)`,
+      [
+        resourceId,
+        project.workspaceId,
+        project.id,
+        resourceKey,
+        body.label ?? null,
+        bindBool(DATABASE_DIALECT, body.isPrimary !== false),
+        now,
+        now
+      ]
+    );
+  } else if (body.isPrimary !== false) {
+    await db.run(
+      `UPDATE project_resources SET is_primary = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`,
+      [bindBool(DATABASE_DIALECT, true), now, resourceId]
+    );
+  }
+  const descriptor = JSON.stringify(sourceUrl ? { url: sourceUrl } : { path: resourcePath });
+  const source = (await db.get(
+    `SELECT id FROM project_resource_sources
+      WHERE resource_id = ? AND (execution_target_id = ? OR (execution_target_id IS NULL AND ? IS NULL))
+        AND source_kind = ? AND deleted_at IS NULL`,
+    [resourceId, executionTargetId, executionTargetId, sourceKind]
+  )) as { id: string } | undefined;
+  if (source) {
+    await db.run(
+      `UPDATE project_resource_sources SET descriptor_json = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`,
+      [descriptor, now, source.id]
+    );
+  } else {
+    await db.run(
+      `INSERT INTO project_resource_sources (id, workspace_id, project_id, resource_id, execution_target_id, source_kind, descriptor_json, created_at, updated_at, revision)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      [
+        newId(),
+        project.workspaceId,
+        project.id,
+        resourceId,
+        executionTargetId,
+        sourceKind,
+        descriptor,
+        now,
+        now
+      ]
+    );
+  }
 
   // Client/desktop owns `.overlord/project.json` on linked paths (WS-F3).
 
@@ -2278,7 +2325,7 @@ async function insertProjectResource(
       operation: 'insert',
       entityRevision: 1,
       projectId: project.id,
-      changedFields: ['path', 'resource_key', 'is_primary'],
+      changedFields: [sourceUrl ? 'source_url' : 'path', 'resource_key', 'is_primary'],
       workspaceId: project.workspaceId,
       actorWorkspaceUserId: options.actorWorkspaceUserId
     },
@@ -2297,7 +2344,7 @@ export async function createProjectResource(
     const id = await insertProjectResource(tx, project, body, 'directoryPath is required');
 
     const row = (await tx.get(
-    `SELECT id, workspace_id, project_id, resource_key, label,
+      `SELECT id, workspace_id, project_id, resource_key, label,
                 is_primary, status, created_at, updated_at, revision
            FROM project_resources
           WHERE id = ?`,
@@ -2377,7 +2424,11 @@ export async function updateProjectResource(
          FROM project_resource_sources WHERE resource_id = ? AND deleted_at IS NULL`,
       [resourceId]
     )) as ProjectResourceSourceRow[];
-    return await toProjectResourceDto(await getProjectResourceRow(tx, projectId, resourceId), new Map(), sources);
+    return await toProjectResourceDto(
+      await getProjectResourceRow(tx, projectId, resourceId),
+      new Map(),
+      sources
+    );
   });
 }
 

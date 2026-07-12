@@ -1059,6 +1059,23 @@ export async function runManagementCommand({
       else console.log(`Linked ${directory} to project ${projectId}`);
       return;
     }
+    case 'add-url': {
+      const sourceUrl = flagValue(parsed.flags, '--url');
+      if (!sourceUrl) throw new CliError({ message: 'Missing --url <git-url>' });
+      const projectId = flagValue(parsed.flags, '--project-id');
+      if (!projectId) throw new CliError({ message: 'Missing --project-id for URL resources.' });
+      const resource = await runtime.backend.post({
+        path: `/api/projects/${encodeURIComponent(projectId)}/resources`,
+        body: {
+          sourceUrl,
+          resourceKey: flagValue(parsed.flags, '--key'),
+          isPrimary: flagValue(parsed.flags, '--primary') !== 'false'
+        }
+      });
+      if (json) printJson({ resource });
+      else console.log(`Linked ${sourceUrl} to project ${projectId}`);
+      return;
+    }
     case 'create':
     case 'prompt': {
       const objectivesJson = flagValue(parsed.flags, '--objectives-json');

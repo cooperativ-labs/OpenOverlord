@@ -242,12 +242,7 @@ export async function addProjectResource({
     await ctx.db.run(
       `UPDATE project_resources SET is_primary = ?, updated_at = ?, revision = revision + 1
          WHERE project_id = ? AND deleted_at IS NULL AND is_primary = ?`,
-      [
-        bindBool(ctx.db.dialect, false),
-        now,
-        resolvedProjectId,
-        bindBool(ctx.db.dialect, true)
-      ]
+      [bindBool(ctx.db.dialect, false), now, resolvedProjectId, bindBool(ctx.db.dialect, true)]
     );
   }
 
@@ -272,7 +267,16 @@ export async function addProjectResource({
        (id, workspace_id, project_id, resource_id, execution_target_id, source_kind, descriptor_json,
         created_at, updated_at, revision)
      VALUES (?, ?, ?, ?, ?, 'local_checkout', ?, ?, ?, 1)`,
-    [newId(), ctx.workspace.id, resolvedProjectId, id, executionTargetId, JSON.stringify({ path: resolvedPath }), now, now]
+    [
+      newId(),
+      ctx.workspace.id,
+      resolvedProjectId,
+      id,
+      executionTargetId,
+      JSON.stringify({ path: resolvedPath }),
+      now,
+      now
+    ]
   );
 
   // WS-D 2: write .overlord/project.json through the capability. A co-located
@@ -453,7 +457,9 @@ function rowToProjectResourceSummary(
   ctx: ServiceContext,
   row: ProjectResourceRow
 ): Promise<ProjectResourceSummary> {
-  const descriptor = row.descriptor_json ? JSON.parse(row.descriptor_json) as { path?: string } : {};
+  const descriptor = row.descriptor_json
+    ? (JSON.parse(row.descriptor_json) as { path?: string })
+    : {};
   const resourcePath = descriptor.path ?? '';
   return deriveResourceStatus(backendResourceProvider(ctx, row.execution_target_id), {
     resourceId: row.id,
@@ -464,7 +470,10 @@ function rowToProjectResourceSummary(
     projectId: row.project_id,
     executionTargetId: row.execution_target_id,
     resourceKey: row.resource_key,
-    type: row.source_kind === 'local_checkout' ? 'local_directory' : row.source_kind ?? 'remote_directory',
+    type:
+      row.source_kind === 'local_checkout'
+        ? 'local_directory'
+        : (row.source_kind ?? 'remote_directory'),
     label: row.label,
     path: resourcePath,
     isPrimary: isTruthyFlag(row.is_primary),
