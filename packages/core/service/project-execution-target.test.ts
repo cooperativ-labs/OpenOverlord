@@ -6,16 +6,23 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 
 import { createServiceContext } from './context.js';
-import { ensureCallerDeviceTarget } from './execution-targets.js';
 import {
+  ensureClientDeviceTarget,
+  ensureCallerDeviceTarget
+} from './execution-targets.js';
+import { ServiceError } from './errors.js';
+import {
+  deleteWorkspaceExecutionTarget,
   getProjectExecutionTargetSelection,
   listEligibleProjectExecutionTargets,
+  listWorkspaceExecutionTargets,
   PROJECT_EXECUTION_TARGET_PREFERENCE_KEY,
   resolveLaunchExecutionTarget,
   resolveProjectExecutionTargetForLaunch,
   updateProjectExecutionTargetSelection
 } from './project-execution-target.js';
 import { addProjectResource, createProject } from './projects.js';
+import { createMissionWithObjectives } from './missions.js';
 import { seedServiceOperator } from './test-helpers.js';
 import { newId, nowIso } from './util.js';
 
@@ -277,5 +284,107 @@ describe('project execution target selection', () => {
     )) as { preferences_json: string };
     const prefs = JSON.parse(row.preferences_json) as Record<string, string>;
     assert.equal(prefs[PROJECT_EXECUTION_TARGET_PREFERENCE_KEY], caller.executionTargetId);
+  });
+});
+
+describe('execution target lifecycle', () => {
+  it('refuses to provision browser clients as execution targets', async () => {
+    const { ctx } = await setup();
+    await assert.rejects(
+      () =>
+        ensureClientDeviceTarget({
+          ctx,
+          deviceFingerprint: 'browser-fingerprint-abc',
+          deviceLabel: 'browser',
+          devicePlatform: 'browser'
+        }),
+      (error: unknown) =>
+        error instanceof ServiceError && error.code === 'browser_not_execution_target'
+    );
+  });
+
+  it('excludes browser device targets from workspace listing', async () => {
+    const { ctx } = await setup();
+    const now = nowIso();
+    const deviceId = newId();
+    await ctx.db.run(
+      `INSERT INTO devices
+           (id, workspace_id, fingerprint, label, platform, status, last_seen_at,
+            metadata_json, created_at, updated_at, revision)
+         VALUES (?, ?, ?, 'browser', 'browser', 'active', ?, '{}', ?, ?, 1)`,
+      [deviceId, ctx.workspace.id, 'browser-only-fp', now, now, now]
+    );
+    const targetId = newId();
+    await ctx.db.run(
+      `INSERT INTO execution_targets
+           (id, workspace_id, device_id, owner_workspace_user_id, type, label, status,
+            connection_json, created_at, updated_at, revision)
+         VALUES (?, ?, ?, ?, 'local', 'browser', 'active', '{}', ?, ?, 1)`,
+      [targetId, ctx.workspace.id, deviceId, ctx.actorWorkspaceUserId, now, now]
+    );
+
+    const listed = await listWorkspaceExecutionTargets({ ctx });
+    assert.equal(
+      listed.some(target => target.id === targetId),
+      false
+    );
+  });
+
+  it('soft-deletes a workspace execution target and clears project preferences', async () => {
+    const { ctx, db } = await setup();
+    const project = await createProject({ ctx, name: 'Delete target project' });
+    const staleTargetId = await seedSecondTarget(ctx, 'stale-runner');
+    await updateProjectExecutionTargetSelection({
+      ctx,
+      projectId: project.id,
+      executionTargetId: staleTargetId
+    });
+
+    await deleteWorkspaceExecutionTarget({ ctx, executionTargetId: staleTargetId });
+
+    const row = (await db.get(
+      `SELECT deleted_at FROM execution_targets WHERE id = ?`,
+      [staleTargetId]
+    )) as { deleted_at: string | null };
+    assert.ok(row.deleted_at);
+
+    const selection = await getProjectExecutionTargetSelection({ ctx, projectId: project.id });
+    assert.equal(selection.selectedExecutionTargetId, null);
+  });
+
+  it('blocks delete when active queue rows reference the target', async () => {
+    const { ctx, db } = await setup();
+    const caller = await ensureCallerDeviceTarget({ ctx });
+    const project = await createProject({ ctx, name: 'Queued target project' });
+    const mission = await createMissionWithObjectives({
+      ctx,
+      projectId: project.id,
+      objectives: [{ objective: 'Queued work' }]
+    });
+    const now = nowIso();
+    await db.run(
+      `INSERT INTO execution_requests
+         (id, workspace_id, project_id, mission_id, objective_id, execution_target_id,
+          launch_mode, launch_flags_json, target_kind, requested_source, status,
+          attempt_count, metadata_json, created_at, updated_at, revision)
+       VALUES (?, ?, ?, ?, ?, ?, 'run', '{}', 'local', 'manual_run', 'queued',
+               0, '{}', ?, ?, 1)`,
+      [
+        newId(),
+        ctx.workspace.id,
+        project.id,
+        mission.mission.id,
+        mission.objectives[0]!.id,
+        caller.executionTargetId,
+        now,
+        now
+      ]
+    );
+
+    await assert.rejects(
+      () => deleteWorkspaceExecutionTarget({ ctx, executionTargetId: caller.executionTargetId }),
+      (error: unknown) =>
+        error instanceof ServiceError && error.code === 'execution_target_has_active_queue'
+    );
   });
 });

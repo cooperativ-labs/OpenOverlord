@@ -23,6 +23,13 @@ import {
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useCopyToClipboard } from '@/lib/hooks/use-copy-to-clipboard';
+import {
+  ANY_ELIGIBLE_EXECUTION_TARGET_VALUE,
+  executionTargetOptionLabel,
+  executionTargetOptionStatusSuffix,
+  parseExecutionTargetSelectorValue,
+  resolveExecutionTargetSelectorValue
+} from '@/lib/execution-target-selection';
 import { writeLocalProjectMetadata } from '@/lib/project-metadata';
 import {
   useCreateProjectResource,
@@ -37,7 +44,8 @@ import {
 
 import type {
   EligibleExecutionTargetDto,
-  ProjectResourceDto
+  ProjectResourceDto,
+  ProjectResourceSourceDto
 } from '../../../../shared/contract.ts';
 
 type ResourcesPageProps = {
@@ -58,39 +66,105 @@ function resourceStatusLabel(status: string): string {
   }
 }
 
-const ANY_TARGET_VALUE = '__any_target__';
-
-function targetOptionLabel(target: EligibleExecutionTargetDto): string {
-  const device = target.deviceLabel?.trim();
-  const base = target.label.trim() || target.executionTargetId;
-  return device && device !== base ? `${base} (${device})` : base;
+function sourceKindLabel(sourceKind: string): string {
+  switch (sourceKind) {
+    case 'local_checkout':
+      return 'Local';
+    case 'git':
+      return 'Git';
+    default:
+      return sourceKind;
+  }
 }
 
-function ResourcePathCell({ path, targetLabel }: { path: string; targetLabel: string }) {
+function sourceDescriptorValue(source: ProjectResourceSourceDto): string {
+  if (source.sourceKind === 'local_checkout') {
+    const path = source.descriptor.path;
+    return typeof path === 'string' ? path : '';
+  }
+  if (source.sourceKind === 'git') {
+    const url = source.descriptor.url;
+    return typeof url === 'string' ? url : '';
+  }
+  return '';
+}
+
+function ResourceSourcesCell({
+  sources,
+  fallbackPath,
+  targetLabelForId
+}: {
+  sources: ProjectResourceSourceDto[];
+  fallbackPath: string;
+  targetLabelForId: (executionTargetId: string | null) => string;
+}) {
   const { copied, copy } = useCopyToClipboard();
+  const entries =
+    sources.length > 0
+      ? sources
+      : fallbackPath
+        ? [
+            {
+              id: 'fallback',
+              executionTargetId: null,
+              sourceKind: 'local_checkout',
+              descriptor: { path: fallbackPath },
+              observedRevision: null,
+              observedContentDigest: null
+            } satisfies ProjectResourceSourceDto
+          ]
+        : [];
+
+  if (entries.length === 0) {
+    return (
+      <td className="max-w-xs px-3 py-2 text-xs text-muted-foreground">No sources linked</td>
+    );
+  }
 
   return (
-    <td className="max-w-xs px-3 py-2">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              className="flex w-full min-w-0 cursor-pointer flex-col gap-1 text-left font-mono text-xs hover:opacity-80"
-              onClick={() => void copy(path)}
-              aria-label={`Copy path ${path}`}
-            >
-              <span className="block truncate" dir="rtl">
-                {path}
-              </span>
-              <span className="text-xs text-muted-foreground">{targetLabel}</span>
-            </button>
-          }
-        />
-        <TooltipContent side="top" className="max-w-md break-all font-mono">
-          {copied ? 'Copied to clipboard' : path}
-        </TooltipContent>
-      </Tooltip>
+    <td className="max-w-md px-3 py-2">
+      <ul className="space-y-2">
+        {entries.map(source => {
+          const value = sourceDescriptorValue(source);
+          const targetLabel = targetLabelForId(source.executionTargetId);
+          return (
+            <li key={source.id} className="min-w-0">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      className="flex w-full min-w-0 cursor-pointer flex-col gap-1 text-left hover:opacity-80"
+                      onClick={() => {
+                        if (value) void copy(value);
+                      }}
+                      aria-label={value ? `Copy ${value}` : `Source ${sourceKindLabel(source.sourceKind)}`}
+                      disabled={!value}
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <Badge variant="outline" className="shrink-0 font-normal">
+                          {sourceKindLabel(source.sourceKind)}
+                        </Badge>
+                        {value ? (
+                          <span className="block min-w-0 truncate font-mono text-xs" dir="rtl">
+                            {value}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">No descriptor</span>
+                        )}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{targetLabel}</span>
+                    </button>
+                  }
+                />
+                <TooltipContent side="top" className="max-w-md break-all font-mono">
+                  {copied ? 'Copied to clipboard' : value || sourceKindLabel(source.sourceKind)}
+                </TooltipContent>
+              </Tooltip>
+            </li>
+          );
+        })}
+      </ul>
     </td>
   );
 }
@@ -113,7 +187,7 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
   const activeTarget = eligibleTargets.find(
     target => target.executionTargetId === activeExecutionTargetId
   );
-  const addTargetLabel = activeTarget ? targetOptionLabel(activeTarget) : deviceLabel;
+  const addTargetLabel = activeTarget ? executionTargetOptionLabel(activeTarget) : deviceLabel;
   const hasMissingPrimary = rows.some(
     resource => resource.isPrimary && resource.status === 'missing'
   );
@@ -172,22 +246,20 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
     }
   }
 
-  function targetLabel(resource: ProjectResourceDto): string {
-    if (resource.executionTargetId === null) return 'Any target';
-    const match = eligibleTargets.find(
-      target => target.executionTargetId === resource.executionTargetId
-    );
-    if (match) return targetOptionLabel(match);
-    if (resource.executionTargetId === localExecutionTargetId) {
+  function targetLabelForId(executionTargetId: string | null): string {
+    if (executionTargetId === null) return 'Any target';
+    const match = eligibleTargets.find(target => target.executionTargetId === executionTargetId);
+    if (match) return executionTargetOptionLabel(match);
+    if (executionTargetId === localExecutionTargetId) {
       return `${deviceLabel} (this device)`;
     }
-    return resource.executionTargetId;
+    return executionTargetId;
   }
 
   function handleExecutionTargetChange(value: string | null) {
     setTargetError(null);
     updateExecutionTarget.mutate(
-      { executionTargetId: !value || value === ANY_TARGET_VALUE ? null : value },
+      { executionTargetId: !value ? null : parseExecutionTargetSelectorValue(value) },
       {
         onError: error => {
           setTargetError(
@@ -198,9 +270,10 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
     );
   }
 
-  const selectorValue =
-    selectedExecutionTargetId ??
-    (eligibleTargets.length > 1 ? ANY_TARGET_VALUE : (eligibleTargets[0]?.executionTargetId ?? ''));
+  const selectorValue = resolveExecutionTargetSelectorValue({
+    selectedExecutionTargetId,
+    eligibleTargets
+  });
   async function handleBrowseDirectory() {
     const chooseDirectory = window.overlord?.chooseDirectory;
     if (!chooseDirectory) return;
@@ -229,7 +302,7 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
       const resource = await createResource.mutateAsync({
         directoryPath: trimmed,
         resourceKey: resourceKeyInput.trim() || undefined,
-        executionTargetId: activeExecutionTargetId,
+        ...(activeExecutionTargetId ? { executionTargetId: activeExecutionTargetId } : {}),
         isPrimary: !hasLocalPrimary
       });
       await writeLocalProjectMetadata({ directoryPath: trimmed, projectId, resource });
@@ -300,7 +373,9 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
               </SelectTrigger>
               <SelectContent>
                 {eligibleTargets.length > 1 ? (
-                  <SelectItem value={ANY_TARGET_VALUE}>Any eligible target</SelectItem>
+                  <SelectItem value={ANY_ELIGIBLE_EXECUTION_TARGET_VALUE}>
+                    Any eligible target
+                  </SelectItem>
                 ) : null}
                 {eligibleTargets.map(target => (
                   <SelectItem
@@ -308,9 +383,8 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
                     value={target.executionTargetId}
                     disabled={!target.reachable || !target.primaryResourceConnected}
                   >
-                    {targetOptionLabel(target)}
-                    {!target.reachable ? ' (offline)' : ''}
-                    {target.reachable && !target.primaryResourceConnected ? ' (no primary)' : ''}
+                    {executionTargetOptionLabel(target)}
+                    {executionTargetOptionStatusSuffix(target)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -446,7 +520,7 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
             <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 font-medium">Key</th>
-                <th className="px-3 py-2 font-medium">Path</th>
+                <th className="px-3 py-2 font-medium">Sources</th>
                 <th className="px-3 py-2 font-medium">Primary</th>
                 <th className="px-3 py-2 font-medium">State</th>
                 <th className="px-3 py-2 font-medium" />
@@ -486,7 +560,11 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
                       ) : null}
                     </div>
                   </td>
-                  <ResourcePathCell path={resource.path} targetLabel={targetLabel(resource)} />
+                  <ResourceSourcesCell
+                    sources={resource.sources}
+                    fallbackPath={resource.path}
+                    targetLabelForId={targetLabelForId}
+                  />
                   <td className="px-3 py-2">
                     {resource.isPrimary ? (
                       <Badge variant="secondary">Primary</Badge>
@@ -545,7 +623,18 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
           <DialogHeader>
             <DialogTitle>Remove directory</DialogTitle>
             <DialogDescription>
-              Remove &ldquo;{deleteTarget?.path}&rdquo; from this project?
+              Remove resource &ldquo;{deleteTarget?.resourceKey}&rdquo; from this project?
+              {deleteTarget?.sources.length ? (
+                <span className="mt-2 block font-mono text-xs text-muted-foreground">
+                  {deleteTarget.sources
+                    .map(source => sourceDescriptorValue(source) || sourceKindLabel(source.sourceKind))
+                    .join(' · ')}
+                </span>
+              ) : deleteTarget?.path ? (
+                <span className="mt-2 block font-mono text-xs text-muted-foreground">
+                  {deleteTarget.path}
+                </span>
+              ) : null}
             </DialogDescription>
           </DialogHeader>
           {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}

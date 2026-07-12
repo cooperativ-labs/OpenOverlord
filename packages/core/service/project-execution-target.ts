@@ -1,11 +1,13 @@
 import type { DatabaseClient } from '@overlord/database';
 
 import { isCoLocatedBackend } from './local-target/index.js';
+import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import { ServiceError } from './errors.js';
 import {
   findActingDeviceExecutionTargetId,
-  isBackendHostFingerprint
+  isBackendHostFingerprint,
+  isBrowserDevicePlatform
 } from './execution-targets.js';
 import { findPrimaryProjectResource } from './projects.js';
 import { newId, nowIso } from './util.js';
@@ -184,6 +186,7 @@ export async function listWorkspaceExecutionTargets({
         AND registration.workspace_id = et.workspace_id
         AND registration.deleted_at IS NULL
       WHERE et.workspace_id = ? AND et.deleted_at IS NULL
+        AND NOT (et.type = 'local' AND d.platform = 'browser')
       ORDER BY et.label ASC, et.created_at ASC`,
     [ctx.actorWorkspaceUserId, ctx.workspace.id]
   )) as Array<{
@@ -252,7 +255,7 @@ export async function listEligibleProjectExecutionTargets({
   const rows = (await ctx.db.all(
     `SELECT et.id AS execution_target_id, et.type, et.label AS target_label,
               et.device_id, d.label AS device_label, d.fingerprint AS device_fingerprint,
-              d.last_seen_at
+              d.platform AS device_platform, d.last_seen_at
          FROM workspace_user_execution_targets wuet
          JOIN execution_targets et
            ON et.id = wuet.execution_target_id
@@ -276,11 +279,15 @@ export async function listEligibleProjectExecutionTargets({
     device_id: string | null;
     device_label: string | null;
     device_fingerprint: string | null;
+    device_platform: string | null;
     last_seen_at: string | null;
   }>;
 
   const eligible: EligibleExecutionTarget[] = [];
   for (const row of rows) {
+    if (isBrowserDevicePlatform(row.device_platform)) {
+      continue;
+    }
     if (
       !isCoLocatedBackend(ctx.db) &&
       row.device_fingerprint &&
@@ -592,4 +599,105 @@ export async function resolveLaunchExecutionTarget({
       ? {}
       : await readAgentConfigsForExecutionTarget({ ctx, executionTargetId });
   return { executionTargetId, agentConfigs };
+}
+
+const ACTIVE_QUEUE_STATUSES = ['queued', 'claimed', 'launching'] as const;
+
+/**
+ * Soft-delete a workspace execution target and detach dependent preferences/resources.
+ * Does not hard-delete historical queue rows or observations.
+ */
+export async function deleteWorkspaceExecutionTarget({
+  ctx,
+  executionTargetId
+}: {
+  ctx: ServiceContext;
+  executionTargetId: string;
+}): Promise<void> {
+  const id = executionTargetId.trim();
+  if (!id) {
+    throw new ServiceError('executionTargetId is required', 'validation_error', 400);
+  }
+
+  const target = (await ctx.db.get(
+    `SELECT id FROM execution_targets
+        WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+    [id, ctx.workspace.id]
+  )) as { id: string } | undefined;
+  if (!target) {
+    throw new ServiceError('Execution target not found', 'not_found', 404);
+  }
+
+  const placeholders = ACTIVE_QUEUE_STATUSES.map(() => '?').join(', ');
+  const activeQueue = (await ctx.db.get(
+    `SELECT COUNT(*) AS count
+       FROM execution_requests
+      WHERE workspace_id = ?
+        AND deleted_at IS NULL
+        AND (execution_target_id = ? OR claimed_by_execution_target_id = ?)
+        AND status IN (${placeholders})`,
+    [ctx.workspace.id, id, id, ...ACTIVE_QUEUE_STATUSES]
+  )) as { count: number | string } | undefined;
+  if (Number(activeQueue?.count ?? 0) > 0) {
+    throw new ServiceError(
+      'Cannot delete an execution target with active queued work. Cancel or wait for runs to finish first.',
+      'execution_target_has_active_queue',
+      409
+    );
+  }
+
+  const now = nowIso();
+
+  await ctx.db.run(
+    `UPDATE workspace_user_execution_targets
+        SET deleted_at = ?, updated_at = ?, revision = revision + 1
+      WHERE workspace_id = ? AND execution_target_id = ? AND deleted_at IS NULL`,
+    [now, now, ctx.workspace.id, id]
+  );
+
+  await ctx.db.run(
+    `UPDATE project_resources
+        SET deleted_at = ?, updated_at = ?, revision = revision + 1
+      WHERE workspace_id = ? AND execution_target_id = ? AND deleted_at IS NULL`,
+    [now, now, ctx.workspace.id, id]
+  );
+
+  const preferenceRows = (await ctx.db.all(
+    `SELECT id, preferences_json FROM project_user_preferences
+        WHERE workspace_id = ? AND deleted_at IS NULL`,
+    [ctx.workspace.id]
+  )) as Array<{ id: string; preferences_json: string }>;
+
+  for (const row of preferenceRows) {
+    let preferences: Record<string, unknown>;
+    try {
+      preferences = JSON.parse(row.preferences_json) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (preferences[PROJECT_EXECUTION_TARGET_PREFERENCE_KEY] !== id) continue;
+    delete preferences[PROJECT_EXECUTION_TARGET_PREFERENCE_KEY];
+    await ctx.db.run(
+      `UPDATE project_user_preferences
+          SET preferences_json = ?, updated_at = ?, revision = revision + 1
+        WHERE id = ?`,
+      [JSON.stringify(preferences), now, row.id]
+    );
+  }
+
+  await ctx.db.run(
+    `UPDATE execution_targets
+        SET deleted_at = ?, updated_at = ?, revision = revision + 1
+      WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+    [now, now, id, ctx.workspace.id]
+  );
+
+  await recordChange({
+    ctx,
+    entityType: 'execution_target',
+    entityId: id,
+    operation: 'delete',
+    entityRevision: null,
+    changedFields: ['deleted_at']
+  });
 }

@@ -36,6 +36,7 @@ import { invokeLocalTargetOnServer } from './execution/local-target-invoke.ts';
 import {
   getProjectExecutionTarget,
   getWorkspaceExecutionTargets,
+  removeWorkspaceExecutionTarget,
   updateProjectExecutionTarget
 } from './execution/project-execution-target.ts';
 import {
@@ -653,6 +654,16 @@ app.get(
 app.get(
   '/api/workspaces/:id/execution-targets',
   handle(req => getWorkspaceExecutionTargets(req.params.id))
+);
+app.delete(
+  '/api/workspaces/:id/execution-targets/:targetId',
+  handle(
+    async req => {
+      await removeWorkspaceExecutionTarget(req.params.id, req.params.targetId);
+      return { ok: true as const };
+    },
+    { mutates: true }
+  )
 );
 // Workspace-scoped status CRUD. Unlike the legacy `/api/workspace/statuses`
 // routes (active-workspace only), these target the `:id` workspace and

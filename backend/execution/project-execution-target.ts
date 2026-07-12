@@ -5,7 +5,8 @@ import { ServiceError } from '../../packages/core/service/errors.ts';
 import {
   getProjectExecutionTargetSelection,
   listWorkspaceExecutionTargets,
-  updateProjectExecutionTargetSelection
+  updateProjectExecutionTargetSelection,
+  deleteWorkspaceExecutionTarget
 } from '../../packages/core/service/project-execution-target.ts';
 import type {
   ProjectExecutionTargetDto,
@@ -69,6 +70,28 @@ export async function getWorkspaceExecutionTargets(
   });
   const ctx = await buildWebappServiceContextForWorkspace(workspaceId, client, workspaceUserId);
   return listWorkspaceExecutionTargets({ ctx });
+}
+
+export async function removeWorkspaceExecutionTarget(
+  workspaceId: string,
+  executionTargetId: string,
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<void> {
+  const workspaceUserId = await requireWorkspacePermission({
+    workspaceId,
+    permission: PERMISSIONS.WORKSPACE_UPDATE,
+    db: client
+  });
+  const ctx = await buildWebappServiceContextForWorkspace(workspaceId, client, workspaceUserId);
+  try {
+    await deleteWorkspaceExecutionTarget({ ctx, executionTargetId });
+  } catch (error) {
+    if (error instanceof ServiceError) {
+      if (error.status === 404) throw new ApiError(404, 'Execution target not found');
+      if (error.status === 409) throw new ApiError(409, error.message, undefined, error.code);
+    }
+    throw error;
+  }
 }
 
 export async function updateProjectExecutionTarget(

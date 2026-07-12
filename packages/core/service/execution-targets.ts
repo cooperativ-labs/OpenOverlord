@@ -16,6 +16,17 @@ import { newId, nowIso } from './util.js';
 
 export type { ClientDeviceIdentity } from './device-identity.js';
 
+/** Platform value used by browser-only web sessions without a desktop bridge. */
+export const BROWSER_DEVICE_PLATFORM = 'browser';
+
+export function isBrowserDevicePlatform(platform: string | null | undefined): boolean {
+  return platform?.trim() === BROWSER_DEVICE_PLATFORM;
+}
+
+export function isBrowserClientDevice(client: ClientDeviceIdentity | null | undefined): boolean {
+  return isBrowserDevicePlatform(client?.devicePlatform ?? null);
+}
+
 export type LocalExecutionTarget = {
   deviceId: string;
   deviceLabel: string;
@@ -349,6 +360,13 @@ export async function ensureClientDeviceTarget({
   const fingerprint = deviceFingerprint.trim();
   if (!fingerprint) {
     throw new ServiceError('deviceFingerprint is required', 'validation_error', 400);
+  }
+  if (isBrowserDevicePlatform(devicePlatform)) {
+    throw new ServiceError(
+      'A web browser cannot act as an execution target. Use the desktop app or CLI on a machine that can run agents.',
+      'browser_not_execution_target',
+      409
+    );
   }
   return ensureDeviceTargetForFingerprint({
     ctx,

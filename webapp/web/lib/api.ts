@@ -535,6 +535,11 @@ export const api = {
       'GET',
       `/api/workspaces/${workspaceId}/execution-targets`
     ),
+  deleteWorkspaceExecutionTarget: (workspaceId: string, executionTargetId: string) =>
+    request<{ ok: true }>(
+      'DELETE',
+      `/api/workspaces/${workspaceId}/execution-targets/${executionTargetId}`
+    ),
 
   // ---- Everhour integration ----------------------------------------------
   getEverhourIntegration: () => request<EverhourIntegrationDto>('GET', '/ext/everhour/integration'),

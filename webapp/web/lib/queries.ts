@@ -224,6 +224,18 @@ export const useWorkspaceExecutionTargets = (workspaceId: string) =>
     staleTime: 30_000
   });
 
+export function useDeleteWorkspaceExecutionTarget(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (executionTargetId: string) =>
+      api.deleteWorkspaceExecutionTarget(workspaceId, executionTargetId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.workspaceExecutionTargets(workspaceId) });
+      invalidateNonEverhourQueries(qc);
+    }
+  });
+}
+
 export const useAccessibleWorkspaces = () => {
   const meta = useMeta();
   return meta.data?.workspaces ?? [];

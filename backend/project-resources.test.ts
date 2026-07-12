@@ -71,6 +71,38 @@ test('project resource mutations keep primaries scoped per execution target', as
   assert.equal(rows.find(row => row.id === firstLocalResource.id)?.isPrimary, true);
 });
 
+test('createProjectResource accepts a global git source without execution target', async () => {
+  const project = await createProject({ name: 'Global git resource' });
+
+  const resource = await createProjectResource(project.id, {
+    sourceUrl: 'https://github.com/example/repo.git',
+    resourceKey: 'upstream',
+    executionTargetId: null,
+    isPrimary: true
+  });
+
+  assert.equal(resource.resourceKey, 'upstream');
+  assert.equal(resource.sources.length, 1);
+  assert.equal(resource.sources[0]?.sourceKind, 'git');
+  assert.equal(resource.sources[0]?.executionTargetId, null);
+  assert.equal(resource.sources[0]?.descriptor.url, 'https://github.com/example/repo.git');
+});
+
+test('createProjectResource accepts a global local checkout source', async () => {
+  const project = await createProject({ name: 'Global local resource' });
+
+  const resource = await createProjectResource(project.id, {
+    directoryPath: '/tmp/project-global-local',
+    resourceKey: 'shared',
+    executionTargetId: null,
+    isPrimary: false
+  });
+
+  assert.equal(resource.sources.length, 1);
+  assert.equal(resource.sources[0]?.executionTargetId, null);
+  assert.equal(resource.sources[0]?.descriptor.path, '/tmp/project-global-local');
+});
+
 test('getProjectRepository selects the resource matching the requested key', async () => {
   const primaryDir = mkdtempSync(path.join(tempDir, 'repo-primary-'));
   const secondaryDir = mkdtempSync(path.join(tempDir, 'repo-secondary-'));

@@ -2232,6 +2232,34 @@ export async function listProjectResources(projectId: string): Promise<ProjectRe
   );
 }
 
+async function findProjectResourceSource({
+  db,
+  resourceId,
+  executionTargetId,
+  sourceKind
+}: {
+  db: DatabaseClient;
+  resourceId: string;
+  executionTargetId: string | null;
+  sourceKind: string;
+}): Promise<{ id: string } | undefined> {
+  if (executionTargetId === null) {
+    return (await db.get(
+      `SELECT id FROM project_resource_sources
+        WHERE resource_id = ? AND execution_target_id IS NULL
+          AND source_kind = ? AND deleted_at IS NULL`,
+      [resourceId, sourceKind]
+    )) as { id: string } | undefined;
+  }
+
+  return (await db.get(
+    `SELECT id FROM project_resource_sources
+      WHERE resource_id = ? AND execution_target_id = ?
+        AND source_kind = ? AND deleted_at IS NULL`,
+    [resourceId, executionTargetId, sourceKind]
+  )) as { id: string } | undefined;
+}
+
 async function insertProjectResource(
   db: DatabaseClient,
   project: Pick<ProjectDto, 'id' | 'workspaceId'>,
@@ -2287,12 +2315,12 @@ async function insertProjectResource(
     );
   }
   const descriptor = JSON.stringify(sourceUrl ? { url: sourceUrl } : { path: resourcePath });
-  const source = (await db.get(
-    `SELECT id FROM project_resource_sources
-      WHERE resource_id = ? AND (execution_target_id = ? OR (execution_target_id IS NULL AND ? IS NULL))
-        AND source_kind = ? AND deleted_at IS NULL`,
-    [resourceId, executionTargetId, executionTargetId, sourceKind]
-  )) as { id: string } | undefined;
+  const source = (await findProjectResourceSource({
+    db,
+    resourceId,
+    executionTargetId,
+    sourceKind
+  })) as { id: string } | undefined;
   if (source) {
     await db.run(
       `UPDATE project_resource_sources SET descriptor_json = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`,
