@@ -1,4 +1,4 @@
-import { AlertTriangle, FolderOpen, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, FolderOpen, GitBranch, HardDrive, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { useProjectRepositoryContext } from '@/components/projects/ProjectRepositoryContext.tsx';
@@ -47,6 +47,7 @@ import {
   useUpdateProjectExecutionTarget,
   useUpdateProjectResource
 } from '@/lib/queries';
+import { cn } from '@/lib/utils';
 
 import type {
   EligibleExecutionTargetDto,
@@ -156,6 +157,8 @@ function SourceRow({ source, label }: { source: ProjectResourceSourceDto; label:
   );
 }
 
+type AddSourceKind = 'local_checkout' | 'git';
+
 function AddSourceForm({
   projectId,
   resource,
@@ -170,7 +173,9 @@ function AddSourceForm({
   onAdded: () => void;
 }) {
   const createResource = useCreateProjectResource(projectId);
+  const [sourceKind, setSourceKind] = useState<AddSourceKind>('local_checkout');
   const [directoryPath, setDirectoryPath] = useState('');
+  const [repoUrl, setRepoUrl] = useState('');
   const [targetValue, setTargetValue] = useState(defaultTargetValue);
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -197,6 +202,28 @@ function AddSourceForm({
   }
 
   async function handleAddSource() {
+    if (sourceKind === 'git') {
+      const trimmedUrl = repoUrl.trim();
+      if (!trimmedUrl) {
+        setError('Enter a repository URL.');
+        return;
+      }
+      setError(null);
+      try {
+        // Git sources are project-global; they are not scoped to an execution target.
+        await createResource.mutateAsync({
+          sourceUrl: trimmedUrl,
+          resourceKey: resource.resourceKey,
+          isPrimary: resource.isPrimary
+        });
+        setRepoUrl('');
+        onAdded();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to add source.');
+      }
+      return;
+    }
+
     const trimmed = directoryPath.trim();
     if (!trimmed) {
       setError('Enter a directory path.');
@@ -219,70 +246,144 @@ function AddSourceForm({
     }
   }
 
+  const kindOptions: { value: AddSourceKind; label: string; icon: typeof HardDrive }[] = [
+    { value: 'local_checkout', label: 'Local path', icon: HardDrive },
+    { value: 'git', label: 'Repo URL', icon: GitBranch }
+  ];
+
   return (
     <div className="rounded-lg border border-dashed p-3">
-      <h4 className="text-xs font-medium text-muted-foreground">Add source</h4>
-      <div className="mt-2 grid gap-3 lg:grid-cols-[minmax(0,1fr)_16rem_auto] lg:items-end">
-        <div className="grid min-w-0 gap-1.5">
-          <Label htmlFor={`add-source-path-${resource.id}`} className="text-xs">
-            Directory path
-          </Label>
-          <div className="flex gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-xs font-medium text-muted-foreground">Add source</h4>
+        <div
+          role="radiogroup"
+          aria-label="Source type"
+          className="inline-flex rounded-md border p-0.5"
+        >
+          {kindOptions.map(option => {
+            const Icon = option.icon;
+            const active = sourceKind === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => {
+                  setSourceKind(option.value);
+                  setError(null);
+                }}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                  active
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Icon className="size-3.5" />
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {sourceKind === 'git' ? (
+        <div className="mt-2 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+          <div className="grid min-w-0 gap-1.5">
+            <Label htmlFor={`add-source-url-${resource.id}`} className="text-xs">
+              Repository URL
+            </Label>
             <Input
-              id={`add-source-path-${resource.id}`}
-              value={directoryPath}
-              onChange={event => setDirectoryPath(event.target.value)}
-              placeholder="/path/to/checkout"
+              id={`add-source-url-${resource.id}`}
+              value={repoUrl}
+              onChange={event => setRepoUrl(event.target.value)}
+              placeholder="https://github.com/org/repo.git"
               className="h-8 min-w-0 flex-1 font-mono text-xs"
               onKeyDown={event => {
                 if (event.key === 'Enter') void handleAddSource();
               }}
             />
-            {canBrowseDirectories ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 shrink-0 gap-1.5"
-                disabled={isBrowsing}
-                onClick={() => void handleBrowseDirectory()}
-              >
-                <FolderOpen className="size-3.5" />
-                Browse
-              </Button>
-            ) : null}
+            <p className="text-[11px] text-muted-foreground">
+              Repo sources are shared across all execution targets for this project.
+            </p>
           </div>
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 gap-1.5"
+            disabled={createResource.isPending}
+            onClick={() => void handleAddSource()}
+          >
+            <Plus className="size-3.5" />
+            Add source
+          </Button>
         </div>
-        <div className="grid min-w-0 gap-1.5">
-          <Label htmlFor={`add-source-target-${resource.id}`} className="text-xs">
-            Execution target
-          </Label>
-          <Select value={targetValue} onValueChange={value => setTargetValue(value ?? targetValue)}>
-            <SelectTrigger id={`add-source-target-${resource.id}`} className="h-8">
-              <SelectValue placeholder="Execution target" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ANY_ELIGIBLE_EXECUTION_TARGET_VALUE}>Any target</SelectItem>
-              {eligibleTargets.map(target => (
-                <SelectItem key={target.executionTargetId} value={target.executionTargetId}>
-                  {executionTargetOptionLabel(target)}
-                  {executionTargetOptionStatusSuffix(target)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      ) : (
+        <div className="mt-2 grid gap-3 lg:grid-cols-[minmax(0,1fr)_16rem_auto] lg:items-end">
+          <div className="grid min-w-0 gap-1.5">
+            <Label htmlFor={`add-source-path-${resource.id}`} className="text-xs">
+              Directory path
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                id={`add-source-path-${resource.id}`}
+                value={directoryPath}
+                onChange={event => setDirectoryPath(event.target.value)}
+                placeholder="/path/to/checkout"
+                className="h-8 min-w-0 flex-1 font-mono text-xs"
+                onKeyDown={event => {
+                  if (event.key === 'Enter') void handleAddSource();
+                }}
+              />
+              {canBrowseDirectories ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 shrink-0 gap-1.5"
+                  disabled={isBrowsing}
+                  onClick={() => void handleBrowseDirectory()}
+                >
+                  <FolderOpen className="size-3.5" />
+                  Browse
+                </Button>
+              ) : null}
+            </div>
+          </div>
+          <div className="grid min-w-0 gap-1.5">
+            <Label htmlFor={`add-source-target-${resource.id}`} className="text-xs">
+              Execution target
+            </Label>
+            <Select
+              value={targetValue}
+              onValueChange={value => setTargetValue(value ?? targetValue)}
+            >
+              <SelectTrigger id={`add-source-target-${resource.id}`} className="h-8">
+                <SelectValue placeholder="Execution target" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ANY_ELIGIBLE_EXECUTION_TARGET_VALUE}>Any target</SelectItem>
+                {eligibleTargets.map(target => (
+                  <SelectItem key={target.executionTargetId} value={target.executionTargetId}>
+                    {executionTargetOptionLabel(target)}
+                    {executionTargetOptionStatusSuffix(target)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 gap-1.5"
+            disabled={createResource.isPending}
+            onClick={() => void handleAddSource()}
+          >
+            <Plus className="size-3.5" />
+            Add source
+          </Button>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          className="h-8 gap-1.5"
-          disabled={createResource.isPending}
-          onClick={() => void handleAddSource()}
-        >
-          <Plus className="size-3.5" />
-          Add source
-        </Button>
-      </div>
+      )}
       {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
     </div>
   );
