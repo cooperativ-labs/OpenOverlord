@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '3'
+contractVersion: '4'
 
 components:
   protocol:
@@ -131,6 +131,7 @@ components:
       - 'organization management endpoints: list organizations for the caller, update an organization (org-admin gated), list/add/remove organization admins (add/remove maintains the invariant that an org admin is ADMIN of every constituent workspace)'
       - 'shared onboarding endpoint (POST /api/onboarding, zero-membership users only): creates an organization, a default workspace, membership, and ADMIN role in one transaction; used verbatim by the web onboarding screen and the ovld org-setup CLI command'
       - 'project APIs support explicit target workspace context for multi-workspace organization UIs: CreateProjectBody.workspaceId and GET /api/workspaces/:id/statuses'
+      - "workspace execution-target projection: GET /api/workspaces/:id/execution-targets returns all non-deleted target identity/status/owner display metadata, reachability, and active workspace-member access count to an authenticated member; never connection_json, credentials, target registration, creation, or access mutation; project selection remains limited to the acting member's eligible targets"
       - 'storage routes for the organization-images bucket key (/api/storage/organization-images/…) with a PUBLIC organization_image:read grant'
       - 'hosted MCP OAuth endpoints: POST /oauth/register, POST /oauth/token, POST /oauth/revoke, GET /oauth/authorize, POST /oauth/authorize/request, POST /oauth/authorize/approve'
       - 'versioned virtual-target gateway route family (/api/virtual-targets/v1/*): PUT …/registration, POST …/claim, POST …/requests/:id/progress, POST …/requests/:id/launched, POST …/requests/:id/failed, POST …/grants/:id/exchange, GET …/missions/:id/resources, POST …/missions/:id/actions; owns DTO shapes, target-authenticated auth/RBAC, per-request idempotency, and bounded/redacted output; the immutable VirtualExecutionQueueItemV1 payload + digest are built by the service layer at queue time and returned only to the authenticated claiming gateway; local /api/runner/* routes are unchanged'
@@ -306,15 +307,15 @@ interactionSurfaces:
     authMechanism: target-scoped-gateway-principal
     routeFamily: '/api/virtual-targets/v1/*'
     rules:
-      - 'A gateway principal is scoped to exactly one execution_targets row of type virtual (target-authenticated, not device-authenticated); it cannot enumerate, claim, or observe another target''s work'
+      - "A gateway principal is scoped to exactly one execution_targets row of type virtual (target-authenticated, not device-authenticated); it cannot enumerate, claim, or observe another target's work"
       - 'claimed_by_execution_target_id is the universal claimant identity; claimed_by_device_id stays nullable for virtual claims'
       - 'PUT …/registration registers/refreshes gateway identity (gateway_key, gateway_instance_id), capabilities, supported agents, supported queue schema versions, adapter key/version, and heartbeat; a matching stable gateway identity replaces rather than creates a target'
-      - 'POST …/claim atomically claims a queued request for the caller''s target and returns the immutable VirtualExecutionQueueItemV1 snapshot, claimId, expiry, and only request-scoped opaque launch-grant references — never filesystem paths or raw secrets; replaying the same gateway+request returns the same claim and payload'
+      - "POST …/claim atomically claims a queued request for the caller's target and returns the immutable VirtualExecutionQueueItemV1 snapshot, claimId, expiry, and only request-scoped opaque launch-grant references — never filesystem paths or raw secrets; replaying the same gateway+request returns the same claim and payload"
       - 'POST …/requests/:id/progress appends a bounded, monotonic preparation observation and does not change status'
       - 'POST …/requests/:id/launched validates request/claim/target/digest, records VirtualTargetLaunchObservationV1, then makes the normal launching → launched transition exactly once'
       - 'POST …/requests/:id/failed records a typed, redacted VirtualTargetFailureV1 and makes the allowed transition to failed; retryable informs retry policy but does not itself requeue'
       - 'progress/launched/failed are idempotent by request and observation sequence'
-      - 'POST …/grants/:id/exchange swaps an authenticated, unexpired opaque grant for narrowly scoped credentials/attachment-download access bound to request+target+gateway instance; every exchange is audited and never returns the user''s Overlord token'
+      - "POST …/grants/:id/exchange swaps an authenticated, unexpired opaque grant for narrowly scoped credentials/attachment-download access bound to request+target+gateway instance; every exchange is audited and never returns the user's Overlord token"
       - 'GET …/missions/:id/resources returns summarized opaque lifecycle resources and source-compatibility observations; POST …/missions/:id/actions authorizes an explicit start/stop/archive/delete/enqueue/retry/dequeue action and delegates it; delegated-action output becomes an observation and can never change mission completion'
       - 'The gateway must never access the database directly; it must be idempotent by executionRequestId, and it must not introduce a parallel request state machine'
 
