@@ -57,13 +57,13 @@ Now, you can create "missions" in the desktop app, select your preferred agent, 
 
 ### Getting Started
 
-New to Overlord? Follow the [Getting Started guide](docs/getting-started.md) —
+New to Overlord? Follow the [Getting Started guide](developer-instructions/getting-started.md) —
 ten minutes from a fresh `ovld` install to your first delivered mission.
 
 #### Setting up a custom instance
 
 Forked Overlord and standing up your own instance? Start with
-[Setting Up a Custom Overlord Instance](docs/custom-instance-setup.md) — the
+[Setting Up a Custom Overlord Instance](developer-instructions/custom-instance-setup.md) — the
 ordered list of questions (which database, which schema groups, what goes in
 `overlord.toml`) to answer before you configure anything. It doubles as the
 interview script for an agent asked to set Overlord up for you.
@@ -83,8 +83,8 @@ use separate env vars (`OVERLORD_BACKEND_URL_DEV` vs `OVERLORD_BACKEND_URL`) so
 
 In-repo development uses `.env.local` and `yarn ovld:dev`; an installed
 `overlord-cli` package never reads the dev channel. See
-[Getting Started](docs/getting-started.md) and
-[Custom Instance Setup](docs/custom-instance-setup.md) for full detail.
+[Getting Started](developer-instructions/getting-started.md) and
+[Custom Instance Setup](developer-instructions/custom-instance-setup.md) for full detail.
 
 ### Core Concepts
 
@@ -258,9 +258,9 @@ contents. The normative spec for how modules interact is
 [`CONTRACT.md`](CONTRACT.md) — read it before any change that crosses a module
 boundary.
 
-**Documentation map →** [`docs/README.md`](docs/README.md) is the front door to
+**Documentation map →** [`developer-instructions/README.md`](developer-instructions/README.md) is the front door to
 every documentation surface (user guides, the
-[architecture series in reading order](docs/architecture.md), module specs,
+[architecture series in reading order](docs/src/content/docs/docs-for-agents/architecture.mdx), module specs,
 planning, and security audits), and records where each kind of doc lives.
 
 | Module | Purpose | Contract component(s) |
@@ -284,7 +284,7 @@ planning, and security audits), and records where each kind of doc lives.
 
 If you run a customized OpenOverlord distribution and need to keep adopting
 changes from upstream, use the contract-first workflow in
-[Adopting Upstream Changes in Customized Instances](docs/upstream-adoption.md).
+[Adopting Upstream Changes in Customized Instances](developer-instructions/upstream-adoption.md).
 
 ### Testing
 

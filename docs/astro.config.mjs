@@ -6,7 +6,7 @@ export default defineConfig({
     starlight({
       title: 'Overlord Docs',
       description: 'Guides for using Overlord to coordinate AI coding agents.',
-      favicon: '../webapp/public/images/256.png',
+      favicon: '/favicon.ico',
       logo: {
         src: '../webapp/public/images/256.png',
         alt: 'Overlord'

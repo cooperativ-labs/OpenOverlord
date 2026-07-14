@@ -7,7 +7,8 @@ the right one without spelunking.
 
 New to Overlord? Start with the [Getting Started guide](getting-started.md).
 Want to know how the system works internally? Read the
-[architecture series in order](architecture.md).
+[architecture series in order](../docs/src/content/docs/docs-for-agents/architecture.mdx)
+in the docs site.
 
 ## The seven documentation surfaces
 
@@ -44,8 +45,10 @@ Install, set up, and operate an Overlord instance — in [`docs/`](.):
 
 The cross-module `NN-*.md` behavior specs, read as one narrative:
 
-- **[Architecture — Reading Order](architecture.md)** — the ordered index over
-  the whole series. Files stay colocated under each `<module>/docs/`.
+- **[Architecture — Reading Order](../docs/src/content/docs/docs-for-agents/architecture.mdx)**
+  — the ordered index over the whole series, published in the docs site under
+  **Docs for agents → Architecture**. The specs themselves stay colocated
+  under each `<module>/docs/`.
 
 ### 4. Module behavior specs & per-module docs
 
@@ -80,7 +83,7 @@ home and a rule:
 | Surface | Holds | Lives in |
 | --- | --- | --- |
 | User guides | install / setup / operate Overlord | [`docs/`](.) |
-| Architecture series | how the system works, in order | `<module>/docs/NN-*.md` (indexed by [`docs/architecture.md`](architecture.md)) |
+| Architecture series | how the system works, in order | `<module>/docs/NN-*.md` (indexed by [Docs for agents → Architecture](../docs/src/content/docs/docs-for-agents/architecture.mdx)) |
 | Module behavior specs | per-module detail + `testing.md` | `<module>/docs/` |
 | Web UI design set | the ideal web control center, screen by screen | [`webapp/docs/ui/`](../webapp/docs/ui/README.md) |
 | Planning / proposals | not-yet-built or under-discussion work | [`planning/feature-plans/`](../planning/feature-plans/) |

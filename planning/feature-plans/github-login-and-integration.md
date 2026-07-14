@@ -344,7 +344,7 @@ Requires `MISSION_UPDATE`; GitHub token via workspace installation.
 
 After implementation, run drift-review skill across:
 - `cli/README` (if `ovld auth login` mentions providers)
-- `docs/getting-started.md`
+- `developer-instructions/getting-started.md`
 - `webapp/docs/web-app.md` (deferred OAuth scope)
 - Agent connector docs (no change expected)
 

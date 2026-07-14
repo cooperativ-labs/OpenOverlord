@@ -3,6 +3,45 @@ title: Members and roles
 description: Manage who can see and act in a workspace.
 ---
 
-Workspace membership controls access to projects, missions, and execution targets. Give people the least access they need, and remove access when someone leaves the workspace.
+Workspace membership controls access to projects, missions, and execution
+targets. Give people the least access they need, and remove access when someone
+leaves the workspace.
 
-Use the web or desktop settings to review members and roles. Agents use the permissions of the account or token that launches them.
+Use the web or desktop settings to review members and roles. Agents use the
+permissions of the account or token that launches them.
+
+## Roles
+
+Project roles determine what a member can do:
+
+- **ADMIN** — full management of the project, its members, and its resources.
+- **MANAGER** — can manage project work and resources, including directories on
+  organization-owned execution targets.
+- **VIEWER** — read-only access.
+
+A member's role is the ceiling for anything they launch: a `USER_TOKEN` inherits
+the owner's role in the active workspace, and any scope on the token can only
+restrict it further. If a member's role is reduced, their tokens and agent runs
+lose that access automatically.
+
+## Managing execution-target directories
+
+Who can add, remove, or re-point resource directories on a target depends on how
+the target is owned:
+
+- **Personal targets** — only the owner may manage directories for any project on
+  that target within the organization.
+- **Organization-owned targets** — any **ADMIN** or **MANAGER** on the project may
+  manage directories; **VIEWER** is read-only.
+
+Every member can still read the primary directory so they can see a project's
+working directory. See [Execution targets](/execution-targets/) for the details.
+
+## Least-access habits
+
+- Assign the narrowest role that lets someone do their work.
+- Prefer `mission_lifecycle`-scoped tokens for runners and agents.
+- Remove members and revoke tokens promptly when access is no longer needed.
+
+Related: [Authentication and permissions](/authentication-and-permissions/) ·
+[Projects and resources](/projects/)

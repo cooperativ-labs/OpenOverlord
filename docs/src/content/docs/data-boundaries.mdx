@@ -3,6 +3,44 @@ title: Data boundaries
 description: Understand where mission and repository data live.
 ---
 
-In Local, the backend and mission database run on your machine. In Cloud, mission records are stored in the hosted workspace while execution occurs on configured targets.
+In Local, the backend and mission database run on your machine. In Cloud,
+mission records are stored in the hosted workspace while execution occurs on
+configured targets.
 
-Repository contents are available to an agent only when its execution target and project resource provide them. Do not assume that a browser session can read a local checkout.
+Repository contents are available to an agent only when its execution target and
+project resource provide them. Do not assume that a browser session can read a
+local checkout.
+
+## What stays local
+
+The content of your repository files stays on your machine unless you or your
+agent explicitly writes information into a mission. Overlord uses the linked
+project folders to:
+
+- route agents to the right repository
+- show the local working directory in the desktop Current Changes view
+- generate a snapshot of the project's deployable surfaces, migration system,
+  codegen steps, tests, and workspace boundaries (its **repo operations
+  profile**, visible under a project's **Settings → Feed → Repo operations
+  profile**)
+
+## What Overlord stores
+
+Overlord stores mission content and mission-related updates so it can coordinate
+work, including:
+
+- plans and progress summaries
+- questions and answers
+- deliverables and delivery summaries
+- change rationales and file-change metadata
+- proposed engineering approaches
+
+## The practical rule
+
+If it is written into a mission, assume it is part of the persistent record for
+that work — and that it may be processed by the
+[external providers](/credentials/) Overlord relies on. Treat mission content as
+intentional shared-record data.
+
+Related: [Credentials and external providers](/credentials/) ·
+[Authentication and permissions](/authentication-and-permissions/)

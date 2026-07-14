@@ -47,6 +47,22 @@ mission record during an agent session.
 If you use an agent outside Overlord, you can still create or inspect missions
 with the CLI and keep the resulting delivery in the same project history.
 
+## Slash commands
+
+Installing a connector also registers a set of slash commands you can use
+mid-session inside the agent. Each is a thin wrapper around an `ovld protocol`
+call. The exact names depend on the agent — in Claude Code they are namespaced,
+for example `/overlord:attach`:
+
+- **attach `<mission-id>`** — establish a persistent session with an existing mission and begin executing it.
+- **connect `<mission-id>`** — route the current session onto another mission without loading its full context.
+- **load `<mission-id>`** — read a mission's details, history, and artifacts without creating a session.
+- **discuss-objective `<mission-id>`** — mark a draft objective as submitted (in active discussion) without starting execution.
+- **create `<objective>`** — create a draft mission from the current conversation.
+- **prompt `<objective>`** — create a mission in `execute` and attach the current session immediately.
+- **add-objectives** — add ordered follow-up objectives to an existing mission.
+- **record-work** — record work already completed in chat as a mission in `review`, with objective, summary, and per-file rationales synthesized from the conversation and local diff.
+
 ## Keep connectors current
 
 After updating Overlord, rerun `ovld agent-setup <agent>` (or `all`) to repair

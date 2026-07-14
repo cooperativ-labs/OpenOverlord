@@ -7,7 +7,7 @@
 // digest it into a short feed post (an LLM call if GEMINI_API_KEY is set, a
 // deterministic fallback otherwise, mirroring the upstream pipeline's own
 // fallback behavior) -> append it to a local JSON file as the "somewhere
-// else" sink. See ../../../docs/webhooks.md for the full contract.
+// else" sink. See ../../../developer-instructions/webhooks.md for the full contract.
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { appendFile } from 'node:fs/promises';
 

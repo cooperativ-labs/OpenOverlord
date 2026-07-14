@@ -334,7 +334,7 @@ All workspace-scoped, `requirePermission(webhook:*)`, mutating routes emit `enti
 
 ### Phase 5 — Docs, example consumer, drift surfaces
 
-- `docs/webhooks.md`: event catalog, envelope schema, signature-verification snippet
+- `developer-instructions/webhooks.md`: event catalog, envelope schema, signature-verification snippet
 (10-line Node example), retry semantics, thin-vs-full guidance, pull-API pattern with scoped
 tokens.
 - Example consumer under `docs/` or a sample repo: a ~100-line Express service that verifies the

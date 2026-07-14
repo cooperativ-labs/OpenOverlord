@@ -3,6 +3,84 @@ title: Terminal and IDE preferences
 description: Set the tools that open when work is launched locally.
 ---
 
-Local execution targets can store terminal and IDE launch preferences. Configure them during `ovld setup` or in the desktop settings, then verify the result with `ovld doctor`.
+Local execution targets can store terminal and IDE launch preferences.
+Configure them during `ovld setup` or in the desktop settings, then verify the
+result with `ovld doctor`.
 
-These preferences affect how a local run opens; they do not grant repository access or change the agent's subscription.
+These preferences affect how a local run opens; they do not grant repository
+access or change the agent's subscription.
+
+## Preferences are per execution target
+
+Terminal launch settings are configured **per execution target**, so each
+machine can use a different terminal app and launch style. This is intentional:
+
+- your laptop may launch differently from a remote server
+- one target may use tmux while another opens a native terminal window
+- launch behavior can be tuned for the shell or terminal on that specific machine
+
+Open the **Execution Targets** page in settings and edit the target you want to
+change.
+
+## Choose the terminal
+
+Each execution target can use one of the supported terminal profiles:
+
+- System Default
+- Terminal
+- iTerm2
+- Warp
+- tmux
+- Ghostty
+- Alacritty
+- Kitty
+- Hyper
+- cmux
+- Custom
+
+If you choose **Custom**, enter the terminal name or path Overlord should use
+for that target.
+
+## Choose how it launches
+
+For terminals that support it, you can choose how a launch opens:
+
+- **New window**
+- **New tab**
+- **Custom** — send a specific hotkey, then type the launch command into the
+  active terminal
+
+### tmux and cmux
+
+When the selected profile is `tmux` or `cmux`, Overlord exposes tmux-specific
+settings: which host terminal tmux runs inside, an optional custom host terminal
+name or path, and the launch command template. The default template is:
+
+```bash
+tmux new-session bash {script}
+```
+
+Use `{script}` where Overlord should insert the generated launch script.
+
+## Launch command placeholders
+
+The launch command is generated from the target settings and the agent-specific
+command Overlord needs to run. When you use a custom command template, keep
+these placeholders intact:
+
+- `{script}` — the generated launch script in tmux-style profiles
+- `{command}` — the generated agent launch command in the server-terminal flow
+- `{window}` — the mission window name in that same flow
+
+Do not remove a placeholder unless the UI for that setting no longer requires it.
+
+## How this affects launches
+
+When Overlord creates an execution request it stores the chosen target and its
+launch settings alongside the mission. The runner uses those settings when it
+opens the terminal and starts the agent — which is why the same project can
+launch differently on two machines, and why launch behavior stays with the
+machine that actually runs the work.
+
+Related: [Execution targets](/execution-targets/) ·
+[Retries and blocked work](/retries-and-blocked-work/)

@@ -16,6 +16,20 @@ one place.
 - Does the rationale explain why the important changes were needed?
 - Are tests, screenshots, links, or other artifacts available when relevant?
 
+## File changes and checkpoints
+
+When an agent edits files, Overlord stores file-level **change records** — a
+short title, summary, why the change was made, and optional diff hints — so you
+get more than a wall of terminal output. Those records are the durable story of
+the patch, separate from chat narrative, and they link back to the mission and
+objective that produced them.
+
+Each delivery is anchored to a **checkpoint**: a snapshot of the working tree
+captured after meaningful edits. The checkpoint tells the review UI exactly
+which tree was live when the rationales were recorded, so diffs open with the
+right context. In the desktop app you can inspect these diffs hunk-by-hunk with
+the attached rationale in the **Current Changes** view.
+
 ## Inspect a delivery from the terminal
 
 ```bash

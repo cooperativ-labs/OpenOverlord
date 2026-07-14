@@ -3,6 +3,41 @@ title: MCP access
 description: Let supported assistants work with Overlord through MCP.
 ---
 
-MCP access lets a supported assistant read mission context and use approved Overlord actions from its own interface. The assistant still follows workspace permissions and the mission lifecycle.
+The MCP server gives cloud or hosted agents a standard way to work with Overlord
+missions without the desktop app. A supported assistant can read mission context
+and use approved Overlord actions from its own interface, still following
+workspace permissions and the mission lifecycle.
 
-Use the connector setup flow for your assistant, then confirm access with `ovld doctor`. Do not paste user tokens into prompts or source files.
+Use the connector setup flow for your assistant, then confirm access with
+`ovld doctor`. Do not paste user tokens into prompts or source files.
+
+## What it does
+
+The MCP server exposes the mission workflow to remote agent runtimes. Use it for:
+
+- listing and reading missions
+- creating missions from agent workflows
+- posting updates and deliverables
+- integrating Overlord into a broader orchestration system
+
+## Who it is for
+
+- cloud agents
+- headless runtimes
+- connector-style integrations
+- external automation that needs mission access
+
+## Connect an assistant
+
+Add the Overlord MCP URL (copy it from **Settings → Agents & MCP**) to your
+assistant's connector settings and complete the OAuth flow, or provide a
+`USER_TOKEN` for runtimes where OAuth is unreliable. If your platform enforces an
+outbound domain allowlist, allow the Overlord apex domain and its subdomains so
+the connector can reach the server.
+
+For the full hosted MCP surface — endpoints, OAuth, tools, and boundaries — and
+the deeper agent-facing walkthrough, see
+[Docs for agents → MCP access](/docs-for-agents/mcp/) and
+[Authentication & troubleshooting](/docs-for-agents/authentication/).
+
+Related: [Agents and connectors](/agents/) · [CLI](/cli/)

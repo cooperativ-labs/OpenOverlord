@@ -3,6 +3,81 @@ title: Authentication and permissions
 description: Keep access to workspaces and execution targets controlled.
 ---
 
-Sign in through the configured backend and use workspace membership to control access. Tokens should be scoped to the smallest workflow that needs them and revoked when no longer required.
+Sign in through the configured backend and use workspace membership to control
+access. Tokens should be scoped to the smallest workflow that needs them and
+revoked when no longer required.
 
-Agents inherit the identity and permissions used by their connector. A successful login does not automatically grant access to every project or target.
+Agents inherit the identity and permissions used by their connector. A
+successful login does not automatically grant access to every project or target.
+
+## Two ways to authenticate
+
+Which one you reach for depends on where the surface runs and whether it can
+complete an interactive browser flow.
+
+- **OAuth** — an interactive, browser-based login. The resulting session is
+  shared across the desktop app and the CLI on the same machine and refreshes
+  like a normal user session. Best when a human can complete a consent screen
+  and the surface runs on a trusted local machine.
+- **`USER_TOKEN`** — a durable, user-owned credential that needs no browser flow.
+  It is the right choice for headless, cloud, or CI environments, and for any CLI
+  that runs separately from the desktop app.
+
+| Situation | Use |
+| --- | --- |
+| Desktop app on your machine | OAuth |
+| CLI on the same machine as the desktop app | OAuth (shared session) |
+| CLI in a separate container or remote target | `USER_TOKEN` |
+| Cloud / hosted agent over MCP, OAuth-capable runtime | OAuth |
+| Cloud / hosted agent over MCP, OAuth unreliable | `USER_TOKEN` |
+
+## Sign in from the CLI
+
+On the same machine as the desktop app, the CLI reuses the shared session
+automatically. Otherwise:
+
+```bash
+ovld auth login          # browser-based OAuth
+ovld auth status         # confirm identity and backend
+```
+
+Login stores your identity only — the CLI is workspace-agnostic and keeps no
+default organization. Each command resolves its organization from the mission id
+(for example `1:1263`), an explicit `--organization-id`, or your membership.
+
+## Create and scope a USER_TOKEN
+
+```bash
+ovld user-token create --label "CI runner" --scope mission-lifecycle
+```
+
+Every token is created with a scope:
+
+- **`full`** — inherits the full permissions of the owner's roles in each
+  workspace.
+- **`mission_lifecycle`** — restricted to exactly what a runner or agent needs
+  (project read, mission/objective/session/event/artifact/attachment actions, and
+  execution-request create/read/claim). It excludes administration and cannot
+  mint further tokens.
+
+A token is never more powerful than its owner: effective permissions are the
+owner's role grants in the active workspace intersected with the token's scope.
+If the owner's role is reduced or they lose access to a workspace, the token
+loses that access too. Provide the token to the CLI or agent runtime through the
+`OVERLORD_USER_TOKEN` environment variable.
+
+## When a call returns 401
+
+Repair the shared credentials before signing in again:
+
+```bash
+ovld auth repair
+ovld auth login   # only if repair does not resolve it
+```
+
+Missing access to a specific project or target is an **authorization** result,
+not an auth failure — signing in establishes identity, not blanket access.
+
+For the full identity model, scope reference, MCP OAuth details, and a
+failure-by-failure troubleshooting playbook, see
+[Docs for agents → Authentication & troubleshooting](/docs-for-agents/authentication/).

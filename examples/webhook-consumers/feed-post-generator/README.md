@@ -3,7 +3,7 @@
 A complete, runnable webhook consumer that rebuilds the upstream Overlord
 `generate-feed-post` pipeline as independent software, driven by an Overlord
 mission-data webhook instead of living inside the Overlord repository. See
-[`docs/webhooks.md`](../../../docs/webhooks.md) for the full contract this
+[`developer-instructions/webhooks.md`](../../../developer-instructions/webhooks.md) for the full contract this
 implements.
 
 This directory is **not** part of the Overlord Yarn workspace — it's meant to

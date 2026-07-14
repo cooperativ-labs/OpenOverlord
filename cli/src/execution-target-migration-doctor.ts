@@ -51,6 +51,6 @@ export function buildExecutionTargetMigrationDoctorCheck({
     detail:
       `${targetSummary} use the hosted backend/container hostname fingerprint and cannot run checkout-local work.` +
       queueSummary +
-      ' In the web app, open Project Settings → Resources, re-select your client device as the execution target, re-link the primary resource to that target, and clear or re-queue stale execution requests. See docs/upgrading-client-checkout-bridge.md.'
+      ' In the web app, open Project Settings → Resources, re-select your client device as the execution target, re-link the primary resource to that target, and clear or re-queue stale execution requests. See developer-instructions/upgrading-client-checkout-bridge.md.'
   };
 }

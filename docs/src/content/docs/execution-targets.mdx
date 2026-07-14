@@ -3,6 +3,93 @@ title: Execution targets
 description: Choose where agent work runs.
 ---
 
-An execution target is a machine or service that can run an objective. A project can expose more than one target, while each launch uses an eligible target for the acting member.
+Overlord needs to know **where** agent work runs: your laptop, a remote
+workstation, a devbox, or a hosted runner. That machine or environment is an
+**execution target**. The checkout path for a project on that target is a
+**project resource directory**. Together they let the runner resolve a
+consistent working directory for every launch.
 
-Keep target access and availability current in workspace settings. If a mission is queued but does not start, check that its project and agent have an available target.
+A project can expose more than one target, and each launch uses an eligible
+target for the acting member. If a mission is queued but does not start, check
+that its project has an available target and a linked directory on it.
+
+## Core concepts
+
+| Concept | What it is |
+| --- | --- |
+| **Execution target** | A machine or environment agents execute on, identified by a device fingerprint (not a label). |
+| **Project resource directory** | A checkout path for a project on a specific target. |
+| **Primary resource** | The default directory used when a launch does not name an explicit resource. There is one primary per **(project, target)** pair. |
+
+An execution target is **not** owned by a single user or organization. The same
+physical machine can appear in multiple organizations with different labels;
+identity is the fingerprint, so two VMs on one host are two targets.
+
+## Local vs remote targets
+
+**Local targets** register automatically when the CLI or desktop app runs on the
+machine — the device fingerprint, transport, and hostname are recorded for you.
+
+**Remote targets** can be configured before the machine that will run the work
+has registered: the web app creates the target and its resource directories,
+and when Overlord next runs on that machine it reconciles the real fingerprint
+without changing the target's identity.
+
+## Link a directory to a project
+
+From the repository directory, link the current checkout on this target:
+
+```bash
+ovld add-cwd --project-id <project-id>
+```
+
+Use `--directory <path>` to link a different folder, `--key <resource-key>` to
+identify the same logical resource across targets, and `--primary true|false`
+to control whether it is the primary. To add a remote Git source instead of a
+local checkout:
+
+```bash
+ovld add-url --url <git-url> --project-id <project-id>
+```
+
+## Primary resource semantics
+
+**Primary** means "use this path when the execution request does not specify a
+resource." A few rules keep it predictable:
+
+- At most one primary per `(project, target)` pair.
+- Primary is project topology, not per-user — teammates on the same project and
+  target share the same primary checkout path.
+- The first directory added for a `(project, target)` auto-promotes to primary.
+  If you remove the primary, the next oldest directory is promoted automatically.
+
+## Target ownership
+
+Who may manage directories on a target depends on how the target is owned:
+
+- **Personal** (owned by a user) — only the owner may add, remove, or change the
+  primary for any project on that target within the organization.
+- **Organization-owned** — any user with an **ADMIN** or **MANAGER** role on the
+  project may manage directories; **VIEWER** is read-only.
+
+In both cases every member can read the primary so they can see the project's
+working directory. Self-registered local targets default to personal ownership;
+targets added from the web app can be organization-owned.
+
+## How targets reach the runner
+
+When you click **Run** or auto-advance enqueues an objective, the execution
+request stores which target should run the agent and, optionally, which
+resource. The runner claims requests whose target matches its fingerprint and
+resolves the working directory in priority order:
+
+1. an explicit working directory on the request
+2. the named resource, verified to live on the claiming target
+3. the primary directory for the `(project, target)` pair
+
+If no primary is found the request is skipped and an event is recorded, rather
+than launching in an unknown directory.
+
+See [Retries and blocked work](/retries-and-blocked-work/) for the full queue
+lifecycle, and [Terminal and IDE preferences](/terminal-and-ide/) for the
+per-target terminal profile and launch settings.

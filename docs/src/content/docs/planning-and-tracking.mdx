@@ -3,8 +3,76 @@ title: Plan and track work
 description: Turn a goal into visible, reviewable agent work.
 ---
 
-Use a mission for the outcome and objectives for the next concrete steps. A useful sequence is: plan, implement, test, and review.
+Use a mission for the outcome and objectives for the next concrete steps. A
+useful sequence is: plan, implement, test, and review. Each of those can be its
+own objective on the same mission, so the record stays together.
 
-The mission activity feed shows updates and decisions as the work progresses. The objective state tells you whether work is queued, running, waiting for input, or delivered.
+The mission activity feed shows updates and decisions as the work progresses.
+The objective state tells you whether work is queued, running, waiting for
+input, or delivered.
 
-Keep objectives narrow enough that an agent can finish and explain one pass. Put important constraints in the objective so they travel with the work.
+Keep objectives narrow enough that an agent can finish and explain one pass.
+Put important constraints in the objective so they travel with the work.
+
+## What a mission holds
+
+A mission is the higher-level goal on the board. It can carry:
+
+- a title and one or more objectives that share context
+- acceptance criteria
+- status and priority
+- project assignment and execution-target information
+- creator and assignee attribution
+- read / unread state per reviewer
+- delivery artifacts and history
+
+Attachments are added to a **specific objective**, not the mission in the
+abstract — that keeps files tied to the instruction they support (a screenshot
+for a bug-fix objective, a spec for an implementation objective, logs for an
+investigation).
+
+## When to add a new objective
+
+Add another objective when the scope changes in a meaningful way, for example:
+
+- the first pass was "spike a design" and the next pass is "implement it"
+- implementation is done and you want a dedicated review or hardening pass
+- follow-up work appeared after delivery and should stay on the same record
+
+You do not need a new mission for every follow-up if the work still belongs to
+the same story. Use a new mission only when the goal itself is unrelated.
+
+## Lifecycle statuses
+
+Missions and objectives move through explicit lifecycle states so humans and
+agents share the same view of where work stands:
+
+`draft` → `next-up` → `execute` → `review` → `deliver` → `complete`
+
+Work can also enter `blocked` (waiting on a human decision) or `cancelled`. A
+draft objective becomes `submitted` when it is under active discussion with an
+agent, and `executing` once an agent attaches to run it.
+
+## Create and order work from the CLI
+
+```bash
+# Draft a mission to plan before running
+ovld create "Investigate intermittent sign-in failures"
+
+# Create and queue an objective immediately
+ovld prompt "Investigate intermittent sign-in failures"
+
+# Add ordered follow-up objectives to an existing mission
+ovld protocol add-objectives --mission-id <mission-id> \
+  --objectives-json '[{"objective":"Implement the retry"},{"objective":"Add tests"}]'
+```
+
+You can also add and reorder objectives visually in the web or desktop app.
+
+## Good mission shape
+
+Keep the work specific enough that an agent can act without guessing, but not so
+large that the scope becomes unclear. A clear objective and an assigned project
+are usually enough to launch.
+
+Next: [Missions and collaboration](/missions-and-collaboration/)

@@ -35,8 +35,8 @@ Read these files first in the downstream repo:
 - `contract/components.yaml`
 - `contract/extension-points.yaml`
 - `contract/conformance-manifest.schema.yaml`
-- `docs/upstream-adoption.md`
-- `docs/custom-instance-setup.md`
+- `developer-instructions/upstream-adoption.md`
+- `developer-instructions/custom-instance-setup.md`
 - `planning/feature-plans/desktop-app-module.md`
 - `planning/feature-plans/desktop-app-packaging.md`
 - `README.md`
@@ -46,7 +46,7 @@ The current upstream preparation that matters for downstream work:
 - The repo is contract-first. Component ownership and sanctioned interaction
   surfaces are in `CONTRACT.md` and `contract/components.yaml`.
 - Customized downstream repos are expected to track upstream with a normal
-  remote. See `docs/upstream-adoption.md`.
+  remote. See `developer-instructions/upstream-adoption.md`.
 - Local SQLite now defaults to the per-user global path
   `~/.ovld/Overlord.sqlite`, with `OVLD_HOME` to relocate the global directory
   and `OVERLORD_SQLITE_PATH` to override the full file path.
@@ -585,7 +585,7 @@ Use this prompt when handing off the downstream setup:
 
 ```text
 You are working in the closed downstream fork of OpenOverlord. Read
-CONTRACT.md and docs/downstream-fork-agent-setup.md first. Set up Overlord Lite
+CONTRACT.md and developer-instructions/downstream-fork-agent-setup.md first. Set up Overlord Lite
 as a downstream-owned Electron client shell that wraps the existing webapp and
 ships the CLI. Preserve upstream module boundaries. Start with the contract
 patch and scaffold before writing Electron implementation code. Do not add Lite

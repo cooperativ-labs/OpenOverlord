@@ -3,12 +3,45 @@ title: Core concepts
 description: Learn how work is organized in Overlord.
 ---
 
-Overlord keeps the request, the agent activity, and the final review record together.
+Overlord keeps the request, the agent activity, and the final review record
+together. A few durable objects hold everything in place.
 
 - **Workspace:** The shared home for people, projects, permissions, and execution targets.
 - **Project:** The place where related work is organized and where repositories or other resources are linked.
-- **Mission:** A durable goal or ticket that can contain multiple steps.
-- **Objective:** One focused step in a mission, usually handled by one agent run.
+- **Mission:** A durable goal that can contain multiple steps. It carries status, priority, shared context, history, reviewers, and delivery artifacts for a feature, bug fix, investigation, or review thread.
+- **Objective:** One focused step in a mission, usually handled by one agent run. It is the unit of work an agent actually receives: the prompt for this pass, the chosen agent and model, attachments, and the checkpoint.
 - **Delivery:** The agent's handoff, including its summary, artifacts, changed files, and rationale.
 
-Start with a project, create a mission, launch an objective, and review the delivery. Add another objective when the work needs a follow-up.
+## The normal flow
+
+1. Create a mission for the outcome you want.
+2. Add the first objective to describe the next concrete task.
+3. Choose an agent, attach any files, and launch or queue it.
+4. The agent works and reports progress back to Overlord.
+5. Review updates, answer questions, and evaluate the delivery.
+6. The mission stays as the durable record, and you add another objective when a follow-up pass is needed.
+
+Start with a project, create a mission, launch an objective, and review the
+delivery. Add another objective when the work needs a follow-up.
+
+## Missions contain objectives
+
+Think of the mission as the durable container and each objective as the next
+instruction in that same work thread. When you launch an agent you send the
+**current objective**, not just a free-floating title — that is why objectives
+are the unit of work while the mission stays the shared-context record for the
+higher-level goal.
+
+Keeping planning, implementation, review, and follow-up passes on one mission
+means you never have to open a new chat or restate the full history. Each
+objective can use a different agent or model, and every pass inherits the same
+context.
+
+## What this model gives you
+
+- a shared system of record for humans and agents
+- less prompt drift across tools
+- clearer handoffs between human and agent work
+- a reliable surface to review before anything lands
+
+Next: [Missions and objectives](/missions/)

@@ -9,7 +9,7 @@ Overlord can push signed HTTP deliveries to an external endpoint on mission even
 software (a feed-post generator, a memory ingester, a production-test trigger, anything else) can
 react without living inside this repository or its runtime.
 
-**Read [`docs/webhooks.md`](../../../docs/webhooks.md) before doing any of the following:**
+**Read [`developer-instructions/webhooks.md`](../../../developer-instructions/webhooks.md) before doing any of the following:**
 
 - Building or debugging a webhook consumer (signature verification, payload envelope, retry/
   idempotency semantics, thin-vs-full payload mode, the REST pull path for anything a `thin`

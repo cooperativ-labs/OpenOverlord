@@ -55,6 +55,8 @@ The contract version is incremented when any stable interface changes. All confo
 
 Each component owns a defined set of responsibilities. No component may directly access another's internals — use only the declared interaction surfaces.
 
+For a narrative reading order over the per-module reference specs cited below, see the [Architecture reading-order index](docs/src/content/docs/docs-for-agents/architecture.mdx) (published in the docs site under **Docs for agents → Architecture**). The `NN-` numbers on those specs are stable identifiers, not a reading order.
+
 ### 1. Protocol Layer
 
 **Stable identifier**: `protocol`

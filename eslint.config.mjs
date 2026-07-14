@@ -67,7 +67,7 @@ export default [
           'webapp/tsconfig.json',
           'cli/tsconfig.json',
           'desktop/tsconfig.json',
-          'docs-site/tsconfig.json'
+          'docs/tsconfig.json'
         ],
         ecmaVersion: 2022,
         sourceType: 'module',

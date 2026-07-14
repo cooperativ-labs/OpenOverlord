@@ -3,10 +3,21 @@ title: Glossary
 description: Short definitions for common Overlord terms.
 ---
 
-- **Agent:** The coding tool that performs an objective.
-- **Connector:** The integration that lets an agent attach, update, ask, and deliver.
-- **Mission:** A durable record for a larger goal.
-- **Objective:** One actionable step within a mission.
+- **Workspace:** The shared home for people, projects, permissions, and execution targets. Often called an organization.
+- **Project:** Where related work is organized and where repositories or other resources are linked.
+- **Mission:** A durable record for a larger goal. It holds status, priority, shared context, history, and delivery artifacts.
+- **Objective:** One actionable step within a mission — the unit of work an agent receives for a single pass.
+- **Agent:** The coding tool that performs an objective (Claude Code, Codex, Cursor, and others).
+- **Connector / plugin:** The integration that lets an agent attach, update, ask, and deliver through the Overlord protocol.
+- **Session:** One agent's attachment to an objective, identified by a session key.
+- **Delivery:** The completed handoff from an agent, including its summary, artifacts, changed files, and rationale.
+- **Change rationale:** A structured, per-file record of what changed, why, and its impact.
+- **Checkpoint:** A snapshot of the working tree that anchors review and file-change rationale to a known repository state.
+- **Shared context:** A persistent, mission-scoped key/value store for durable facts that future sessions should know.
+- **Artifact:** A file or structured payload attached to a mission, such as test results, a note, or a next-steps list.
 - **Project resource:** A repository, checkout, or other source associated with a project.
-- **Execution target:** A machine or service where an objective runs.
-- **Delivery:** The completed handoff from an agent.
+- **Execution target:** A machine or environment where an objective runs, identified by a device fingerprint.
+- **Primary resource:** The default directory used for a launch when no explicit resource is named — one per (project, target) pair.
+- **Runner:** The local `ovld runner` process that claims queued execution requests and launches agents.
+- **Execution request:** A durable queue row that tells a runner which objective to launch, where, and how.
+- **USER_TOKEN:** A durable, user-owned credential used by the CLI, agents, runners, and API clients.

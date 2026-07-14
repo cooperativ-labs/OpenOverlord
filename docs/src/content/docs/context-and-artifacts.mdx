@@ -3,6 +3,62 @@ title: Context and artifacts
 description: Understand what an agent receives and returns.
 ---
 
-Agents receive the objective together with relevant mission history and project context. They can add progress notes, questions, links, screenshots, test results, and other artifacts while working.
+Agents receive the objective together with relevant mission history and project
+context. They can add progress notes, questions, links, screenshots, test
+results, and other artifacts while working.
 
-At delivery, inspect the artifacts alongside the changed files and rationale. Artifacts support the handoff; they do not replace a clear delivery summary.
+At delivery, inspect the artifacts alongside the changed files and rationale.
+Artifacts support the handoff; they do not replace a clear delivery summary.
+
+## Shared mission context
+
+Shared context is a persistent key/value store scoped to a mission. Agents use
+it to hand off durable facts that future sessions on the same mission should
+know — architecture notes, a deploy target, the path to environment secrets —
+rather than conversation history. It survives when work pauses, resumes later,
+or moves between agent runtimes.
+
+## Change rationales
+
+Change rationales are the first-class record of *what* changed and *why*. They
+are stored as structured rows, not free-form text, and each covers one file:
+
+- a short reviewer title
+- the file path
+- what changed, why it changed, and the behavioral impact
+- optional diff-hunk headers
+
+Agents cover every meaningful change with a rationale (formatting-only noise can
+be skipped), so review reads as a clear story instead of a wall of diff.
+
+## Checkpoints
+
+A **checkpoint** is a snapshot of the working tree after meaningful edits —
+think "save game" for the repository state the agent is using. Checkpoints give
+Overlord a stable anchor for review: which tree was live when rationales were
+recorded, and what reviewers should diff against. Delivery creates or updates a
+checkpoint automatically when a Git snapshot is available and links the rationale
+rows to it.
+
+## Artifacts
+
+Artifacts are files or structured payloads attached to a mission. Delivery
+artifacts are structured entries such as `next_steps`, `test_results`,
+`migration`, `note`, `url`, and `decision`. User-uploaded files are attached to a
+**specific objective**, not the mission in the abstract, so a spec or screenshot
+stays tied to the instruction it supports.
+
+## Inspect context from the CLI
+
+```bash
+ovld mission context <mission-id>
+ovld mission artifacts <mission-id>
+ovld mission rationales <mission-id>
+ovld changes status --mission-id <mission-id>
+```
+
+For the exact protocol payloads and agent-side commands, see
+[Docs for agents → The agent protocol](/docs-for-agents/agent-protocol/).
+
+Related: [Review deliveries](/reviewing-work/) ·
+[Missions and collaboration](/missions-and-collaboration/)

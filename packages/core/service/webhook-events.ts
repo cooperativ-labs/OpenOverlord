@@ -25,7 +25,7 @@ export function isWebhookEventType(value: string): value is WebhookEventType {
 /** `outbox_messages.topic` value declared for this feature (open vocabulary). */
 export const WEBHOOK_OUTBOX_TOPIC = 'webhook.deliver.v1';
 
-/** Envelope schema version carried on every delivered payload (see docs/webhooks.md). */
+/** Envelope schema version carried on every delivered payload (see developer-instructions/webhooks.md). */
 export const WEBHOOK_API_VERSION = '2026-07-01';
 
 export type WebhookPayloadMode = 'thin' | 'full';

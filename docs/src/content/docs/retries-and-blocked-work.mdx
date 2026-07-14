@@ -3,6 +3,69 @@ title: Retries and blocked work
 description: Recover cleanly when an agent run needs another attempt.
 ---
 
-If an agent fails or needs a correction, add a follow-up objective to the same mission. The next run inherits the earlier request, decisions, and delivery record.
+If an agent fails or needs a correction, add a follow-up objective to the same
+mission. The next run inherits the earlier request, decisions, and delivery
+record.
 
-When the agent is blocked on a decision, answer the mission question before restarting it. If the execution environment is unavailable, check `ovld doctor` and `ovld runner status` first.
+When the agent is blocked on a decision, answer the mission question before
+restarting it. If the execution environment is unavailable, check `ovld doctor`
+and `ovld runner status` first.
+
+## How a run reaches an agent
+
+Overlord decides *what* should run by writing a durable row to the execution
+request queue. A machine capable of running agents runs the **terminal runner**
+(`ovld runner`) to claim these rows and launch the agent locally. The backend
+never opens a shell on your machine — if no runner is running, the request stays
+queued until something on a capable host runs `ovld runner start` or
+`ovld runner once`, or a human copies the fallback launch command from the UI.
+
+An execution request moves through explicit states:
+
+| Status | Meaning |
+| --- | --- |
+| `queued` | Waiting for a runner that matches the target machine. |
+| `claimed` | Leased by a runner that is preparing to launch. |
+| `launching` | The launch process started, but no agent has attached yet. |
+| `launched` | An agent attached and created its session. |
+| `failed` | A spawn error, or a stalled launch whose lease expired before any agent attached. |
+
+## Stalled launches are not auto-retried
+
+If a runner claims a request but the agent never attaches — the runner crashed,
+the launch errored, or the terminal was closed — the lease eventually expires.
+Overlord does **not** silently re-claim it (that produced an annoying relaunch
+loop). Instead it marks the request `failed`, clears it from the queue, and
+notifies you so you can relaunch manually with a Retry action.
+
+At most one active request exists per objective, so clicking **Run** again on an
+objective that already has an active request re-queues that request rather than
+creating a duplicate.
+
+## Recover a stuck or failed run
+
+1. Confirm a runner is available: `ovld runner status`.
+2. Confirm the local setup is healthy: `ovld doctor`.
+3. Answer any open mission question so the agent is no longer blocked.
+4. Relaunch the objective from the UI, or from the terminal:
+
+   ```bash
+   ovld launch <agent> --mission-id <mission-id>
+   ```
+
+5. If a queue row is stuck, clear it and re-run:
+
+   ```bash
+   ovld runner clear <objective-id>
+   ovld runner once
+   ```
+
+## Correcting delivered work
+
+When a delivery needs another pass, do not restart from scratch. Add a follow-up
+objective to the same mission so the next agent inherits the prior objective
+history, shared context, and review record. Use a new mission only when the goal
+itself is unrelated.
+
+Related: [Execution targets](/execution-targets/) ·
+[Review deliveries](/reviewing-work/) · [Troubleshooting](/troubleshooting/)

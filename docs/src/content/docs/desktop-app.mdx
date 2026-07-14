@@ -3,6 +3,51 @@ title: Desktop app
 description: Use the local Overlord experience.
 ---
 
-The desktop app is the simplest way to run Overlord locally. It can host or connect to the local backend, open your configured terminal, and show the same mission and delivery record as the web surface.
+The desktop app is a thin local wrapper around the web app with access to your
+machine. It can host or connect to the local backend, open your configured
+terminal, and show the same mission and delivery record as the web surface.
 
 Use the CLI when you need repeatable setup or automation.
+
+## What it adds
+
+The desktop app provides local capabilities a browser cannot:
+
+- a direct connection to your local terminal
+- linking Overlord projects to repository folders on your machine
+- launching agents into those repositories
+- embedded terminal sessions with configurable tmux profiles
+- AI-assisted Git commit messages and push from the Current Changes view
+- per-user agent configuration synced through Overlord
+- local notifications
+
+## Bundled agent connectors
+
+The desktop app packages the Overlord-managed connectors so agents such as
+Claude and Codex can work on missions from their native surfaces. Install them
+from **Settings → CLI & Local Agents**, or use the CLI equivalents:
+
+```bash
+ovld agent-setup claude
+ovld agent-setup codex
+```
+
+Rerun the prepare step (or `ovld agent-setup <agent>`) after an Overlord update
+to keep the local connector files in sync. See
+[Agents and connectors](/agents/) for the full connector list and slash
+commands.
+
+## Change viewer
+
+The desktop app includes a built-in diff browser for linked repositories. Open a
+project's **Current Changes** view to:
+
+- inspect uncommitted files and their status
+- view the unified diff for any file
+- read the rationale attached to changed hunks
+
+That rationale comes from agent deliveries and explains *why* a change was made,
+which makes review far faster than reading raw terminal output.
+
+Related: [Web app](/web-app/) · [Review deliveries](/reviewing-work/) ·
+[Data boundaries](/data-boundaries/)

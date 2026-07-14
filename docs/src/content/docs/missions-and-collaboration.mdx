@@ -3,6 +3,62 @@ title: Missions and collaboration
 description: Keep team discussion attached to the work it explains.
 ---
 
-Create a mission when a request needs a durable owner, history, or handoff. Use updates for progress and decisions, and ask a question when an agent cannot safely continue.
+Create a mission when a request needs a durable owner, history, or handoff. Use
+updates for progress and decisions, and ask a question when an agent cannot
+safely continue.
 
-Because discussion stays on the mission, another teammate or agent can pick up the work without reconstructing context from chat or terminal logs.
+Because discussion stays on the mission, another teammate or agent can pick up
+the work without reconstructing context from chat or terminal logs.
+
+## What streams into a mission
+
+While an agent is working, the mission can receive:
+
+- session state updates
+- progress summaries
+- blocking questions
+- follow-up messages
+- final delivery events
+
+The board streams these in real time, and missions track read / unread state
+per reviewer so it is easy to see what needs attention since you last looked.
+
+## Human-in-the-loop questions
+
+When an agent is blocked on a decision, it publishes a question to the mission
+and stops working the blocked path. You can respond directly in the mission and
+keep the work moving without losing context. Answer the question before
+restarting the run.
+
+Ask when a decision would change the shape of the delivery — an API surface, a
+data model, or a migration direction — and the objective does not specify it.
+When the objective or prior context already answers a question, the agent
+decides and records the reasoning in its next update.
+
+## Shared context that survives sessions
+
+Missions support a persistent, mission-scoped shared context so useful facts
+survive across sessions. It is a small key/value store for durable facts —
+architecture notes, deploy targets, the path to environment secrets — not
+conversation history.
+
+```bash
+# An agent writes a fact for future sessions
+ovld protocol write-context --session-key <key> --mission-id <mission-id> \
+  --key "deploy.target" --value '{"provider":"vercel","project":"overlord-web"}'
+
+# And reads it back later
+ovld protocol read-context --session-key <key> --mission-id <mission-id>
+```
+
+That helps when work pauses, resumes later, or moves between different agent
+runtimes. See [Context and artifacts](/context-and-artifacts/) for the full
+picture of what agents read and write.
+
+## Handoffs
+
+The mission record makes handoffs straightforward: start the next objective with
+a different agent, and it receives the mission context — original goal,
+decisions, artifacts, and prior delivery — instead of starting cold.
+
+Next: [Review deliveries](/reviewing-work/)

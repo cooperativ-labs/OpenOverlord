@@ -277,7 +277,7 @@ production or Cloud workspaces.
 
 **Upgrading Cloud workspaces:** if your workspace predates the client checkout
 bridge, run `ovld doctor` against your hosted backend and follow
-[`docs/upgrading-client-checkout-bridge.md`](upgrading-client-checkout-bridge.md)
+[`developer-instructions/upgrading-client-checkout-bridge.md`](upgrading-client-checkout-bridge.md)
 when stale backend-host execution targets are reported.
 
 ---
