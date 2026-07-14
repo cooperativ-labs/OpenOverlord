@@ -17,6 +17,16 @@ const remoteFetchOptions = isRemoteBackend()
     }
   : {};
 
+/**
+ * OAuth initiation must retain Better Auth's short-lived state cookie. Remote
+ * API calls normally omit cookies in favour of bearer sessions, but doing that
+ * for the social sign-in request means the browser cannot return the state
+ * cookie when the provider redirects to the callback.
+ */
+export function socialSignInFetchOptions(): { credentials: RequestCredentials } {
+  return { credentials: 'include' };
+}
+
 export const authClient = createAuthClient({
   baseURL: getAuthBaseUrl(),
   basePath: '/api/auth',

@@ -12,7 +12,12 @@ import {
   isDesktopRemoteBackend,
   persistAuthSessionFromSignInResult
 } from '@/lib/api-base';
-import { authClient, normalizeEmail, validateEmail } from '@/lib/auth-client';
+import {
+  authClient,
+  normalizeEmail,
+  socialSignInFetchOptions,
+  validateEmail
+} from '@/lib/auth-client';
 
 type AuthMode = 'sign-in' | 'create-account';
 
@@ -120,25 +125,28 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
     setGithubPending(true);
     try {
       const desktopRemote = isDesktopRemoteBackend();
+      if (desktopRemote) {
+        if (!window.overlord?.openExternal) {
+          throw new Error('Unable to open GitHub sign-in in your default browser.');
+        }
+        const opened = await window.overlord.openExternal(
+          `${getAuthBaseUrl()}/api/auth/desktop/github`
+        );
+        if (!opened) throw new Error('Unable to open GitHub sign-in in your default browser.');
+        return;
+      }
+
       const result = await authClient.signIn.social({
         provider: 'github',
-        callbackURL: desktopRemote
-          ? `${getAuthBaseUrl()}/api/auth/desktop/callback`
-          : window.location.origin,
-        ...(desktopRemote ? { disableRedirect: true } : {})
+        callbackURL: window.location.origin,
+        // Better Auth persists the OAuth state in a cookie before redirecting
+        // to GitHub. This must override the remote client's usual
+        // credentials: 'omit' policy for this one bootstrap request.
+        fetchOptions: socialSignInFetchOptions()
       });
       if (result.error) {
         setError(result.error.message ?? 'GitHub sign-in failed.');
         setGithubPending(false);
-        return;
-      }
-      if (desktopRemote) {
-        const authorizationUrl = result.data?.url;
-        if (!authorizationUrl || !window.overlord?.openExternal) {
-          throw new Error('Unable to open GitHub sign-in in your default browser.');
-        }
-        const opened = await window.overlord.openExternal(authorizationUrl);
-        if (!opened) throw new Error('Unable to open GitHub sign-in in your default browser.');
         return;
       }
       // On success the browser navigates away; leave the spinner up.

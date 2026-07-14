@@ -53,6 +53,7 @@ import { createEverhourExtensionRouter } from './ext/everhour/routes.ts';
 import { createGitHubExtensionRouter } from './ext/github/routes.ts';
 import { isAllowedBrowserOrigin } from './http/browser-origins.ts';
 import { buildMeta } from './http/meta.ts';
+import { resolveAuthBaseUrl } from './http/public-backend-url.ts';
 import { resolveServeSpa } from './http/serve-spa.ts';
 import {
   getSqlStudioState,
@@ -76,6 +77,7 @@ import {
   WORKSPACE
 } from './db.ts';
 import {
+  beginDesktopGitHubOAuth,
   consumeDesktopOAuthHandoff,
   createDesktopOAuthHandoff,
   desktopOAuthCallbackUrl
@@ -301,6 +303,26 @@ app.use(
 // Better Auth owns `/api/auth/*` except this browser-to-desktop handoff. The
 // browser session becomes a one-time opaque ticket; only Electron main may
 // exchange it for the session token, so no credential is placed in the URL.
+app.get('/api/auth/desktop/github', async (_req, res, next) => {
+  try {
+    const oauthResponse = await beginDesktopGitHubOAuth(auth, resolveAuthBaseUrl());
+    if (!oauthResponse.ok) {
+      const body = await oauthResponse.text();
+      res.status(oauthResponse.status).type('application/json').send(body);
+      return;
+    }
+
+    const payload = (await oauthResponse.json()) as { url?: unknown };
+    if (typeof payload.url !== 'string' || !payload.url) {
+      throw new Error('Better Auth did not return a GitHub authorization URL');
+    }
+    for (const cookie of oauthResponse.headers.getSetCookie()) res.append('Set-Cookie', cookie);
+    res.redirect(302, payload.url);
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get('/api/auth/desktop/callback', async (req, res, next) => {
   try {
     const browserSession = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });

@@ -19,6 +19,10 @@ import {
 } from '../components/ui/dialog.tsx';
 import { api } from '../lib/api.ts';
 import { readLastUsedProjectId, writeLastUsedProjectId } from '../lib/last-used-project.ts';
+import {
+  readMyMissionsWorkspaceFilter,
+  writeMyMissionsWorkspaceFilter
+} from '../lib/org-preferences.ts';
 import { firstObjectiveCreatePayload } from '../lib/project-resources.ts';
 import {
   keys,
@@ -89,6 +93,7 @@ export function MyMissionsPage() {
   const workspaces = useMemo(() => meta.data?.workspaces ?? [], [meta.data]);
   const workspaceIds = useMemo(() => workspaces.map(workspace => workspace.id), [workspaces]);
   const activeWorkspaceId = meta.data?.workspace?.id ?? null;
+  const activeOrganizationId = meta.data?.organization?.id ?? null;
 
   // My Missions aggregates across every workspace of the active organization, so
   // statuses and members are fetched per workspace and merged. These share query
@@ -112,6 +117,9 @@ export function MyMissionsPage() {
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedStatusKeys, setSelectedStatusKeys] = useState<string[]>([]);
   const [selectedWorkspaceIds, setSelectedWorkspaceIds] = useState<string[]>([]);
+  const [workspaceFilterOrganizationId, setWorkspaceFilterOrganizationId] = useState<string | null>(
+    null
+  );
   const [dropError, setDropError] = useState<{ statusName: string; workspaceName: string } | null>(
     null
   );
@@ -198,11 +206,46 @@ export function MyMissionsPage() {
   }, [selectedStatusKeys, merged.columns]);
 
   useEffect(() => {
-    if (selectedWorkspaceIds.length === 0) return;
+    setSelectedWorkspaceIds(
+      activeOrganizationId ? readMyMissionsWorkspaceFilter(activeOrganizationId) : []
+    );
+    setWorkspaceFilterOrganizationId(activeOrganizationId);
+  }, [activeOrganizationId]);
+
+  useEffect(() => {
+    if (
+      workspaceFilterOrganizationId !== activeOrganizationId ||
+      !myMissionsQ.data ||
+      selectedWorkspaceIds.length === 0
+    ) {
+      return;
+    }
     const validIds = new Set(workspaceFilterOptions.map(workspace => workspace.id));
     const next = selectedWorkspaceIds.filter(id => validIds.has(id));
-    if (next.length !== selectedWorkspaceIds.length) setSelectedWorkspaceIds(next);
-  }, [selectedWorkspaceIds, workspaceFilterOptions]);
+    if (next.length !== selectedWorkspaceIds.length) {
+      setSelectedWorkspaceIds(next);
+      if (activeOrganizationId) writeMyMissionsWorkspaceFilter(activeOrganizationId, next);
+    }
+  }, [
+    activeOrganizationId,
+    myMissionsQ.data,
+    selectedWorkspaceIds,
+    workspaceFilterOptions,
+    workspaceFilterOrganizationId
+  ]);
+
+  const updateSelectedWorkspaceIds = useCallback(
+    (update: (current: string[]) => string[]) => {
+      setSelectedWorkspaceIds(current => {
+        const next = update(current);
+        if (activeOrganizationId && workspaceFilterOrganizationId === activeOrganizationId) {
+          writeMyMissionsWorkspaceFilter(activeOrganizationId, next);
+        }
+        return next;
+      });
+    },
+    [activeOrganizationId, workspaceFilterOrganizationId]
+  );
 
   const selectedTagIdSet = useMemo(() => new Set(selectedTagIds), [selectedTagIds]);
   const selectedStatusKeySet = useMemo(() => new Set(selectedStatusKeys), [selectedStatusKeys]);
@@ -255,8 +298,8 @@ export function MyMissionsPage() {
   const clearFilters = useCallback(() => {
     setSelectedTagIds([]);
     setSelectedStatusKeys([]);
-    setSelectedWorkspaceIds([]);
-  }, []);
+    updateSelectedWorkspaceIds(() => []);
+  }, [updateSelectedWorkspaceIds]);
 
   // Bucket every mission into its merged column (like-named statuses across
   // workspaces collapse into one). Any mission whose status isn't an active
@@ -528,9 +571,9 @@ export function MyMissionsPage() {
             <MissionWorkspaceFilterDropdown
               workspaces={workspaceFilterOptions}
               selectedWorkspaceIds={selectedWorkspaceIds}
-              onClear={() => setSelectedWorkspaceIds([])}
+              onClear={() => updateSelectedWorkspaceIds(() => [])}
               onToggle={workspaceId =>
-                setSelectedWorkspaceIds(current =>
+                updateSelectedWorkspaceIds(current =>
                   current.includes(workspaceId)
                     ? current.filter(id => id !== workspaceId)
                     : [...current, workspaceId]

@@ -20,7 +20,6 @@ declare global {
 }
 
 let activeBackend: DesktopBackendInfo | null = null;
-let userToken: string | null = null;
 let sessionToken: string | null = null;
 
 const BROWSER_SESSION_TOKEN_STORAGE_PREFIX = 'overlord:auth:session-token';
@@ -156,9 +155,6 @@ async function loadStoredTokensForActiveBackend(): Promise<void> {
   if (bridge.getSessionToken) {
     sessionToken = await bridge.getSessionToken(activeBackend.id);
   }
-  if (bridge.getBearerToken) {
-    userToken = await bridge.getBearerToken(activeBackend.id);
-  }
 }
 
 function initHostedWebApiConfig(): void {
@@ -200,7 +196,7 @@ export async function initApiConfig(): Promise<void> {
 }
 
 function resolveAuthorizationToken(): string | null {
-  return userToken ?? sessionToken;
+  return sessionToken;
 }
 
 export function getAuthorizationHeader(): Record<string, string> | undefined {
@@ -231,35 +227,12 @@ export async function persistAuthSessionToken(token: string): Promise<void> {
   await bridge.setSessionToken({ profileId: activeBackend.id, token: sessionToken });
 }
 
-export async function persistDesktopBearerToken(token: string): Promise<void> {
-  const previous = userToken;
-  userToken = token.trim();
-  if (previous && previous !== userToken) clearActiveWorkspaceId();
-  const bridge = window.overlord;
-  if (!activeBackend || !bridge?.setBearerToken) return;
-  await bridge.setBearerToken({ profileId: activeBackend.id, token: userToken });
-}
-
-export function isCurrentDesktopBearerTokenPrefix(tokenPrefix: string | null | undefined): boolean {
-  const prefix = tokenPrefix?.trim();
-  return Boolean(prefix && userToken?.startsWith(prefix));
-}
-
-export async function clearDesktopBearerToken(): Promise<void> {
-  userToken = null;
-  const bridge = window.overlord;
-  if (!activeBackend || !bridge?.clearBearerToken) return;
-  await bridge.clearBearerToken(activeBackend.id);
-}
-
 export async function clearAuthTokens(): Promise<void> {
-  userToken = null;
   sessionToken = null;
   const bridge = window.overlord;
   clearBrowserSessionToken();
   clearActiveWorkspaceId();
   if (!activeBackend) return;
-  if (bridge?.clearBearerToken) await bridge.clearBearerToken(activeBackend.id);
   if (bridge?.clearSessionToken) await bridge.clearSessionToken(activeBackend.id);
 }
 
@@ -275,7 +248,6 @@ export function getActiveWorkspaceHeader(): Record<string, string> | undefined {
 }
 
 export function clearInMemoryAuthTokens(): void {
-  userToken = null;
   sessionToken = null;
   clearBrowserSessionToken();
   clearActiveWorkspaceId();

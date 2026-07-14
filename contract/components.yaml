@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '7'
+contractVersion: '9'
 
 components:
   protocol:
@@ -124,7 +124,7 @@ components:
       - 'mission branch base metadata resolution: project-configured base first, then the primary resource main worktree checkout for pending branches, with prepared branches tied to the runner-recorded baseBranch payload'
       - 'on-demand branch-action git mutations (POST /api/missions/:id/branch/action: merge-with-parent / push-parent / publish) run host-side against worktrees under ~/.ovld/worktrees and the resource selected by optional resourceKey, defaulting to the primary repo; the Runner Layer owns launching the agent into a worktree, not these mutations'
       - 'REST auth integration points'
-      - 'desktop OAuth handoff: GET /api/auth/desktop/callback derives a short-lived opaque ticket from an authenticated browser session and redirects only to overlord://auth/callback; POST /api/auth/desktop/exchange consumes it once and returns a Better Auth session token only to the Electron main process'
+      - 'desktop OAuth handoff: browser-only GET /api/auth/desktop/github starts only the configured GitHub provider with the fixed desktop callback, so Better Auth writes its OAuth state cookie in the system browser; GET /api/auth/desktop/callback derives a short-lived opaque ticket from an authenticated browser session and redirects only to overlord://auth/callback; POST /api/auth/desktop/exchange consumes it once and returns a Better Auth session token only to the Electron main process'
       - 'SSE/WebSocket realtime endpoint (GET /realtime, compatibility GET /api/stream) and GET /sync/changes?after=<seq> catch-up read'
       - 'SQL Studio launch metadata exposed through /api/meta'
       - 'webhook subscription management (/api/webhooks*: list/create, update/soft-delete, rotate-secret, test, deliveries, redeliver), gated by webhook:* permissions'
@@ -414,7 +414,7 @@ interactionSurfaces:
     rules:
       - 'The shell must not fork or modify the SPA'
       - 'Local mode: Better Auth session cookies work natively on the shared loopback origin; the shell injects no headers and stores no tokens for in-app requests'
-      - 'Remote mode (cross-origin): a per-backend bearer token (safeStorage/keychain) is injected into the SPA API client instead of cross-site cookies, unifying with the CLI USER_TOKEN model; the SPA may send X-Overlord-Active-Workspace for the selected workspace, which the backend validates against workspace_users before scoping the request'
+      - 'Remote mode (cross-origin): only the active profile Better Auth session bearer token (safeStorage/keychain) is injected into the SPA API and realtime clients instead of cross-site cookies; the desktop never reads or mints USER_TOKENs for in-app requests, while spawned CLI/headless clients retain their separate USER_TOKEN credential. The SPA may send X-Overlord-Active-Workspace for the selected workspace, which the backend validates against workspace_users before scoping the request'
       - 'Navigation stays scoped to the shell origin in both modes; the remote REST + wss origins are added to CSP connect-src per the active profile'
       - 'Desktop-only affordances are exposed only via the feature-detected window.overlord preload bridge'
       - 'Remote social OAuth uses an opaque, single-use, short-lived handoff ticket between the backend callback and Electron main; the custom URL and renderer never receive a session, bearer, GitHub access token, or client secret'

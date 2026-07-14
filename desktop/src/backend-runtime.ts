@@ -15,14 +15,7 @@ import {
   setActiveBackendProfileId,
   toPublicProfile
 } from './backend-profiles.js';
-import {
-  clearBearerToken,
-  clearSessionToken,
-  getBearerToken,
-  getSessionToken,
-  setBearerToken,
-  setSessionToken
-} from './backend-token-store.js';
+import { clearSessionToken, getSessionToken, setSessionToken } from './backend-token-store.js';
 import { hydrateLocalDesktopSessionFromCliAuth } from './cli-auth-sync.js';
 import {
   findFreePort,
@@ -134,7 +127,6 @@ export function addRemoteBackend({
 }
 
 export function removeRemoteBackend(id: string): void {
-  clearBearerToken(id);
   removeBackendProfile(id);
 }
 
@@ -166,24 +158,6 @@ export function clearSessionTokenForProfile(profileId: string): void {
   clearSessionToken(profileId);
 }
 
-export function readBearerTokenForProfile(profileId: string): string | null {
-  return getBearerToken(profileId);
-}
-
-export function writeBearerTokenForProfile({
-  profileId,
-  token
-}: {
-  profileId: string;
-  token: string;
-}): void {
-  setBearerToken({ profileId, token });
-}
-
-export function clearBearerTokenForProfile(profileId: string): void {
-  clearBearerToken(profileId);
-}
-
 export function activeProfilePartition(): string {
   return sessionPartitionForProfile(getActiveBackendProfileId());
 }
@@ -198,7 +172,6 @@ function portOf(origin: string): number {
 }
 
 async function clearDesktopAuthForProfile(profileId: string): Promise<void> {
-  clearBearerToken(profileId);
   clearSessionToken(profileId);
   await session.fromPartition(sessionPartitionForProfile(profileId)).clearStorageData({
     storages: ['cookies', 'localstorage', 'indexdb']

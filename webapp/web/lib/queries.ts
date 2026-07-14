@@ -59,13 +59,8 @@ import type {
   WorkspaceStatusDto
 } from '../../shared/contract.ts';
 
-import { api, type Meta } from './api.ts';
-import {
-  clearAuthTokens,
-  clearDesktopBearerToken,
-  isCurrentDesktopBearerTokenPrefix,
-  persistActiveWorkspaceId
-} from './api-base.ts';
+import { api } from './api.ts';
+import { clearAuthTokens, persistActiveWorkspaceId } from './api-base.ts';
 import { authClient, normalizeEmail } from './auth-client.ts';
 import {
   fetchMissionBranchesFromLocalTarget,
@@ -610,12 +605,7 @@ export function useRevokeUserToken() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.revokeUserToken(id),
-    onSuccess: token => {
-      if (isCurrentDesktopBearerTokenPrefix(token.tokenPrefix)) {
-        void clearDesktopBearerToken();
-      }
-      void qc.invalidateQueries({ queryKey: keys.userTokens });
-    }
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.userTokens })
   });
 }
 

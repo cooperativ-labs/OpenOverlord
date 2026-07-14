@@ -183,12 +183,6 @@ const api = {
     ipcRenderer.invoke('overlord:backend:remove', id),
   switchBackend: (id: string): Promise<DesktopBackendInfo> =>
     ipcRenderer.invoke('overlord:backend:switch', id),
-  getBearerToken: (profileId: string): Promise<string | null> =>
-    ipcRenderer.invoke('overlord:backend:get-bearer-token', profileId),
-  setBearerToken: (payload: { profileId: string; token: string }): Promise<boolean> =>
-    ipcRenderer.invoke('overlord:backend:set-bearer-token', payload),
-  clearBearerToken: (profileId: string): Promise<boolean> =>
-    ipcRenderer.invoke('overlord:backend:clear-bearer-token', profileId),
   getSessionToken: (profileId: string): Promise<string | null> =>
     ipcRenderer.invoke('overlord:backend:get-session-token', profileId),
   setSessionToken: (payload: { profileId: string; token: string }): Promise<boolean> =>

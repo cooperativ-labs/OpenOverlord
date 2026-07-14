@@ -1,12 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-import { getActiveBackendProfileId } from './backend-profiles.js';
-import {
-  getPublicActiveBackend,
-  readBearerTokenForProfile,
-  readSessionTokenForProfile
-} from './backend-runtime.js';
+import { getPublicActiveBackend } from './backend-runtime.js';
 import { bundledCliEntry } from './paths.js';
 
 const execFileAsync = promisify(execFile);
@@ -32,8 +27,8 @@ export interface RunnerServiceControlResult {
 
 /**
  * Build the environment passed to the spawned CLI so an install captures the
- * active backend URL and a token, matching how the desktop already authenticates
- * spawned CLI work (loopback Local mode needs neither).
+ * active backend URL. CLI authentication is intentionally separate from the
+ * desktop session (loopback Local mode needs neither credential).
  */
 function resolveControlEnv({ shellOrigin }: { shellOrigin: string }): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
@@ -44,12 +39,6 @@ function resolveControlEnv({ shellOrigin }: { shellOrigin: string }): NodeJS.Pro
   try {
     const active = getPublicActiveBackend({ shellOrigin });
     env.OVERLORD_BACKEND_URL = active.backendUrl;
-    if (active.mode === 'remote') {
-      const profileId = getActiveBackendProfileId();
-      const token =
-        readBearerTokenForProfile(profileId) ?? readSessionTokenForProfile(profileId) ?? null;
-      if (token) env.OVERLORD_USER_TOKEN = token;
-    }
   } catch {
     // If backend resolution fails, fall back to the inherited environment; the
     // CLI still resolves its own config from disk.

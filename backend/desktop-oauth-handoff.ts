@@ -5,6 +5,11 @@ const TICKET_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 
 type Handoff = { sessionToken: string; expiresAt: number };
 
+/** The small Auth Layer surface needed to start a browser-owned OAuth flow. */
+export interface DesktopOAuthAuthHandler {
+  handler(request: Request): Promise<Response>;
+}
+
 const handoffs = new Map<string, Handoff>();
 
 function discardExpiredHandoffs(now = Date.now()): void {
@@ -32,4 +37,27 @@ export function consumeDesktopOAuthHandoff(ticket: string): string | null {
 
 export function desktopOAuthCallbackUrl(ticket: string): string {
   return `overlord://auth/callback?ticket=${encodeURIComponent(ticket)}`;
+}
+
+/**
+ * Start GitHub OAuth through a first-party browser navigation. Calling the
+ * Better Auth endpoint from Electron would put its state cookie in Electron's
+ * cookie store, while GitHub returns to the system browser. Dispatching the
+ * exact Better Auth request here lets the route forward that cookie and the
+ * provider redirect to the browser that will receive the callback.
+ */
+export function beginDesktopGitHubOAuth(
+  auth: DesktopOAuthAuthHandler,
+  authBaseUrl: string
+): Promise<Response> {
+  return auth.handler(
+    new Request(new URL('/api/auth/sign-in/social', authBaseUrl), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider: 'github',
+        callbackURL: new URL('/api/auth/desktop/callback', authBaseUrl).toString()
+      })
+    })
+  );
 }
