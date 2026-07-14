@@ -6,10 +6,17 @@ export default defineConfig({
     starlight({
       title: 'Overlord Docs',
       description: 'Guides for using Overlord to coordinate AI coding agents.',
+      favicon: '../webapp/public/images/256.png',
       logo: {
         src: '../webapp/public/images/256.png',
         alt: 'Overlord',
       },
+      customCss: [
+        '@fontsource-variable/space-grotesk/index.css',
+        '@fontsource/ibm-plex-mono/400.css',
+        '@fontsource/ibm-plex-mono/500.css',
+        './src/styles/overlord.css',
+      ],
       social: [
         {
           icon: 'github',

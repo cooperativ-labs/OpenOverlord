@@ -2918,6 +2918,8 @@ __metadata:
   resolution: "@overlord/docs-site@workspace:docs-site"
   dependencies:
     "@astrojs/starlight": "npm:^0.41.3"
+    "@fontsource-variable/space-grotesk": "npm:^5.2.10"
+    "@fontsource/ibm-plex-mono": "npm:^5.2.7"
     astro: "npm:^7.0.9"
   languageName: unknown
   linkType: soft

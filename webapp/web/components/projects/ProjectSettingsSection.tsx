@@ -10,7 +10,11 @@ import { ProjectExecutionTargetSelector } from '@/components/projects/ProjectExe
 import { ProjectOpenInIdeButton } from '@/components/projects/ProjectOpenInIdeButton';
 import { useProjectSettings } from '@/components/projects/ProjectSettingsContext';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { useUpdateProject } from '@/lib/queries';
