@@ -46,6 +46,7 @@ function cloneCatalogAgents(catalog: AgentCatalogDto): DraftAgent[] {
     ...agent,
     models: agent.models.map(model => ({
       ...model,
+      enabled: model.enabled ?? true,
       reasoningOptions: [...model.reasoningOptions]
     }))
   }));
@@ -113,6 +114,16 @@ function SortableModelRow({
         >
           <GripVertical className="size-4" />
         </button>
+      </td>
+      <td className="px-3 py-2 text-center">
+        <input
+          type="checkbox"
+          aria-label={`Offer ${model.displayName} as a selectable option`}
+          checked={model.enabled ?? true}
+          disabled={disabled}
+          className="size-4 cursor-pointer rounded border-input accent-primary disabled:cursor-not-allowed disabled:opacity-40"
+          onChange={event => onChange({ ...model, enabled: event.target.checked })}
+        />
       </td>
       <td className="px-3 py-2">
         <Input
@@ -219,7 +230,10 @@ function AgentModelsSection({
     const suffix = agent.models.length + 1;
     const id = `model-${suffix}`;
     setModelOrder(previous => [...previous, createModelRowKey()]);
-    updateModels([...agent.models, { id, displayName: `Model ${suffix}`, reasoningOptions: [] }]);
+    updateModels([
+      ...agent.models,
+      { id, displayName: `Model ${suffix}`, reasoningOptions: [], enabled: true }
+    ]);
   }
 
   return (
@@ -273,11 +287,13 @@ function AgentModelsSection({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__none__">None</SelectItem>
-              {orderedModels.map(model => (
-                <SelectItem key={model.id} value={model.id}>
-                  {model.displayName}
-                </SelectItem>
-              ))}
+              {orderedModels
+                .filter(({ model }) => model.enabled !== false)
+                .map(({ model }) => (
+                  <SelectItem key={model.id} value={model.id}>
+                    {model.displayName}
+                  </SelectItem>
+                ))}
             </SelectContent>
           </Select>
         </div>
@@ -299,6 +315,7 @@ function AgentModelsSection({
             <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
               <tr>
                 <th className="w-8 px-2 py-2" />
+                <th className="px-3 py-2 text-center font-medium">Offer</th>
                 <th className="px-3 py-2 font-medium">Model id</th>
                 <th className="px-3 py-2 font-medium">Display name</th>
                 <th className="px-3 py-2 font-medium">Reasoning options</th>

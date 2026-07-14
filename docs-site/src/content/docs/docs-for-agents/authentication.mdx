@@ -1,0 +1,182 @@
+---
+title: Authentication & troubleshooting
+description: How Overlord authentication works, token scopes, and a troubleshooting playbook for agents.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+This page explains how Overlord decides *who you are* and *what you can do*, and
+gives you a playbook for the authentication failures agents hit most. When a
+protocol or MCP call fails with an auth or session error, start here before
+asking the user to sign in again.
+
+<Aside type="danger">
+Treat every token like a password. Never paste a `USER_TOKEN` into a prompt, a
+source file, a commit, a log line, or a mission summary. The CLI shows a raw
+secret exactly once — after that, only a non-secret prefix is ever displayed.
+</Aside>
+
+## The identity model
+
+Overlord separates **authentication** (which user account you are) from
+**authorization** (what that account may do in a given workspace).
+
+- A **`USER_TOKEN`** is a long-lived, user-owned credential for non-interactive
+  use — CLI, agents, runners, and API clients all use the same mechanism. It is
+  not agent-specific.
+- Tokens are **workspace-agnostic credentials**: owned by the creating user,
+  visible and manageable only by that user, and usable in **any workspace where
+  that user is an active member**.
+- At request time the backend resolves the token to its creating user, validates
+  the request's active workspace against that user's current memberships, and
+  then runs the **same RBAC checks** an interactive session would.
+
+Consequences you should internalize:
+
+- A token is never more powerful than its owner. If the owner's role is reduced
+  in a workspace, the token becomes less powerful there automatically.
+- A token stops working for a workspace if the owner is disabled, removed from
+  it, or otherwise loses access there.
+- Signing in successfully does **not** grant access to every project or target —
+  it only establishes identity. Missing access is an authorization result, not
+  an auth failure.
+
+## Token scopes
+
+Every token is created with a `scope`:
+
+- **`full`** — no scope restrictions; the token inherits the full permissions of
+  the owner's roles in each workspace.
+- **`mission_lifecycle`** — restricted to exactly what a runner or agent needs:
+  `project:read`, `mission:*`, `objective:*`, `session:*`, `event:create`,
+  `event:read`, `artifact:*`, `attachment:*`, and
+  `execution_request:{create,read,claim}`. It **excludes** project/user/role/
+  connector administration and cannot mint further tokens.
+
+Effective permissions are the owner's role grants in the active workspace
+**intersected with** the token's scope. Scopes can only restrict, never exceed,
+the owner's permissions. Revocation and expiry are checked *before* scope
+evaluation.
+
+```bash
+ovld user-token create --label "ci runner" --scope mission-lifecycle --expires-in 90d
+```
+
+## The token lifecycle
+
+| Action | Command | Notes |
+| --- | --- | --- |
+| Create | `ovld user-token create --label "<label>" [--scope full\|mission-lifecycle] [--expires-in 90d\|--no-expiry]` | Secret shown once. Defaults to a 90-day expiry. |
+| List | `ovld user-token list [--json]` | Never reveals secrets; shows prefix, label, created/last-used, expiry, revoked state. |
+| Rotate | `ovld user-token rotate <id-or-prefix> [--label "<new>"]` | New secret shown once; old secret invalidated immediately. |
+| Rename | `ovld user-token rename <id-or-prefix> "<label>"` | Changes the label without rotating the secret. |
+| Revoke | `ovld user-token revoke <id-or-prefix>` | Fails authentication immediately; safe and idempotent. |
+
+<Aside type="tip">
+On a **cloud** backend, `ovld auth login` mints and stores a full-scope
+`USER_TOKEN` for you after a successful sign-in — you rarely create one by hand
+for interactive use. Create tokens explicitly for **runners, CI, and
+unattended agents**, and prefer `--scope mission-lifecycle` for those.
+</Aside>
+
+## How the CLI finds your credential
+
+The CLI reads a token from these environment variables, in order:
+
+1. `OVERLORD_USER_TOKEN`
+2. `OVLD_USER_TOKEN`
+3. `USER_TOKEN`
+
+<Aside type="note">
+Inside an Overlord agent pod, authenticate with `OVERLORD_USER_TOKEN` — that is
+the variable the environment provides.
+</Aside>
+
+Other relevant variables:
+
+| Variable | Use |
+| --- | --- |
+| `OVERLORD_BACKEND_URL`, `OVERLORD_BACKEND_URL_DEV` | Backend URL fallback. |
+| `SESSION_KEY` | Session-key fallback for `ovld protocol` commands. |
+| `OVERLORD_EXECUTION_REQUEST_ID` | Links an `attach` to a runner execution request. |
+| `OVLD_HOME` | Relocates the CLI's credentials and configuration. |
+
+If a raw token is not in the environment, the CLI uses the credential stored by
+`ovld auth login` (under `OVLD_HOME`).
+
+## Checking auth state
+
+```bash
+ovld auth status          # backend URL + whether a usable credential is present
+ovld protocol auth-status # runtime readiness for protocol calls
+ovld doctor               # backend, connectors, agent binaries, and credentials
+```
+
+None of these print the secret. `ovld auth status` and `ovld doctor` will tell
+you whether a token is present, malformed, expired, or revoked, and suggest a
+repair.
+
+## MCP authentication
+
+The [hosted MCP surface](/docs-for-agents/mcp/) authenticates through the same
+Auth Layer before any tool is listed or invoked. Unauthenticated `/mcp` calls
+return a `WWW-Authenticate: Bearer` challenge pointing at the protected-resource
+metadata. OAuth-aware clients register dynamically, then run an
+authorization-code + PKCE flow; approval happens in the web app at
+`/oauth/approve` and mints a scoped `USER_TOKEN` with the `mission_lifecycle`
+preset. Refresh tokens are not issued in contract version `0`.
+
+A mismatched OAuth `resource` parameter returns `invalid_target`; missing,
+denied, expired, revoked, or malformed credentials receive an OAuth-compatible
+`401` at `/mcp`.
+
+## Troubleshooting playbook
+
+<Aside type="tip">
+First move for almost any auth/session failure during a mission: run
+`ovld auth repair` yourself **before** asking the user to log in again or
+proceeding without Overlord updates.
+</Aside>
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `401` / "unauthorized" from a protocol or REST call | No token in the environment, or an expired/revoked/malformed one | `ovld auth status`; `ovld auth repair`; if a runner/CI token, rotate or recreate it. |
+| Authenticated but "forbidden" / `403` on a project | Identity is fine; the owner lacks access in that workspace, or a scoped token excludes the action | Confirm the owner's membership and role; if using `mission_lifecycle`, an admin action needs a `full` token. |
+| `ovld auth status` shows not signed in | Wrong backend selected, or login never completed | `ovld config get backend_url`; `ovld config set cloud <url>`; `ovld auth login`. |
+| Session key not resolving; every `ovld protocol` call needs it | The persisted session file for this working directory was lost or overwritten | Re-`attach`, or pass `--session-key <key>` explicitly on each call. |
+| MCP client gets a `Bearer` challenge and can't proceed | Not authenticated to the MCP endpoint | Complete the OAuth approval at `/oauth/approve`; ensure the client uses the canonical `/mcp` resource URL. |
+| MCP `invalid_target` | The OAuth `resource` parameter doesn't match the hosted `/mcp` URL | Point the client at the canonical `/mcp` resource; if the SPA is deployed separately, set `OVERLORD_BACKEND_URL` and `OVERLORD_WEBAPP_PUBLIC_URL` on the web deployment. |
+| Token worked yesterday, fails today | Expired (default 90-day), revoked, or the owner lost workspace access | `ovld user-token list` to check expiry/revoked; rotate or recreate; confirm the owner's membership. |
+| Cloud `attach` fails right after `ovld config set cloud` | Backend set but not yet signed in on that backend | `ovld auth login` against the cloud URL before attaching. |
+
+### When a session key is the problem
+
+The CLI persists the `sessionKey` per working directory after `attach`. Two
+things commonly break that:
+
+<Steps>
+
+1. **Running from a different directory** than where you attached. `cd` back, or
+   pass `--session-key <key>` explicitly.
+2. **A test or tool overwrote the session file.** Re-attach to the mission, or
+   pass the key explicitly on every subsequent `ovld protocol` call.
+
+</Steps>
+
+### What *not* to do
+
+- Do not embed a token in a command you post to the mission feed, a commit
+  message, or a file — it will be captured in the durable record.
+- Do not down-scope a problem by pasting a `full` token where a
+  `mission_lifecycle` token belongs; prefer the narrowest scope that works.
+- Do not conclude "auth is broken" on a `403`. A `403` means you are
+  authenticated but not authorized — that is usually a membership or role issue,
+  not a credential issue.
+
+## Related
+
+- [The agent protocol](/docs-for-agents/agent-protocol/) — the session lifecycle
+  those credentials authenticate.
+- [MCP access](/docs-for-agents/mcp/) — OAuth details for cloud assistants.
+- [Authentication and permissions](/authentication-and-permissions/) — the
+  user-facing summary.

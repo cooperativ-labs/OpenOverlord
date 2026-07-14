@@ -1,0 +1,270 @@
+---
+title: The agent protocol
+description: The ovld protocol lifecycle every agent follows while executing a mission.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+`ovld protocol` is the authoritative interface between an agent and Overlord.
+The same operations are available from the CLI, the hosted API, and the
+[MCP surface](/docs-for-agents/mcp/) — drift between them is treated as a bug.
+This page is the lifecycle you follow while **executing** a mission.
+
+<Aside type="danger">
+**Attach first, deliver last.** Attaching is itself the go-ahead to start work —
+do not attach and then wait for further confirmation. Only `connect` and
+`load-context` are for inspection without acting.
+</Aside>
+
+## The lifecycle at a glance
+
+```
+attach ──► update / heartbeat ──► (ask, if blocked) ──► deliver
+   │            (repeat)                                    │
+   └── begins a session, returns full context              └── ends the session,
+                                                               moves objective to
+                                                               complete, mission
+                                                               to review
+```
+
+## Two ways you arrive on a mission
+
+**Mode 1 — launched onto a mission.** The prompt already contains a mission id
+or says the session was started by Overlord. Attach immediately and begin the
+objective.
+
+**Mode 2 — asked from chat to use Overlord.** A normal conversation where the
+user asks you to create, inspect, or run Overlord work. Create or inspect, and
+only attach when the user explicitly says to execute.
+
+<Aside type="tip">
+Discussing or opening a mission should **submit** its draft objective
+(`ovld protocol discuss-objective`), signalling active discussion. Only an
+explicit "do this" / "execute it" should make you **attach** and start work.
+</Aside>
+
+## Attach
+
+```bash
+ovld protocol attach --mission-id coo:312
+```
+
+The response prints JSON containing `session.sessionKey`. The CLI also persists
+that key for the working directory, so later `ovld protocol` commands resolve it
+without `--session-key`. If auto-resolution fails, pass
+`--session-key <sessionKey>` explicitly on every call.
+
+The attach payload gives you everything a fresh agent needs to continue without
+reading prior chat:
+
+- **`objective`** — the current task body is in `objective.objective`. Treat it
+  as authoritative for the goal, constraints, and delivery target.
+- **`previousObjectives` / `futureObjectives`** — completed and upcoming steps.
+- **`history`, `artifacts`, `attachments`, `sharedState`** — structured context.
+- **`projectResources`** — the project's logical resources resolved for the
+  execution target, each with a `resourceKey`, `path`, and `state`. When a
+  project spans repositories, siblings are **read-only context** unless a future
+  objective launches in them.
+- **`agentInstructions`** — concise workflow guidance and pointers into the
+  structured fields.
+
+In a git workspace, `attach` also records a **VCS baseline** and a local
+checkpoint (under `refs/overlord/checkpoints/<objectiveId>`) so changed-file
+attribution and provenance work automatically. Pass `--skip-checkpoint` only to
+intentionally bypass local provenance.
+
+## Post progress while you work
+
+Send a real narrative update when something meaningful happens:
+
+```bash
+ovld protocol update --session-key <sessionKey> --mission-id coo:312 \
+  --summary "Implemented the loading state and wired it to the query hook." \
+  --phase execute
+```
+
+During long mechanical stretches with nothing to narrate, send a liveness
+**heartbeat** instead — it updates the session without creating a feed event:
+
+```bash
+ovld protocol heartbeat --session-key <sessionKey> --mission-id coo:312 \
+  --phase execute --percent 60 --note "Running the integration suite"
+```
+
+Post at least one update before delivering.
+
+### Phases and event types
+
+`--phase` accepts: `draft`, `execute`, `review`, `deliver`, `complete`,
+`blocked`, `cancelled`. `--event-type` accepts: `update` (default),
+`user_follow_up`, `alert`, `discussion_summary`, `decision`. Use `decision` or
+`discussion_summary` to make an important non-file decision visible on the
+mission.
+
+## Ask when blocked
+
+If you cannot proceed without a human decision, post the question and **stop**:
+
+```bash
+ovld protocol ask --session-key <sessionKey> --mission-id coo:312 \
+  --question "Should the loading state block the whole page or just the panel?"
+```
+
+Do not guess past a genuine fork in requirements. Asking is cheaper than
+delivering the wrong thing.
+
+## Deliver
+
+Delivery is the concluding step. It stores the summary, artifacts, and
+rationales, moves the objective to `complete`, and moves the mission to review.
+
+```bash
+ovld protocol deliver --session-key <sessionKey> --mission-id coo:312 \
+  --summary "Added a loading state to the account page and covered it with a test." \
+  --change-rationales-json '[{"file_path":"web/account/page.tsx","label":"Loading state","summary":"Render a skeleton while the query is pending.","why":"Avoid a flash of empty content.","impact":"Users see a skeleton instead of a blank page on slow loads."}]'
+```
+
+<Aside type="tip">
+The `--summary` is the first thing the reviewer reads. Write it as a short
+narrative — what you did and what's next — not a command list.
+</Aside>
+
+### Changed files are captured for you
+
+You do **not** enumerate changed files by hand. The CLI records a VCS baseline
+at attach and, at deliver, computes the run-attributable delta (current
+`git status` minus the baseline) and sends it automatically. Your job is the
+**rationale** — *why* each meaningful change was made — not the *which*.
+
+Each change-rationale entry requires exactly these fields:
+
+- `file_path` (repo-relative; `filePath` is accepted as an alias)
+- `label` — short reviewer-facing title
+- `summary` — what changed (the field is `summary`, never `rationale`)
+- `why` — why it changed
+- `impact` — behavioral impact
+
+Optional `hunks: [{ "header": "@@ -10,6 +10,14 @@" }]`. Do **not** wrap entries
+under a `rationale` key and do not send a `file_changes` artifact.
+
+If the run changed no files, declare it:
+
+```bash
+ovld protocol deliver --session-key <sessionKey> --mission-id coo:312 \
+  --summary "Investigated the flake; no code changes were required." --no-file-changes
+```
+
+### Preflight before delivering
+
+Never hand-triage `git status`. Run the local-only preflight first — it prints
+every dirty path already classified the way `deliver` will, plus draft
+rationales:
+
+```bash
+ovld protocol changes --mission-id coo:312
+```
+
+- **`mine`** — confirmed by this session's touched-files log; owe a real
+  rationale.
+- **`claimed`** — another active session's change; exclude it or use the printed
+  skip entry.
+- **`unclaimed`** — dirty but confirmed by nobody; report or skip explicitly.
+
+### Large payloads and special characters
+
+Inline `--*-json` values are rejected above ~8 KB. For large arrays, stream on
+stdin with `--change-rationales-file -` (or `--payload-file -`). When a summary
+or question contains backticks, `$vars`, or other shell-special characters, use
+`--summary-file -` / `--question-file -` with a single-quoted heredoc:
+
+```bash
+ovld protocol deliver --session-key <sessionKey> --mission-id coo:312 \
+  --summary-file - <<'EOF'
+Refactored `useAccount()` to expose `isLoading`; see $PR for details.
+EOF
+```
+
+## Shared worktree safety
+
+The working tree may hold changes from **other agents, missions, or
+objectives** running in the same checkout. Those are **not yours to undo.**
+
+<Aside type="danger">
+Never revert, restore, or delete another agent's work to make delivery succeed —
+no `git checkout`/`restore`/`reset` of edits you didn't make, no deleting
+unfamiliar files, no `ovld protocol revert` on another objective's checkpoint.
+</Aside>
+
+If `deliver` fails with `missing_rationale` for a file you did not change, or
+`git status` shows unrelated dirty paths:
+
+<Steps>
+
+1. Leave those files intact.
+2. Do not fabricate a rationale for work you didn't do.
+3. Run `ovld protocol changes --mission-id <id>` to classify the paths.
+4. Re-deliver, skipping the unrelated paths with a truthful reason:
+
+   ```bash
+   ovld protocol deliver --session-key <sessionKey> --mission-id coo:312 \
+     --summary "Implemented the feature." \
+     --change-rationales-json '[{"file_path":"src/feature.ts","label":"Feature","summary":"…","why":"…","impact":"…"}]' \
+     --skip-rationale-for-json '[{"file_path":"webapp/package.json","reason":"Concurrent host-side edit; not made by this mission."}]'
+   ```
+
+</Steps>
+
+A rejected `deliver` returns the same classification in
+`details.missingRationales`, with ready-to-use skip entries — paste them into the
+retry instead of re-deriving.
+
+## After delivery
+
+Delivery ends implementation. Do not keep editing unless the user explicitly
+asks for follow-up work.
+
+- **Ordinary follow-up questions** stay in discussion mode; connector hooks
+  record them as `user_follow_up` activity — you don't post those manually.
+- **Explicit follow-up implementation** on a delivered mission:
+  - If a live session still accepts updates:
+    `ovld protocol update --begin-follow-up-work --follow-up-intent execution --summary "Beginning follow-up work."`
+  - If no live session exists:
+    `ovld protocol resume-follow-up --mission-id <id> --summary "Beginning follow-up work."`
+    and use the returned session key.
+- During follow-up execution, post updates and record change rationales just like
+  the first pass, then **deliver again**.
+
+## Missions vs objectives
+
+A **mission** is a whole feature or goal. An **objective** is one agent pass —
+one prompt. Create a new mission for a distinct goal; add objectives to an
+existing mission for sequential steps toward the same goal:
+
+```bash
+ovld protocol add-objectives --mission-id coo:312 \
+  --objectives-json '[{"objective":"Implement the API"},{"objective":"Add CLI docs"}]'
+```
+
+## Command quick reference
+
+| Command | Purpose |
+| --- | --- |
+| `attach` | Start a session, return full context. Begin work. |
+| `connect` | Lightweight session without full context assembly. |
+| `load-context` | Read mission context without a session (inspection only). |
+| `discover-project` | Resolve the project from cwd, id, or directory. |
+| `search-missions` | Find missions by query, state, project. |
+| `discuss-objective` | Submit a draft objective for discussion (no session). |
+| `create` / `prompt` | Create a draft / create-and-attach a mission. |
+| `add-objectives` | Append ordered objectives to a mission. |
+| `update` | Post progress, decisions, and optional rationales. |
+| `heartbeat` | Liveness ping, no feed event. |
+| `ask` | Post a blocking question and stop. |
+| `deliver` | Finish: summary, artifacts, rationales, mark complete. |
+| `changes` | Local preflight of changed-file attribution. |
+| `resume-follow-up` | Reopen a delivered objective for follow-up. |
+| `read-context` / `write-context` | Read or store persistent shared context. |
+
+For the full CLI surface — management commands, the runner, project linking —
+see the [CLI reference](/cli/). Never invent protocol subcommands; run
+`ovld protocol help` when unsure.

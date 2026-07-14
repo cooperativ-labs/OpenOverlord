@@ -84,6 +84,9 @@
 !desktop/
 !desktop/package.json
 
+!docs-site/
+!docs-site/package.json
+
 **/*.test.ts
 **/*.fixture.ts
 **/test-helpers.ts

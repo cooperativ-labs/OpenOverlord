@@ -37,7 +37,7 @@
 
 :root[data-theme='light'],
 [data-theme='light'] ::backdrop {
-  /* Light theme — ovld.ai :root tokens */
+  /* Light theme — use a navy accent for readable titles and actions. */
   --sl-color-white: #0c0a09;
   --sl-color-gray-1: #1c1917;
   --sl-color-gray-2: #44403b;
@@ -48,9 +48,9 @@
   --sl-color-gray-7: #fafaf9;
   --sl-color-black: #fcfcfa;
 
-  --sl-color-accent-low: #dff2fe;
-  --sl-color-accent: #0ea5e9;
-  --sl-color-accent-high: #005986;
+  --sl-color-accent-low: #dbeafe;
+  --sl-color-accent: #123b66;
+  --sl-color-accent-high: #0b3157;
 
   --sl-color-text-accent: var(--sl-color-accent);
   --sl-color-text-invert: var(--sl-color-black);
@@ -81,4 +81,9 @@
 :root[data-theme='light'] .sl-markdown-content pre:not(:where(.not-content *)) {
   background-color: #f4f3ee;
   border-color: #e7e5e0;
+}
+
+/* Keep the landing-page title aligned with the stronger light-mode actions. */
+:root[data-theme='light'] .hero h1 {
+  color: var(--sl-color-accent-high);
 }

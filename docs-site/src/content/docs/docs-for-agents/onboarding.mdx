@@ -1,0 +1,248 @@
+---
+title: Onboarding a new user
+description: A step-by-step guide agents can follow to take a new user from zero to a reviewed delivery.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+This is the guide to follow when a user says something like *"help me get set up
+with Overlord"* or *"I just installed this, now what?"*. Work through it with
+them. Run the diagnostic commands yourself where you can, explain what each step
+does, and stop to confirm before anything that touches their machine in a way
+they might not expect.
+
+The goal state: the user is signed in, a project is linked to their repository,
+they have created and run their first mission, and they know where to review the
+result.
+
+<Aside type="note">
+Overlord has three front doors — the **desktop app**, the **CLI**, and an agent
+**connector** running inside a tool like Claude Code or Codex. This guide is
+CLI-first because it is the most scriptable, but call out the desktop app when
+the user would rather click than type.
+</Aside>
+
+## Before you start: figure out where they are
+
+Ask (or detect) three things before running anything:
+
+1. **Do they have the CLI?** Run `ovld version`. If it errors with
+   "command not found," they need to install it (step 1).
+2. **Local or cloud backend?** A **cloud** backend is a hosted Overlord instance
+   at some URL. A **local** backend runs on their own machine (default
+   `http://127.0.0.1:4310`). If they were given a URL by a team, they are on
+   cloud. If they are experimenting solo, local is fine.
+3. **What agent do they already use?** Claude Code, Codex, Cursor, and `pi` have
+   built-in connectors. Match the setup to the tool they already pay for —
+   Overlord does not replace it.
+
+## Step 1 — Install the CLI and sign in
+
+<Steps>
+
+1. **Install the CLI** globally:
+
+   ```bash
+   npm install -g --no-fund overlord-cli
+   ovld version
+   ```
+
+2. **Point at the right backend.** For a hosted team instance:
+
+   ```bash
+   ovld config set cloud https://overlord.example.com
+   ```
+
+   For a local, single-machine backend (the default URL is fine for most):
+
+   ```bash
+   ovld config set local
+   ```
+
+3. **Sign in.** This opens a browser-based flow and, on a cloud backend, mints
+   and stores a `USER_TOKEN` as the CLI credential:
+
+   ```bash
+   ovld auth login
+   ovld auth status
+   ```
+
+   `ovld auth status` should report the backend URL and that you are signed in
+   without printing any secret. If it does not, jump to
+   [Authentication & troubleshooting](/docs-for-agents/authentication/).
+
+</Steps>
+
+<Aside type="tip">
+If the user runs Overlord Desktop on the same computer and is already signed in
+there, `ovld auth login` can reuse that session — you may not need a separate
+browser round-trip.
+</Aside>
+
+## Step 2 — Run the doctor and configure tools
+
+<Steps>
+
+1. **Diagnose the environment.** This checks the backend, connectors, agent
+   binaries, and credentials in one shot:
+
+   ```bash
+   ovld doctor
+   ```
+
+   Read the output with the user. Green across the board means you can move on.
+   A failing check usually tells you exactly what to fix next.
+
+2. **Run interactive setup** if they want guided configuration of the backend,
+   auth, connectors, and terminal profile:
+
+   ```bash
+   ovld setup
+   ```
+
+3. **Install the connector for their agent.** Only install what they use:
+
+   ```bash
+   ovld agent-setup            # lists installable connectors
+   ovld agent-setup claude     # or: codex, cursor, pi
+   ovld agent-setup all        # prepare every supported connector
+   ```
+
+   Add `--dry-run` first if the user wants to see the intended file changes
+   before anything is written.
+
+</Steps>
+
+## Step 3 — Create or link a project
+
+A project connects Overlord to the repository the agent will work in.
+
+<Steps>
+
+1. **From inside the repository**, create a project and link the current
+   checkout in one step:
+
+   ```bash
+   ovld create-project --name "My app"
+   ```
+
+   This registers the current directory as the project's primary resource and
+   writes `.overlord/project.json` so future commands resolve the project from
+   the working directory automatically.
+
+2. **If the project already exists** (a teammate created it), link the current
+   folder to it instead:
+
+   ```bash
+   ovld add-cwd --project-id <project-id>
+   ```
+
+3. **Confirm resolution** so later commands don't surprise anyone:
+
+   ```bash
+   ovld protocol discover-project
+   ```
+
+</Steps>
+
+<Aside type="caution">
+If `.overlord/project.json` lists more than one project, do not silently pick
+one. Show the user the project **names** from that file and ask which to use.
+</Aside>
+
+## Step 4 — Create the first mission and run an agent
+
+Explain the vocabulary first: a **mission** is the durable ticket for a goal; an
+**objective** is one agent pass toward it. "Add a loading state to the account
+page" is a good first objective — small, verifiable, low-risk.
+
+<Steps>
+
+1. **Create a draft mission** when the user wants to inspect it before running:
+
+   ```bash
+   ovld create "Add a loading state to the account page"
+   ```
+
+   Or **create and queue execution** in one step:
+
+   ```bash
+   ovld prompt "Add a loading state to the account page" --agent claude
+   ```
+
+2. **Launch the agent locally** from the terminal (the desktop app and the
+   runner can also launch queued objectives):
+
+   ```bash
+   ovld launch claude --mission-id <mission-id>
+   ```
+
+   Pass `--model <id>` or `--thinking <level>` when the agent supports it;
+   Overlord records that choice with the objective so the later review shows how
+   the work was run.
+
+</Steps>
+
+<Aside type="tip">
+For a hands-off setup, the user can run a **runner** that claims queued
+objectives and launches them automatically:
+
+```bash
+ovld runner start          # foreground poller
+ovld runner service install # background service
+```
+</Aside>
+
+## Step 5 — Review the delivery
+
+When the agent finishes, it **delivers**: a summary, artifacts, the changed
+files, and a rationale for each meaningful change. Show the user where to look:
+
+- In the **web or desktop app**, open the mission to see the objective, the
+  activity feed, the delivery summary, artifacts, changed files, and rationale
+  side by side with the original request.
+- From the **CLI**:
+
+  ```bash
+  ovld mission context <mission-id>
+  ovld mission deliveries <mission-id>
+  ovld changes rationales --mission-id <mission-id>
+  ```
+
+If the work needs another pass, the user continues the **same mission** with a
+follow-up objective rather than starting over — the record stays together.
+
+## Step 6 — What to teach next
+
+Once the loop works once, point the user at the pieces they will reach for:
+
+- **Blocking questions.** If an agent is unsure, it can post a question and stop
+  instead of guessing. The user answers, and work resumes.
+- **Follow-up objectives.** Add ordered steps to the same mission with
+  `ovld protocol add-objectives`.
+- **Webhooks.** React to deliveries from outside the repo — see
+  [Webhooks](/docs-for-agents/webhooks/).
+- **MCP.** Let a cloud assistant read mission context and act through approved
+  tools — see [MCP access](/docs-for-agents/mcp/).
+
+## Quick onboarding checklist
+
+Run through this to confirm a user is fully set up:
+
+- [ ] `ovld version` prints a version
+- [ ] `ovld auth status` shows the backend and a signed-in state
+- [ ] `ovld doctor` passes (or the user understands each remaining warning)
+- [ ] The agent connector they use is installed (`ovld agent-setup <agent>`)
+- [ ] A project exists and resolves (`ovld protocol discover-project`)
+- [ ] One mission has been created, run, and delivered
+- [ ] The user knows where to review a delivery
+
+## Common first-run stumbles
+
+| Symptom | What to check |
+| --- | --- |
+| `ovld: command not found` | The global npm install didn't land, or the npm global bin isn't on `PATH`. Reinstall and re-open the shell. |
+| `ovld auth status` shows not signed in | Wrong backend selected, or the login flow was cancelled. Confirm `ovld config get backend_url`, then `ovld auth login` again. |
+| `discover-project` finds nothing | You're not inside the linked checkout, or `.overlord/project.json` is missing. `cd` into the repo or re-run `ovld add-cwd`. |
+| Agent won't launch | The connector isn't installed or the agent binary isn't found. Run `ovld doctor` and `ovld agent-setup <agent>`. |
+| Auth/session errors mid-run | See [Authentication & troubleshooting](/docs-for-agents/authentication/); try `ovld auth repair` before asking the user to sign in again. |

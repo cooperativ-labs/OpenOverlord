@@ -1,0 +1,91 @@
+---
+title: Docs for agents
+description: The playbook for AI agents helping people use Overlord.
+---
+
+import { Card, CardGrid, Aside } from '@astrojs/starlight/components';
+
+This section is written **for AI agents** — Claude Code, Codex, Cursor, an MCP
+client, or any assistant helping a person set up and run Overlord. If you are a
+human, you are welcome to read it too, but the tone assumes the reader is an
+agent that can run shell commands, call tools, and follow a protocol.
+
+Everything here is exhaustive on purpose. When a user asks you to "set up
+Overlord," "connect my repo," "run this with an agent," or "wire up a webhook,"
+you should be able to do it end to end from the pages in this section without
+guessing.
+
+<Aside type="tip">
+The single most important rule: when you are executing a mission, **attach
+first and deliver last**. Every other command sits between those two. See
+[The agent protocol](/docs-for-agents/agent-protocol/).
+</Aside>
+
+## What is Overlord, in one paragraph
+
+Overlord is the durable work record around coding agents. It does **not**
+replace the agent harness (Claude Code, Codex, Cursor), the terminal, the
+repository, or the user's subscription. It coordinates their work across
+projects and over time by keeping the objective, progress updates, blocking
+questions, artifacts, delivery summary, and per-file change rationale together
+in one reviewable record. You — the agent — read context from Overlord, do the
+work in the user's tools, and report the result back through a stable protocol.
+
+## The core model
+
+<CardGrid>
+  <Card title="Project" icon="document">
+    Connects a repository (or several) to the work you manage. Resolved from the
+    working directory, a `--project-id`, or `.overlord/project.json`.
+  </Card>
+  <Card title="Mission" icon="rocket">
+    A durable ticket for a higher-level goal. Has a stable display id like
+    `coo:312`.
+  </Card>
+  <Card title="Objective" icon="seti:check">
+    One agent pass — plan, implement, review, or follow-up. One objective equals
+    one agent prompt. A mission holds an ordered list of them.
+  </Card>
+  <Card title="Session" icon="laptop">
+    Your live attachment to an executing objective. Identified by a
+    `sessionKey`. Created by `attach`, closed by `deliver`.
+  </Card>
+</CardGrid>
+
+## Pages in this section
+
+- **[Onboarding a new user](/docs-for-agents/onboarding/)** — the full,
+  step-by-step guide to walk a brand-new user from nothing to a reviewed
+  delivery, with copy-pasteable commands and the checks to run at each step.
+- **[The agent protocol](/docs-for-agents/agent-protocol/)** — the
+  `ovld protocol` lifecycle you must follow while executing a mission: attach,
+  update, ask, deliver, change rationales, follow-up work, and worktree safety.
+- **[Authentication & troubleshooting](/docs-for-agents/authentication/)** —
+  how sign-in and `USER_TOKEN` credentials work, token scopes, the environment
+  variables, and a troubleshooting playbook for the auth failures agents hit
+  most.
+- **[Architecture](/docs-for-agents/architecture/)** — a map of Overlord's
+  modules and how a mission flows through them, so you can reason about where a
+  behavior lives.
+- **[MCP access](/docs-for-agents/mcp/)** — the hosted Model Context Protocol
+  surface for cloud agents: tools, widgets, OAuth, and boundaries.
+- **[Webhooks](/docs-for-agents/webhooks/)** — how to build a consumer that
+  reacts to mission events (delivery, status change, blocked) from outside the
+  repo, including signature verification.
+
+## How to read this as an agent
+
+1. If you were **launched onto a mission** (the prompt contains a mission id, or
+   says the session was started by Overlord), go straight to
+   [The agent protocol](/docs-for-agents/agent-protocol/) and attach.
+2. If a user is **asking you to help them get started**, work through
+   [Onboarding a new user](/docs-for-agents/onboarding/) with them.
+3. If something **fails with an auth or session error**, go to
+   [Authentication & troubleshooting](/docs-for-agents/authentication/) before
+   asking the user to re-authenticate.
+
+<Aside type="caution">
+Never paste a user token into a prompt, a source file, a commit, or a log line.
+Treat `USER_TOKEN` values like passwords. See
+[Authentication & troubleshooting](/docs-for-agents/authentication/).
+</Aside>

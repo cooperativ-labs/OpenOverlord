@@ -1,0 +1,332 @@
+---
+/**
+ * HowOverlordWorks — a self-contained, theme-aware illustration of the Overlord
+ * work model, replicating the two diagrams in the repository README:
+ *   1. The structural graph: Project → Mission (Objectives → Shared Context),
+ *      with each Objective mapped to one Agent Session.
+ *   2. The workflow sequence: Human ↔ Overlord ↔ Agent ↔ Git Repo.
+ * No external diagram renderer is used; everything is HTML/CSS so it stays fast,
+ * offline-friendly, and on-brand with the docs theme (stone + sky accent).
+ */
+---
+
+<div class="how-overlord not-content">
+  <!-- Structural model: Project → Mission → Objectives → Agent Sessions -->
+  <div class="how-structure" role="img"
+    aria-label="A project contains a mission. The mission holds objectives one, two, and three, which flow in order into shared context. Each objective maps to one agent session.">
+    <div class="how-col how-col-project">
+      <div class="how-node how-project">
+        <span class="how-node-title"><span class="how-emoji">📁</span> Project</span>
+        <span class="how-node-sub">Repository &amp; resources</span>
+      </div>
+    </div>
+
+    <div class="how-arrow how-arrow-h" aria-hidden="true"></div>
+
+    <div class="how-col how-col-mission">
+      <div class="how-node how-mission">
+        <span class="how-node-title"><span class="how-emoji">🎫</span> Mission</span>
+        <div class="how-objectives">
+          <div class="how-node how-objective" data-o="1"><span class="how-emoji">🎯</span> Objective 1</div>
+          <div class="how-arrow how-arrow-v" aria-hidden="true"></div>
+          <div class="how-node how-objective" data-o="2"><span class="how-emoji">🎯</span> Objective 2</div>
+          <div class="how-arrow how-arrow-v" aria-hidden="true"></div>
+          <div class="how-node how-objective" data-o="3"><span class="how-emoji">🎯</span> Objective 3</div>
+          <div class="how-arrow how-arrow-v" aria-hidden="true"></div>
+          <div class="how-node how-shared"><span class="how-emoji">📚</span> Shared context</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="how-col how-col-sessions" aria-hidden="true">
+      <div class="how-map"><span class="how-arrow how-arrow-h how-arrow-sm"></span></div>
+      <div class="how-node how-session"><span class="how-emoji">🤖</span> Agent session 1</div>
+      <div class="how-map"><span class="how-arrow how-arrow-h how-arrow-sm"></span></div>
+      <div class="how-node how-session"><span class="how-emoji">🤖</span> Agent session 2</div>
+      <div class="how-map"><span class="how-arrow how-arrow-h how-arrow-sm"></span></div>
+      <div class="how-node how-session"><span class="how-emoji">🤖</span> Agent session 3</div>
+    </div>
+  </div>
+
+  <p class="how-caption">
+    One <strong>objective</strong> maps to one <strong>agent session</strong>. A
+    <strong>mission</strong> gathers objectives plus the shared context they all read
+    and write. Missions live inside a <strong>project</strong> mapped to a repository.
+  </p>
+
+  <!-- Workflow sequence: how a mission actually runs -->
+  <ol class="how-flow" aria-label="How a mission runs, step by step">
+    <li class="how-step">
+      <span class="how-step-actor">Human → Overlord</span>
+      <span class="how-step-text">Create a mission and its objectives, then launch an agent.</span>
+    </li>
+    <li class="how-step">
+      <span class="how-step-actor">Overlord → Agent</span>
+      <span class="how-step-text"><code>ovld protocol attach</code> — the agent reads context, history, and artifacts.</span>
+    </li>
+    <li class="how-step">
+      <span class="how-step-actor">Agent ↔ Repo</span>
+      <span class="how-step-text">Read and edit files, posting <code>update</code> progress along the way.</span>
+    </li>
+    <li class="how-step">
+      <span class="how-step-actor">Agent → Overlord</span>
+      <span class="how-step-text"><code>ovld protocol deliver</code> — summary plus per-file change rationale.</span>
+    </li>
+    <li class="how-step how-step-done">
+      <span class="how-step-actor">Overlord → Human</span>
+      <span class="how-step-text">Review the delivery; the mission advances to the next objective or is done.</span>
+    </li>
+  </ol>
+</div>
+
+<style>
+  .how-overlord {
+    margin: 2rem 0 0.5rem;
+  }
+
+  /* ---- Structural model ---- */
+  .how-structure {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    padding: 1.5rem 1rem;
+    border: 1px solid var(--sl-color-hairline);
+    border-radius: 12px;
+    background: var(--sl-color-bg-nav);
+  }
+
+  .how-col {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .how-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    border: 1px solid var(--sl-color-hairline-light);
+    border-radius: 10px;
+    background: var(--sl-color-bg);
+    color: var(--sl-color-white);
+    font-family: var(--sl-font);
+    font-weight: 500;
+    line-height: 1.25;
+  }
+
+  .how-emoji {
+    font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
+  }
+
+  .how-node-title {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .how-node-sub {
+    margin-top: 0.15rem;
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--sl-color-gray-3);
+  }
+
+  .how-project {
+    padding: 1rem 1.1rem;
+    min-width: 9rem;
+    border-color: var(--sl-color-accent);
+  }
+
+  .how-mission {
+    padding: 0.9rem;
+    border-color: var(--sl-color-accent);
+    gap: 0.6rem;
+  }
+
+  .how-mission > .how-node-title {
+    align-self: center;
+  }
+
+  .how-objectives {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.25rem;
+  }
+
+  .how-objective,
+  .how-shared,
+  .how-session {
+    padding: 0.5rem 0.85rem;
+    font-size: 0.85rem;
+    min-width: 8.5rem;
+  }
+
+  .how-shared {
+    border-color: var(--sl-color-accent);
+    color: var(--sl-color-text-accent);
+  }
+
+  .how-session {
+    border-style: dashed;
+    border-color: var(--sl-color-gray-4);
+  }
+
+  .how-col-sessions {
+    display: grid;
+    grid-template-rows: repeat(3, auto);
+    align-content: center;
+    gap: 0.7rem;
+  }
+
+  .how-map {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  /* ---- Arrows ---- */
+  .how-arrow-h {
+    width: 2rem;
+    height: 2px;
+    background: var(--sl-color-gray-4);
+    position: relative;
+    flex: 0 0 auto;
+  }
+  .how-arrow-h::after {
+    content: '';
+    position: absolute;
+    right: -1px;
+    top: 50%;
+    transform: translateY(-50%);
+    border-left: 6px solid var(--sl-color-gray-4);
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+  }
+  .how-arrow-sm {
+    width: 1.4rem;
+  }
+
+  .how-arrow-v {
+    align-self: center;
+    width: 2px;
+    height: 0.9rem;
+    background: var(--sl-color-gray-4);
+    position: relative;
+  }
+  .how-arrow-v::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-top: 6px solid var(--sl-color-gray-4);
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+  }
+
+  .how-caption {
+    margin: 1rem auto 0;
+    max-width: 44rem;
+    text-align: center;
+    font-size: 0.9rem;
+    color: var(--sl-color-gray-2);
+  }
+  .how-caption strong {
+    color: var(--sl-color-white);
+    font-weight: 600;
+  }
+
+  /* ---- Workflow sequence ---- */
+  .how-flow {
+    list-style: none;
+    counter-reset: how-step;
+    margin: 2rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+  }
+  .how-step {
+    counter-increment: how-step;
+    display: grid;
+    grid-template-columns: 1.6rem minmax(8rem, auto) 1fr;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid var(--sl-color-hairline);
+    border-left: 3px solid var(--sl-color-accent);
+    border-radius: 8px;
+    background: var(--sl-color-bg-nav);
+    font-size: 0.9rem;
+  }
+  .how-step::before {
+    content: counter(how-step);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 999px;
+    background: var(--sl-color-accent-low);
+    color: var(--sl-color-text-accent);
+    font-family: var(--sl-font-mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+  .how-step-done {
+    border-left-color: var(--sl-color-accent-high);
+  }
+  .how-step-actor {
+    font-weight: 600;
+    color: var(--sl-color-white);
+    font-family: var(--sl-font-mono);
+    font-size: 0.8rem;
+  }
+  .how-step-text {
+    color: var(--sl-color-gray-2);
+  }
+  .how-step code {
+    font-size: 0.8rem;
+  }
+
+  /* ---- Responsive: stack the structural columns on narrow screens ---- */
+  @media (max-width: 640px) {
+    .how-structure {
+      flex-direction: column;
+    }
+    .how-arrow-h {
+      width: 2px;
+      height: 1.4rem;
+    }
+    .how-arrow-h::after {
+      right: 50%;
+      top: auto;
+      bottom: -1px;
+      transform: translateX(50%);
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 6px solid var(--sl-color-gray-4);
+      border-bottom: none;
+    }
+    .how-col-sessions {
+      grid-template-rows: none;
+      gap: 0.4rem;
+    }
+    .how-map {
+      justify-content: center;
+    }
+    .how-map .how-arrow-h {
+      height: 1rem;
+    }
+    .how-step {
+      grid-template-columns: 1.6rem 1fr;
+    }
+    .how-step-text {
+      grid-column: 1 / -1;
+    }
+  }
+</style>

@@ -1,0 +1,95 @@
+---
+title: Architecture
+description: A map of Overlord's modules and how a mission flows through them.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This is a map of how Overlord is built, so you can reason about *where* a
+behavior lives when you debug or extend it. It is deliberately high level; the
+authoritative, contract-pinned specs stay colocated with the module that owns
+them in the repository, and this page links out to them.
+
+<Aside type="note">
+Overlord's deep architecture is a series of behavior specs (`NN-*.md`) that live
+under each module's `docs/` directory and are pinned as reference specs in
+[`CONTRACT.md`](https://github.com/cooperativ-labs/Overlord/blob/main/CONTRACT.md).
+The numbers are **stable identifiers, not a reading order.** The canonical
+ordered index is
+[`docs/architecture.md`](https://github.com/cooperativ-labs/Overlord/blob/main/docs/architecture.md).
+</Aside>
+
+## The one-paragraph model
+
+Overlord is a portable domain (projects, missions, objectives, sessions, events)
+with a CLI-first product surface on top of it. Agents interact through the
+[`ovld protocol`](/docs-for-agents/agent-protocol/) lifecycle, which is the same
+contract whether it's reached from the CLI, the hosted API, or
+[MCP](/docs-for-agents/mcp/). A runner claims queued execution requests and
+launches agents. Everything an agent produces — progress, questions, artifacts,
+delivery, per-file rationale — lands as durable records that the review surface
+reads back.
+
+## Modules, in reading order
+
+The architecture series is meant to be read in this order (not by number). Each
+links to the authoritative spec on GitHub.
+
+| # | Spec | Module | What it covers |
+| --- | --- | --- | --- |
+| 1 | [Core Domain & Lifecycle](https://github.com/cooperativ-labs/Overlord/blob/main/cli/docs/06-core-domain-and-lifecycle.md) | cli | Projects, missions, objectives, sessions, events, statuses, and state transitions — the domain everything builds on. |
+| 2 | [CLI-First Product Surface](https://github.com/cooperativ-labs/Overlord/blob/main/cli/docs/02-cli-first-product-surface.md) | cli | Management commands, configuration, project linking, output contracts. |
+| 3 | [Agent Protocol](https://github.com/cooperativ-labs/Overlord/blob/main/cli/docs/03-agent-protocol.md) | cli | The `ovld protocol` lifecycle: context assembly, updates, delivery, attachments. |
+| 4 | [Runner & Launch Execution](https://github.com/cooperativ-labs/Overlord/blob/main/cli/docs/04-runner-and-launch-execution.md) | cli | Execution requests, the local runner, launch-command generation, auto-advance. |
+| 5 | [Review, Artifacts & Change Tracking](https://github.com/cooperativ-labs/Overlord/blob/main/cli/docs/11-review-artifacts-and-change-tracking.md) | cli | Delivery review records, artifacts, rationale coverage, local diff support. |
+| 6 | [Connectors & Agent Plugins](https://github.com/cooperativ-labs/Overlord/blob/main/connectors/docs/05-connectors-and-agent-plugins.md) | connectors | The connector core, plugins, adapters, and prompt wrappers that bind agents to Overlord. |
+| 7 | [Automations Overview](https://github.com/cooperativ-labs/Overlord/blob/main/automations/docs/01-automations-overview.md) | automations | Optional AI automations (objective titling, summarization) and how they plug in. |
+| 8 | [USER_TOKEN Authentication](https://github.com/cooperativ-labs/Overlord/blob/main/auth/docs/07-user-token-authentication.md) | auth | Mix-and-match authentication and the `USER_TOKEN` lifecycle. |
+| 9 | [Role-Based Access Control](https://github.com/cooperativ-labs/Overlord/blob/main/auth/docs/08-role-based-access-control.md) | auth | Roles, permissions, and authorization. |
+| 10 | [Database Schema Contract](https://github.com/cooperativ-labs/Overlord/blob/main/database/docs/09-database-schema-contract.md) | database | The portable SQLite/Postgres schema contract and extension points. |
+| 11 | [Database Table Groups](https://github.com/cooperativ-labs/Overlord/blob/main/database/docs/10-database-table-groups.md) | database | Core vs. à-la-carte table groups and capability gating. |
+| 12 | [Private-Network PostgreSQL Deployment](https://github.com/cooperativ-labs/Overlord/blob/main/database/docs/12-private-network-postgresql-deployment-plan.md) | database | Deployment plan for a private-network Postgres backend. |
+| 13 | [Database Seeding Framework](https://github.com/cooperativ-labs/Overlord/blob/main/database/docs/13-database-seeding-framework.md) | database | How seed data is defined and applied across adapters. |
+
+## How a mission flows through the system
+
+1. **Create.** A mission and its ordered objectives are created (CLI, app, API,
+   or MCP) against a resolved **project**. The domain module owns this state.
+2. **Queue.** Requesting execution enqueues an **execution request** for an
+   objective.
+3. **Claim & launch.** The **runner** claims a request and generates a launch
+   command that starts the agent in the right working directory, forwarding
+   `OVERLORD_EXECUTION_REQUEST_ID` so the session links back to the request.
+4. **Attach.** The **connector** wraps the agent so it attaches via
+   `ovld protocol`, receiving full context (see
+   [The agent protocol](/docs-for-agents/agent-protocol/)).
+5. **Work & report.** The agent posts updates, may ask blocking questions, and
+   the client captures the VCS baseline/delta for changed-file attribution.
+6. **Deliver.** The agent delivers a summary, artifacts, and per-file
+   rationales. The objective moves to `complete`, the mission to `review`, and
+   auto-advance may launch the next objective.
+7. **Review.** The **review/change-tracking** surface reads the durable records
+   back, checking rationale coverage against the changed files.
+
+Throughout, the **auth** module resolves identity and enforces RBAC, and the
+**database** module provides the portable schema all of this persists to.
+
+## Design principles worth knowing
+
+- **The protocol is the contract.** The same operations are reachable from CLI,
+  API, and MCP; divergence between surfaces is treated as a bug.
+- **Specs stay colocated with their module.** The global series is physically
+  spread across modules and re-assembled by the index above — this keeps each
+  module's behavior documented next to its code.
+- **Portable by design.** The schema targets both SQLite (local) and Postgres
+  (hosted), with à-la-carte table groups gated by capability.
+- **MCP handlers reuse services.** They call existing service/protocol functions
+  and rely on their RBAC checks — they never write database tables directly.
+
+## Related
+
+- [The agent protocol](/docs-for-agents/agent-protocol/) — the lifecycle in
+  module 3, from the agent's point of view.
+- [Authentication & troubleshooting](/docs-for-agents/authentication/) — modules
+  8 and 9, applied.
+- [MCP access](/docs-for-agents/mcp/) — the hosted MCP surface.

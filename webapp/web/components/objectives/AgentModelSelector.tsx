@@ -76,7 +76,7 @@ export function AgentModelSelector({
   );
   const selectedAgent = catalog.agents.find(agent => agent.key === value.agent) ?? null;
   const isManual = value.agent === MANUAL_AGENT_KEY;
-  const models = selectedAgent?.models ?? [];
+  const models = (selectedAgent?.models ?? []).filter(m => m.enabled !== false);
   const selectedModel = models.find(m => m.id === value.model) ?? null;
   const reasoningOptions = selectedModel?.reasoningOptions ?? [];
   const launchConfig = agentConfigs[value.agent];

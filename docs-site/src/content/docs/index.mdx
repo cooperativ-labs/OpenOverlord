@@ -14,6 +14,7 @@ hero:
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
+import HowOverlordWorks from '../../components/HowOverlordWorks.astro';
 
 Overlord is the durable work record around your coding agents. It keeps the
 objective, progress, questions, artifacts, delivery notes, and file-change
@@ -23,6 +24,15 @@ agent's own interface.
 It works with the tools and subscriptions you already use. Overlord is not a
 replacement for Codex, Claude Code, Cursor, or your terminal; it coordinates
 their work across projects and over time.
+
+## How Overlord works
+
+You organize work as **projects → missions → objectives**, and each objective is
+handed to exactly one **agent session**. The agent attaches, works against your
+repository, posts progress, and delivers a reviewable result with per-file change
+rationale—all recorded on the mission so nothing is lost between passes.
+
+<HowOverlordWorks />
 
 ## The core model
 
@@ -47,3 +57,4 @@ their work across projects and over time.
 - Ready to organize agent work? Read [Missions and objectives](/missions/).
 - Connecting a local checkout? See [Projects and resources](/projects/).
 - Prefer the terminal? Go straight to the [CLI reference](/cli/).
+- An AI agent helping someone use Overlord? Read the [Docs for agents](/docs-for-agents/).

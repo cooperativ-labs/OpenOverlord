@@ -3,7 +3,7 @@ import {
   objectiveHasInstructionText
 } from '@overlord/automations/objective-manager';
 import { useNavigate } from '@tanstack/react-router';
-import { ArrowRightToLine, Loader2, Sparkles } from 'lucide-react';
+import { ArrowRightToLine, Loader2, Sparkles, Unplug } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 import type { MissionDetailDto } from '../../shared/contract.ts';
@@ -11,13 +11,23 @@ import {
   useCreateObjective,
   useGenerateMissionTitle,
   useMission,
-  useUpdateMission
+  useUpdateMission,
+  useUpdateObjective
 } from '../lib/queries.ts';
 import { cn } from '../lib/utils.ts';
 
 import { MissionObjectivesSection } from './objectives/MissionObjectivesSection.tsx';
 import { MissionSchedulingControls } from './scheduling/MissionSchedulingControls.tsx';
 import { Button as IconButton } from './ui/button.tsx';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from './ui/dialog.tsx';
 import { Separator } from './ui/separator.tsx';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.tsx';
 import { InlineEditField } from './InlineEditField.tsx';
@@ -138,6 +148,57 @@ function MissionTitle({ mission }: { mission: MissionDetailDto }) {
         <GenerateMissionTitleButton mission={mission} />
       </h1>
     </section>
+  );
+}
+
+function DisconnectActivityButton({ mission }: { mission: MissionDetailDto }) {
+  const updateObjective = useUpdateObjective();
+  const [open, setOpen] = useState(false);
+
+  const executingObjective = mission.objectives.find(o => o.state === 'executing');
+
+  const handleDisconnect = async () => {
+    if (!executingObjective) return;
+    await updateObjective.mutateAsync({ id: executingObjective.id, body: { state: 'submitted' } });
+    setOpen(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger
+        render={
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-(--color-ink-dim) transition-colors hover:bg-destructive/10 hover:text-destructive"
+          />
+        }
+      >
+        <Unplug className="h-3 w-3" />
+        Disconnect
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Disconnect mission activity?</DialogTitle>
+          <DialogDescription>
+            Disconnecting will move the current objective back to the queue. This may prevent any
+            objective currently running against this Mission from reporting progress back to
+            Overlord.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="secondary" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            disabled={updateObjective.isPending || !executingObjective}
+            onClick={handleDisconnect}
+          >
+            {updateObjective.isPending ? 'Disconnecting…' : 'Disconnect'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -296,9 +357,12 @@ export function MissionPanel({
           <Separator />
           <div className="flex flex-col gap-6 mt-8">
             <div className="space-y-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-(--color-ink-dim)">
-                Activity
-              </h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-(--color-ink-dim)">
+                  Activity
+                </h2>
+                {mission.hasExecutingObjective && <DisconnectActivityButton mission={mission} />}
+              </div>
               <LiveActivityFeed missionId={mission.id} />
             </div>
             <div className="space-y-3">

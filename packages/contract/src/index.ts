@@ -801,6 +801,8 @@ export interface AgentCatalogModelDto {
   displayName: string;
   /** Reasoning/thinking levels selectable for this model (empty = none). */
   reasoningOptions: string[];
+  /** When false, model is saved in the catalog but not offered as a selectable option. Defaults to true. */
+  enabled?: boolean;
 }
 
 export interface AgentCatalogAgentDto {
