@@ -3,6 +3,7 @@ import type {
   LinkProjectEverhourBody,
   UpdateEverhourTimeBody
 } from '@overlord/contract/ext/everhour';
+import type { LinkProjectGitHubBody } from '@overlord/contract/ext/github';
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type {
@@ -140,7 +141,10 @@ export const keys = {
   everhourIntegration: ['integrations', 'everhour'] as const,
   projectEverhourLink: (projectId: string) => ['project', projectId, 'everhour-link'] as const,
   projectEverhour: (projectId: string) => ['project', projectId, 'everhour'] as const,
-  missionEverhour: (id: string) => ['mission', id, 'everhour'] as const
+  missionEverhour: (id: string) => ['mission', id, 'everhour'] as const,
+  githubIntegration: ['integrations', 'github'] as const,
+  projectGitHubLink: (projectId: string) => ['project', projectId, 'github-link'] as const,
+  missionGitHubPullRequest: (id: string) => ['mission', id, 'github-pull-request'] as const
 };
 
 // Mutations still invalidate eagerly so the originating user sees their change
@@ -1543,6 +1547,55 @@ export function useClearEverhourApiKey() {
       invalidateMissionEverhourQueries(qc);
       invalidateProjectEverhourQueries(qc);
     }
+  });
+}
+
+// ---- GitHub integration --------------------------------------------------
+
+export const useGitHubIntegration = () =>
+  useQuery({ queryKey: keys.githubIntegration, queryFn: () => api.getGitHubIntegration() });
+
+export function useBeginGitHubInstall() {
+  return useMutation({ mutationFn: () => api.beginGitHubInstall() });
+}
+
+export function useDisconnectGitHub() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.disconnectGitHub(),
+    onSuccess: data => {
+      qc.setQueryData(keys.githubIntegration, data);
+      void qc.invalidateQueries({ predicate: query => query.queryKey[2] === 'github-link' });
+    }
+  });
+}
+
+export const useProjectGitHubLink = (projectId: string, options: { enabled?: boolean } = {}) =>
+  useQuery({
+    queryKey: keys.projectGitHubLink(projectId),
+    queryFn: () => api.getProjectGitHubLink(projectId),
+    enabled: options.enabled ?? true
+  });
+
+export function useLinkProjectGitHub(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: LinkProjectGitHubBody) => api.linkProjectGitHub(projectId, body),
+    onSuccess: data => qc.setQueryData(keys.projectGitHubLink(projectId), data)
+  });
+}
+
+export const useMissionGitHubPullRequest = (missionId: string) =>
+  useQuery({
+    queryKey: keys.missionGitHubPullRequest(missionId),
+    queryFn: () => api.getMissionGitHubPullRequest(missionId)
+  });
+
+export function useCreateMissionGitHubPullRequest(missionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.createMissionGitHubPullRequest(missionId),
+    onSuccess: data => qc.setQueryData(keys.missionGitHubPullRequest(missionId), data)
   });
 }
 

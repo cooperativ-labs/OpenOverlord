@@ -12,8 +12,12 @@ const cliRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(cliRoot, '..');
 const tsc = path.join(repoRoot, 'node_modules', '.bin', 'tsc');
 
-/** Native / server-only packages the published CLI must not ship or execute. */
-const bundleExternals = ['better-sqlite3', '@overlord/database', '@overlord/auth', 'kysely', 'yaml'];
+// Native / server-only packages the published CLI must not ship or execute.
+// `yaml` is deliberately NOT here: it is a pure-JS runtime dependency of
+// `src/contract.ts`, and the desktop app stages only `dist/index.js` +
+// `package.json` (no node_modules), so an externalized import cannot resolve
+// at runtime. It must be bundled into `dist/index.js`.
+const bundleExternals = ['better-sqlite3', '@overlord/database', '@overlord/auth', 'kysely'];
 
 function run(command, args, cwd = cliRoot) {
   const result = spawnSync(command, args, { cwd, stdio: 'inherit' });

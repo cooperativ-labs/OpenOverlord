@@ -66,7 +66,10 @@ export function NewMissionModal({
   defaultDueDate = null
 }: NewMissionModalProps) {
   const projectsQ = useProjects();
-  const projects = useMemo(() => projectsQ.data ?? [], [projectsQ.data]);
+  const projects = useMemo(
+    () => (projectsQ.data ?? []).filter(project => project.status === 'active'),
+    [projectsQ.data]
+  );
   const createMission = useCreateMission();
   const launchObjective = useLaunchObjective();
   const updateObjective = useUpdateObjective();

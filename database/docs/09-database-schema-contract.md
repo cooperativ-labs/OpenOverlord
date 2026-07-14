@@ -2193,6 +2193,61 @@ Indexes:
 - `(project_id, deleted_at)`.
 - `(mission_id, deleted_at)`.
 
+## GitHub Database Extension
+
+GitHub repository integration is extension-owned. The `github` extension stores
+only the GitHub App installation identifier and non-secret display metadata;
+installation access tokens are minted from `GITHUB_APP_PRIVATE_KEY` on demand
+and must never enter these tables, DTOs, logs, or change-feed fields. Its
+migrations use `schema_migrations.component = 'ext:github'` and all tables use
+the `ext_github_` prefix.
+
+### `ext_github_installations`
+
+One active GitHub App installation per workspace.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | Id | yes | Stable extension row ID. |
+| `workspace_id` | Id | yes | FK to `workspaces`. |
+| `github_installation_id` | text | yes | GitHub App installation identifier; not a bearer credential. |
+| `github_account_login` | text | yes | Installed user or organization login. |
+| `github_account_type` | text | no | GitHub account type captured at install time. |
+| `permissions_json` | JSON | yes | Non-secret GitHub App permission snapshot. |
+| `created_at`, `updated_at`, `deleted_at`, `revision` | standard | yes/no | Standard soft-delete and optimistic-concurrency fields. |
+
+Index: unique active `(workspace_id)`.
+
+### `ext_github_project_links`
+
+One active GitHub repository link per project.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id`, `workspace_id`, `project_id` | Id | yes | Extension row and tenant/project FKs. |
+| `github_repo_id` | text | yes | Stable GitHub repository ID. |
+| `full_name` | text | yes | `owner/name` used for GitHub API calls. |
+| `default_branch` | text | yes | Base branch used for mission pull requests. |
+| `metadata_json` | JSON | yes | Non-secret repo metadata. |
+| `created_at`, `updated_at`, `deleted_at`, `revision` | standard | yes/no | Standard lifecycle fields. |
+
+Index: unique active `(workspace_id, project_id)`.
+
+### `ext_github_mission_pull_requests`
+
+Idempotency record for a mission pull request created through the GitHub App.
+
+| Column | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id`, `workspace_id`, `project_id`, `mission_id` | Id | yes | Extension row and core references. |
+| `github_pull_number` | integer | yes | GitHub pull request number. |
+| `html_url` | text | yes | External GitHub pull request URL. |
+| `state` | text | yes | Extension-local `open` or `closed` state. |
+| `head_branch`, `base_branch` | text | yes | Branches used to create the pull request. |
+| `created_at`, `updated_at`, `deleted_at`, `revision` | standard | yes/no | Standard lifecycle fields. |
+
+Index: unique active `(workspace_id, mission_id)`.
+
 ## Extension Points
 
 Overlord should be extensible without making core upgrades fragile.

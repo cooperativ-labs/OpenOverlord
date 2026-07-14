@@ -49,6 +49,7 @@ import {
   updateRunnerRequestStatus
 } from './execution/runner.ts';
 import { createEverhourExtensionRouter } from './ext/everhour/routes.ts';
+import { createGitHubExtensionRouter } from './ext/github/routes.ts';
 import { isAllowedBrowserOrigin } from './http/browser-origins.ts';
 import { buildMeta } from './http/meta.ts';
 import { resolveServeSpa } from './http/serve-spa.ts';
@@ -1164,6 +1165,7 @@ app.get(
 // lives in any non-default workspace scopes the lookup to the wrong tenant and
 // 404s ("Project not found") even though the project exists.
 app.use('/ext/everhour', requireAuthenticatedSession, createEverhourExtensionRouter(handle));
+app.use('/ext/github', requireAuthenticatedSession, createGitHubExtensionRouter(handle));
 app.patch(
   '/api/projects/:id/board/reorder',
   handle(req => reorderBoardColumn(req.params.id, req.body), {

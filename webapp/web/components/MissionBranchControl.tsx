@@ -5,6 +5,7 @@ import {
   Check,
   ChevronDown,
   Copy,
+  ExternalLink,
   FolderOpen,
   GitBranch,
   GitBranchPlus,
@@ -33,9 +34,12 @@ import {
 } from '../lib/local-target-remote.ts';
 import {
   useBranchAction,
+  useCreateMissionGitHubPullRequest,
   useGenerateCommitMessage,
   useMissionBranches,
+  useMissionGitHubPullRequest,
   useProjectExecutionTarget,
+  useProjectGitHubLink,
   useProjectResources,
   useUpdateMission
 } from '../lib/queries.ts';
@@ -544,6 +548,9 @@ function BranchPanel({ mission }: { mission: MissionDetailDto }) {
   const branchAction = useBranchAction(mission);
   const generateCommitMessage = useGenerateCommitMessage(mission);
   const update = useUpdateMission(mission.id);
+  const githubLink = useProjectGitHubLink(mission.projectId);
+  const githubPullRequest = useMissionGitHubPullRequest(mission.id);
+  const createGitHubPullRequest = useCreateMissionGitHubPullRequest(mission.id);
   const [actionError, setActionError] = useState<BranchErrorView | null>(null);
   // When an action needs confirmation (an objective is executing on the branch),
   // we stash the intended action and surface an inline confirm prompt.
@@ -630,6 +637,8 @@ function BranchPanel({ mission }: { mission: MissionDetailDto }) {
     branch.status === 'created' ||
     (branch.status === 'published' && branch.hasUnpushedCommits === true);
   const showCreatePr = branch.status === 'published';
+  const linkedGitHubRepo = githubLink.data?.repo ?? null;
+  const existingGitHubPullRequest = githubPullRequest.data;
   const commitMessageValid = commitMessage.trim().length > 0;
   const gitUnavailable =
     (localTargetUnavailable && !isRemoteTarget && branch.status !== 'pending') || pendingMutation;
@@ -811,7 +820,43 @@ function BranchPanel({ mission }: { mission: MissionDetailDto }) {
           </div>
         )}
 
-        {showCreatePr && (
+        {showCreatePr && linkedGitHubRepo && (
+          <div className="space-y-1.5 border-t border-border/60 pt-2">
+            {existingGitHubPullRequest ? (
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  window.open(existingGitHubPullRequest.url, '_blank', 'noopener,noreferrer')
+                }
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                View pull request #{existingGitHubPullRequest.number}
+              </Button>
+            ) : (
+              <LoadingButton
+                variant="secondary"
+                buttonState={createGitHubPullRequest.isPending ? 'loading' : 'default'}
+                text={
+                  <>
+                    <GitBranchPlus className="h-3.5 w-3.5" />
+                    Open pull request
+                  </>
+                }
+                loadingText="Opening pull request…"
+                onClick={() =>
+                  void createGitHubPullRequest
+                    .mutateAsync()
+                    .catch(err => setActionError(describeBranchError(err, parent)))
+                }
+              />
+            )}
+            <p className="text-xs text-muted-foreground">
+              Creates a pull request in {linkedGitHubRepo.fullName}.
+            </p>
+          </div>
+        )}
+
+        {showCreatePr && !linkedGitHubRepo && (
           <div className="space-y-1.5 border-t border-border/60 pt-2">
             <p className="text-xs text-muted-foreground">Open a pull request:</p>
             <div className="flex min-w-0 items-center gap-2">

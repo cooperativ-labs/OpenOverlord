@@ -7,8 +7,11 @@ import { Label } from '@/components/ui/label';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { LoadingButton } from '@/components/ui/loading-button';
 import {
+  useBeginGitHubInstall,
   useClearEverhourApiKey,
+  useDisconnectGitHub,
   useEverhourIntegration,
+  useGitHubIntegration,
   useSetEverhourApiKey
 } from '@/lib/queries';
 
@@ -19,6 +22,10 @@ export function IntegrationsPage() {
   const [apiKey, setApiKey] = useState('');
   const [saveState, setSaveState] = useState<ButtonLoadingState>('default');
   const [error, setError] = useState<string | null>(null);
+  const github = useGitHubIntegration();
+  const beginGitHubInstall = useBeginGitHubInstall();
+  const disconnectGitHub = useDisconnectGitHub();
+  const [githubError, setGithubError] = useState<string | null>(null);
 
   const connected = integration.data?.connected ?? false;
   const accountName = integration.data?.accountName ?? null;
@@ -47,6 +54,18 @@ export function IntegrationsPage() {
       await clearKey.mutateAsync();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to disconnect.');
+    }
+  }
+
+  async function handleGitHubInstall() {
+    setGithubError(null);
+    try {
+      const { installUrl } = await beginGitHubInstall.mutateAsync();
+      window.location.assign(installUrl);
+    } catch (err) {
+      setGithubError(
+        err instanceof Error ? err.message : 'Failed to start GitHub App installation.'
+      );
     }
   }
 
@@ -133,6 +152,55 @@ export function IntegrationsPage() {
           </div>
         )}
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      </div>
+
+      <div className="max-w-lg space-y-3 rounded-lg border border-border p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-medium">GitHub</h3>
+            <p className="text-xs text-muted-foreground">
+              Link repositories to projects and create pull requests from published mission
+              branches.
+            </p>
+          </div>
+          {github.data?.connected ? (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-600">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Connected
+            </span>
+          ) : null}
+        </div>
+        {github.data?.connected ? (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Connected to <strong className="text-foreground">{github.data.accountLogin}</strong>.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={disconnectGitHub.isPending}
+              onClick={() => void disconnectGitHub.mutateAsync()}
+            >
+              Disconnect
+            </Button>
+          </div>
+        ) : github.data?.configured ? (
+          <Button
+            type="button"
+            size="sm"
+            disabled={beginGitHubInstall.isPending}
+            onClick={() => void handleGitHubInstall()}
+          >
+            Install GitHub App
+          </Button>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            A server administrator must configure GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, and
+            GITHUB_APP_SLUG before this workspace can install GitHub.
+          </p>
+        )}
+        {githubError ? <p className="text-xs text-destructive">{githubError}</p> : null}
       </div>
     </div>
   );

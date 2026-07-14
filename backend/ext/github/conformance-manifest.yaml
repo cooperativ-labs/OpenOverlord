@@ -1,0 +1,8 @@
+contractVersion: "5"
+componentType: rest-module
+componentKey: github
+label: "GitHub REST Extension"
+description: "Workspace GitHub App repository linking and mission pull requests."
+restModule:
+  endpointPrefix: /ext/github
+  usesServiceLayer: true

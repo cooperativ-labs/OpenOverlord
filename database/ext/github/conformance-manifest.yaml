@@ -1,0 +1,10 @@
+contractVersion: "5"
+componentType: extension
+componentKey: github
+label: "GitHub Database Extension"
+description: "GitHub App installation, repository-link, and pull-request persistence."
+extension:
+  tablePrefix: ext_github_
+  migrationComponent: ext:github
+  usesExtensionPoints:
+    - database-extension

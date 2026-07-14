@@ -7,6 +7,15 @@ import type {
   ProjectEverhourStateDto,
   UpdateEverhourTimeBody
 } from '@overlord/contract/ext/everhour';
+import type {
+  CreateGitHubPullRequestBody,
+  GitHubInstallUrlDto,
+  GitHubIntegrationDto,
+  GitHubPullRequestDto,
+  GitHubRepoSummaryDto,
+  LinkProjectGitHubBody,
+  ProjectGitHubLinkDto
+} from '@overlord/contract/ext/github';
 
 import type { LocalTargetBridgeCall } from '../../../packages/core/service/local-target/desktop-bridge.ts';
 import type { CapabilityResult } from '../../../packages/core/service/local-target/types.ts';
@@ -607,6 +616,24 @@ export const api = {
       'DELETE',
       `/ext/everhour/missions/${missionId}/time/${recordId}`
     ),
+
+  // ---- GitHub integration ------------------------------------------------
+  getGitHubIntegration: () => request<GitHubIntegrationDto>('GET', '/ext/github/integration'),
+  beginGitHubInstall: () => request<GitHubInstallUrlDto>('POST', '/ext/github/install'),
+  disconnectGitHub: () => request<GitHubIntegrationDto>('DELETE', '/ext/github/integration'),
+  listGitHubRepos: (query?: string) =>
+    request<GitHubRepoSummaryDto[]>(
+      'GET',
+      `/ext/github/repos${query ? `?q=${encodeURIComponent(query)}` : ''}`
+    ),
+  getProjectGitHubLink: (projectId: string) =>
+    request<ProjectGitHubLinkDto>('GET', `/ext/github/projects/${projectId}/link`),
+  linkProjectGitHub: (projectId: string, body: LinkProjectGitHubBody) =>
+    request<ProjectGitHubLinkDto>('PUT', `/ext/github/projects/${projectId}/link`, body),
+  getMissionGitHubPullRequest: (missionId: string) =>
+    request<GitHubPullRequestDto | null>('GET', `/ext/github/missions/${missionId}/pull-request`),
+  createMissionGitHubPullRequest: (missionId: string, body: CreateGitHubPullRequestBody = {}) =>
+    request<GitHubPullRequestDto>('POST', `/ext/github/missions/${missionId}/pull-request`, body),
 
   /** Dev-only loopback SQLite proxy for checkout-local capabilities in plain browser. */
   invokeLocalTarget: (call: LocalTargetBridgeCall) =>

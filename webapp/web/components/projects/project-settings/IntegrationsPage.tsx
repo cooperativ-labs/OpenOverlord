@@ -6,8 +6,11 @@ import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { LoadingButton } from '@/components/ui/loading-button';
 import {
   useEverhourIntegration,
+  useGitHubIntegration,
   useLinkProjectEverhour,
-  useProjectEverhourLink
+  useLinkProjectGitHub,
+  useProjectEverhourLink,
+  useProjectGitHubLink
 } from '@/lib/queries';
 
 import type { ProjectDto } from '../../../../shared/contract.ts';
@@ -107,6 +110,66 @@ function EverhourProjectField({ open, project }: IntegrationsPageProps) {
   );
 }
 
+function GitHubProjectField({ open, project }: IntegrationsPageProps) {
+  const integration = useGitHubIntegration();
+  const linkState = useProjectGitHubLink(project.id, { enabled: open });
+  const link = useLinkProjectGitHub(project.id);
+  const [value, setValue] = useState(linkState.data?.repo?.fullName ?? '');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) setValue(linkState.data?.repo?.fullName ?? '');
+  }, [open, linkState.data?.repo?.fullName]);
+
+  if (!integration.data?.connected) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Connect GitHub in Settings → Integrations to link a repository.
+      </p>
+    );
+  }
+  return (
+    <div className="max-w-lg space-y-3 rounded-lg border border-border p-4">
+      <div>
+        <h3 className="text-sm font-medium">GitHub</h3>
+        <p className="text-xs text-muted-foreground">
+          Link an installed GitHub repository as owner/name.
+        </p>
+      </div>
+      <div className="flex gap-2">
+        <Input
+          value={value}
+          onChange={event => setValue(event.target.value)}
+          placeholder="owner/repository"
+          className="h-8"
+        />
+        <LoadingButton
+          buttonState={link.isPending ? 'loading' : 'default'}
+          text="Link"
+          loadingText="Linking…"
+          size="sm"
+          variant="outline"
+          className="h-8 shrink-0"
+          onClick={() => {
+            setError(null);
+            void link
+              .mutateAsync({ repoFullName: value.trim() || null })
+              .catch(err =>
+                setError(err instanceof Error ? err.message : 'Failed to link GitHub repository.')
+              );
+          }}
+        />
+      </div>
+      {linkState.data?.repo ? (
+        <p className="text-xs text-muted-foreground">
+          Linked to {linkState.data.repo.fullName} ({linkState.data.repo.defaultBranch}).
+        </p>
+      ) : null}
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+    </div>
+  );
+}
+
 export function IntegrationsPage({ open, project }: IntegrationsPageProps) {
   return (
     <div className="space-y-6">
@@ -116,6 +179,7 @@ export function IntegrationsPage({ open, project }: IntegrationsPageProps) {
       </div>
 
       <EverhourProjectField open={open} project={project} />
+      <GitHubProjectField open={open} project={project} />
     </div>
   );
 }

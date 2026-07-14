@@ -1027,10 +1027,11 @@ export async function runManagementCommand({
       const resourceKey = flagValue(parsed.flags, '--key') ?? existingProjectJson?.resourceKey;
       let projectId = flagValue(parsed.flags, '--project-id');
       if (!projectId) {
-        const projects =
-          await runtime.backend.get<Array<{ id: string; name: string; slug: string }>>(
-            '/api/projects'
-          );
+        const allProjects =
+          await runtime.backend.get<
+            Array<{ id: string; name: string; slug: string; status?: string }>
+          >('/api/projects');
+        const projects = allProjects.filter(project => project.status !== 'archived');
         if (projects.length === 0) {
           throw new CliError({
             message: 'No project found. Create one with `ovld create-project`.'

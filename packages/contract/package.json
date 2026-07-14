@@ -17,6 +17,10 @@
     "./ext/everhour": {
       "types": "./dist/ext/everhour.d.ts",
       "default": "./dist/ext/everhour.js"
+    },
+    "./ext/github": {
+      "types": "./dist/ext/github.d.ts",
+      "default": "./dist/ext/github.js"
     }
   },
   "files": [

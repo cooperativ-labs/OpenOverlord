@@ -7,7 +7,7 @@ Date: 2026-06-30
 ## TL;DR
 
 1. **Add GitHub as a Better Auth social provider** for interactive login (web + desktop + cloud). Keep email/password as a parallel path; do not introduce a second identity system.
-2. **Treat “GitHub integration” as a separate workspace capability** from login: a server-side GitHub API client (GitHub App preferred) that can link repos to projects and create/list PRs for published mission branches. Follow the Everhour integration shape: secrets on the server, DTOs in `packages/contract`, routes under `/api/integrations/github`, UI in Settings → Integrations.
+2. **Treat “GitHub integration” as a separate workspace capability** from login: a server-side GitHub API client (GitHub App preferred) that can link repos to projects and create/list PRs for published mission branches. Follow the Everhour integration shape: secrets on the server, DTOs in `packages/contract`, routes under `/ext/github`, UI in Settings → Integrations.
 3. **Ship in three phases**: (A) GitHub login, (B) workspace GitHub connect + repo link, (C) mission PR workflows replacing the copy-only `gh pr create` affordance.
 4. **Desktop remote OAuth** needs a redirect round-trip (`overlord://` custom protocol or loopback callback) so bearer tokens land in the correct backend partition — already anticipated in `planning/feature-plans/overlord-cloud-architecture.md`.
 
@@ -50,7 +50,7 @@ Non-goals for v1:
 | Integration auth model | **GitHub App** (workspace installation) | Supports org repos, fine-grained permissions, webhooks later, and avoids per-user PAT management. Fallback: OAuth user token via `authClient.linkSocial({ provider: 'github', scopes: ['repo'] })` — reuses Better Auth's `account` token store, so no separate token table needed for the MVP fallback. |
 | Same GitHub App for login + integration? | **No — keep login as an OAuth App (or a dedicated login GitHub App)** | If a single GitHub App were used for login too, its *Account Permissions → Email Addresses* must be set to Read-Only or logins fail with `email_not_found` (Better Auth doc). Separate apps keep the email-permission requirement isolated to the login app and repo permissions isolated to the integration app. |
 | Secret storage | Env vars for app credentials; installation id + encrypted token metadata in `workspaces.settings_json` or `ext_github_*` table | Matches Everhour pattern (no secrets in DTOs); schema contract already allows namespaced `settings_json` keys. |
-| API surface | `/api/integrations/github/*` on REST layer | Same module boundary as Everhour; auth-gated; service-layer persistence. |
+| API surface | `/ext/github/*` REST extension | Uses the sanctioned namespaced REST-extension boundary; auth-gated; service-layer persistence. |
 | Desktop OAuth | Custom protocol `overlord://auth/callback` **or** loopback `http://127.0.0.1:<port>/auth/callback` forwarded into the active backend partition | Cross-origin cloud login cannot rely on cookies alone; bearer capture already exists. |
 | Profile handle for GitHub users | Use GitHub login as `user.name` / `profiles.handle` when no local username was chosen | Existing trigger mirrors `user.name` → `handle`. Validate GitHub handle charset (broader than `validateLocalUsername`). |
 | Account linking | Better Auth account linking, **but do NOT add `github` to `trustedProviders`** | Better Auth doc warns trusted providers auto-link on same email *even when the provider hasn't confirmed email verification* → account-takeover risk. Rely on default (verified-email) implicit linking; consider `disableImplicitLinking: true` to force explicit link from Account settings. Leave `allowDifferentEmails` and `allowUnlinkingAll` at defaults. |
@@ -198,7 +198,7 @@ Responsibilities:
 
 Implementation notes:
 
-- Use `@octokit/rest` or `@octokit/auth-app` (add dependency to `backend/package.json` only).
+- Use GitHub App JWT and installation-token REST calls server-side; no browser token or persisted installation token.
 - App credentials: `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (PEM), `GITHUB_APP_SLUG` env vars.
 - Generate short-lived installation access tokens server-side per request (cache in memory with expiry buffer).
 - All GitHub errors → `ApiError` with actionable messages (403 private repo, 404, rate limit).
@@ -209,12 +209,13 @@ Implementation notes:
 Mirror Everhour naming:
 
 ```
-GET    /api/integrations/github
-POST   /api/integrations/github/install        # returns { installUrl }
-DELETE /api/integrations/github
-GET    /api/integrations/github/repos          # ?q= search
-PUT    /api/projects/:id/github-link           # { repoFullName } | null
-GET    /api/projects/:id/github-link           # linked repo metadata
+GET    /ext/github/integration
+POST   /ext/github/install                     # returns { installUrl }
+GET    /ext/github/callback                    # GitHub App setup URL callback
+DELETE /ext/github/integration
+GET    /ext/github/repos                       # ?q= search
+PUT    /ext/github/projects/:id/link           # { repoFullName } | null
+GET    /ext/github/projects/:id/link           # linked repo metadata
 ```
 
 Permissions:
@@ -244,6 +245,25 @@ DTOs in `packages/contract/src/index.ts` (`GitHubIntegrationDto`, `LinkProjectGi
 - [ ] Disconnect clears repo links or marks them inactive with clear UI error.
 - [ ] Secrets never appear in API responses or browser storage.
 
+### B.6 GitHub App operator configuration
+
+Create a separate GitHub App for workspace integration (do not reuse the login
+OAuth App). Configure **Repository permissions**: Metadata read-only, Contents
+read-only, and Pull requests read/write. Set its **Setup URL** to
+`<BACKEND_URL>/ext/github/callback`, generate a private key, and set these only
+on the backend:
+
+```
+GITHUB_APP_ID=<numeric app id>
+GITHUB_APP_PRIVATE_KEY=<PEM private key>
+GITHUB_APP_SLUG=<app URL slug>
+```
+
+After deployment, a workspace admin opens Settings → Integrations → GitHub and
+selects **Install GitHub App**. GitHub redirects to the setup URL with a signed
+short-lived state; the server stores only the installation id and display
+metadata. Install the app only on repositories the workspace should access.
+
 ---
 
 ## Phase C — Mission PR workflows
@@ -254,7 +274,7 @@ Replace copy-only PR command in `MissionBranchControl` when GitHub is linked:
 
 | Branch state | Today | Target |
 | --- | --- | --- |
-| `published` | Show `gh pr create …` copy button | **“Open pull request”** button → `POST /api/missions/:id/github/pull-request` |
+| `published` | Show `gh pr create …` copy button | **“Open pull request”** button → `POST /ext/github/missions/:id/pull-request` |
 | PR exists | — | Show link to GitHub PR; optional status badge |
 
 Server flow:
@@ -269,8 +289,8 @@ Optional: detect existing PR for `head` branch via `GET /pulls?head=…` before 
 ### C.2 REST
 
 ```
-POST /api/missions/:id/github/pull-request   # body: { title?, body?, draft? }
-GET  /api/missions/:id/github/pull-request   # { url, number, state } | null
+POST /ext/github/missions/:id/pull-request   # body: { title?, body?, draft? }
+GET  /ext/github/missions/:id/pull-request   # { url, number, state } | null
 ```
 
 Requires `MISSION_UPDATE`; GitHub token via workspace installation.

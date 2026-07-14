@@ -79,7 +79,10 @@ export function useRepositoryMentionOptions(projectId: string, resourceKey?: str
   }, [bridgeMentions.data, repository.data, useBridgePaths]);
 
   const projectMentionOptions = useMemo<ProjectMentionOption[]>(
-    () => (projects.data ?? []).map(project => ({ id: project.id, name: project.name })),
+    () =>
+      (projects.data ?? [])
+        .filter(project => project.status === 'active')
+        .map(project => ({ id: project.id, name: project.name })),
     [projects.data]
   );
 

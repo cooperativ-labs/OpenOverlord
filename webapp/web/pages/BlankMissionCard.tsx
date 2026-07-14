@@ -122,7 +122,10 @@ export function BlankMissionCard({
   valueRef.current = value;
 
   const projectsQ = useProjects();
-  const projects = useMemo(() => projectsQ.data ?? [], [projectsQ.data]);
+  const projects = useMemo(
+    () => (projectsQ.data ?? []).filter(project => project.status === 'active'),
+    [projectsQ.data]
+  );
   const tagsQ = useProjectTags(selectedProjectId);
   const activeTags = useMemo(() => (tagsQ.data ?? []).filter(tag => tag.active), [tagsQ.data]);
   const resourcesQ = useProjectResources(selectedProjectId);

@@ -69,11 +69,13 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
 
   const projects = useMemo<ProjectOption[]>(
     () =>
-      (projectsQ.data ?? []).map(project => ({
-        id: project.id,
-        name: project.name,
-        color: project.color
-      })),
+      (projectsQ.data ?? [])
+        .filter(project => project.status === 'active')
+        .map(project => ({
+          id: project.id,
+          name: project.name,
+          color: project.color
+        })),
     [projectsQ.data]
   );
 
