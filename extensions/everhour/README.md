@@ -15,7 +15,7 @@ REST extension points separately):
 | Database extension | [`conformance-manifest.yaml`](./conformance-manifest.yaml) | `extension` |
 | REST extension | [`../../backend/ext/everhour/conformance-manifest.yaml`](../../backend/ext/everhour/conformance-manifest.yaml) | `rest-module` |
 
-Validate with `ovld contract check <manifest-path>` when the CLI supports it.
+Validate with `ovld contract check <manifest-path>`.
 
 ## Directory layout
 

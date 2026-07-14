@@ -55,14 +55,22 @@ function protocolBody(flags: Record<string, string | boolean>): ProtocolRequestB
 }
 
 function jsonText(value: unknown): ToolCallResult {
+  // Every tool declares an object outputSchema, and MCP clients validate the
+  // result's `structuredContent` against it. A bare array or primitive (e.g. the
+  // add-objectives / search-missions handlers return `ObjectiveSummary[]` /
+  // `MissionSummary[]`) fails client-side with
+  // "structuredContent: Input should be a valid dictionary" even though the write
+  // succeeded server-side. Wrap non-dictionary results so structuredContent is
+  // always a dictionary; the text content mirrors it.
+  const structured = isRecord(value) ? value : { results: value };
   return {
     content: [
       {
         type: 'text',
-        text: JSON.stringify(value, null, 2)
+        text: JSON.stringify(structured, null, 2)
       }
     ],
-    structuredContent: value
+    structuredContent: structured
   };
 }
 

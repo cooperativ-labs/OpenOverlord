@@ -13,7 +13,7 @@ const repoRoot = path.resolve(cliRoot, '..');
 const tsc = path.join(repoRoot, 'node_modules', '.bin', 'tsc');
 
 /** Native / server-only packages the published CLI must not ship or execute. */
-const bundleExternals = ['better-sqlite3', '@overlord/database', '@overlord/auth', 'kysely'];
+const bundleExternals = ['better-sqlite3', '@overlord/database', '@overlord/auth', 'kysely', 'yaml'];
 
 function run(command, args, cwd = cliRoot) {
   const result = spawnSync(command, args, { cwd, stdio: 'inherit' });
@@ -49,5 +49,10 @@ cpSync(path.join(repoRoot, 'connectors'), path.join(cliRoot, 'dist', 'connectors
   recursive: true,
   filter: source => path.basename(source) !== '.DS_Store'
 });
+
+cpSync(
+  path.join(repoRoot, 'contract', 'conformance-manifest.schema.yaml'),
+  path.join(cliRoot, 'dist', 'contract', 'conformance-manifest.schema.yaml')
+);
 
 console.log('Bundled cli/dist/index.js (includes @overlord/core) for npm/desktop runtime.');

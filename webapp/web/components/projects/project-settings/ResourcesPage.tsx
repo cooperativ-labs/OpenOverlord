@@ -1,4 +1,13 @@
-import { AlertTriangle, FolderOpen, GitBranch, HardDrive, Plus, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  FolderOpen,
+  GitBranch,
+  HardDrive,
+  Pencil,
+  Plus,
+  Trash2,
+  X
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { useProjectRepositoryContext } from '@/components/projects/ProjectRepositoryContext.tsx';
@@ -27,6 +36,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   ANY_ELIGIBLE_EXECUTION_TARGET_VALUE,
@@ -117,11 +127,126 @@ function targetLabelForId({
   return executionTargetId;
 }
 
-function SourceRow({ source, label }: { source: ProjectResourceSourceDto; label: string }) {
+function SourceRow({
+  projectId,
+  resource,
+  source,
+  label,
+  onSaved
+}: {
+  projectId: string;
+  resource: ProjectResourceDto;
+  source: ProjectResourceSourceDto;
+  label: string;
+  onSaved: () => void;
+}) {
   const { copied, copy } = useCopyToClipboard();
+  const createResource = useCreateProjectResource(projectId);
   const value = sourceDescriptorValue(source);
+  const isGit = source.sourceKind === 'git';
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [error, setError] = useState<string | null>(null);
+
+  function startEditing() {
+    setDraft(value);
+    setError(null);
+    setIsEditing(true);
+  }
+
+  function cancelEditing() {
+    setIsEditing(false);
+    setError(null);
+  }
+
+  // Editing re-runs the create/upsert with the source's own execution target and
+  // kind, so the backend updates the existing descriptor in place rather than
+  // adding a second source for the same resource-target combination.
+  async function handleSave() {
+    const trimmed = draft.trim();
+    if (!trimmed) {
+      setError(isGit ? 'Enter a repository URL.' : 'Enter a directory path.');
+      return;
+    }
+    if (trimmed === value) {
+      setIsEditing(false);
+      return;
+    }
+    setError(null);
+    try {
+      if (isGit) {
+        await createResource.mutateAsync({
+          sourceUrl: trimmed,
+          resourceKey: resource.resourceKey,
+          executionTargetId: source.executionTargetId,
+          isPrimary: resource.isPrimary
+        });
+      } else {
+        const created = await createResource.mutateAsync({
+          directoryPath: trimmed,
+          resourceKey: resource.resourceKey,
+          executionTargetId: source.executionTargetId,
+          isPrimary: resource.isPrimary
+        });
+        await writeLocalProjectMetadata({ directoryPath: trimmed, projectId, resource: created });
+      }
+      setIsEditing(false);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update source.');
+    }
+  }
+
+  if (isEditing) {
+    return (
+      <li className="min-w-0">
+        <div className="flex flex-col gap-2 rounded-md border px-3 py-2">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="shrink-0 font-normal">
+              {sourceKindLabel(source.sourceKind)}
+            </Badge>
+            <span className="text-xs text-muted-foreground">{label}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              value={draft}
+              onChange={event => setDraft(event.target.value)}
+              placeholder={isGit ? 'https://github.com/org/repo.git' : '/path/to/checkout'}
+              className="h-8 min-w-0 flex-1 font-mono text-xs"
+              autoFocus
+              onKeyDown={event => {
+                if (event.key === 'Enter') void handleSave();
+                if (event.key === 'Escape') cancelEditing();
+              }}
+            />
+            <Button
+              type="button"
+              size="sm"
+              className="h-8"
+              disabled={createResource.isPending}
+              onClick={() => void handleSave()}
+            >
+              Save
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="size-8 shrink-0"
+              onClick={cancelEditing}
+              aria-label="Cancel editing source"
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
+          {error ? <p className="text-xs text-destructive">{error}</p> : null}
+        </div>
+      </li>
+    );
+  }
+
   return (
-    <li className="min-w-0">
+    <li className="flex min-w-0 items-center gap-1">
       <Tooltip>
         <TooltipTrigger
           render={
@@ -154,6 +279,16 @@ function SourceRow({ source, label }: { source: ProjectResourceSourceDto; label:
           {copied ? 'Copied to clipboard' : value || sourceKindLabel(source.sourceKind)}
         </TooltipContent>
       </Tooltip>
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        className="size-7 shrink-0"
+        onClick={startEditing}
+        aria-label={`Edit source ${value || sourceKindLabel(source.sourceKind)}`}
+      >
+        <Pencil className="size-3.5" />
+      </Button>
     </li>
   );
 }
@@ -174,18 +309,48 @@ function AddSourceForm({
   onAdded: () => void;
 }) {
   const createResource = useCreateProjectResource(projectId);
+  // A source is unique per (resource, execution target, kind). Local checkouts are
+  // scoped per target; a git source is project-global (one per resource). We use
+  // these sets to keep the add flow from creating a duplicate combination — the
+  // backend would silently replace it, which is confusing. Users edit instead.
+  const usedLocalTargetIds = new Set<string | null>(
+    resource.sources
+      .filter(source => source.sourceKind === 'local_checkout')
+      .map(source => source.executionTargetId)
+  );
+  const hasGitSource = resource.sources.some(source => source.sourceKind === 'git');
+
+  const isLocalTargetInUse = (selectorValue: string) =>
+    usedLocalTargetIds.has(parseExecutionTargetSelectorValue(selectorValue));
+
+  // Prefer a target that does not already have a local source so the default
+  // selection is immediately usable.
+  function firstAvailableTargetValue(): string {
+    if (!isLocalTargetInUse(defaultTargetValue)) return defaultTargetValue;
+    if (!usedLocalTargetIds.has(null)) return ANY_ELIGIBLE_EXECUTION_TARGET_VALUE;
+    const available = eligibleTargets.find(
+      target => !usedLocalTargetIds.has(target.executionTargetId)
+    );
+    return available ? available.executionTargetId : defaultTargetValue;
+  }
+
   const [sourceKind, setSourceKind] = useState<AddSourceKind>('local_checkout');
   const [directoryPath, setDirectoryPath] = useState('');
   const [repoUrl, setRepoUrl] = useState('');
-  const [targetValue, setTargetValue] = useState(defaultTargetValue);
+  const [targetValue, setTargetValue] = useState(() => firstAvailableTargetValue());
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canBrowseDirectories =
     typeof window !== 'undefined' && typeof window.overlord?.chooseDirectory === 'function';
 
   useEffect(() => {
-    setTargetValue(defaultTargetValue);
-  }, [defaultTargetValue]);
+    setTargetValue(firstAvailableTargetValue());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultTargetValue, resource.sources]);
+
+  const selectedTargetInUse = sourceKind === 'local_checkout' && isLocalTargetInUse(targetValue);
+  const gitAlreadyExists = sourceKind === 'git' && hasGitSource;
+  const addDisabled = createResource.isPending || selectedTargetInUse || gitAlreadyExists;
 
   async function handleBrowseDirectory() {
     const chooseDirectory = window.overlord?.chooseDirectory;
@@ -204,6 +369,10 @@ function AddSourceForm({
 
   async function handleAddSource() {
     if (sourceKind === 'git') {
+      if (hasGitSource) {
+        setError('This resource already has a repo source. Edit it instead.');
+        return;
+      }
       const trimmedUrl = repoUrl.trim();
       if (!trimmedUrl) {
         setError('Enter a repository URL.');
@@ -225,6 +394,10 @@ function AddSourceForm({
       return;
     }
 
+    if (selectedTargetInUse) {
+      setError('This execution target already has a local source. Edit it instead.');
+      return;
+    }
     const trimmed = directoryPath.trim();
     if (!trimmed) {
       setError('Enter a directory path.');
@@ -264,12 +437,16 @@ function AddSourceForm({
           {kindOptions.map(option => {
             const Icon = option.icon;
             const active = sourceKind === option.value;
+            // A resource already backed by a repo source cannot take a second one.
+            const optionDisabled = option.value === 'git' && hasGitSource;
             return (
               <button
                 key={option.value}
                 type="button"
                 role="radio"
                 aria-checked={active}
+                disabled={optionDisabled}
+                title={optionDisabled ? 'This resource already has a repo source' : undefined}
                 onClick={() => {
                   setSourceKind(option.value);
                   setError(null);
@@ -278,7 +455,8 @@ function AddSourceForm({
                   'inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
                   active
                     ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
+                  optionDisabled && 'cursor-not-allowed opacity-40 hover:text-muted-foreground'
                 )}
               >
                 <Icon className="size-3.5" />
@@ -312,7 +490,7 @@ function AddSourceForm({
             type="button"
             size="sm"
             className="h-8 gap-1.5"
-            disabled={createResource.isPending}
+            disabled={addDisabled}
             onClick={() => void handleAddSource()}
           >
             <Plus className="size-3.5" />
@@ -369,13 +547,25 @@ function AddSourceForm({
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ANY_ELIGIBLE_EXECUTION_TARGET_VALUE}>Any target</SelectItem>
-                {eligibleTargets.map(target => (
-                  <SelectItem key={target.executionTargetId} value={target.executionTargetId}>
-                    {executionTargetOptionLabel(target)}
-                    {executionTargetOptionStatusSuffix(target)}
-                  </SelectItem>
-                ))}
+                <SelectItem
+                  value={ANY_ELIGIBLE_EXECUTION_TARGET_VALUE}
+                  disabled={usedLocalTargetIds.has(null)}
+                >
+                  Any target{usedLocalTargetIds.has(null) ? ' (in use)' : ''}
+                </SelectItem>
+                {eligibleTargets.map(target => {
+                  const inUse = usedLocalTargetIds.has(target.executionTargetId);
+                  return (
+                    <SelectItem
+                      key={target.executionTargetId}
+                      value={target.executionTargetId}
+                      disabled={inUse}
+                    >
+                      {executionTargetOptionLabel(target)}
+                      {inUse ? ' (in use)' : executionTargetOptionStatusSuffix(target)}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
@@ -383,7 +573,7 @@ function AddSourceForm({
             type="button"
             size="sm"
             className="h-8 gap-1.5"
-            disabled={createResource.isPending}
+            disabled={addDisabled}
             onClick={() => void handleAddSource()}
           >
             <Plus className="size-3.5" />
@@ -391,8 +581,316 @@ function AddSourceForm({
           </Button>
         </div>
       )}
+      {selectedTargetInUse ? (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          This execution target already has a local source. Edit the existing source above instead
+          of adding a duplicate.
+        </p>
+      ) : null}
       {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
     </div>
+  );
+}
+
+function AddResourceDialog({
+  projectId,
+  eligibleTargets,
+  defaultTargetValue,
+  existingResourceKeys,
+  isFirstResource,
+  open,
+  onOpenChange,
+  onCreated
+}: {
+  projectId: string;
+  eligibleTargets: EligibleExecutionTargetDto[];
+  defaultTargetValue: string;
+  existingResourceKeys: string[];
+  isFirstResource: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: () => void;
+}) {
+  const createResource = useCreateProjectResource(projectId);
+  const [resourceKey, setResourceKey] = useState('');
+  const [sourceKind, setSourceKind] = useState<AddSourceKind>('local_checkout');
+  const [directoryPath, setDirectoryPath] = useState('');
+  const [repoUrl, setRepoUrl] = useState('');
+  const [targetValue, setTargetValue] = useState(defaultTargetValue);
+  const [makePrimary, setMakePrimary] = useState(isFirstResource);
+  const [isBrowsing, setIsBrowsing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const canBrowseDirectories =
+    typeof window !== 'undefined' && typeof window.overlord?.chooseDirectory === 'function';
+
+  // Reset the form each time the dialog opens so stale input never leaks between
+  // separate add-resource attempts.
+  useEffect(() => {
+    if (!open) return;
+    setResourceKey('');
+    setSourceKind('local_checkout');
+    setDirectoryPath('');
+    setRepoUrl('');
+    setTargetValue(defaultTargetValue);
+    setMakePrimary(isFirstResource);
+    setError(null);
+  }, [open, defaultTargetValue, isFirstResource]);
+
+  const trimmedKey = resourceKey.trim();
+  const duplicateKey = trimmedKey.length > 0 && existingResourceKeys.includes(trimmedKey);
+
+  async function handleBrowseDirectory() {
+    const chooseDirectory = window.overlord?.chooseDirectory;
+    if (!chooseDirectory) return;
+    setError(null);
+    setIsBrowsing(true);
+    try {
+      const chosen = await chooseDirectory();
+      if (chosen) setDirectoryPath(chosen);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to choose directory.');
+    } finally {
+      setIsBrowsing(false);
+    }
+  }
+
+  async function handleCreate() {
+    if (duplicateKey) {
+      setError('A resource with this key already exists. Add a source to it instead.');
+      return;
+    }
+    // An explicit key must be unique; omitting it lets the backend derive one from
+    // the path/URL. Primary is opt-in so adding a resource never silently steals
+    // primary from an existing checkout unless the user asks for it.
+    const isPrimary = makePrimary;
+    if (sourceKind === 'git') {
+      const trimmedUrl = repoUrl.trim();
+      if (!trimmedUrl) {
+        setError('Enter a repository URL.');
+        return;
+      }
+      setError(null);
+      try {
+        await createResource.mutateAsync({
+          sourceUrl: trimmedUrl,
+          resourceKey: trimmedKey || null,
+          isPrimary
+        });
+        onCreated();
+        onOpenChange(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to add resource.');
+      }
+      return;
+    }
+
+    const trimmed = directoryPath.trim();
+    if (!trimmed) {
+      setError('Enter a directory path.');
+      return;
+    }
+    setError(null);
+    try {
+      const executionTargetId = parseExecutionTargetSelectorValue(targetValue);
+      const created = await createResource.mutateAsync({
+        directoryPath: trimmed,
+        resourceKey: trimmedKey || null,
+        executionTargetId,
+        isPrimary
+      });
+      await writeLocalProjectMetadata({ directoryPath: trimmed, projectId, resource: created });
+      onCreated();
+      onOpenChange(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add resource.');
+    }
+  }
+
+  const kindOptions: { value: AddSourceKind; label: string; icon: typeof HardDrive }[] = [
+    { value: 'local_checkout', label: 'Local path', icon: HardDrive },
+    { value: 'git', label: 'Repo URL', icon: GitBranch }
+  ];
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add resource</DialogTitle>
+          <DialogDescription>
+            Create a new logical resource for this project and link its first source. Leave the key
+            blank to derive one from the path or URL.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="grid gap-1.5">
+            <Label htmlFor="add-resource-key" className="text-xs">
+              Resource key (optional)
+            </Label>
+            <Input
+              id="add-resource-key"
+              value={resourceKey}
+              onChange={event => {
+                setResourceKey(event.target.value);
+                setError(null);
+              }}
+              placeholder="e.g. frontend"
+              className="h-8 font-mono text-xs"
+            />
+            {duplicateKey ? (
+              <p className="text-[11px] text-destructive">
+                A resource with this key already exists.
+              </p>
+            ) : null}
+          </div>
+
+          <div
+            role="radiogroup"
+            aria-label="Source type"
+            className="inline-flex rounded-md border p-0.5"
+          >
+            {kindOptions.map(option => {
+              const Icon = option.icon;
+              const active = sourceKind === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => {
+                    setSourceKind(option.value);
+                    setError(null);
+                  }}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                    active
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Icon className="size-3.5" />
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {sourceKind === 'git' ? (
+            <div className="grid gap-1.5">
+              <Label htmlFor="add-resource-url" className="text-xs">
+                Repository URL
+              </Label>
+              <Input
+                id="add-resource-url"
+                value={repoUrl}
+                onChange={event => setRepoUrl(event.target.value)}
+                placeholder="https://github.com/org/repo.git"
+                className="h-8 font-mono text-xs"
+                onKeyDown={event => {
+                  if (event.key === 'Enter') void handleCreate();
+                }}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Repo sources are shared across all execution targets for this project.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-1.5">
+                <Label htmlFor="add-resource-path" className="text-xs">
+                  Directory path
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="add-resource-path"
+                    value={directoryPath}
+                    onChange={event => setDirectoryPath(event.target.value)}
+                    placeholder="/path/to/checkout"
+                    className="h-8 min-w-0 flex-1 font-mono text-xs"
+                    onKeyDown={event => {
+                      if (event.key === 'Enter') void handleCreate();
+                    }}
+                  />
+                  {canBrowseDirectories ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 shrink-0 gap-1.5"
+                      disabled={isBrowsing}
+                      onClick={() => void handleBrowseDirectory()}
+                    >
+                      <FolderOpen className="size-3.5" />
+                      Browse
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="add-resource-target" className="text-xs">
+                  Execution target
+                </Label>
+                <Select
+                  value={targetValue}
+                  onValueChange={value => setTargetValue(value ?? targetValue)}
+                >
+                  <SelectTrigger id="add-resource-target" className="h-8">
+                    <SelectValue placeholder="Execution target">
+                      {executionTargetSelectorDisplayLabel({
+                        selectorValue: targetValue,
+                        eligibleTargets,
+                        anyLabel: 'Any target'
+                      })}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ANY_ELIGIBLE_EXECUTION_TARGET_VALUE}>Any target</SelectItem>
+                    {eligibleTargets.map(target => (
+                      <SelectItem key={target.executionTargetId} value={target.executionTargetId}>
+                        {executionTargetOptionLabel(target)}
+                        {executionTargetOptionStatusSuffix(target)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
+
+          <div className="flex items-center justify-between gap-2">
+            <div className="grid gap-0.5">
+              <Label htmlFor="add-resource-primary" className="text-xs">
+                Set as primary resource
+              </Label>
+              <p className="text-[11px] text-muted-foreground">
+                Primary backs the default working directory agents run in.
+              </p>
+            </div>
+            <Switch
+              id="add-resource-primary"
+              checked={makePrimary}
+              onCheckedChange={setMakePrimary}
+            />
+          </div>
+
+          {error ? <p className="text-xs text-destructive">{error}</p> : null}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            className="gap-1.5"
+            disabled={createResource.isPending || duplicateKey}
+            onClick={() => void handleCreate()}
+          >
+            <Plus className="size-3.5" />
+            Add resource
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -419,6 +917,7 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
   const [resourceKeyEdits, setResourceKeyEdits] = useState<Record<string, string>>({});
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProjectResourceDto | null>(null);
+  const [addResourceOpen, setAddResourceOpen] = useState(false);
 
   useEffect(() => {
     const resources = open ? (resourcesQ.data ?? []) : [];
@@ -630,11 +1129,34 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
         </div>
       ) : null}
 
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-medium">Linked resources</h3>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-8 gap-1.5"
+          onClick={() => setAddResourceOpen(true)}
+        >
+          <Plus className="size-3.5" />
+          Add resource
+        </Button>
+      </div>
+
       {resourcesQ.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading resources…</p>
       ) : rows.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-          No resources linked yet.
+        <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+          <p>No resources linked yet.</p>
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 gap-1.5"
+            onClick={() => setAddResourceOpen(true)}
+          >
+            <Plus className="size-3.5" />
+            Add resource
+          </Button>
         </div>
       ) : (
         <Accordion multiple className="overflow-hidden rounded-lg border px-4">
@@ -732,8 +1254,11 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
                       {resource.sources.map(source => (
                         <SourceRow
                           key={source.id}
+                          projectId={projectId}
+                          resource={resource}
                           source={source}
                           label={resolveTargetLabel(source.executionTargetId)}
+                          onSaved={() => void resourcesQ.refetch()}
                         />
                       ))}
                     </ul>
@@ -754,6 +1279,17 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
       )}
 
       {rowError ? <p className="text-xs text-destructive">{rowError}</p> : null}
+
+      <AddResourceDialog
+        projectId={projectId}
+        eligibleTargets={eligibleTargets}
+        defaultTargetValue={addSourceDefaultValue}
+        existingResourceKeys={rows.map(resource => resource.resourceKey)}
+        isFirstResource={rows.length === 0}
+        open={addResourceOpen}
+        onOpenChange={setAddResourceOpen}
+        onCreated={() => void resourcesQ.refetch()}
+      />
 
       <Dialog
         open={deleteTarget !== null}

@@ -12,6 +12,7 @@ export {
   generateUserTokenSecret,
   getActorForSession,
   getActorForToken,
+  githubOAuthConfigFromEnv,
   hashUserTokenSecret,
   listActiveTokenScopeGrants,
   resolveUserTokenProfileId,

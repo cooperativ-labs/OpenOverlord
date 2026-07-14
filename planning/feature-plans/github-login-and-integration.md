@@ -60,6 +60,15 @@ Non-goals for v1:
 
 ## Phase A — GitHub login (Better Auth social provider)
 
+> **Status (2026-07-14): core wiring implemented.** GitHub is now a Better Auth
+> social provider (env-gated), the login screen offers "Continue with GitHub"
+> on same-origin builds (web cloud + desktop local), and the provider is
+> advertised via a public `/api/auth-providers` endpoint. Remaining Phase A
+> follow-ups: desktop **remote** OAuth deep-link/loopback callback (A.4) and the
+> optional `disableImplicitLinking`/private-email decisions (open Qs 6–7).
+> Requires a GitHub OAuth App to be created and env vars set — see the delivery
+> note for the dashboard checklist.
+
 ### A.1 Auth layer (`auth/`)
 
 **Files:** `auth/src/auth/config.ts`, new `auth/providers/github/conformance-manifest.yaml` (sanctioned `auth-provider` extension point per `auth/AGENTS.md`).

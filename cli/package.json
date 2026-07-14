@@ -1,6 +1,6 @@
 {
   "name": "overlord-cli",
-  "version": "0.2607122001.0",
+  "version": "0.2607141312.0",
   "description": "Overlord CLI — management, agent protocol, and runner for OpenOverlord",
   "type": "module",
   "engines": {
@@ -15,6 +15,7 @@
     "dist/index.js",
     "dist/index.js.map",
     "dist/connectors/**",
+    "dist/contract/**",
     "scripts/postinstall.mjs"
   ],
   "scripts": {
@@ -25,6 +26,9 @@
     "test:e2e": "yarn build && OVLD_PROTOCOL_E2E=1 tsx --test 'test/e2e/**/*.e2e.test.ts'",
     "prepack": "yarn build",
     "postinstall": "node scripts/postinstall.mjs"
+  },
+  "dependencies": {
+    "yaml": "^2.6.1"
   },
   "devDependencies": {
     "@overlord/contract": "workspace:*",

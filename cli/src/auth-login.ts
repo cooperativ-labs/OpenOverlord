@@ -243,6 +243,13 @@ export async function validateBearerToken({
 
 type CreateUserTokenResult = {
   secret?: unknown;
+  token?: { expiresAt?: unknown } | unknown;
+};
+
+export type MintedUserToken = {
+  secret: string;
+  /** ISO expiry reported by the backend (default 90 days), or null if non-expiring. */
+  expiresAt: string | null;
 };
 
 function defaultCliLoginTokenLabel(): string {
@@ -258,7 +265,7 @@ export async function createFullUserTokenFromSession({
   backendUrl: string;
   sessionToken: string;
   label?: string;
-}): Promise<string> {
+}): Promise<MintedUserToken> {
   const baseUrl = normalizeBaseUrl(backendUrl);
   let response: Response;
   try {
@@ -282,7 +289,15 @@ export async function createFullUserTokenFromSession({
   const payload = (await readResponseJson(response)) as CreateUserTokenResult | unknown;
   if (response.ok && payload && typeof payload === 'object') {
     const secret = (payload as CreateUserTokenResult).secret;
-    if (typeof secret === 'string' && secret.startsWith('out_')) return secret;
+    if (typeof secret === 'string' && secret.startsWith('out_')) {
+      const tokenDto = (payload as CreateUserTokenResult).token;
+      const rawExpiry =
+        tokenDto && typeof tokenDto === 'object'
+          ? (tokenDto as { expiresAt?: unknown }).expiresAt
+          : undefined;
+      const expiresAt = typeof rawExpiry === 'string' && rawExpiry.trim() ? rawExpiry : null;
+      return { secret, expiresAt };
+    }
   }
 
   throw new CliError({
@@ -370,15 +385,16 @@ export async function runInteractiveAuthLogin({
   await validateBearerToken({ backendUrl: normalizedBackendUrl, token: sessionToken });
 
   if (passwordCredentialTarget === 'full_user_token') {
-    const userToken = await createFullUserTokenFromSession({
+    const minted = await createFullUserTokenFromSession({
       backendUrl: normalizedBackendUrl,
       sessionToken
     });
-    await validateBearerToken({ backendUrl: normalizedBackendUrl, token: userToken });
+    await validateBearerToken({ backendUrl: normalizedBackendUrl, token: minted.secret });
     writeStoredAuthCredentials({
       type: 'user_token',
-      token: userToken,
-      backendUrl: normalizedBackendUrl
+      token: minted.secret,
+      backendUrl: normalizedBackendUrl,
+      expiresAt: minted.expiresAt
     });
 
     return {

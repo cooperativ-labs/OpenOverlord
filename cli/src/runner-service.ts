@@ -34,17 +34,32 @@ function writeServiceFile(filePath: string, contents: string): void {
 // ---- Constants --------------------------------------------------------------
 
 export const RUNNER_SERVICE_STATE_FILENAME = 'runner-service.json';
+/**
+ * Desktop-focus signal file. Written by the Overlord desktop app (a separate
+ * process) whenever its main window gains focus, and read by the supervisor loop
+ * each poll. Kept in its own file — not merged into `runner-service.json` — so
+ * the desktop and the supervisor never clobber each other's read-modify-write.
+ */
+export const RUNNER_FOCUS_STATE_FILENAME = 'runner-focus.json';
 /** macOS launchd LaunchAgent label. */
 export const LAUNCHD_LABEL = 'io.overlord.runner';
 /** Linux systemd --user unit name (without the `.service` suffix). */
 export const SYSTEMD_UNIT_NAME = 'overlord-runner';
 
-/** Fast cadence used while a job launched recently. */
+/** Fast cadence used while a job launched recently or the desktop app is active. */
 export const FAST_POLL_INTERVAL_MS = 3000;
 /** Slow cadence used after a long idle stretch. */
-export const SLOW_POLL_INTERVAL_MS = 10000;
-/** Idle window (2h) after which polling backs off to the slow cadence. */
+export const SLOW_POLL_INTERVAL_MS = 5000;
+/** Idle window (2h) after which a launched job no longer keeps polling fast. */
 export const IDLE_BACKOFF_MS = 2 * 60 * 60 * 1000;
+/**
+ * Recency window (30m) for the desktop-focus signal: while the Overlord desktop
+ * app has been focused within this window, poll at the fast cadence so a job the
+ * user is about to queue is picked up quickly. Shorter than the post-launch job
+ * window because focus is a "user is here right now" signal, not "work is in
+ * flight".
+ */
+export const DESKTOP_FOCUS_WINDOW_MS = 30 * 60 * 1000;
 
 export type RunnerServiceKind = 'launchd' | 'systemd';
 
@@ -117,24 +132,74 @@ export function patchRunnerServiceState(
   return next;
 }
 
-// ---- Adaptive polling -------------------------------------------------------
+// ---- Desktop focus signal ---------------------------------------------------
+
+export interface DesktopFocusState {
+  /** ISO timestamp of the most recent time the desktop app window was focused. */
+  lastFocusedAt: string | null;
+}
+
+export function runnerFocusStatePath(dataDir: string = resolveGlobalDataDir()): string {
+  return path.join(dataDir, RUNNER_FOCUS_STATE_FILENAME);
+}
 
 /**
- * Base poll interval by the "last launched job" clock (not "last poll with
- * work"): fast while a job launched within the idle window, slow afterwards.
+ * Read the desktop-focus signal. Like the service state, a missing or corrupt
+ * file is treated as "no signal" rather than an error — the supervisor must
+ * never fail a poll because the desktop app has not written this file yet.
+ */
+export function readDesktopFocusState(dataDir: string = resolveGlobalDataDir()): DesktopFocusState {
+  const filePath = runnerFocusStatePath(dataDir);
+  if (!existsSync(filePath)) return { lastFocusedAt: null };
+  try {
+    const parsed = JSON.parse(readFileSync(filePath, 'utf8')) as Partial<DesktopFocusState>;
+    return { lastFocusedAt: parsed.lastFocusedAt ?? null };
+  } catch {
+    return { lastFocusedAt: null };
+  }
+}
+
+/**
+ * Record that the desktop app window is focused now. Called by the desktop shell
+ * on focus events (and available to the CLI for tests). Best-effort: the write
+ * is throttleable by the caller, and the file is owner-agnostic (no secrets).
+ */
+export function writeDesktopFocusState(
+  state: DesktopFocusState,
+  dataDir: string = resolveGlobalDataDir()
+): void {
+  mkdirSync(dataDir, { recursive: true });
+  writeFileSync(runnerFocusStatePath(dataDir), `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+}
+
+// ---- Adaptive polling -------------------------------------------------------
+
+/** Whether `timestamp` parses and falls within `windowMs` before `now`. */
+function withinWindow(timestamp: string | null, now: number, windowMs: number): boolean {
+  if (!timestamp) return false;
+  const ms = Date.parse(timestamp);
+  if (Number.isNaN(ms)) return false;
+  return now - ms <= windowMs;
+}
+
+/**
+ * Base poll interval from two "recent activity" signals: fast while a job
+ * launched within the job window (`IDLE_BACKOFF_MS`) OR the desktop app was
+ * focused within the focus window (`DESKTOP_FOCUS_WINDOW_MS`); slow otherwise.
  * Pure and deterministic so the cadence is unit-testable.
  */
 export function selectBasePollIntervalMs({
   lastLaunchedAt,
+  lastDesktopFocusAt = null,
   now
 }: {
   lastLaunchedAt: string | null;
+  lastDesktopFocusAt?: string | null;
   now: number;
 }): number {
-  if (!lastLaunchedAt) return SLOW_POLL_INTERVAL_MS;
-  const launchedMs = Date.parse(lastLaunchedAt);
-  if (Number.isNaN(launchedMs)) return SLOW_POLL_INTERVAL_MS;
-  return now - launchedMs <= IDLE_BACKOFF_MS ? FAST_POLL_INTERVAL_MS : SLOW_POLL_INTERVAL_MS;
+  const jobActive = withinWindow(lastLaunchedAt, now, IDLE_BACKOFF_MS);
+  const focusActive = withinWindow(lastDesktopFocusAt, now, DESKTOP_FOCUS_WINDOW_MS);
+  return jobActive || focusActive ? FAST_POLL_INTERVAL_MS : SLOW_POLL_INTERVAL_MS;
 }
 
 /**

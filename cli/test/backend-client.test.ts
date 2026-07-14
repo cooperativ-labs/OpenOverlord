@@ -59,7 +59,7 @@ test('clearStoredAuthCredentials removes auth.json', () => {
   }
 });
 
-test('createBackendClient clears stored credentials and guides re-login on 401', async () => {
+test('createBackendClient preserves stored credentials and guides re-login on 401', async () => {
   const home = mkdtempSync(path.join(tmpdir(), 'overlord-backend-client-'));
   const previousHome = process.env.OVLD_HOME;
   const previousEnv = isolateBackendClientEnv();
@@ -96,11 +96,13 @@ default_agent = "claude"
       (error: unknown) => {
         assert.ok(error instanceof CliError);
         assert.match(error.message, /ovld auth login/i);
-        assert.match(error.message, /Saved credentials were cleared/i);
+        assert.match(error.message, /credentials were rejected/i);
         return true;
       }
     );
-    assert.equal(existsSync(authCredentialsPath()), false);
+    // A 401 must NOT delete the stored credential — it may be transient, and
+    // wiping it forced an avoidable full re-login.
+    assert.equal(existsSync(authCredentialsPath()), true);
   } finally {
     globalThis.fetch = originalFetch;
     restoreBackendClientEnv(previousEnv);

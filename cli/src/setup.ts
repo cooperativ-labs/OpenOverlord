@@ -476,7 +476,10 @@ async function runFullSetupCommand({ json }: { json: boolean }): Promise<void> {
   const backend = await configureBackendForSetup();
   const auth = await configureAuthForSetup({
     backendUrl: backend.url,
-    passwordCredentialTarget: backend.mode === 'cloud' ? 'full_user_token' : 'session_bearer'
+    // Mint a long-lived (90-day) user token in both modes; see the note in
+    // management.ts. Avoids the ~7-day session_bearer lifetime local logins used
+    // to get.
+    passwordCredentialTarget: 'full_user_token'
   });
   const agents = await configureAgentsForSetup();
   const runtime = openCliRuntime();

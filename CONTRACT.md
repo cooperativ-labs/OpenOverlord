@@ -475,7 +475,6 @@ Any component, connector, or extension that ships against Overlord must:
    - All capabilities and extension points it uses
 
 2. **Pass validation** via `ovld contract check <manifest-file>`
-   (or the equivalent validation script until `ovld contract` is implemented)
 
 3. **Respect ownership boundaries**: only interact with other components through declared surfaces
 

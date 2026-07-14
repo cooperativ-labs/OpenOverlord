@@ -1,6 +1,6 @@
 import './bootstrap-env.ts';
 
-import { type Permission, PERMISSIONS } from '@overlord/auth';
+import { githubOAuthConfigFromEnv, type Permission, PERMISSIONS } from '@overlord/auth';
 import { loadExternalAutomations } from '@overlord/automations';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
@@ -305,6 +305,16 @@ app.use((req, res, next) => {
   return jsonBody(req, res, next);
 });
 
+// Public login-provider advertisement. Mounted BEFORE the `/api`
+// authentication guard because the login screen renders pre-authentication and
+// must know whether to show "Continue with GitHub" without a session. Carries
+// no secrets — only which providers are configured. `/api/meta` echoes the same
+// shape for authenticated surfaces (e.g. account linking); both derive from
+// `githubOAuthConfigFromEnv` so they cannot drift.
+app.get('/api/auth-providers', (_req, res) => {
+  res.json({ email: true, github: githubOAuthConfigFromEnv() !== null });
+});
+
 /**
  * Persist which workspace a browser session defaults to on future requests
  * (the per-user replacement for the old process-global active workspace —
@@ -413,6 +423,14 @@ app.get(
         url: `http://${bindHost === '0.0.0.0' ? '127.0.0.1' : bindHost}:${bindPort}`
       },
       sqlStudio: getSqlStudioState(),
+      // Which interactive login providers this build offers, so the auth UI can
+      // show/hide the "Continue with GitHub" button without hardcoding cloud vs
+      // local. `email` is always available; `github` only when OAuth creds are
+      // configured (see `githubOAuthConfigFromEnv`).
+      authProviders: {
+        email: true,
+        github: githubOAuthConfigFromEnv() !== null
+      },
       // Capabilities scoped to what this build supports. Launching queues
       // execution requests for a runner; execution-target management remains
       // CLI-only.
@@ -1138,7 +1156,14 @@ app.get(
   handle(req => listMissions(req.params.id))
 );
 
-app.use('/ext/everhour', createEverhourExtensionRouter(handle));
+// Extension routers must run behind `requireAuthenticatedSession` exactly like
+// every `/api` route: it establishes the per-request context and resolves the
+// caller's active workspace from the `X-Overlord-Active-Workspace` header/cookie
+// (see `setActiveWorkspaceContext` in `backend/auth.ts`). Without it these routes
+// fall back to the process-global default workspace, so linking a project that
+// lives in any non-default workspace scopes the lookup to the wrong tenant and
+// 404s ("Project not found") even though the project exists.
+app.use('/ext/everhour', requireAuthenticatedSession, createEverhourExtensionRouter(handle));
 app.patch(
   '/api/projects/:id/board/reorder',
   handle(req => reorderBoardColumn(req.params.id, req.body), {

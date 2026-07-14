@@ -144,8 +144,7 @@ Recommended downstream contract changes:
    over `desktop-shell` because the downstream repo will also have a mobile
    app. If you choose `desktop-shell`, document why it will not fit mobile.
 4. Add `lite/conformance-manifest.yaml`.
-5. Run `ovld contract check lite/conformance-manifest.yaml` once the checker
-   exists; until then, validate manually against the schema.
+5. Run `ovld contract check lite/conformance-manifest.yaml`.
 
 Suggested `lite` component contract text:
 

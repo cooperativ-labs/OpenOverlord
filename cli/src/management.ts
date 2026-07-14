@@ -214,7 +214,76 @@ async function runAuthStatusCommand({ json }: { json: boolean }): Promise<void> 
   console.log(`credential_source=${status.credentialSource}`);
   if (status.credentialType) console.log(`credential_type=${status.credentialType}`);
   if (status.credentialsPath) console.log(`credentials_path=${status.credentialsPath}`);
+  if (status.expiresAt) {
+    const remaining = status.expired
+      ? 'expired'
+      : status.expiresInDays !== null
+        ? `${status.expiresInDays} day(s) remaining`
+        : 'unknown';
+    console.log(`expires_at=${status.expiresAt} (${remaining})`);
+  }
   if (status.validationError) console.log(`validation_error=${status.validationError}`);
+}
+
+/**
+ * `ovld auth repair` — the recovery path the mission skill tells agents to run
+ * after an auth/session failure. It reconciles stored credentials with the
+ * backend instead of silently leaving a broken auth.json in place (the 401
+ * handler is intentionally non-destructive, so nothing else clears stale creds).
+ *
+ * Behavior:
+ *  - Healthy session -> report and exit 0, no changes.
+ *  - Env-var token is the source and it's broken -> stored file can't fix it;
+ *    tell the caller to refresh the environment variable.
+ *  - Stored creds broken/expired/mismatched -> delete the stale auth.json and
+ *    run the interactive login flow to mint a fresh credential.
+ */
+async function runAuthRepairCommand({
+  rest,
+  json
+}: {
+  rest: string[];
+  json: boolean;
+}): Promise<void> {
+  const { resolveAuthStatus } = await import('./auth-status.js');
+  const status = await resolveAuthStatus();
+
+  if (status.loggedIn) {
+    if (json) {
+      printJson({ ok: true, action: 'none', reason: 'healthy', status });
+    } else {
+      console.log('Authentication is healthy; no repair needed.');
+      if (status.expiresAt && !status.expired && status.expiresInDays !== null) {
+        console.log(
+          `Credential expires ${status.expiresAt} (${status.expiresInDays} day(s) remaining).`
+        );
+      }
+    }
+    return;
+  }
+
+  if (status.credentialSource === 'environment') {
+    throw new CliError({
+      message:
+        'Your credential comes from an environment variable (OVERLORD_USER_TOKEN / OVLD_USER_TOKEN / USER_TOKEN) and cannot be repaired from disk.\n' +
+        `Refresh that variable with a valid token${status.validationError ? ` (backend said: ${status.validationError})` : ''}.`
+    });
+  }
+
+  const { clearStoredAuthCredentials, readStoredAuthCredentials } =
+    await import('./auth-credentials.js');
+  const hadStored = readStoredAuthCredentials() !== null;
+  if (hadStored) {
+    // Deliberate reset: unlike the 401 handler, repair is the explicit "fix my
+    // login" path, so clearing the stale file here is expected and safe.
+    clearStoredAuthCredentials();
+    if (!json) console.log('Cleared stale stored credentials; re-authenticating...');
+  } else if (!json) {
+    console.log('No stored credentials found; starting a fresh login...');
+  }
+
+  // Fall through to the standard interactive login to mint a fresh credential.
+  await runAuthLoginFlow({ parsed: parseArgs(rest.filter(arg => arg !== 'repair')), json });
 }
 
 async function runAuthCommand({ rest, json }: { rest: string[]; json: boolean }): Promise<void> {
@@ -226,12 +295,32 @@ async function runAuthCommand({ rest, json }: { rest: string[]; json: boolean })
     return;
   }
 
+  if (sub === 'repair') {
+    await runAuthRepairCommand({ rest, json });
+    return;
+  }
+
   if (sub !== 'login') {
     throw new CliError({
-      message: 'Usage: ovld auth login [--token <out_...>] | ovld auth status [--json]'
+      message:
+        'Usage: ovld auth login [--token <out_...>] | ovld auth status [--json] | ovld auth repair [--json]'
     });
   }
 
+  await runAuthLoginFlow({ parsed, json });
+}
+
+/**
+ * Shared interactive/token login flow used by both `ovld auth login` and, after
+ * clearing stale credentials, `ovld auth repair`.
+ */
+async function runAuthLoginFlow({
+  parsed,
+  json
+}: {
+  parsed: ReturnType<typeof parseArgs>;
+  json: boolean;
+}): Promise<void> {
   const tokenFlag = flagValue(parsed.flags, '--token');
 
   const { findEffectiveConfigPath, hasExplicitBackendConfig, loadConfig } =
@@ -259,7 +348,12 @@ async function runAuthCommand({ rest, json }: { rest: string[]; json: boolean })
     ? await loginWithUserToken({ backendUrl, token: tokenFlag })
     : await runInteractiveAuthLogin({
         backendUrl,
-        passwordCredentialTarget: mode === 'cloud' ? 'full_user_token' : 'session_bearer'
+        // Always exchange the password sign-in for a long-lived (90-day) user
+        // token, regardless of backend mode. Storing the raw Better Auth session
+        // token (session_bearer) gave local-mode logins a ~7-day lifetime while
+        // cloud logins got 90 days; minting a full_user_token in both modes keeps
+        // the lifetime consistent and avoids surprise "token expired" churn.
+        passwordCredentialTarget: 'full_user_token'
       });
 
   if (json) {

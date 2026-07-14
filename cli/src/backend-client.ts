@@ -1,4 +1,4 @@
-import { clearStoredAuthCredentials, readStoredAuthCredentials } from './auth-credentials.js';
+import { readStoredAuthCredentials } from './auth-credentials.js';
 import { loadConfig, resolveBackendUrl } from './config.js';
 import { clientDeviceIdentity } from './device-identity.js';
 import { CliError } from './errors.js';
@@ -182,7 +182,11 @@ export function createBackendClient(): BackendClient {
     const payload = await readResponseJson(response);
     if (!response.ok) {
       if (response.status === 401 && auth.headers.Authorization) {
-        if (auth.fromStored) clearStoredAuthCredentials();
+        // Do NOT delete stored credentials here. A 401 can be transient (backend
+        // restart, momentary session-lookup failure, an edge revocation) and
+        // wiping auth.json on the first one forced a full re-login even when the
+        // credential was still recoverable. Leave the file in place and prompt the
+        // user to re-authenticate; `ovld auth login` overwrites it when they do.
         const detail =
           errorMessageFromJson(payload) ??
           `Backend request failed: ${method} ${path} (${response.status})`;
@@ -190,7 +194,7 @@ export function createBackendClient(): BackendClient {
           message:
             `${detail}\n` +
             (auth.fromStored
-              ? 'Saved credentials were cleared. Run `ovld auth login` to sign in again.'
+              ? 'Your saved credentials were rejected. Run `ovld auth login` to sign in again.'
               : 'Run `ovld auth login` or refresh your USER_TOKEN environment variable.')
         });
       }

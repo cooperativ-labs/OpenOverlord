@@ -52,7 +52,7 @@ If your change extends or modifies the contract:
 
 Every component that ships against Overlord must provide a `conformance-manifest.yaml` in its root. The manifest must validate against `conformance-manifest.schema.yaml`.
 
-Run `ovld contract check <manifest-file>` to validate (or use the equivalent validation script until `ovld contract` is implemented).
+Run `ovld contract check <manifest-file>` to validate.
 
 ### For agents
 

@@ -1,4 +1,13 @@
-import { AlertTriangle, ArrowUp, Bot, ChevronDown, FolderOpen, Loader2, Plus } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowUp,
+  Bot,
+  ChevronDown,
+  FolderOpen,
+  Loader2,
+  Play,
+  Plus
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AgentIcon } from '@/components/objectives/AgentIcon.tsx';
@@ -378,6 +387,12 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
   const canSubmit =
     Boolean(objective.trim()) && !isSubmitting && Boolean(selectedProject) && selectionLoaded;
 
+  const canLaunch =
+    canSubmit &&
+    objectiveSelection.agent !== MANUAL_AGENT_KEY &&
+    primaryConnection.connected &&
+    targetAvailability.available;
+
   if (projectsQ.isLoading) {
     return (
       <div className="flex items-center justify-center p-6 text-sm text-muted-foreground">
@@ -534,24 +549,44 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
             </button>
           </div>
 
-          <button
-            type="button"
-            aria-label={isSubmitting ? 'Submitting' : 'Send'}
-            onClick={() => void handleSubmit()}
-            disabled={!canSubmit}
-            className={cn(
-              'electron-no-drag flex h-8 w-8 items-center justify-center rounded-full transition-colors',
-              canSubmit
-                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                : 'bg-muted text-muted-foreground/60'
-            )}
-          >
-            {isSubmitting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <ArrowUp className="h-4 w-4" />
-            )}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              aria-label={isSubmitting ? 'Submitting' : 'Run'}
+              title="Save and run"
+              onClick={() => void handleSubmit(true)}
+              disabled={!canLaunch}
+              className={cn(
+                'electron-no-drag flex h-8 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors',
+                canLaunch
+                  ? 'bg-emerald-600 text-white hover:bg-emerald-600/90'
+                  : 'bg-muted text-muted-foreground/60'
+              )}
+            >
+              <Play className="h-3.5 w-3.5" />
+              Run
+            </button>
+
+            <button
+              type="button"
+              aria-label={isSubmitting ? 'Submitting' : 'Save'}
+              title="Save (Enter)"
+              onClick={() => void handleSubmit()}
+              disabled={!canSubmit}
+              className={cn(
+                'electron-no-drag flex h-8 w-8 items-center justify-center rounded-full transition-colors',
+                canSubmit
+                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  : 'bg-muted text-muted-foreground/60'
+              )}
+            >
+              {isSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ArrowUp className="h-4 w-4" />
+              )}
+            </button>
+          </div>
         </div>
 
         {submitError ? <p className="text-xs text-red-400">{submitError}</p> : null}

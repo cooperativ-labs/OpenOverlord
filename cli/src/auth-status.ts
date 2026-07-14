@@ -24,7 +24,33 @@ export type AuthStatusResult = {
   credentialType: AuthCredentialType | null;
   credentialsPath: string | null;
   validationError: string | null;
+  /** ISO expiry of the stored credential when known (minted user tokens); null otherwise. */
+  expiresAt: string | null;
+  /** Whole days until `expiresAt` (negative if already past); null when expiry is unknown. */
+  expiresInDays: number | null;
+  /** True when `expiresAt` is known and in the past. */
+  expired: boolean;
 };
+
+function resolveExpiry(expiresAt: string | null | undefined): {
+  expiresAt: string | null;
+  expiresInDays: number | null;
+  expired: boolean;
+} {
+  if (typeof expiresAt !== 'string' || !expiresAt.trim()) {
+    return { expiresAt: null, expiresInDays: null, expired: false };
+  }
+  const parsed = new Date(expiresAt);
+  if (Number.isNaN(parsed.getTime())) {
+    return { expiresAt: null, expiresInDays: null, expired: false };
+  }
+  const msRemaining = parsed.getTime() - Date.now();
+  return {
+    expiresAt: parsed.toISOString(),
+    expiresInDays: Math.floor(msRemaining / (24 * 60 * 60 * 1000)),
+    expired: msRemaining <= 0
+  };
+}
 
 function normalizeBaseUrl(value: string): string {
   return value.replace(/\/+$/, '');
@@ -88,6 +114,14 @@ export async function resolveAuthStatus({
   const credential = resolveAuthCredentialSource({ backendUrl, env });
   const token = resolveAuthBearerToken({ backendUrl, env });
 
+  // Expiry is only known for stored credentials (env-var and pasted tokens carry
+  // no expiry metadata). Read it once and attach it to every return path.
+  const expiry = resolveExpiry(
+    credential.source === 'stored' || credential.source === 'stored_mismatch'
+      ? readStoredAuthCredentials()?.expiresAt
+      : null
+  );
+
   if (!token) {
     return {
       backendUrl,
@@ -100,7 +134,8 @@ export async function resolveAuthStatus({
       validationError:
         credential.source === 'stored_mismatch'
           ? `Stored credentials are for ${readStoredAuthCredentials()?.backendUrl ?? 'another backend'}.`
-          : null
+          : null,
+      ...expiry
     };
   }
 
@@ -114,7 +149,8 @@ export async function resolveAuthStatus({
       credentialSource: credential.source,
       credentialType: credential.type,
       credentialsPath: credential.credentialsPath,
-      validationError: null
+      validationError: null,
+      ...expiry
     };
   } catch (error) {
     return {
@@ -125,7 +161,8 @@ export async function resolveAuthStatus({
       credentialSource: credential.source,
       credentialType: credential.type,
       credentialsPath: credential.credentialsPath,
-      validationError: error instanceof Error ? error.message : String(error)
+      validationError: error instanceof Error ? error.message : String(error),
+      ...expiry
     };
   }
 }

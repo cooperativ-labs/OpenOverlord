@@ -3,7 +3,6 @@
 # must provide a conformance-manifest.yaml in its root that validates against this schema.
 #
 # Validate with: ovld contract check <manifest-file>
-# (or the equivalent script until 'ovld contract' is implemented)
 #
 # Example manifests live in contract/examples/
 

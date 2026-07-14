@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { createAuth, type EmailOTPType } from './config.ts';
+import { createAuth, type EmailOTPType, githubOAuthConfigFromEnv } from './config.ts';
 
 /**
  * Path to the checked-in Better Auth SQLite schema (`user`, `session`,
@@ -112,6 +112,66 @@ test('emailOTP plugin is left off when no sender is configured', () => {
       typeof (auth.api as Record<string, unknown>).createVerificationOTP,
       'undefined',
       'plugin endpoints must be absent without a sender'
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test('githubOAuthConfigFromEnv: requires both id and secret', () => {
+  const prevId = process.env.GITHUB_CLIENT_ID;
+  const prevSecret = process.env.GITHUB_CLIENT_SECRET;
+  try {
+    delete process.env.GITHUB_CLIENT_ID;
+    delete process.env.GITHUB_CLIENT_SECRET;
+    assert.equal(githubOAuthConfigFromEnv(), null, 'no creds → null (Local default)');
+
+    process.env.GITHUB_CLIENT_ID = 'client-id';
+    assert.equal(githubOAuthConfigFromEnv(), null, 'id alone is insufficient');
+
+    process.env.GITHUB_CLIENT_SECRET = 'client-secret';
+    assert.deepEqual(
+      githubOAuthConfigFromEnv(),
+      { clientId: 'client-id', clientSecret: 'client-secret' },
+      'both present → creds returned'
+    );
+  } finally {
+    if (prevId === undefined) delete process.env.GITHUB_CLIENT_ID;
+    else process.env.GITHUB_CLIENT_ID = prevId;
+    if (prevSecret === undefined) delete process.env.GITHUB_CLIENT_SECRET;
+    else process.env.GITHUB_CLIENT_SECRET = prevSecret;
+  }
+});
+
+test('github social provider is wired only when credentials are supplied', () => {
+  const { path, cleanup } = createMigratedDatabasePath();
+  try {
+    const withGithub = createAuth({
+      database: { type: 'sqlite', path },
+      github: { clientId: 'id', clientSecret: 'secret' }
+    });
+    const providers = (withGithub.options as { socialProviders?: Record<string, unknown> })
+      .socialProviders;
+    assert.ok(providers?.github, 'github provider present when creds supplied');
+
+    const withoutGithub = createAuth({ database: { type: 'sqlite', path }, github: null });
+    const noProviders = (withoutGithub.options as { socialProviders?: Record<string, unknown> })
+      .socialProviders;
+    assert.ok(!noProviders?.github, 'github provider absent when explicitly disabled');
+  } finally {
+    cleanup();
+  }
+});
+
+test('session freshAge is disabled so valid sessions never age out of sensitive ops', () => {
+  const { path, cleanup } = createMigratedDatabasePath();
+  try {
+    const auth = createAuth({ database: { type: 'sqlite', path } });
+    const session = (auth.options as { session?: { freshAge?: number } }).session;
+    assert.equal(
+      session?.freshAge,
+      0,
+      'freshAge must be 0 to avoid failing sensitive ops after 24h on a valid session'
     );
   } finally {
     cleanup();

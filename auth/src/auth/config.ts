@@ -81,6 +81,27 @@ export interface CreateAuthOptions {
    * sign-in / forget-password code emails.
    */
   sendEmailOTP?: (params: { email: string; otp: string; type: EmailOTPType }) => Promise<void>;
+  /**
+   * GitHub OAuth App credentials enabling the "Continue with GitHub" social
+   * login. When omitted, {@link githubOAuthConfigFromEnv} is consulted; when
+   * neither yields credentials the provider is left off entirely so Local
+   * builds with no GitHub app configured behave exactly as before. Passing an
+   * explicit value (e.g. in tests) overrides the environment.
+   */
+  github?: { clientId: string; clientSecret: string } | null;
+}
+
+/**
+ * Read GitHub OAuth App credentials from the environment. Returns `null` when
+ * either is unset so every caller (the auth provider wiring here and the
+ * `/api/meta` capability flag in the backend) shares one definition of "GitHub
+ * login is configured" and Local builds with no creds behave exactly as before.
+ */
+export function githubOAuthConfigFromEnv(): { clientId: string; clientSecret: string } | null {
+  const clientId = process.env.GITHUB_CLIENT_ID?.trim();
+  const clientSecret = process.env.GITHUB_CLIENT_SECRET?.trim();
+  if (!clientId || !clientSecret) return null;
+  return { clientId, clientSecret };
 }
 
 function postgresSearchPath(schema: string | undefined): string | undefined {
@@ -156,6 +177,10 @@ export function createAuth(dbPathOrOptions?: string | CreateAuthOptions) {
 
   const otpEnabled = Boolean(options.sendEmailOTP);
 
+  // Explicit `github` option wins; otherwise fall back to env. `null` (or absent
+  // creds) leaves the provider off so Local behaves unchanged.
+  const githubOAuth = options.github === undefined ? githubOAuthConfigFromEnv() : options.github;
+
   /**
    * Mint a real 6-digit OTP for `email` tied to the sign-up verification flow,
    * stored by the `emailOTP` plugin and verifiable via `/email-otp/verify-email`.
@@ -186,6 +211,16 @@ export function createAuth(dbPathOrOptions?: string | CreateAuthOptions) {
       enabled: true,
       ...(options.sendVerificationEmail ? { requireEmailVerification: true } : {})
     },
+    session: {
+      // Better Auth defaults `freshAge` to 1 day (86400s), which forces sensitive
+      // operations (change password/email, delete account) to fail with a
+      // "session is not fresh" error once the session is older than 24h — even
+      // when the session is otherwise valid and unexpired. That surprised users
+      // who were still logged in. Setting `freshAge: 0` disables the freshness
+      // gate so a valid session can perform these operations at any age; ordinary
+      // session expiry (`expiresIn`, default 7 days) still applies.
+      freshAge: 0
+    },
     ...(options.sendVerificationEmail
       ? {
           emailVerification: {
@@ -212,6 +247,44 @@ export function createAuth(dbPathOrOptions?: string | CreateAuthOptions) {
           }
         }
       : {}),
+    // GitHub OAuth login, enabled only when credentials are configured. Local
+    // builds with no `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` skip this block
+    // entirely and keep email/password as the sole path.
+    ...(githubOAuth
+      ? {
+          socialProviders: {
+            github: {
+              clientId: githubOAuth.clientId,
+              clientSecret: githubOAuth.clientSecret,
+              // `user:email` is REQUIRED — Better Auth cannot resolve the
+              // account (and our `profiles.email` bridge depends on the email)
+              // without it. Keep login scopes minimal: no `repo` on the login
+              // token; repo access is a separate integration credential.
+              scope: ['user:email'],
+              // The DB trigger mirrors `user.name` → `profiles.handle` and
+              // `user.email` → `profiles.email`, so map GitHub's login/email
+              // onto those fields. `email` may be null when the user's primary
+              // email is private; the login OAuth App must be granted email
+              // read so GitHub still returns it (see the setup note).
+              mapProfileToUser: profile => ({
+                name: profile.login,
+                email: profile.email,
+                image: profile.avatar_url
+              })
+            }
+          }
+        }
+      : {}),
+    // Account linking lets an existing email/password user attach GitHub (and
+    // vice versa) when the verified emails match. `github` is deliberately NOT
+    // added to `trustedProviders`: that would auto-link on a matching email
+    // even when GitHub has not verified it, which is an account-takeover
+    // vector. Default verified-email linking only.
+    account: {
+      accountLinking: {
+        enabled: true
+      }
+    },
     // Email is the primary account identifier. Changing email applies
     // immediately without re-verifying the new address (the account is
     // already authenticated for the change), independent of sign-up/sign-in

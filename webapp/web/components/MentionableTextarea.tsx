@@ -73,6 +73,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       autoListContinuation = false,
       maxHeightPx,
       menuOwnerId,
+      spellCheck = true,
       ...props
     },
     forwardedRef
@@ -587,6 +588,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
             'relative z-10 w-full resize-none overflow-y-auto focus:outline-none focus-visible:ring-0',
             className
           )}
+          spellCheck={spellCheck}
           value={value}
           onChange={event => {
             const nextValue = event.target.value;

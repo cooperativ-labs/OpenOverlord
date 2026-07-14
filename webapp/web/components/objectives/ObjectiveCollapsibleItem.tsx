@@ -172,6 +172,7 @@ export function ObjectiveCollapsibleItem({
           <div className="text-sm leading-relaxed text-muted-foreground">
             <InlineEditField
               multiline
+              disabled
               value={objective.instructionText}
               className="block whitespace-pre-wrap"
               ariaLabel="Objective instruction"

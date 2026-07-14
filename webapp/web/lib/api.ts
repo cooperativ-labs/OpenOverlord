@@ -114,11 +114,18 @@ export interface MetaCapabilities {
   mcp: boolean;
 }
 
+/** Interactive login providers this backend offers (drives the auth UI). */
+export interface AuthProviders {
+  email: boolean;
+  github: boolean;
+}
+
 export interface Meta extends MetaDto {
   databasePath: string;
   backendMode: 'local' | 'cloud';
   web: { host: string; port: number; url: string };
   sqlStudio: { enabled: boolean; url: string | null };
+  authProviders: AuthProviders;
   capabilities: MetaCapabilities;
 }
 
@@ -233,6 +240,8 @@ async function requestDownload(
 
 export const api = {
   meta: () => request<Meta>('GET', '/api/meta'),
+  /** Public (pre-auth) login-provider advertisement for the sign-in screen. */
+  authProviders: () => request<AuthProviders>('GET', '/api/auth-providers'),
   createOrganizationOnboarding: (body: CreateOrganizationOnboardingBody) =>
     request<Meta>('POST', '/api/onboarding', body),
 

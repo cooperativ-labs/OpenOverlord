@@ -62,6 +62,50 @@ test('resolveAuthCredentialSource reports stored credential backend mismatches',
   }
 });
 
+test('resolveAuthStatus surfaces remaining lifetime from a stored credential expiry', async () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'overlord-auth-status-'));
+  const previousHome = process.env.OVLD_HOME;
+  const previousToken = process.env.OVERLORD_USER_TOKEN;
+  const previousOvldToken = process.env.OVLD_USER_TOKEN;
+  const previousUserToken = process.env.USER_TOKEN;
+  process.env.OVLD_HOME = home;
+  delete process.env.OVERLORD_USER_TOKEN;
+  delete process.env.OVLD_USER_TOKEN;
+  delete process.env.USER_TOKEN;
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(null, { status: 200 })) as typeof fetch;
+
+  try {
+    const { loadConfig, resolveBackendUrl } = await import('../src/config.ts');
+    const backendUrl = resolveBackendUrl(loadConfig());
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    writeStoredAuthCredentials({
+      type: 'user_token',
+      token: 'out_stored',
+      backendUrl,
+      expiresAt
+    });
+
+    const status = await resolveAuthStatus({ env: process.env });
+    assert.equal(status.loggedIn, true);
+    assert.equal(status.expiresAt, expiresAt);
+    assert.equal(status.expired, false);
+    // 30 days out; floor lands on 29 or 30 depending on sub-day rounding.
+    assert.ok((status.expiresInDays ?? 0) >= 29 && (status.expiresInDays ?? 0) <= 30);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousHome === undefined) delete process.env.OVLD_HOME;
+    else process.env.OVLD_HOME = previousHome;
+    if (previousToken === undefined) delete process.env.OVERLORD_USER_TOKEN;
+    else process.env.OVERLORD_USER_TOKEN = previousToken;
+    if (previousOvldToken === undefined) delete process.env.OVLD_USER_TOKEN;
+    else process.env.OVLD_USER_TOKEN = previousOvldToken;
+    if (previousUserToken === undefined) delete process.env.USER_TOKEN;
+    else process.env.USER_TOKEN = previousUserToken;
+  }
+});
+
 test('resolveAuthStatus reports logged_in=true when bearer validation succeeds', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => new Response(null, { status: 200 })) as typeof fetch;

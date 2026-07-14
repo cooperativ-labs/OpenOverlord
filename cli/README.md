@@ -130,9 +130,12 @@ Both the desktop app and the CLI authenticate to `/api/*` with a bearer token:
   sign-in on the **local** backend. Stored in `~/.ovld/auth.json` for the CLI
   and in the desktop shell's encrypted settings for each backend profile.
 - **USER_TOKEN** (`out_…`) — long-lived token from Settings → Tokens. Works for
-  headless/CI use via `OVERLORD_USER_TOKEN` or `ovld auth login --token`. On
-  cloud backends, interactive email/password login creates and stores a full
-  `USER_TOKEN` automatically so runner/protocol CLI surfaces can authenticate.
+  headless/CI use via `OVERLORD_USER_TOKEN` or `ovld auth login --token`.
+  Interactive email/password login creates and stores a full 90-day `USER_TOKEN`
+  automatically **in both local and cloud modes**, so runner/protocol CLI
+  surfaces authenticate with a consistent, long-lived credential. (Local logins
+  previously stored the raw 7-day Better Auth session token, which is why they
+  expired far sooner than cloud logins.)
 
 For the **local** backend, desktop and CLI share `~/.ovld/auth.json`:
 
@@ -146,13 +149,18 @@ For the **local** backend, desktop and CLI share `~/.ovld/auth.json`:
 desktop app updates `~/.ovld/overlord.toml` with the new `backend_url`, but it
 does **not** update CLI auth. After switching backends in either surface, run
 `ovld auth status` to confirm the CLI is pointed at the same URL and still
-logged in. If `credentialSource` is `stored_mismatch` or `loggedIn` is false, run
-`ovld config set cloud <url>` (if needed) and `ovld auth login`. Email/password
-login on a cloud backend uses the session only once to create a 90-day full
-`USER_TOKEN`, then stores that token in `auth.json`.
+logged in. `auth status` also reports `expires_at` (with days remaining) when the
+stored credential is a minted `USER_TOKEN`, so you can see a credential's
+lifetime instead of just a logged-in boolean. If `credentialSource` is
+`stored_mismatch` or `loggedIn` is false, run `ovld config set cloud <url>` (if
+needed) and `ovld auth login`. Email/password login uses the session only once to
+create a 90-day full `USER_TOKEN`, then stores that token in `auth.json`.
 
-When a stored CLI credential is rejected with HTTP 401, `ovld` clears
-`auth.json` and tells you to run `ovld auth login` again.
+When a stored CLI credential is rejected with HTTP 401, `ovld` leaves `auth.json`
+in place (a 401 can be transient) and tells you to run `ovld auth login` again.
+To reconcile a broken login in one step, run `ovld auth repair`: it validates the
+current credential, reports "healthy" when nothing is wrong, and otherwise clears
+the stale stored credential and walks you through a fresh login.
 
 ### Headless / container setup
 

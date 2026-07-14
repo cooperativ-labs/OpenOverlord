@@ -51,7 +51,8 @@ test('writeStoredAuthCredentials persists token metadata under OVLD_HOME', () =>
       type: 'user_token',
       token: 'out_testtoken',
       backendUrl: 'http://127.0.0.1:4310',
-      updatedAt: stored?.updatedAt
+      updatedAt: stored?.updatedAt,
+      expiresAt: null
     });
     assert.match(readFileSync(filePath, 'utf8'), /"token": "out_testtoken"/);
   } finally {
@@ -125,7 +126,8 @@ test('createFullUserTokenFromSession mints a full USER_TOKEN using the session b
       label: 'CLI login on test-host'
     });
 
-    assert.equal(token, 'out_generated_secret');
+    assert.equal(token.secret, 'out_generated_secret');
+    assert.equal(token.expiresAt, null);
     assert.equal(capturedInput, 'https://overlord.example.com/api/user-tokens');
     const headers = capturedInit?.headers as Record<string, string>;
     assert.equal(headers.Authorization, 'Bearer session-token-123');
@@ -133,6 +135,32 @@ test('createFullUserTokenFromSession mints a full USER_TOKEN using the session b
       label: 'CLI login on test-host',
       scope: 'full'
     });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('createFullUserTokenFromSession captures the backend expiry when present', async () => {
+  const originalFetch = globalThis.fetch;
+  const expiry = new Date(90 * 24 * 60 * 60 * 1000).toISOString();
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        token: { expiresAt: expiry },
+        secret: 'out_generated_secret'
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    )) as typeof fetch;
+
+  try {
+    const token = await createFullUserTokenFromSession({
+      backendUrl: 'https://overlord.example.com/',
+      sessionToken: 'session-token-123'
+    });
+
+    assert.equal(token.secret, 'out_generated_secret');
+    assert.equal(token.expiresAt, expiry);
   } finally {
     globalThis.fetch = originalFetch;
   }

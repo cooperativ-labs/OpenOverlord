@@ -39,6 +39,7 @@ import {
   describeServicePublisher,
   nextRunnerLastError,
   patchRunnerServiceState,
+  readDesktopFocusState,
   readRunnerServiceState,
   resolveOvldInvocation,
   resolveServiceManager,
@@ -1536,8 +1537,12 @@ async function runRunnerSupervisor({
       lastError = error instanceof Error ? error.message : String(error);
     }
     const state = readRunnerServiceState();
+    // The desktop app writes its last-focus timestamp to a separate file; read it
+    // each poll so the cadence tracks "user is actively in the app right now".
+    const focus = readDesktopFocusState();
     const base = selectBasePollIntervalMs({
       lastLaunchedAt: launched ? now.toISOString() : state.lastLaunchedAt,
+      lastDesktopFocusAt: focus.lastFocusedAt,
       now: now.getTime()
     });
     patchRunnerServiceState({

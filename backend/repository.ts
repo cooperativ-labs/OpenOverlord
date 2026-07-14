@@ -5306,6 +5306,10 @@ async function updateObjectiveTx(
       if (!instruction && !allowsBlankInstruction) {
         throw new ApiError(400, 'Objective instruction is required');
       }
+      const lockedStates = ['executing', 'pending_delivery', 'complete'] as const;
+      if (lockedStates.includes(existing.state as (typeof lockedStates)[number])) {
+        throw new ApiError(400, 'Objective instruction cannot be edited once execution has begun');
+      }
       fields.push('instruction_text = ?');
       setParams.push(instruction);
       changed.push('instruction_text');

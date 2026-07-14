@@ -8,12 +8,14 @@ import {
   applyPollJitter,
   buildRunnerServiceEnv,
   describeServicePublisher,
+  DESKTOP_FOCUS_WINDOW_MS,
   emptyRunnerServiceState,
   FAST_POLL_INTERVAL_MS,
   IDLE_BACKOFF_MS,
   LAUNCHD_LABEL,
   nextRunnerLastError,
   patchRunnerServiceState,
+  readDesktopFocusState,
   readRunnerServiceState,
   renderLaunchdPlist,
   renderSystemdUnit,
@@ -22,10 +24,11 @@ import {
   resolveServiceManager,
   selectBasePollIntervalMs,
   SLOW_POLL_INTERVAL_MS,
+  writeDesktopFocusState,
   writeRunnerServiceState
 } from '../src/runner-service.ts';
 
-test('selectBasePollIntervalMs is fast within the idle window and slow afterwards', () => {
+test('selectBasePollIntervalMs is fast within the job window and slow afterwards', () => {
   const now = Date.parse('2026-07-09T12:00:00.000Z');
   assert.equal(selectBasePollIntervalMs({ lastLaunchedAt: null, now }), SLOW_POLL_INTERVAL_MS);
   assert.equal(
@@ -50,6 +53,54 @@ test('selectBasePollIntervalMs is fast within the idle window and slow afterward
     selectBasePollIntervalMs({ lastLaunchedAt: 'not-a-date', now }),
     SLOW_POLL_INTERVAL_MS
   );
+});
+
+test('selectBasePollIntervalMs goes fast when the desktop app was focused recently', () => {
+  const now = Date.parse('2026-07-09T12:00:00.000Z');
+  // Recent focus alone (no recent job) is enough to poll fast.
+  assert.equal(
+    selectBasePollIntervalMs({
+      lastLaunchedAt: null,
+      lastDesktopFocusAt: new Date(now - 1000).toISOString(),
+      now
+    }),
+    FAST_POLL_INTERVAL_MS
+  );
+  assert.equal(
+    selectBasePollIntervalMs({
+      lastLaunchedAt: null,
+      lastDesktopFocusAt: new Date(now - (DESKTOP_FOCUS_WINDOW_MS - 1000)).toISOString(),
+      now
+    }),
+    FAST_POLL_INTERVAL_MS
+  );
+  // Focus older than the 30m window no longer keeps it fast.
+  assert.equal(
+    selectBasePollIntervalMs({
+      lastLaunchedAt: null,
+      lastDesktopFocusAt: new Date(now - (DESKTOP_FOCUS_WINDOW_MS + 1000)).toISOString(),
+      now
+    }),
+    SLOW_POLL_INTERVAL_MS
+  );
+  // A malformed focus timestamp is ignored (treated as no signal).
+  assert.equal(
+    selectBasePollIntervalMs({ lastLaunchedAt: null, lastDesktopFocusAt: 'nope', now }),
+    SLOW_POLL_INTERVAL_MS
+  );
+});
+
+test('desktop focus state round-trips through disk and defaults cleanly', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'ovld-focus-'));
+  try {
+    // A missing file reads as "no signal" rather than throwing.
+    assert.deepEqual(readDesktopFocusState(dir), { lastFocusedAt: null });
+    const stamp = '2026-07-09T12:00:00.000Z';
+    writeDesktopFocusState({ lastFocusedAt: stamp }, dir);
+    assert.deepEqual(readDesktopFocusState(dir), { lastFocusedAt: stamp });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('nextRunnerLastError reflects the latest poll, clearing a resolved error', () => {

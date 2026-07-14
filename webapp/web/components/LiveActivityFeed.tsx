@@ -66,10 +66,19 @@ function actorInitials(label: string): string {
 function ActivityEntry({ event }: { event: MissionEventDto }) {
   const { icon: Icon, label } = eventMeta(event.type);
   const isUserFollowUp = event.type === 'user_follow_up';
+  // Blocking questions posted via `ovld protocol ask` land as `ask` events. Give
+  // them a subtle amber/orange outline + wash so they stand out as needing a reply.
+  const isBlockingQuestion = event.type === 'ask';
   const userLabel = actorLabel(event);
 
   return (
-    <article className="flex min-w-0 gap-3">
+    <article
+      className={
+        isBlockingQuestion
+          ? 'flex min-w-0 gap-3 rounded-md border border-amber-400/50 bg-amber-50/60 px-3 py-2 dark:border-amber-500/40 dark:bg-amber-500/10'
+          : 'flex min-w-0 gap-3'
+      }
+    >
       <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center">
         {isUserFollowUp && event.actor ? (
           <Avatar size="sm" title={userLabel}>
@@ -83,7 +92,11 @@ function ActivityEntry({ event }: { event: MissionEventDto }) {
         ) : Icon ? (
           <Icon
             className={
-              isUserFollowUp ? 'h-3.5 w-3.5 text-sky-500' : 'h-3.5 w-3.5 text-(--color-ink-dim)'
+              isUserFollowUp
+                ? 'h-3.5 w-3.5 text-sky-500'
+                : isBlockingQuestion
+                  ? 'h-3.5 w-3.5 text-amber-600 dark:text-amber-400'
+                  : 'h-3.5 w-3.5 text-(--color-ink-dim)'
             }
           />
         ) : (
@@ -96,7 +109,9 @@ function ActivityEntry({ event }: { event: MissionEventDto }) {
             className={
               isUserFollowUp
                 ? 'text-xs font-medium text-sky-600 dark:text-sky-400'
-                : 'text-xs font-medium text-(--color-ink)'
+                : isBlockingQuestion
+                  ? 'text-xs font-medium text-amber-700 dark:text-amber-300'
+                  : 'text-xs font-medium text-(--color-ink)'
             }
           >
             {isUserFollowUp && event.actor ? userLabel : label}

@@ -1,5 +1,5 @@
 export type { Auth, AuthDatabaseConfig, CreateAuthOptions } from './config.js';
-export { authDatabaseFromAdapter, createAuth } from './config.js';
+export { authDatabaseFromAdapter, createAuth, githubOAuthConfigFromEnv } from './config.js';
 export type { AuthDomainDatabase, PostgresQueryExecutor } from './database.js';
 export { getActorForSession } from './session.js';
 export {

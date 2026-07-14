@@ -27,6 +27,7 @@ import {
   setQuickTaskBackend,
   unregisterQuickTaskHotkey
 } from './quick-task-window.js';
+import { markDesktopFocused } from './runner-focus.js';
 import { DesktopUpdater } from './updater.js';
 import { applyCsp, createWindow, guardNavigation } from './window.js';
 
@@ -181,6 +182,10 @@ async function openMainWindow({
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+  // Signal the persistent runner that the user is active so it polls fast. A new
+  // window starts focused; the `focus` event covers subsequent re-activations.
+  markDesktopFocused({ force: true });
+  mainWindow.on('focus', () => markDesktopFocused());
 
   await mainWindow.loadFile(SPLASH);
 

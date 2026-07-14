@@ -1,4 +1,6 @@
+import { parseArgs } from './args.js';
 import { CliError, formatCliError } from './errors.js';
+import { assertKnownFlags } from './flag-registry.js';
 import { printHelp } from './help.js';
 import { runVersionCommand } from './version.js';
 
@@ -20,7 +22,8 @@ const DB_FREE_COMMANDS = new Set([
   'config',
   'auth',
   'user-token',
-  'prune'
+  'prune',
+  'contract'
 ]);
 
 const KNOWN_COMMANDS = new Set([
@@ -71,6 +74,13 @@ async function dispatchCommand({
   args: string[];
   stdin?: string;
 }): Promise<void> {
+  // Reject `--`-flags a command does not understand instead of silently
+  // ignoring them. Commands not in the registry (notably `protocol`, whose
+  // flags the Protocol Layer owns) are skipped inside assertKnownFlags.
+  if (command !== undefined) {
+    assertKnownFlags({ command, flags: parseArgs(args).flags, primaryCommand });
+  }
+
   switch (command) {
     case undefined:
     case 'help':
@@ -103,6 +113,15 @@ async function dispatchCommand({
     case 'serve': {
       const { runServeCommand } = await import('./serve.js');
       await runServeCommand({ rest: args });
+      return;
+    }
+    case 'contract': {
+      const [subcommand, ...rest] = args;
+      if (!subcommand) {
+        throw new CliError({ message: 'Usage: ovld contract <subcommand> [flags]' });
+      }
+      const { runContractCommand } = await import('./contract.js');
+      await runContractCommand({ subcommand, args: rest, primaryCommand });
       return;
     }
     case 'protocol': {

@@ -1,12 +1,12 @@
 {
   "_warning": "This file is managed by Overlord and is regenerated automatically when this folder is linked as a project resource. Do not edit it manually — manual changes will be overwritten.",
   "version": 2,
-  "projectId": "6dfa1f95-c8bd-44f1-8977-6879232d7e15",
-  "resourceId": "18b1c242-867e-4e38-a759-d87b2326d1d2",
+  "projectId": "0970d0df-b128-4e7f-ac84-a981f2e263b1",
+  "resourceId": "212f3563-0f5b-477b-8f7d-f499b17a5320",
   "resourceKey": "cli",
   "resourceIdsByExecutionTarget": {
-    "6d09384a-a02b-4534-be70-06385a7c5266": "18b1c242-867e-4e38-a759-d87b2326d1d2"
+    "a780d202-99a1-4cd4-9786-01e441b3e0cc": "212f3563-0f5b-477b-8f7d-f499b17a5320"
   },
   "isPrimary": true,
-  "linkedAt": "2026-07-10T07:03:53.038Z"
+  "linkedAt": "2026-07-14T10:50:33.076Z"
 }
