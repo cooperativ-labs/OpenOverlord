@@ -78,7 +78,10 @@ import {
 } from './db.ts';
 import {
   beginDesktopGitHubOAuth,
+  browserOAuthCallbackUrl,
+  consumeBrowserOAuthHandoff,
   consumeDesktopOAuthHandoff,
+  createBrowserOAuthHandoff,
   createDesktopOAuthHandoff,
   desktopOAuthCallbackUrl
 } from './desktop-oauth-handoff.ts';
@@ -341,11 +344,54 @@ app.get('/api/auth/desktop/callback', async (req, res, next) => {
   }
 });
 
+function browserOAuthReturnOrigin(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  try {
+    const origin = new URL(value).origin;
+    return isAllowedBrowserOrigin(origin, getAllowedBrowserOrigins()) ? origin : null;
+  } catch {
+    return null;
+  }
+}
+
+app.get('/api/auth/browser/callback', async (req, res, next) => {
+  try {
+    const returnOrigin = browserOAuthReturnOrigin(req.query.returnTo);
+    if (!returnOrigin) {
+      res.status(400).send('The requested sign-in return origin is not allowed.');
+      return;
+    }
+    const browserSession = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+    if (!browserSession?.session.token) {
+      res
+        .status(401)
+        .send('Your sign-in session is missing or expired. Return to Overlord and try again.');
+      return;
+    }
+    res.redirect(
+      302,
+      browserOAuthCallbackUrl(returnOrigin, createBrowserOAuthHandoff(browserSession.session.token))
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post('/api/auth/desktop/exchange', express.json(), (req, res) => {
   const ticket = typeof req.body?.ticket === 'string' ? req.body.ticket : '';
   const token = consumeDesktopOAuthHandoff(ticket);
   if (!token) {
     res.status(401).json({ message: 'This desktop sign-in link has expired or was already used.' });
+    return;
+  }
+  res.json({ token });
+});
+
+app.post('/api/auth/browser/exchange', express.json(), (req, res) => {
+  const ticket = typeof req.body?.ticket === 'string' ? req.body.ticket : '';
+  const token = consumeBrowserOAuthHandoff(ticket);
+  if (!token) {
+    res.status(401).json({ message: 'This browser sign-in link has expired or was already used.' });
     return;
   }
   res.json({ token });

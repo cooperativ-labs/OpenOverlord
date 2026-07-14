@@ -193,9 +193,9 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
           height: container.offsetHeight,
           barOffsetTop: Math.round(barTop - containerTop)
         })
-        .catch(() => {});
+        .catch(() => { });
     } else {
-      quickTaskApi.setHeight(container.offsetHeight).catch(() => {});
+      quickTaskApi.setHeight(container.offsetHeight).catch(() => { });
     }
   }, [resolveTextarea]);
 
@@ -245,7 +245,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
   const handleClose = useCallback(() => {
     const quickTaskApi = getQuickTaskApi();
     if (quickTaskApi) {
-      quickTaskApi.close().catch(() => {});
+      quickTaskApi.close().catch(() => { });
       return;
     }
     setObjective('');
@@ -585,7 +585,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
               {isSubmitting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <ArrowUp className="h-4 w-4" />
+                <div className="flex items-center gap-1"><ArrowUp className="h-4 w-4" /> "Save"</div>
               )}
             </button>
           </div>

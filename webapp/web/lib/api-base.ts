@@ -25,6 +25,7 @@ let sessionToken: string | null = null;
 const BROWSER_SESSION_TOKEN_STORAGE_PREFIX = 'overlord:auth:session-token';
 const ACTIVE_WORKSPACE_STORAGE_PREFIX = 'overlord:active-workspace';
 const ACTIVE_BACKEND_KEY_STORAGE = 'overlord:active-backend-key';
+const BROWSER_OAUTH_TICKET_PARAM = 'overlord_oauth_ticket';
 
 function trimTrailingSlash(url: string): string {
   return url.replace(/\/+$/, '');
@@ -187,12 +188,46 @@ export async function initApiConfig(): Promise<void> {
     activeBackend = await bridge.getActiveBackend();
     persistActiveBackendKey();
     await loadStoredTokensForActiveBackend();
+    await consumeBrowserOAuthTicket();
     return;
   }
 
   initHostedWebApiConfig();
   persistActiveBackendKey();
   await loadStoredTokensForActiveBackend();
+  await consumeBrowserOAuthTicket();
+}
+
+/**
+ * Exchange an OAuth callback ticket before the app mounts. The ticket is opaque,
+ * short-lived, and single-use; removing it from the address bar first prevents
+ * accidental reuse through refreshes or copied URLs.
+ */
+async function consumeBrowserOAuthTicket(): Promise<void> {
+  if (typeof window === 'undefined' || !activeBackend || isDesktopShell()) return;
+  const callbackUrl = new URL(window.location.href);
+  const ticket = callbackUrl.searchParams.get(BROWSER_OAUTH_TICKET_PARAM);
+  if (!ticket) return;
+
+  callbackUrl.searchParams.delete(BROWSER_OAUTH_TICKET_PARAM);
+  window.history.replaceState(
+    null,
+    '',
+    `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`
+  );
+
+  try {
+    const response = await fetch(`${getAuthBaseUrl()}/api/auth/browser/exchange`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket })
+    });
+    const payload = (await response.json().catch(() => null)) as { token?: unknown } | null;
+    if (!response.ok || typeof payload?.token !== 'string' || !payload.token.trim()) return;
+    await persistAuthSessionToken(payload.token);
+  } catch {
+    // The login screen remains available if an expired or malformed ticket cannot be exchanged.
+  }
 }
 
 function resolveAuthorizationToken(): string | null {

@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '9'
+contractVersion: '10'
 
 components:
   protocol:
@@ -125,6 +125,7 @@ components:
       - 'on-demand branch-action git mutations (POST /api/missions/:id/branch/action: merge-with-parent / push-parent / publish) run host-side against worktrees under ~/.ovld/worktrees and the resource selected by optional resourceKey, defaulting to the primary repo; the Runner Layer owns launching the agent into a worktree, not these mutations'
       - 'REST auth integration points'
       - 'desktop OAuth handoff: browser-only GET /api/auth/desktop/github starts only the configured GitHub provider with the fixed desktop callback, so Better Auth writes its OAuth state cookie in the system browser; GET /api/auth/desktop/callback derives a short-lived opaque ticket from an authenticated browser session and redirects only to overlord://auth/callback; POST /api/auth/desktop/exchange consumes it once and returns a Better Auth session token only to the Electron main process'
+      - 'hosted-web OAuth handoff: browser-only GET /api/auth/browser/callback accepts only a configured trusted web origin, derives a short-lived opaque ticket from an authenticated browser session, and redirects to that origin; POST /api/auth/browser/exchange consumes it once and returns a Better Auth session token to the web client without placing a credential in the callback URL'
       - 'SSE/WebSocket realtime endpoint (GET /realtime, compatibility GET /api/stream) and GET /sync/changes?after=<seq> catch-up read'
       - 'SQL Studio launch metadata exposed through /api/meta'
       - 'webhook subscription management (/api/webhooks*: list/create, update/soft-delete, rotate-secret, test, deliveries, redeliver), gated by webhook:* permissions'

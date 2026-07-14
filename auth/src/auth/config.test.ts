@@ -163,6 +163,33 @@ test('github social provider is wired only when credentials are supplied', () =>
   }
 });
 
+test('GitHub account linking requires verified matching identities', () => {
+  const { path, cleanup } = createMigratedDatabasePath();
+  try {
+    const auth = createAuth({
+      database: { type: 'sqlite', path },
+      github: { clientId: 'id', clientSecret: 'secret' }
+    });
+    const account = (
+      auth.options as {
+        account?: {
+          accountLinking?: {
+            enabled?: boolean;
+            trustedProviders?: string[];
+            requireLocalEmailVerified?: boolean;
+          };
+        };
+      }
+    ).account;
+
+    assert.equal(account?.accountLinking?.enabled, true);
+    assert.equal(account?.accountLinking?.requireLocalEmailVerified, undefined);
+    assert.equal(account?.accountLinking?.trustedProviders, undefined);
+  } finally {
+    cleanup();
+  }
+});
+
 test('session freshAge is disabled so valid sessions never age out of sensitive ops', () => {
   const { path, cleanup } = createMigratedDatabasePath();
   try {

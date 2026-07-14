@@ -10,6 +10,7 @@ import { api } from '@/lib/api';
 import {
   getAuthBaseUrl,
   isDesktopRemoteBackend,
+  isRemoteBackend,
   persistAuthSessionFromSignInResult
 } from '@/lib/api-base';
 import {
@@ -64,6 +65,13 @@ function syncAuthModeSearchParam(mode: AuthMode) {
   window.history.replaceState(window.history.state, '', url);
 }
 
+function socialSignInCallbackError(code: string): string {
+  if (code === 'account_not_linked') {
+    return 'This email already has an Overlord account. Sign in with your email and password, verify the email if prompted, then try GitHub again.';
+  }
+  return 'GitHub sign-in could not be completed. Try again.';
+}
+
 export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>(() =>
     typeof window === 'undefined' ? 'sign-in' : parseAuthModeFromSearch(window.location.search)
@@ -89,6 +97,20 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
   useEffect(() => {
     syncAuthModeSearchParam(mode);
   }, [mode]);
+
+  useEffect(() => {
+    const callbackUrl = new URL(window.location.href);
+    const socialError = callbackUrl.searchParams.get('error');
+    if (!socialError) return;
+
+    setError(socialSignInCallbackError(socialError));
+    callbackUrl.searchParams.delete('error');
+    window.history.replaceState(
+      null,
+      '',
+      `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`
+    );
+  }, []);
 
   useEffect(() => {
     function handlePopState() {
@@ -136,9 +158,14 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
         return;
       }
 
+      const callbackURL = isRemoteBackend()
+        ? new URL('/api/auth/browser/callback', getAuthBaseUrl())
+        : new URL(window.location.origin);
+      if (isRemoteBackend()) callbackURL.searchParams.set('returnTo', window.location.origin);
       const result = await authClient.signIn.social({
         provider: 'github',
-        callbackURL: window.location.origin,
+        callbackURL: callbackURL.toString(),
+        errorCallbackURL: window.location.origin,
         // Better Auth persists the OAuth state in a cookie before redirecting
         // to GitHub. This must override the remote client's usual
         // credentials: 'omit' policy for this one bootstrap request.

@@ -276,10 +276,12 @@ export function createAuth(dbPathOrOptions?: string | CreateAuthOptions) {
         }
       : {}),
     // Account linking lets an existing email/password user attach GitHub (and
-    // vice versa) when the verified emails match. `github` is deliberately NOT
-    // added to `trustedProviders`: that would auto-link on a matching email
-    // even when GitHub has not verified it, which is an account-takeover
-    // vector. Default verified-email linking only.
+    // vice versa) when both the existing Overlord email and GitHub email are
+    // verified and match. `github` is deliberately NOT added to
+    // `trustedProviders`: that would auto-link on a matching email even when
+    // GitHub has not verified it, which is an account-takeover vector. Users
+    // with legacy unverified email/password accounts are prompted to verify the
+    // address first, then may retry GitHub sign-in to link it safely.
     account: {
       accountLinking: {
         enabled: true
