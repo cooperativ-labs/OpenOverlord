@@ -64,7 +64,7 @@ For behavioral specs and acceptance criteria, see the other docs in this folder.
 | Command | Description | Positional args | Flags |
 | ------- | ----------- | --------------- | ----- |
 | `ovld agent-setup` | List installable agent connectors | — | `--json` |
-| `ovld agent-setup <agent>` | Install or repair one connector (e.g. `claude`, `codex`, `cursor`) | `agent` | `--dry-run`, `--home <path>`, `--json` |
+| `ovld agent-setup <agent>` | Install or repair one connector (e.g. `claude`, `codex`, `cursor`, `pi`) | `agent` | `--dry-run`, `--home <path>`, `--json` |
 | `ovld agent-setup all` | Install or repair all supported connectors | — | `--dry-run`, `--home <path>`, `--json` |
 
 ---

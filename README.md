@@ -53,7 +53,7 @@ You can use Overlord locally on MacOS for free by following these steps:
 5. Run `ovld setup` in your terminal to configure and log into the CLI
 6. run `ovld runner start` to make sure the CLI automatically picks up queued work.
 
-Now, you can create "missions" in the desktop app, select your preferred agent, and click "Run". In a few moments you will see the agent open in your terminal and begin working. Agents launched by Overlord use your existing Claude/Codex/Cursor subscriptions. 
+Now, you can create "missions" in the desktop app, select your preferred agent, and click "Run". In a few moments you will see the agent open in your terminal and begin working. Agents launched by Overlord use your existing Claude, Codex, Cursor, or PI provider configuration.
 
 ### Getting Started
 
@@ -169,7 +169,7 @@ sequenceDiagram
 | **CLI** (`ovld`) | Primary product surface: management, `ovld protocol`, runner, config |
 | **Web app** | Control center bundled with the backend (local or hosted) |
 | **Desktop** | Optional Electron shell supervising the local backend |
-| **Connectors** | Agent harness plugins (Claude, Codex, Cursor) — see [connectors/](connectors/README.md) |
+| **Connectors** | Agent harness plugins (Claude, Codex, Cursor, PI) — see [connectors/](connectors/README.md) |
 | **Database** | SQLite (local) or Postgres (cloud) behind the backend — see [database/](database/README.md) |
 
 All surfaces share one contract: [`CONTRACT.md`](CONTRACT.md) (version `0`).

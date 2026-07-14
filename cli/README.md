@@ -182,7 +182,7 @@ export OVERLORD_BACKEND_URL="https://overlord.example.com"
 export OVERLORD_USER_TOKEN="out_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
 # 4. Agent connector — write the local agent connector config (non-interactive).
-ovld agent-setup claude            # one of: claude | codex | cursor | all
+ovld agent-setup claude            # one of: claude | codex | cursor | pi | all
 ```
 
 Then verify the backend is reachable and authenticated:

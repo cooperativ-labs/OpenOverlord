@@ -1,0 +1,146 @@
+---
+title: CLI reference
+description: Reference for the ovld command-line interface.
+---
+
+Install the CLI with `npm install -g --no-fund overlord-cli`. Run `ovld help`
+for the short command summary and `ovld protocol help` for the agent lifecycle
+reference. Management commands support `--json` where noted; protocol commands
+return JSON by default.
+
+## Setup, configuration, and diagnostics
+
+| Command | What it does |
+| --- | --- |
+| `ovld help` | Show the top-level help. |
+| `ovld version [--json]` | Show the installed version. |
+| `ovld update [--check] [--force] [--json]` | Check for or install the latest published CLI. |
+| `ovld init [--json]` | Create `overlord.toml` for a local backend. |
+| `ovld serve [--host <h>] [--port <p>] [--db <path>] [--json]` | Start the local web and REST server. |
+| `ovld doctor [--json]` | Check the backend, connectors, agent binaries, and credentials. |
+| `ovld prune [--json]` | Delete temporary contents under `.overlord/tmp`. |
+| `ovld setup [--json]` | Interactive first-run setup for backend, agents, and terminal. |
+| `ovld contract check <manifest-path> [--json]` | Validate a component conformance manifest. This is for component maintainers. |
+
+### Backend configuration
+
+| Command | What it does |
+| --- | --- |
+| `ovld config list [--json]` | Show resolved local configuration. |
+| `ovld config get <key> [--json]` | Read `backend`, `backend_mode`, `backend_url`, `web_host`, `web_port`, or `default_agent`. |
+| `ovld config set [--json]` | Choose a local or cloud backend interactively. |
+| `ovld config set local [url] [--json]` | Use a local backend; default is `http://127.0.0.1:4310`. |
+| `ovld config set cloud <url> [--json]` | Use a hosted backend. |
+
+## Authentication and user tokens
+
+| Command | What it does |
+| --- | --- |
+| `ovld auth login [--token <out_...>] [--json]` | Configure the backend if necessary and sign in. |
+| `ovld auth status [--json]` | Show the current backend URL and login state. |
+| `ovld user-token create --label <label> [--expires-in 90d] [--no-expiry] [--scope full\|mission-lifecycle]` | Create a token; its secret is shown only once. |
+| `ovld user-token list [--json]` | List tokens without showing their secrets. |
+| `ovld user-token revoke <id> [--json]` | Revoke a token immediately. |
+| `ovld user-token rename <id> <label> [--json]` | Rename a token without rotating it. |
+
+## Agents and organizations
+
+| Command | What it does |
+| --- | --- |
+| `ovld agent-setup [--json]` | List installable connectors. |
+| `ovld agent-setup <agent> [--dry-run] [--home <path>] [--json]` | Install or repair one agent connector. |
+| `ovld agent-setup all [--dry-run] [--home <path>] [--json]` | Install or repair all supported connectors. |
+| `ovld org-setup --org-name <name> [--workspace-name <name>] [--workspace-slug <slug>] [--logo <path>] [--no-input] [--if-needed] [--json]` | Create an organization and its first workspace when the signed-in profile has none. |
+
+Supported built-in connector names currently include `claude`, `codex`, `cursor`,
+and `pi`.
+
+## Projects and resources
+
+| Command | What it does |
+| --- | --- |
+| `ovld create-project --name <name> [--directory <path>\|--no-directory] [--json]` | Create a project and optionally link a local directory. |
+| `ovld add-cwd [--directory <path>] [--project-id <id>] [--key <resource-key>] [--primary true\|false] [--json]` | Link a local checkout. |
+| `ovld add-url --url <git-url> --project-id <id> [--key <resource-key>] [--primary true\|false]` | Add or update a remote Git source. |
+
+## Missions and launches
+
+| Command | What it does |
+| --- | --- |
+| `ovld create "<objective>" [--objectives-json <json>] [--title <text>] [--project-id <id>] [--json]` | Create a draft mission. |
+| `ovld prompt "<objective>" [--objectives-json <json>] [--title <text>] [--project-id <id>] [--agent <id>] [--json]` | Create a mission and queue execution. |
+| `ovld attach <mission-id> [agent] [--objective-id <id>] [--model <id>] [--thinking <level>] [--json]` | Queue an agent for an existing mission. |
+| `ovld execution --mission-id <id> [--objective-id <id>] [--agent <id>] [--model <id>] [--thinking <level>] [--json]` | Alias of `attach` that requires the mission flag. |
+| `ovld missions list [--query <text>] [--project-id <id>] [--limit <n>] [--json]` | List missions. |
+| `ovld mission context\|events\|deliveries\|artifacts\|rationales <mission-id> [--json]` | Inspect a mission and its work record. |
+| `ovld launch <agent> --mission-id <id> [--working-directory <path>] [--model <id>] [--thinking <level>] [--branch <name>] [--no-worktree] [--dry-run] [--json]` | Start an agent locally with mission context. |
+| `ovld restart <agent> ...` | Resume an agent where native resume is supported. |
+| `ovld run\|connect\|resume <agent> <mission-id> ...` | Compatibility aliases for local launch. |
+
+Use `--terminal <launcher>` to select Terminal, iTerm2, or a custom launcher,
+and repeat `--flag <value>` to pass supported options through to the agent.
+
+## Runner and change history
+
+| Command | What it does |
+| --- | --- |
+| `ovld runner once [--project-id <id>] [--branch <name>] [--no-worktree] [--dry-run] [--json]` | Claim and launch at most one queued request. |
+| `ovld runner start [--project-id <id>] [--branch <name>] [--no-worktree] [--poll-interval-ms <n>] [--dry-run] [--json]` | Run a foreground queue poller. |
+| `ovld runner status [--json]` | Show runner identity and the visible queue. |
+| `ovld runner clear <objective-id> [--project-id <id>] [--json]` | Clear one active request. |
+| `ovld runner clear-all [--project-id <id>] [--json]` | Clear all visible active requests. |
+| `ovld runner supervise [--json]` | Run the adaptive persistent-runner loop. |
+| `ovld runner service install [--no-start] [--json]` | Register the persistent runner service. |
+| `ovld runner service start\|stop\|restart [--json]` | Control the registered service. |
+| `ovld runner service status [--json]` | Show service state and diagnostics. |
+| `ovld runner service uninstall [--json]` | Remove the registered service. |
+| `ovld changes status --mission-id <id> [--objective-id <id>] [--json]` | Show changed-file status for a mission. |
+| `ovld changes rationales --mission-id <id> [--objective-id <id>] [--json]` | List recorded file-change rationales. |
+
+## Agent protocol
+
+The `ovld protocol` commands are primarily used by connectors and agent
+runtimes. They create the durable mission lifecycle that you see in Overlord.
+Every command below is available from `ovld protocol help`.
+
+| Command | Purpose |
+| --- | --- |
+| `auth-status` | Check backend and authentication readiness. |
+| `discover-project` | Resolve a project from the working directory, project ID, or directory. |
+| `list-organizations` | Return the current workspace context (the historic command name is retained). |
+| `attach` | Start a full mission session and return its working context. |
+| `connect` | Start a lightweight session without full context assembly. |
+| `load-context` | Read mission context without starting a session. |
+| `search-missions` | Find missions by text, state, or project. |
+| `discuss-objective` | Submit the latest draft objective for discussion without execution. |
+| `add-objectives` | Append ordered objectives to a mission. |
+| `create` | Create a draft mission without attaching. |
+| `prompt` | Create a mission and attach immediately. |
+| `record-work` | Record completed chat work as a review mission. |
+| `update` | Post progress, activity, and optional change rationale. |
+| `heartbeat` | Send liveness information without creating a feed event. |
+| `ask` | Raise a blocking question for a human reviewer. |
+| `deliver` | Finish the session with summary, artifacts, and rationale. |
+| `resume-follow-up` | Reopen completed work for a follow-up. |
+| `hook-event` | Record a connector lifecycle event. |
+| `record-touched` | Locally record files touched by an edit hook. |
+| `changes` | Locally preflight changed-file attribution before delivery. |
+| `read-context` / `write-context` | Read or store persistent mission context. |
+| `attachment-list` | List mission attachments. |
+| `attachment-download-url` | Retrieve one attachment's download URL. |
+
+Common protocol flags are `--mission-id <id>`, `--session-key <key>`,
+`--agent <identifier>`, `--model <identifier>`, and `--timeout <ms>`. Most
+payload fields accept either inline JSON or a matching `--*-file`; use standard
+input (`-`) for larger payloads.
+
+## Environment variables
+
+| Variable | Use |
+| --- | --- |
+| `OVERLORD_USER_TOKEN`, `OVLD_USER_TOKEN`, `USER_TOKEN` | Authentication token, checked in that order. |
+| `OVERLORD_BACKEND_URL`, `OVERLORD_BACKEND_URL_DEV` | Backend URL fallback. |
+| `OVERLORD_EXECUTION_REQUEST_ID` | Link an agent protocol attach to a runner request. |
+| `SESSION_KEY` | Session-key fallback for protocol commands. |
+| `OVLD_HOME` | Relocate the CLI's credentials and configuration. |
+| `OVERLORD_WEB_HOST`, `OVERLORD_WEB_PORT`, `OVERLORD_SQLITE_PATH` | Defaults for `ovld serve`. |

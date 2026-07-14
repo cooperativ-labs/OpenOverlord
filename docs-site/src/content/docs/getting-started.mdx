@@ -1,0 +1,87 @@
+---
+title: Set up Overlord
+description: Install the CLI, sign in, connect an agent, and start your first mission.
+---
+
+Overlord can be used from its desktop app, the CLI, or an installed agent
+connector. The quickest terminal-first setup is below.
+
+## 1. Install and sign in
+
+Install the CLI, then authenticate against your Overlord backend:
+
+```bash
+npm install -g --no-fund overlord-cli
+ovld auth login
+ovld auth status
+```
+
+`ovld auth login` opens a browser-based sign-in flow. If you use Overlord
+Desktop on the same computer, the CLI can reuse its local sign-in session.
+
+For a hosted backend, use `ovld config set cloud <url>` before signing in. For
+a local backend, use `ovld config set local [url]`; the default is
+`http://127.0.0.1:4310`.
+
+## 2. Configure your local tools
+
+Run the interactive setup to choose a backend, check authentication, prepare
+connectors, and select a terminal profile:
+
+```bash
+ovld setup
+```
+
+You can also prepare one connector directly:
+
+```bash
+ovld agent-setup codex
+ovld agent-setup claude
+ovld agent-setup all
+```
+
+See [Agents and connectors](/agents/) for what connector setup does.
+
+## 3. Create or link a project
+
+From the repository you want agents to work in, create a project and link the
+current checkout:
+
+```bash
+ovld create-project --name "My app"
+```
+
+If the project already exists, link the current folder instead:
+
+```bash
+ovld add-cwd --project-id <project-id>
+```
+
+## 4. Create work and run an agent
+
+Create a draft mission when you want to inspect it before running it:
+
+```bash
+ovld create "Add a loading state to the account page"
+```
+
+Or create and queue it in one step:
+
+```bash
+ovld prompt "Add a loading state to the account page" --agent codex
+```
+
+The desktop app and runner can launch queued objectives. To launch a mission
+from your terminal, use:
+
+```bash
+ovld launch codex --mission-id <mission-id>
+```
+
+## 5. Review the delivery
+
+When the agent finishes, open the mission in Overlord to review its objective,
+activity, delivery summary, artifacts, changed files, and rationale. Continue
+the same mission with a follow-up objective when more work is needed.
+
+Next: [Missions and objectives](/missions/)

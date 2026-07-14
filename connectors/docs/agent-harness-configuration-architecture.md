@@ -204,7 +204,7 @@ The storage split should be:
 
 | Layer | Storage | Purpose |
 | --- | --- | --- |
-| Packaged harnesses | Code-level registry bundled with Overlord | Immutable definitions for built-in agents such as `codex` and `claude`. |
+| Packaged harnesses | Code-level registry bundled with Overlord | Immutable definitions for built-in agents such as `codex`, `claude`, and `pi`. |
 | Personal extension definitions | `user_harness_extensions` plus local bundle files or hosted blobs | User-authored draft/private custom connectors. |
 | Workspace extension catalog | `workspace_harness_extensions` | Workspace-approved installed extensions available to members. |
 | Local connector installation state | `connector_installations` | Doctor/setup state for files installed into a specific local agent runtime. |

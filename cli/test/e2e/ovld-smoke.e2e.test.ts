@@ -66,7 +66,7 @@ test('ovld agent-setup lists packaged connectors outside the source checkout', a
 
   assert.equal(result.exitCode, 0, result.stderr);
   const payload = JSON.parse(result.stdout) as { available: string[]; usage: string };
-  assert.deepEqual(payload.available.sort(), ['antigravity', 'claude', 'codex', 'cursor']);
+  assert.deepEqual(payload.available.sort(), ['antigravity', 'claude', 'codex', 'cursor', 'pi']);
 });
 
 test('ovld setup no longer accepts a connector argument', async () => {

@@ -1,0 +1,50 @@
+---
+title: Projects and resources
+description: Connect the repositories, folders, and remote sources agents need for a mission.
+---
+
+Projects tell Overlord where a mission belongs. A project may have one primary
+repository checkout or several resources, such as a local checkout and a remote
+Git source.
+
+## Create a project
+
+From the repository directory, create a project and link that directory:
+
+```bash
+ovld create-project --name "Customer portal"
+```
+
+To create the project without linking the current directory, use
+`--no-directory`. You can link it later.
+
+## Link a local checkout
+
+```bash
+ovld add-cwd --project-id <project-id>
+```
+
+`add-cwd` uses the current directory unless you provide `--directory <path>`.
+Use `--key <resource-key>` to identify the same logical resource across
+execution targets, and `--primary true` or `--primary false` to control whether
+it is the primary resource.
+
+## Add a remote Git source
+
+When a project needs a Git source that is not a local checkout, add it with:
+
+```bash
+ovld add-url --url <git-url> --project-id <project-id>
+```
+
+You can use the same `--key` and `--primary` options to associate it with the
+right logical resource.
+
+## Why resources matter
+
+When you launch work from a project, Overlord can target the correct checkout
+and preserve that context in the mission record. This avoids the common mistake
+of opening an agent in the wrong repository, especially when several projects
+are active at once.
+
+For local agent configuration, continue to [Agents and connectors](/agents/).

@@ -1,6 +1,6 @@
 {
   "name": "overlord",
-  "version": "0.2607141425.0",
+  "version": "0.2607141512.0",
   "description": "Open-source management and coordination layer for AI coding agents",
   "type": "module",
   "private": true,
@@ -16,6 +16,7 @@
     "cli",
     "webapp",
     "desktop",
+    "docs-site",
     "packages/core",
     "packages/contract"
   ],
@@ -66,6 +67,8 @@
     "server:dev": "node scripts/with-dev-env.mjs yarn workspace @overlord/backend dev",
     "webapp:build:prod": "yarn workspace @overlord/webapp build",
     "webapp:dev": "node scripts/with-dev-env.mjs yarn workspace @overlord/webapp dev",
+    "docs:build": "yarn workspace @overlord/docs-site build",
+    "docs:dev": "yarn workspace @overlord/docs-site dev",
     "typecheck": "yarn db:build:prod && yarn auth:build:prod && yarn automations:build:prod && yarn contract:build:prod && yarn typecheck:core && yarn typecheck:cli && yarn typecheck:backend && yarn typecheck:webapp",
     "typecheck:auth": "yarn workspace @overlord/auth typecheck",
     "typecheck:automations": "yarn workspace @overlord/automations typecheck",

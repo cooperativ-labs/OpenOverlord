@@ -45,7 +45,7 @@ backend may offer to run setup, but the canonical path is the CLI).
 
 | Column | Source | Notes |
 | --- | --- | --- |
-| Agent | connector registry | `codex`, `claude`, `cursor`, `antigravity`, `opencode`, custom |
+| Agent | connector registry | `codex`, `claude`, `cursor`, `pi`, `antigravity`, `opencode`, custom |
 | Status | `connector_installations` + doctor | `healthy` / `stale` / `not set up` / `available` |
 | Version | installation manifest | shows current → latest when stale |
 | Hooks | manifest | follow-up / permission / stop hook presence + executability |

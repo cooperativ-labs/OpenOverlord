@@ -1,0 +1,69 @@
+---
+title: Missions and objectives
+description: Plan, run, hand off, and continue agent work without losing context.
+---
+
+A **mission** is the durable record for a goal. It can include several
+**objectives**, each representing one focused agent pass. This lets you split
+work into stages such as planning, implementation, review, and follow-up while
+keeping the same context and history.
+
+## A practical workflow
+
+1. Create a mission for the outcome you want.
+2. Add an objective for the next concrete step.
+3. Choose an agent and launch or queue it.
+4. Follow progress in the mission activity feed.
+5. Review the delivery and either accept it or add the next objective.
+
+For example, a mission called “Improve sign-in reliability” might contain:
+
+- Investigate the failure modes.
+- Implement the retry behavior.
+- Add focused tests.
+- Review the change and prepare a release note.
+
+Each objective can use a different agent or model. The mission preserves the
+original goal, decisions, artifacts, and prior delivery information for every
+subsequent pass.
+
+## Create a mission from the CLI
+
+Create a draft when you want to plan before running:
+
+```bash
+ovld create "Investigate intermittent sign-in failures"
+```
+
+Create and queue an objective immediately:
+
+```bash
+ovld prompt "Investigate intermittent sign-in failures" --agent claude
+```
+
+Add a sequence of objectives with `--objectives-json`, or use the desktop app
+to add and order them visually.
+
+## Updates, questions, and handoffs
+
+Agents report progress to the mission as they work. A blocking question belongs
+on the mission rather than disappearing in terminal scrollback. When the work
+is ready, the agent delivers a summary and its supporting artifacts.
+
+That record makes handoffs straightforward: start the next objective with a
+different agent, and it receives the mission context instead of starting cold.
+
+## Queued and local runs
+
+The runner claims queued execution requests and launches them in the configured
+project environment. You can inspect it with `ovld runner status` and process
+one queued request with `ovld runner once`.
+
+For a direct local launch, run:
+
+```bash
+ovld launch codex --mission-id <mission-id>
+```
+
+Use a worktree by default to isolate the run; pass `--no-worktree` only when
+you deliberately want the agent to work in the current checkout.

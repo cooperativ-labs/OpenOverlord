@@ -1,0 +1,67 @@
+---
+title: Troubleshooting
+description: Fix common setup, sign-in, connector, and runner issues.
+---
+
+## Start with a diagnostic
+
+```bash
+ovld doctor
+ovld auth status
+ovld config list
+```
+
+`ovld doctor` checks backend reachability, connector installation, agent
+binaries, and credential synchronization warnings.
+
+## The CLI cannot reach Overlord
+
+Check the configured backend URL with `ovld config list`. Choose one explicitly:
+
+```bash
+ovld config set local
+ovld config set cloud <url>
+```
+
+For a local installation, make sure the local backend or Desktop app is
+running. For a hosted installation, verify that the configured URL is the
+correct organization deployment and that your network can reach it.
+
+## Sign-in is not working
+
+Run `ovld auth login` again, then verify with `ovld auth status`. For a
+headless environment or container that cannot complete browser sign-in, use a
+user token:
+
+```bash
+ovld user-token create --label "CI runner" --expires-in 90d
+ovld auth login --token <out_token>
+```
+
+Treat the printed token like a password: copy it once, store it in your secret
+manager, and revoke it immediately if it is exposed.
+
+## An agent will not launch
+
+Re-run its connector setup and check the local environment:
+
+```bash
+ovld agent-setup <agent>
+ovld doctor
+ovld runner status
+```
+
+If a queued objective is waiting, make sure a runner is available. You can
+process one request manually with `ovld runner once` or keep a foreground
+runner running with `ovld runner start`.
+
+## The wrong project or directory is used
+
+From the correct checkout, run `ovld add-cwd --project-id <project-id>`. Then
+verify project discovery with `ovld protocol discover-project`.
+
+## Get help
+
+Run `ovld help` for the management command summary and `ovld protocol help` for
+agent lifecycle commands. The [CLI reference](/cli/) lists every supported
+command family and common options.

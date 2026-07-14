@@ -371,6 +371,19 @@ test('resolveInstanceAgentCatalog merges config over bundled defaults', () => {
   assert.equal(resolved.codex.label, BUNDLED_AGENT_CATALOG.codex.label);
 });
 
+test('bundled PI catalog keeps provider-qualified models and no forced default', () => {
+  const pi = BUNDLED_AGENT_CATALOG.pi;
+  assert.ok(pi);
+  assert.equal(pi.label, 'PI');
+  assert.equal(pi.availableByDefault, true);
+  assert.equal(pi.defaultModel, null);
+  assert.equal(pi.defaultReasoningEffort, null);
+  assert.deepEqual(
+    pi.models.map(model => model.id),
+    ['zai/glm-5.2', 'anthropic/claude-opus-4-8', 'openai-codex/gpt-5.6-terra']
+  );
+});
+
 test('parseAgentCatalogFromToml ignores invalid agents', () => {
   assert.deepEqual(
     parseAgentCatalogFromToml({

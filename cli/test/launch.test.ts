@@ -81,3 +81,30 @@ test('buildLaunchPlan exports mission context for terminal prompt hooks', async 
   assert.ok(launchScript.includes(`export OVERLORD_BACKEND_URL='http://127.0.0.1:4310'`));
   assert.ok(launchScript.includes(`'codex'`));
 });
+
+test('buildLaunchPlan passes PI model and thinking separately with a context file input', async () => {
+  const workingDirectory = mkdtempSync(path.join('/tmp', 'ovld-launch-pi-'));
+  const plan = await buildLaunchPlan({
+    runtime: runtime(),
+    options: {
+      agent: 'pi',
+      missionId: 'coo:11',
+      workingDirectory,
+      model: 'zai/glm-5.2',
+      thinking: 'high',
+      flags: ['--approve']
+    }
+  });
+
+  assert.equal(plan.command, 'pi');
+  assert.deepEqual(plan.args, [
+    '--model',
+    'zai/glm-5.2',
+    '--thinking',
+    'high',
+    '--approve',
+    `@${plan.contextFile}`,
+    'Start work on Prompt Capture (ovld mission coo:11)'
+  ]);
+  assert.ok(readFileSync(plan.contextFile, 'utf8').includes('# Overlord Mission: coo:11'));
+});

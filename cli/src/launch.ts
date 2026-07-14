@@ -225,6 +225,14 @@ function buildAgentCommand({
     return { command: 'claude', args };
   }
 
+  if (agent === 'pi') {
+    const args = [];
+    if (model) args.push('--model', model);
+    if (thinking) args.push('--thinking', thinking);
+    args.push(...flags, `@${contextFile}`, launchMessage);
+    return { command: 'pi', args };
+  }
+
   const args = [];
   if (model) args.push('--model', model);
   args.push(...flags, prompt);

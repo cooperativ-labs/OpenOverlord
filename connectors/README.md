@@ -22,7 +22,7 @@ OpenCode, Antigravity, and others). A connector is what lets an agent speak the
 Install or refresh a connector with:
 
 ```bash
-ovld agent-setup <agent>    # claude | codex | cursor | all
+ovld agent-setup <agent>    # claude | codex | cursor | pi | all
 ovld doctor                 # verify managed files and permissions
 ```
 
@@ -35,6 +35,7 @@ connector contract version changes.
 - [Claude Code](adapters/claude/README.md): installable Claude plugin bundle with a Claude overlay for the shared core, slash commands, hooks, adapter manifest, prompt wrapper notes, and connector conformance manifest.
 - [Codex](adapters/codex/README.md): Codex plugin with hooks, MCP bridge, and permission warmup.
 - [Cursor](adapters/cursor/README.md): Cursor plugin with slash commands, hooks, rules, and MCP bridge.
+- [PI](adapters/pi/README.md): PI Agent skill and extension with follow-up capture and native-session resume.
 
 ### Extension point
 

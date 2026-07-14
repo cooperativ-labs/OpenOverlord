@@ -1,0 +1,54 @@
+---
+title: Agents and connectors
+description: Connect the coding tools you already use to Overlord.
+---
+
+Overlord coordinates agent work; it does not replace your agent harness,
+terminal configuration, repository permissions, or subscription. Connectors
+let supported agents attach to missions, report progress, and deliver results
+back to the same work record.
+
+## Install connectors
+
+Use the desktop settings or run the CLI:
+
+```bash
+ovld agent-setup
+ovld agent-setup codex
+ovld agent-setup claude
+ovld agent-setup cursor
+ovld agent-setup pi
+```
+
+`ovld agent-setup` by itself lists installable connectors. Add `--dry-run` to
+see the intended changes without applying them, or `all` to prepare every
+supported connector.
+
+## Launch from Overlord
+
+Once an agent is configured, choose it for an objective in the app or launch it
+from the terminal:
+
+```bash
+ovld launch codex --mission-id <mission-id>
+```
+
+You can select a model or thinking level when the agent supports it. Overlord
+records that choice with the objective, so later review shows how the work was
+run.
+
+## Let agents report work
+
+Connected agents use the Overlord protocol to attach to their mission, post
+updates, ask blocking questions, and deliver. You normally do not need to run
+those protocol commands yourself; they are how the connector maintains the
+mission record during an agent session.
+
+If you use an agent outside Overlord, you can still create or inspect missions
+with the CLI and keep the resulting delivery in the same project history.
+
+## Keep connectors current
+
+After updating Overlord, rerun `ovld agent-setup <agent>` (or `all`) to repair
+or refresh the local connector files. Use `ovld doctor` when a connector or
+agent binary is not detected as expected.

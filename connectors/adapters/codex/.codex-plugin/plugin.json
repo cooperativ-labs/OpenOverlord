@@ -1,6 +1,6 @@
 {
   "name": "overlord",
-  "version": "0.2.9",
+  "version": "0.3.1",
   "description": "Chat-driven access to Overlord mission protocol workflows with hook-driven activity capture.",
   "author": {
     "name": "Cooperativ",
@@ -28,7 +28,10 @@
     "longDescription": "Connect Codex to Overlord's local mission workflow through the existing `ovld protocol` CLI. The plugin bundles workflow skills plus MCP tools for mission attachment, progress updates, shared context, artifacts, delivery, and follow-up mission creation.",
     "developerName": "Cooperativ",
     "category": "Productivity",
-    "capabilities": ["Interactive", "Write"],
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
     "websiteURL": "https://www.ovld.ai/docs",
     "privacyPolicyURL": "https://www.ovld.ai/privacy",
     "termsOfServiceURL": "https://www.ovld.ai/terms",
@@ -40,6 +43,8 @@
     "brandColor": "#1E6B5C",
     "composerIcon": "./assets/icon.png",
     "logo": "./assets/logo.png",
-    "screenshots": ["./assets/screenshot.svg"]
+    "screenshots": [
+      "./assets/screenshot.svg"
+    ]
   }
 }

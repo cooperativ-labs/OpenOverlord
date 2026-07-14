@@ -1,0 +1,19 @@
+{
+  "name": "@overlord/docs-site",
+  "version": "0.2607141425.0",
+  "private": true,
+  "type": "module",
+  "description": "Public Overlord documentation site, rendered with Astro Starlight.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.41.3",
+    "astro": "^7.0.9"
+  }
+}

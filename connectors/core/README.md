@@ -26,7 +26,7 @@ follow:
 - repair local auth/setup before asking the user to intervene
 
 You do not install Connector Core directly. It is bundled into each agent adapter
-(Claude, Codex, Cursor) when you run `ovld agent-setup <agent>`. See the
+(Claude, Codex, Cursor, PI) when you run `ovld agent-setup <agent>`. See the
 [connectors module README](../README.md) for setup instructions.
 
 ## For Developers

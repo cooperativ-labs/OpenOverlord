@@ -20,7 +20,8 @@
 const AGENT_RESUME_COMMAND: Record<string, (sessionId: string) => string> = {
   claude: sessionId => `claude --resume ${sessionId}`,
   codex: sessionId => `codex resume ${sessionId}`,
-  cursor: sessionId => `agent --resume=${sessionId}`
+  cursor: sessionId => `agent --resume=${sessionId}`,
+  pi: sessionId => `pi --session ${sessionId}`
 };
 
 export function buildAgentResumeCommand({

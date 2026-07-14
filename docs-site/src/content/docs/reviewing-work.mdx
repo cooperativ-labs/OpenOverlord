@@ -1,0 +1,39 @@
+---
+title: Review deliveries
+description: Evaluate agent work with its original objective and the reason for each change.
+---
+
+The delivery is more than a completion message. It brings together the original
+objective, progress history, artifacts, changed files, and the agent's reason
+for meaningful changes. Review from the mission so you have that context in
+one place.
+
+## What to check
+
+- Does the delivery address the objective that was actually requested?
+- Did the agent record an important limitation, decision, or follow-up?
+- Do the reported file changes make sense for the task?
+- Does the rationale explain why the important changes were needed?
+- Are tests, screenshots, links, or other artifacts available when relevant?
+
+## Inspect a delivery from the terminal
+
+```bash
+ovld mission context <mission-id>
+ovld mission deliveries <mission-id>
+ovld mission artifacts <mission-id>
+ovld mission rationales <mission-id>
+ovld changes status --mission-id <mission-id>
+```
+
+Use `ovld changes rationales --mission-id <mission-id>` when you only need the
+recorded explanations for file changes.
+
+## Continue instead of restarting
+
+If the delivery needs another pass, add a follow-up objective to the same
+mission. The next agent inherits the prior objective history, shared context,
+and review record. Use a new mission only when the goal itself is unrelated.
+
+This is especially useful when one agent plans a change and another implements
+or reviews it.

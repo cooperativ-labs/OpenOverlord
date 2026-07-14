@@ -24,6 +24,13 @@ test('builds a cursor resume command using the launch-time binary', () => {
   );
 });
 
+test('builds a PI resume command using its session selector', () => {
+  assert.equal(
+    buildAgentResumeCommand({ agent: 'pi', sessionId: 'session-42' }),
+    'pi --session session-42'
+  );
+});
+
 test('is case-insensitive on the agent key and trims the session id', () => {
   assert.equal(
     buildAgentResumeCommand({ agent: 'Claude', sessionId: '  abc-123  ' }),

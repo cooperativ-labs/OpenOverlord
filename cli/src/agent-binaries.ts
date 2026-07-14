@@ -2,7 +2,8 @@
 const AGENT_BINARIES: Record<string, string> = {
   claude: 'claude',
   codex: 'codex',
-  cursor: 'agent'
+  cursor: 'agent',
+  pi: 'pi'
 };
 
 /** Map a connector agent key to the executable invoked at launch time. */

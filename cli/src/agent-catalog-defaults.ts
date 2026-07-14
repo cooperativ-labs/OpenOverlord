@@ -74,6 +74,30 @@ export const BUNDLED_AGENT_CATALOG: Record<string, CatalogAgent> = {
     defaultReasoningEffort: 'medium',
     reasoningLabel: 'Effort'
   },
+  pi: {
+    label: 'PI',
+    availableByDefault: true,
+    models: [
+      {
+        id: 'zai/glm-5.2',
+        displayName: 'GLM 5.2',
+        reasoningOptions: ['off', 'high', 'max']
+      },
+      {
+        id: 'anthropic/claude-opus-4-8',
+        displayName: 'Claude Opus 4.8',
+        reasoningOptions: ['low', 'medium', 'high', 'xhigh', 'max']
+      },
+      {
+        id: 'openai-codex/gpt-5.6-terra',
+        displayName: 'GPT-5.6 Terra',
+        reasoningOptions: ['off', 'low', 'medium', 'high', 'xhigh', 'max']
+      }
+    ],
+    defaultModel: null,
+    defaultReasoningEffort: null,
+    reasoningLabel: 'Thinking'
+  },
   cursor: {
     label: 'Cursor',
     availableByDefault: true,

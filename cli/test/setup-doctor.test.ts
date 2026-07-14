@@ -81,6 +81,19 @@ test('codex connector is available and every managed file exists on disk', () =>
   }
 });
 
+test('PI connector is available and every managed file exists on disk', () => {
+  assert.ok(listAvailableConnectors().includes('pi'));
+  const manifest = readConnectorManifest('pi');
+  assert.ok(manifest.connector.managedFiles.length > 0);
+  const sourceDir = path.join(repoRoot, 'connectors', 'adapters', 'pi');
+  for (const relativePath of manifest.connector.managedFiles) {
+    assert.ok(
+      managedFileSourceExists({ sourceDir, relativePath }),
+      `missing managed source: ${relativePath}`
+    );
+  }
+});
+
 test('setup installs exactly the managed files and is idempotent', () => {
   const home = tempHome();
   try {
@@ -121,6 +134,29 @@ test('cursor setup merges hooks and permission rules', () => {
     assert.ok(settings.permissions.allow.includes('Shell(ovld protocol:*)'));
 
     inspectAndAssertHealthy(home, 'cursor');
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('PI setup installs its extension and rendered skill without modifying other settings', () => {
+  const home = tempHome();
+  try {
+    const result = setupConnector({ agentKey: 'pi', home });
+    assert.equal(result.binaryName, 'pi');
+    assert.equal(result.installPath, path.join(home, '.pi', 'agent'));
+    assert.ok(result.files.every(file => file.action === 'written'));
+    assert.ok(existsSync(path.join(result.installPath, 'extensions', 'overlord.ts')));
+    assert.ok(
+      readFileSync(
+        path.join(result.installPath, 'skills', 'overlord-mission', 'SKILL.md'),
+        'utf8'
+      ).includes('PI Adapter Notes')
+    );
+
+    const second = setupConnector({ agentKey: 'pi', home });
+    assert.ok(second.files.every(file => file.action === 'unchanged'));
+    inspectAndAssertHealthy(home, 'pi');
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

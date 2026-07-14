@@ -328,7 +328,7 @@ process.stdin.on('data', async chunk => {
         result: {
           protocolVersion: PROTOCOL_VERSION,
           capabilities: { tools: { listChanged: false } },
-          serverInfo: { name: 'overlord-codex', version: '0.2.9' }
+          serverInfo: { name: 'overlord-codex', version: '0.3.1' }
         }
       });
       continue;

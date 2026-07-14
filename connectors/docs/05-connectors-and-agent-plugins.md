@@ -103,6 +103,16 @@ Requirements:
 - Launch with model flag where supported.
 - No thinking/effort flag required initially.
 
+## PI Connector
+
+Requirements:
+
+- Install the Overlord Agent Skill and extension beneath `~/.pi/agent`.
+- Use PI's `input` extension event only for `UserPromptSubmit` follow-up capture; PI has no native permission-request hook.
+- Record PI's native session ID through the existing `~/.ovld/native-sessions` cache so the review UI can offer `pi --session <id>`.
+- Launch with provider-qualified models via `--model <provider/id>` and independent thinking via `--thinking <level>`.
+- Pass the generated mission context as PI's native `@<context-file>` input and retain a short visible launch message.
+
 ## Antigravity Connector
 
 Can be implemented after local MVP.

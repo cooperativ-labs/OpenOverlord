@@ -1,0 +1,49 @@
+---
+title: Welcome to Overlord
+description: Coordinate coding agents without losing the work record.
+template: splash
+hero:
+  tagline: The coordination and review layer for coding agents.
+  actions:
+    - text: Get started
+      link: /getting-started/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/cooperativ-labs/Overlord
+      icon: external
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+Overlord is the durable work record around your coding agents. It keeps the
+objective, progress, questions, artifacts, delivery notes, and file-change
+rationale together—whether you work from the desktop app, terminal, or an
+agent's own interface.
+
+It works with the tools and subscriptions you already use. Overlord is not a
+replacement for Codex, Claude Code, Cursor, or your terminal; it coordinates
+their work across projects and over time.
+
+## The core model
+
+<CardGrid>
+  <Card title="Projects" icon="document">
+    A project connects a repository or other resource to the work you want to manage.
+  </Card>
+  <Card title="Missions" icon="rocket">
+    A mission is a durable ticket for a higher-level goal.
+  </Card>
+  <Card title="Objectives" icon="seti:check">
+    An objective is one agent pass: plan, implement, review, or follow-up.
+  </Card>
+  <Card title="Deliveries" icon="approval">
+    Review the result with the original request, activity, artifacts, and change rationale in one place.
+  </Card>
+</CardGrid>
+
+## Choose a path
+
+- New to Overlord? Start with [Set up Overlord](/getting-started/).
+- Ready to organize agent work? Read [Missions and objectives](/missions/).
+- Connecting a local checkout? See [Projects and resources](/projects/).
+- Prefer the terminal? Go straight to the [CLI reference](/cli/).

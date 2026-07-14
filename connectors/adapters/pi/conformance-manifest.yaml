@@ -1,0 +1,27 @@
+contractVersion: "0"
+componentType: connector
+componentKey: pi
+label: "PI Connector"
+description: "PI Agent skill and extension adapter for the Overlord mission protocol workflow."
+
+connector:
+  agentIdentifier: pi
+  capabilities:
+    - followUpHook
+    - nativeResume
+    - modelFlag
+    - effortFlag
+    - contextFilePrompt
+  hookTypes:
+    - UserPromptSubmit
+  installPath: "~/.pi/agent"
+  managedFiles:
+    - "README.md"
+    - "extensions/overlord.ts"
+    - "prompt-wrapper.md"
+    - "skills/overlord-mission/SKILL.md"
+    - "skills/overlord-mission/reference/cli.md"
+    - "skills/overlord-mission/reference/context.md"
+    - "skills/overlord-mission/reference/devices.md"
+    - "skills/overlord-mission/reference/mcp.md"
+    - "skills/overlord-mission/reference/shell-escaping.md"
