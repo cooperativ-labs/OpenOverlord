@@ -7,7 +7,11 @@ import { Input } from '@/components/ui/input';
 import { type ButtonLoadingState, LoadingButton } from '@/components/ui/loading-button';
 import { Separator } from '@/components/ui/separator';
 import { api } from '@/lib/api';
-import { isRemoteBackend, persistAuthSessionFromSignInResult } from '@/lib/api-base';
+import {
+  getAuthBaseUrl,
+  isDesktopRemoteBackend,
+  persistAuthSessionFromSignInResult
+} from '@/lib/api-base';
 import { authClient, normalizeEmail, validateEmail } from '@/lib/auth-client';
 
 type AuthMode = 'sign-in' | 'create-account';
@@ -93,17 +97,15 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
   }, []);
 
   // Ask the backend (pre-auth, public endpoint) whether GitHub login is
-  // configured. Desktop *remote* mode is excluded: its OAuth callback needs
-  // deep-link/loopback handling that Phase A does not yet ship, and the
-  // redirect-based `signIn.social` flow relies on same-origin cookies. Web
-  // cloud and desktop-local are same-origin, so they qualify.
+  // configured. Remote desktop OAuth is completed by Electron's one-time
+  // deep-link handoff, while hosted browsers keep their normal redirect.
   useEffect(() => {
     let cancelled = false;
-    if (isRemoteBackend()) return;
     api
       .authProviders()
       .then(providers => {
-        if (!cancelled) setGithubEnabled(providers.github);
+        if (cancelled) return;
+        setGithubEnabled(providers.github);
       })
       .catch(() => {
         /* Provider probe is best-effort; fall back to email-only on failure. */
@@ -117,15 +119,27 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
     setError(null);
     setGithubPending(true);
     try {
-      // Full-page redirect to GitHub and back to this origin; on return the
-      // Better Auth session cookie is set and `onAuthenticated` re-checks it.
+      const desktopRemote = isDesktopRemoteBackend();
       const result = await authClient.signIn.social({
         provider: 'github',
-        callbackURL: window.location.origin
+        callbackURL: desktopRemote
+          ? `${getAuthBaseUrl()}/api/auth/desktop/callback`
+          : window.location.origin,
+        ...(desktopRemote ? { disableRedirect: true } : {})
       });
       if (result.error) {
         setError(result.error.message ?? 'GitHub sign-in failed.');
         setGithubPending(false);
+        return;
+      }
+      if (desktopRemote) {
+        const authorizationUrl = result.data?.url;
+        if (!authorizationUrl || !window.overlord?.openExternal) {
+          throw new Error('Unable to open GitHub sign-in in your default browser.');
+        }
+        const opened = await window.overlord.openExternal(authorizationUrl);
+        if (!opened) throw new Error('Unable to open GitHub sign-in in your default browser.');
+        return;
       }
       // On success the browser navigates away; leave the spinner up.
     } catch (err) {

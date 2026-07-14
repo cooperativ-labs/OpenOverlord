@@ -2,6 +2,7 @@ import './bootstrap-env.ts';
 
 import { githubOAuthConfigFromEnv, type Permission, PERMISSIONS } from '@overlord/auth';
 import { loadExternalAutomations } from '@overlord/automations';
+import { fromNodeHeaders } from 'better-auth/node';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { existsSync } from 'node:fs';
@@ -60,6 +61,7 @@ import {
 } from './sql-studio/sql-studio-manager.ts';
 import {
   ACTIVE_WORKSPACE_COOKIE,
+  auth,
   authNodeHandler,
   getAllowedBrowserOrigins,
   requireAuthenticatedSession
@@ -73,6 +75,11 @@ import {
   initDatabase,
   WORKSPACE
 } from './db.ts';
+import {
+  consumeDesktopOAuthHandoff,
+  createDesktopOAuthHandoff,
+  desktopOAuthCallbackUrl
+} from './desktop-oauth-handoff.ts';
 import { ENV_PROFILE } from './env-profile.ts';
 import { apiErrorFromDatabaseError } from './errors.ts';
 import {
@@ -291,6 +298,37 @@ app.use(
     exposedHeaders: ['set-auth-token']
   })
 );
+// Better Auth owns `/api/auth/*` except this browser-to-desktop handoff. The
+// browser session becomes a one-time opaque ticket; only Electron main may
+// exchange it for the session token, so no credential is placed in the URL.
+app.get('/api/auth/desktop/callback', async (req, res, next) => {
+  try {
+    const browserSession = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+    if (!browserSession?.session.token) {
+      res
+        .status(401)
+        .send('Your sign-in session is missing or expired. Return to Overlord and try again.');
+      return;
+    }
+    res.redirect(
+      302,
+      desktopOAuthCallbackUrl(createDesktopOAuthHandoff(browserSession.session.token))
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/auth/desktop/exchange', express.json(), (req, res) => {
+  const ticket = typeof req.body?.ticket === 'string' ? req.body.ticket : '';
+  const token = consumeDesktopOAuthHandoff(ticket);
+  if (!token) {
+    res.status(401).json({ message: 'This desktop sign-in link has expired or was already used.' });
+    return;
+  }
+  res.json({ token });
+});
+
 app.all('/api/auth/*', authNodeHandler);
 
 const jsonBody = express.json();

@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '6'
+contractVersion: '7'
 
 components:
   protocol:
@@ -124,6 +124,7 @@ components:
       - 'mission branch base metadata resolution: project-configured base first, then the primary resource main worktree checkout for pending branches, with prepared branches tied to the runner-recorded baseBranch payload'
       - 'on-demand branch-action git mutations (POST /api/missions/:id/branch/action: merge-with-parent / push-parent / publish) run host-side against worktrees under ~/.ovld/worktrees and the resource selected by optional resourceKey, defaulting to the primary repo; the Runner Layer owns launching the agent into a worktree, not these mutations'
       - 'REST auth integration points'
+      - 'desktop OAuth handoff: GET /api/auth/desktop/callback derives a short-lived opaque ticket from an authenticated browser session and redirects only to overlord://auth/callback; POST /api/auth/desktop/exchange consumes it once and returns a Better Auth session token only to the Electron main process'
       - 'SSE/WebSocket realtime endpoint (GET /realtime, compatibility GET /api/stream) and GET /sync/changes?after=<seq> catch-up read'
       - 'SQL Studio launch metadata exposed through /api/meta'
       - 'webhook subscription management (/api/webhooks*: list/create, update/soft-delete, rotate-secret, test, deliveries, redeliver), gated by webhook:* permissions'
@@ -205,6 +206,7 @@ components:
       - 'process supervision of the bundled web/REST server (Node utilityProcess) in Local mode only; Remote mode does not fork the embedded server'
       - 'backend profiles ({ id, label, mode: local|remote, backendUrl } + active id) in userData/settings.json, per-profile Electron session partitions (persist:backend-<id>), per-backend bearer-token storage via safeStorage, and the reload-and-login switcher / first-run chooser (additive; Local is the default unchanged behavior)'
       - 'the minimal window.overlord preload bridge surface (feature-detected by the SPA, never required by it), incl. getActiveBackend/listBackends/addBackend/removeBackend/switchBackend/writeProjectMetadata/invokeLocalTarget and runnerService.{getStatus,install,start,stop,restart,uninstall} which drive the CLI-owned ovld runner service operations as a subprocess without supervising the runner itself'
+      - 'remote OAuth callback: handles overlord://auth/callback only in Electron main, exchanges its opaque short-lived ticket with the active backend, and writes the resulting Better Auth session token through per-profile safeStorage; no token crosses the preload bridge'
       - 'desktop packaging metadata and the build/sign/notarize pipeline (electron-builder, entitlements, app-data layout)'
     dependsOn:
       - rest
@@ -415,6 +417,7 @@ interactionSurfaces:
       - 'Remote mode (cross-origin): a per-backend bearer token (safeStorage/keychain) is injected into the SPA API client instead of cross-site cookies, unifying with the CLI USER_TOKEN model; the SPA may send X-Overlord-Active-Workspace for the selected workspace, which the backend validates against workspace_users before scoping the request'
       - 'Navigation stays scoped to the shell origin in both modes; the remote REST + wss origins are added to CSP connect-src per the active profile'
       - 'Desktop-only affordances are exposed only via the feature-detected window.overlord preload bridge'
+      - 'Remote social OAuth uses an opaque, single-use, short-lived handoff ticket between the backend callback and Electron main; the custom URL and renderer never receive a session, bearer, GitHub access token, or client secret'
 
   shellToCli:
     description: 'The desktop shell supervises the bundled CLI/server as subprocesses (ovld serve / runner / launch), analogous to the Agent -> Protocol subprocess pattern'

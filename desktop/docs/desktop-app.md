@@ -33,7 +33,7 @@ CLI/terminal config, the auth mechanism, or the DB schema (those belong to the
 On macOS the native title bar is removed (`titleBarStyle: 'hiddenInset'`) and the
 traffic lights are inset at `{ x: 14, y: 14 }`, so the webapp's own top nav is the
 title bar — there is no separate "Overlord" chrome strip above the UI. The SPA
-*feature-detects* the shell (`window.overlord`) to make the nav header / sidebar
+_feature-detects_ the shell (`window.overlord`) to make the nav header / sidebar
 header a window-drag region (`-webkit-app-region`) and to reserve room under the
 inset lights; in a browser those styles are inert. This stays within the shell's
 ownership of the window baseline and uses only the existing `window.overlord`
@@ -98,31 +98,31 @@ path **creates and migrates** the database on first run.
 
 A minimal, audited surface the SPA **feature-detects** (`if (window.overlord)`):
 
-| Member | Purpose |
-| --- | --- |
-| `isDesktop` | `true` inside the shell |
-| `platform` | `process.platform` |
-| `version` | the app version |
-| `chooseDirectory()` | native directory picker → absolute path or `null` |
-| `writeProjectMetadata(payload)` | write `.overlord/project.json` for a locally linked checkout after the backend resource is created |
-| `runnerService.getStatus()` | run `ovld runner service status --json` and return the parsed persistent-runner status |
+| Member                                                                             | Purpose                                                                                                                                                      |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `isDesktop`                                                                        | `true` inside the shell                                                                                                                                      |
+| `platform`                                                                         | `process.platform`                                                                                                                                           |
+| `version`                                                                          | the app version                                                                                                                                              |
+| `chooseDirectory()`                                                                | native directory picker → absolute path or `null`                                                                                                            |
+| `writeProjectMetadata(payload)`                                                    | write `.overlord/project.json` for a locally linked checkout after the backend resource is created                                                           |
+| `runnerService.getStatus()`                                                        | run `ovld runner service status --json` and return the parsed persistent-runner status                                                                       |
 | `runnerService.install(opts)` / `start()` / `stop()` / `restart()` / `uninstall()` | drive the CLI-owned `ovld runner service <action>` operations as a subprocess (the shell never supervises the runner loop or generates service files itself) |
-| `openExternal(url)` | open an http(s) URL in the system browser |
-| `revealInFinder(path)` | reveal a path in the OS file manager |
-| `setNativeThemeSource(source)` | mirror the SPA theme (`light` / `dark` / `system`) to Electron `nativeTheme` for macOS vibrancy |
-| `updates.getStatus()` | current update state |
-| `updates.check()` | check the configured update feed |
-| `updates.install()` | install a downloaded update and relaunch |
-| `updates.onStatus(callback)` | subscribe to update state changes |
-| `cliUpdates.getStatus()` | current CLI update state |
-| `cliUpdates.check()` | check the installed CLI against npm |
-| `cliUpdates.update()` | run `ovld update` from the shell |
-| `cliUpdates.onStatus(callback)` | subscribe to CLI update state changes |
-| `quickTask.getHotkey()` | read the registered global quick-task shortcut |
-| `quickTask.setHotkey(accelerator)` | change the global quick-task shortcut |
-| `quickTask.close()` | hide the quick-task capture window |
-| `quickTask.setHeight(height)` / `quickTask.setBounds({ height, barOffsetTop })` | resize the frameless quick-task window |
-| `quickTask.onShown(callback)` | run when the quick-task window is shown (e.g. reset focus) |
+| `openExternal(url)`                                                                | open an http(s) URL in the system browser                                                                                                                    |
+| `revealInFinder(path)`                                                             | reveal a path in the OS file manager                                                                                                                         |
+| `setNativeThemeSource(source)`                                                     | mirror the SPA theme (`light` / `dark` / `system`) to Electron `nativeTheme` for macOS vibrancy                                                              |
+| `updates.getStatus()`                                                              | current update state                                                                                                                                         |
+| `updates.check()`                                                                  | check the configured update feed                                                                                                                             |
+| `updates.install()`                                                                | install a downloaded update and relaunch                                                                                                                     |
+| `updates.onStatus(callback)`                                                       | subscribe to update state changes                                                                                                                            |
+| `cliUpdates.getStatus()`                                                           | current CLI update state                                                                                                                                     |
+| `cliUpdates.check()`                                                               | check the installed CLI against npm                                                                                                                          |
+| `cliUpdates.update()`                                                              | run `ovld update` from the shell                                                                                                                             |
+| `cliUpdates.onStatus(callback)`                                                    | subscribe to CLI update state changes                                                                                                                        |
+| `quickTask.getHotkey()`                                                            | read the registered global quick-task shortcut                                                                                                               |
+| `quickTask.setHotkey(accelerator)`                                                 | change the global quick-task shortcut                                                                                                                        |
+| `quickTask.close()`                                                                | hide the quick-task capture window                                                                                                                           |
+| `quickTask.setHeight(height)` / `quickTask.setBounds({ height, barOffsetTop })`    | resize the frameless quick-task window                                                                                                                       |
+| `quickTask.onShown(callback)`                                                      | run when the quick-task window is shown (e.g. reset focus)                                                                                                   |
 
 No tokens, Node access, or product logic cross this boundary.
 
@@ -139,6 +139,12 @@ uses a separate Electron session partition per profile.
 - **Remote profiles:** tokens stay in the desktop shell's encrypted store only.
   The CLI must authenticate separately with `ovld auth login` or a USER_TOKEN
   after `ovld config set cloud <url>`.
+- **GitHub sign-in on remote profiles:** the shell opens OAuth in the system
+  browser. Once Better Auth has created the browser session, the backend sends
+  an opaque, one-time `overlord://auth/callback` ticket to Electron. Electron
+  exchanges that ticket directly with the active backend and saves the session
+  token in the profile's encrypted store; no session or GitHub token appears in
+  the deep link or crosses the preload bridge.
 - **Config sync:** switching backends updates `~/.ovld/overlord.toml`
   (`backend_url`, `backend_mode`). That does not change CLI auth — run
   `ovld auth status` after a backend switch to verify URL and login state.
@@ -231,8 +237,5 @@ A verified `--no-sign` arm64 + x64 build with Electron 42.4.0 produces
 
 ## 9. Deferred (later phases)
 
-- Better Auth login UI in the SPA (loopback stays single-trusted-operator by
-  default; in-app auth would use Better Auth session cookies, spawned CLI a
-  `USER_TOKEN`).
 - "Install CLI" shim, Tailscale, feed window, connector/plugin auto-install.
   These remain CLI surfaces or future work.

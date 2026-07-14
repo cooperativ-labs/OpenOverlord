@@ -138,8 +138,10 @@ export function WebhooksPage({ open }: { open: boolean }) {
             Send a signed HTTP POST to an endpoint you control whenever a mission is delivered,
             changes status, or gets blocked — so independent software (a feed-post generator, a
             memory ingester, a test trigger) can react without living inside this repository. See{' '}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">developer-instructions/webhooks.md</code> for the
-            envelope schema and a worked example.
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              developer-instructions/webhooks.md
+            </code>{' '}
+            for the envelope schema and a worked example.
           </p>
         </div>
         <Button
@@ -467,8 +469,10 @@ function WebhookDialog({
           <DialogTitle>{isEdit ? 'Edit webhook' : 'New webhook'}</DialogTitle>
           <DialogDescription>
             Deliveries are HMAC-signed and retried with backoff. See{' '}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">developer-instructions/webhooks.md</code> for
-            signature verification.
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              developer-instructions/webhooks.md
+            </code>{' '}
+            for signature verification.
           </DialogDescription>
         </DialogHeader>
 

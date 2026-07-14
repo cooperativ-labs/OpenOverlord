@@ -16,11 +16,16 @@ import {
   bootActiveBackend,
   createBackendRuntimeController,
   resolveInitialShellOrigin,
-  stopAllBackendServers
+  stopAllBackendServers,
+  writeSessionTokenForProfile
 } from './backend-runtime.js';
-import { hydrateLocalDesktopSessionFromCliAuth } from './cli-auth-sync.js';
+import {
+  hydrateLocalDesktopSessionFromCliAuth,
+  syncSessionTokenToCliAuth
+} from './cli-auth-sync.js';
 import { CliUpdater } from './cli-updater.js';
 import { registerIpc } from './ipc.js';
+import { parseDesktopOAuthHandoffUrl } from './oauth-handoff.js';
 import {
   hideQuickTaskWindow,
   initQuickTaskWindow,
@@ -47,14 +52,22 @@ let shellOrigin = `http://${HOST}:${PREFERRED_PORT}`;
 let backendController: BackendRuntimeController | null = null;
 let updater: DesktopUpdater | null = null;
 let cliUpdater: CliUpdater | null = null;
+const pendingOAuthCallbackUrls: string[] = [];
 
 process.env.OVERLORD_DESKTOP_VERSION = app.getVersion();
+registerOAuthProtocol();
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, commandLine) => {
+    queueOAuthCallback(commandLine.find(argument => argument.startsWith('overlord://')));
     showOrCreateMainWindow();
+  });
+
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    queueOAuthCallback(url);
   });
 
   app
@@ -131,6 +144,7 @@ async function boot(): Promise<void> {
   }
 
   await openMainWindow({ reloadExisting: false });
+  await consumePendingOAuthCallbacks();
   initQuickTaskWindow({
     appOrigin: shellOrigin,
     preloadPath: PRELOAD,
@@ -142,6 +156,59 @@ async function boot(): Promise<void> {
   app.on('activate', () => {
     showOrCreateMainWindow();
   });
+}
+
+function registerOAuthProtocol(): void {
+  if (process.defaultApp && process.argv[1]) {
+    app.setAsDefaultProtocolClient('overlord', process.execPath, [path.resolve(process.argv[1])]);
+  } else {
+    app.setAsDefaultProtocolClient('overlord');
+  }
+  queueOAuthCallback(process.argv.find(argument => argument.startsWith('overlord://')));
+}
+
+function queueOAuthCallback(url: string | undefined): void {
+  if (!url || !parseDesktopOAuthHandoffUrl(url)) return;
+  pendingOAuthCallbackUrls.push(url);
+  void consumePendingOAuthCallbacks();
+}
+
+async function consumePendingOAuthCallbacks(): Promise<void> {
+  while (pendingOAuthCallbackUrls.length > 0 && backendController) {
+    const url = pendingOAuthCallbackUrls.shift();
+    const ticket = url ? parseDesktopOAuthHandoffUrl(url) : null;
+    if (!ticket) continue;
+
+    try {
+      const active = resolveActiveBackend({ shellOrigin });
+      if (active.mode !== 'remote') continue;
+      const response = await fetch(`${active.apiBaseUrl}/api/auth/desktop/exchange`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticket })
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        token?: unknown;
+        message?: unknown;
+      } | null;
+      if (!response.ok || typeof payload?.token !== 'string' || !payload.token.trim()) {
+        throw new Error(
+          typeof payload?.message === 'string'
+            ? payload.message
+            : 'Desktop sign-in could not be completed.'
+        );
+      }
+      writeSessionTokenForProfile({ profileId: active.id, token: payload.token });
+      syncSessionTokenToCliAuth({
+        profileId: active.id,
+        token: payload.token,
+        backendUrl: active.apiBaseUrl
+      });
+      mainWindow?.webContents.reload();
+    } catch (error) {
+      dialog.showErrorBox('GitHub sign-in failed', describe(error));
+    }
+  }
 }
 
 function showOrCreateMainWindow(): void {

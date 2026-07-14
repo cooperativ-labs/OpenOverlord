@@ -36,6 +36,21 @@ export function isRemoteBackend(): boolean {
   return activeBackend.mode === 'remote';
 }
 
+/** True when the SPA runs inside the Electron desktop shell. */
+export function isDesktopShell(): boolean {
+  return Boolean(typeof window !== 'undefined' && window.overlord);
+}
+
+/**
+ * Desktop *remote* mode points the bundled SPA at a cross-origin cloud backend.
+ * GitHub OAuth for that partition still needs the deep-link/loopback callback
+ * (Phase A.4), so social login stays hidden there — unlike the hosted web
+ * browser build, which is also `mode: 'remote'` but is not the desktop shell.
+ */
+export function isDesktopRemoteBackend(): boolean {
+  return isDesktopShell() && isRemoteBackend();
+}
+
 export function getApiBaseUrl(): string {
   if (!activeBackend) return '';
   return trimTrailingSlash(activeBackend.apiBaseUrl);

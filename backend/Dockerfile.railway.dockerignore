@@ -91,6 +91,7 @@
 **/*.fixture.ts
 **/test-helpers.ts
 **/docs/**
+!docs/package.json
 **/README.md
 **/dist/**
 **/node_modules/**

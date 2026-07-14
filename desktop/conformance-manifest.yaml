@@ -1,9 +1,9 @@
 # Conformance manifest for the Overlord Desktop Shell.
 # Validates against contract/conformance-manifest.schema.yaml.
-contractVersion: "0"
+contractVersion: '7'
 componentType: desktop-shell
 componentKey: desktop
-label: "Overlord Desktop Shell"
+label: 'Overlord Desktop Shell'
 description: >
   Optional Electron wrapper around the local OpenOverlord web control center.
   Loads the unmodified webapp SPA in a hardened BrowserWindow over a loopback
@@ -12,12 +12,12 @@ description: >
   product logic; reuses the rest, cli/runner, and auth surfaces.
 
 desktopShell:
-  wrapsModule: "rest"
+  wrapsModule: 'rest'
   supervisedProcesses:
-    - "webapp server bundle (utilityProcess)"
-    - "ovld runner (optional)"
-    - "ovld launch (via the existing execution_request queue / terminal_launcher)"
-  bridgeNamespace: "window.overlord"
+    - 'webapp server bundle (utilityProcess)'
+    - 'ovld runner (optional)'
+    - 'ovld launch (via the existing execution_request queue / terminal_launcher)'
+  bridgeNamespace: 'window.overlord'
   packagingTargets:
     - dmg
     - zip
