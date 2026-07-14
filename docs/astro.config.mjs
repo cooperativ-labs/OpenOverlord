@@ -4,8 +4,8 @@ import starlight from '@astrojs/starlight';
 export default defineConfig({
   integrations: [
     starlight({
-      title: 'Overlord Docs',
-      description: 'Guides for using Overlord to coordinate AI coding agents.',
+      title: 'The Docs',
+      description: 'Guides for using Overlord to manage and coordinate AI coding agents.',
       favicon: '/favicon.ico',
       logo: {
         src: '../webapp/public/images/256.png',
