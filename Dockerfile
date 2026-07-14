@@ -33,7 +33,7 @@ COPY database/package.json database/
 COPY cli/package.json cli/
 COPY webapp/package.json webapp/
 COPY desktop/package.json desktop/
-COPY docs-site/package.json docs-site/
+COPY docs/package.json docs/
 COPY packages/core/package.json packages/core/
 COPY packages/contract/package.json packages/contract/
 # Source is copied after install; skip workspace builds until COPY . . below.

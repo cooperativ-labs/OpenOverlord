@@ -2913,9 +2913,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@overlord/docs-site@workspace:docs-site":
+"@overlord/docs@workspace:docs":
   version: 0.0.0-use.local
-  resolution: "@overlord/docs-site@workspace:docs-site"
+  resolution: "@overlord/docs@workspace:docs"
   dependencies:
     "@astrojs/starlight": "npm:^0.41.3"
     "@fontsource-variable/space-grotesk": "npm:^5.2.10"

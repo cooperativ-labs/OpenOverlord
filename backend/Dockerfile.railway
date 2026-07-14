@@ -27,7 +27,7 @@ COPY database/package.json database/tsconfig.json database/tsconfig.build.json d
 COPY cli/package.json cli/
 COPY webapp/package.json webapp/tsconfig.json webapp/
 COPY desktop/package.json desktop/
-COPY docs-site/package.json docs-site/
+COPY docs/package.json docs/
 COPY packages/core/package.json packages/core/tsconfig.build.json packages/core/
 COPY packages/contract/package.json packages/contract/tsconfig.build.json packages/contract/
 RUN printf '%s\n' \

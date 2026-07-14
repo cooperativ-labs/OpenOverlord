@@ -84,8 +84,8 @@
 !desktop/
 !desktop/package.json
 
-!docs-site/
-!docs-site/package.json
+!docs/
+!docs/package.json
 
 **/*.test.ts
 **/*.fixture.ts
