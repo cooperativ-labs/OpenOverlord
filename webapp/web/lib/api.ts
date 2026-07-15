@@ -288,6 +288,7 @@ export const api = {
   renameUserToken: (id: string, body: UpdateUserTokenBody) =>
     request<UserTokenDto>('PATCH', `/api/user-tokens/${id}`, body),
   revokeUserToken: (id: string) => request<UserTokenDto>('POST', `/api/user-tokens/${id}/revoke`),
+  deleteRevokedUserToken: (id: string) => request<void>('DELETE', `/api/user-tokens/${id}`),
 
   listWebhookSubscriptions: () => request<WebhookSubscriptionDto[]>('GET', '/api/webhooks'),
   createWebhookSubscription: (body: CreateWebhookSubscriptionBody) =>

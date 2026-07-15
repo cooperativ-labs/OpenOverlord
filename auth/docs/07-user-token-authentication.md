@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add a modular `USER_TOKEN` feature that lets each user create, inspect, rotate, and revoke long-lived tokens for CLI, agent, runner, and future API use. This feature should be designed as a separable authentication module so the database design can reserve the right ownership, lifecycle, and future permission-scoping concepts without forcing auth into the local unauthenticated MVP.
+Add a modular `USER_TOKEN` feature that lets each user create, inspect, rotate, revoke, and remove revoked long-lived tokens for CLI, agent, runner, and future API use. This feature should be designed as a separable authentication module so the database design can reserve the right ownership, lifecycle, and future permission-scoping concepts without forcing auth into the local unauthenticated MVP.
 
 Use the name `USER_TOKEN` for this concept. Do not use agent-specific token naming in Overlord planning or implementation unless a migration note explicitly requires it.
 

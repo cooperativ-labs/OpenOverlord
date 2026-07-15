@@ -644,6 +644,14 @@ export function useRevokeUserToken() {
   });
 }
 
+export function useDeleteRevokedUserToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteRevokedUserToken(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.userTokens })
+  });
+}
+
 export function useCreateWebhookSubscription() {
   const qc = useQueryClient();
   return useMutation({

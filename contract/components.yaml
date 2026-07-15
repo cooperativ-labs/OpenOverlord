@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '11'
+contractVersion: '12'
 
 components:
   protocol:
@@ -152,7 +152,7 @@ components:
       - 'planning/feature-plans/07-user-token-authentication.md'
       - 'planning/feature-plans/08-role-based-access-control.md'
     owns:
-      - 'token creation, rotation, revocation, hash storage'
+      - 'token creation, rotation, revocation, tombstoning of revoked credentials, and hash storage'
       - 'role assignment CRUD'
       - 'permission check interface'
       - 'audit log attribution fields'

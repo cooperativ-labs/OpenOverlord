@@ -17,6 +17,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import {
   useCreateUserToken,
+  useDeleteRevokedUserToken,
   useRenameUserToken,
   useRevokeUserToken,
   useUserTokens
@@ -337,9 +338,11 @@ function CopyField({ label, value }: { label: string; value: string }) {
 function TokenRow({ token }: { token: UserTokenDto }) {
   const renameToken = useRenameUserToken();
   const revokeToken = useRevokeUserToken();
+  const deleteToken = useDeleteRevokedUserToken();
   const [draftLabel, setDraftLabel] = useState(token.label);
   const [editing, setEditing] = useState(false);
   const [revokeState, setRevokeState] = useState<ButtonLoadingState>('default');
+  const [deleteState, setDeleteState] = useState<ButtonLoadingState>('default');
   const [error, setError] = useState<string | null>(null);
 
   const expired = isExpired(token);
@@ -373,6 +376,23 @@ function TokenRow({ token }: { token: UserTokenDto }) {
     } catch (err) {
       setRevokeState('error');
       setError(err instanceof Error ? err.message : 'Failed to revoke token.');
+    }
+  }
+
+  async function handleDelete() {
+    if (
+      !window.confirm(`Delete revoked token "${token.label}"? This only removes it from your list.`)
+    ) {
+      return;
+    }
+    setDeleteState('loading');
+    setError(null);
+    try {
+      await deleteToken.mutateAsync(token.id);
+      setDeleteState('default');
+    } catch (err) {
+      setDeleteState('error');
+      setError(err instanceof Error ? err.message : 'Failed to delete token.');
     }
   }
 
@@ -436,6 +456,24 @@ function TokenRow({ token }: { token: UserTokenDto }) {
           variant="ghost"
           className="h-8 shrink-0 text-destructive hover:text-destructive"
           onClick={handleRevoke}
+        />
+      ) : token.status === 'revoked' ? (
+        <LoadingButton
+          buttonState={deleteState}
+          setButtonState={setDeleteState}
+          text={
+            <>
+              <Trash2 className="size-3.5" />
+              Delete
+            </>
+          }
+          loadingText="Deleting…"
+          errorText="Retry"
+          reset
+          size="sm"
+          variant="ghost"
+          className="h-8 shrink-0 text-destructive hover:text-destructive"
+          onClick={handleDelete}
         />
       ) : null}
     </li>

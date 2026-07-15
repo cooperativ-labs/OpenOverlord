@@ -10,7 +10,12 @@ import {
 } from './db.ts';
 import { ApiError } from './errors.ts';
 import { actorCan, requirePermission } from './rbac.ts';
-import { createUserToken, listUserTokens } from './repository.ts';
+import {
+  createUserToken,
+  deleteRevokedUserToken,
+  listUserTokens,
+  revokeUserToken
+} from './repository.ts';
 import { seedAuthenticatedOperator } from './test-helpers.ts';
 
 // These tests create an explicit ADMIN local operator. They exercise the real
@@ -53,6 +58,28 @@ test('createUserToken with mission_lifecycle scope persists grants and surfaces 
   // The list endpoint reflects the same scope.
   const listed = (await listUserTokens()).find(t => t.id === token.id);
   assert.equal(listed?.scope, 'mission_lifecycle');
+});
+
+test('a revoked token can be deleted from the owner token list', async () => {
+  const { token } = await createUserToken({ label: 'remove revoked token' });
+  await revokeUserToken(token.id);
+  await deleteRevokedUserToken(token.id);
+
+  assert.equal(
+    (await listUserTokens()).some(candidate => candidate.id === token.id),
+    false,
+    'the revoked token is soft-deleted and no longer listed'
+  );
+  const row = db.prepare('SELECT deleted_at FROM user_tokens WHERE id = ?').get(token.id);
+  assert.ok(
+    row && (row as { deleted_at: string | null }).deleted_at,
+    'the audit row remains tombstoned'
+  );
+});
+
+test('an active token cannot be deleted without first being revoked', async () => {
+  const { token } = await createUserToken({ label: 'active token' });
+  await assert.rejects(deleteRevokedUserToken(token.id), /Only revoked tokens can be deleted/);
 });
 
 test('a mission_lifecycle token is denied admin/destructive actions but allowed mission/runner work', async () => {

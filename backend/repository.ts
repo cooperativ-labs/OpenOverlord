@@ -6061,6 +6061,41 @@ export async function revokeUserToken(id: string): Promise<UserTokenDto> {
   });
 }
 
+/**
+ * Remove a token only after it has been revoked. The row remains a soft-delete
+ * tombstone for audit and sync, while listUserTokens filters it from settings.
+ */
+export async function deleteRevokedUserToken(id: string): Promise<void> {
+  await requireDatabaseClient().transaction(async tx => {
+    const existing = await loadUserTokenForUpdate(tx, id);
+    if (existing.status !== 'revoked') {
+      throw new ApiError(409, 'Only revoked tokens can be deleted');
+    }
+
+    const { userId } = await loadOperatorIdentity(tx);
+    const now = nowIso();
+    const revision = existing.revision + 1;
+    const result = await tx.run(
+      `UPDATE user_tokens
+          SET deleted_at = ?, updated_at = ?, revision = ?
+        WHERE id = ? AND profile_id = ? AND deleted_at IS NULL AND revision = ?`,
+      [now, now, revision, id, userId, existing.revision]
+    );
+    if (result.changes !== 1) throw new ApiError(409, 'Token changed; refresh and try again');
+
+    await recordChange(
+      {
+        entityType: 'user_token',
+        entityId: id,
+        operation: 'delete',
+        entityRevision: revision,
+        changedFields: ['deleted_at']
+      },
+      tx
+    );
+  });
+}
+
 export async function revokeUserTokenSecret(rawToken: string): Promise<boolean> {
   if (!rawToken.startsWith(USER_TOKEN_PREFIX)) return false;
   const tokenHash = hashUserTokenSecret(rawToken);

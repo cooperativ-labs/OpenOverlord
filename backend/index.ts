@@ -117,6 +117,7 @@ import {
   createProjectTag,
   createUserToken,
   createWorkspaceStatus,
+  deleteRevokedUserToken,
   deleteMission,
   deleteObjective,
   deleteProject,
@@ -865,8 +866,8 @@ app.patch(
 //
 // Long-lived `USER_TOKEN` credentials owned by the authenticated user account,
 // independent of workspace. Raw secrets are returned only from create;
-// list/rename/revoke never expose them. Revoke is a soft state change (the row
-// is retained for audit), not a deletion.
+// list/rename/revoke never expose them. Revoke is a state change retained for
+// audit; only an already-revoked token may later be soft-deleted.
 
 app.get(
   '/api/user-tokens',
@@ -892,6 +893,19 @@ app.post(
     mutates: true,
     requires: PERMISSIONS.USER_TOKEN_SELF_REVOKE
   })
+);
+app.delete(
+  '/api/user-tokens/:id',
+  handle(
+    async (req, res) => {
+      await deleteRevokedUserToken(req.params.id);
+      res.status(204).end();
+    },
+    {
+      mutates: true,
+      requires: PERMISSIONS.USER_TOKEN_SELF_REVOKE
+    }
+  )
 );
 
 // ---- Webhooks (coo:115) ---------------------------------------------------
