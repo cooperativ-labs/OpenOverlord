@@ -117,12 +117,12 @@ import {
   createProjectTag,
   createUserToken,
   createWorkspaceStatus,
-  deleteRevokedUserToken,
   deleteMission,
   deleteObjective,
   deleteProject,
   deleteProjectResource,
   deleteProjectTag,
+  deleteRevokedUserToken,
   deleteWorkspaceStatus,
   generateCommitMessage,
   generateMissionTitle,
@@ -1493,6 +1493,31 @@ app.patch(
     mutates: true,
     requires: PERMISSIONS.LAUNCH_CONFIGURE
   })
+);
+// Workspace-scoped launch settings. Unlike the legacy `/api/launch-settings`
+// routes (active-workspace only), these target the `:id` workspace and authorize
+// `launch:read`/`launch:configure` against that workspace's own membership inside
+// the service, so a mission running in a secondary workspace reads and writes its
+// agent launch config (pre-command + flags) in that workspace — matching where
+// `launchObjective` resolves it (coo:331 Phase 0). Omitting the id keeps the
+// legacy active-workspace behavior above.
+app.get(
+  '/api/workspaces/:id/launch-settings',
+  handle(req => getLaunchSettings(req.params.id))
+);
+app.patch(
+  '/api/workspaces/:id/launch-settings/agents/:agentKey',
+  handle(req => updateAgentLaunchConfig(req.params.agentKey, req.body, req.params.id), {
+    mutates: true
+  })
+);
+app.patch(
+  '/api/workspaces/:id/launch-settings/terminal-profile',
+  handle(req => updateTerminalProfile(req.body, req.params.id), { mutates: true })
+);
+app.patch(
+  '/api/workspaces/:id/launch-settings/worktree-branch-automation',
+  handle(req => updateWorktreeBranchAutomation(req.body, req.params.id), { mutates: true })
 );
 // `getLaunchPreference`/`updateLaunchPreference` resolve and authorize against
 // the project's own workspace internally (coo:135), so these routes carry no

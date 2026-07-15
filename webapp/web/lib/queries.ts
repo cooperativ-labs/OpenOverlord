@@ -136,7 +136,8 @@ export const keys = {
     workspaceId ? (['agent-catalog', workspaceId] as const) : (['agent-catalog'] as const),
   runnerStatus: ['runner', 'status'] as const,
   runnerServiceStatus: ['runner', 'service-status'] as const,
-  launchSettings: ['launch-settings'] as const,
+  launchSettings: (workspaceId?: string | null) =>
+    workspaceId ? (['launch-settings', workspaceId] as const) : (['launch-settings'] as const),
   launchPreference: (projectId: string) => ['project', projectId, 'launch-preference'] as const,
   projectExecutionTarget: (projectId: string) =>
     ['project', projectId, 'execution-target'] as const,
@@ -703,13 +704,13 @@ export function useRedeliverWebhookDelivery() {
   });
 }
 
-export function useUpdateWorktreeBranchAutomation() {
+export function useUpdateWorktreeBranchAutomation(workspaceId?: string | null) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: UpdateWorktreeBranchAutomationBody) =>
-      api.updateWorktreeBranchAutomation(body),
+      api.updateWorktreeBranchAutomation(body, workspaceId),
     onSuccess: data => {
-      qc.setQueryData(keys.launchSettings, data);
+      qc.setQueryData(keys.launchSettings(workspaceId), data);
     }
   });
 }
@@ -1468,8 +1469,12 @@ export const useAgentCatalog = (workspaceId?: string | null) =>
     staleTime: 60_000
   });
 
-export const useLaunchSettings = () =>
-  useQuery({ queryKey: keys.launchSettings, queryFn: api.getLaunchSettings, staleTime: 60_000 });
+export const useLaunchSettings = (workspaceId?: string | null) =>
+  useQuery({
+    queryKey: keys.launchSettings(workspaceId),
+    queryFn: () => api.getLaunchSettings(workspaceId),
+    staleTime: 60_000
+  });
 
 export const useLaunchPreference = (projectId: string) =>
   useQuery({
@@ -1508,20 +1513,20 @@ export function useLaunchObjective() {
   });
 }
 
-export function useUpdateAgentLaunchConfig() {
+export function useUpdateAgentLaunchConfig(workspaceId?: string | null) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ agentKey, body }: { agentKey: string; body: UpdateAgentLaunchConfigBody }) =>
-      api.updateAgentLaunchConfig(agentKey, body),
-    onSuccess: data => qc.setQueryData(keys.launchSettings, data)
+      api.updateAgentLaunchConfig(agentKey, body, workspaceId),
+    onSuccess: data => qc.setQueryData(keys.launchSettings(workspaceId), data)
   });
 }
 
-export function useUpdateTerminalProfile() {
+export function useUpdateTerminalProfile(workspaceId?: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: UpdateTerminalProfileBody) => api.updateTerminalProfile(body),
-    onSuccess: data => qc.setQueryData(keys.launchSettings, data)
+    mutationFn: (body: UpdateTerminalProfileBody) => api.updateTerminalProfile(body, workspaceId),
+    onSuccess: data => qc.setQueryData(keys.launchSettings(workspaceId), data)
   });
 }
 

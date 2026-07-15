@@ -547,17 +547,47 @@ export const api = {
         ? `/api/workspaces/${workspaceId}/agent-catalog/refresh`
         : '/api/agent-catalog/refresh'
     ),
-  getLaunchSettings: () => request<LaunchSettingsDto>('GET', '/api/launch-settings'),
-  updateAgentLaunchConfig: (agentKey: string, body: UpdateAgentLaunchConfigBody) =>
+  // A `workspaceId` targets the workspace-scoped launch-settings routes (the
+  // config for a mission in any workspace the caller belongs to); omit it for
+  // the active-workspace legacy routes. Scoping the write to the resource's
+  // workspace is what makes a secondary-workspace mission launch with its own
+  // pre-command/flags (coo:331 Phase 0).
+  getLaunchSettings: (workspaceId?: string | null) =>
+    request<LaunchSettingsDto>(
+      'GET',
+      workspaceId ? `/api/workspaces/${workspaceId}/launch-settings` : '/api/launch-settings'
+    ),
+  updateAgentLaunchConfig: (
+    agentKey: string,
+    body: UpdateAgentLaunchConfigBody,
+    workspaceId?: string | null
+  ) =>
     request<LaunchSettingsDto>(
       'PATCH',
-      `/api/launch-settings/agents/${encodeURIComponent(agentKey)}`,
+      workspaceId
+        ? `/api/workspaces/${workspaceId}/launch-settings/agents/${encodeURIComponent(agentKey)}`
+        : `/api/launch-settings/agents/${encodeURIComponent(agentKey)}`,
       body
     ),
-  updateTerminalProfile: (body: UpdateTerminalProfileBody) =>
-    request<LaunchSettingsDto>('PATCH', '/api/launch-settings/terminal-profile', body),
-  updateWorktreeBranchAutomation: (body: UpdateWorktreeBranchAutomationBody) =>
-    request<LaunchSettingsDto>('PATCH', '/api/launch-settings/worktree-branch-automation', body),
+  updateTerminalProfile: (body: UpdateTerminalProfileBody, workspaceId?: string | null) =>
+    request<LaunchSettingsDto>(
+      'PATCH',
+      workspaceId
+        ? `/api/workspaces/${workspaceId}/launch-settings/terminal-profile`
+        : '/api/launch-settings/terminal-profile',
+      body
+    ),
+  updateWorktreeBranchAutomation: (
+    body: UpdateWorktreeBranchAutomationBody,
+    workspaceId?: string | null
+  ) =>
+    request<LaunchSettingsDto>(
+      'PATCH',
+      workspaceId
+        ? `/api/workspaces/${workspaceId}/launch-settings/worktree-branch-automation`
+        : '/api/launch-settings/worktree-branch-automation',
+      body
+    ),
   getLaunchPreference: (projectId: string) =>
     request<LaunchPreferenceDto>('GET', `/api/projects/${projectId}/launch-preference`),
   updateLaunchPreference: (projectId: string, body: UpdateLaunchPreferenceBody) =>

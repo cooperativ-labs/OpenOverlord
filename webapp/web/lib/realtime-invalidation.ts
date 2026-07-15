@@ -180,7 +180,10 @@ function routeChange(change: EntityChangeDto): QueryKey[] | null {
     case 'execution_target':
     case 'workspace_user_execution_target':
     case 'user_execution_target_preference': {
-      return [keys.launchSettings, allProjectScopedQueries()];
+      // `keys.launchSettings()` → `['launch-settings']`, which as an invalidation
+      // prefix also matches the workspace-scoped `['launch-settings', workspaceId]`
+      // entries (coo:331 Phase 0).
+      return [keys.launchSettings(), allProjectScopedQueries()];
     }
     default:
       return null;

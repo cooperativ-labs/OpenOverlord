@@ -31,12 +31,18 @@ export function useObjectiveAgentSelection(objective: ObjectiveDto) {
   // secondary workspace offers that workspace's agents, not the active one's
   // (coo:324).
   const projectQ = useProject(objective.projectId);
-  const catalogQ = useAgentCatalog(projectQ.data?.workspaceId);
-  const settingsQ = useLaunchSettings();
+  const workspaceId = projectQ.data?.workspaceId;
+  const catalogQ = useAgentCatalog(workspaceId);
+  // Read/write the launch config (pre-command + flags) in the objective's own
+  // workspace — the same workspace `launchObjective` resolves it from — so a
+  // mission open from a secondary workspace saves where the runner will read
+  // (coo:331 Phase 0). Previously this used the unscoped active-workspace hook,
+  // which is the one-line source of the launch-config regression.
+  const settingsQ = useLaunchSettings(workspaceId);
   const preferenceQ = useLaunchPreference(objective.projectId);
   const updateObjective = useUpdateObjective();
   const updatePreference = useUpdateLaunchPreference(objective.projectId);
-  const updateAgentConfig = useUpdateAgentLaunchConfig();
+  const updateAgentConfig = useUpdateAgentLaunchConfig(workspaceId);
 
   const catalog = catalogQ.data ?? null;
   const preference = preferenceQ.data ?? null;

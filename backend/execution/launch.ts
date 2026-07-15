@@ -17,6 +17,7 @@
  *   `execution_requests.launch_flags_json` for the runner to consume verbatim.
  */
 import { type Permission, PERMISSIONS } from '@overlord/auth';
+import type { ServiceContext } from '@overlord/core/service/context';
 import type { TerminalProfile } from '@overlord/core/service/terminal-profile-types';
 import type { DatabaseClient } from '@overlord/database';
 
@@ -111,7 +112,7 @@ function instanceAgentCatalog(): Record<string, StoredCatalogAgent> {
 
 async function readWorkspaceSettings(
   client: DatabaseClient = requireDatabaseClient(),
-  workspaceId: string = WORKSPACE.id
+  workspaceId: string
 ): Promise<Record<string, unknown>> {
   const row = await client.get<{ settings_json: string }>(
     `SELECT settings_json FROM workspaces WHERE id = ? AND deleted_at IS NULL`,
@@ -128,7 +129,7 @@ async function readWorkspaceSettings(
 async function writeWorkspaceSettings(
   settings: Record<string, unknown>,
   client: DatabaseClient = requireDatabaseClient(),
-  workspaceId: string = WORKSPACE.id
+  workspaceId: string
 ): Promise<void> {
   await client.run(
     `UPDATE workspaces SET settings_json = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`,
@@ -137,8 +138,8 @@ async function writeWorkspaceSettings(
 }
 
 async function readStoredCatalog(
-  client: DatabaseClient = requireDatabaseClient(),
-  workspaceId: string = WORKSPACE.id
+  client: DatabaseClient,
+  workspaceId: string
 ): Promise<StoredCatalog | null> {
   const settings = await readWorkspaceSettings(client, workspaceId);
   const stored = settings[AGENT_CATALOG_SETTINGS_KEY] as StoredCatalog | undefined;
@@ -148,8 +149,8 @@ async function readStoredCatalog(
 
 async function persistCatalog(
   catalog: StoredCatalog,
-  client: DatabaseClient = requireDatabaseClient(),
-  workspaceId: string = WORKSPACE.id
+  client: DatabaseClient,
+  workspaceId: string
 ): Promise<void> {
   const settings = await readWorkspaceSettings(client, workspaceId);
   settings[AGENT_CATALOG_SETTINGS_KEY] = { ...catalog, updatedAt: nowIso() };
@@ -179,14 +180,15 @@ async function resolveCatalogWorkspaceId(
 }
 
 /**
- * Whether worktree/branch automation is enabled for `workspaceId` (default:
- * the request's active workspace). Mission-detail assembly passes the
- * mission's own workspace so a secondary workspace's setting — not the active
- * one's — governs its missions (coo:135).
+ * Whether worktree/branch automation is enabled for `workspaceId`. Every caller
+ * derives the workspace from the resource it already loaded — mission-detail
+ * assembly passes the mission's own workspace, and the launch-settings surface
+ * passes the scope's workspace — so a secondary workspace's setting, not the
+ * active one's, governs its missions (coo:135/coo:331).
  */
 export async function readWorktreeBranchAutomationEnabled(
   client: DatabaseClient = requireDatabaseClient(),
-  workspaceId: string = WORKSPACE.id
+  workspaceId: string
 ): Promise<boolean> {
   const settings = await readWorkspaceSettings(client, workspaceId);
   return settings[WORKTREE_BRANCH_AUTOMATION_SETTINGS_KEY] === true;
@@ -194,11 +196,13 @@ export async function readWorktreeBranchAutomationEnabled(
 
 async function launchSettingsDto({
   target,
+  workspaceId,
   agentConfigs = target.agentConfigs,
   terminalProfile = target.terminalProfile,
   client = requireDatabaseClient()
 }: {
   target: Awaited<ReturnType<typeof ensureLocalLaunchTarget>>;
+  workspaceId: string;
   agentConfigs?: Record<string, AgentLaunchConfigDto>;
   terminalProfile?: TerminalProfileDto;
   client?: DatabaseClient;
@@ -208,8 +212,37 @@ async function launchSettingsDto({
     deviceLabel: target.deviceLabel,
     agentConfigs,
     terminalProfile,
-    worktreeBranchAutomationEnabled: await readWorktreeBranchAutomationEnabled(client)
+    worktreeBranchAutomationEnabled: await readWorktreeBranchAutomationEnabled(client, workspaceId)
   };
+}
+
+/**
+ * Resolve the `(workspace, ServiceContext)` a launch-settings operation targets.
+ * An explicit `workspaceId` is authorized against the caller's *own* membership
+ * in that workspace (coo:135 pattern — 404 for non-members) and yields a context
+ * bound to it, so a secondary-workspace mission's launch config is read/written
+ * in **its** workspace — matching where `launchObjective` resolves it. Omitted →
+ * the request's active workspace (back-compat), whose route-level permission gate
+ * has already run. Mirrors `resolveCatalogWorkspaceId`, but also carries the
+ * membership-bound context (§2.1) needed to provision the acting-device target.
+ */
+async function resolveLaunchSettingsScope(
+  workspaceId: string | undefined,
+  permission: Permission,
+  client: DatabaseClient
+): Promise<{ workspaceId: string; ctx: ServiceContext }> {
+  if (!workspaceId) {
+    const ctx = serviceContext(client);
+    return { workspaceId: ctx.workspace.id, ctx };
+  }
+  const membershipId = await requireWorkspacePermission({
+    workspaceId,
+    permission,
+    db: client,
+    notFoundMessage: 'Workspace not found or no active membership'
+  });
+  const ctx = await buildWebappServiceContextForWorkspace(workspaceId, client, membershipId);
+  return { workspaceId, ctx };
 }
 
 function toCatalogDto(stored: StoredCatalog): AgentCatalogDto {
@@ -411,7 +444,10 @@ async function readAgentConfigs(
   return row ? parseAgentConfigs(row.agent_configs_json) : {};
 }
 
-async function ensureLocalLaunchTarget(client: DatabaseClient = requireDatabaseClient()): Promise<{
+async function ensureLocalLaunchTarget(
+  client: DatabaseClient = requireDatabaseClient(),
+  ctx: ServiceContext = serviceContext(client)
+): Promise<{
   deviceId: string;
   deviceLabel: string;
   executionTargetId: string;
@@ -420,7 +456,7 @@ async function ensureLocalLaunchTarget(client: DatabaseClient = requireDatabaseC
   agentConfigs: Record<string, AgentLaunchConfigDto>;
   terminalProfile: TerminalProfileDto;
 }> {
-  const target = await ensureActingDeviceTarget({ ctx: serviceContext(client) });
+  const target = await ensureActingDeviceTarget({ ctx });
   return {
     deviceId: target.deviceId,
     deviceLabel: target.deviceLabel,
@@ -432,20 +468,24 @@ async function ensureLocalLaunchTarget(client: DatabaseClient = requireDatabaseC
   };
 }
 
-export async function getLaunchSettings(): Promise<LaunchSettingsDto> {
-  const target = await ensureLocalLaunchTarget();
-  return launchSettingsDto({ target });
+export async function getLaunchSettings(workspaceId?: string): Promise<LaunchSettingsDto> {
+  const client = requireDatabaseClient();
+  const scope = await resolveLaunchSettingsScope(workspaceId, PERMISSIONS.LAUNCH_READ, client);
+  const target = await ensureLocalLaunchTarget(client, scope.ctx);
+  return launchSettingsDto({ target, workspaceId: scope.workspaceId, client });
 }
 
 /** Persist the acting user's launch mechanics (pre-command/flags) for one agent. */
 export async function updateAgentLaunchConfig(
   agentKey: string,
-  body: UpdateAgentLaunchConfigBody
+  body: UpdateAgentLaunchConfigBody,
+  workspaceId?: string
 ): Promise<LaunchSettingsDto> {
   return requireDatabaseClient().transaction(async tx => {
     const key = agentKey.trim();
     if (!key) throw new ApiError(400, 'Agent key is required');
-    const target = await ensureLocalLaunchTarget(tx);
+    const scope = await resolveLaunchSettingsScope(workspaceId, PERMISSIONS.LAUNCH_CONFIGURE, tx);
+    const target = await ensureLocalLaunchTarget(tx, scope.ctx);
     if (!target.preferenceId) {
       throw new ApiError(409, 'No active workspace user to store launch configs for');
     }
@@ -469,30 +509,38 @@ export async function updateAgentLaunchConfig(
       [JSON.stringify(configs), nowIso(), target.preferenceId]
     );
 
-    return launchSettingsDto({ target, agentConfigs: configs, client: tx });
+    return launchSettingsDto({
+      target,
+      workspaceId: scope.workspaceId,
+      agentConfigs: configs,
+      client: tx
+    });
   });
 }
 
 /** Persist the acting user's terminal profile for the local execution target. */
 export async function updateTerminalProfile(
-  body: UpdateTerminalProfileBody
+  body: UpdateTerminalProfileBody,
+  workspaceId?: string
 ): Promise<LaunchSettingsDto> {
   return requireDatabaseClient().transaction(async tx => {
+    const scope = await resolveLaunchSettingsScope(workspaceId, PERMISSIONS.LAUNCH_CONFIGURE, tx);
     const saved = await persistTerminalProfile({
-      ctx: serviceContext(tx),
+      ctx: scope.ctx,
       profile: {
         launcher: body.launcher ?? null,
         placement: body.placement ?? 'window',
         chord: body.placement === 'chord' ? (body.chord ?? null) : null
       }
     });
-    const target = await ensureLocalLaunchTarget(tx);
+    const target = await ensureLocalLaunchTarget(tx, scope.ctx);
     return launchSettingsDto({
       target: {
         ...target,
         executionTargetId: saved.executionTargetId,
         deviceLabel: saved.deviceLabel
       },
+      workspaceId: scope.workspaceId,
       terminalProfile: toTerminalProfileDto(saved.terminalProfile),
       client: tx
     });
@@ -500,14 +548,16 @@ export async function updateTerminalProfile(
 }
 
 export async function updateWorktreeBranchAutomation(
-  body: UpdateWorktreeBranchAutomationBody
+  body: UpdateWorktreeBranchAutomationBody,
+  workspaceId?: string
 ): Promise<LaunchSettingsDto> {
   return requireDatabaseClient().transaction(async tx => {
-    const settings = await readWorkspaceSettings(tx);
+    const scope = await resolveLaunchSettingsScope(workspaceId, PERMISSIONS.LAUNCH_CONFIGURE, tx);
+    const settings = await readWorkspaceSettings(tx, scope.workspaceId);
     settings[WORKTREE_BRANCH_AUTOMATION_SETTINGS_KEY] = body.enabled === true;
-    await writeWorkspaceSettings(settings, tx);
-    const target = await ensureLocalLaunchTarget(tx);
-    return launchSettingsDto({ target, client: tx });
+    await writeWorkspaceSettings(settings, tx, scope.workspaceId);
+    const target = await ensureLocalLaunchTarget(tx, scope.ctx);
+    return launchSettingsDto({ target, workspaceId: scope.workspaceId, client: tx });
   });
 }
 

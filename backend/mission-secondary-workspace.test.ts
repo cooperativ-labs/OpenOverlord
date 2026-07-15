@@ -3,6 +3,11 @@ import { mkdtempSync } from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 
+import {
+  assertScopedToResourceWorkspace,
+  setupSecondaryWorkspaceFixture
+} from './secondary-workspace-fixture.ts';
+
 // coo:135 follow-up: a mission/objective belonging to a workspace OTHER than the
 // caller's currently-active workspace must still load and be editable. The
 // backend previously scoped mission/objective reads and writes to
@@ -496,5 +501,71 @@ describe('runner claims and drives executions in a secondary (non-active) worksp
     const aAfter = await listWorkspaceStatusesForWorkspace(workspaceAId);
     assert.equal(aAfter.length, aBefore.length);
     assert.ok(!aAfter.some(status => status.name === 'Awaiting QA Signoff'));
+  });
+});
+
+// coo:331 Phase 3: the structural A/B fixture. Each workspace-scoped operation
+// must resolve against the *resource's* workspace, not the caller's active one.
+// The suite starts with the Phase 0 launch-settings surface and gains a case per
+// endpoint converted in Phase 2, all built on the shared fixture so the bug class
+// is caught at the door for every newly-converted endpoint.
+describe('workspace-scoped operations resolve against the resource workspace, not the active one', () => {
+  // Phase 0 — the genuinely per-workspace launch setting. `worktreeBranchAutomationEnabled`
+  // lives in `workspaces.settings_json`; before the fix the launch-settings surface
+  // read/wrote it against the caller's *active* workspace (launch.ts:114/131/189
+  // defaulted to `WORKSPACE.id`), so toggling it while viewing a secondary-workspace
+  // project silently configured the active workspace instead. The conversion threads
+  // an explicit `workspaceId`, so the toggle lands in — and reads back from — the
+  // objective's own workspace B without touching the active workspace A.
+  it('reads and writes worktree-branch automation against the objective workspace (Phase 0)', async () => {
+    const fixture = await setupSecondaryWorkspaceFixture({ namePrefix: 'Launch Settings' });
+    const { getLaunchSettings, updateWorktreeBranchAutomation } =
+      await import('./execution/launch.ts');
+
+    await assertScopedToResourceWorkspace({
+      fixture,
+      message: 'worktree-branch automation',
+      write: workspaceId => updateWorktreeBranchAutomation({ enabled: true }, workspaceId),
+      read: workspaceId => getLaunchSettings(workspaceId),
+      extract: settings => settings.worktreeBranchAutomationEnabled,
+      expected: true,
+      present: value => value === true
+    });
+  });
+
+  // Phase 0 — the origin bug, end to end. Per-user launch mechanics (pre-command
+  // and flags) are a per-device preference shared across a profile's workspaces,
+  // so the scoping guarantee is not "absent in A" but that a config saved through
+  // the workspace-scoped surface is the one `launchObjective` resolves when it
+  // queues from the objective's OWN (secondary) workspace context. Before Phase 0
+  // the webapp read/wrote these against the active workspace while the catalog was
+  // already scoped to the project's workspace, and a secondary-workspace mission
+  // launched with an empty config.
+  it('surfaces the objective-workspace launch config to launchObjective (Phase 0)', async () => {
+    const fixture = await setupSecondaryWorkspaceFixture({ namePrefix: 'Launch Config' });
+    const { getLaunchSettings, updateAgentLaunchConfig, launchObjective } =
+      await import('./execution/launch.ts');
+
+    const expectedConfig = { preCommand: 'echo secondary', flags: ['--secondary'] };
+
+    // Saving through the surface scoped to the objective's workspace B.
+    const saved = await updateAgentLaunchConfig('codex', expectedConfig, fixture.secondary.id);
+    assert.deepEqual(saved.agentConfigs.codex, expectedConfig);
+
+    // Reading the surface back scoped to B returns it.
+    const readB = await getLaunchSettings(fixture.secondary.id);
+    assert.deepEqual(readB.agentConfigs.codex, expectedConfig);
+
+    // End-to-end: `launchObjective` builds the objective's own (secondary)
+    // workspace context, so the queued request carries the saved config — not the
+    // empty config the pre-fix active-workspace path yielded for a B objective.
+    const queued = await launchObjective(fixture.objectiveId, { agent: 'codex' });
+    assert.equal(queued.status, 'queued');
+    assert.equal(
+      queued.launchConfig.preCommand,
+      expectedConfig.preCommand,
+      'the queued request must carry the pre-command resolved from the objective workspace'
+    );
+    assert.deepEqual(queued.launchConfig.flags, expectedConfig.flags);
   });
 });

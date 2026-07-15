@@ -2,7 +2,7 @@ import type { DatabaseClient } from '@overlord/database';
 
 import { loadConfig } from '../cli/src/config.ts';
 
-import { nowIso, requireDatabaseClient, WORKSPACE } from './db.ts';
+import { nowIso, requireDatabaseClient } from './db.ts';
 import { ApiError } from './errors.ts';
 
 export const SQL_STUDIO_SETTINGS_KEY = 'sqlStudioEnabled';
@@ -62,12 +62,12 @@ export function sqlStudioEnabledFromSettingsJson(raw: string): boolean {
 }
 
 export async function readSqlStudioEnabled({
-  workspaceId = WORKSPACE.id,
+  workspaceId,
   client = requireDatabaseClient()
 }: {
-  workspaceId?: string;
+  workspaceId: string;
   client?: DatabaseClient;
-} = {}): Promise<boolean> {
+}): Promise<boolean> {
   return sqlStudioEnabledFromSettingsJson(await readSettingsJson(workspaceId, client));
 }
 
