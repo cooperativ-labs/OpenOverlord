@@ -4511,6 +4511,26 @@ function toMyMissionDto(r: MyMissionRow, tags: ProjectTagDto[]): MyMissionDto {
   };
 }
 
+/** Every active workspace membership for the authenticated profile, across organizations. */
+export async function callerWorkspaceMemberships(
+  client: DatabaseClient = requireDatabaseClient()
+): Promise<Array<{ workspaceId: string; workspaceUserId: string }>> {
+  const profileId = await resolveActiveProfileId(client);
+  if (!profileId) return [];
+  const rows = await client.all<{ workspace_id: string; workspace_user_id: string }>(
+    `SELECT wu.workspace_id, wu.id AS workspace_user_id
+       FROM workspace_users wu
+       JOIN workspaces w ON w.id = wu.workspace_id AND w.deleted_at IS NULL
+      WHERE wu.profile_id = ? AND wu.status = 'active' AND wu.deleted_at IS NULL
+      ORDER BY wu.created_at ASC, wu.id ASC`,
+    [profileId]
+  );
+  return rows.map(row => ({
+    workspaceId: row.workspace_id,
+    workspaceUserId: row.workspace_user_id
+  }));
+}
+
 /**
  * The caller's active `(workspace_id, workspace_user_id)` memberships across
  * every live workspace of the active organization — My Missions aggregates

@@ -25,9 +25,15 @@ import {
   writeSharedContext
 } from '../packages/core/service/protocol.ts';
 
-import { getActorWorkspaceUserId, serviceDatabaseClient, WORKSPACE } from './db.ts';
+import {
+  buildWebappServiceContextForWorkspace,
+  getActorWorkspaceUserId,
+  serviceDatabaseClient,
+  WORKSPACE
+} from './db.ts';
 import { ApiError } from './errors.ts';
-import { requirePermission } from './rbac.ts';
+import { requirePermission, requireWorkspacePermission } from './rbac.ts';
+import { callerWorkspaceMemberships } from './repository.ts';
 
 // ---- Protocol command dispatch -------------------------------------------
 //
@@ -63,6 +69,75 @@ function buildContext(): ServiceContext {
     actorWorkspaceUserId: getActorWorkspaceUserId(),
     source: 'protocol'
   };
+}
+
+async function protocolWorkspaceId(body: ProtocolRequestBody): Promise<string | null> {
+  const scopes = await callerWorkspaceMemberships();
+  if (scopes.length === 0) return null;
+  const workspaceIds = scopes.map(scope => scope.workspaceId);
+  const placeholders = workspaceIds.map(() => '?').join(', ');
+  const db = serviceDatabaseClient();
+
+  const executionRequestId = strFlag(body, '--execution-request-id');
+  if (executionRequestId) {
+    const request = await db.get<{ workspace_id: string }>(
+      `SELECT workspace_id FROM execution_requests
+        WHERE id = ? AND deleted_at IS NULL AND workspace_id IN (${placeholders})`,
+      [executionRequestId, ...workspaceIds]
+    );
+    if (request) return request.workspace_id;
+  }
+
+  const sessionKey = strFlag(body, '--session-key');
+  if (sessionKey) {
+    const session = await db.get<{ workspace_id: string }>(
+      `SELECT workspace_id FROM agent_sessions
+        WHERE session_key = ? AND workspace_id IN (${placeholders})`,
+      [sessionKey, ...workspaceIds]
+    );
+    if (session) return session.workspace_id;
+  }
+
+  const missionRef = strFlag(body, '--mission-id');
+  if (!missionRef) return null;
+  const byId = await db.get<{ workspace_id: string }>(
+    `SELECT workspace_id FROM missions
+      WHERE id = ? AND deleted_at IS NULL AND workspace_id IN (${placeholders})`,
+    [missionRef, ...workspaceIds]
+  );
+  if (byId) return byId.workspace_id;
+
+  const byDisplay = await db.all<{ workspace_id: string }>(
+    `SELECT workspace_id FROM missions
+      WHERE display_id = ? AND deleted_at IS NULL AND workspace_id IN (${placeholders})`,
+    [missionRef, ...workspaceIds]
+  );
+  if (byDisplay.length > 1) {
+    throw new ApiError(409, `Mission reference is ambiguous across workspaces: ${missionRef}`);
+  }
+  return byDisplay[0]?.workspace_id ?? null;
+}
+
+async function buildProtocolContext(
+  body: ProtocolRequestBody,
+  permission: Permission | null
+): Promise<ServiceContext> {
+  const workspaceId = await protocolWorkspaceId(body);
+  if (!workspaceId) {
+    if (permission) await requirePermission(permission);
+    return buildContext();
+  }
+  const workspaceUserId = permission
+    ? await requireWorkspacePermission({ workspaceId, permission })
+    : (await callerWorkspaceMemberships()).find(scope => scope.workspaceId === workspaceId)
+        ?.workspaceUserId;
+  if (!workspaceUserId) throw new ApiError(404, 'Workspace not found');
+  const ctx = await buildWebappServiceContextForWorkspace(
+    workspaceId,
+    serviceDatabaseClient(),
+    workspaceUserId
+  );
+  return { ...ctx, source: 'protocol' };
 }
 
 // ---- flag/argument helpers -----------------------------------------------
@@ -525,7 +600,6 @@ export async function runProtocolSubcommand(
       `Supported subcommands: ${Object.keys(handlers).sort().join(', ')}`
     );
   }
-  const requiredPermission = SUBCOMMAND_PERMISSIONS[subcommand];
-  if (requiredPermission) await requirePermission(requiredPermission);
-  return handler(buildContext(), body);
+  const requiredPermission = SUBCOMMAND_PERMISSIONS[subcommand] ?? null;
+  return handler(await buildProtocolContext(body, requiredPermission), body);
 }

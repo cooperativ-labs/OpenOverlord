@@ -201,10 +201,10 @@ describe('mission and objective access in a secondary (non-active) workspace', (
 });
 
 // coo:135 objective 12: the runner claims/drives executions across every
-// workspace the caller belongs to in the active org (the My Missions
-// precedent), not just the active one. Before this, a desktop runner never saw
-// executions queued in a secondary workspace, and branch-prepared / status
-// transitions 404'd because they scoped to the active workspace.
+// workspace the caller belongs to, not just the active one. Before this, a
+// desktop runner never saw executions queued in a secondary workspace, and
+// branch-prepared / status transitions 404'd because they scoped to the active
+// workspace.
 describe('runner claims and drives executions in a secondary (non-active) workspace', () => {
   it('claims a secondary-workspace execution, transitions it, and records its prepared branch', async () => {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-secondary-runner-'));
@@ -294,6 +294,63 @@ describe('runner claims and drives executions in a secondary (non-active) worksp
     });
     const branch = (await getMissionDetail(mission.id)).branch;
     assert.equal(branch?.name, 'overlord/run-in-the-secondary-workspace-1');
+
+    const { runProtocolSubcommand } = await import('./protocol.ts');
+    const context = (await runProtocolSubcommand('load-context', {
+      flags: { '--mission-id': mission.id }
+    })) as { mission: { id: string } };
+    assert.equal(context.mission.id, mission.id);
+  });
+
+  it('claims executions from a workspace in another organization', async () => {
+    const dir = mkdtempSync(path.join('/tmp', 'ovld-cross-org-runner-'));
+    const { bootstrapIntegrationTestDb, seedAuthenticatedOperatorClient } =
+      await import('./test-helpers.ts');
+    const { WORKSPACE } = await bootstrapIntegrationTestDb({
+      sqlitePath: path.join(dir, 'Overlord.sqlite')
+    });
+
+    const { requireDatabaseClient, setActiveWorkspace } = await import('./db.ts');
+    await seedAuthenticatedOperatorClient({
+      client: requireDatabaseClient(),
+      organizationId: 'secondary-runner-organization',
+      workspaceId: 'secondary-runner-workspace',
+      profileId: 'operator-user',
+      workspaceUserId: 'secondary-runner-workspace-user'
+    });
+    await setActiveWorkspace(WORKSPACE.id);
+
+    const { createProject, createProjectResource, createMission } = await import('./repository.ts');
+    const { launchObjective } = await import('./execution/launch.ts');
+    const { claimRunnerRequest, runnerStatus } = await import('./execution/runner.ts');
+
+    const project = await createProject({
+      name: 'Cross-organization Runner Project',
+      workspaceId: 'secondary-runner-workspace'
+    });
+    await createProjectResource(project.id, {
+      directoryPath: mkdtempSync(path.join('/tmp', 'ovld-cross-org-runner-resource-')),
+      executionTargetId: null,
+      isPrimary: true
+    });
+    const mission = await createMission({
+      projectId: project.id,
+      firstObjective: 'Run in another organization'
+    });
+    const queued = await launchObjective(mission.objectives[0]!.id, { agent: 'codex' });
+
+    const status = await runnerStatus();
+    assert.ok(
+      (status.queue as Array<{ id: string }>).some(request => request.id === queued.id),
+      'runner status must include queued work from every workspace membership'
+    );
+
+    const claimed = await claimRunnerRequest();
+    assert.equal((claimed.request as { id: string } | null)?.id, queued.id);
+    assert.equal(
+      (claimed.request as { workspaceId: string } | null)?.workspaceId,
+      'secondary-runner-workspace'
+    );
   });
 
   it('manages a secondary workspace’s card statuses while another is active', async () => {

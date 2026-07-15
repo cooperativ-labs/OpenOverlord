@@ -28,7 +28,7 @@ import {
 import { ApiError } from '../errors.ts';
 import { clientDeviceFromBody } from '../http/client-device.ts';
 import { requireWorkspacePermission } from '../rbac.ts';
-import { callerMembershipsInActiveOrganization } from '../repository.ts';
+import { callerWorkspaceMemberships } from '../repository.ts';
 
 type ClientDeviceBody = {
   deviceFingerprint?: string | null;
@@ -96,15 +96,15 @@ async function directProjectWorkspaceId(projectId: string): Promise<string | nul
 }
 
 /**
- * The caller's runner scope: every workspace of the active organization the
- * caller is an active member of (every role grants `execution_request:claim`),
+ * The caller's runner scope: every workspace the caller is an active member of
+ * across organizations (every role grants `execution_request:claim`),
  * narrowed to a single workspace when `projectId` resolves to one by id. This
  * is the runner counterpart of My Missions' cross-workspace aggregation.
  */
 async function resolveRunnerScopes(
   projectId?: string | null
 ): Promise<Array<{ workspaceId: string; workspaceUserId: string }>> {
-  const scopes = await callerMembershipsInActiveOrganization();
+  const scopes = await callerWorkspaceMemberships();
   if (projectId) {
     const owningWorkspaceId = await directProjectWorkspaceId(projectId);
     if (owningWorkspaceId) return scopes.filter(scope => scope.workspaceId === owningWorkspaceId);
@@ -216,10 +216,9 @@ export async function claimRunnerRequest({
 } = {}): Promise<{
   request: Record<string, unknown> | null;
 }> {
-  // Claim across every workspace the caller belongs to in the active
-  // organization (the My Missions precedent). Iterate in membership order and
-  // return the first workspace that yields a claimable request; the runner
-  // polls repeatedly, so subsequent polls drain the remaining workspaces.
+  // Claim across every workspace the caller belongs to across organizations.
+  // Iterate in membership order and return the first workspace that yields a
+  // claimable request; subsequent polls drain the remaining workspaces.
   for (const scope of await resolveRunnerScopes(projectId)) {
     const ctx = await workspaceServiceContext(
       scope.workspaceId,
@@ -518,10 +517,10 @@ export async function recordBranchPrepared({
   requestId?: string | null;
   payload: unknown;
 }): Promise<{ ok: true }> {
-  // Resolve the mission's own workspace across the caller's active-org
+  // Resolve the mission's own workspace across all of the caller's
   // memberships — `missionId` may be a display_id (unique per workspace), so a
   // runner driving a secondary-workspace mission still resolves it (coo:135).
-  const scopes = await callerMembershipsInActiveOrganization();
+  const scopes = await callerWorkspaceMemberships();
   if (scopes.length === 0) throw new ApiError(404, 'Mission not found');
   const placeholders = scopes.map(() => '?').join(', ');
   const mission = (await requireDatabaseClient().get(
