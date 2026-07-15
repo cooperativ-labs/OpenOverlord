@@ -825,6 +825,23 @@ app.delete(
     { mutates: true }
   )
 );
+// Workspace-scoped agent catalog. Unlike the legacy `/api/agent-catalog`
+// routes (active-workspace only), these target the `:id` workspace and
+// authorize `launch:read`/`launch:configure` against that workspace's own
+// membership inside the service, so the settings modal can manage any
+// accessible workspace's model catalog without switching to it (coo:324).
+app.get(
+  '/api/workspaces/:id/agent-catalog',
+  handle(req => getAgentCatalog(req.params.id))
+);
+app.put(
+  '/api/workspaces/:id/agent-catalog',
+  handle(req => updateAgentCatalog(req.body, req.params.id), { mutates: true })
+);
+app.post(
+  '/api/workspaces/:id/agent-catalog/refresh',
+  handle(req => refreshAgentCatalog(req.params.id), { mutates: true })
+);
 
 // ---- Profile -------------------------------------------------------------
 //

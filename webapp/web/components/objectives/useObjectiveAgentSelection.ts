@@ -5,6 +5,7 @@ import {
   useAgentCatalog,
   useLaunchPreference,
   useLaunchSettings,
+  useProject,
   useUpdateAgentLaunchConfig,
   useUpdateLaunchPreference,
   useUpdateObjective
@@ -26,7 +27,11 @@ import type { AgentModelSelection } from './AgentModelSelector.tsx';
  *   launch mechanics, not preference.
  */
 export function useObjectiveAgentSelection(objective: ObjectiveDto) {
-  const catalogQ = useAgentCatalog();
+  // The catalog is the objective's own workspace's — a mission open from a
+  // secondary workspace offers that workspace's agents, not the active one's
+  // (coo:324).
+  const projectQ = useProject(objective.projectId);
+  const catalogQ = useAgentCatalog(projectQ.data?.workspaceId);
   const settingsQ = useLaunchSettings();
   const preferenceQ = useLaunchPreference(objective.projectId);
   const updateObjective = useUpdateObjective();

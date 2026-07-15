@@ -4,7 +4,13 @@ import type {
   UpdateEverhourTimeBody
 } from '@overlord/contract/ext/everhour';
 import type { LinkProjectGitHubBody } from '@overlord/contract/ext/github';
-import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  type QueryClient,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient
+} from '@tanstack/react-query';
 
 import type {
   AcceptWorkspaceInvitationBody,
@@ -126,7 +132,8 @@ export const keys = {
   missionArtifacts: (id: string) => ['mission', id, 'artifacts'] as const,
   missionFileChanges: (id: string) => ['mission', id, 'file-changes'] as const,
   objectiveAttachments: (objectiveId: string) => ['objective', objectiveId, 'attachments'] as const,
-  agentCatalog: ['agent-catalog'] as const,
+  agentCatalog: (workspaceId?: string | null) =>
+    workspaceId ? (['agent-catalog', workspaceId] as const) : (['agent-catalog'] as const),
   runnerStatus: ['runner', 'status'] as const,
   runnerServiceStatus: ['runner', 'service-status'] as const,
   launchSettings: ['launch-settings'] as const,
@@ -281,6 +288,34 @@ export const useProjects = (workspaceId?: string) => {
     },
     enabled: Boolean(targetWorkspaceId)
   });
+};
+
+/**
+ * Projects across every accessible workspace of the active organization
+ * (coo:324), in `meta.workspaces` order. New-mission surfaces (new mission
+ * modal, quick task bar) use this so every workspace the caller is a member
+ * of is offered equally; per-workspace cache entries are shared with
+ * `useProjects(workspaceId)` via the same query keys.
+ */
+export const useAllProjects = () => {
+  const meta = useMeta();
+  const workspaces = meta.data?.workspaces ?? [];
+
+  const combined = useQueries({
+    queries: workspaces.map(workspace => ({
+      queryKey: keys.projects(workspace.id),
+      queryFn: () => api.listProjectsForWorkspace(workspace.id)
+    })),
+    combine: results => ({
+      projects: results.flatMap(result => result.data ?? []),
+      anyLoading: results.some(result => result.isLoading)
+    })
+  });
+
+  return {
+    data: combined.projects,
+    isLoading: meta.isLoading || combined.anyLoading
+  };
 };
 
 export const useProject = (id: string) =>
@@ -1412,8 +1447,18 @@ export function useReorderFutureObjectives() {
 
 // ---- Agent launch ----------------------------------------------------------
 
-export const useAgentCatalog = () =>
-  useQuery({ queryKey: keys.agentCatalog, queryFn: api.getAgentCatalog, staleTime: 60_000 });
+/**
+ * A workspace's agent/model catalog. Pass a `workspaceId` to read the catalog
+ * of any workspace the caller is a member of (workspace-equal surfaces such as
+ * the workspace settings Models page or a cross-workspace project chooser);
+ * omit it for the active workspace.
+ */
+export const useAgentCatalog = (workspaceId?: string | null) =>
+  useQuery({
+    queryKey: keys.agentCatalog(workspaceId),
+    queryFn: () => api.getAgentCatalog(workspaceId),
+    staleTime: 60_000
+  });
 
 export const useLaunchSettings = () =>
   useQuery({ queryKey: keys.launchSettings, queryFn: api.getLaunchSettings, staleTime: 60_000 });
@@ -1494,19 +1539,19 @@ export function useUpdateLaunchPreference(projectId: string) {
   });
 }
 
-export function useRefreshAgentCatalog() {
+export function useRefreshAgentCatalog(workspaceId?: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => api.refreshAgentCatalog(),
-    onSuccess: data => qc.setQueryData(keys.agentCatalog, data)
+    mutationFn: () => api.refreshAgentCatalog(workspaceId),
+    onSuccess: data => qc.setQueryData(keys.agentCatalog(workspaceId), data)
   });
 }
 
-export function useUpdateAgentCatalog() {
+export function useUpdateAgentCatalog(workspaceId?: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: UpdateAgentCatalogBody) => api.updateAgentCatalog(body),
-    onSuccess: data => qc.setQueryData(keys.agentCatalog, data)
+    mutationFn: (body: UpdateAgentCatalogBody) => api.updateAgentCatalog(body, workspaceId),
+    onSuccess: data => qc.setQueryData(keys.agentCatalog(workspaceId), data)
   });
 }
 

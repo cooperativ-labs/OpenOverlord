@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 
 import { readStoredDefaultProjectId } from '@/components/quick-task-bar/quick-task-page-state.ts';
 import { QuickTaskBar } from '@/components/quick-task-bar/QuickTaskBar.tsx';
-import { useProjects } from '@/lib/queries.ts';
+import { useAllProjects } from '@/lib/queries.ts';
 
 function QuickTaskChrome() {
   useEffect(() => {
@@ -19,7 +19,7 @@ function QuickTaskChrome() {
 }
 
 export function QuickTaskPage() {
-  const projectsQ = useProjects();
+  const projectsQ = useAllProjects();
   const defaultProjectId = readStoredDefaultProjectId();
 
   if (projectsQ.isLoading) {

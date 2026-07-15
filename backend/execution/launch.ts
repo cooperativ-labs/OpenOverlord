@@ -16,7 +16,7 @@
  *   config → workspace default → empty) and snapshots it into
  *   `execution_requests.launch_flags_json` for the runner to consume verbatim.
  */
-import { PERMISSIONS } from '@overlord/auth';
+import { type Permission, PERMISSIONS } from '@overlord/auth';
 import type { TerminalProfile } from '@overlord/core/service/terminal-profile-types';
 import type { DatabaseClient } from '@overlord/database';
 
@@ -74,7 +74,7 @@ import {
   WORKSPACE
 } from '../db.ts';
 import { ApiError } from '../errors.ts';
-import { actorCan, requireProjectPermission } from '../rbac.ts';
+import { actorCan, requireProjectPermission, requireWorkspacePermission } from '../rbac.ts';
 
 // ---- Instance default catalog ----------------------------------------------
 //
@@ -127,18 +127,20 @@ async function readWorkspaceSettings(
 
 async function writeWorkspaceSettings(
   settings: Record<string, unknown>,
-  client: DatabaseClient = requireDatabaseClient()
+  client: DatabaseClient = requireDatabaseClient(),
+  workspaceId: string = WORKSPACE.id
 ): Promise<void> {
   await client.run(
     `UPDATE workspaces SET settings_json = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`,
-    [JSON.stringify(settings), nowIso(), WORKSPACE.id]
+    [JSON.stringify(settings), nowIso(), workspaceId]
   );
 }
 
 async function readStoredCatalog(
-  client: DatabaseClient = requireDatabaseClient()
+  client: DatabaseClient = requireDatabaseClient(),
+  workspaceId: string = WORKSPACE.id
 ): Promise<StoredCatalog | null> {
-  const settings = await readWorkspaceSettings(client);
+  const settings = await readWorkspaceSettings(client, workspaceId);
   const stored = settings[AGENT_CATALOG_SETTINGS_KEY] as StoredCatalog | undefined;
   if (!stored || typeof stored !== 'object' || typeof stored.agents !== 'object') return null;
   return stored;
@@ -146,11 +148,34 @@ async function readStoredCatalog(
 
 async function persistCatalog(
   catalog: StoredCatalog,
-  client: DatabaseClient = requireDatabaseClient()
+  client: DatabaseClient = requireDatabaseClient(),
+  workspaceId: string = WORKSPACE.id
 ): Promise<void> {
-  const settings = await readWorkspaceSettings(client);
+  const settings = await readWorkspaceSettings(client, workspaceId);
   settings[AGENT_CATALOG_SETTINGS_KEY] = { ...catalog, updatedAt: nowIso() };
-  await writeWorkspaceSettings(settings, client);
+  await writeWorkspaceSettings(settings, client, workspaceId);
+}
+
+/**
+ * Resolve which workspace a catalog operation targets. An explicit
+ * `workspaceId` is authorized against the caller's own membership in *that*
+ * workspace (coo:96/coo:135 pattern — independent of the active one, 404 for
+ * non-members); omitted, it falls back to the request's active workspace,
+ * whose route-level permission gate has already run.
+ */
+async function resolveCatalogWorkspaceId(
+  workspaceId: string | undefined,
+  permission: Permission,
+  db: DatabaseClient
+): Promise<string> {
+  if (!workspaceId) return WORKSPACE.id;
+  await requireWorkspacePermission({
+    workspaceId,
+    permission,
+    db,
+    notFoundMessage: 'Workspace not found or no active membership'
+  });
+  return workspaceId;
 }
 
 /**
@@ -209,13 +234,22 @@ function toCatalogDto(stored: StoredCatalog): AgentCatalogDto {
   };
 }
 
-/** Read the workspace agent catalog, seeding it from the bundled default on first use. */
-export async function getAgentCatalog(): Promise<AgentCatalogDto> {
+/**
+ * Read a workspace's agent catalog, seeding it from the bundled default on
+ * first use. Defaults to the request's active workspace; an explicit
+ * `workspaceId` targets any workspace the caller is a member of.
+ */
+export async function getAgentCatalog(workspaceId?: string): Promise<AgentCatalogDto> {
   return requireDatabaseClient().transaction(async tx => {
-    let stored = await readStoredCatalog(tx);
+    const targetWorkspaceId = await resolveCatalogWorkspaceId(
+      workspaceId,
+      PERMISSIONS.LAUNCH_READ,
+      tx
+    );
+    let stored = await readStoredCatalog(tx, targetWorkspaceId);
     if (!stored) {
       stored = { agents: instanceAgentCatalog() };
-      await persistCatalog(stored, tx);
+      await persistCatalog(stored, tx, targetWorkspaceId);
     }
     return toCatalogDto(stored);
   });
@@ -226,9 +260,14 @@ export async function getAgentCatalog(): Promise<AgentCatalogDto> {
  * and models that have shipped since the catalog was seeded while preserving
  * workspace customisations (labels, defaults, removed availability).
  */
-export async function refreshAgentCatalog(): Promise<AgentCatalogDto> {
+export async function refreshAgentCatalog(workspaceId?: string): Promise<AgentCatalogDto> {
   return requireDatabaseClient().transaction(async tx => {
-    const stored = (await readStoredCatalog(tx)) ?? { agents: {} };
+    const targetWorkspaceId = await resolveCatalogWorkspaceId(
+      workspaceId,
+      PERMISSIONS.LAUNCH_CONFIGURE,
+      tx
+    );
+    const stored = (await readStoredCatalog(tx, targetWorkspaceId)) ?? { agents: {} };
     for (const [key, bundled] of Object.entries(instanceAgentCatalog())) {
       const existing = stored.agents[key];
       if (!existing) {
@@ -240,7 +279,7 @@ export async function refreshAgentCatalog(): Promise<AgentCatalogDto> {
         if (!knownIds.has(model.id)) existing.models.push(structuredClone(model));
       }
     }
-    await persistCatalog(stored, tx);
+    await persistCatalog(stored, tx, targetWorkspaceId);
     return toCatalogDto(stored);
   });
 }
@@ -321,10 +360,18 @@ function storedCatalogFromBody(body: UpdateAgentCatalogBody): StoredCatalog {
 }
 
 /** Replace the workspace agent catalog with a validated client payload. */
-export async function updateAgentCatalog(body: UpdateAgentCatalogBody): Promise<AgentCatalogDto> {
+export async function updateAgentCatalog(
+  body: UpdateAgentCatalogBody,
+  workspaceId?: string
+): Promise<AgentCatalogDto> {
   return requireDatabaseClient().transaction(async tx => {
+    const targetWorkspaceId = await resolveCatalogWorkspaceId(
+      workspaceId,
+      PERMISSIONS.LAUNCH_CONFIGURE,
+      tx
+    );
     const stored = storedCatalogFromBody(body);
-    const existing = (await readStoredCatalog(tx)) ?? { agents: {} };
+    const existing = (await readStoredCatalog(tx, targetWorkspaceId)) ?? { agents: {} };
 
     for (const [key, agent] of Object.entries(stored.agents)) {
       const previous = existing.agents[key];
@@ -333,7 +380,7 @@ export async function updateAgentCatalog(body: UpdateAgentCatalogBody): Promise<
       }
     }
 
-    await persistCatalog(stored, tx);
+    await persistCatalog(stored, tx, targetWorkspaceId);
     return toCatalogDto(stored);
   });
 }

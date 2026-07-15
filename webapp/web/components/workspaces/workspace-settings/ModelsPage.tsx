@@ -364,12 +364,14 @@ function AgentModelsSection({
 
 type ModelsPageProps = {
   open: boolean;
+  /** The workspace whose catalog is being managed — not necessarily the active one (coo:324). */
+  workspaceId: string;
 };
 
-export function ModelsPage({ open }: ModelsPageProps) {
-  const catalog = useAgentCatalog();
-  const refreshCatalog = useRefreshAgentCatalog();
-  const updateCatalog = useUpdateAgentCatalog();
+export function ModelsPage({ open, workspaceId }: ModelsPageProps) {
+  const catalog = useAgentCatalog(workspaceId);
+  const refreshCatalog = useRefreshAgentCatalog(workspaceId);
+  const updateCatalog = useUpdateAgentCatalog(workspaceId);
 
   const [draftAgents, setDraftAgents] = useState<DraftAgent[]>([]);
   const [savedAgents, setSavedAgents] = useState<DraftAgent[]>([]);

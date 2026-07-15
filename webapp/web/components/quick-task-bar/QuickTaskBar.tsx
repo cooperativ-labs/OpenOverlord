@@ -26,14 +26,15 @@ import {
   projectResourceLabel
 } from '@/lib/project-resources.ts';
 import {
+  useAccessibleWorkspaces,
   useAgentCatalog,
+  useAllProjects,
   useCreateMission,
   useLaunchObjective,
   useLaunchPreference,
   useLaunchSettings,
   useProjectExecutionTarget,
   useProjectResources,
-  useProjects,
   useUpdateAgentLaunchConfig,
   useUpdateLaunchPreference,
   useUpdateObjective
@@ -60,23 +61,28 @@ type QuickTaskBarProps = {
 };
 
 export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
-  const projectsQ = useProjects();
+  // Every accessible workspace's projects are offered — quick tasks may land
+  // in any workspace the caller is a member of (coo:324).
+  const projectsQ = useAllProjects();
+  const workspaces = useAccessibleWorkspaces();
   const createMission = useCreateMission();
   const launchObjective = useLaunchObjective();
   const updateObjective = useUpdateObjective();
-  const catalogQ = useAgentCatalog();
   const settingsQ = useLaunchSettings();
 
   const projects = useMemo<ProjectOption[]>(
     () =>
-      (projectsQ.data ?? [])
+      projectsQ.data
         .filter(project => project.status === 'active')
         .map(project => ({
           id: project.id,
           name: project.name,
-          color: project.color
+          color: project.color,
+          workspaceId: project.workspaceId,
+          workspaceName:
+            workspaces.find(workspace => workspace.id === project.workspaceId)?.name ?? null
         })),
-    [projectsQ.data]
+    [projectsQ.data, workspaces]
   );
 
   const resolvedDefaultProjectId = resolveProjectId(projects, defaultProjectId);
@@ -99,10 +105,15 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
     return containerRef.current?.querySelector('textarea') ?? null;
   }, []);
 
+  const selectedProject = projects.find(project => project.id === selectedProjectId) ?? null;
+
   const preferenceQ = useLaunchPreference(selectedProjectId);
   const resourcesQ = useProjectResources(selectedProjectId);
   const updatePreference = useUpdateLaunchPreference(selectedProjectId);
   const updateAgentConfig = useUpdateAgentLaunchConfig();
+  // The agent/model catalog follows the selected project's own workspace, so
+  // cross-workspace projects offer their workspace's agents (coo:324).
+  const catalogQ = useAgentCatalog(selectedProject?.workspaceId);
 
   const catalog = catalogQ.data ?? null;
   const agentConfigs = settingsQ.data?.agentConfigs ?? {};
@@ -130,7 +141,6 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
     setObjectiveSelection(defaultSelection);
   }, [defaultSelection]);
 
-  const selectedProject = projects.find(project => project.id === selectedProjectId) ?? null;
   const selectedAgentDef = catalog?.agents.find(a => a.key === objectiveSelection.agent);
   const selectedAgentModelDef = selectedAgentDef?.models.find(
     m => m.id === objectiveSelection.model
@@ -193,9 +203,9 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
           height: container.offsetHeight,
           barOffsetTop: Math.round(barTop - containerTop)
         })
-        .catch(() => { });
+        .catch(() => {});
     } else {
-      quickTaskApi.setHeight(container.offsetHeight).catch(() => { });
+      quickTaskApi.setHeight(container.offsetHeight).catch(() => {});
     }
   }, [resolveTextarea]);
 
@@ -245,7 +255,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
   const handleClose = useCallback(() => {
     const quickTaskApi = getQuickTaskApi();
     if (quickTaskApi) {
-      quickTaskApi.close().catch(() => { });
+      quickTaskApi.close().catch(() => {});
       return;
     }
     setObjective('');
@@ -585,7 +595,9 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
               {isSubmitting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <div className="flex items-center gap-1"><ArrowUp className="h-4 w-4" /> "Save"</div>
+                <div className="flex items-center gap-1">
+                  <ArrowUp className="h-4 w-4" /> "Save"
+                </div>
               )}
             </button>
           </div>

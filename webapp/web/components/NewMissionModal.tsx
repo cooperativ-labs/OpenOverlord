@@ -26,14 +26,15 @@ import {
   objectiveResourceConnection
 } from '@/lib/project-resources.ts';
 import {
+  useAccessibleWorkspaces,
   useAgentCatalog,
+  useAllProjects,
   useCreateMission,
   useLaunchObjective,
   useLaunchPreference,
   useLaunchSettings,
   useProjectExecutionTarget,
   useProjectResources,
-  useProjects,
   useProjectTags,
   useUpdateAgentLaunchConfig,
   useUpdateLaunchPreference,
@@ -65,15 +66,17 @@ export function NewMissionModal({
   defaultStatusId = null,
   defaultDueDate = null
 }: NewMissionModalProps) {
-  const projectsQ = useProjects();
+  // Every accessible workspace's projects are offered — new missions may land
+  // in any workspace the caller is a member of (coo:324).
+  const projectsQ = useAllProjects();
   const projects = useMemo(
-    () => (projectsQ.data ?? []).filter(project => project.status === 'active'),
+    () => projectsQ.data.filter(project => project.status === 'active'),
     [projectsQ.data]
   );
+  const workspaces = useAccessibleWorkspaces();
   const createMission = useCreateMission();
   const launchObjective = useLaunchObjective();
   const updateObjective = useUpdateObjective();
-  const catalogQ = useAgentCatalog();
   const settingsQ = useLaunchSettings();
   const updateAgentConfig = useUpdateAgentLaunchConfig();
 
@@ -96,6 +99,23 @@ export function NewMissionModal({
       : (fallbackProjectId ?? projects[0]?.id ?? ''));
 
   const selectedProject = projects.find(project => project.id === selectedProjectId) ?? null;
+
+  // The agent/model catalog is governed by the selected project's own
+  // workspace, not the caller's active one, so cross-workspace projects offer
+  // their workspace's agents (coo:324).
+  const catalogQ = useAgentCatalog(selectedProject?.workspaceId);
+
+  // Group the chooser by workspace only when more than one workspace has
+  // projects to offer.
+  const projectGroups = useMemo(() => {
+    return workspaces
+      .map(workspace => ({
+        workspace,
+        projects: projects.filter(project => project.workspaceId === workspace.id)
+      }))
+      .filter(group => group.projects.length > 0);
+  }, [projects, workspaces]);
+  const showWorkspaceGroups = projectGroups.length > 1;
 
   const tagsQ = useProjectTags(selectedProjectId || null);
   const tags = useMemo(() => (tagsQ.data ?? []).filter(tag => tag.active), [tagsQ.data]);
@@ -199,11 +219,23 @@ export function NewMissionModal({
 
       // Omit statusId so the mission lands in the workspace default status,
       // unless the caller asked for a specific column (e.g. a workspace board
-      // column's "Add mission" button).
+      // column's "Add mission" button). Statuses are workspace-scoped, so a
+      // caller-supplied status only applies while the chosen project is in
+      // the same workspace as the surface that supplied it.
+      const defaultProject = defaultProjectId
+        ? (projects.find(project => project.id === defaultProjectId) ?? null)
+        : null;
+      const applicableStatusId =
+        defaultStatusId &&
+        selectedProject &&
+        defaultProject &&
+        selectedProject.workspaceId === defaultProject.workspaceId
+          ? defaultStatusId
+          : undefined;
       const detail = await createMission.mutateAsync({
         projectId: selectedProjectId,
         objectives: [{ objective: text, ...(resourceKey ? { resourceKey } : {}) }],
-        statusId: defaultStatusId ?? undefined,
+        statusId: applicableStatusId,
         tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined
       });
       if (defaultDueDate) {
@@ -326,27 +358,39 @@ export function NewMissionModal({
                 <DropdownMenuContent align="start" className="min-w-[180px]">
                   <DropdownMenuLabel>Project</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {projects.map(project => (
-                    <DropdownMenuItem
-                      key={project.id}
-                      className="gap-2 text-xs"
-                      onClick={() => {
-                        setProjectId(project.id);
-                        setSelectedTagIds([]);
-                      }}
-                    >
-                      <span
-                        className="h-3 w-3 shrink-0 rounded-[4px] border"
-                        style={{
-                          backgroundColor: project.color ?? undefined,
-                          borderColor: project.color ?? undefined
-                        }}
-                      />
-                      <span className="truncate">{project.name}</span>
-                      {project.id === selectedProjectId && (
-                        <Check className="ml-auto h-3 w-3 text-muted-foreground" />
-                      )}
-                    </DropdownMenuItem>
+                  {projectGroups.map((group, groupIndex) => (
+                    <div key={group.workspace.id}>
+                      {showWorkspaceGroups ? (
+                        <>
+                          {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
+                          <DropdownMenuLabel className="text-[10px] font-normal uppercase tracking-wide text-muted-foreground">
+                            {group.workspace.name}
+                          </DropdownMenuLabel>
+                        </>
+                      ) : null}
+                      {group.projects.map(project => (
+                        <DropdownMenuItem
+                          key={project.id}
+                          className="gap-2 text-xs"
+                          onClick={() => {
+                            setProjectId(project.id);
+                            setSelectedTagIds([]);
+                          }}
+                        >
+                          <span
+                            className="h-3 w-3 shrink-0 rounded-[4px] border"
+                            style={{
+                              backgroundColor: project.color ?? undefined,
+                              borderColor: project.color ?? undefined
+                            }}
+                          />
+                          <span className="truncate">{project.name}</span>
+                          {project.id === selectedProjectId && (
+                            <Check className="ml-auto h-3 w-3 text-muted-foreground" />
+                          )}
+                        </DropdownMenuItem>
+                      ))}
+                    </div>
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>

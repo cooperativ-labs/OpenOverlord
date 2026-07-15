@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '10'
+contractVersion: '11'
 
 components:
   protocol:
@@ -133,6 +133,7 @@ components:
       - 'organization management endpoints: list organizations for the caller, update an organization (org-admin gated), list/add/remove organization admins (add/remove maintains the invariant that an org admin is ADMIN of every constituent workspace)'
       - 'shared onboarding endpoint (POST /api/onboarding, zero-membership users only): creates an organization, a default workspace, membership, and ADMIN role in one transaction; used verbatim by the web onboarding screen and the ovld org-setup CLI command'
       - 'project APIs support explicit target workspace context for multi-workspace organization UIs: CreateProjectBody.workspaceId and GET /api/workspaces/:id/statuses'
+      - "workspace agent catalog management for workspaces.settings_json.agentCatalog: active-workspace routes (GET/PUT /api/agent-catalog, POST /api/agent-catalog/refresh) plus workspace-scoped equivalents (GET/PUT /api/workspaces/:id/agent-catalog, POST /api/workspaces/:id/agent-catalog/refresh) authorized against the target workspace's own membership (launch:read to view, launch:configure to mutate; non-membership reads as 404)"
       - "workspace execution-target projection: GET /api/workspaces/:id/execution-targets returns all non-deleted target identity/status/owner display metadata, reachability, and active workspace-member access count to an authenticated member; never connection_json, credentials, target registration, creation, or access mutation; project selection remains limited to the acting member's eligible targets. Workspace admins may rename a target label via PATCH /api/workspaces/:id/execution-targets/:targetId { label }"
       - 'storage routes for the organization-images bucket key (/api/storage/organization-images/…) with a PUBLIC organization_image:read grant'
       - 'hosted MCP OAuth endpoints: POST /oauth/register, POST /oauth/token, POST /oauth/revoke, GET /oauth/authorize, POST /oauth/authorize/request, POST /oauth/authorize/approve'

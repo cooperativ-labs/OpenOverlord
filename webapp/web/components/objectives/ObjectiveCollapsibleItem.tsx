@@ -14,7 +14,12 @@ import type { ObjectiveDto } from '../../../shared/contract.ts';
 import { getAgentIcon } from '../../lib/helpers/agent-icons.ts';
 import { buildAgentResumeCommand } from '../../lib/helpers/agent-resume-command.ts';
 import { useCopyToClipboard } from '../../lib/hooks/use-copy-to-clipboard.ts';
-import { useAgentCatalog, useObjectiveAttachments, useUpdateObjective } from '../../lib/queries.ts';
+import {
+  useAgentCatalog,
+  useObjectiveAttachments,
+  useProject,
+  useUpdateObjective
+} from '../../lib/queries.ts';
 import { cn } from '../../lib/utils.ts';
 import { InlineEditField } from '../InlineEditField.tsx';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible.tsx';
@@ -42,7 +47,9 @@ export function ObjectiveCollapsibleItem({
   const update = useUpdateObjective();
   const { copied, copy } = useCopyToClipboard();
   const [open, setOpen] = useState(false);
-  const catalogQuery = useAgentCatalog();
+  // Display labels come from the objective's own workspace's catalog (coo:324).
+  const projectQuery = useProject(objective.projectId);
+  const catalogQuery = useAgentCatalog(projectQuery.data?.workspaceId);
   const { data: attachments = [] } = useObjectiveAttachments(objective.id, { enabled: open });
 
   const isExecuting = objective.state === 'executing';

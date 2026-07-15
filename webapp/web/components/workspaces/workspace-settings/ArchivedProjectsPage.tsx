@@ -4,8 +4,13 @@ import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useProjects, useUnarchiveProject } from '@/lib/queries';
 
-export function ArchivedProjectsPage() {
-  const projects = useProjects();
+type ArchivedProjectsPageProps = {
+  /** The workspace whose archive is being managed — not necessarily the active one (coo:324). */
+  workspaceId: string;
+};
+
+export function ArchivedProjectsPage({ workspaceId }: ArchivedProjectsPageProps) {
+  const projects = useProjects(workspaceId);
   const unarchiveProject = useUnarchiveProject();
   const [unarchivingId, setUnarchivingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

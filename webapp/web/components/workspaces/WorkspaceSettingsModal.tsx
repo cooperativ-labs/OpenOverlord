@@ -84,15 +84,13 @@ export function WorkspaceSettingsModal({
         <>
           {activeNav === 'General' && <GeneralPage open={open} workspace={workspace} />}
           {activeNav === 'Members' && <MembersPage workspaceId={workspace.id} />}
-          {activeNav === 'Models' &&
-            // `/api/agent-catalog` is scoped to the active workspace.
-            (workspace.isActive ? (
-              <ModelsPage open={open} />
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Switch to this workspace to manage its model catalog.
-              </p>
-            ))}
+          {activeNav === 'Models' && (
+            // The catalog is managed through the workspace-scoped routes
+            // (`/api/workspaces/:id/agent-catalog`), so any accessible
+            // workspace's models can be edited here without first switching
+            // to it (coo:324).
+            <ModelsPage open={open} workspaceId={workspace.id} />
+          )}
           {activeNav === 'Execution targets' && <ExecutionTargetsPage workspaceId={workspace.id} />}
           {activeNav === 'Card statuses' && (
             // Statuses are managed through the workspace-scoped routes
@@ -100,16 +98,13 @@ export function WorkspaceSettingsModal({
             // can be edited here without first switching to it (coo:135).
             <StatusesPage workspaceId={workspace.id} />
           )}
-          {activeNav === 'Archived projects' &&
-            // `/api/projects` is scoped to the active workspace, so archived
-            // projects can only be managed for the workspace you are in.
-            (workspace.isActive ? (
-              <ArchivedProjectsPage />
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Switch to this workspace to manage its archived projects.
-              </p>
-            ))}
+          {activeNav === 'Archived projects' && (
+            // Projects are listed through the workspace-scoped route
+            // (`/api/workspaces/:id/projects`) and unarchived through the
+            // project's own workspace, so any accessible workspace's archive
+            // is manageable here (coo:324).
+            <ArchivedProjectsPage workspaceId={workspace.id} />
+          )}
           {activeNav === 'Danger zone' && (
             <DangerZonePage
               workspace={workspace}

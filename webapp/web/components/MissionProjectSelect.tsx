@@ -42,12 +42,18 @@ export function MissionProjectSelect({
   projectId,
   onProjectChanged
 }: MissionProjectSelectProps) {
-  const projectsQ = useProjects();
   const currentProjectQ = useProject(projectId);
+  // A mission can only move between projects of its own workspace (the
+  // display_id sequence and statuses are workspace-scoped), so the chooser
+  // lists that workspace's projects — not the caller's active one (coo:324).
+  const missionWorkspaceId = currentProjectQ.data?.workspaceId;
+  const projectsQ = useProjects(missionWorkspaceId);
   const update = useUpdateMission(missionId);
   const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
 
-  const projects = (projectsQ.data ?? []).filter(project => project.status === 'active');
+  const projects = missionWorkspaceId
+    ? (projectsQ.data ?? []).filter(project => project.status === 'active')
+    : [];
   const selectedProjectId = pendingProjectId ?? projectId;
   const currentProject =
     projects.find(project => project.id === selectedProjectId) ??

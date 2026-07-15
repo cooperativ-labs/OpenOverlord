@@ -2,6 +2,9 @@ export type ProjectOption = {
   id: string;
   name: string;
   color: string | null;
+  /** Owning workspace, so pickers can group and catalogs can scope (coo:324). */
+  workspaceId: string;
+  workspaceName: string | null;
 };
 
 export type StagedFile = {

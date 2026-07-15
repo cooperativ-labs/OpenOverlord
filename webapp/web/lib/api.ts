@@ -525,10 +525,27 @@ export const api = {
       `/api/objectives/${objectiveId}/attachments/${attachmentId}`
     ),
 
-  getAgentCatalog: () => request<AgentCatalogDto>('GET', '/api/agent-catalog'),
-  updateAgentCatalog: (body: UpdateAgentCatalogBody) =>
-    request<AgentCatalogDto>('PUT', '/api/agent-catalog', body),
-  refreshAgentCatalog: () => request<AgentCatalogDto>('POST', '/api/agent-catalog/refresh'),
+  // A `workspaceId` targets the workspace-scoped agent-catalog routes (any
+  // workspace the caller is a member of); omit it for the active-workspace
+  // legacy routes.
+  getAgentCatalog: (workspaceId?: string | null) =>
+    request<AgentCatalogDto>(
+      'GET',
+      workspaceId ? `/api/workspaces/${workspaceId}/agent-catalog` : '/api/agent-catalog'
+    ),
+  updateAgentCatalog: (body: UpdateAgentCatalogBody, workspaceId?: string | null) =>
+    request<AgentCatalogDto>(
+      'PUT',
+      workspaceId ? `/api/workspaces/${workspaceId}/agent-catalog` : '/api/agent-catalog',
+      body
+    ),
+  refreshAgentCatalog: (workspaceId?: string | null) =>
+    request<AgentCatalogDto>(
+      'POST',
+      workspaceId
+        ? `/api/workspaces/${workspaceId}/agent-catalog/refresh`
+        : '/api/agent-catalog/refresh'
+    ),
   getLaunchSettings: () => request<LaunchSettingsDto>('GET', '/api/launch-settings'),
   updateAgentLaunchConfig: (agentKey: string, body: UpdateAgentLaunchConfigBody) =>
     request<LaunchSettingsDto>(
