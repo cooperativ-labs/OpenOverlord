@@ -10,6 +10,51 @@ import { describe, it } from 'node:test';
 // opening a mission in a secondary workspace 404'd with "Mission not found"
 // even for a caller who is a full member of that workspace.
 describe('mission and objective access in a secondary (non-active) workspace', () => {
+  it('routes protocol lifecycle updates by the hashed session key in a secondary workspace', async () => {
+    const dir = mkdtempSync(path.join('/tmp', 'ovld-secondary-protocol-session-'));
+    const { bootstrapIntegrationTestDb, DEFAULT_TEST_ORGANIZATION_ID } =
+      await import('./test-helpers.ts');
+    const { WORKSPACE } = await bootstrapIntegrationTestDb({
+      sqlitePath: path.join(dir, 'Overlord.sqlite')
+    });
+    const workspaceAId = WORKSPACE.id;
+
+    const { setActiveWorkspace } = await import('./db.ts');
+    const { createWorkspace } = await import('./workspaces.ts');
+    const { createProject, createMission } = await import('./repository.ts');
+    const { runProtocolSubcommand } = await import('./protocol.ts');
+
+    const secondary = await createWorkspace({
+      organizationId: DEFAULT_TEST_ORGANIZATION_ID,
+      name: 'Secondary Protocol Workspace'
+    });
+    const project = await createProject({
+      name: 'Secondary Protocol Project',
+      workspaceId: secondary.id
+    });
+    const mission = await createMission({
+      projectId: project.id,
+      firstObjective: 'Update this mission through its session key'
+    });
+    await setActiveWorkspace(workspaceAId);
+
+    const attached = (await runProtocolSubcommand('attach', {
+      flags: { '--mission-id': mission.id, '--agent': 'codex' }
+    })) as { sessionKey: string };
+    assert.ok(attached.sessionKey);
+
+    await assert.doesNotReject(
+      runProtocolSubcommand('update', {
+        flags: {
+          '--mission-id': mission.id,
+          '--session-key': attached.sessionKey,
+          '--summary': 'Verified protocol workspace routing.',
+          '--phase': 'execute'
+        }
+      })
+    );
+  });
+
   it('loads, reads, and mutates a mission/objectives whose workspace differs from the active one', async () => {
     const dir = mkdtempSync(path.join('/tmp', 'ovld-secondary-workspace-'));
     const { bootstrapIntegrationTestDb, DEFAULT_TEST_ORGANIZATION_ID } =

@@ -24,6 +24,7 @@ import {
   updateSession,
   writeSharedContext
 } from '../packages/core/service/protocol.ts';
+import { hashSessionKey } from '../packages/core/service/util.ts';
 
 import {
   buildWebappServiceContextForWorkspace,
@@ -92,8 +93,8 @@ async function protocolWorkspaceId(body: ProtocolRequestBody): Promise<string | 
   if (sessionKey) {
     const session = await db.get<{ workspace_id: string }>(
       `SELECT workspace_id FROM agent_sessions
-        WHERE session_key = ? AND workspace_id IN (${placeholders})`,
-      [sessionKey, ...workspaceIds]
+        WHERE session_key_hash = ? AND deleted_at IS NULL AND workspace_id IN (${placeholders})`,
+      [hashSessionKey(sessionKey), ...workspaceIds]
     );
     if (session) return session.workspace_id;
   }
