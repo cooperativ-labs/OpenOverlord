@@ -28,12 +28,13 @@ const objectiveTitleStore = {
   }): Promise<void> => {
     const existing = await requireDatabaseClient().get<{
       id: string;
+      workspace_id: string;
       project_id: string;
       mission_id: string;
       title: string | null;
       revision: number;
     }>(
-      `SELECT id, project_id, mission_id, title, revision
+      `SELECT id, workspace_id, project_id, mission_id, title, revision
          FROM objectives
         WHERE id = ? AND deleted_at IS NULL`,
       [objectiveId]
@@ -58,7 +59,8 @@ const objectiveTitleStore = {
       projectId: existing.project_id,
       missionId: existing.mission_id,
       objectiveId,
-      changedFields: ['title']
+      changedFields: ['title'],
+      workspaceId: existing.workspace_id
     });
   }
 };
@@ -72,11 +74,12 @@ async function updateMissionTitle({
 }): Promise<void> {
   const existing = await requireDatabaseClient().get<{
     id: string;
+    workspace_id: string;
     project_id: string;
     title: string;
     revision: number;
   }>(
-    `SELECT id, project_id, title, revision
+    `SELECT id, workspace_id, project_id, title, revision
        FROM missions
       WHERE id = ? AND deleted_at IS NULL`,
     [missionId]
@@ -100,7 +103,8 @@ async function updateMissionTitle({
     entityRevision: revision,
     projectId: existing.project_id,
     missionId,
-    changedFields: ['title']
+    changedFields: ['title'],
+    workspaceId: existing.workspace_id
   });
 }
 

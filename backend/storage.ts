@@ -18,6 +18,7 @@
  * generic and shared across all three.
  */
 
+import { type Permission, PERMISSIONS } from '@overlord/auth';
 import type { DatabaseClient } from '@overlord/database';
 import type { Response } from 'express';
 import { createHash } from 'node:crypto';
@@ -39,7 +40,7 @@ import {
 } from './db.ts';
 import { ApiError } from './errors.ts';
 import { getActiveOrganizationIdOrNull } from './organizations.ts';
-import { isOrganizationAdmin } from './rbac.ts';
+import { isOrganizationAdmin, requireWorkspacePermission } from './rbac.ts';
 import { createStorageBackend, readStorageReadSettings } from './storage-backends.ts';
 
 // backend/storage.ts -> repo root is one level up from backend/.
@@ -76,13 +77,13 @@ interface StorageBucketRow {
   settings_json: string;
 }
 
-/** Resolve the active workspace's bucket for `bucketKey`, or 404 if absent. */
-async function resolveBucket(bucketKey: string): Promise<StorageBucketRow> {
+/** Resolve a specified workspace's bucket for `bucketKey`, or 404 if absent. */
+async function resolveBucket(bucketKey: string, workspaceId: string): Promise<StorageBucketRow> {
   const row = await requireDatabaseClient().get<StorageBucketRow>(
     `SELECT id, bucket_key, storage_backend, base_url, local_path, settings_json
        FROM storage_buckets
       WHERE workspace_id = ? AND bucket_key = ? AND deleted_at IS NULL`,
-    [WORKSPACE.id, bucketKey]
+    [workspaceId, bucketKey]
   );
   if (!row) throw new ApiError(404, `Unknown storage bucket '${bucketKey}'`);
   return row;
@@ -212,7 +213,7 @@ async function operatorUserId(): Promise<string> {
  * operator. Returns the stored-image descriptor including the URL to serve it.
  */
 export async function uploadUserImage(input: UploadImageInput): Promise<StoredImageDto> {
-  const bucket = await resolveBucket('user-images');
+  const bucket = await resolveBucket('user-images', WORKSPACE.id);
   const userId = await operatorUserId();
   const written = await writeImageObject(bucket, input, (id, ext) =>
     userImageObjectKey(userId, id, ext)
@@ -253,7 +254,8 @@ export async function uploadUserImage(input: UploadImageInput): Promise<StoredIm
         entityType: 'user_image',
         entityId: written.id,
         operation: 'insert',
-        entityRevision: 1
+        entityRevision: 1,
+        workspaceId: WORKSPACE.id
       },
       tx
     );
@@ -279,7 +281,7 @@ export async function uploadUserImage(input: UploadImageInput): Promise<StoredIm
  * callers gate this to workspace admins (`PERMISSIONS.WORKSPACE_IMAGE_CREATE`).
  */
 export async function uploadWorkspaceImage(input: UploadImageInput): Promise<StoredImageDto> {
-  const bucket = await resolveBucket('workspace-images');
+  const bucket = await resolveBucket('workspace-images', WORKSPACE.id);
   const written = await writeImageObject(bucket, input, (id, ext) =>
     workspaceImageObjectKey(WORKSPACE.id, id, ext)
   );
@@ -318,7 +320,8 @@ export async function uploadWorkspaceImage(input: UploadImageInput): Promise<Sto
         entityType: 'workspace_image',
         entityId: written.id,
         operation: 'insert',
-        entityRevision: 1
+        entityRevision: 1,
+        workspaceId: WORKSPACE.id
       },
       tx
     );
@@ -396,14 +399,21 @@ interface ObjectiveScopeRow {
  */
 async function resolveObjectiveScope(
   objectiveId: string,
-  client: DatabaseClient = requireDatabaseClient()
+  client: DatabaseClient = requireDatabaseClient(),
+  permission: Permission = PERMISSIONS.ATTACHMENT_READ
 ): Promise<ObjectiveScopeRow> {
   const row = await client.get<ObjectiveScopeRow>(
     `SELECT workspace_id, project_id, mission_id FROM objectives
-      WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [objectiveId, WORKSPACE.id]
+      WHERE id = ? AND deleted_at IS NULL`,
+    [objectiveId]
   );
   if (!row) throw new ApiError(404, 'Objective not found');
+  await requireWorkspacePermission({
+    workspaceId: row.workspace_id,
+    permission,
+    db: client,
+    notFoundMessage: 'Objective not found'
+  });
   return row;
 }
 
@@ -474,8 +484,12 @@ export async function uploadObjectiveAttachment(
     );
   }
 
-  const scope = await resolveObjectiveScope(input.objectiveId);
-  const bucket = await resolveBucket(ATTACHMENTS_BUCKET_KEY);
+  const scope = await resolveObjectiveScope(
+    input.objectiveId,
+    undefined,
+    PERMISSIONS.ATTACHMENT_CREATE
+  );
+  const bucket = await resolveBucket(ATTACHMENTS_BUCKET_KEY, scope.workspace_id);
 
   const id = newId();
   const storageKey = attachmentObjectKey(
@@ -531,7 +545,8 @@ export async function uploadObjectiveAttachment(
         entityRevision: 1,
         projectId: scope.project_id,
         missionId: scope.mission_id,
-        objectiveId: input.objectiveId
+        objectiveId: input.objectiveId,
+        workspaceId: scope.workspace_id
       },
       tx
     );
@@ -556,12 +571,12 @@ export async function uploadObjectiveAttachment(
 export async function listObjectiveAttachments(
   objectiveId: string
 ): Promise<ObjectiveAttachmentDto[]> {
-  await resolveObjectiveScope(objectiveId);
+  const scope = await resolveObjectiveScope(objectiveId);
   const rows = await requireDatabaseClient().all<AttachmentRow>(
     `SELECT ${ATTACHMENT_COLUMNS} FROM attachments
       WHERE objective_id = ? AND workspace_id = ? AND deleted_at IS NULL
       ORDER BY created_at ASC`,
-    [objectiveId, WORKSPACE.id]
+    [objectiveId, scope.workspace_id]
   );
   return rows.map(toObjectiveAttachmentDto);
 }
@@ -577,7 +592,7 @@ export async function deleteObjectiveAttachment(
   attachmentId: string
 ): Promise<ObjectiveAttachmentDto[]> {
   const { remaining, cleanup } = await requireDatabaseClient().transaction(async tx => {
-    const scope = await resolveObjectiveScope(objectiveId, tx);
+    const scope = await resolveObjectiveScope(objectiveId, tx, PERMISSIONS.ATTACHMENT_DELETE);
     const row = await tx.get<{
       id: string;
       revision: number;
@@ -594,7 +609,7 @@ export async function deleteObjectiveAttachment(
          JOIN storage_buckets b ON b.id = a.storage_bucket_id
         WHERE a.id = ? AND a.objective_id = ? AND a.workspace_id = ?
           AND a.deleted_at IS NULL AND b.deleted_at IS NULL`,
-      [attachmentId, objectiveId, WORKSPACE.id]
+      [attachmentId, objectiveId, scope.workspace_id]
     );
     if (!row) throw new ApiError(404, 'Attachment not found');
 
@@ -615,7 +630,8 @@ export async function deleteObjectiveAttachment(
         entityRevision: row.revision + 1,
         projectId: scope.project_id,
         missionId: scope.mission_id,
-        objectiveId
+        objectiveId,
+        workspaceId: scope.workspace_id
       },
       tx
     );
@@ -624,7 +640,7 @@ export async function deleteObjectiveAttachment(
       `SELECT ${ATTACHMENT_COLUMNS} FROM attachments
         WHERE objective_id = ? AND workspace_id = ? AND deleted_at IS NULL
         ORDER BY created_at ASC`,
-      [objectiveId, WORKSPACE.id]
+      [objectiveId, scope.workspace_id]
     );
     return {
       remaining: rows.map(toObjectiveAttachmentDto),
@@ -748,10 +764,16 @@ async function finalizeStoredObject({
  */
 export async function resolveStoredObject(
   bucketKey: string,
-  storageKey: string
+  storageKey: string,
+  permission: Permission
 ): Promise<ResolvedStoredObject> {
   if (bucketKey === 'organization-images') {
     const organizationId = await requireActiveOrganizationId();
+    await requireWorkspacePermission({
+      workspaceId: WORKSPACE.id,
+      permission,
+      notFoundMessage: 'File not found'
+    });
     const bucket = await resolveOrganizationBucket(organizationId, bucketKey);
     const ext = path.extname(storageKey).toLowerCase();
     return finalizeStoredObject({
@@ -763,30 +785,32 @@ export async function resolveStoredObject(
     });
   }
 
-  const bucket = await resolveBucket(bucketKey);
   const table = SERVABLE_OBJECT_TABLES[bucketKey];
   if (!table) throw new ApiError(404, `Serving is not configured for bucket '${bucketKey}'`);
 
   let row = await requireDatabaseClient().get<{
+    workspace_id: string;
+    storage_bucket_id: string;
     storage_key: string;
     content_type: string | null;
     filename: string;
   }>(
-    `SELECT storage_key, content_type, filename FROM ${table}
-      WHERE storage_bucket_id = ? AND storage_key = ? AND deleted_at IS NULL`,
-    [bucket.id, storageKey]
+    `SELECT workspace_id, storage_bucket_id, storage_key, content_type, filename FROM ${table}
+      WHERE storage_key = ? AND deleted_at IS NULL`,
+    [storageKey]
   );
 
   if (!row && bucketKey === 'user-images' && !storageKey.includes('/')) {
     const legacyStorageKeyLike = `%/${escapeSqlLike(storageKey)}`;
     row = await requireDatabaseClient().get<{
+      workspace_id: string;
+      storage_bucket_id: string;
       storage_key: string;
       content_type: string | null;
       filename: string;
     }>(
-      `SELECT storage_key, content_type, filename FROM user_images
-        WHERE storage_bucket_id = ?
-          AND deleted_at IS NULL
+      `SELECT workspace_id, storage_bucket_id, storage_key, content_type, filename FROM user_images
+        WHERE deleted_at IS NULL
           AND (
             public_url = ?
             OR storage_key = ?
@@ -794,10 +818,18 @@ export async function resolveStoredObject(
           )
         ORDER BY created_at DESC
         LIMIT 1`,
-      [bucket.id, publicUrlFor(bucketKey, storageKey), storageKey, legacyStorageKeyLike]
+      [publicUrlFor(bucketKey, storageKey), storageKey, legacyStorageKeyLike]
     );
   }
   if (!row) throw new ApiError(404, 'File not found');
+
+  await requireWorkspacePermission({
+    workspaceId: row.workspace_id,
+    permission,
+    notFoundMessage: 'File not found'
+  });
+  const bucket = await resolveBucket(bucketKey, row.workspace_id);
+  if (bucket.id !== row.storage_bucket_id) throw new ApiError(404, 'File not found');
 
   return finalizeStoredObject({
     bucket,

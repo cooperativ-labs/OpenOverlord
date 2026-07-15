@@ -19,14 +19,12 @@ import {
   findActiveMembershipId,
   getActiveProfileId,
   getActiveWorkspaceIdOrNull,
-  getActorWorkspaceUserId,
   newId,
   nowIso,
   recordChange,
   reloadActiveWorkspace,
   requireDatabaseClient,
   resolveActiveProfileId,
-  resolveActorForWorkspace,
   setActiveWorkspace,
   setActiveWorkspaceContext,
   setActiveWorkspaceUser
@@ -167,11 +165,12 @@ async function requireWorkspaceMember(workspaceId: string): Promise<string> {
 }
 
 /** `requireWorkspaceMember`, plus an ADMIN role in that workspace. */
-async function requireWorkspaceAdmin(workspaceId: string): Promise<void> {
+async function requireWorkspaceAdmin(workspaceId: string): Promise<string> {
   const workspaceUserId = await requireWorkspaceMember(workspaceId);
   if (!(await actorIsAdmin({ workspaceId, workspaceUserId }))) {
     throw new ApiError(403, 'Admin role required');
   }
+  return workspaceUserId;
 }
 
 /**
@@ -632,7 +631,7 @@ export async function updateWorkspace(
   id: string,
   body: UpdateWorkspaceBody
 ): Promise<WorkspaceDto> {
-  await requireWorkspaceManager(id);
+  const { workspaceUserId } = await requireWorkspaceManager(id);
   await requireDatabaseClient().transaction(async tx => {
     const existing = await tx.get<WorkspaceRevisionRow>(
       `SELECT id, name, revision FROM workspaces WHERE id = ? AND deleted_at IS NULL`,
@@ -683,7 +682,7 @@ export async function updateWorkspace(
         operation: 'update',
         entityRevision: latest?.revision,
         workspaceId: id,
-        actorWorkspaceUserId: await resolveActorForWorkspace(id, tx),
+        actorWorkspaceUserId: workspaceUserId,
         changedFields: changed
       },
       tx
@@ -708,7 +707,7 @@ export async function updateWorkspace(
  * deletion is not extended to MANAGER). Returns the refreshed workspace list.
  */
 export async function deleteWorkspace(id: string): Promise<WorkspaceDto[]> {
-  await requireWorkspaceAdmin(id);
+  const workspaceUserId = await requireWorkspaceAdmin(id);
   await requireDatabaseClient().transaction(async tx => {
     const existing = await tx.get<WorkspaceRevisionRow & { organization_id: string }>(
       `SELECT id, name, organization_id, revision FROM workspaces WHERE id = ? AND deleted_at IS NULL`,
@@ -730,7 +729,7 @@ export async function deleteWorkspace(id: string): Promise<WorkspaceDto[]> {
         operation: 'delete',
         entityRevision: revision,
         workspaceId: id,
-        actorWorkspaceUserId: await resolveActorForWorkspace(id, tx)
+        actorWorkspaceUserId: workspaceUserId
       },
       tx
     );
@@ -961,7 +960,8 @@ export async function inviteWorkspaceMember(
   workspaceId: string,
   body: InviteWorkspaceMemberBody
 ): Promise<InviteWorkspaceMemberResultDto> {
-  const { isAdmin } = await requireWorkspaceManager(workspaceId);
+  const { isAdmin, workspaceUserId: invitedByWorkspaceUserId } =
+    await requireWorkspaceManager(workspaceId);
 
   const email = (body.email ?? '').trim().toLowerCase();
   if (!email || !email.includes('@')) throw new ApiError(400, 'A valid email is required');
@@ -986,9 +986,6 @@ export async function inviteWorkspaceMember(
     [workspaceId, email]
   );
   if (existingMember) throw new ApiError(409, 'This email already belongs to a member');
-
-  const invitedByWorkspaceUserId = getActorWorkspaceUserId();
-  if (!invitedByWorkspaceUserId) throw new ApiError(403, 'Manager role required');
 
   const { invitation, rawToken } = await client.transaction(async tx => {
     const pending = await tx.get<{ id: string }>(
@@ -1098,7 +1095,7 @@ export async function revokeWorkspaceInvitation(
   workspaceId: string,
   invitationId: string
 ): Promise<void> {
-  await requireWorkspaceManager(workspaceId);
+  const { workspaceUserId: actorWorkspaceUserId } = await requireWorkspaceManager(workspaceId);
   await requireDatabaseClient().transaction(async tx => {
     const invitation = await tx.get<{ id: string; status: string; revision: number }>(
       `SELECT id, status, revision FROM workspace_invitations
@@ -1123,7 +1120,7 @@ export async function revokeWorkspaceInvitation(
         operation: 'update',
         entityRevision: revision,
         workspaceId,
-        actorWorkspaceUserId: getActorWorkspaceUserId()
+        actorWorkspaceUserId
       },
       tx
     );
@@ -1176,7 +1173,6 @@ export async function acceptWorkspaceInvitation(
           operation: 'update',
           entityRevision: revision,
           workspaceId: invitation.workspace_id,
-          actorWorkspaceUserId: getActorWorkspaceUserId(),
           changedFields: ['status']
         },
         tx
@@ -1346,7 +1342,8 @@ export async function updateWorkspaceMemberRole(
   workspaceUserId: string,
   body: UpdateWorkspaceMemberRoleBody
 ): Promise<WorkspaceMemberDto> {
-  const { isAdmin } = await requireWorkspaceManager(workspaceId);
+  const { isAdmin, workspaceUserId: actorWorkspaceUserId } =
+    await requireWorkspaceManager(workspaceId);
 
   const roleKey = (body.roleKey ?? '').trim().toUpperCase();
   if (!WORKSPACE_ROLE_KEYS.has(roleKey)) throw new ApiError(400, `Unknown role: ${roleKey}`);
@@ -1385,7 +1382,7 @@ export async function updateWorkspaceMemberRole(
          (id, workspace_id, workspace_user_id, role_key, resource_type, resource_id,
           assigned_by_workspace_user_id, created_at, updated_at, revision)
        VALUES (?, ?, ?, ?, '', '', ?, ?, ?, 1)`,
-      [newId(), workspaceId, workspaceUserId, roleKey, getActorWorkspaceUserId(), now, now]
+      [newId(), workspaceId, workspaceUserId, roleKey, actorWorkspaceUserId, now, now]
     );
     await recordChange(
       {
@@ -1393,7 +1390,7 @@ export async function updateWorkspaceMemberRole(
         entityId: workspaceUserId,
         operation: 'update',
         workspaceId,
-        actorWorkspaceUserId: getActorWorkspaceUserId(),
+        actorWorkspaceUserId,
         changedFields: ['role_key']
       },
       tx
@@ -1417,7 +1414,8 @@ export async function removeWorkspaceMember(
   workspaceId: string,
   workspaceUserId: string
 ): Promise<void> {
-  const { isAdmin } = await requireWorkspaceManager(workspaceId);
+  const { isAdmin, workspaceUserId: actorWorkspaceUserId } =
+    await requireWorkspaceManager(workspaceId);
   await requireDatabaseClient().transaction(async tx => {
     const membership = await tx.get<{ id: string; revision: number }>(
       `SELECT id, revision FROM workspace_users
@@ -1463,7 +1461,7 @@ export async function removeWorkspaceMember(
         operation: 'delete',
         entityRevision: revision,
         workspaceId,
-        actorWorkspaceUserId: getActorWorkspaceUserId()
+        actorWorkspaceUserId
       },
       tx
     );

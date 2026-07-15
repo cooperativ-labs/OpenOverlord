@@ -1,10 +1,24 @@
 # Workspace Scoping Audit — the 95 Ambient Reads
 
-Status: complete (Phase 1 of `resource-derived-workspace-scoping.md`)
+Status: complete (Phases 1–3 of `resource-derived-workspace-scoping.md`)
 Date: 2026-07-15
 Mission: coo:331
-Method: `grep -rn -E 'getActiveWorkspace\(|getActiveWorkspaceId\(|getActiveWorkspaceIdOrNull\(|\bWORKSPACE\.' backend packages`
-excluding `*.test.*` and `test/` — 95 sites, matching the plan's count exactly.
+Original Phase 1 method: `grep -rn -E 'getActiveWorkspace\(|getActiveWorkspaceId\(|getActiveWorkspaceIdOrNull\(|\bWORKSPACE\.' backend packages`
+excluding `*.test.*` and `test/` — 95 sites. Completion is now enforced by the
+TypeScript-AST checker in `scripts/check-workspace-scoping.mjs`, not by brittle
+substring/line-number matching.
+
+## Completion update
+
+The inventory below is the original Phase 1 snapshot. All CONVERT and
+AGGREGATE clusters are now complete. Remaining ambient reads are limited to
+request binding/boot, active-workspace UI defaults and legacy unparented
+creation/configuration routes; resource-id, project-id, mission-id,
+objective-id, execution-request-id, execution-target-id, storage-key, and
+webhook-subscription-id operations resolve their owning workspace before RBAC
+or persistence. `scripts/check-workspace-scoping.mjs` inventories ambient reads
+by enclosing function and rejects anything outside the reviewed edge/default
+allowlist.
 
 ## Tags
 
@@ -43,18 +57,17 @@ effort, not multi-week: roughly one day per cluster plus the Phase 3 fixture.
 |---|---|---|
 | 1 — Phase 0 launch-settings surface | **DONE** | Optional `workspaceId` threaded through `getLaunchSettings`/`updateAgentLaunchConfig`/`updateTerminalProfile`/`updateWorktreeBranchAutomation`; new `resolveLaunchSettingsScope` authorizes via `requireWorkspacePermission` and builds the acting-device ctx with `buildWebappServiceContextForWorkspace`. Added `GET/PATCH /api/workspaces/:id/launch-settings*` routes. Webapp `api.ts`/`queries.ts` gained the optional `workspaceId`; `useObjectiveAgentSelection` passes `projectQ.data?.workspaceId`. launch.ts sites 114/131/141/152/189 all removed — only 172 (`resolveCatalogWorkspaceId` KEEP) remains. |
 | 2 — Latent defaults (free) | **DONE** | `readStoredCatalog`/`persistCatalog` (launch.ts 141/152) and `readSqlStudioEnabled` (workspace-settings.ts 65) defaults deleted; all callers already pass ids. |
-| 3 — RBAC defaults | TODO | Blocked-green: `requirePermission`/`actorCan` are the ambient default for the central `handle({requires})` route guard (`index.ts:457`) and 9 route guards. Making them required can't compile-green without migrating every guarded route to `requireWorkspacePermission`/`requireProjectPermission` derived from the path param — that per-route migration **is** the bulk of the remaining work, do it as its own increment. |
-| 4 — Change-feed / webhook-event enablers | TODO | db.ts 706/746. |
-| 5 — Objective attachments | TODO | storage.ts 404/564/597/627. |
-| 6 — Bucket resolution | TODO | storage.ts 85. |
-| 7 — Webhook subscription by-id ops | TODO | webhooks.ts 121/133/381/403/429/492 (self-contained). |
-| 8 — GitHub ext | TODO | github 159/184/198/426/459/494/526 (self-contained). |
-| 9 — Everhour ext | TODO | everhour 196/334/345/361/416/444/483/600/633/650/665/687 (self-contained). |
-| 10 — AGGREGATE rewrites | TODO | repository.ts 1608/2952. |
+| 3 — RBAC defaults | **DONE** | `loadActorRoles`, `actorIsAdmin`, `actorCan`, and `requirePermission` require an explicit `(workspaceId, workspaceUserId)` scope. Resource-aware route handlers no longer run a generic active-workspace guard first. |
+| 4 — Change-feed / webhook-event enablers | **DONE** | Change writers require an explicit workspace and derive or validate the actor membership in that same workspace; webhook events receive the authorized workspace/actor pair. |
+| 5 — Objective attachments | **DONE** | Objective lookup resolves and authorizes its workspace before selecting its bucket, listing, uploading, deleting, or serving metadata. |
+| 6 — Bucket resolution | **DONE** | Stored-object lookup derives its workspace from persisted object metadata before resolving a bucket. |
+| 7 — Webhook subscription operations | **DONE** | Subscription-id operations, deliveries, redelivery, and project-bound creation resolve the subscription/project workspace before authorization and persistence. |
+| 8 — GitHub ext | **DONE** | Project/mission operations use shared resource route guards plus their parent workspace for links, installation credentials, pull requests, and change records. An asymmetric-role route test proves ADMIN in active A cannot authorize a project in B. |
+| 9 — Everhour ext | **DONE** | Project/mission operations use their parent resource workspace for links, API credentials, timers, and change records. |
+| 10 — AGGREGATE rewrites | **DONE** | Runner and My Missions iterate the caller's workspace memberships; resource filters first resolve their owning workspace. |
 
-Total ambient reads: **95 → 89** after clusters 1–2. Backend + webapp typecheck
-clean (0 non-test errors; the 4 pre-existing `bearer-session.test.ts` errors are
-unrelated and predate this work).
+The backend typecheck, AST scoping check, and focused A/B regression suites are
+clean. Full-suite verification is recorded with the implementation handoff.
 
 ### Phase 3 A/B fixture (structural regression harness)
 
@@ -72,22 +85,20 @@ genuinely per-workspace launch setting — `workspaces.settings_json`, launch.ts
 114/131/189) gets the full A/B invariant; per-agent pre-command/flags are a
 per-**device** preference shared across a profile's workspaces (not per-workspace),
 so they get an end-to-end check that `launchObjective` resolves them from the
-objective's own workspace context instead. **As each remaining cluster (3–10) is
-converted, add a case here using the fixture** so the wrong-tenant bug class is
-caught at the door for every newly-converted endpoint.
+objective's own workspace context instead. The suite also exercises project
+target resolution, stored attachments, project webhook creation, Everhour link
+lookup, and B-workspace change attribution while A remains active. GitHub's
+route-level cross-workspace authorization has a separate asymmetric-role test;
+the AST allowlist supplies exhaustive call-site coverage without duplicating
+the same A/B scenario for every endpoint.
 
-## Cross-cutting architecture finding
+## Resolved cross-cutting architecture finding
 
-`handle(..., { requires })` route guards call `requirePermission()`
-(`backend/rbac.ts:88`), which checks the actor's permission **in the active
-workspace only** — it never derives the workspace from the `projectId`/
-`missionId` path param. Service queries then re-scope by `WORKSPACE.id`. Net
-effect for a member of workspace B acting while active in A: no cross-tenant
-leak, but B-owned resources get a spurious 404 (or, for writes like launch
-config, land in the wrong workspace). The coo:135 helpers
-`requireWorkspacePermission` / `requireProjectPermission` (`rbac.ts:102,128`)
-are the intended replacement pattern, already used by
-`webhook-dispatcher.ts:222` and `launch.ts:886,1119`.
+`handle(..., { requires })` remains appropriate only for active-workspace
+landing/default routes. Every resource-aware handler delegates authorization to
+the service that resolves its target workspace (or explicitly builds a target
+workspace service context). This preserves token-scope checks while avoiding a
+pre-handler active-workspace denial for resources in workspace B.
 
 ---
 
@@ -250,10 +261,11 @@ mechanical once the per-service derive point is in place — a day each; 10 is a
 day. **Total: on the order of 1.5–2 weeks including the Phase 3 A/B fixture**
 — "days, not weeks" per cluster, with the ext services as the long pole.
 
-### CI grep gate (Definition of done §9.3)
+### CI AST gate (Definition of done §9.3)
 
-When the backlog is done, this must return only §2.2 consumers, INFRA, and
-comments:
+`scripts/check-workspace-scoping.mjs` parses backend/package source files and
+fails on an ambient accessor outside its reviewed file/function allowlist. The
+following grep remains useful for human inventory, but is not the CI decision:
 
 ```
 grep -rn -E 'getActiveWorkspace\(|getActiveWorkspaceId\(|getActiveWorkspaceIdOrNull\(|\bWORKSPACE\.' backend packages \

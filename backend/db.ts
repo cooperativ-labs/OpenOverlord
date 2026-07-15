@@ -139,17 +139,6 @@ export interface WorkspaceRow {
   created_at: string;
 }
 
-function loadWorkspaceRowFromClient(
-  client: DatabaseClient,
-  id: string
-): Promise<WorkspaceRow | undefined> {
-  return client.get<WorkspaceRow>(
-    `SELECT id, slug, name, kind, created_at FROM workspaces
-       WHERE id = ? AND deleted_at IS NULL`,
-    [id]
-  );
-}
-
 async function oldestWorkspaceRowFromClient(
   client: DatabaseClient
 ): Promise<WorkspaceRow | undefined> {
@@ -687,10 +676,15 @@ export interface RecordChangeInput {
   missionId?: string | null;
   objectiveId?: string | null;
   changedFields?: string[];
-  /** Override the workspace the change is attributed to (defaults to the active one). */
-  workspaceId?: string | null;
-  /** Override the actor the change is attributed to (defaults to the active one). */
+  /** Owning workspace resolved by the operation; never inferred from ambient state. */
+  workspaceId: string;
+  /** Optional explicit actor; when omitted, resolve this profile's membership in workspaceId. */
   actorWorkspaceUserId?: string | null;
+}
+
+export interface WorkspaceActorScope {
+  workspaceId: string;
+  workspaceUserId: string | null;
 }
 
 /**
@@ -702,8 +696,24 @@ export async function recordChange(
   input: RecordChangeInput,
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<void> {
+  let actorWorkspaceUserId = input.actorWorkspaceUserId;
+  if (actorWorkspaceUserId === undefined) {
+    const profileId = await resolveActiveProfileId(client);
+    actorWorkspaceUserId = profileId
+      ? await findActiveMembershipId(input.workspaceId, profileId, client)
+      : null;
+  } else if (actorWorkspaceUserId) {
+    const matchingMembership = await client.get(
+      `SELECT 1 FROM workspace_users
+        WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+      [actorWorkspaceUserId, input.workspaceId]
+    );
+    if (!matchingMembership) {
+      throw new Error('recordChange actor membership does not belong to the supplied workspace');
+    }
+  }
   await insertEntityChange(client, {
-    workspaceId: input.workspaceId ?? getActiveWorkspaceId(),
+    workspaceId: input.workspaceId,
     projectId: input.projectId,
     missionId: input.missionId,
     objectiveId: input.objectiveId,
@@ -712,10 +722,7 @@ export async function recordChange(
     operation: input.operation,
     entityRevision: input.entityRevision,
     changedFields: input.changedFields,
-    actorWorkspaceUserId:
-      input.actorWorkspaceUserId !== undefined
-        ? input.actorWorkspaceUserId
-        : getActorWorkspaceUserId(),
+    actorWorkspaceUserId,
     actorTokenId: getActiveTokenId(),
     source: 'webapp'
   });
@@ -727,8 +734,7 @@ export interface EnqueueWebhookEventInput {
   type: WebhookEventType;
   projectId: string | null;
   entity: WebhookEntityRefs;
-  /** Override the workspace the event is attributed to (defaults to the active one). */
-  workspaceId?: string | null;
+  scope: WorkspaceActorScope;
 }
 
 /**
@@ -743,11 +749,10 @@ export async function enqueueWebhookEventRest(
   input: EnqueueWebhookEventInput,
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<void> {
-  const workspaceId = input.workspaceId ?? getActiveWorkspaceId();
   const ctx: ServiceContext = {
     db: client,
-    workspace: { id: workspaceId, slug: '', name: '' },
-    actorWorkspaceUserId: getActorWorkspaceUserId(),
+    workspace: { id: input.scope.workspaceId, slug: '', name: '' },
+    actorWorkspaceUserId: input.scope.workspaceUserId,
     source: 'webapp'
   };
   await enqueueWebhookEvent(ctx, {

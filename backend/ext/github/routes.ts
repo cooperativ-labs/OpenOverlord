@@ -1,6 +1,8 @@
 import { type Permission, PERMISSIONS } from '@overlord/auth';
 import { type NextFunction, type Request, type Response, Router } from 'express';
 
+import { missionRoute, projectRoute } from '../resource-routes.ts';
+
 import {
   beginGitHubInstall,
   completeGitHubInstall,
@@ -53,32 +55,37 @@ export function createGitHubExtensionRouter(handle: RouteHandler): Router {
   );
   router.get(
     '/projects/:projectId/link',
-    handle(req => getProjectGitHubLink(req.params.projectId), {
-      requires: PERMISSIONS.PROJECT_READ
-    })
+    handle(
+      projectRoute(PERMISSIONS.PROJECT_READ, req => getProjectGitHubLink(req.params.projectId))
+    )
   );
   router.put(
     '/projects/:projectId/link',
     handle(
-      req =>
+      projectRoute(PERMISSIONS.PROJECT_UPDATE, req =>
         linkProjectGitHub(req.params.projectId, {
           repoFullName: typeof req.body?.repoFullName === 'string' ? req.body.repoFullName : null
-        }),
-      { mutates: true, requires: PERMISSIONS.PROJECT_UPDATE }
+        })
+      ),
+      { mutates: true }
     )
   );
   router.get(
     '/missions/:missionId/pull-request',
-    handle(req => getMissionGitHubPullRequest(req.params.missionId), {
-      requires: PERMISSIONS.MISSION_READ
-    })
+    handle(
+      missionRoute(PERMISSIONS.MISSION_READ, req =>
+        getMissionGitHubPullRequest(req.params.missionId)
+      )
+    )
   );
   router.post(
     '/missions/:missionId/pull-request',
-    handle(req => createMissionGitHubPullRequest(req.params.missionId, req.body ?? {}), {
-      mutates: true,
-      requires: PERMISSIONS.MISSION_UPDATE
-    })
+    handle(
+      missionRoute(PERMISSIONS.MISSION_UPDATE, req =>
+        createMissionGitHubPullRequest(req.params.missionId, req.body ?? {})
+      ),
+      { mutates: true }
+    )
   );
   return router;
 }

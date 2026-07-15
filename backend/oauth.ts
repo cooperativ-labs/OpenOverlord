@@ -2,6 +2,7 @@ import { PERMISSIONS } from '@overlord/auth';
 import type { Request, Response } from 'express';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
+import { getActiveWorkspaceId, getActorWorkspaceUserId } from './db.ts';
 import { ApiError } from './errors.ts';
 import { requirePermission } from './rbac.ts';
 import { createUserToken, revokeUserTokenSecret } from './repository.ts';
@@ -341,7 +342,10 @@ export function handleOAuthRequestInfo(req: Request, res: Response): void {
 }
 
 export async function handleOAuthApprove(req: Request, res: Response): Promise<void> {
-  await requirePermission(PERMISSIONS.USER_TOKEN_SELF_CREATE);
+  await requirePermission(PERMISSIONS.USER_TOKEN_SELF_CREATE, {
+    workspaceId: getActiveWorkspaceId(),
+    workspaceUserId: getActorWorkspaceUserId()
+  });
   await sweepExpiredAuthorizationCodes();
   const parsed = validateAuthorizationRequest(req);
   const decision = bodyString(req, 'decision');

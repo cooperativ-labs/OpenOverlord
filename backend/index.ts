@@ -71,6 +71,7 @@ import {
   DATABASE_DIALECT,
   DATABASE_PATH,
   getActiveProfileId,
+  getActiveWorkspaceId,
   getActiveWorkspaceIdOrNull,
   getActorWorkspaceUserId,
   initDatabase,
@@ -454,7 +455,11 @@ function handle(
   return (req: Request, res: Response, next: NextFunction) => {
     void (async () => {
       try {
-        if (options.requires) await requirePermission(options.requires);
+        if (options.requires)
+          await requirePermission(options.requires, {
+            workspaceId: getActiveWorkspaceId(),
+            workspaceUserId: getActorWorkspaceUserId()
+          });
         const result = await Promise.resolve(fn(req, res));
         if (options.mutates) {
           realtime.pollNow();
@@ -639,7 +644,11 @@ app.delete(
 app.get(
   '/api/workspaces',
   handle(async () => {
-    if (getActorWorkspaceUserId()) await requirePermission(PERMISSIONS.WORKSPACE_READ);
+    if (getActorWorkspaceUserId())
+      await requirePermission(PERMISSIONS.WORKSPACE_READ, {
+        workspaceId: getActiveWorkspaceId(),
+        workspaceUserId: getActorWorkspaceUserId()
+      });
     return listWorkspaces();
   })
 );
@@ -647,7 +656,11 @@ app.post(
   '/api/workspaces',
   handle(
     async (req, res) => {
-      if (getActorWorkspaceUserId()) await requirePermission(PERMISSIONS.WORKSPACE_CREATE);
+      if (getActorWorkspaceUserId())
+        await requirePermission(PERMISSIONS.WORKSPACE_CREATE, {
+          workspaceId: getActiveWorkspaceId(),
+          workspaceUserId: getActorWorkspaceUserId()
+        });
       const result = await createWorkspace(req.body);
       setActiveWorkspaceCookie(res, result.id);
       realtime.refreshAll();
@@ -665,7 +678,9 @@ app.patch(
       if (result.isActive) realtime.refreshAll();
       return result;
     },
-    { mutates: true, requires: PERMISSIONS.WORKSPACE_UPDATE }
+    // `updateWorkspace` authorizes the target workspace itself. A generic
+    // active-workspace guard would reject a valid secondary-workspace update.
+    { mutates: true }
   )
 );
 app.delete(
@@ -681,7 +696,8 @@ app.delete(
       realtime.refreshAll();
       return result;
     },
-    { mutates: true, requires: PERMISSIONS.WORKSPACE_DELETE }
+    // `deleteWorkspace` authorizes the target workspace itself.
+    { mutates: true }
   )
 );
 // `listWorkspaceMembers` validates active membership in the *target* workspace
@@ -696,35 +712,34 @@ app.get(
 app.delete(
   '/api/workspaces/:id/members/:workspaceUserId',
   handle(req => removeWorkspaceMember(req.params.id, req.params.workspaceUserId), {
-    mutates: true,
-    requires: PERMISSIONS.MEMBER_REMOVE
+    // Target-workspace authorization is performed by `removeWorkspaceMember`.
+    mutates: true
   })
 );
 app.patch(
   '/api/workspaces/:id/members/:workspaceUserId/role',
   handle(req => updateWorkspaceMemberRole(req.params.id, req.params.workspaceUserId, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.ROLE_ASSIGN
+    // Target-workspace authorization is performed by `updateWorkspaceMemberRole`.
+    mutates: true
   })
 );
 app.get(
   '/api/workspaces/:id/invitations',
-  handle(req => listWorkspaceInvitations(req.params.id), {
-    requires: PERMISSIONS.INVITATION_READ
-  })
+  // Target-workspace authorization is performed by `listWorkspaceInvitations`.
+  handle(req => listWorkspaceInvitations(req.params.id))
 );
 app.post(
   '/api/workspaces/:id/invitations',
   handle(req => inviteWorkspaceMember(req.params.id, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.MEMBER_INVITE
+    // Target-workspace authorization is performed by `inviteWorkspaceMember`.
+    mutates: true
   })
 );
 app.delete(
   '/api/workspaces/:id/invitations/:invitationId',
   handle(req => revokeWorkspaceInvitation(req.params.id, req.params.invitationId), {
-    mutates: true,
-    requires: PERMISSIONS.INVITATION_REVOKE
+    // Target-workspace authorization is performed by `revokeWorkspaceInvitation`.
+    mutates: true
   })
 );
 // Accepting an invitation is how a brand-new (or not-yet-a-member) authenticated
@@ -921,38 +936,25 @@ app.get(
 );
 app.post(
   '/api/webhooks',
-  handle(req => createWebhookSubscription(req.body), {
-    mutates: true,
-    requires: PERMISSIONS.WEBHOOK_CREATE
-  })
+  // A project-bound subscription resolves and authorizes the project's own
+  // workspace inside the service; an active-workspace guard would reject B.
+  handle(req => createWebhookSubscription(req.body), { mutates: true })
 );
 app.patch(
   '/api/webhooks/:id',
-  handle(req => updateWebhookSubscription(req.params.id, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.WEBHOOK_UPDATE
-  })
+  handle(req => updateWebhookSubscription(req.params.id, req.body), { mutates: true })
 );
 app.delete(
   '/api/webhooks/:id',
-  handle(req => deleteWebhookSubscription(req.params.id), {
-    mutates: true,
-    requires: PERMISSIONS.WEBHOOK_DELETE
-  })
+  handle(req => deleteWebhookSubscription(req.params.id), { mutates: true })
 );
 app.post(
   '/api/webhooks/:id/rotate-secret',
-  handle(req => rotateWebhookSecret(req.params.id), {
-    mutates: true,
-    requires: PERMISSIONS.WEBHOOK_UPDATE
-  })
+  handle(req => rotateWebhookSecret(req.params.id), { mutates: true })
 );
 app.post(
   '/api/webhooks/:id/test',
-  handle(req => testWebhookSubscription(req.params.id), {
-    mutates: true,
-    requires: PERMISSIONS.WEBHOOK_UPDATE
-  })
+  handle(req => testWebhookSubscription(req.params.id), { mutates: true })
 );
 app.get(
   '/api/webhooks/:id/deliveries',
@@ -962,15 +964,12 @@ app.get(
         before: typeof req.query.before === 'string' ? req.query.before : null,
         limit: typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined
       }),
-    { requires: PERMISSIONS.WEBHOOK_READ }
+    {}
   )
 );
 app.post(
   '/api/webhooks/:id/deliveries/:outboxId/redeliver',
-  handle(req => redeliverWebhookDelivery(req.params.id, req.params.outboxId), {
-    mutates: true,
-    requires: PERMISSIONS.WEBHOOK_UPDATE
-  })
+  handle(req => redeliverWebhookDelivery(req.params.id, req.params.outboxId), { mutates: true })
 );
 
 // ---- Uploads / storage ---------------------------------------------------
@@ -1020,7 +1019,10 @@ app.post(
       if (!uploadHandler) {
         throw new ApiError(404, `Uploads are not configured for bucket '${req.params.bucketKey}'`);
       }
-      await requirePermission(uploadHandler.permission);
+      await requirePermission(uploadHandler.permission, {
+        workspaceId: getActiveWorkspaceId(),
+        workspaceUserId: getActorWorkspaceUserId()
+      });
       const headerName = req.header('x-upload-filename');
       const filename = headerName ? decodeURIComponent(headerName) : 'upload';
       return uploadHandler.upload({
@@ -1047,8 +1049,11 @@ app.get(
         if (!permission) {
           throw new ApiError(404, `Serving is not configured for bucket '${req.params.bucketKey}'`);
         }
-        await requirePermission(permission);
-        const resolved = await resolveStoredObject(req.params.bucketKey, req.params.storageKey);
+        const resolved = await resolveStoredObject(
+          req.params.bucketKey,
+          req.params.storageKey,
+          permission
+        );
         res.type(resolved.contentType);
         if (resolved.presignedRedirectUrl) {
           res.setHeader('Cache-Control', 'private, no-store');
@@ -1085,7 +1090,10 @@ function parseSeqCursor(value: unknown): number | null {
 function streamRealtime(req: Request, res: Response): void {
   void (async () => {
     try {
-      await requirePermission(PERMISSIONS.PROJECT_READ);
+      await requirePermission(PERMISSIONS.PROJECT_READ, {
+        workspaceId: getActiveWorkspaceId(),
+        workspaceUserId: getActorWorkspaceUserId()
+      });
     } catch {
       res.status(403).json({ error: 'Permission denied: realtime stream' });
       return;
@@ -1105,7 +1113,10 @@ app.get(
   (req: Request, res: Response, next: NextFunction) => {
     void (async () => {
       try {
-        await requirePermission(PERMISSIONS.PROJECT_READ);
+        await requirePermission(PERMISSIONS.PROJECT_READ, {
+          workspaceId: getActiveWorkspaceId(),
+          workspaceUserId: getActorWorkspaceUserId()
+        });
       } catch {
         res.status(403).json({ error: 'Permission denied: realtime catch-up' });
         return;
@@ -1129,7 +1140,7 @@ app.get(
 
 app.get(
   '/api/projects',
-  handle(() => listProjects(), { requires: PERMISSIONS.PROJECT_READ })
+  handle(() => listProjects())
 );
 app.post(
   '/api/projects',
@@ -1425,7 +1436,7 @@ const rawAttachmentBody = express.raw({ type: () => true, limit: MAX_ATTACHMENT_
 
 app.get(
   '/api/objectives/:id/attachments',
-  handle(req => listObjectiveAttachments(req.params.id), { requires: PERMISSIONS.ATTACHMENT_READ })
+  handle(req => listObjectiveAttachments(req.params.id))
 );
 app.post(
   '/api/objectives/:id/attachments',
@@ -1441,14 +1452,13 @@ app.post(
         contentType: req.header('content-type') ?? ''
       });
     },
-    { mutates: true, requires: PERMISSIONS.ATTACHMENT_CREATE }
+    { mutates: true }
   )
 );
 app.delete(
   '/api/objectives/:id/attachments/:attachmentId',
   handle(req => deleteObjectiveAttachment(req.params.id, req.params.attachmentId), {
-    mutates: true,
-    requires: PERMISSIONS.ATTACHMENT_DELETE
+    mutates: true
   })
 );
 
@@ -1533,14 +1543,11 @@ app.put(
 );
 app.get(
   '/api/projects/:id/execution-target',
-  handle(req => getProjectExecutionTarget(req.params.id), { requires: PERMISSIONS.LAUNCH_READ })
+  handle(req => getProjectExecutionTarget(req.params.id))
 );
 app.put(
   '/api/projects/:id/execution-target',
-  handle(req => updateProjectExecutionTarget(req.params.id, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.LAUNCH_CONFIGURE
-  })
+  handle(req => updateProjectExecutionTarget(req.params.id, req.body), { mutates: true })
 );
 app.post(
   '/api/execution-targets/:id/observations',
@@ -1574,16 +1581,13 @@ app.post(
 
 app.get(
   '/api/runner/status',
-  handle(
-    req => {
-      const projectId =
-        typeof req.query.projectId === 'string' && req.query.projectId.trim()
-          ? req.query.projectId.trim()
-          : null;
-      return runnerStatus(projectId);
-    },
-    { requires: PERMISSIONS.EXECUTION_REQUEST_READ }
-  )
+  handle(req => {
+    const projectId =
+      typeof req.query.projectId === 'string' && req.query.projectId.trim()
+        ? req.query.projectId.trim()
+        : null;
+    return runnerStatus(projectId);
+  }, {})
 );
 app.post(
   '/api/runner/claim',
@@ -1599,7 +1603,7 @@ app.post(
             typeof req.body?.devicePlatform === 'string' ? req.body.devicePlatform : null
         }
       }),
-    { mutates: true, requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM }
+    { mutates: true }
   )
 );
 app.post(
@@ -1610,21 +1614,19 @@ app.post(
         objectiveId: typeof req.body?.objectiveId === 'string' ? req.body.objectiveId : null,
         projectId: typeof req.body?.projectId === 'string' ? req.body.projectId : null
       }),
-    { mutates: true, requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM }
+    { mutates: true }
   )
 );
 app.post(
   '/api/runner/requests/:id/launching',
   handle(req => updateRunnerRequestStatus({ requestId: req.params.id, status: 'launching' }), {
-    mutates: true,
-    requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM
+    mutates: true
   })
 );
 app.post(
   '/api/runner/requests/:id/launched',
   handle(req => updateRunnerRequestStatus({ requestId: req.params.id, status: 'launched' }), {
-    mutates: true,
-    requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM
+    mutates: true
   })
 );
 app.post(
@@ -1636,7 +1638,7 @@ app.post(
         status: 'failed',
         error: typeof req.body?.error === 'string' ? req.body.error : null
       }),
-    { mutates: true, requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM }
+    { mutates: true }
   )
 );
 app.post(
@@ -1647,7 +1649,7 @@ app.post(
         requestId: req.params.id,
         mutationResult: req.body?.mutationResult
       }),
-    { mutates: true, requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM }
+    { mutates: true }
   )
 );
 app.post(
@@ -1659,7 +1661,7 @@ app.post(
         requestId: typeof req.body?.requestId === 'string' ? req.body.requestId : null,
         payload: req.body?.branchAutomation
       }),
-    { mutates: true, requires: PERMISSIONS.EXECUTION_REQUEST_CLAIM }
+    { mutates: true }
   )
 );
 // On-demand branch mutations (merge with parent / push parent / publish).

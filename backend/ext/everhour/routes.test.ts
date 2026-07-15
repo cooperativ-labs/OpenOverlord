@@ -10,7 +10,12 @@ const tempDir = mkdtempSync(path.join(tmpdir(), 'overlord-everhour-routes-'));
 const { bootstrapIntegrationTestDb } = await import('../../test-helpers.ts');
 await bootstrapIntegrationTestDb({ sqlitePath: path.join(tempDir, 'everhour-routes.sqlite') });
 
-const { setActiveTokenAuth, setActiveWorkspaceUser } = await import('../../db.ts');
+const {
+  getActiveWorkspaceId,
+  getActorWorkspaceUserId,
+  setActiveTokenAuth,
+  setActiveWorkspaceUser
+} = await import('../../db.ts');
 const { ApiError } = await import('../../errors.ts');
 const { requirePermission } = await import('../../rbac.ts');
 const { createMission, createProject } = await import('../../repository.ts');
@@ -26,7 +31,11 @@ function makeHandle() {
     return (req: Request, res: Response, next: NextFunction) => {
       void (async () => {
         try {
-          if (options.requires) await requirePermission(options.requires);
+          if (options.requires)
+            await requirePermission(options.requires, {
+              workspaceId: getActiveWorkspaceId(),
+              workspaceUserId: getActorWorkspaceUserId()
+            });
           const result = await Promise.resolve(fn(req, res));
           if (!res.headersSent) res.json(result ?? { ok: true });
         } catch (err) {

@@ -149,20 +149,21 @@ function verifyInstallState(
 }
 
 async function readInstallation(
-  client: DatabaseClient = requireDatabaseClient()
+  client: DatabaseClient = requireDatabaseClient(),
+  workspaceId: string = WORKSPACE.id
 ): Promise<InstallationRow | null> {
   return (
     (await client.get<InstallationRow>(
       `SELECT id, github_installation_id, github_account_login, github_account_type, permissions_json, revision
          FROM ext_github_installations
         WHERE workspace_id = ? AND deleted_at IS NULL`,
-      [WORKSPACE.id]
+      [workspaceId]
     )) ?? null
   );
 }
 
-async function requireInstallationToken(): Promise<string> {
-  const installation = await readInstallation();
+async function requireInstallationToken(workspaceId: string = WORKSPACE.id): Promise<string> {
+  const installation = await readInstallation(undefined, workspaceId);
   if (!installation)
     throw new ApiError(400, 'Install the GitHub App in Settings → Integrations first.');
   const config = requireGitHubAppConfig();
@@ -178,16 +179,18 @@ async function requireInstallationToken(): Promise<string> {
 async function assertProject(
   projectId: string,
   client: DatabaseClient = requireDatabaseClient()
-): Promise<void> {
+): Promise<string> {
   const project = await client.get(
-    `SELECT id FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [projectId, WORKSPACE.id]
+    `SELECT workspace_id FROM projects WHERE id = ? AND deleted_at IS NULL`,
+    [projectId]
   );
   if (!project) throw new ApiError(404, 'Project not found.');
+  return (project as { workspace_id: string }).workspace_id;
 }
 
 async function readProjectLink(
   projectId: string,
+  workspaceId: string,
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<ProjectLinkRow | null> {
   return (
@@ -195,7 +198,7 @@ async function readProjectLink(
       `SELECT id, github_repo_id, full_name, default_branch, revision
          FROM ext_github_project_links
         WHERE workspace_id = ? AND project_id = ? AND deleted_at IS NULL`,
-      [WORKSPACE.id, projectId]
+      [workspaceId, projectId]
     )) ?? null
   );
 }
@@ -267,7 +270,8 @@ export async function completeGitHubInstall(input: {
           entityId: existing.id,
           operation: 'update',
           entityRevision: revision,
-          changedFields: ['connected', 'accountLogin']
+          changedFields: ['connected', 'accountLogin'],
+          workspaceId: WORKSPACE.id
         },
         tx
       );
@@ -293,7 +297,8 @@ export async function completeGitHubInstall(input: {
           entityId: id,
           operation: 'insert',
           entityRevision: 1,
-          changedFields: ['connected', 'accountLogin']
+          changedFields: ['connected', 'accountLogin'],
+          workspaceId: WORKSPACE.id
         },
         tx
       );
@@ -322,7 +327,8 @@ export async function disconnectGitHub(): Promise<GitHubIntegrationDto> {
         entityId: installation.id,
         operation: 'delete',
         entityRevision: revision,
-        changedFields: ['connected']
+        changedFields: ['connected'],
+        workspaceId: WORKSPACE.id
       },
       tx
     );
@@ -352,8 +358,8 @@ export async function listGitHubRepos(query: string | null): Promise<GitHubRepoS
 }
 
 export async function getProjectGitHubLink(projectId: string): Promise<ProjectGitHubLinkDto> {
-  await assertProject(projectId);
-  const link = await readProjectLink(projectId);
+  const workspaceId = await assertProject(projectId);
+  const link = await readProjectLink(projectId, workspaceId);
   return { projectId, repo: link ? repoDto(link) : null };
 }
 
@@ -361,10 +367,10 @@ export async function linkProjectGitHub(
   projectId: string,
   body: LinkProjectGitHubBody
 ): Promise<ProjectGitHubLinkDto> {
-  await assertProject(projectId);
+  const workspaceId = await assertProject(projectId);
   const fullName = body.repoFullName?.trim() ?? '';
   if (!fullName) {
-    const existing = await readProjectLink(projectId);
+    const existing = await readProjectLink(projectId, workspaceId);
     if (existing) {
       const now = nowIso();
       await requireDatabaseClient().run(
@@ -376,7 +382,7 @@ export async function linkProjectGitHub(
   }
   if (!/^[^/\s]+\/[^/\s]+$/.test(fullName))
     throw new ApiError(400, 'Repository must be written as owner/name.');
-  const token = await requireInstallationToken();
+  const token = await requireInstallationToken(workspaceId);
   const repo = await githubFetch<{
     id: number;
     full_name: string;
@@ -390,7 +396,7 @@ export async function linkProjectGitHub(
     private: Boolean(repo.private)
   };
   await requireDatabaseClient().transaction(async tx => {
-    const existing = await readProjectLink(projectId, tx);
+    const existing = await readProjectLink(projectId, workspaceId, tx);
     const now = nowIso();
     if (existing) {
       await tx.run(
@@ -413,7 +419,8 @@ export async function linkProjectGitHub(
           operation: 'update',
           entityRevision: existing.revision + 1,
           projectId,
-          changedFields: ['repo']
+          changedFields: ['repo'],
+          workspaceId
         },
         tx
       );
@@ -423,7 +430,7 @@ export async function linkProjectGitHub(
         `INSERT INTO ext_github_project_links (id, workspace_id, project_id, github_repo_id, full_name, default_branch, metadata_json, created_at, updated_at, revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
         [
           id,
-          WORKSPACE.id,
+          workspaceId,
           projectId,
           next.id,
           next.fullName,
@@ -440,7 +447,8 @@ export async function linkProjectGitHub(
           operation: 'insert',
           entityRevision: 1,
           projectId,
-          changedFields: ['repo']
+          changedFields: ['repo'],
+          workspaceId
         },
         tx
       );
@@ -451,12 +459,13 @@ export async function linkProjectGitHub(
 
 async function readPullRequest(
   missionId: string,
+  workspaceId: string,
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<PullRequestRow | null> {
   return (
     (await client.get<PullRequestRow>(
       `SELECT id, github_pull_number, html_url, state, head_branch, base_branch, revision FROM ext_github_mission_pull_requests WHERE workspace_id = ? AND mission_id = ? AND deleted_at IS NULL`,
-      [WORKSPACE.id, missionId]
+      [workspaceId, missionId]
     )) ?? null
   );
 }
@@ -474,7 +483,12 @@ function pullRequestDto(row: PullRequestRow): GitHubPullRequestDto {
 export async function getMissionGitHubPullRequest(
   missionId: string
 ): Promise<GitHubPullRequestDto | null> {
-  const row = await readPullRequest(missionId);
+  const mission = await requireDatabaseClient().get<{ workspace_id: string }>(
+    `SELECT workspace_id FROM missions WHERE id = ? AND deleted_at IS NULL`,
+    [missionId]
+  );
+  if (!mission) throw new ApiError(404, 'Mission not found.');
+  const row = await readPullRequest(missionId, mission.workspace_id);
   return row ? pullRequestDto(row) : null;
 }
 
@@ -482,24 +496,25 @@ export async function createMissionGitHubPullRequest(
   missionId: string,
   body: CreateGitHubPullRequestBody
 ): Promise<GitHubPullRequestDto> {
-  const existing = await readPullRequest(missionId);
-  if (existing) return pullRequestDto(existing);
   const mission = await requireDatabaseClient().get<{
     id: string;
+    workspace_id: string;
     project_id: string;
     title: string;
     active_branch: string | null;
   }>(
-    `SELECT id, project_id, title, active_branch FROM missions WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [missionId, WORKSPACE.id]
+    `SELECT id, workspace_id, project_id, title, active_branch FROM missions WHERE id = ? AND deleted_at IS NULL`,
+    [missionId]
   );
   if (!mission) throw new ApiError(404, 'Mission not found.');
+  const existing = await readPullRequest(missionId, mission.workspace_id);
+  if (existing) return pullRequestDto(existing);
   if (!mission.active_branch?.trim())
     throw new ApiError(409, 'Publish the mission branch before opening a pull request.');
-  const link = await readProjectLink(mission.project_id);
+  const link = await readProjectLink(mission.project_id, mission.workspace_id);
   if (!link)
     throw new ApiError(400, 'Link this project to a GitHub repository in project settings first.');
-  const token = await requireInstallationToken();
+  const token = await requireInstallationToken(mission.workspace_id);
   const pr = await githubFetch<{ number: number; html_url: string; state: 'open' | 'closed' }>(
     `/repos/${link.full_name.split('/').map(encodeURIComponent).join('/')}/pulls`,
     token,
@@ -517,13 +532,13 @@ export async function createMissionGitHubPullRequest(
   const now = nowIso();
   const id = newId();
   await requireDatabaseClient().transaction(async tx => {
-    const concurrent = await readPullRequest(missionId, tx);
+    const concurrent = await readPullRequest(missionId, mission.workspace_id, tx);
     if (concurrent) return;
     await tx.run(
       `INSERT INTO ext_github_mission_pull_requests (id, workspace_id, project_id, mission_id, github_pull_number, html_url, state, head_branch, base_branch, created_at, updated_at, revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       [
         id,
-        WORKSPACE.id,
+        mission.workspace_id,
         mission.project_id,
         missionId,
         pr.number,
@@ -543,7 +558,8 @@ export async function createMissionGitHubPullRequest(
         entityRevision: 1,
         projectId: mission.project_id,
         missionId,
-        changedFields: ['pullRequest']
+        changedFields: ['pullRequest'],
+        workspaceId: mission.workspace_id
       },
       tx
     );

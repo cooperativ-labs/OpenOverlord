@@ -519,7 +519,10 @@ test('an invited MEMBER can switch (activate) between the workspaces they belong
     });
     setActiveWorkspaceUser(jakeMemberId);
     assert.ok(
-      await actorCan(PERMISSIONS.WORKSPACE_ACTIVATE),
+      await actorCan(PERMISSIONS.WORKSPACE_ACTIVATE, {
+        workspaceId: 'local-workspace',
+        workspaceUserId: jakeMemberId
+      }),
       'a MEMBER must be able to activate/switch their workspace'
     );
   });

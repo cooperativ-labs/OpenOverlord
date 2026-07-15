@@ -3,6 +3,8 @@ import test from 'node:test';
 
 import {
   db,
+  getActiveWorkspaceId,
+  getActorWorkspaceUserId,
   initDatabase,
   setActiveTokenAuth,
   setActiveWorkspace,
@@ -32,6 +34,10 @@ const operatorWorkspaceUserId = seedAuthenticatedOperator({ db });
 // `local-workspace` row).
 await setActiveWorkspace('local-workspace');
 setActiveWorkspaceUser(operatorWorkspaceUserId);
+
+function activeScope() {
+  return { workspaceId: getActiveWorkspaceId(), workspaceUserId: getActorWorkspaceUserId() };
+}
 
 test('createUserToken defaults to a ~90-day expiry when none is given', async () => {
   const { token } = await createUserToken({ label: 'default-expiry' });
@@ -102,19 +108,19 @@ test('a mission_lifecycle token is denied admin/destructive actions but allowed 
     scopeGrants
   });
 
-  assert.equal(await actorCan('mission:create'), true);
-  assert.equal(await actorCan('objective:update'), true);
-  assert.equal(await actorCan('execution_request:claim'), true);
-  assert.equal(await actorCan('project:delete'), false);
-  assert.equal(await actorCan('user:create'), false);
-  assert.equal(await actorCan('user_token:self:create'), false);
+  assert.equal(await actorCan('mission:create', activeScope()), true);
+  assert.equal(await actorCan('objective:update', activeScope()), true);
+  assert.equal(await actorCan('execution_request:claim', activeScope()), true);
+  assert.equal(await actorCan('project:delete', activeScope()), false);
+  assert.equal(await actorCan('user:create', activeScope()), false);
+  assert.equal(await actorCan('user_token:self:create', activeScope()), false);
 
-  await assert.rejects(requirePermission('project:delete'), ApiError);
-  await requirePermission('mission:create');
+  await assert.rejects(requirePermission('project:delete', activeScope()), ApiError);
+  await requirePermission('mission:create', activeScope());
 });
 
 test('a full token (session/loopback) keeps the operator ADMIN permissions', async () => {
   setActiveWorkspaceUser(operatorWorkspaceUserId);
-  assert.equal(await actorCan('project:delete'), true);
-  assert.equal(await actorCan('user:create'), true);
+  assert.equal(await actorCan('project:delete', activeScope()), true);
+  assert.equal(await actorCan('user:create', activeScope()), true);
 });

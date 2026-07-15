@@ -83,8 +83,8 @@ function isNativeEverhourProjectId(id: string | null | undefined): boolean {
   return typeof id === 'string' && id.startsWith('ev:');
 }
 
-async function requireApiKey(): Promise<string> {
-  const apiKey = await readEverhourApiKey();
+async function requireApiKey(workspaceId: string): Promise<string> {
+  const apiKey = await readEverhourApiKey(workspaceId);
   if (!apiKey) {
     throw new ApiError(400, 'Connect Everhour in Settings → Integrations first.');
   }
@@ -187,21 +187,23 @@ interface MissionLinkRow {
 }
 
 async function readEverhourConnection(
-  client: DatabaseClient = requireDatabaseClient()
+  client: DatabaseClient = requireDatabaseClient(),
+  workspaceId: string = WORKSPACE.id
 ): Promise<WorkspaceConnectionRow | null> {
   const row = await client.get<WorkspaceConnectionRow>(
     `SELECT id, api_key_secret, account_id, account_name, revision
        FROM ext_everhour_workspace_connections
       WHERE workspace_id = ? AND deleted_at IS NULL`,
-    [WORKSPACE.id]
+    [workspaceId]
   );
   return row ?? null;
 }
 
 async function readEverhourApiKey(
+  workspaceId: string,
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<string | null> {
-  return (await readEverhourConnection(client))?.api_key_secret ?? null;
+  return (await readEverhourConnection(client, workspaceId))?.api_key_secret ?? null;
 }
 
 async function writeEverhourConnection(
@@ -236,7 +238,8 @@ async function writeEverhourConnection(
           entityId: existing.id,
           operation: 'update',
           entityRevision: revision,
-          changedFields: ['accountId', 'accountName']
+          changedFields: ['accountId', 'accountName'],
+          workspaceId: WORKSPACE.id
         },
         tx
       );
@@ -256,7 +259,8 @@ async function writeEverhourConnection(
         entityId: id,
         operation: 'insert',
         entityRevision: 1,
-        changedFields: ['connected', 'accountId', 'accountName']
+        changedFields: ['connected', 'accountId', 'accountName'],
+        workspaceId: WORKSPACE.id
       },
       tx
     );
@@ -281,7 +285,8 @@ async function clearEverhourConnection(): Promise<void> {
         entityId: existing.id,
         operation: 'delete',
         entityRevision: revision,
-        changedFields: ['connected']
+        changedFields: ['connected'],
+        workspaceId: WORKSPACE.id
       },
       tx
     );
@@ -324,6 +329,7 @@ export async function clearEverhourApiKey(): Promise<EverhourIntegrationDto> {
 
 async function readProjectLink(
   projectId: string,
+  workspaceId: string,
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<ProjectLinkRow | null> {
   const row = await client.get<ProjectLinkRow>(
@@ -331,7 +337,7 @@ async function readProjectLink(
             everhour_section_id, everhour_general_task_id, revision
        FROM ext_everhour_project_links
       WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [projectId, WORKSPACE.id]
+    [projectId, workspaceId]
   );
   return row ?? null;
 }
@@ -339,18 +345,19 @@ async function readProjectLink(
 async function assertProjectExists(
   projectId: string,
   client: DatabaseClient = requireDatabaseClient()
-): Promise<void> {
+): Promise<string> {
   const row = await client.get(
-    `SELECT id FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [projectId, WORKSPACE.id]
+    `SELECT workspace_id FROM projects WHERE id = ? AND deleted_at IS NULL`,
+    [projectId]
   );
   if (!row) throw new ApiError(404, 'Project not found');
+  return (row as { workspace_id: string }).workspace_id;
 }
 
 async function clearProjectLink(projectId: string): Promise<void> {
   await requireDatabaseClient().transaction(async tx => {
-    await assertProjectExists(projectId, tx);
-    const existing = await readProjectLink(projectId, tx);
+    const workspaceId = await assertProjectExists(projectId, tx);
+    const existing = await readProjectLink(projectId, workspaceId, tx);
     if (!existing) return;
     const now = nowIso();
     const revision = existing.revision + 1;
@@ -358,7 +365,7 @@ async function clearProjectLink(projectId: string): Promise<void> {
       `UPDATE ext_everhour_project_links
           SET deleted_at = ?, updated_at = ?, revision = ?
         WHERE id = ? AND workspace_id = ? AND revision = ?`,
-      [now, now, revision, existing.id, WORKSPACE.id, existing.revision]
+      [now, now, revision, existing.id, workspaceId, existing.revision]
     );
     await recordChange(
       {
@@ -367,7 +374,8 @@ async function clearProjectLink(projectId: string): Promise<void> {
         operation: 'delete',
         entityRevision: revision,
         projectId,
-        changedFields: ['linked']
+        changedFields: ['linked'],
+        workspaceId
       },
       tx
     );
@@ -375,8 +383,8 @@ async function clearProjectLink(projectId: string): Promise<void> {
 }
 
 export async function getProjectEverhourLink(projectId: string): Promise<ProjectEverhourLinkDto> {
-  await assertProjectExists(projectId);
-  const link = await readProjectLink(projectId);
+  const workspaceId = await assertProjectExists(projectId);
+  const link = await readProjectLink(projectId, workspaceId);
   return {
     projectId,
     everhourProjectId: link?.everhour_project_id ?? null,
@@ -391,8 +399,8 @@ async function writeProjectLink(
   everhourSectionId: string | null
 ): Promise<void> {
   await requireDatabaseClient().transaction(async tx => {
-    await assertProjectExists(projectId, tx);
-    const existing = await readProjectLink(projectId, tx);
+    const workspaceId = await assertProjectExists(projectId, tx);
+    const existing = await readProjectLink(projectId, workspaceId, tx);
     const now = nowIso();
     if (existing) {
       const revision = existing.revision + 1;
@@ -413,7 +421,7 @@ async function writeProjectLink(
           now,
           revision,
           existing.id,
-          WORKSPACE.id,
+          workspaceId,
           existing.revision
         ]
       );
@@ -426,7 +434,8 @@ async function writeProjectLink(
           operation: 'update',
           entityRevision: revision,
           projectId,
-          changedFields
+          changedFields,
+          workspaceId
         },
         tx
       );
@@ -441,7 +450,7 @@ async function writeProjectLink(
        VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, 1)`,
       [
         id,
-        WORKSPACE.id,
+        workspaceId,
         projectId,
         everhourProjectId,
         everhourProjectName,
@@ -457,7 +466,8 @@ async function writeProjectLink(
         operation: 'insert',
         entityRevision: 1,
         projectId,
-        changedFields: ['linked', 'everhourProjectId', 'everhourProjectName', 'everhourSectionId']
+        changedFields: ['linked', 'everhourProjectId', 'everhourProjectName', 'everhourSectionId'],
+        workspaceId
       },
       tx
     );
@@ -466,7 +476,8 @@ async function writeProjectLink(
 
 async function writeProjectGeneralTaskId(projectId: string, taskId: string): Promise<void> {
   await requireDatabaseClient().transaction(async tx => {
-    const existing = await readProjectLink(projectId, tx);
+    const workspaceId = await assertProjectExists(projectId, tx);
+    const existing = await readProjectLink(projectId, workspaceId, tx);
     if (!existing) {
       throw new ApiError(
         400,
@@ -480,7 +491,7 @@ async function writeProjectGeneralTaskId(projectId: string, taskId: string): Pro
       `UPDATE ext_everhour_project_links
           SET everhour_general_task_id = ?, updated_at = ?, revision = ?
         WHERE id = ? AND workspace_id = ? AND revision = ?`,
-      [taskId, now, revision, existing.id, WORKSPACE.id, existing.revision]
+      [taskId, now, revision, existing.id, workspaceId, existing.revision]
     );
     await recordChange(
       {
@@ -489,7 +500,8 @@ async function writeProjectGeneralTaskId(projectId: string, taskId: string): Pro
         operation: 'update',
         entityRevision: revision,
         projectId,
-        changedFields: ['everhourGeneralTaskId']
+        changedFields: ['everhourGeneralTaskId'],
+        workspaceId
       },
       tx
     );
@@ -578,7 +590,8 @@ export async function linkProjectEverhour(
     return { projectId, everhourProjectId: null, everhourProjectName: null };
   }
 
-  const apiKey = await requireApiKey();
+  const workspaceId = await assertProjectExists(projectId);
+  const apiKey = await requireApiKey(workspaceId);
   const resolved = await resolveEverhourProject(apiKey, name);
   await writeProjectLink(projectId, resolved.id, name, resolved.sectionId);
   return { projectId, everhourProjectId: resolved.id, everhourProjectName: name };
@@ -588,6 +601,7 @@ export async function linkProjectEverhour(
 
 interface MissionRow {
   id: string;
+  workspace_id: string;
   project_id: string;
   title: string;
   everhourTaskId: string | null;
@@ -595,12 +609,12 @@ interface MissionRow {
 
 async function getMissionRow(missionId: string): Promise<MissionRow> {
   const row = await requireDatabaseClient().get<Omit<MissionRow, 'everhourTaskId'>>(
-    `SELECT id, project_id, title
-       FROM missions WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [missionId, WORKSPACE.id]
+    `SELECT id, workspace_id, project_id, title
+       FROM missions WHERE id = ? AND deleted_at IS NULL`,
+    [missionId]
   );
   if (!row) throw new ApiError(404, 'Mission not found');
-  const link = await readMissionLink(missionId);
+  const link = await readMissionLink(missionId, row.workspace_id);
   return { ...row, everhourTaskId: link?.everhour_task_id ?? null };
 }
 
@@ -608,7 +622,8 @@ async function getProjectEverhour(projectId: string): Promise<{
   everhourProjectId: string | null;
   sectionId: string | null;
 }> {
-  const link = await readProjectLink(projectId);
+  const workspaceId = await assertProjectExists(projectId);
+  const link = await readProjectLink(projectId, workspaceId);
   if (!link) return { everhourProjectId: null, sectionId: null };
   return {
     everhourProjectId: link.everhour_project_id,
@@ -618,10 +633,11 @@ async function getProjectEverhour(projectId: string): Promise<{
 
 async function listProjectEverhourTaskIds(
   projectId: string,
-  client: DatabaseClient = requireDatabaseClient()
+  client: DatabaseClient = requireDatabaseClient(),
+  workspaceId: string
 ): Promise<Set<string>> {
   const taskIds = new Set<string>();
-  const link = await readProjectLink(projectId, client);
+  const link = await readProjectLink(projectId, workspaceId, client);
   if (link?.everhour_general_task_id) {
     taskIds.add(link.everhour_general_task_id);
   }
@@ -630,7 +646,7 @@ async function listProjectEverhourTaskIds(
     `SELECT everhour_task_id
        FROM ext_everhour_mission_links
       WHERE project_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [projectId, WORKSPACE.id]
+    [projectId, workspaceId]
   );
   for (const row of missionTasks) {
     taskIds.add(row.everhour_task_id);
@@ -641,20 +657,21 @@ async function listProjectEverhourTaskIds(
 
 async function readMissionLink(
   missionId: string,
+  workspaceId: string,
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<MissionLinkRow | null> {
   const row = await client.get<MissionLinkRow>(
     `SELECT id, mission_id, everhour_task_id, revision
        FROM ext_everhour_mission_links
       WHERE mission_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [missionId, WORKSPACE.id]
+    [missionId, workspaceId]
   );
   return row ?? null;
 }
 
 async function writeMissionTaskId(mission: MissionRow, taskId: string): Promise<void> {
   await requireDatabaseClient().transaction(async tx => {
-    const existing = await readMissionLink(mission.id, tx);
+    const existing = await readMissionLink(mission.id, mission.workspace_id, tx);
     const now = nowIso();
     if (existing) {
       const revision = existing.revision + 1;
@@ -662,7 +679,7 @@ async function writeMissionTaskId(mission: MissionRow, taskId: string): Promise<
         `UPDATE ext_everhour_mission_links
             SET everhour_task_id = ?, updated_at = ?, revision = ?
           WHERE id = ? AND workspace_id = ? AND revision = ?`,
-        [taskId, now, revision, existing.id, WORKSPACE.id, existing.revision]
+        [taskId, now, revision, existing.id, mission.workspace_id, existing.revision]
       );
       await recordChange(
         {
@@ -672,7 +689,8 @@ async function writeMissionTaskId(mission: MissionRow, taskId: string): Promise<
           entityRevision: revision,
           projectId: mission.project_id,
           missionId: mission.id,
-          changedFields: ['everhourTaskId']
+          changedFields: ['everhourTaskId'],
+          workspaceId: mission.workspace_id
         },
         tx
       );
@@ -684,7 +702,7 @@ async function writeMissionTaskId(mission: MissionRow, taskId: string): Promise<
       `INSERT INTO ext_everhour_mission_links
          (id, workspace_id, project_id, mission_id, everhour_task_id, created_at, updated_at, revision)
        VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
-      [id, WORKSPACE.id, mission.project_id, mission.id, taskId, now, now]
+      [id, mission.workspace_id, mission.project_id, mission.id, taskId, now, now]
     );
     await recordChange(
       {
@@ -694,7 +712,8 @@ async function writeMissionTaskId(mission: MissionRow, taskId: string): Promise<
         entityRevision: 1,
         projectId: mission.project_id,
         missionId: mission.id,
-        changedFields: ['everhourTaskId']
+        changedFields: ['everhourTaskId'],
+        workspaceId: mission.workspace_id
       },
       tx
     );
@@ -804,8 +823,8 @@ async function findProjectTaskByName({
  * isn't linked to a native Everhour project.
  */
 async function ensureProjectGeneralTask(apiKey: string, projectId: string): Promise<string> {
-  await assertProjectExists(projectId);
-  const link = await readProjectLink(projectId);
+  const workspaceId = await assertProjectExists(projectId);
+  const link = await readProjectLink(projectId, workspaceId);
   if (!link?.everhour_project_id) {
     throw new ApiError(
       400,
@@ -911,8 +930,8 @@ async function listTaskRecords(apiKey: string, taskId: string): Promise<Everhour
 
 /** Full Everhour state for one mission (connection, link, records, running timer). */
 export async function getMissionEverhourState(missionId: string): Promise<MissionEverhourStateDto> {
-  const apiKey = await readEverhourApiKey();
   const mission = await getMissionRow(missionId);
+  const apiKey = await readEverhourApiKey(mission.workspace_id);
   const { everhourProjectId } = await getProjectEverhour(mission.project_id);
   const base: MissionEverhourStateDto = {
     connected: Boolean(apiKey),
@@ -939,7 +958,8 @@ export async function getMissionEverhourState(missionId: string): Promise<Missio
 
 /** Start (or restart) the Everhour timer for this mission's task. */
 export async function startMissionTimer(missionId: string): Promise<MissionEverhourStateDto> {
-  const apiKey = await requireApiKey();
+  const mission = await getMissionRow(missionId);
+  const apiKey = await requireApiKey(mission.workspace_id);
   const taskId = await ensureMissionTask(apiKey, missionId);
   await everhourFetch(apiKey, '/timers', { method: 'POST', body: { task: taskId } });
   return getMissionEverhourState(missionId);
@@ -947,7 +967,8 @@ export async function startMissionTimer(missionId: string): Promise<MissionEverh
 
 /** Stop the currently running Everhour timer (regardless of which task it's on). */
 export async function stopMissionTimer(missionId: string): Promise<MissionEverhourStateDto> {
-  const apiKey = await requireApiKey();
+  const mission = await getMissionRow(missionId);
+  const apiKey = await requireApiKey(mission.workspace_id);
   try {
     await everhourFetch(apiKey, '/timers/current', { method: 'DELETE' });
   } catch (err) {
@@ -959,9 +980,9 @@ export async function stopMissionTimer(missionId: string): Promise<MissionEverho
 
 /** Full Everhour state for one project's fixed `general` task. */
 export async function getProjectEverhourState(projectId: string): Promise<ProjectEverhourStateDto> {
-  const apiKey = await readEverhourApiKey();
-  await assertProjectExists(projectId);
-  const link = await readProjectLink(projectId);
+  const workspaceId = await assertProjectExists(projectId);
+  const apiKey = await readEverhourApiKey(workspaceId);
+  const link = await readProjectLink(projectId, workspaceId);
   const taskId = link?.everhour_general_task_id ?? null;
   const base: ProjectEverhourStateDto = {
     connected: Boolean(apiKey),
@@ -977,7 +998,7 @@ export async function getProjectEverhourState(projectId: string): Promise<Projec
   const [records, timer, projectTaskIds] = await Promise.all([
     taskId ? listTaskRecords(apiKey, taskId) : Promise.resolve([]),
     getCurrentTimer(apiKey),
-    listProjectEverhourTaskIds(projectId)
+    listProjectEverhourTaskIds(projectId, undefined, workspaceId)
   ]);
   const runningDto = timer ? toTimerDto(timer) : null;
   const hasRunningTimerInProject = Boolean(runningDto && projectTaskIds.has(runningDto.taskId));
@@ -992,7 +1013,8 @@ export async function getProjectEverhourState(projectId: string): Promise<Projec
 
 /** Start (or restart) the Everhour timer for this project's `general` task. */
 export async function startProjectTimer(projectId: string): Promise<ProjectEverhourStateDto> {
-  const apiKey = await requireApiKey();
+  const workspaceId = await assertProjectExists(projectId);
+  const apiKey = await requireApiKey(workspaceId);
   const taskId = await ensureProjectGeneralTask(apiKey, projectId);
   await everhourFetch(apiKey, '/timers', { method: 'POST', body: { task: taskId } });
   return getProjectEverhourState(projectId);
@@ -1000,7 +1022,8 @@ export async function startProjectTimer(projectId: string): Promise<ProjectEverh
 
 /** Stop the currently running Everhour timer (regardless of which task it's on). */
 export async function stopProjectTimer(projectId: string): Promise<ProjectEverhourStateDto> {
-  const apiKey = await requireApiKey();
+  const workspaceId = await assertProjectExists(projectId);
+  const apiKey = await requireApiKey(workspaceId);
   try {
     await everhourFetch(apiKey, '/timers/current', { method: 'DELETE' });
   } catch (err) {
@@ -1013,7 +1036,8 @@ export async function addProjectTime(
   projectId: string,
   body: CreateEverhourTimeBody
 ): Promise<ProjectEverhourStateDto> {
-  const apiKey = await requireApiKey();
+  const workspaceId = await assertProjectExists(projectId);
+  const apiKey = await requireApiKey(workspaceId);
   if (!Number.isFinite(body.timeSeconds) || body.timeSeconds <= 0) {
     throw new ApiError(400, 'Enter a positive duration.');
   }
@@ -1035,7 +1059,8 @@ export async function updateProjectTime(
   recordId: string,
   body: UpdateEverhourTimeBody
 ): Promise<ProjectEverhourStateDto> {
-  const apiKey = await requireApiKey();
+  const workspaceId = await assertProjectExists(projectId);
+  const apiKey = await requireApiKey(workspaceId);
   if (!Number.isFinite(body.timeSeconds) || body.timeSeconds <= 0) {
     throw new ApiError(400, 'Enter a positive duration.');
   }
@@ -1053,7 +1078,8 @@ export async function deleteProjectTime(
   projectId: string,
   recordId: string
 ): Promise<ProjectEverhourStateDto> {
-  const apiKey = await requireApiKey();
+  const workspaceId = await assertProjectExists(projectId);
+  const apiKey = await requireApiKey(workspaceId);
   await everhourFetch(apiKey, `/time/${encodeURIComponent(recordId)}`, { method: 'DELETE' });
   return getProjectEverhourState(projectId);
 }
@@ -1062,7 +1088,8 @@ export async function addMissionTime(
   missionId: string,
   body: CreateEverhourTimeBody
 ): Promise<MissionEverhourStateDto> {
-  const apiKey = await requireApiKey();
+  const mission = await getMissionRow(missionId);
+  const apiKey = await requireApiKey(mission.workspace_id);
   if (!Number.isFinite(body.timeSeconds) || body.timeSeconds <= 0) {
     throw new ApiError(400, 'Enter a positive duration.');
   }
@@ -1084,7 +1111,8 @@ export async function updateMissionTime(
   recordId: string,
   body: UpdateEverhourTimeBody
 ): Promise<MissionEverhourStateDto> {
-  const apiKey = await requireApiKey();
+  const mission = await getMissionRow(missionId);
+  const apiKey = await requireApiKey(mission.workspace_id);
   if (!Number.isFinite(body.timeSeconds) || body.timeSeconds <= 0) {
     throw new ApiError(400, 'Enter a positive duration.');
   }
@@ -1102,7 +1130,8 @@ export async function deleteMissionTime(
   missionId: string,
   recordId: string
 ): Promise<MissionEverhourStateDto> {
-  const apiKey = await requireApiKey();
+  const mission = await getMissionRow(missionId);
+  const apiKey = await requireApiKey(mission.workspace_id);
   await everhourFetch(apiKey, `/time/${encodeURIComponent(recordId)}`, { method: 'DELETE' });
   return getMissionEverhourState(missionId);
 }

@@ -1,11 +1,21 @@
 # Resource-Derived Workspace Scoping Implementation Plan
 
-Status: draft
+Status: implemented
 Origin: launch-config regression — objective pre-command and flags dropped when a
 mission is run from a workspace other than the caller's active one.
 Owner: jake@cooperativ.io
 Predecessor: `planning/feature-plans/multitenancy-access-control.md` (moved
 `WORKSPACE` from a process-global to a per-request `AsyncLocalStorage` value).
+
+Implementation note (2026-07-15): this document is the design record, so file
+line references and future-tense phase instructions below describe the original
+plan. The shipped shape is summarized in
+`planning/feature-plans/workspace-scoping-audit.md`: explicit workspace/actor
+scope is required at change and webhook writers, project/mission route guards
+are shared, aggregate indexes authorize each membership once, and an AST-based
+allowlist rejects new ambient workspace reads. Runtime A/B tests cover the
+highest-risk shared choke points; the static gate covers the remaining call
+sites without requiring one repetitive integration test per endpoint.
 
 ## 1. Problem
 
@@ -242,4 +252,6 @@ bug class is caught at the door.
 3. `getActiveWorkspaceId()` / `WORKSPACE.*` appears only in §2.2 consumers
    (auth binding, create-default, switcher/landing) — confirmed by the audit and a
    grep gate in CI.
-4. The A/B fixture covers every converted workspace-scoped operation.
+4. The A/B fixture covers each distinct high-risk behavior (resource-derived
+   read/write, launch, storage, webhook, extension authorization, and actor
+   attribution); the AST allowlist covers all converted call sites.

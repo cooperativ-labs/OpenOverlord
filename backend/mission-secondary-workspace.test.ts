@@ -72,7 +72,12 @@ describe('mission and objective access in a secondary (non-active) workspace', (
     // since `createWorkspace` below will change what it points to.
     const workspaceAId = WORKSPACE.id;
 
-    const { setActiveWorkspace } = await import('./db.ts');
+    const {
+      findActiveMembershipId,
+      getActorWorkspaceUserId,
+      requireDatabaseClient,
+      setActiveWorkspace
+    } = await import('./db.ts');
     const { createWorkspace } = await import('./workspaces.ts');
     const {
       createProject,
@@ -92,10 +97,7 @@ describe('mission and objective access in a secondary (non-active) workspace', (
       clearMissionSchedule,
       reorderBoardColumn,
       deleteMission,
-      updateProject,
-      deleteProject,
-      reorderProjects,
-      listProjectsForWorkspace
+      updateProject
     } = await import('./repository.ts');
 
     // A second workspace in the same org. The operator (an org admin, being
@@ -157,6 +159,30 @@ describe('mission and objective access in a secondary (non-active) workspace', (
 
     const updatedMission = await updateMission(mission.id, { title: 'Renamed mission' });
     assert.equal(updatedMission.title, 'Renamed mission');
+
+    const workspaceAActorId = getActorWorkspaceUserId();
+    const actorProfile = await requireDatabaseClient().get<{ profile_id: string }>(
+      `SELECT profile_id FROM workspace_users WHERE id = ?`,
+      [workspaceAActorId]
+    );
+    assert.ok(actorProfile);
+    const workspaceBActorId = await findActiveMembershipId(secondary.id, actorProfile.profile_id);
+    assert.ok(workspaceBActorId);
+    assert.notEqual(workspaceBActorId, workspaceAActorId);
+    const missionChange = await requireDatabaseClient().get<{
+      workspace_id: string;
+      actor_workspace_user_id: string | null;
+    }>(
+      `SELECT workspace_id, actor_workspace_user_id
+         FROM entity_changes
+        WHERE entity_type = 'mission' AND entity_id = ? AND operation = 'update'
+        ORDER BY seq DESC LIMIT 1`,
+      [mission.id]
+    );
+    assert.deepEqual(missionChange, {
+      workspace_id: secondary.id,
+      actor_workspace_user_id: workspaceBActorId
+    });
 
     // Branch metadata must resolve against the mission's own workspace too:
     // the project slug feeds the predicted worktree path and the
@@ -567,5 +593,81 @@ describe('workspace-scoped operations resolve against the resource workspace, no
       'the queued request must carry the pre-command resolved from the objective workspace'
     );
     assert.deepEqual(queued.launchConfig.flags, expectedConfig.flags);
+  });
+
+  it('resolves a project execution target through the project workspace (Phase 2)', async () => {
+    const fixture = await setupSecondaryWorkspaceFixture({ namePrefix: 'Project Target Scope' });
+    const { getProjectExecutionTarget } = await import('./execution/project-execution-target.ts');
+
+    await assert.doesNotReject(getProjectExecutionTarget(fixture.project.id));
+  });
+
+  it('resolves an attachment through its objective workspace while workspace A is active (Phase 2)', async () => {
+    const fixture = await setupSecondaryWorkspaceFixture({ namePrefix: 'Stored Object' });
+    const { PERMISSIONS } = await import('@overlord/auth');
+    const { resolveStoredObject, uploadObjectiveAttachment } = await import('./storage.ts');
+
+    const attachment = await uploadObjectiveAttachment({
+      objectiveId: fixture.objectiveId,
+      bytes: Buffer.from('secondary-workspace attachment'),
+      filename: 'secondary.txt',
+      contentType: 'text/plain'
+    });
+    const resolved = await resolveStoredObject(
+      attachment.bucketKey,
+      attachment.storageKey,
+      PERMISSIONS.ATTACHMENT_READ
+    );
+
+    assert.equal(resolved.filename, 'secondary.txt');
+    assert.ok(
+      resolved.absolutePath?.includes(`workspace-files/${fixture.secondary.id}/attachments/`),
+      "the object must be read from workspace B's bucket even though workspace A remains active"
+    );
+  });
+
+  it('creates a project webhook in the project workspace while another is active (Phase 2)', async () => {
+    const fixture = await setupSecondaryWorkspaceFixture({ namePrefix: 'Webhook Scope' });
+    const { createWebhookSubscription } = await import('./webhooks.ts');
+    const { requireDatabaseClient } = await import('./db.ts');
+
+    const created = await createWebhookSubscription({
+      projectId: fixture.project.id,
+      name: 'Secondary workspace hook',
+      endpointUrl: 'https://example.com/overlord-hook',
+      eventTypes: ['mission.delivered']
+    });
+    const row = await requireDatabaseClient().get<{ workspace_id: string }>(
+      `SELECT workspace_id FROM webhook_subscriptions WHERE id = ?`,
+      [created.subscription.id]
+    );
+    assert.equal(row?.workspace_id, fixture.secondary.id);
+  });
+
+  it('reads an Everhour project link from the project workspace while workspace A is active (Phase 2)', async () => {
+    const fixture = await setupSecondaryWorkspaceFixture({ namePrefix: 'Everhour Link' });
+    const { db, nowIso } = await import('./db.ts');
+    const { getProjectEverhourLink } = await import('./ext/everhour/service.ts');
+
+    db.prepare(
+      `INSERT INTO ext_everhour_project_links
+         (id, workspace_id, project_id, everhour_project_id, everhour_project_name,
+          everhour_section_id, everhour_general_task_id, created_at, updated_at, revision)
+       VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, 1)`
+    ).run(
+      'secondary-everhour-link',
+      fixture.secondary.id,
+      fixture.project.id,
+      'ev:secondary',
+      'Secondary Everhour Project',
+      nowIso(),
+      nowIso()
+    );
+
+    assert.deepEqual(await getProjectEverhourLink(fixture.project.id), {
+      projectId: fixture.project.id,
+      everhourProjectId: 'ev:secondary',
+      everhourProjectName: 'Secondary Everhour Project'
+    });
   });
 });

@@ -13,8 +13,15 @@ const harness = await bootstrapIntegrationTestDb({
   sqlitePath: path.join(tempDir, 'webapp.sqlite')
 });
 
-const { db, setActiveTokenAuth, setActiveWorkspace, setActiveWorkspaceUser, WORKSPACE } =
-  await import('./db.ts');
+const {
+  db,
+  getActiveWorkspaceId,
+  getActorWorkspaceUserId,
+  setActiveTokenAuth,
+  setActiveWorkspace,
+  setActiveWorkspaceUser,
+  WORKSPACE
+} = await import('./db.ts');
 const { ApiError } = await import('./errors.ts');
 const { requirePermission } = await import('./rbac.ts');
 const { createMission, createProject } = await import('./repository.ts');
@@ -123,7 +130,8 @@ test('s3 attachment uploads record metadata, reads are gated, and tombstones del
     assert.deepEqual(objects.get(storedPath), Buffer.from('attachment-bytes'));
 
     await assert.rejects(
-      async () => await resolveStoredObject('attachments', 'missing.txt'),
+      async () =>
+        await resolveStoredObject('attachments', 'missing.txt', PERMISSIONS.ATTACHMENT_READ),
       (error: unknown) => error instanceof ApiError && error.status === 404
     );
 
@@ -133,13 +141,24 @@ test('s3 attachment uploads record metadata, reads are gated, and tombstones del
       scopeGrants: ['attachment:read']
     });
     await assert.rejects(
-      async () => await requirePermission(PERMISSIONS.PROJECT_READ),
+      async () =>
+        await requirePermission(PERMISSIONS.PROJECT_READ, {
+          workspaceId: getActiveWorkspaceId(),
+          workspaceUserId: getActorWorkspaceUserId()
+        }),
       (error: unknown) => error instanceof ApiError && error.status === 403
     );
 
     setActiveWorkspaceUser(harness.operatorWorkspaceUserId);
-    await requirePermission(PERMISSIONS.PROJECT_READ);
-    const resolved = await resolveStoredObject('attachments', attachment.storageKey);
+    await requirePermission(PERMISSIONS.PROJECT_READ, {
+      workspaceId: getActiveWorkspaceId(),
+      workspaceUserId: getActorWorkspaceUserId()
+    });
+    const resolved = await resolveStoredObject(
+      'attachments',
+      attachment.storageKey,
+      PERMISSIONS.ATTACHMENT_READ
+    );
     assert.equal(resolved.bodyStream, undefined);
     assert.match(resolved.presignedRedirectUrl ?? '', /X-Amz-Expires=120/);
     assert.match(
@@ -200,7 +219,11 @@ test('uploadWorkspaceImage stores the logo under workspace-files, is admin-gated
       .get(workspace.id) as { local_path: string };
     assert.equal(bucketRow.local_path, 'database/.local/storage');
 
-    const resolved = await resolveStoredObject('workspace-images', stored.storageKey);
+    const resolved = await resolveStoredObject(
+      'workspace-images',
+      stored.storageKey,
+      PERMISSIONS.WORKSPACE_IMAGE_READ
+    );
     assert.ok(
       resolved.absolutePath?.endsWith(
         `workspace-files/${workspace.id}/images/${path.basename(stored.storageKey)}`
@@ -214,7 +237,11 @@ test('uploadWorkspaceImage stores the logo under workspace-files, is admin-gated
       scopeGrants: ['workspace_image:read']
     });
     await assert.rejects(
-      async () => await requirePermission(PERMISSIONS.WORKSPACE_IMAGE_CREATE),
+      async () =>
+        await requirePermission(PERMISSIONS.WORKSPACE_IMAGE_CREATE, {
+          workspaceId: getActiveWorkspaceId(),
+          workspaceUserId: getActorWorkspaceUserId()
+        }),
       (error: unknown) => error instanceof ApiError && error.status === 403
     );
   } finally {
@@ -258,7 +285,11 @@ test('resolveStoredObject serves legacy one-segment user image URLs by canonical
   });
   const legacyStorageKey = path.basename(stored.storageKey);
 
-  const resolved = await resolveStoredObject('user-images', legacyStorageKey);
+  const resolved = await resolveStoredObject(
+    'user-images',
+    legacyStorageKey,
+    PERMISSIONS.USER_IMAGE_READ
+  );
 
   assert.equal(resolved.contentType, 'image/png');
   assert.equal(resolved.filename, 'avatar.png');

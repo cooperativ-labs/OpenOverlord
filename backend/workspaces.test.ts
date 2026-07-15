@@ -48,8 +48,11 @@ test('createWorkspace grants ADMIN to the creator so switching workspaces keeps 
   assert.deepEqual(await loadActorRoles({ workspaceId: created.id, workspaceUserId }), ['ADMIN']);
 
   setActiveWorkspaceUser(workspaceUserId);
-  assert.equal(await actorCan('project:read'), true);
-  assert.equal(await actorCan('workspace:update'), true);
+  assert.equal(await actorCan('project:read', { workspaceId: created.id, workspaceUserId }), true);
+  assert.equal(
+    await actorCan('workspace:update', { workspaceId: created.id, workspaceUserId }),
+    true
+  );
 });
 
 test('a brand-new authenticated user onboards into their own organization and workspace', async () => {

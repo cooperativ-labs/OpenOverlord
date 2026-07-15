@@ -24,7 +24,7 @@ import { LoadingButton } from '@/components/ui/loading-button';
 import { api } from '@/lib/api';
 import { getDesktopChrome } from '@/lib/desktop-chrome';
 import { writeLocalProjectMetadata } from '@/lib/project-metadata';
-import { useCreateProject, useLaunchSettings } from '@/lib/queries';
+import { useCreateProject, useLaunchSettings, useMeta } from '@/lib/queries';
 
 type ProjectCreatorModalProps = {
   open: boolean;
@@ -36,8 +36,10 @@ type ModalPhase = 'create' | 'link-cli';
 
 export function ProjectCreatorModal({ open, onOpenChange, workspaceId }: ProjectCreatorModalProps) {
   const navigate = useNavigate();
+  const meta = useMeta();
   const createProjectMutation = useCreateProject();
-  const launchSettingsQ = useLaunchSettings();
+  const targetWorkspaceId = workspaceId ?? meta.data?.workspace?.id;
+  const launchSettingsQ = useLaunchSettings(targetWorkspaceId);
   const { isDesktop } = getDesktopChrome();
   const [phase, setPhase] = useState<ModalPhase>('create');
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
@@ -102,6 +104,9 @@ export function ProjectCreatorModal({ open, onOpenChange, workspaceId }: Project
       if (!trimmedName) {
         throw new Error('Project name is required.');
       }
+      if (!targetWorkspaceId) {
+        throw new Error('A workspace must be selected before creating a project.');
+      }
 
       const hexColor = toHexColor(color);
       if (!hexColor) {
@@ -115,7 +120,7 @@ export function ProjectCreatorModal({ open, onOpenChange, workspaceId }: Project
 
       const created = await createProjectMutation.mutateAsync({
         name: trimmedName,
-        workspaceId,
+        workspaceId: targetWorkspaceId,
         color: hexColor,
         primaryResource: trimmedPrimaryResourcePath
           ? {

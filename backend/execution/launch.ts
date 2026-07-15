@@ -1076,7 +1076,8 @@ export async function launchObjective(
           projectId: objective.project_id,
           missionId: objective.mission_id,
           objectiveId: objective.id,
-          changedFields: changed
+          changedFields: changed,
+          workspaceId: objective.workspace_id
         },
         tx
       );

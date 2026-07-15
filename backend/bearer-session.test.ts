@@ -28,13 +28,13 @@ describe('resolveSessionFromBrowserRequest', () => {
       },
       returnHeaders: true
     });
-    assert.ok(!signUp.error, signUp.error?.message);
+    assert.ok(signUp.response, 'expected sign-up to return a response');
 
     const signIn = await auth.api.signInEmail({
       body: { email, password },
       returnHeaders: true
     });
-    assert.ok(!signIn.error, signIn.error?.message);
+    assert.ok(signIn.response, 'expected sign-in to return a response');
 
     const bearerToken = signIn.headers?.get('set-auth-token')?.trim();
     assert.ok(bearerToken, 'expected sign-in to return set-auth-token');

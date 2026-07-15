@@ -1,4 +1,4 @@
-import { PERMISSIONS } from '@overlord/auth';
+import { type Permission, PERMISSIONS } from '@overlord/auth';
 import type { DatabaseClient } from '@overlord/database';
 
 import { ServiceError } from '../../packages/core/service/errors.ts';
@@ -14,17 +14,27 @@ import type {
   UpdateProjectExecutionTargetBody,
   WorkspaceExecutionTargetDto
 } from '../../webapp/shared/contract.ts';
-import {
-  buildWebappServiceContext,
-  buildWebappServiceContextForWorkspace,
-  requireDatabaseClient,
-  serviceDatabaseClient
-} from '../db.ts';
+import { buildWebappServiceContextForWorkspace, requireDatabaseClient } from '../db.ts';
 import { ApiError } from '../errors.ts';
-import { requireWorkspacePermission } from '../rbac.ts';
+import { requireProjectPermission, requireWorkspacePermission } from '../rbac.ts';
 
-function serviceContext(client: DatabaseClient = serviceDatabaseClient()) {
-  return buildWebappServiceContext(client);
+/**
+ * Project-target selection is a resource operation: resolve the project's
+ * owning workspace and the caller's membership there before constructing the
+ * service context. `buildWebappServiceContext()` uses the ambient workspace,
+ * which is only correct for legacy active-workspace settings surfaces.
+ */
+async function projectServiceContext(
+  projectId: string,
+  permission: Permission,
+  client: DatabaseClient
+) {
+  const { workspaceId, workspaceUserId } = await requireProjectPermission({
+    projectId,
+    permission,
+    db: client
+  });
+  return buildWebappServiceContextForWorkspace(workspaceId, client, workspaceUserId);
 }
 
 function toDto(
@@ -48,9 +58,8 @@ export async function getProjectExecutionTarget(
   client: DatabaseClient = requireDatabaseClient()
 ): Promise<ProjectExecutionTargetDto> {
   try {
-    return toDto(
-      await getProjectExecutionTargetSelection({ ctx: serviceContext(client), projectId })
-    );
+    const ctx = await projectServiceContext(projectId, PERMISSIONS.LAUNCH_READ, client);
+    return toDto(await getProjectExecutionTargetSelection({ ctx, projectId }));
   } catch (error) {
     if (error instanceof ServiceError && error.status === 404) {
       throw new ApiError(404, 'Project not found');
@@ -130,9 +139,10 @@ export async function updateProjectExecutionTarget(
       : body.executionTargetId.trim() || null;
 
   try {
+    const ctx = await projectServiceContext(projectId, PERMISSIONS.LAUNCH_CONFIGURE, client);
     return toDto(
       await updateProjectExecutionTargetSelection({
-        ctx: serviceContext(client),
+        ctx,
         projectId,
         executionTargetId
       })

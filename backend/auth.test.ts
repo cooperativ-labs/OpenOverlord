@@ -151,7 +151,7 @@ test('a request with no active workspace cleanly 403s through requirePermission 
     setActiveWorkspaceUser(null);
 
     await assert.rejects(
-      () => requirePermission(PERMISSIONS.WORKSPACE_READ),
+      () => requirePermission(PERMISSIONS.WORKSPACE_READ, { workspaceId: 'missing-workspace' }),
       (err: unknown) => {
         assert.ok(err instanceof Error);
         assert.equal((err as { status?: number }).status, 403);

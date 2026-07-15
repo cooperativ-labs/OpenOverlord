@@ -146,8 +146,13 @@ async function buildProtocolContext(
 ): Promise<ServiceContext> {
   const workspaceId = await protocolWorkspaceId(body);
   if (!workspaceId) {
-    if (permission) await requirePermission(permission);
-    return buildContext();
+    const ctx = buildContext();
+    if (permission)
+      await requirePermission(permission, {
+        workspaceId: ctx.workspace.id,
+        workspaceUserId: ctx.actorWorkspaceUserId
+      });
+    return ctx;
   }
   const workspaceUserId = permission
     ? await requireWorkspacePermission({ workspaceId, permission })

@@ -11,20 +11,20 @@ import { type DatabaseClient } from '@overlord/database';
 import {
   findActiveMembershipId,
   getActiveTokenScopes,
-  getActiveWorkspaceIdOrNull,
-  getActorWorkspaceUserId,
+  getActiveWorkspaceId,
   requireDatabaseClient,
-  resolveActiveProfileId
+  resolveActiveProfileId,
+  type WorkspaceActorScope
 } from './db.ts';
 import { ApiError } from './errors.ts';
 
 export async function loadActorRoles({
-  workspaceId = getActiveWorkspaceIdOrNull() ?? undefined,
-  workspaceUserId = getActorWorkspaceUserId()
+  workspaceId,
+  workspaceUserId
 }: {
-  workspaceId?: string;
+  workspaceId: string;
   workspaceUserId?: string | null;
-} = {}): Promise<RoleType[]> {
+}): Promise<RoleType[]> {
   if (!workspaceUserId) return [];
   const rows = await requireDatabaseClient().all<{ role_key: string }>(
     `SELECT role_key FROM role_assignments
@@ -35,20 +35,26 @@ export async function loadActorRoles({
 }
 
 export async function actorIsAdmin({
-  workspaceId = getActiveWorkspaceIdOrNull() ?? undefined,
-  workspaceUserId = getActorWorkspaceUserId()
+  workspaceId,
+  workspaceUserId
 }: {
-  workspaceId?: string;
+  workspaceId: string;
   workspaceUserId?: string | null;
-} = {}): Promise<boolean> {
+}): Promise<boolean> {
   const roles = await loadActorRoles({ workspaceId, workspaceUserId });
   if (roles.length === 0) return false;
   const actor = makeActor(workspaceUserId ?? 'anonymous', roles);
   return defaultAuthorizer.can(actor, '*').allowed || roles.includes(Role.ADMIN);
 }
 
-export async function requireAdmin(): Promise<void> {
-  if (!(await actorIsAdmin())) {
+export async function requireAdmin({
+  workspaceId,
+  workspaceUserId
+}: {
+  workspaceId: string;
+  workspaceUserId?: string | null;
+}): Promise<void> {
+  if (!(await actorIsAdmin({ workspaceId, workspaceUserId }))) {
     throw new ApiError(403, 'Admin role required');
   }
 }
@@ -64,14 +70,14 @@ export async function requireAdmin(): Promise<void> {
 export async function actorCan(
   action: Permission,
   {
-    workspaceId = getActiveWorkspaceIdOrNull() ?? undefined,
-    workspaceUserId = getActorWorkspaceUserId(),
+    workspaceId,
+    workspaceUserId,
     tokenScopes = getActiveTokenScopes()
   }: {
-    workspaceId?: string;
+    workspaceId: string;
     workspaceUserId?: string | null;
     tokenScopes?: string[] | null;
-  } = {}
+  }
 ): Promise<boolean> {
   if (!workspaceUserId) return false;
   const roles = await loadActorRoles({ workspaceId, workspaceUserId });
@@ -85,8 +91,11 @@ export async function actorCan(
  * actor (resolved from the request's auth method) cannot perform `action`,
  * accounting for both role grants and any token scope restriction.
  */
-export async function requirePermission(action: Permission): Promise<void> {
-  if (!(await actorCan(action))) {
+export async function requirePermission(
+  action: Permission,
+  scope: { workspaceId: string; workspaceUserId?: string | null }
+): Promise<void> {
+  if (!(await actorCan(action, scope))) {
     throw new ApiError(403, `Permission denied: ${action}`);
   }
 }
@@ -120,6 +129,19 @@ export async function requireWorkspacePermission({
   return membershipId;
 }
 
+export type AuthorizedWorkspaceScope = WorkspaceActorScope & { workspaceUserId: string };
+
+/** Resolve and authorize a workspace together with the caller membership that belongs to it. */
+export async function requireWorkspaceScope(args: {
+  workspaceId: string;
+  permission: Permission;
+  db?: DatabaseClient;
+  notFoundMessage?: string;
+}): Promise<AuthorizedWorkspaceScope> {
+  const workspaceUserId = await requireWorkspacePermission(args);
+  return { workspaceId: args.workspaceId, workspaceUserId };
+}
+
 /**
  * Resolves a project to its owning workspace and checks `permission` there via
  * `requireWorkspacePermission`, so a project in a secondary workspace resolves
@@ -133,19 +155,50 @@ export async function requireProjectPermission({
   projectId: string;
   permission: Permission;
   db?: DatabaseClient;
-}): Promise<{ workspaceId: string; workspaceUserId: string }> {
+}): Promise<AuthorizedWorkspaceScope> {
   const project = (await db.get(
     `SELECT workspace_id FROM projects WHERE id = ? AND deleted_at IS NULL`,
     [projectId]
   )) as { workspace_id: string } | undefined;
   if (!project) throw new ApiError(404, 'Project not found');
-  const workspaceUserId = await requireWorkspacePermission({
+  return requireWorkspaceScope({
     workspaceId: project.workspace_id,
     permission,
     db,
     notFoundMessage: 'Project not found'
   });
-  return { workspaceId: project.workspace_id, workspaceUserId };
+}
+
+/** Resolve a mission's owning workspace and authorize it there, independent of
+ * the caller's active workspace. */
+export async function requireMissionPermission({
+  missionRef,
+  permission,
+  db = requireDatabaseClient()
+}: {
+  missionRef: string;
+  permission: Permission;
+  db?: DatabaseClient;
+}): Promise<AuthorizedWorkspaceScope & { missionId: string }> {
+  const mission = (await db.get(
+    `SELECT id, workspace_id FROM missions WHERE id = ? AND deleted_at IS NULL`,
+    [missionRef]
+  )) as { id: string; workspace_id: string } | undefined;
+  const resolved =
+    mission ??
+    ((await db.get(
+      `SELECT id, workspace_id FROM missions
+        WHERE display_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
+      [missionRef, getActiveWorkspaceId()]
+    )) as { id: string; workspace_id: string } | undefined);
+  if (!resolved) throw new ApiError(404, 'Mission not found');
+  const scope = await requireWorkspaceScope({
+    workspaceId: resolved.workspace_id,
+    permission,
+    db,
+    notFoundMessage: 'Mission not found'
+  });
+  return { ...scope, missionId: resolved.id };
 }
 
 // ---- Organization admin (derived, not a stored role) ----------------------

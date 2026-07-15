@@ -26,7 +26,7 @@ test.after(() => {
   rmSync(tempDir, { recursive: true, force: true });
 });
 
-test('project resource mutations keep primaries scoped per execution target', async () => {
+test('project resource mutations maintain one primary logical resource per project', async () => {
   const project = await createProject({ name: 'Web resource mutations' });
   const launchSettings = await getLaunchSettings();
 
@@ -55,7 +55,7 @@ test('project resource mutations keep primaries scoped per execution target', as
   });
 
   let rows = await listProjectResources(project.id);
-  assert.equal(rows.find(row => row.id === globalResource.id)?.isPrimary, true);
+  assert.equal(rows.find(row => row.id === globalResource.id)?.isPrimary, false);
   assert.equal(rows.find(row => row.id === firstLocalResource.id)?.isPrimary, false);
   assert.equal(rows.find(row => row.id === secondLocalResource.id)?.isPrimary, true);
   assert.equal(rows.find(row => row.id === secondLocalResource.id)?.resourceKey, 'local-primary');
@@ -68,7 +68,7 @@ test('project resource mutations keep primaries scoped per execution target', as
     false
   );
   assert.equal(rows.find(row => row.id === globalResource.id)?.isPrimary, true);
-  assert.equal(rows.find(row => row.id === firstLocalResource.id)?.isPrimary, true);
+  assert.equal(rows.find(row => row.id === firstLocalResource.id)?.isPrimary, false);
 });
 
 test('createProjectResource accepts a global git source without execution target', async () => {

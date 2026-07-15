@@ -118,7 +118,6 @@ import {
   newId,
   nowIso,
   recordChange,
-  type RecordChangeInput,
   requireDatabaseClient,
   resolveActiveProfileId
 } from './db.ts';
@@ -127,6 +126,7 @@ import { getActiveOrganizationIdOrNull } from './organizations.ts';
 import {
   actorCan,
   loadActorRoles,
+  requireMissionPermission,
   requireProjectPermission,
   requireWorkspacePermission
 } from './rbac.ts';
@@ -1090,14 +1090,6 @@ async function primaryResourceKey(
   );
 }
 
-async function primaryResourcePath(
-  projectId: string,
-  workspaceId: string,
-  executionTargetId?: string | null
-): Promise<string | null> {
-  return (await primaryResource(projectId, workspaceId, executionTargetId))?.path ?? null;
-}
-
 async function loadBranchActionContext(
   missionRef: string,
   options: { resourceKey?: unknown } = {}
@@ -1600,13 +1592,39 @@ const selectProjectsSql = `
   WHERE p.workspace_id = ? AND p.deleted_at IS NULL
 `;
 
+async function callerAuthorizedWorkspaceScopes(
+  permission: Permission,
+  db: DatabaseClient
+): Promise<Array<{ workspaceId: string; workspaceUserId: string }>> {
+  const memberships = await callerWorkspaceMemberships(db);
+  const checked = await Promise.all(
+    memberships.map(async scope => ({ scope, allowed: await actorCan(permission, scope) }))
+  );
+  return checked.filter(entry => entry.allowed).map(entry => entry.scope);
+}
+
 export async function listProjects(
   db: DatabaseClient = requireDatabaseClient()
 ): Promise<ProjectDto[]> {
-  const rows = (await db.all(
-    `${selectProjectsSql} ORDER BY p.status ASC, p.position ASC, p.created_at ASC`,
-    [getActiveWorkspaceId()]
-  )) as ProjectRow[];
+  // This is an index, not an active-workspace settings view. A caller can work
+  // in every workspace they actively belong to, so aggregate those workspaces
+  // explicitly instead of letting the request preference select one tenant.
+  const scopes = await callerAuthorizedWorkspaceScopes(PERMISSIONS.PROJECT_READ, db);
+  const rows = (
+    await Promise.all(
+      scopes.map(scope =>
+        db.all(`${selectProjectsSql} ORDER BY p.status ASC, p.position ASC, p.created_at ASC`, [
+          scope.workspaceId
+        ])
+      )
+    )
+  ).flat() as unknown as ProjectRow[];
+  rows.sort(
+    (left, right) =>
+      left.status.localeCompare(right.status) ||
+      (left.position ?? 0) - (right.position ?? 0) ||
+      left.created_at.localeCompare(right.created_at)
+  );
   return rows.map(toProjectDto);
 }
 
@@ -2929,35 +2947,19 @@ export async function listMissions(projectId: string): Promise<MissionDto[]> {
   return rows.map(row => toMissionDto(row, tagsByMission.get(row.id) ?? []));
 }
 
-export async function searchMissions({
+async function searchMissionsInWorkspace({
   query,
   projectId,
-  limit = 25
+  limit = 25,
+  workspaceId,
+  client
 }: {
   query?: string | null;
   projectId?: string | null;
   limit?: number;
+  workspaceId: string;
+  client: DatabaseClient;
 }): Promise<MissionDto[]> {
-  const client = requireDatabaseClient();
-  // A project-scoped search must resolve the project's own workspace (coo:135)
-  // rather than the request's active one, matching `listMissions`.
-  const workspaceId = projectId
-    ? (
-        await requireProjectPermission({
-          projectId,
-          permission: PERMISSIONS.MISSION_READ,
-          db: client
-        })
-      ).workspaceId
-    : getActiveWorkspaceId();
-  if (!projectId) {
-    await requireWorkspacePermission({
-      workspaceId,
-      permission: PERMISSIONS.MISSION_READ,
-      db: client,
-      notFoundMessage: 'Workspace not found or no active membership'
-    });
-  }
   const match = query?.trim()
     ? buildMissionSearchMatch({ dialect: client.dialect, query: query.trim() })
     : null;
@@ -2967,7 +2969,7 @@ export async function searchMissions({
       ? `${selectMissionsSql} AND t.project_id = ? ORDER BY t.updated_at DESC LIMIT ?`
       : `${selectMissionsSql} ORDER BY t.updated_at DESC LIMIT ?`;
     const params = projectId ? [workspaceId, projectId, limit] : [workspaceId, limit];
-    const rows = (await requireDatabaseClient().all(sql, params)) as MissionRow[];
+    const rows = (await client.all(sql, params)) as MissionRow[];
     const tagsByMission = await getTagsByMission(rows.map(row => row.id));
     return rows.map(row => toMissionDto(row, tagsByMission.get(row.id) ?? []));
   }
@@ -3039,6 +3041,38 @@ export async function searchMissions({
     .slice(0, limit);
   const tagsByMission = await getTagsByMission(ranked.map(entry => entry.row.id));
   return ranked.map(entry => toMissionDto(entry.row, tagsByMission.get(entry.row.id) ?? []));
+}
+
+export async function searchMissions({
+  query,
+  projectId,
+  limit = 25
+}: {
+  query?: string | null;
+  projectId?: string | null;
+  limit?: number;
+}): Promise<MissionDto[]> {
+  const client = requireDatabaseClient();
+  if (projectId) {
+    const { workspaceId } = await requireProjectPermission({
+      projectId,
+      permission: PERMISSIONS.MISSION_READ,
+      db: client
+    });
+    return searchMissionsInWorkspace({ query, projectId, limit, workspaceId, client });
+  }
+
+  const scopes = await callerAuthorizedWorkspaceScopes(PERMISSIONS.MISSION_READ, client);
+  const missions = (
+    await Promise.all(
+      scopes.map(scope =>
+        searchMissionsInWorkspace({ query, limit, workspaceId: scope.workspaceId, client })
+      )
+    )
+  ).flat();
+  return missions
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    .slice(0, limit);
 }
 
 // New cards drop in at the top of their column. Gap-based: one step (100) above
@@ -3139,55 +3173,6 @@ async function cascadeMissionProjectId(
      WHERE mission_id = ? AND workspace_id = ?`,
     [newProjectId, now, missionId, workspaceId]
   );
-}
-
-/**
- * Resolves a mission ref to its owning workspace and checks permission there,
- * mirroring `requireProjectPermission` (coo:135). `id` is a globally-unique
- * UUID, so it is looked up unscoped by the caller's active workspace — a
- * mission in a secondary workspace must resolve even when a different
- * workspace is currently active. `display_id` is only unique per workspace
- * (not globally), so that lookup still scopes to the active workspace,
- * matching the pre-org-hierarchy behavior CLI/webhook callers rely on.
- */
-async function requireMissionPermission({
-  missionRef,
-  permission,
-  db = requireDatabaseClient()
-}: {
-  missionRef: string;
-  permission: Permission;
-  db?: DatabaseClient;
-}): Promise<{ workspaceId: string; workspaceUserId: string; missionId: string }> {
-  const ownerRow = (await db.get(
-    `SELECT id, workspace_id FROM missions WHERE id = ? AND deleted_at IS NULL`,
-    [missionRef]
-  )) as { id: string; workspace_id: string } | undefined;
-
-  if (ownerRow) {
-    const workspaceUserId = await requireWorkspacePermission({
-      workspaceId: ownerRow.workspace_id,
-      permission,
-      db,
-      notFoundMessage: 'Mission not found'
-    });
-    return { workspaceId: ownerRow.workspace_id, workspaceUserId, missionId: ownerRow.id };
-  }
-
-  const workspaceId = getActiveWorkspaceId();
-  const byDisplayId = (await db.get(
-    `SELECT id FROM missions WHERE display_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [missionRef, workspaceId]
-  )) as { id: string } | undefined;
-  if (!byDisplayId) throw new ApiError(404, 'Mission not found');
-
-  const workspaceUserId = await requireWorkspacePermission({
-    workspaceId,
-    permission,
-    db,
-    notFoundMessage: 'Mission not found'
-  });
-  return { workspaceId, workspaceUserId, missionId: byDisplayId.id };
 }
 
 async function getMissionRow(
@@ -3514,7 +3499,8 @@ async function createMissionTx(body: CreateMissionBody): Promise<CreateMissionRe
         operation: 'insert',
         entityRevision: 1,
         projectId: body.projectId,
-        missionId: id
+        missionId: id,
+        workspaceId
       },
       tx
     );
@@ -3837,7 +3823,8 @@ async function patchMissionFieldsTx(id: string, body: UpdateMissionBody): Promis
         entityRevision: revision,
         projectId: existing.project_id,
         missionId: id,
-        changedFields: changed
+        changedFields: changed,
+        workspaceId: existing.workspace_id
       },
       tx
     );
@@ -3939,7 +3926,8 @@ async function moveMissionProjectTx({
         entityRevision: revision,
         projectId: targetProjectId,
         missionId: id,
-        changedFields: changed
+        changedFields: changed,
+        workspaceId: existing.workspace_id
       },
       tx
     );
@@ -4017,7 +4005,8 @@ export async function deleteMission(id: string): Promise<void> {
         operation: 'delete',
         entityRevision: revision,
         projectId: existing.project_id,
-        missionId: id
+        missionId: id,
+        workspaceId: existing.workspace_id
       },
       tx
     );
@@ -4042,7 +4031,7 @@ export async function reorderBoardColumn(
   if (!Array.isArray(orderedIds)) throw new ApiError(400, 'orderedMissionIds must be an array');
 
   await requireDatabaseClient().transaction(async tx => {
-    const { workspaceId } = await requireProjectPermission({
+    const { workspaceId, workspaceUserId } = await requireProjectPermission({
       projectId,
       permission: PERMISSIONS.MISSION_UPDATE,
       db: tx
@@ -4095,14 +4084,20 @@ export async function reorderBoardColumn(
           entityRevision: revision,
           projectId,
           missionId,
-          changedFields: changed
+          changedFields: changed,
+          workspaceId
         },
         tx
       );
 
       if (statusChanged) {
         await enqueueWebhookEventRest(
-          { type: 'mission.status_changed', projectId, entity: { missionId } },
+          {
+            type: 'mission.status_changed',
+            projectId,
+            entity: { missionId },
+            scope: { workspaceId, workspaceUserId }
+          },
           tx
         );
         await createScheduledDuplicateIfNeeded(tx, existing, statusRow.type as StatusType);
@@ -4330,7 +4325,8 @@ export async function upsertMissionSchedule(
         entityRevision: revision,
         projectId: existing.project_id,
         missionId: existing.id,
-        changedFields: ['schedule_id', 'due_datetime']
+        changedFields: ['schedule_id', 'due_datetime'],
+        workspaceId: existing.workspace_id
       },
       tx
     );
@@ -4363,7 +4359,8 @@ export async function clearMissionSchedule(missionRef: string): Promise<void> {
         entityRevision: revision,
         projectId: existing.project_id,
         missionId: existing.id,
-        changedFields: ['schedule_id', 'due_datetime']
+        changedFields: ['schedule_id', 'due_datetime'],
+        workspaceId: existing.workspace_id
       },
       tx
     );
@@ -4492,7 +4489,8 @@ async function createScheduledDuplicateIfNeeded(
       operation: 'insert',
       entityRevision: 1,
       projectId: mission.project_id,
-      missionId: newMissionId
+      missionId: newMissionId,
+      workspaceId: mission.workspace_id
     },
     tx
   );
@@ -4965,7 +4963,8 @@ async function applyObjectivePositionUpdates(
         projectId,
         missionId,
         objectiveId: existing.id,
-        changedFields: ['position']
+        changedFields: ['position'],
+        workspaceId
       },
       tx
     );
@@ -5065,7 +5064,8 @@ export async function reorderFutureObjectives(
           projectId: mission.project_id,
           missionId,
           objectiveId: existing.id,
-          changedFields: ['position']
+          changedFields: ['position'],
+          workspaceId
         },
         tx
       );
@@ -5175,7 +5175,8 @@ async function insertObjective(
       entityRevision: 1,
       projectId: mission.project_id,
       missionId: body.missionId,
-      objectiveId: id
+      objectiveId: id,
+      workspaceId
     },
     db
   );
@@ -5266,7 +5267,8 @@ async function ensureDraftSlotAfterObjectiveLeavesQueue(
           entityRevision: draftRevision,
           projectId,
           missionId,
-          objectiveId: draft.id
+          objectiveId: draft.id,
+          workspaceId
         },
         db
       );
@@ -5289,7 +5291,8 @@ async function ensureDraftSlotAfterObjectiveLeavesQueue(
         projectId,
         missionId,
         objectiveId: nextFuture.id,
-        changedFields: ['state', 'completed_at']
+        changedFields: ['state', 'completed_at'],
+        workspaceId
       },
       db
     );
@@ -5462,7 +5465,8 @@ async function updateObjectiveTx(
             projectId: existing.project_id,
             missionId: existing.mission_id,
             objectiveId: draft.id,
-            changedFields: ['state']
+            changedFields: ['state'],
+            workspaceId
           },
           tx
         );
@@ -5513,7 +5517,8 @@ async function updateObjectiveTx(
         projectId: existing.project_id,
         missionId: existing.mission_id,
         objectiveId: id,
-        changedFields: changed
+        changedFields: changed,
+        workspaceId
       },
       tx
     );
@@ -5622,7 +5627,8 @@ export async function deleteObjective(id: string): Promise<void> {
         entityRevision: revision,
         projectId: existing.project_id,
         missionId: existing.mission_id,
-        objectiveId: id
+        objectiveId: id,
+        workspaceId
       },
       tx
     );
@@ -5758,7 +5764,10 @@ async function toProfileDto(row: UserRow): Promise<ProfileDto> {
     editorScheme: editorSchemeFromMetadata(row.metadata_json),
     kind: row.kind,
     authProvider: 'better-auth',
-    roles: await loadActorRoles(),
+    roles: await loadActorRoles({
+      workspaceId: getActiveWorkspaceId(),
+      workspaceUserId: getActorWorkspaceUserId()
+    }),
     createdAt: row.created_at
   };
 }
@@ -5845,7 +5854,8 @@ export async function updateProfile(body: UpdateProfileBody): Promise<ProfileDto
         entityId: existing.id,
         operation: 'update',
         entityRevision: revision,
-        changedFields: changed
+        changedFields: changed,
+        workspaceId: getActiveWorkspaceId()
       },
       tx
     );
@@ -5882,6 +5892,8 @@ interface UserTokenRow {
 
 interface UserTokenMutableRow {
   id: string;
+  workspace_id: string;
+  workspace_user_id: string | null;
   status: string;
   revision: number;
 }
@@ -5931,7 +5943,7 @@ async function loadUserTokenForUpdate(
 ): Promise<UserTokenMutableRow> {
   const { userId } = await loadOperatorIdentity(db);
   const row = (await db.get(
-    `SELECT id, status, revision FROM user_tokens
+    `SELECT id, workspace_id, workspace_user_id, status, revision FROM user_tokens
          WHERE id = ? AND profile_id = ? AND deleted_at IS NULL`,
     [id, userId]
   )) as UserTokenMutableRow | undefined;
@@ -5986,6 +5998,7 @@ export async function createUserToken(
     const scopeGrants = scopeGrantsForPreset(scope);
 
     const { userId, workspaceUserId } = await loadOperatorIdentity(tx);
+    const workspaceId = getActiveWorkspaceId();
 
     // Token prefixes are display/lookup metadata owned by the profile; retry on
     // the rare per-user clash.
@@ -6013,7 +6026,7 @@ export async function createUserToken(
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, '{}', '{}', ?, ?, 1)`,
       [
         id,
-        getActiveWorkspaceId(),
+        workspaceId,
         userId,
         workspaceUserId,
         label,
@@ -6035,7 +6048,7 @@ export async function createUserToken(
          id, workspace_id, token_id, permission, resource_type, resource_id,
          created_at, updated_at, revision
        ) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, 1)`,
-        [newId(), getActiveWorkspaceId(), id, permission, now, now]
+        [newId(), workspaceId, id, permission, now, now]
       );
     }
 
@@ -6044,7 +6057,9 @@ export async function createUserToken(
         entityType: 'user_token',
         entityId: id,
         operation: 'insert',
-        entityRevision: 1
+        entityRevision: 1,
+        workspaceId,
+        actorWorkspaceUserId: workspaceUserId
       },
       tx
     );
@@ -6079,7 +6094,8 @@ export async function renameUserToken(
         entityId: id,
         operation: 'update',
         entityRevision: revision,
-        changedFields: ['label']
+        changedFields: ['label'],
+        workspaceId: existing.workspace_id
       },
       tx
     );
@@ -6094,7 +6110,8 @@ export async function revokeUserToken(id: string): Promise<UserTokenDto> {
     // Revocation is idempotent: revoking an already-revoked token is a no-op.
     if (existing.status === 'revoked') return toUserTokenDto(tx, await reloadUserToken(tx, id));
 
-    const { userId, workspaceUserId } = await loadOperatorIdentity(tx);
+    const { userId } = await loadOperatorIdentity(tx);
+    const workspaceUserId = await findActiveMembershipId(existing.workspace_id, userId, tx);
     const now = nowIso();
     const revision = existing.revision + 1;
     await tx.run(
@@ -6112,7 +6129,9 @@ export async function revokeUserToken(id: string): Promise<UserTokenDto> {
         entityId: id,
         operation: 'update',
         entityRevision: revision,
-        changedFields: ['status', 'revoked_at']
+        changedFields: ['status', 'revoked_at'],
+        workspaceId: existing.workspace_id,
+        actorWorkspaceUserId: workspaceUserId
       },
       tx
     );
@@ -6149,7 +6168,8 @@ export async function deleteRevokedUserToken(id: string): Promise<void> {
         entityId: id,
         operation: 'delete',
         entityRevision: revision,
-        changedFields: ['deleted_at']
+        changedFields: ['deleted_at'],
+        workspaceId: existing.workspace_id
       },
       tx
     );

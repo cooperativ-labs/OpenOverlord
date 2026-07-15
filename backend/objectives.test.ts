@@ -59,12 +59,14 @@ test('realtime catch-up reads changes after the cursor in order', async () => {
     entityType: 'test_sync',
     entityId: 'sync-1',
     operation: 'insert',
+    workspaceId: WORKSPACE.id,
     changedFields: ['state']
   });
   await recordChange({
     entityType: 'test_sync',
     entityId: 'sync-2',
     operation: 'update',
+    workspaceId: WORKSPACE.id,
     changedFields: ['state', 'updated_at']
   });
 

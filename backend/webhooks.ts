@@ -1,3 +1,4 @@
+import { type Permission, PERMISSIONS } from '@overlord/auth';
 import type {
   CreateWebhookSubscriptionBody,
   CreateWebhookSubscriptionResultDto,
@@ -19,13 +20,13 @@ import {
 import {
   DATABASE_DIALECT,
   getActiveWorkspaceId,
-  getActorWorkspaceUserId,
   newId,
   nowIso,
   recordChange,
   requireDatabaseClient
 } from './db.ts';
 import { ApiError } from './errors.ts';
+import { requireWorkspacePermission } from './rbac.ts';
 import {
   isInternalWebhookHost,
   parseWebhookEndpointUrl,
@@ -36,6 +37,7 @@ const WEBHOOK_SECRET_SCHEME = 'whsec';
 
 interface WebhookSubscriptionRow {
   id: string;
+  workspace_id: string;
   project_id: string | null;
   name: string;
   endpoint_url: string;
@@ -56,7 +58,7 @@ interface WebhookSubscriptionRow {
 // Includes `secret` (needed to sign test deliveries); `toSubscriptionDto` never
 // reads or forwards it, so it never reaches a DTO response.
 const SUBSCRIPTION_COLUMNS =
-  'id, project_id, name, endpoint_url, secret, event_types_json, payload_mode, created_by_workspace_user_id, ' +
+  'id, workspace_id, project_id, name, endpoint_url, secret, event_types_json, payload_mode, created_by_workspace_user_id, ' +
   'enabled, disabled_reason, consecutive_failures, last_success_at, last_failure_at, created_at, updated_at, revision';
 
 function parseEventTypes(json: string): WebhookEventType[] {
@@ -115,24 +117,62 @@ function normalizeEventTypes(input: unknown): WebhookEventType[] {
   return unique as WebhookEventType[];
 }
 
-async function assertProjectInWorkspace(db: DatabaseClient, projectId: string): Promise<void> {
+async function assertProjectInWorkspace(
+  db: DatabaseClient,
+  projectId: string,
+  workspaceId: string
+): Promise<void> {
   const row = await db.get(
     `SELECT id FROM projects WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [projectId, getActiveWorkspaceId()]
+    [projectId, workspaceId]
   );
   if (!row) throw new ApiError(400, `Project not found: ${projectId}`);
 }
 
+/**
+ * A subscription attached to a project belongs to that project's workspace,
+ * not whichever workspace is currently active in the browser. Unattached
+ * subscriptions retain the legacy active-workspace creation default.
+ */
+async function resolveWebhookCreateScope(
+  db: DatabaseClient,
+  projectId: string | null | undefined
+): Promise<{ workspaceId: string; workspaceUserId: string }> {
+  let workspaceId = getActiveWorkspaceId();
+  if (projectId) {
+    const project = await db.get<{ workspace_id: string }>(
+      `SELECT workspace_id FROM projects WHERE id = ? AND deleted_at IS NULL`,
+      [projectId]
+    );
+    if (!project) throw new ApiError(400, `Project not found: ${projectId}`);
+    workspaceId = project.workspace_id;
+  }
+  const workspaceUserId = await requireWorkspacePermission({
+    workspaceId,
+    permission: PERMISSIONS.WEBHOOK_CREATE,
+    db,
+    notFoundMessage: projectId ? 'Project not found' : 'Workspace not found'
+  });
+  return { workspaceId, workspaceUserId };
+}
+
 async function loadSubscriptionForUpdate(
   db: DatabaseClient,
-  id: string
+  id: string,
+  permission: Permission = PERMISSIONS.WEBHOOK_READ
 ): Promise<WebhookSubscriptionRow> {
   const row = (await db.get(
     `SELECT ${SUBSCRIPTION_COLUMNS} FROM webhook_subscriptions
-       WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [id, getActiveWorkspaceId()]
+       WHERE id = ? AND deleted_at IS NULL`,
+    [id]
   )) as WebhookSubscriptionRow | undefined;
   if (!row) throw new ApiError(404, 'Webhook subscription not found');
+  await requireWorkspacePermission({
+    workspaceId: row.workspace_id,
+    permission,
+    db,
+    notFoundMessage: 'Webhook subscription not found'
+  });
   return row;
 }
 
@@ -161,12 +201,8 @@ export async function createWebhookSubscription(
   }
 
   return requireDatabaseClient().transaction(async tx => {
-    if (body.projectId) await assertProjectInWorkspace(tx, body.projectId);
-
-    const actorWorkspaceUserId = getActorWorkspaceUserId();
-    if (!actorWorkspaceUserId) {
-      throw new ApiError(409, 'No active workspace membership for the authenticated user');
-    }
+    const { workspaceId, workspaceUserId } = await resolveWebhookCreateScope(tx, body.projectId);
+    if (body.projectId) await assertProjectInWorkspace(tx, body.projectId, workspaceId);
 
     const { secret } = generateWebhookSecret();
     const id = newId();
@@ -180,14 +216,14 @@ export async function createWebhookSubscription(
          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 1)`,
       [
         id,
-        getActiveWorkspaceId(),
+        workspaceId,
         body.projectId ?? null,
         name,
         url.toString(),
         secret,
         JSON.stringify(eventTypes),
         payloadMode,
-        actorWorkspaceUserId,
+        workspaceUserId,
         bindBool(DATABASE_DIALECT, true),
         now,
         now
@@ -200,7 +236,9 @@ export async function createWebhookSubscription(
         entityId: id,
         operation: 'insert',
         entityRevision: 1,
-        projectId: body.projectId ?? null
+        projectId: body.projectId ?? null,
+        workspaceId,
+        actorWorkspaceUserId: workspaceUserId
       },
       tx
     );
@@ -219,7 +257,7 @@ export async function updateWebhookSubscription(
   body: UpdateWebhookSubscriptionBody
 ): Promise<WebhookSubscriptionDto> {
   return requireDatabaseClient().transaction(async tx => {
-    const existing = await loadSubscriptionForUpdate(tx, id);
+    const existing = await loadSubscriptionForUpdate(tx, id, PERMISSIONS.WEBHOOK_UPDATE);
 
     const setClauses: string[] = [];
     const params: unknown[] = [];
@@ -239,7 +277,7 @@ export async function updateWebhookSubscription(
       changed.push('endpoint_url');
     }
     if (body.projectId !== undefined) {
-      if (body.projectId) await assertProjectInWorkspace(tx, body.projectId);
+      if (body.projectId) await assertProjectInWorkspace(tx, body.projectId, existing.workspace_id);
       setClauses.push('project_id = ?');
       params.push(body.projectId);
       changed.push('project_id');
@@ -285,18 +323,19 @@ export async function updateWebhookSubscription(
         entityId: id,
         operation: 'update',
         entityRevision: revision,
-        changedFields: changed
+        changedFields: changed,
+        workspaceId: existing.workspace_id
       },
       tx
     );
 
-    return toSubscriptionDto(await loadSubscriptionForUpdate(tx, id));
+    return toSubscriptionDto(await loadSubscriptionForUpdate(tx, id, PERMISSIONS.WEBHOOK_UPDATE));
   });
 }
 
 export async function deleteWebhookSubscription(id: string): Promise<void> {
   await requireDatabaseClient().transaction(async tx => {
-    const existing = await loadSubscriptionForUpdate(tx, id);
+    const existing = await loadSubscriptionForUpdate(tx, id, PERMISSIONS.WEBHOOK_DELETE);
     const now = nowIso();
     await tx.run(
       `UPDATE webhook_subscriptions SET deleted_at = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`,
@@ -307,7 +346,8 @@ export async function deleteWebhookSubscription(id: string): Promise<void> {
         entityType: 'webhook_subscription',
         entityId: id,
         operation: 'delete',
-        entityRevision: existing.revision + 1
+        entityRevision: existing.revision + 1,
+        workspaceId: existing.workspace_id
       },
       tx
     );
@@ -316,7 +356,7 @@ export async function deleteWebhookSubscription(id: string): Promise<void> {
 
 export async function rotateWebhookSecret(id: string): Promise<RotateWebhookSecretResultDto> {
   return requireDatabaseClient().transaction(async tx => {
-    const existing = await loadSubscriptionForUpdate(tx, id);
+    const existing = await loadSubscriptionForUpdate(tx, id, PERMISSIONS.WEBHOOK_UPDATE);
     const { secret } = generateWebhookSecret();
     const now = nowIso();
     const revision = existing.revision + 1;
@@ -330,11 +370,17 @@ export async function rotateWebhookSecret(id: string): Promise<RotateWebhookSecr
         entityId: id,
         operation: 'update',
         entityRevision: revision,
-        changedFields: ['secret']
+        changedFields: ['secret'],
+        workspaceId: existing.workspace_id
       },
       tx
     );
-    return { subscription: toSubscriptionDto(await loadSubscriptionForUpdate(tx, id)), secret };
+    return {
+      subscription: toSubscriptionDto(
+        await loadSubscriptionForUpdate(tx, id, PERMISSIONS.WEBHOOK_UPDATE)
+      ),
+      secret
+    };
   });
 }
 
@@ -348,7 +394,7 @@ export async function testWebhookSubscription(
   id: string
 ): Promise<{ ok: true; responseStatus: number | null }> {
   const client = requireDatabaseClient();
-  const subscription = await loadSubscriptionForUpdate(client, id);
+  const subscription = await loadSubscriptionForUpdate(client, id, PERMISSIONS.WEBHOOK_UPDATE);
   const url = new URL(subscription.endpoint_url);
 
   const envelope = {
@@ -378,7 +424,7 @@ export async function testWebhookSubscription(
           'X-Overlord-Signature': signatureHeader,
           'X-Overlord-Event': 'webhook.ping',
           'X-Overlord-Delivery': envelope.id,
-          'X-Overlord-Workspace': getActiveWorkspaceId()
+          'X-Overlord-Workspace': subscription.workspace_id
         },
         body: rawBody
       });
@@ -400,11 +446,11 @@ export async function testWebhookSubscription(
        VALUES (?, ?, ?, ?, 'webhook.ping', 1, ?, NULL, ?, ?, ?)`,
     [
       newId(),
-      getActiveWorkspaceId(),
+      subscription.workspace_id,
       id,
       // Ping attempts are not backed by a real outbox row; the FK requires one,
       // so a lightweight cancelled placeholder row is inserted for the log join.
-      await ensurePingOutboxRow(client, id),
+      await ensurePingOutboxRow(client, id, subscription.workspace_id),
       responseStatus,
       error,
       Date.now() - startedAt,
@@ -419,14 +465,15 @@ export async function testWebhookSubscription(
 /** One throwaway `cancelled` outbox row per ping so `webhook_delivery_attempts.outbox_message_id`'s FK is satisfiable without repurposing real event rows. */
 async function ensurePingOutboxRow(
   client: DatabaseClient,
-  subscriptionId: string
+  subscriptionId: string,
+  workspaceId: string
 ): Promise<string> {
   const id = newId();
   const now = nowIso();
   await client.run(
     `INSERT INTO outbox_messages (id, workspace_id, topic, payload_json, status, available_at, attempt_count, created_at, updated_at)
        VALUES (?, ?, 'webhook.ping', ?, 'cancelled', ?, 0, ?, ?)`,
-    [id, getActiveWorkspaceId(), JSON.stringify({ subscriptionId, ping: true }), now, now, now]
+    [id, workspaceId, JSON.stringify({ subscriptionId, ping: true }), now, now, now]
   );
   return id;
 }
@@ -436,7 +483,7 @@ export async function listWebhookDeliveries(
   { before, limit = 25 }: { before?: string | null; limit?: number } = {}
 ): Promise<WebhookDeliveryAttemptsPageDto> {
   const client = requireDatabaseClient();
-  await loadSubscriptionForUpdate(client, id);
+  await loadSubscriptionForUpdate(client, id, PERMISSIONS.WEBHOOK_READ);
   const normalizedLimit = Math.max(1, Math.min(limit, 100));
 
   const params: unknown[] = [id];
@@ -483,13 +530,17 @@ export async function redeliverWebhookDelivery(
   outboxMessageId: string
 ): Promise<void> {
   const client = requireDatabaseClient();
-  await loadSubscriptionForUpdate(client, subscriptionId);
+  const subscription = await loadSubscriptionForUpdate(
+    client,
+    subscriptionId,
+    PERMISSIONS.WEBHOOK_UPDATE
+  );
 
   const outboxRow = (await client.get(
     `SELECT id, payload_json, workspace_id FROM outbox_messages WHERE id = ?`,
     [outboxMessageId]
   )) as { id: string; payload_json: string; workspace_id: string } | undefined;
-  if (!outboxRow || outboxRow.workspace_id !== getActiveWorkspaceId()) {
+  if (!outboxRow || outboxRow.workspace_id !== subscription.workspace_id) {
     throw new ApiError(404, 'Delivery not found');
   }
   let payloadSubscriptionId: string | undefined;
