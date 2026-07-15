@@ -153,3 +153,36 @@ default_agent = "claude"
     else process.env.OVLD_HOME = previousHome;
   }
 });
+
+test('forWorkspace sends the active-workspace header', async () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'overlord-backend-client-workspace-'));
+  const previousHome = process.env.OVLD_HOME;
+  const previousEnv = isolateBackendClientEnv();
+  process.env.OVLD_HOME = home;
+  writeFileSync(
+    path.join(home, 'overlord.toml'),
+    `backend_mode = "cloud"
+backend_url = "https://cloud.overlord.test"
+`
+  );
+
+  const originalFetch = globalThis.fetch;
+  let capturedHeaders: Headers | null = null;
+  globalThis.fetch = (async (_url, init) => {
+    capturedHeaders = new Headers(init?.headers);
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }) as typeof fetch;
+
+  try {
+    await createBackendClient().forWorkspace('workspace-b').get('/api/meta');
+    assert.equal(capturedHeaders?.get('x-overlord-active-workspace'), 'workspace-b');
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreBackendClientEnv(previousEnv);
+    if (previousHome === undefined) delete process.env.OVLD_HOME;
+    else process.env.OVLD_HOME = previousHome;
+  }
+});

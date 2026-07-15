@@ -65,15 +65,38 @@ async function resolveProjectByIdOrName({
   projectRef: string;
 }): Promise<ProjectDto> {
   const trimmed = projectRef.trim();
-  const projects = await backend.get<ProjectDto[]>('/api/projects');
+  try {
+    return await backend.get<ProjectDto>(`/api/projects/${encodeURIComponent(trimmed)}`);
+  } catch (error) {
+    if (!(error instanceof CliError) || !/project not found/i.test(error.message)) throw error;
+  }
+  // Slugs and names are not globally unique, so resolve them from the
+  // account-wide catalog after the direct id lookup misses.
+  const projects = await listAccessibleProjects({ backend });
   const match =
-    projects.find(project => project.id === trimmed) ??
     projects.find(project => project.name === trimmed) ??
     projects.find(project => project.slug === trimmed);
   if (!match) {
     throw new CliError({ message: `Project not found: ${trimmed}` });
   }
   return match;
+}
+
+/** Every project in every workspace the authenticated profile can access. */
+export async function listAccessibleProjects({
+  backend
+}: {
+  backend: BackendClient;
+}): Promise<ProjectDto[]> {
+  const workspaces = await backend.get<Array<{ id: string }>>('/api/workspaces');
+  const projectLists = await Promise.all(
+    workspaces.map(workspace =>
+      backend.get<ProjectDto[]>(`/api/workspaces/${encodeURIComponent(workspace.id)}/projects`)
+    )
+  );
+  const projects = new Map<string, ProjectDto>();
+  for (const project of projectLists.flat()) projects.set(project.id, project);
+  return [...projects.values()];
 }
 
 /**

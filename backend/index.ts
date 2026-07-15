@@ -1207,15 +1207,13 @@ app.get(
 app.post(
   '/api/projects/:id/tags',
   handle(req => createProjectTag(req.params.id, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.PROJECT_UPDATE
+    mutates: true
   })
 );
 app.patch(
   '/api/projects/:id/tags/:tagId',
   handle(req => updateProjectTag(req.params.id, req.params.tagId, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.PROJECT_UPDATE
+    mutates: true
   })
 );
 app.delete(
@@ -1225,7 +1223,7 @@ app.delete(
       deleteProjectTag(req.params.id, req.params.tagId);
       return { ok: true as const };
     },
-    { mutates: true, requires: PERMISSIONS.PROJECT_UPDATE }
+    { mutates: true }
   )
 );
 app.get(
@@ -1235,15 +1233,13 @@ app.get(
 app.post(
   '/api/projects/:id/resources',
   handle(req => createProjectResource(req.params.id, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.PROJECT_UPDATE
+    mutates: true
   })
 );
 app.patch(
   '/api/projects/:id/resources/:resourceId',
   handle(req => updateProjectResource(req.params.id, req.params.resourceId, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.PROJECT_UPDATE
+    mutates: true
   })
 );
 app.delete(
@@ -1253,25 +1249,22 @@ app.delete(
       deleteProjectResource(req.params.id, req.params.resourceId);
       return { ok: true as const };
     },
-    { mutates: true, requires: PERMISSIONS.PROJECT_UPDATE }
+    { mutates: true }
   )
 );
 app.get(
   '/api/projects/:id/repository',
-  handle(
-    req => {
-      const executionTargetId =
-        typeof req.query.executionTargetId === 'string' && req.query.executionTargetId.trim()
-          ? req.query.executionTargetId.trim()
-          : null;
-      const resourceKey =
-        typeof req.query.resourceKey === 'string' && req.query.resourceKey.trim()
-          ? req.query.resourceKey.trim()
-          : null;
-      return getProjectRepository(req.params.id, executionTargetId, resourceKey);
-    },
-    { requires: PERMISSIONS.PROJECT_READ }
-  )
+  handle(req => {
+    const executionTargetId =
+      typeof req.query.executionTargetId === 'string' && req.query.executionTargetId.trim()
+        ? req.query.executionTargetId.trim()
+        : null;
+    const resourceKey =
+      typeof req.query.resourceKey === 'string' && req.query.resourceKey.trim()
+        ? req.query.resourceKey.trim()
+        : null;
+    return getProjectRepository(req.params.id, executionTargetId, resourceKey);
+  })
 );
 app.post(
   '/api/local-target/invoke',
@@ -1306,8 +1299,7 @@ app.use('/ext/github', requireAuthenticatedSession, createGitHubExtensionRouter(
 app.patch(
   '/api/projects/:id/board/reorder',
   handle(req => reorderBoardColumn(req.params.id, req.body), {
-    mutates: true,
-    requires: PERMISSIONS.MISSION_UPDATE
+    mutates: true
   })
 );
 
@@ -1315,22 +1307,19 @@ app.patch(
 
 app.get(
   '/api/missions/search',
-  handle(
-    async req => {
-      const query = typeof req.query.q === 'string' ? req.query.q : null;
-      const projectId =
-        typeof req.query.projectId === 'string' && req.query.projectId.trim()
-          ? req.query.projectId.trim()
-          : null;
-      const parsedLimit = Number.parseInt(
-        typeof req.query.limit === 'string' ? req.query.limit : '',
-        10
-      );
-      const limit = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
-      return { missions: await searchMissions({ query, projectId, limit }) };
-    },
-    { requires: PERMISSIONS.MISSION_READ }
-  )
+  handle(async req => {
+    const query = typeof req.query.q === 'string' ? req.query.q : null;
+    const projectId =
+      typeof req.query.projectId === 'string' && req.query.projectId.trim()
+        ? req.query.projectId.trim()
+        : null;
+    const parsedLimit = Number.parseInt(
+      typeof req.query.limit === 'string' ? req.query.limit : '',
+      10
+    );
+    const limit = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
+    return { missions: await searchMissions({ query, projectId, limit }) };
+  })
 );
 // `createMission`/`getMissionDetail`/`updateMission`/`deleteMission` resolve and
 // authorize against the mission's (or target project's) own workspace

@@ -538,24 +538,32 @@ async function toProjectResourceDto(
 
 async function executionTargetBelongsToWorkspace(
   db: DatabaseClient,
-  executionTargetId: string
+  executionTargetId: string,
+  workspaceId: string
 ): Promise<boolean> {
   const row = (await db.get(
     `SELECT id FROM execution_targets
         WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL`,
-    [executionTargetId, getActiveWorkspaceId()]
+    [executionTargetId, workspaceId]
   )) as { id: string } | undefined;
   return Boolean(row);
 }
 
 async function resolveResourceExecutionTargetId(
   db: DatabaseClient,
+  workspaceId: string,
   executionTargetId: string | null | undefined
 ): Promise<string | null> {
   if (executionTargetId === undefined) {
+    const workspaceUserId = await requireWorkspacePermission({
+      workspaceId,
+      permission: PERMISSIONS.PROJECT_UPDATE,
+      db,
+      notFoundMessage: 'Project not found'
+    });
     return (
       await ensureActingDeviceTarget({
-        ctx: buildWebappServiceContext(db)
+        ctx: await buildWebappServiceContextForWorkspace(workspaceId, db, workspaceUserId)
       })
     ).executionTargetId;
   }
@@ -564,7 +572,7 @@ async function resolveResourceExecutionTargetId(
 
   const trimmed = executionTargetId.trim();
   if (!trimmed) return null;
-  if (!(await executionTargetBelongsToWorkspace(db, trimmed))) {
+  if (!(await executionTargetBelongsToWorkspace(db, trimmed, workspaceId))) {
     throw new ApiError(404, 'Execution target not found');
   }
   return trimmed;
@@ -573,9 +581,10 @@ async function resolveResourceExecutionTargetId(
 async function getProjectResourceRow(
   db: DatabaseClient,
   projectId: string,
-  resourceId: string
+  resourceId: string,
+  permission: Permission = PERMISSIONS.PROJECT_READ
 ): Promise<ProjectResourceRow> {
-  await getProject(projectId, db);
+  await getProject(projectId, db, permission);
   const row = (await db.get(
     `SELECT id, workspace_id, project_id, resource_key, label,
               is_primary, status, created_at, updated_at, revision
@@ -1628,11 +1637,12 @@ export async function listProjectsForWorkspace(
 
 export async function getProject(
   id: string,
-  db: DatabaseClient = requireDatabaseClient()
+  db: DatabaseClient = requireDatabaseClient(),
+  permission: Permission = PERMISSIONS.PROJECT_READ
 ): Promise<ProjectDto> {
   const { workspaceId } = await requireProjectPermission({
     projectId: id,
-    permission: PERMISSIONS.PROJECT_READ,
+    permission,
     db
   });
   const row = (await db.get(`${selectProjectsSql} AND p.id = ?`, [workspaceId, id])) as
@@ -2037,9 +2047,10 @@ const selectProjectTagColumns = `id, workspace_id, project_id, label, color, act
 async function getProjectTagRow(
   db: DatabaseClient,
   projectId: string,
-  tagId: string
+  tagId: string,
+  permission: Permission = PERMISSIONS.PROJECT_READ
 ): Promise<ProjectTagRow> {
-  const project = await getProject(projectId, db);
+  const project = await getProject(projectId, db, permission);
   const row = (await db.get(
     `SELECT ${selectProjectTagColumns} FROM project_tags
         WHERE id = ? AND project_id = ? AND workspace_id = ? AND deleted_at IS NULL`,
@@ -2071,7 +2082,7 @@ export async function createProjectTag(
   body: CreateProjectTagBody
 ): Promise<ProjectTagDto> {
   return requireDatabaseClient().transaction(async tx => {
-    await getProject(projectId, tx);
+    const project = await getProject(projectId, tx, PERMISSIONS.PROJECT_UPDATE);
     const label = (body.label ?? '').trim();
     if (!label) throw new ApiError(400, 'Tag label cannot be empty');
 
@@ -2090,7 +2101,7 @@ export async function createProjectTag(
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       [
         id,
-        getActiveWorkspaceId(),
+        project.workspaceId,
         projectId,
         label,
         normalizeTagColor(body.color),
@@ -2106,7 +2117,8 @@ export async function createProjectTag(
         entityId: id,
         operation: 'insert',
         entityRevision: 1,
-        projectId
+        projectId,
+        workspaceId: project.workspaceId
       },
       tx
     );
@@ -2121,7 +2133,7 @@ export async function updateProjectTag(
   body: UpdateProjectTagBody
 ): Promise<ProjectTagDto> {
   return requireDatabaseClient().transaction(async tx => {
-    const existing = await getProjectTagRow(tx, projectId, tagId);
+    const existing = await getProjectTagRow(tx, projectId, tagId, PERMISSIONS.PROJECT_UPDATE);
 
     const fields: string[] = [];
     const setParams: unknown[] = [];
@@ -2162,7 +2174,8 @@ export async function updateProjectTag(
         entityId: tagId,
         operation: 'update',
         entityRevision: revision,
-        projectId
+        projectId,
+        workspaceId: existing.workspace_id
       },
       tx
     );
@@ -2173,7 +2186,7 @@ export async function updateProjectTag(
 
 export async function deleteProjectTag(projectId: string, tagId: string): Promise<void> {
   await requireDatabaseClient().transaction(async tx => {
-    const existing = await getProjectTagRow(tx, projectId, tagId);
+    const existing = await getProjectTagRow(tx, projectId, tagId, PERMISSIONS.PROJECT_UPDATE);
     const now = nowIso();
     const revision = existing.revision + 1;
     // Soft-delete the definition; `mission_tags` rows cascade away via the FK so the
@@ -2191,7 +2204,8 @@ export async function deleteProjectTag(projectId: string, tagId: string): Promis
         entityId: tagId,
         operation: 'delete',
         entityRevision: revision,
-        projectId
+        projectId,
+        workspaceId: existing.workspace_id
       },
       tx
     );
@@ -2199,9 +2213,15 @@ export async function deleteProjectTag(projectId: string, tagId: string): Promis
 }
 
 export async function listProjectResources(projectId: string): Promise<ProjectResourceDto[]> {
-  await getProject(projectId);
+  const project = await getProject(projectId);
 
   const db = requireDatabaseClient();
+  const workspaceUserId = await requireWorkspacePermission({
+    workspaceId: project.workspaceId,
+    permission: PERMISSIONS.PROJECT_READ,
+    db,
+    notFoundMessage: 'Project not found'
+  });
   const rows = (await db.all(
     `SELECT id, workspace_id, project_id, resource_key, label,
               is_primary, status, created_at, updated_at, revision
@@ -2224,7 +2244,7 @@ export async function listProjectResources(projectId: string): Promise<ProjectRe
     sourcesByResourceId.set(source.resource_id, bucket);
   }
   const observations = await loadTargetResourceObservations({
-    ctx: buildWebappServiceContext(),
+    ctx: await buildWebappServiceContextForWorkspace(project.workspaceId, db, workspaceUserId),
     resourceIds: rows.map(row => row.id)
   });
   return await Promise.all(
@@ -2281,7 +2301,7 @@ async function insertProjectResource(
   const sourceKind = sourceUrl ? 'git' : 'local_checkout';
   const executionTargetId = sourceUrl
     ? (body.executionTargetId ?? null)
-    : await resolveResourceExecutionTargetId(db, body.executionTargetId);
+    : await resolveResourceExecutionTargetId(db, project.workspaceId, body.executionTargetId);
 
   const now = nowIso();
   if (body.isPrimary !== false)
@@ -2368,7 +2388,7 @@ export async function createProjectResource(
   body: CreateProjectResourceBody & { path?: string }
 ): Promise<ProjectResourceDto> {
   return requireDatabaseClient().transaction(async tx => {
-    const project = await getProject(projectId, tx);
+    const project = await getProject(projectId, tx, PERMISSIONS.PROJECT_UPDATE);
     const id = await insertProjectResource(tx, project, body, 'directoryPath is required');
 
     const row = (await tx.get(
@@ -2394,7 +2414,12 @@ export async function updateProjectResource(
   body: UpdateProjectResourceBody
 ): Promise<ProjectResourceDto> {
   return requireDatabaseClient().transaction(async tx => {
-    const existing = await getProjectResourceRow(tx, projectId, resourceId);
+    const existing = await getProjectResourceRow(
+      tx,
+      projectId,
+      resourceId,
+      PERMISSIONS.PROJECT_UPDATE
+    );
     const now = nowIso();
     const changedFields: string[] = [];
     let revision = existing.revision;
@@ -2440,7 +2465,8 @@ export async function updateProjectResource(
           operation: 'update',
           entityRevision: revision,
           projectId,
-          changedFields
+          changedFields,
+          workspaceId: existing.workspace_id
         },
         tx
       );
@@ -2462,7 +2488,12 @@ export async function updateProjectResource(
 
 export async function deleteProjectResource(projectId: string, resourceId: string): Promise<void> {
   await requireDatabaseClient().transaction(async tx => {
-    const existing = await getProjectResourceRow(tx, projectId, resourceId);
+    const existing = await getProjectResourceRow(
+      tx,
+      projectId,
+      resourceId,
+      PERMISSIONS.PROJECT_UPDATE
+    );
     const now = nowIso();
     const revision = existing.revision + 1;
 
@@ -2484,7 +2515,8 @@ export async function deleteProjectResource(projectId: string, resourceId: strin
         entityId: resourceId,
         operation: 'delete',
         entityRevision: revision,
-        projectId
+        projectId,
+        workspaceId: existing.workspace_id
       },
       tx
     );
@@ -2918,6 +2950,14 @@ export async function searchMissions({
         })
       ).workspaceId
     : getActiveWorkspaceId();
+  if (!projectId) {
+    await requireWorkspacePermission({
+      workspaceId,
+      permission: PERMISSIONS.MISSION_READ,
+      db: client,
+      notFoundMessage: 'Workspace not found or no active membership'
+    });
+  }
   const match = query?.trim()
     ? buildMissionSearchMatch({ dialect: client.dialect, query: query.trim() })
     : null;

@@ -99,23 +99,44 @@ async function protocolWorkspaceId(body: ProtocolRequestBody): Promise<string | 
   }
 
   const missionRef = strFlag(body, '--mission-id');
-  if (!missionRef) return null;
-  const byId = await db.get<{ workspace_id: string }>(
-    `SELECT workspace_id FROM missions
-      WHERE id = ? AND deleted_at IS NULL AND workspace_id IN (${placeholders})`,
-    [missionRef, ...workspaceIds]
-  );
-  if (byId) return byId.workspace_id;
+  if (missionRef) {
+    const byId = await db.get<{ workspace_id: string }>(
+      `SELECT workspace_id FROM missions
+        WHERE id = ? AND deleted_at IS NULL AND workspace_id IN (${placeholders})`,
+      [missionRef, ...workspaceIds]
+    );
+    if (byId) return byId.workspace_id;
 
-  const byDisplay = await db.all<{ workspace_id: string }>(
-    `SELECT workspace_id FROM missions
-      WHERE display_id = ? AND deleted_at IS NULL AND workspace_id IN (${placeholders})`,
-    [missionRef, ...workspaceIds]
-  );
-  if (byDisplay.length > 1) {
-    throw new ApiError(409, `Mission reference is ambiguous across workspaces: ${missionRef}`);
+    const byDisplay = await db.all<{ workspace_id: string }>(
+      `SELECT workspace_id FROM missions
+        WHERE display_id = ? AND deleted_at IS NULL AND workspace_id IN (${placeholders})`,
+      [missionRef, ...workspaceIds]
+    );
+    if (byDisplay.length > 1) {
+      throw new ApiError(409, `Mission reference is ambiguous across workspaces: ${missionRef}`);
+    }
+    if (byDisplay[0]) return byDisplay[0].workspace_id;
   }
-  return byDisplay[0]?.workspace_id ?? null;
+
+  const projectRef = strFlag(body, '--project-id');
+  if (!projectRef) return null;
+  const projectById = await db.get<{ workspace_id: string }>(
+    `SELECT workspace_id FROM projects
+      WHERE id = ? AND deleted_at IS NULL AND workspace_id IN (${placeholders})`,
+    [projectRef, ...workspaceIds]
+  );
+  if (projectById) return projectById.workspace_id;
+
+  const projects = await db.all<{ workspace_id: string }>(
+    `SELECT workspace_id FROM projects
+      WHERE (slug = ? OR lower(name) = lower(?))
+        AND deleted_at IS NULL AND workspace_id IN (${placeholders})`,
+    [projectRef, projectRef, ...workspaceIds]
+  );
+  if (projects.length > 1) {
+    throw new ApiError(409, `Project reference is ambiguous across workspaces: ${projectRef}`);
+  }
+  return projects[0]?.workspace_id ?? null;
 }
 
 async function buildProtocolContext(

@@ -239,10 +239,9 @@ export async function resolveMissionProjectSlug({
   const projectId = typeof mission.projectId === 'string' ? mission.projectId.trim() : '';
   if (projectId) {
     try {
-      const projects = (await runtime.backend.get('/api/projects')) as ProjectShape[];
-      const project = Array.isArray(projects)
-        ? projects.find(candidate => candidate.id === projectId)
-        : null;
+      const project = (await runtime.backend.get(
+        `/api/projects/${encodeURIComponent(projectId)}`
+      )) as ProjectShape;
       if (typeof project?.slug === 'string' && project.slug.trim()) return project.slug.trim();
     } catch {
       // Keep branch preparation best-effort for older or restricted backends.

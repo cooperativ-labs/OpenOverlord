@@ -22,6 +22,7 @@ import { isLoopbackBackendUrl, loadConfig, resolveBackendUrl } from './config.js
 import { clientDeviceIdentity } from './device-identity.js';
 import {
   discoverProjectOnClient,
+  listAccessibleProjects,
   resolvePreferredExecutionTargetId
 } from './discover-project-local.js';
 import { CliError } from './errors.js';
@@ -684,7 +685,7 @@ export async function resolveProtocolFileInputs({
 
 async function discoverProjectId(runtime: CliRuntime, explicit?: string): Promise<string> {
   if (explicit) return explicit;
-  const projects = await runtime.backend.get<unknown[]>('/api/projects');
+  const projects = await listAccessibleProjects({ backend: runtime.backend });
   const first = projects[0];
   const id = asRecord(first).id;
   if (typeof id !== 'string') {
@@ -845,24 +846,48 @@ export async function runProtocolCommand({
     }
   }
 
-  const result = await runtime.backend.post<unknown>({
-    path: `/api/protocol/${encodeURIComponent(subcommand)}`,
-    body: {
-      args,
-      positional: parsed.positional,
-      flags,
-      stdin: protocolStdin,
-      fileInputs,
-      externalSessionId:
-        flagValue(parsed.flags, '--external-session-id') ??
-        resolveNativeSessionId({
-          explicit: undefined,
-          agent: flagValue(parsed.flags, '--agent') ?? 'unknown',
-          missionId: flagValue(parsed.flags, '--mission-id') ?? 'unknown',
-          workingDirectory
+  const protocolBody = {
+    args,
+    positional: parsed.positional,
+    flags,
+    stdin: protocolStdin,
+    fileInputs,
+    externalSessionId:
+      flagValue(parsed.flags, '--external-session-id') ??
+      resolveNativeSessionId({
+        explicit: undefined,
+        agent: flagValue(parsed.flags, '--agent') ?? 'unknown',
+        missionId: flagValue(parsed.flags, '--mission-id') ?? 'unknown',
+        workingDirectory
+      })
+  };
+
+  let result: unknown;
+  if (subcommand === 'search-missions' && !flagValue(parsed.flags, '--project-id')) {
+    const workspaces = await runtime.backend.get<Array<{ id: string }>>('/api/workspaces');
+    const perWorkspace = await Promise.all(
+      workspaces.map(workspace =>
+        runtime.backend.forWorkspace(workspace.id).post<unknown[]>({
+          path: '/api/protocol/search-missions',
+          body: protocolBody
         })
-    }
-  });
+      )
+    );
+    const limit = Number.parseInt(flagValue(parsed.flags, '--limit') ?? '25', 10);
+    result = perWorkspace
+      .flat()
+      .sort((left, right) => {
+        const leftUpdated = String(asRecord(left).updatedAt ?? '');
+        const rightUpdated = String(asRecord(right).updatedAt ?? '');
+        return rightUpdated.localeCompare(leftUpdated);
+      })
+      .slice(0, Number.isFinite(limit) ? limit : 25);
+  } else {
+    result = await runtime.backend.post<unknown>({
+      path: `/api/protocol/${encodeURIComponent(subcommand)}`,
+      body: protocolBody
+    });
+  }
 
   // Record the dirty-file baseline once a work session begins, so deliver can
   // subtract pre-existing/concurrent changes from this run's reported delta.
@@ -1027,10 +1052,7 @@ export async function runManagementCommand({
       const resourceKey = flagValue(parsed.flags, '--key') ?? existingProjectJson?.resourceKey;
       let projectId = flagValue(parsed.flags, '--project-id');
       if (!projectId) {
-        const allProjects =
-          await runtime.backend.get<
-            Array<{ id: string; name: string; slug: string; status?: string }>
-          >('/api/projects');
+        const allProjects = await listAccessibleProjects({ backend: runtime.backend });
         const projects = allProjects.filter(project => project.status !== 'archived');
         if (projects.length === 0) {
           throw new CliError({
@@ -1195,35 +1217,43 @@ export async function runManagementCommand({
         throw new CliError({ message: `Usage: ovld ${command} <agent> --mission-id <missionId>` });
       }
       const workingDirectory = flagValue(parsed.flags, '--working-directory') ?? process.cwd();
-      const terminal = await resolveTerminalLaunchSettings({ runtime, flags: parsed.flags });
       const dryRun = flagBoolean(parsed.flags, '--dry-run');
       const mission = await runtime.backend.get<unknown>(
         `/api/missions/${encodeURIComponent(missionId)}`
       );
+      const missionWorkspaceId = asRecord(mission).workspaceId;
+      const scopedRuntime: CliRuntime =
+        typeof missionWorkspaceId === 'string'
+          ? { ...runtime, backend: runtime.backend.forWorkspace(missionWorkspaceId) }
+          : runtime;
+      const terminal = await resolveTerminalLaunchSettings({
+        runtime: scopedRuntime,
+        flags: parsed.flags
+      });
       const objectiveId =
         flagValue(parsed.flags, '--objective-id') ?? launchableObjectiveId(mission);
       const executionTargetId = await resolvePreferredExecutionTargetId({
-        backend: runtime.backend
+        backend: scopedRuntime.backend
       });
       const prepared = await prepareMissionBranch({
-        runtime,
+        runtime: scopedRuntime,
         options: {
           missionId,
           workingDirectory,
           objectiveId: objectiveId ?? undefined,
-          workspaceAutomationEnabled: await readWorktreeBranchAutomationEnabled(runtime),
+          workspaceAutomationEnabled: await readWorktreeBranchAutomationEnabled(scopedRuntime),
           dryRun,
           overrideBranch: flagValue(parsed.flags, '--branch'),
           noWorktree: flagBoolean(parsed.flags, '--no-worktree')
         }
       });
       await recordBranchPrepared({
-        runtime,
+        runtime: scopedRuntime,
         missionId,
         branchAutomation: prepared.branchAutomation
       });
       const result = await launchAgent({
-        runtime,
+        runtime: scopedRuntime,
         options: {
           agent,
           missionId,
@@ -1263,10 +1293,34 @@ export async function runManagementCommand({
       if (query) params.set('q', query);
       if (projectId) params.set('projectId', projectId);
       if (limit) params.set('limit', limit);
-      const result = await runtime.backend.get<{ missions: unknown[] }>(
-        `/api/missions/search?${params}`
-      );
-      const missions = result.missions;
+      let missions: unknown[];
+      if (projectId) {
+        const project = await runtime.backend.get<{ workspaceId: string }>(
+          `/api/projects/${encodeURIComponent(projectId)}`
+        );
+        const result = await runtime.backend
+          .forWorkspace(project.workspaceId)
+          .get<{ missions: unknown[] }>(`/api/missions/search?${params}`);
+        missions = result.missions;
+      } else {
+        const workspaces = await runtime.backend.get<Array<{ id: string }>>('/api/workspaces');
+        const results = await Promise.all(
+          workspaces.map(workspace =>
+            runtime.backend
+              .forWorkspace(workspace.id)
+              .get<{ missions: unknown[] }>(`/api/missions/search?${params}`)
+          )
+        );
+        const parsedLimit = Number.parseInt(limit ?? '25', 10);
+        missions = results
+          .flatMap(result => result.missions)
+          .sort((left, right) =>
+            String(asRecord(right).updatedAt ?? '').localeCompare(
+              String(asRecord(left).updatedAt ?? '')
+            )
+          )
+          .slice(0, Number.isFinite(parsedLimit) ? parsedLimit : 25);
+      }
       if (json) printJson({ missions });
       else {
         for (const mission of missions) {

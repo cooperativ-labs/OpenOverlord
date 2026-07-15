@@ -152,14 +152,21 @@ describe('mission and objective access in a secondary (non-active) workspace', (
     });
     const workspaceAId = WORKSPACE.id;
 
-    const { setActiveWorkspace } = await import('./db.ts');
+    const { setActiveWorkspace, requireDatabaseClient } = await import('./db.ts');
     const { createWorkspace } = await import('./workspaces.ts');
     const {
       createProject,
       updateProject,
       reorderProjects,
       deleteProject,
-      listProjectsForWorkspace
+      listProjectsForWorkspace,
+      createProjectTag,
+      updateProjectTag,
+      deleteProjectTag,
+      createProjectResource,
+      updateProjectResource,
+      deleteProjectResource,
+      listProjectResources
     } = await import('./repository.ts');
 
     const secondary = await createWorkspace({
@@ -176,6 +183,34 @@ describe('mission and objective access in a secondary (non-active) workspace', (
     const renamed = await updateProject(first.id, { name: 'Renamed Secondary One' });
     assert.equal(renamed.name, 'Renamed Secondary One');
 
+    const tag = await createProjectTag(first.id, { label: 'Secondary tag' });
+    const storedTag = (await requireDatabaseClient().get(
+      `SELECT workspace_id FROM project_tags WHERE id = ?`,
+      [tag.id]
+    )) as { workspace_id: string };
+    assert.equal(storedTag.workspace_id, secondary.id);
+    const updatedTag = await updateProjectTag(first.id, tag.id, { color: '#123456' });
+    assert.equal(updatedTag.color, '#123456');
+
+    const resource = await createProjectResource(first.id, {
+      directoryPath: mkdtempSync(path.join('/tmp', 'ovld-secondary-project-resource-')),
+      isPrimary: true
+    });
+    assert.equal(resource.workspaceId, secondary.id);
+    assert.ok(
+      resource.sources.some(source => source.executionTargetId !== null),
+      'the implicit acting-device target must be provisioned in the project workspace'
+    );
+    const listedResources = await listProjectResources(first.id);
+    assert.deepEqual(
+      listedResources.map(item => item.id),
+      [resource.id]
+    );
+    const updatedResource = await updateProjectResource(first.id, resource.id, {
+      resourceKey: 'secondary-checkout'
+    });
+    assert.equal(updatedResource.resourceKey, 'secondary-checkout');
+
     const reordered = await reorderProjects({ orderedProjectIds: [second.id, first.id] });
     assert.deepEqual(
       reordered.map(project => project.id),
@@ -190,6 +225,9 @@ describe('mission and objective access in a secondary (non-active) workspace', (
         { id: first.id, position: 2 }
       ]
     );
+
+    await deleteProjectTag(first.id, tag.id);
+    await deleteProjectResource(first.id, resource.id);
 
     await deleteProject(first.id);
     const remaining = await listProjectsForWorkspace(secondary.id);
@@ -338,6 +376,25 @@ describe('runner claims and drives executions in a secondary (non-active) worksp
       firstObjective: 'Run in another organization'
     });
     const queued = await launchObjective(mission.objectives[0]!.id, { agent: 'codex' });
+
+    const { runProtocolSubcommand } = await import('./protocol.ts');
+    const discovery = (await runProtocolSubcommand('discover-project', {
+      flags: { '--project-id': project.id }
+    })) as { projectId: string };
+    assert.equal(discovery.projectId, project.id);
+
+    const linked = await createProjectResource(project.id, {
+      directoryPath: mkdtempSync(path.join('/tmp', 'ovld-cross-org-linked-resource-')),
+      isPrimary: false
+    });
+    const linkedTarget = await requireDatabaseClient().get<{ workspace_id: string }>(
+      `SELECT et.workspace_id
+         FROM project_resource_sources prs
+         JOIN execution_targets et ON et.id = prs.execution_target_id
+        WHERE prs.resource_id = ?`,
+      [linked.id]
+    );
+    assert.equal(linkedTarget?.workspace_id, 'secondary-runner-workspace');
 
     const status = await runnerStatus();
     assert.ok(
