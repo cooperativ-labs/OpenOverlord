@@ -17,7 +17,7 @@
     "start": "yarn workspace @overlord/backend start",
     "start:bundle": "yarn workspace @overlord/backend start:bundle",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test web/lib/auth-client.test.ts web/lib/local-target-client.test.ts web/lib/realtime-invalidation.test.ts web/lib/native-workflow-notifications.test.ts web/lib/project-resources.test.ts web/lib/project-resources.objective-binding.test.ts web/lib/storage-url.test.ts web/lib/router-gates.test.ts web/lib/calendar-utils.test.ts web/lib/due-datetime.test.ts web/pages/my-missions-columns.test.ts"
+    "test": "node --import tsx --test web/lib/auth-client.test.ts web/lib/local-target-client.test.ts web/lib/realtime-invalidation.test.ts web/lib/native-workflow-notifications.test.ts web/lib/project-resources.test.ts web/lib/project-resources.objective-binding.test.ts web/lib/storage-url.test.ts web/lib/router-gates.test.ts web/lib/calendar-utils.test.ts web/lib/due-datetime.test.ts web/lib/runner-status.test.ts web/pages/my-missions-columns.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

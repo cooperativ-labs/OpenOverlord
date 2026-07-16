@@ -14,6 +14,7 @@ import {
 import { api } from '@/lib/api';
 import { useCopyToClipboard } from '@/lib/hooks/use-copy-to-clipboard';
 import { keys, useRunnerStatus } from '@/lib/queries';
+import { hasRunnerQueueError } from '@/lib/runner-status';
 import { cn } from '@/lib/utils';
 
 /** Shape of the parsed CLI `runner service status --json` payload. */
@@ -255,6 +256,7 @@ export function RunnerStatusModal({
   const queryClient = useQueryClient();
   const runner = useRunnerStatus({ enabled: open, refetchInterval: open ? 5_000 : undefined });
   const queue = runner.data?.queue ?? [];
+  const queueError = hasRunnerQueueError(runner);
 
   const clear = useMutation({
     mutationFn: () => api.clearRunnerQueue({}),
@@ -277,7 +279,7 @@ export function RunnerStatusModal({
               <h3 className="text-sm font-medium">Queue</h3>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">
-                  {runner.isError
+                  {queueError
                     ? 'unavailable'
                     : `${queue.length} ${queue.length === 1 ? 'request' : 'requests'}`}
                 </span>
@@ -299,7 +301,7 @@ export function RunnerStatusModal({
                 ) : null}
               </div>
             </div>
-            {runner.isError ? (
+            {queueError ? (
               <p className="text-xs text-muted-foreground">
                 Could not load the runner queue right now.
               </p>

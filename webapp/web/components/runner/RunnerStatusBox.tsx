@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { RunnerStatusModal } from '@/components/runner/RunnerStatusModal';
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { useRunnerServiceStatus, useRunnerStatus } from '@/lib/queries';
+import { hasRunnerQueueError } from '@/lib/runner-status';
 import { cn } from '@/lib/utils';
 
 type RunnerState = 'active' | 'ready' | 'idle' | 'error';
@@ -56,7 +57,7 @@ export function RunnerStatusBox() {
   const serviceRunning = service.data?.running === 'running';
   const serviceError = Boolean(service.data?.lastError);
   const state = deriveState({
-    isError: runner.isError,
+    isError: hasRunnerQueueError(runner),
     serviceError,
     activeCount,
     serviceRunning

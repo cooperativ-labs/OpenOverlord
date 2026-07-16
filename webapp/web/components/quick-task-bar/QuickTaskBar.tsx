@@ -6,7 +6,8 @@ import {
   FolderOpen,
   Loader2,
   Play,
-  Plus
+  Plus,
+  SaveIcon
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -203,9 +204,9 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
           height: container.offsetHeight,
           barOffsetTop: Math.round(barTop - containerTop)
         })
-        .catch(() => {});
+        .catch(() => { });
     } else {
-      quickTaskApi.setHeight(container.offsetHeight).catch(() => {});
+      quickTaskApi.setHeight(container.offsetHeight).catch(() => { });
     }
   }, [resolveTextarea]);
 
@@ -255,7 +256,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
   const handleClose = useCallback(() => {
     const quickTaskApi = getQuickTaskApi();
     if (quickTaskApi) {
-      quickTaskApi.close().catch(() => {});
+      quickTaskApi.close().catch(() => { });
       return;
     }
     setObjective('');
@@ -565,18 +566,24 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
             <button
               type="button"
               aria-label={isSubmitting ? 'Submitting' : 'Run'}
-              title="Save and run"
+              title="Save and run (cmd+enter)"
               onClick={() => void handleSubmit(true)}
               disabled={!canLaunch}
               className={cn(
                 'electron-no-drag flex h-8 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors',
                 canLaunch
-                  ? 'bg-emerald-600 text-white hover:bg-emerald-600/90'
+                  ? 'bg-primary text-white hover:bg-primary/90'
                   : 'bg-muted text-muted-foreground/60'
               )}
             >
-              <Play className="h-3.5 w-3.5" />
-              Run
+              {isSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <div className="flex items-center gap-1">
+                  <Play className="h-3.5 w-3.5" /> Run
+                </div>
+              )}
+
             </button>
 
             <button
@@ -586,9 +593,9 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
               onClick={() => void handleSubmit()}
               disabled={!canSubmit}
               className={cn(
-                'electron-no-drag flex h-8 w-8 items-center justify-center rounded-full transition-colors',
+                'electron-no-drag flex h-8 items-center justify-center rounded-full transition-colors',
                 canSubmit
-                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  ? 'bg-emerald-600 text-white hover:bg-emerald-600/90'
                   : 'bg-muted text-muted-foreground/60'
               )}
             >
@@ -596,7 +603,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <div className="flex items-center gap-1">
-                  <ArrowUp className="h-4 w-4" /> "Save"
+                  <SaveIcon className="h-4 w-4" /> Save
                 </div>
               )}
             </button>
