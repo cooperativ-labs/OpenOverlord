@@ -15,7 +15,7 @@ Use this mode when the prompt already contains a mission ID or explicitly says t
 
 1. Attach first with `ovld protocol attach --mission-id <mission_id>`.
 2. The attach response prints JSON to stdout containing `session.sessionKey`. The CLI also persists this key automatically so subsequent `ovld protocol` commands in the same working directory resolve it without `--session-key`. If auto-resolution fails, pass `--session-key <sessionKey>` explicitly on every subsequent call.
-3. Treat the Overlord mission prompt as authoritative for the objective, constraints, and delivery target. Begin implementing the objective immediately after attach. This differs from `connect` or `load-context`, which only retrieve mission context and never imply the agent should act.
+3. Treat the Overlord mission prompt as authoritative for the objective, constraints, and delivery target. Begin executing the current objective immediately after attach; do not wait for more instructions or ask for confirmation. This differs from `connect` or `load-context`, which only retrieve mission context and never imply the agent should act.
 4. Post updates while working: `ovld protocol update --session-key <sessionKey> --mission-id <mission_id> --summary "..." --phase execute`.
    During long mechanical stretches with nothing meaningful to post, send `ovld protocol heartbeat --session-key <sessionKey> --mission-id <mission_id> [--phase execute] [--percent <0-100>] [--note "..."]` instead of an empty update.
 5. Follow-up messages after the initial mission are captured automatically by the installed `UserPromptSubmit` hook and stay in discussion intent while the mission is in review. Do not post `user_follow_up` manually unless the hook is unavailable.
@@ -29,6 +29,7 @@ For full command syntax, flags, phase values, and event types see **CLI Command 
 **Missions** represent whole features or goals. **Objectives** are the individual steps to implement that goal — one objective equals one agent prompt.
 
 Example:
+
 ```
 Mission: add CLI command for editing user profile
  - Objective 1: draft plan for this command
@@ -38,10 +39,12 @@ Mission: add CLI command for editing user profile
 ```
 
 When to create a mission vs an objective:
+
 - **Create a new mission** when the user describes a distinct feature, bug, or goal that stands on its own.
 - **Add objectives to an existing mission** when the work is a sequential step toward the same feature or goal already tracked in a mission.
 
 To add further objectives to an existing mission (Mode 2):
+
 ```
 ovld protocol add-objectives --mission-id <mission_id> --objectives-json '[{"objective":"..."},{"objective":"..."}]'
 ```
@@ -343,7 +346,7 @@ If `.overlord/project.json` contains more than one project, show the user the pr
 
 ## Change Rationales
 
-Always include `changeRationales` when delivering; optionally on updates during long-running work. Your job is rationale for *what* changed and why — the CLI captures *which* files changed (see **Deliver** above).
+Always include `changeRationales` when delivering; optionally on updates during long-running work. Your job is rationale for _what_ changed and why — the CLI captures _which_ files changed (see **Deliver** above).
 
 - Rationales only for meaningful behavioral changes you made for this mission; skip formatting-only noise. Do not send `file_changes` as an artifact.
 - Do not include unrelated worktree changes in the delivery report, payload, artifacts, or rationales — even to label them pre-existing.

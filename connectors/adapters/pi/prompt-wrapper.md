@@ -3,7 +3,7 @@
 PI receives Overlord's generated mission context as a native file input and a short visible launch message:
 
 ```bash
-pi --model <provider/id> --thinking <level> @<context-file> "Start work on <mission>."
+pi --model <provider/id> --thinking <level> @<context-file> "Attach, then immediately execute <mission>'s current objective."
 ```
 
 Rules:
@@ -12,3 +12,4 @@ Rules:
 - Pass thinking separately with `--thinking` only when the selected launch configuration specifies it.
 - Place user-configured launch flags before the `@<context-file>` and visible message arguments.
 - The context file contains the mission, objectives, history, artifacts, attachments, and lifecycle instructions. Do not put credentials in it.
+- The visible message must explicitly direct execution without waiting for confirmation.

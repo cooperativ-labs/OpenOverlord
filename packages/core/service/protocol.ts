@@ -76,9 +76,9 @@ type SessionRow = {
 
 const PROTOCOL_WORKFLOW = `
 
-1. Read the current objective from the top-level \`objective\` field in this JSON response.
+1. Read the current objective from the top-level \`objective\` field in this JSON response, then immediately begin executing it. This is an execution session: do not wait for more instructions or ask for confirmation.
 2. Post progress with \`ovld protocol update\` or liveness with \`ovld protocol heartbeat\`.
-3. Ask blocking questions with \`ovld protocol ask\` and stop work.
+3. Ask blocking questions with \`ovld protocol ask\` and stop work only when no safe progress remains.
 4. Deliver with \`ovld protocol deliver\` when work is complete, passing one change-rationale
    entry per meaningful file you changed for this mission.
 5. Do not stage or commit changes unless explicitly instructed to do so.

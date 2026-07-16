@@ -5,13 +5,13 @@ Codex launch prompts should keep the mission objective compact and pass model an
 Recommended launch shape:
 
 ```bash
-codex [--model <model>] [-c model_reasoning_effort="<level>"] "Begin working on this mission."
+codex [--model <model>] [-c model_reasoning_effort="<level>"] "Attach, then immediately execute this mission's current objective."
 ```
 
 Rules:
 
 - The assembled Overlord mission prompt, objective metadata, history, artifacts, attachments, and shared context should be injected as the initial session prompt by the protocol layer.
-- The visible user prompt should name the active mission ID; for normal execution this is a short instruction such as `Begin working on this mission.`
+- The visible user prompt should name the active mission ID and explicitly direct execution without waiting for confirmation.
 - `--model` is passed only when the execution target has a model configured.
 - `-c model_reasoning_effort="<level>"` is passed only when the execution target has an effort level configured.
 - For large context, write a context file and pass a short prompt that points Codex at it.

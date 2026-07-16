@@ -88,6 +88,10 @@ const AGENT_HISTORY_EXCLUDED_EVENT_TYPES = new Set([
   'awaiting_approval'
 ]);
 
+/** Keep the execution intent visible even when context falls back to a file. */
+const EXECUTION_DIRECTIVE =
+  'This is an execution session. After attaching, immediately execute the current objective. Do not wait for more instructions or ask for confirmation; only stop to ask a question when blocked.';
+
 async function loadMissionContext({
   runtime,
   missionId
@@ -134,6 +138,7 @@ async function loadMissionContext({
     '',
     '## Instructions',
     'Use the Overlord skill. Follow the required protocol workflow.',
+    EXECUTION_DIRECTIVE,
     '',
     '## Objectives',
     ...objectives.map((objective, index) => {
@@ -290,7 +295,7 @@ export async function buildLaunchPlan({
 
   const prompt =
     launchContext.length > 4000
-      ? `Use the Overlord context file at ${contextFile} and attach to mission ${context.displayId}.`
+      ? `Read the Overlord context file at ${contextFile}, attach to mission ${context.displayId}, then immediately execute its current objective. Do not wait for more instructions.`
       : launchContext;
 
   const command = buildAgentCommand({
@@ -300,7 +305,7 @@ export async function buildLaunchPlan({
     flags: options.flags,
     prompt,
     contextFile,
-    launchMessage: `Start work on ${context.title} (ovld mission ${context.displayId})`
+    launchMessage: `Attach to ovld mission ${context.displayId}, then immediately execute ${context.title}. Do not wait for more instructions.`
   });
 
   const terminalScriptPath = options.terminalLauncher?.trim()

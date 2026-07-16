@@ -6,7 +6,7 @@ import test from 'node:test';
 import { buildLaunchPlan } from '../src/launch.ts';
 import type { CliRuntime } from '../src/runtime.ts';
 
-function runtime(): CliRuntime {
+function runtime({ title = 'Prompt Capture' }: { title?: string } = {}): CliRuntime {
   return {
     backend: {
       baseUrl: 'http://127.0.0.1:4310',
@@ -25,7 +25,7 @@ function runtime(): CliRuntime {
           return {
             id: 'mission-uuid',
             displayId: 'coo:11',
-            title: 'Prompt Capture',
+            title,
             objectives: [{ id: 'objective-uuid', state: 'executing', instructionText: 'Ship it' }]
           } as T;
         }
@@ -62,6 +62,8 @@ test('buildLaunchPlan exports mission context for terminal prompt hooks', async 
   assert.equal(plan.env.OVERLORD_MISSION_ID, 'coo:11');
   assert.equal(plan.env.OVERLORD_BACKEND_URL, 'http://127.0.0.1:4310');
   assert.equal(plan.env.OVERLORD_EXECUTION_REQUEST_ID, 'request-123');
+  assert.match(plan.prompt, /immediately execute the current objective/i);
+  assert.match(plan.prompt, /Do not wait for more instructions/i);
 
   const script = plan.execution.args[1] ?? '';
   const launchScriptPath = path.join(
@@ -104,7 +106,23 @@ test('buildLaunchPlan passes PI model and thinking separately with a context fil
     'high',
     '--approve',
     `@${plan.contextFile}`,
-    'Start work on Prompt Capture (ovld mission coo:11)'
+    'Attach to ovld mission coo:11, then immediately execute Prompt Capture. Do not wait for more instructions.'
   ]);
   assert.ok(readFileSync(plan.contextFile, 'utf8').includes('# Overlord Mission: coo:11'));
+});
+
+test('buildLaunchPlan preserves the execution directive when context uses a file', async () => {
+  const workingDirectory = mkdtempSync(path.join('/tmp', 'ovld-launch-long-context-'));
+  const plan = await buildLaunchPlan({
+    runtime: runtime({ title: 'A'.repeat(4_100) }),
+    options: {
+      agent: 'codex',
+      missionId: 'coo:11',
+      workingDirectory
+    }
+  });
+
+  assert.match(plan.prompt, /context file/i);
+  assert.match(plan.prompt, /immediately execute its current objective/i);
+  assert.match(plan.prompt, /Do not wait for more instructions/i);
 });

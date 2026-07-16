@@ -47,6 +47,8 @@ test('protocol lifecycle: attach → update → deliver', async () => {
   assert.equal(attached.objective.objective, 'Implement feature X');
   assert.match(attached.agentInstructions, /objective\.objective/);
   assert.match(attached.agentInstructions, /Implement feature X/);
+  assert.match(attached.agentInstructions, /immediately begin executing it/i);
+  assert.match(attached.agentInstructions, /do not wait for more instructions/i);
 
   const sessionRow = (await ctx.db.get(
     `SELECT external_session_id FROM agent_sessions WHERE id = ?`,

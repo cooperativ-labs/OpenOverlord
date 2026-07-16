@@ -1,6 +1,6 @@
 {
   "name": "overlord",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Overlord mission protocol workflow for Cursor — attach/update/ask/deliver, slash commands, MCP bridge, and follow-up capture.",
   "author": {
     "name": "Cooperativ",
