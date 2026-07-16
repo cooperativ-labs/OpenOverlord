@@ -204,9 +204,9 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
           height: container.offsetHeight,
           barOffsetTop: Math.round(barTop - containerTop)
         })
-        .catch(() => { });
+        .catch(() => {});
     } else {
-      quickTaskApi.setHeight(container.offsetHeight).catch(() => { });
+      quickTaskApi.setHeight(container.offsetHeight).catch(() => {});
     }
   }, [resolveTextarea]);
 
@@ -256,7 +256,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
   const handleClose = useCallback(() => {
     const quickTaskApi = getQuickTaskApi();
     if (quickTaskApi) {
-      quickTaskApi.close().catch(() => { });
+      quickTaskApi.close().catch(() => {});
       return;
     }
     setObjective('');
@@ -589,7 +589,6 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
                   <Play className="h-3.5 w-3.5" /> Run
                 </div>
               )}
-
             </button>
 
             <button

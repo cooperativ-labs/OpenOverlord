@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -116,9 +116,18 @@ test('setup installs exactly the managed files and is idempotent', () => {
   }
 });
 
-test('cursor setup merges hooks and permission rules', () => {
+test('cursor setup merges lifecycle hooks and permission rules', () => {
   const home = tempHome();
   try {
+    const cursorDir = path.join(home, '.cursor');
+    mkdirSync(cursorDir, { recursive: true });
+    writeFileSync(
+      path.join(cursorDir, 'hooks.json'),
+      JSON.stringify({
+        version: 1,
+        hooks: { beforeShellExecution: [{ command: 'user-owned-shell-hook.sh' }] }
+      })
+    );
     const result = setupConnector({ agentKey: 'cursor', home });
     assert.equal(result.binaryName, 'agent');
     assert.ok(result.files.every(file => file.action === 'written'));
@@ -129,9 +138,50 @@ test('cursor setup merges hooks and permission rules', () => {
         entry.command.includes('overlord-user-prompt-submit')
       )
     );
+    assert.ok(
+      hooks.hooks.beforeShellExecution.some((entry: { command: string }) =>
+        entry.command.includes('overlord-permission-request')
+      )
+    );
+    assert.ok(
+      hooks.hooks.beforeShellExecution.some(
+        (entry: { command: string }) => entry.command === 'user-owned-shell-hook.sh'
+      )
+    );
+    assert.ok(
+      hooks.hooks.beforeMCPExecution.some((entry: { command: string }) =>
+        entry.command.includes('overlord-permission-request')
+      )
+    );
+    assert.ok(
+      hooks.hooks.postToolUse.some(
+        (entry: { command: string; matcher: string }) =>
+          entry.command.includes('overlord-post-tool-use') && entry.matcher.includes('Shell')
+      )
+    );
+    assert.ok(
+      hooks.hooks.stop.some(
+        (entry: { command: string; loop_limit: number }) =>
+          entry.command.includes('overlord-stop') && entry.loop_limit === 1
+      )
+    );
 
     const settings = JSON.parse(readFileSync(path.join(home, '.cursor', 'settings.json'), 'utf8'));
     assert.ok(settings.permissions.allow.includes('Shell(ovld protocol:*)'));
+
+    setupConnector({ agentKey: 'cursor', home });
+    const hooksAfterSecondSetup = JSON.parse(
+      readFileSync(path.join(home, '.cursor', 'hooks.json'), 'utf8')
+    );
+    for (const event of [
+      'beforeSubmitPrompt',
+      'beforeShellExecution',
+      'beforeMCPExecution',
+      'postToolUse',
+      'stop'
+    ]) {
+      assert.equal(hooksAfterSecondSetup.hooks[event].length, hooks.hooks[event].length, event);
+    }
 
     inspectAndAssertHealthy(home, 'cursor');
   } finally {

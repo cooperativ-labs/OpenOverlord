@@ -80,6 +80,7 @@ properties:
             - followUpHook
             - permissionHook
             - stopHook
+            - editHook
             - nativeResume
             - modelFlag
             - effortFlag
@@ -95,6 +96,7 @@ properties:
           enum:
             - UserPromptSubmit
             - PermissionRequest
+            - PostToolUse
             - Stop
         uniqueItems: true
       managedFiles:

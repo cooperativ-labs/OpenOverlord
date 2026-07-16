@@ -99,6 +99,9 @@ Requirements:
 
 - Install local Cursor plugin/rules/commands.
 - Add `beforeSubmitPrompt` hook to record follow-ups.
+- Map `beforeShellExecution` and `beforeMCPExecution` onto the canonical observational `PermissionRequest` hook without overriding Cursor's permission decision.
+- Add `postToolUse` edit capture for file tools and shell-mediated changes.
+- Add a bounded `stop` hook for pending-delivery reminders.
 - Add permission allow rules for protocol commands.
 - Launch with model flag where supported.
 - No thinking/effort flag required initially.

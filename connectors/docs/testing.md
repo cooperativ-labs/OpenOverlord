@@ -27,10 +27,10 @@ For each connector's `conformance-manifest.yaml`
   `componentType: connector`, valid `componentKey`, required `connector` block with
   `agentIdentifier` + `capabilities`.
 - Every `capabilities` value is in `approvedConnectorCapabilities`
-  (`followUpHook`, `permissionHook`, `stopHook`, `nativeResume`, `modelFlag`,
+  (`followUpHook`, `permissionHook`, `stopHook`, `editHook`, `nativeResume`, `modelFlag`,
   `effortFlag`, `contextFilePrompt`, `permissionRules`, `slashCommands`).
 - Every `hookTypes` value is in `approvedHookTypes`
-  (`UserPromptSubmit`, `PermissionRequest`, `Stop`).
+  (`UserPromptSubmit`, `PermissionRequest`, `PostToolUse`, `Stop`).
 - `contractVersion` is a known contract version.
 - `agentIdentifier` is a documented or namespaced connector identifier (open vocab).
 

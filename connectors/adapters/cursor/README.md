@@ -29,7 +29,7 @@ From an OpenOverlord checkout:
 ovld agent-setup cursor
 ```
 
-This copies managed plugin files to `~/.cursor/plugins/local/overlord`, merges a `beforeSubmitPrompt` hook into `~/.cursor/hooks.json`, and adds a `Shell(ovld protocol:*)` permission allow rule to `~/.cursor/settings.json` when missing.
+This copies managed plugin files to `~/.cursor/plugins/local/overlord`, merges Overlord's prompt, permission, tool-result, and stop hooks into `~/.cursor/hooks.json`, and adds a `Shell(ovld protocol:*)` permission allow rule to `~/.cursor/settings.json` when missing. Existing hooks and settings are preserved.
 
 Re-run safely any time the connector contract version changes:
 
@@ -76,9 +76,14 @@ This connector is intentionally reviewable against the four connector layers in 
 - `skills/overlord-mission/SKILL.md` — Cursor adapter template with a `<!-- @connector-core -->` marker; setup interpolates shared core content at install time.
 - `commands/*.md` — slash commands for session routing, objective discussion, mission creation, and work recording.
 - `hooks/overlord-user-prompt-submit.sh` — `beforeSubmitPrompt` follow-up capture through `ovld protocol hook-event`.
+- `hooks/overlord-permission-request.sh` — observes `beforeShellExecution` and `beforeMCPExecution` through `ovld protocol permission-request`. It returns no allow/deny decision, leaving Cursor and user-installed hooks authoritative.
+- `hooks/overlord-post-tool-use.sh` — records `postToolUse` file edits and shell-mediated changes for exact per-session delivery attribution.
+- `hooks/overlord-stop.sh` — checks pending delivery through `ovld protocol hook-event`; when needed, it asks Cursor to continue once so the agent can finish delivery.
 - `rules/overlord-local.mdc` — always-on workflow rules for Cursor sessions.
 - `mcp.json` + `scripts/overlord-mcp.mjs` — MCP bridge to common `ovld protocol` operations.
 - `conformance-manifest.yaml` — connector conformance declaration for the Overlord contract.
 - `prompt-wrapper.md` — Cursor launch guidance.
 
 The shared Connector Core source lives at `connectors/core/overlord-mission`. `ovld agent-setup cursor` interpolates that core into the adapter skill template and installs core reference files so the runtime package is self-contained.
+
+Cursor's generic `preToolUse` hook is intentionally not used for permission capture. Cursor currently documents that `ask` is not enforced for `preToolUse`; the narrower shell and MCP hooks expose the native permission-decision schema without changing the user's policy. Cursor also documents hook execution as fail-open by default, so Overlord telemetry failures do not strand the agent.

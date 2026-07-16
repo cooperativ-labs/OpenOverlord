@@ -5,10 +5,7 @@ import { hasRunnerQueueError } from './runner-status.ts';
 
 describe('hasRunnerQueueError', () => {
   it('keeps a data-less queue failure visible while React Query retries it', () => {
-    assert.equal(
-      hasRunnerQueueError({ isError: false, data: undefined, errorUpdatedAt: 1 }),
-      true
-    );
+    assert.equal(hasRunnerQueueError({ isError: false, data: undefined, errorUpdatedAt: 1 }), true);
   });
 
   it('does not report an error while the first queue request is pending', () => {

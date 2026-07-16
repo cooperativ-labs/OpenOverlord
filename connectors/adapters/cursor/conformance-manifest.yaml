@@ -8,11 +8,17 @@ connector:
   agentIdentifier: cursor
   capabilities:
     - followUpHook
+    - permissionHook
+    - stopHook
+    - editHook
     - modelFlag
     - permissionRules
     - slashCommands
   hookTypes:
     - UserPromptSubmit
+    - PermissionRequest
+    - PostToolUse
+    - Stop
   installPath: "~/.cursor/plugins/local/overlord"
   managedFiles:
     - ".cursor-plugin/plugin.json"
@@ -27,6 +33,9 @@ connector:
     - "commands/record-work.md"
     - "commands/spawn.md"
     - "hooks/overlord-user-prompt-submit.sh"
+    - "hooks/overlord-permission-request.sh"
+    - "hooks/overlord-post-tool-use.sh"
+    - "hooks/overlord-stop.sh"
     - "mcp.json"
     - "prompt-wrapper.md"
     - "rules/overlord-local.mdc"

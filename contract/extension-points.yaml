@@ -145,6 +145,7 @@ approvedConnectorCapabilities:
   - followUpHook        # Has a UserPromptSubmit hook that records follow-up messages
   - permissionHook      # Has a PermissionRequest hook that records tool permission prompts
   - stopHook            # Has a Stop hook for pending-delivery checks (future)
+  - editHook            # Has a PostToolUse hook that records touched files for delivery attribution
   - nativeResume        # Can detect and report native harness session/thread IDs
   - modelFlag           # Supports --model <model> launch flag
   - effortFlag          # Supports --effort or equivalent thinking/reasoning flag
@@ -157,6 +158,7 @@ approvedConnectorCapabilities:
 approvedHookTypes:
   - UserPromptSubmit    # Captures human follow-up messages after initial mission
   - PermissionRequest   # Records tool permission prompts
+  - PostToolUse         # Records touched files after editing tools and shell commands
   - Stop                # Checks pending delivery after agent turn (future)
 
 # Controlled vocabularies

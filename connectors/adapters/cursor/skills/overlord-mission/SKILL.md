@@ -10,6 +10,9 @@ description: Cursor adapter for the shared Overlord mission workflow.
 - Agent identifier: `cursor` for `ovld protocol create` and `ovld protocol prompt`.
 - Native commands: `/attach`, `/connect`, `/load`, `/create`, `/prompt`, `/discuss-objective`, `/add-objectives`, `/record-work`.
 - Follow-up capture: the installed `beforeSubmitPrompt` hook records ordinary post-delivery user messages. Do not manually publish `user_follow_up` unless the hook is unavailable.
+- Permission capture: installed `beforeShellExecution` and `beforeMCPExecution` hooks publish permission activity through `ovld protocol` without overriding Cursor's own decision.
+- Edit capture: the installed `postToolUse` hook records Cursor file and shell effects for exact delivery attribution.
+- Stop hook: the installed `stop` hook may auto-submit one pending-delivery reminder but does not deliver for you.
 - MCP bridge: the installed `overlord` MCP server exposes the hosted-compatible `overlord_*` mission tool catalog backed by `ovld protocol`.
 - Authentication: use shared `ovld auth` credentials, Overlord-launched environment variables, or `Overlord_USER_TOKEN` / `OVLD_USER_TOKEN`.
 

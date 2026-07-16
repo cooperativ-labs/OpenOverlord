@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { parse as parseYaml } from 'yaml';
 
@@ -46,4 +48,39 @@ test('a manifest with a bad enum value fails with a message naming the allowed v
     label: 'Demo'
   });
   assert.ok(errors.some(error => error.includes('componentType') && error.includes('connector')));
+});
+
+test('packaged CLI validates a manifest without node_modules', () => {
+  const packageRoot = path.resolve(import.meta.dirname, '..');
+  const packagedRoot = mkdtempSync(path.join(tmpdir(), 'ovld-contract-check-'));
+
+  try {
+    cpSync(path.join(packageRoot, 'bin'), path.join(packagedRoot, 'bin'), { recursive: true });
+    cpSync(path.join(packageRoot, 'dist', 'index.js'), path.join(packagedRoot, 'dist', 'index.js'));
+    cpSync(path.join(packageRoot, 'dist', 'contract'), path.join(packagedRoot, 'dist', 'contract'), {
+      recursive: true
+    });
+    writeFileSync(path.join(packagedRoot, 'package.json'), '{"type":"module"}\n');
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        'bin/ovld.mjs',
+        'contract',
+        'check',
+        path.join(examplesDir, 'connector-claude-conformance-manifest.yaml'),
+        '--json'
+      ],
+      { cwd: packagedRoot, encoding: 'utf8' }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), {
+      valid: true,
+      manifest: path.join(examplesDir, 'connector-claude-conformance-manifest.yaml'),
+      errors: []
+    });
+  } finally {
+    rmSync(packagedRoot, { recursive: true, force: true });
+  }
 });

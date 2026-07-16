@@ -177,8 +177,8 @@ export function recordTouchedFromPayload({
     ambiguous = resolved.ambiguous;
   }
 
-  if (toolName === 'Bash') {
-    // Bash never names the files it changes (codegen, package managers, `git mv`,
+  if (toolName === 'Bash' || toolName === 'Shell') {
+    // Shell tools never name the files they change (codegen, package managers, `git mv`,
     // build scripts), so there is nothing to extract from `tool_input`. Instead,
     // diff the current worktree against the last-seen snapshot for this session and
     // fold anything newly dirty into the touched-files log as positive evidence.

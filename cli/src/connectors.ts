@@ -83,7 +83,12 @@ export type ConnectorReport = {
   problems: string[];
 };
 
-const CURSOR_HOOK_COMMAND = 'plugins/local/overlord/hooks/overlord-user-prompt-submit.sh';
+const CURSOR_HOOK_COMMANDS = {
+  beforeSubmitPrompt: 'plugins/local/overlord/hooks/overlord-user-prompt-submit.sh',
+  beforePermission: 'plugins/local/overlord/hooks/overlord-permission-request.sh',
+  postToolUse: 'plugins/local/overlord/hooks/overlord-post-tool-use.sh',
+  stop: 'plugins/local/overlord/hooks/overlord-stop.sh'
+} as const;
 const CURSOR_PROTOCOL_PERMISSION = 'Shell(ovld protocol:*)';
 const CODEX_PLUGIN_KEY = 'overlord@overlord-local';
 const CODEX_RULES_START = '# overlord:permissions:start';
@@ -316,20 +321,63 @@ function configureCursorHarness({
     hookRoot && typeof hookRoot === 'object' && !Array.isArray(hookRoot)
       ? (hookRoot as Record<string, unknown>)
       : {};
-  const beforeSubmit = Array.isArray(hookEntries.beforeSubmitPrompt)
-    ? [...(hookEntries.beforeSubmitPrompt as unknown[])]
-    : [];
-  const alreadyInstalled = beforeSubmit.some(entry => {
-    if (!entry || typeof entry !== 'object') return false;
-    const command = (entry as Record<string, unknown>).command;
-    return typeof command === 'string' && command.includes('overlord-user-prompt-submit');
-  });
-  if (!alreadyInstalled) {
-    beforeSubmit.push({ command: CURSOR_HOOK_COMMAND });
-    hookEntries.beforeSubmitPrompt = beforeSubmit;
+  const mergeHook = ({
+    event,
+    command,
+    marker,
+    extra = {}
+  }: {
+    event: string;
+    command: string;
+    marker: string;
+    extra?: Record<string, unknown>;
+  }): boolean => {
+    const entries = Array.isArray(hookEntries[event]) ? [...(hookEntries[event] as unknown[])] : [];
+    const alreadyInstalled = entries.some(entry => {
+      if (!entry || typeof entry !== 'object') return false;
+      const installedCommand = (entry as Record<string, unknown>).command;
+      return typeof installedCommand === 'string' && installedCommand.includes(marker);
+    });
+    if (alreadyInstalled) return false;
+    entries.push({ command, ...extra });
+    hookEntries[event] = entries;
+    return true;
+  };
+
+  const installedHookEvents = [
+    mergeHook({
+      event: 'beforeSubmitPrompt',
+      command: CURSOR_HOOK_COMMANDS.beforeSubmitPrompt,
+      marker: 'overlord-user-prompt-submit'
+    }) && 'beforeSubmitPrompt',
+    mergeHook({
+      event: 'beforeShellExecution',
+      command: CURSOR_HOOK_COMMANDS.beforePermission,
+      marker: 'overlord-permission-request'
+    }) && 'beforeShellExecution',
+    mergeHook({
+      event: 'beforeMCPExecution',
+      command: CURSOR_HOOK_COMMANDS.beforePermission,
+      marker: 'overlord-permission-request'
+    }) && 'beforeMCPExecution',
+    mergeHook({
+      event: 'postToolUse',
+      command: CURSOR_HOOK_COMMANDS.postToolUse,
+      marker: 'overlord-post-tool-use',
+      extra: { matcher: 'Shell|Write|Edit|MultiEdit|NotebookEdit' }
+    }) && 'postToolUse',
+    mergeHook({
+      event: 'stop',
+      command: CURSOR_HOOK_COMMANDS.stop,
+      marker: 'overlord-stop',
+      extra: { loop_limit: 1 }
+    }) && 'stop'
+  ].filter((event): event is string => Boolean(event));
+
+  if (installedHookEvents.length > 0) {
     hooks.hooks = hookEntries;
     if (dryRun) {
-      warnings.push(`Would merge beforeSubmitPrompt hook into ${hooksPath}.`);
+      warnings.push(`Would merge ${installedHookEvents.join(', ')} hooks into ${hooksPath}.`);
     } else {
       mkdirSync(cursorDir, { recursive: true });
       writeFileSync(hooksPath, `${JSON.stringify(hooks, null, 2)}\n`);

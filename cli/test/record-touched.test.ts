@@ -76,6 +76,26 @@ test('recordTouchedFromPayload folds Bash-mediated changes into the touched log 
   assert.deepEqual(classified(repo), [{ filePath: 'generated.ts', attribution: 'mine' }]);
 });
 
+test('recordTouchedFromPayload treats Cursor Shell tools as Bash-mediated changes', () => {
+  const repo = makeRepo();
+  writeBaseline({ workingDirectory: repo, missionId: MISSION_ID, files: readChangedFiles(repo) });
+  writeActiveSession({ workingDirectory: repo, missionId: MISSION_ID, sessionKey: 'sess_cursor' });
+
+  writeFileSync(path.join(repo, 'cursor-generated.ts'), 'export const generated = 1;\n');
+
+  const result = recordTouchedFromPayload({
+    rawPayload: JSON.stringify({
+      tool_name: 'Shell',
+      tool_input: { command: 'node scripts/codegen.js' },
+      cwd: repo
+    }),
+    fallbackCwd: repo
+  });
+
+  assert.deepEqual(result, { recorded: true, missionId: MISSION_ID, ambiguous: false, files: 1 });
+  assert.deepEqual(classified(repo), [{ filePath: 'cursor-generated.ts', attribution: 'mine' }]);
+});
+
 test('recordTouchedFromPayload is a no-op when no active session manifest entry exists for the cwd', () => {
   const repo = makeRepo();
 

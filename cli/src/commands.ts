@@ -619,6 +619,7 @@ const SESSION_KEY_SUBCOMMANDS = new Set([
   'heartbeat',
   'ask',
   'deliver',
+  'hook-event',
   'record-change-rationales'
 ]);
 
@@ -926,13 +927,25 @@ export async function runProtocolCommand({
     clearCachedSessionKey({ missionId, workingDirectory });
     removeActiveSession({ workingDirectory, missionId });
 
-    // Self-diagnosis: a connector that installs an edit hook (today: Claude Code,
-    // detected by the presence of ~/.claude) should always have a touched-files
+    // Self-diagnosis: a connector that installs an edit hook (Claude Code or
+    // Cursor) should always have a touched-files
     // log by deliver time if the run touched any files. A missing log with a
     // non-empty dirty tree means the hook silently failed to activate — the exact
     // failure mode Layer 1 fixes for the common case. Surface it loudly instead of
     // letting deliver quietly fall back to baseline-only attribution.
-    const connectorInstallsEditHook = existsSync(path.join(os.homedir(), '.claude'));
+    const connectorInstallsEditHook =
+      existsSync(path.join(os.homedir(), '.claude')) ||
+      existsSync(
+        path.join(
+          os.homedir(),
+          '.cursor',
+          'plugins',
+          'local',
+          'overlord',
+          'hooks',
+          'overlord-post-tool-use.sh'
+        )
+      );
     if (
       connectorInstallsEditHook &&
       !hasTouchedFilesLog({ workingDirectory, missionId }) &&

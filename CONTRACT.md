@@ -369,6 +369,7 @@ These are the **only sanctioned paths** between components. Bypassing these surf
 - **Transport**: Shell scripts invoking `ovld protocol hook-event` or `update`
 - **Rule**: Hook scripts must not write to the database directly; use protocol commands only
 - **Edit capture**: a connector's `PostToolUse` edit hook records the files the agent edits into the per-session touched-files log read by the client at `deliver` to make changed-file attribution exact under concurrency (see change-tracking in `cli/docs/11-review-artifacts-and-change-tracking.md`). The hook writes only normalized absolute paths — never diffs or file contents — and must not write to the database directly
+- **Edit capability declaration**: connectors that install this hook declare the approved `editHook` capability and `PostToolUse` hook type in their conformance manifest
 - **Follow-up capture**: `UserPromptSubmit` records `user_follow_up` activity even when the original delivery ended the session; it must not reopen implementation work by itself
 
 ### Runner → REST (Queue Surface)
