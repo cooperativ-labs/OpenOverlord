@@ -324,8 +324,15 @@ export function NewMissionModal({
             projectId={selectedProjectId}
             resourceKey={resourceKey}
             value={instruction}
-            placeholder="Describe what the agent should do… (@ file, # project, $ mission)"
+            placeholder="Describe what the agent should do… (@ file, # selects project, $ mission)"
             onValueChange={setInstruction}
+            projectMentionOptions={projects}
+            projectMentionSelectionBehavior="select"
+            onProjectMentionSelect={project => {
+              setProjectId(project.id);
+              setResourceKey(null);
+              setSelectedTagIds([]);
+            }}
             className="w-full min-h-32 max-h-[200px] md:max-h-[600px] border-none bg-transparent text-sm leading-relaxed shadow-none placeholder:text-muted-foreground/70 p-4"
             onKeyDown={e => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void submit(false);

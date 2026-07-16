@@ -40,6 +40,8 @@ type MentionableTextareaProps = Omit<
   onMentionMenuOpenChange?: (open: boolean) => void;
   onMentionSelect?: (filePath: string) => void;
   onProjectMentionSelect?: (project: ProjectMentionOption) => void;
+  /** Whether selecting a project mention inserts its tag or only reports the selection. */
+  projectMentionSelectionBehavior?: 'tag' | 'select';
   onMissionMentionSelect?: (mission: MissionMentionOption) => void;
   /** Continue `1. ` / `- ` lists on newline; use `shift-enter` when plain Enter is reserved (e.g. submit). */
   autoListContinuation?: AutoListContinuationMode | false;
@@ -69,6 +71,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
       onMentionMenuOpenChange,
       onMentionSelect,
       onProjectMentionSelect,
+      projectMentionSelectionBehavior = 'tag',
       onMissionMentionSelect,
       autoListContinuation = false,
       maxHeightPx,
@@ -304,15 +307,21 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
         if (!textArea || projectMentionStart === null || !project.name) return;
 
         const cursor = textArea.selectionStart ?? value.length;
-        let mentionText = `#[${project.name}]`;
         const suffix = value.slice(cursor);
+        let nextValue: string;
+        let nextCursor: number;
 
-        if (suffix.length === 0 || (!suffix.startsWith(' ') && !suffix.startsWith('\n'))) {
-          mentionText += ' ';
+        if (projectMentionSelectionBehavior === 'select') {
+          nextValue = `${value.slice(0, projectMentionStart)}${suffix}`;
+          nextCursor = projectMentionStart;
+        } else {
+          let mentionText = `#[${project.name}]`;
+          if (suffix.length === 0 || (!suffix.startsWith(' ') && !suffix.startsWith('\n'))) {
+            mentionText += ' ';
+          }
+          nextValue = `${value.slice(0, projectMentionStart)}${mentionText}${suffix}`;
+          nextCursor = projectMentionStart + mentionText.length;
         }
-
-        const nextValue = `${value.slice(0, projectMentionStart)}${mentionText}${suffix}`;
-        const nextCursor = projectMentionStart + mentionText.length;
 
         onValueChange(nextValue);
         onProjectMentionSelect?.(project);
@@ -323,7 +332,14 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
           textArea.setSelectionRange(nextCursor, nextCursor);
         });
       },
-      [projectMentionStart, value, onValueChange, onProjectMentionSelect, clearProjectMentionState]
+      [
+        projectMentionStart,
+        value,
+        onValueChange,
+        onProjectMentionSelect,
+        projectMentionSelectionBehavior,
+        clearProjectMentionState
+      ]
     );
 
     const insertMissionMentionAtCursor = React.useCallback(

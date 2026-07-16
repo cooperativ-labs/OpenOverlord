@@ -14,7 +14,7 @@ type MentionableProps = ComponentPropsWithoutRef<typeof MentionableTextarea>;
 
 type RepositoryMentionTextareaProps = Omit<
   MentionableProps,
-  'mentionPaths' | 'projectMentionOptions' | 'missionMentionOptions'
+  'mentionPaths' | 'missionMentionOptions'
 > & {
   /** Project whose git tree supplies the `@`-mention file list. */
   projectId: string;
@@ -39,6 +39,7 @@ export function RepositoryMentionTextarea({
   resourceKey = null,
   className,
   menuOwnerId,
+  projectMentionOptions: suppliedProjectMentionOptions,
   ...props
 }: RepositoryMentionTextareaProps) {
   const { mentionPaths, projectMentionOptions, missionMentionOptions } =
@@ -47,7 +48,7 @@ export function RepositoryMentionTextarea({
   return (
     <MentionableTextarea
       mentionPaths={mentionPaths}
-      projectMentionOptions={projectMentionOptions}
+      projectMentionOptions={suppliedProjectMentionOptions ?? projectMentionOptions}
       missionMentionOptions={missionMentionOptions}
       mentionMenuMode="portal"
       menuOwnerId={menuOwnerId}

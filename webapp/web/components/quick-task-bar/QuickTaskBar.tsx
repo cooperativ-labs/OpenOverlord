@@ -436,13 +436,19 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
               setObjective(nextValue);
               autoResize();
             }}
+            projectMentionOptions={projects}
+            projectMentionSelectionBehavior="select"
+            onProjectMentionSelect={project => {
+              setSelectedProjectId(project.id);
+              setSelectedResourceKey(null);
+            }}
             onMentionSelect={() => {
               requestAnimationFrame(() => autoResize());
             }}
             mentionMenuMode="inline"
             onMentionMenuOpenChange={handleMentionMenuOpenChange}
             onKeyDown={handleKeyDown}
-            placeholder="Write an objective"
+            placeholder="Write an objective (# selects project)"
             rows={1}
             containerClassName="electron-no-drag"
             menuClassName="electron-no-drag"
