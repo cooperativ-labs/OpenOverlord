@@ -31,7 +31,7 @@ Overlord is a project management layer for AI coding agents (Claude Code, Codex,
 
 The result is a Kanban-style workflow where humans plan and agents execute, with every session producing artifacts, change rationales, and history that the next session inherits.
 
-![Overlord 2](https://ovld.ai/images/overlord-1.png)
+![Overlord 2](https://ovld.ai/images/overlord-2.png)
 
 #### What Problem Does This Solve?
 
