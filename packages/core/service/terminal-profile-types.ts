@@ -5,12 +5,19 @@ export type TerminalProfile = {
   launcher: string | null;
   placement: TerminalLaunchPlacement;
   chord: string | null;
+  /**
+   * When true, open the terminal without stealing keyboard focus (no AppleScript
+   * `activate`; `open -g` for generic launchers). macOS only; ignored for the
+   * `chord` placement, which must foreground the app to deliver its keystroke.
+   */
+  background?: boolean;
 };
 
 export const DEFAULT_TERMINAL_PROFILE: TerminalProfile = {
   launcher: 'Terminal',
   placement: 'window',
-  chord: null
+  chord: null,
+  background: false
 };
 
 export const EMPTY_TERMINAL_PROFILE = DEFAULT_TERMINAL_PROFILE;
@@ -22,6 +29,7 @@ export function parseTerminalProfileJson(json: string | null | undefined): Termi
       launcher?: unknown;
       placement?: unknown;
       chord?: unknown;
+      background?: unknown;
     };
     const hasLauncher = Object.prototype.hasOwnProperty.call(parsed, 'launcher');
     const placementRaw =
@@ -38,7 +46,8 @@ export function parseTerminalProfileJson(json: string | null | undefined): Termi
             ? null
             : DEFAULT_TERMINAL_PROFILE.launcher,
       placement,
-      chord: typeof parsed.chord === 'string' && parsed.chord.trim() ? parsed.chord.trim() : null
+      chord: typeof parsed.chord === 'string' && parsed.chord.trim() ? parsed.chord.trim() : null,
+      background: parsed.background === true
     };
   } catch {
     return { ...DEFAULT_TERMINAL_PROFILE };
@@ -49,6 +58,7 @@ export function serializeTerminalProfile(profile: TerminalProfile): string {
   return JSON.stringify({
     launcher: profile.launcher,
     placement: profile.placement,
-    chord: profile.placement === 'chord' ? profile.chord : null
+    chord: profile.placement === 'chord' ? profile.chord : null,
+    background: profile.background === true
   });
 }

@@ -11,6 +11,7 @@ import {
   Rocket,
   ShieldQuestion
 } from 'lucide-react';
+import { useLayoutEffect, useRef, useState } from 'react';
 
 import { AuthenticatedAvatarImage, Avatar, AvatarFallback } from '@/components/ui/avatar';
 
@@ -60,6 +61,54 @@ function actorInitials(label: string): string {
       .map(part => part[0])
       .join('')
       .toUpperCase() || 'U'
+  );
+}
+
+/**
+ * Renders an event summary that clamps to a few lines by default so long
+ * updates don't overwhelm the feed. When the text is tall enough to be
+ * truncated, the whole block becomes tappable: tap to expand to full text,
+ * tap again to collapse. Short summaries that fit are left as plain text.
+ */
+function ExpandableSummary({ text, tone }: { text: string; tone: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [isClamped, setIsClamped] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // Compare full content height against the collapsed (clamped) height to
+    // decide whether an expand affordance is warranted. Measured while the
+    // `line-clamp` class is applied (expanded === false).
+    if (!expanded) {
+      setIsClamped(el.scrollHeight > el.clientHeight + 1);
+    }
+  }, [text, expanded]);
+
+  const canToggle = isClamped || expanded;
+
+  return (
+    <div className="grid gap-0.5">
+      <p
+        ref={ref}
+        onClick={canToggle ? () => setExpanded(prev => !prev) : undefined}
+        className={`whitespace-pre-wrap wrap-anywhere text-sm ${tone}${
+          expanded ? '' : ' line-clamp-4'
+        }${canToggle ? ' cursor-pointer' : ''}`}
+      >
+        {text}
+      </p>
+      {canToggle && (
+        <button
+          type="button"
+          onClick={() => setExpanded(prev => !prev)}
+          className="justify-self-start text-[11px] font-medium text-(--color-ink-dim) hover:text-(--color-ink)"
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -127,15 +176,10 @@ function ActivityEntry({ event }: { event: MissionEventDto }) {
           </span>
         </div>
         {event.summary ? (
-          <p
-            className={
-              isUserFollowUp
-                ? 'whitespace-pre-wrap wrap-anywhere text-sm text-sky-700 dark:text-sky-300'
-                : 'whitespace-pre-wrap wrap-anywhere text-sm text-(--color-ink-dim)'
-            }
-          >
-            {event.summary}
-          </p>
+          <ExpandableSummary
+            text={event.summary}
+            tone={isUserFollowUp ? 'text-sky-700 dark:text-sky-300' : 'text-(--color-ink-dim)'}
+          />
         ) : (
           <p className="text-sm italic text-(--color-ink-dim)">No summary.</p>
         )}

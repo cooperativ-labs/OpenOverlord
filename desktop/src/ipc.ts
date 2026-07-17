@@ -168,13 +168,22 @@ export function registerIpc({
     if (!Notification.isSupported()) return false;
     if (!payload || typeof payload !== 'object') return false;
 
-    const { title, body } = payload as { title?: unknown; body?: unknown };
+    const { title, body, soundUrl } = payload as {
+      title?: unknown;
+      body?: unknown;
+      soundUrl?: unknown;
+    };
     if (typeof title !== 'string' || title.trim().length === 0) return false;
     if (typeof body !== 'string' || body.trim().length === 0) return false;
 
+    // When the status carries its own sound, the renderer plays that chime, so
+    // the native toast is silenced to avoid a doubled cue; otherwise the OS
+    // default notification sound plays.
+    const hasCustomSound = typeof soundUrl === 'string' && soundUrl.trim().length > 0;
     new Notification({
       title: title.slice(0, 120),
-      body: body.slice(0, 500)
+      body: body.slice(0, 500),
+      silent: hasCustomSound
     }).show();
     return true;
   });

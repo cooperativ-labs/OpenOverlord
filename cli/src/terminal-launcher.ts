@@ -24,6 +24,11 @@ export type TerminalLaunchSettings = {
   terminalLaunchPlacement?: TerminalLaunchPlacement;
   terminalLaunchChord?: string | null;
   terminalScriptPath?: string | null;
+  /**
+   * Open the terminal without stealing keyboard focus. macOS only; ignored for
+   * the `chord` placement, which must foreground the app to deliver its keystroke.
+   */
+  terminalLaunchBackground?: boolean;
 };
 
 export function shellQuote(value: string): string {
@@ -151,18 +156,37 @@ function resolveItermSplitKind(
   return 'keystroke';
 }
 
+/**
+ * Whether the terminal should be brought to the foreground. Background launches
+ * skip activation, except for the `chord` placement whose System Events keystroke
+ * must go to the frontmost app.
+ */
+function shouldActivateTerminal(placement: TerminalLaunchPlacement, background?: boolean): boolean {
+  return !background || placement === 'chord';
+}
+
+/** Insert `-g` into an `open …` launcher so the app opens in the background. */
+function backgroundLauncher(launcher: string): string {
+  if (!/^open(\s|$)/.test(launcher.trim()) || /\s-g(\s|$)/.test(launcher)) return launcher;
+  return launcher.replace(/^(\s*open)\b/, '$1 -g');
+}
+
 function buildItermAppleScript({
   inner,
   placement,
   chordClause,
-  chord
+  chord,
+  background
 }: {
   inner: string;
   placement: TerminalLaunchPlacement;
   chordClause?: string | null;
   chord?: string | null;
+  background?: boolean;
 }): string {
-  const lines = ['tell application "iTerm"', 'activate'];
+  const lines = shouldActivateTerminal(placement, background)
+    ? ['tell application "iTerm"', 'activate']
+    : ['tell application "iTerm"'];
 
   if (placement === 'window') {
     lines.push(
@@ -228,13 +252,17 @@ function buildItermAppleScript({
 function buildTerminalAppleScript({
   inner,
   placement,
-  chordClause
+  chordClause,
+  background
 }: {
   inner: string;
   placement: TerminalLaunchPlacement;
   chordClause?: string | null;
+  background?: boolean;
 }): string {
-  const lines = ['tell application "Terminal"', 'activate'];
+  const lines = shouldActivateTerminal(placement, background)
+    ? ['tell application "Terminal"', 'activate']
+    : ['tell application "Terminal"'];
 
   if (placement === 'window') {
     lines.push(`do script ${appleScriptString(inner)}`);
@@ -268,15 +296,19 @@ function buildGenericPlacementShell({
   launcher,
   inner,
   placement,
-  chordClause
+  chordClause,
+  background
 }: {
   launcher: string;
   inner: string;
   placement: TerminalLaunchPlacement;
   chordClause?: string | null;
+  background?: boolean;
 }): string {
   const appName = extractAppNameFromLauncher(launcher);
-  const launch = `${launcher} ${inner}`;
+  // Tab/chord placements drive System Events keystrokes and must foreground the
+  // app; only plain window launches can honor background mode via `open -g`.
+  const launch = `${background ? backgroundLauncher(launcher) : launcher} ${inner}`;
 
   if (placement === 'window' || !appName) {
     return launch;
@@ -326,6 +358,7 @@ export function resolveLaunchExecution({
   terminalLaunchPlacement = 'window',
   terminalLaunchChord,
   terminalScriptPath,
+  terminalLaunchBackground = false,
   extraEnv = {}
 }: {
   command: string;
@@ -362,7 +395,8 @@ export function resolveLaunchExecution({
     const script = buildTerminalAppleScript({
       inner: terminalInner,
       placement,
-      chordClause
+      chordClause,
+      background: terminalLaunchBackground
     });
     return {
       command: 'osascript',
@@ -378,7 +412,8 @@ export function resolveLaunchExecution({
       inner: terminalInner,
       placement,
       chordClause,
-      chord: terminalLaunchChord
+      chord: terminalLaunchChord,
+      background: terminalLaunchBackground
     });
     return {
       command: 'osascript',
@@ -395,12 +430,13 @@ export function resolveLaunchExecution({
 
   const full =
     placement === 'window'
-      ? `${launcher} ${genericTerminalCommand}`
+      ? `${terminalLaunchBackground ? backgroundLauncher(launcher) : launcher} ${genericTerminalCommand}`
       : buildGenericPlacementShell({
           launcher,
           inner: genericTerminalCommand,
           placement,
-          chordClause
+          chordClause,
+          background: terminalLaunchBackground
         });
   return { command: full, args: [], useShell: true, terminal: launcher, display: full };
 }

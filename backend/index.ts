@@ -147,6 +147,7 @@ import {
   listWorkspaceStatuses,
   listWorkspaceStatusesForWorkspace,
   listWorktrees,
+  markMissionStatusesSeen,
   performBranchAction,
   previewMissionSchedule,
   purgeMergedWorktrees,
@@ -1344,7 +1345,17 @@ app.post(
 );
 app.get(
   '/api/missions/:id',
-  handle(req => getMissionDetail(req.params.id))
+  // Opening a mission clears its status indicator dots: mark all unseen status
+  // indicators seen (a no-op when none are unseen), then return detail. `mutates`
+  // so the resulting change-feed entry is flushed to realtime clients and the
+  // board/My Missions cards drop the corner dots immediately.
+  handle(
+    async req => {
+      await markMissionStatusesSeen(req.params.id);
+      return getMissionDetail(req.params.id);
+    },
+    { mutates: true }
+  )
 );
 app.patch(
   '/api/missions/:id',

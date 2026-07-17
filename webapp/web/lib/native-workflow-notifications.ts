@@ -1,18 +1,22 @@
 import type { EntityChangeDto, MissionEventDto, ObjectiveDto } from '../../shared/contract.ts';
 
 import { api } from './api.ts';
+import { MISSION_STATUS_INDICATORS } from './mission-status-catalog.ts';
 import { isNativeNotificationsEnabled } from './native-notification-preferences.ts';
 
 type WorkflowNotificationKind =
   | 'agent_started'
   | 'ready_for_review'
   | 'blocking_question'
+  | 'returned_to_execute'
   | 'launch_failed';
 
 type NotificationPayload = {
   title: string;
   body: string;
   tag: string;
+  /** Optional bundled audio asset played with the toast (a status' own chime). */
+  soundUrl?: string;
 };
 
 export type WorkflowNotificationCandidate = {
@@ -43,6 +47,21 @@ function eventIsRecent(event: MissionEventDto, sinceMs: number): boolean {
   return createdAt >= sinceMs - 5_000;
 }
 
+/**
+ * Best-effort play of a status' bundled chime in the renderer. This runs in both
+ * the desktop-embedded webview and the plain browser, so a status' audio profile
+ * behaves the same regardless of how the visual toast is delivered. Autoplay may
+ * be blocked without a prior user gesture — failures are swallowed.
+ */
+function playNotificationSound(soundUrl: string): void {
+  if (typeof Audio === 'undefined') return;
+  try {
+    void new Audio(soundUrl).play().catch(() => {});
+  } catch {
+    // Audio construction/playback can throw in restricted embed contexts.
+  }
+}
+
 async function showBrowserNotification(payload: NotificationPayload): Promise<boolean> {
   if (typeof window === 'undefined' || !('Notification' in window)) return false;
 
@@ -56,7 +75,9 @@ async function showBrowserNotification(payload: NotificationPayload): Promise<bo
   new Notification(payload.title, {
     body: payload.body,
     tag: payload.tag,
-    silent: false
+    // A custom chime is already played in the renderer; silence the OS default
+    // in that case so the cue isn't doubled.
+    silent: Boolean(payload.soundUrl)
   });
   return true;
 }
@@ -64,6 +85,8 @@ async function showBrowserNotification(payload: NotificationPayload): Promise<bo
 async function showNativeNotification(payload: NotificationPayload): Promise<void> {
   if (!isNativeNotificationsEnabled()) return;
   if (typeof window === 'undefined') return;
+
+  if (payload.soundUrl) playNotificationSound(payload.soundUrl);
 
   const desktopNotifier = window.overlord?.showNotification;
   if (desktopNotifier) {
@@ -177,6 +200,21 @@ export function selectWorkflowNotificationCandidates(
         occurredAt: change.occurredAt
       });
     }
+
+    if (
+      change.entityType === 'mission' &&
+      change.operation === 'update' &&
+      hasChangedField(change, 'returned_to_execute_at')
+    ) {
+      candidates.push({
+        kind: 'returned_to_execute',
+        missionId: change.missionId,
+        objectiveId: null,
+        entityId: change.entityId,
+        seq: change.seq,
+        occurredAt: change.occurredAt
+      });
+    }
   }
 
   return dedupeCandidates(candidates);
@@ -236,6 +274,20 @@ export async function notifyWorkflowChanges(changes: EntityChangeDto[]): Promise
         continue;
       }
 
+      if (candidate.kind === 'returned_to_execute') {
+        if (mission.statusType !== 'execute') continue;
+        const key = `returned-to-execute:${candidate.entityId}:seq:${candidate.seq}`;
+        if (!remember(key)) continue;
+        const profile = MISSION_STATUS_INDICATORS.returned_to_execute.notification;
+        await showNativeNotification({
+          title: profile?.title ?? 'Returned to execute',
+          body: mission.displayId,
+          tag: key,
+          soundUrl: profile?.soundUrl
+        });
+        continue;
+      }
+
       const event = events.find(item => eventMatchesCandidate(item, candidate, sinceMs));
       if (!event) {
         if (candidate.kind === 'ready_for_review') {
@@ -267,10 +319,12 @@ export async function notifyWorkflowChanges(changes: EntityChangeDto[]): Promise
       if (candidate.kind === 'blocking_question') {
         const key = `blocking-question:${event.id}`;
         if (!remember(key)) continue;
+        const profile = MISSION_STATUS_INDICATORS.blocking_question.notification;
         await showNativeNotification({
-          title: 'Blocking question',
+          title: profile?.title ?? 'Blocking question',
           body: `${mission.displayId}: ${event.summary}`,
-          tag: key
+          tag: key,
+          soundUrl: profile?.soundUrl
         });
       }
 

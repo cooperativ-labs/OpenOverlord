@@ -515,7 +515,8 @@ async function resolveTerminalLaunchSettings({
       return {
         terminalLauncher: override,
         terminalLaunchPlacement: profile.placement,
-        terminalLaunchChord: profile.chord
+        terminalLaunchChord: profile.chord,
+        terminalLaunchBackground: profile.background ?? false
       };
     } catch {
       return { terminalLauncher: override };

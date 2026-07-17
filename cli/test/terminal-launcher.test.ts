@@ -267,6 +267,58 @@ test('every osascript placement produces balanced tell/if blocks', () => {
   }
 });
 
+test('background window launch omits activate for Terminal', () => {
+  const exec = resolveLaunchExecution({
+    ...AGENT,
+    terminalLauncher: 'Terminal',
+    terminalLaunchBackground: true
+  });
+  const script = exec.args[1] ?? '';
+  assert.ok(script.includes('tell application "Terminal"'));
+  assert.ok(!/^activate$/m.test(script));
+  assert.ok(script.includes('do script'));
+});
+
+test('background window launch omits activate for iTerm2', () => {
+  const exec = resolveLaunchExecution({
+    ...AGENT,
+    terminalLauncher: 'iTerm2',
+    terminalLaunchBackground: true
+  });
+  const script = exec.args[1] ?? '';
+  assert.ok(script.includes('tell application "iTerm"'));
+  assert.ok(!/^activate$/m.test(script));
+  assert.ok(script.includes('create window with default profile'));
+});
+
+test('background is ignored for chord placement so keystrokes reach the app', () => {
+  const exec = resolveLaunchExecution({
+    ...AGENT,
+    terminalLauncher: 'Terminal',
+    terminalLaunchPlacement: 'chord',
+    terminalLaunchChord: 'cmd+d',
+    terminalLaunchBackground: true
+  });
+  const script = exec.args[1] ?? '';
+  assert.ok(/^activate$/m.test(script));
+});
+
+test('background generic launcher opens with open -g', () => {
+  const exec = resolveLaunchExecution({
+    ...AGENT,
+    terminalLauncher: "open -a 'Ghostty' --args",
+    terminalLaunchBackground: true
+  });
+  assert.equal(exec.useShell, true);
+  assert.ok(exec.command.startsWith("open -g -a 'Ghostty' --args "));
+});
+
+test('foreground launch still activates the terminal by default', () => {
+  const exec = resolveLaunchExecution({ ...AGENT, terminalLauncher: 'Terminal' });
+  const script = exec.args[1] ?? '';
+  assert.ok(/^activate$/m.test(script));
+});
+
 test('tmpEnvFor pins the TMPDIR family to the project .overlord/tmp', () => {
   const env = tmpEnvFor('/Users/jake/project');
   const expected = '/Users/jake/project/.overlord/tmp';

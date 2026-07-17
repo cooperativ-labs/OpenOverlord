@@ -23,7 +23,8 @@ function terminalProfileFromResponse(body: LaunchSettingsResponse): TerminalProf
   return {
     launcher: profile.launcher ?? null,
     placement: profile.placement ?? 'window',
-    chord: profile.chord ?? null
+    chord: profile.chord ?? null,
+    background: profile.background ?? false
   };
 }
 
@@ -85,11 +86,13 @@ export function terminalProfileToLaunchSettings(profile: TerminalProfile): {
   terminalLauncher: string | null;
   terminalLaunchPlacement: TerminalProfile['placement'];
   terminalLaunchChord: string | null;
+  terminalLaunchBackground: boolean;
 } {
   return {
     terminalLauncher: profile.launcher,
     terminalLaunchPlacement: profile.placement,
-    terminalLaunchChord: profile.chord
+    terminalLaunchChord: profile.chord,
+    terminalLaunchBackground: profile.background ?? false
   };
 }
 

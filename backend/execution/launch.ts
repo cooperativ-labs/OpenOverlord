@@ -428,7 +428,8 @@ function toTerminalProfileDto(profile: TerminalProfile): TerminalProfileDto {
   return {
     launcher: profile.launcher ?? null,
     placement: profile.placement ?? 'window',
-    chord: profile.chord ?? null
+    chord: profile.chord ?? null,
+    background: profile.background ?? false
   };
 }
 
@@ -530,7 +531,8 @@ export async function updateTerminalProfile(
       profile: {
         launcher: body.launcher ?? null,
         placement: body.placement ?? 'window',
-        chord: body.placement === 'chord' ? (body.chord ?? null) : null
+        chord: body.placement === 'chord' ? (body.chord ?? null) : null,
+        background: body.background ?? false
       }
     });
     const target = await ensureLocalLaunchTarget(tx, scope.ctx);

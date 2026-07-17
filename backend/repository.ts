@@ -438,6 +438,8 @@ interface MissionRow {
   has_executing_objective: number;
   has_completed_objective: number;
   has_pending_objective_with_instructions: number;
+  has_unseen_blocking_question: number;
+  has_unseen_returned_to_execute: number;
   draft_objective_resource_key: string | null;
 }
 
@@ -683,6 +685,8 @@ function toMissionDto(r: MissionRow, tags: ProjectTagDto[] = []): MissionDto {
     hasExecutingObjective: r.has_executing_objective === 1,
     hasCompletedObjective: r.has_completed_objective === 1,
     hasPendingObjectiveWithInstructions: r.has_pending_objective_with_instructions === 1,
+    hasUnseenBlockingQuestion: r.has_unseen_blocking_question === 1,
+    hasUnseenReturnedToExecute: r.has_unseen_returned_to_execute === 1,
     draftObjectiveResourceKey: r.draft_objective_resource_key?.trim() || null,
     tags
   };
@@ -2923,6 +2927,18 @@ const selectMissionsSql = `
             WHERE o.mission_id = t.id AND o.deleted_at IS NULL
               AND o.state IN ('draft', 'future') AND TRIM(o.instruction_text) != '')
             AS has_pending_objective_with_instructions,
+         (SELECT COUNT(*) > 0 FROM mission_events me
+            WHERE me.mission_id = t.id AND me.type = 'ask'
+              AND me.created_at > COALESCE(
+                (SELECT mss.seen_at FROM mission_status_seen mss
+                   WHERE mss.mission_id = t.id AND mss.status_id = 'blocking_question'), ''))
+            AS has_unseen_blocking_question,
+         (CASE WHEN t.returned_to_execute_at IS NOT NULL
+                    AND t.returned_to_execute_at > COALESCE(
+                      (SELECT mss.seen_at FROM mission_status_seen mss
+                         WHERE mss.mission_id = t.id AND mss.status_id = 'returned_to_execute'), '')
+               THEN 1 ELSE 0 END)
+            AS has_unseen_returned_to_execute,
          (SELECT o.resource_key FROM objectives o
             WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'draft'
             LIMIT 1) AS draft_objective_resource_key
@@ -2998,6 +3014,18 @@ async function searchMissionsInWorkspace({
                  WHERE o.mission_id = t.id AND o.deleted_at IS NULL
                    AND o.state IN ('draft', 'future') AND TRIM(o.instruction_text) != '')
                  AS has_pending_objective_with_instructions,
+              (SELECT COUNT(*) > 0 FROM mission_events me
+                 WHERE me.mission_id = t.id AND me.type = 'ask'
+                   AND me.created_at > COALESCE(
+                     (SELECT mss.seen_at FROM mission_status_seen mss
+                        WHERE mss.mission_id = t.id AND mss.status_id = 'blocking_question'), ''))
+                 AS has_unseen_blocking_question,
+              (CASE WHEN t.returned_to_execute_at IS NOT NULL
+                         AND t.returned_to_execute_at > COALESCE(
+                           (SELECT mss.seen_at FROM mission_status_seen mss
+                              WHERE mss.mission_id = t.id AND mss.status_id = 'returned_to_execute'), '')
+                    THEN 1 ELSE 0 END)
+                 AS has_unseen_returned_to_execute,
               (SELECT o.resource_key FROM objectives o
                  WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'draft'
                  LIMIT 1) AS draft_objective_resource_key,
@@ -3190,6 +3218,49 @@ async function getMissionRow(
     | undefined;
   if (!row) throw new ApiError(404, 'Mission not found');
   return row;
+}
+
+/**
+ * Stamps seen rows in `mission_status_seen` for every unseen status indicator
+ * on the mission, clearing the mission card's corner dots. Called when a user
+ * opens a mission's detail. No-ops (and records no change) when there are no
+ * unseen statuses, so repeated opens don't churn the change feed or loop the
+ * realtime board invalidation. Does not touch `updated_at`/`revision`, keeping
+ * board ordering and optimistic concurrency untouched.
+ */
+export async function markMissionStatusesSeen(missionRef: string): Promise<void> {
+  const db = requireDatabaseClient();
+  const row = await getMissionRow(missionRef, db);
+
+  const toMark: string[] = [];
+  if (row.has_unseen_blocking_question === 1) toMark.push('blocking_question');
+  if (row.has_unseen_returned_to_execute === 1) toMark.push('returned_to_execute');
+  if (toMark.length === 0) return;
+
+  const now = nowIso();
+  await db.transaction(async tx => {
+    for (const statusId of toMark) {
+      await tx.run(
+        `INSERT INTO mission_status_seen (mission_id, status_id, seen_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT (mission_id, status_id) DO UPDATE SET seen_at = excluded.seen_at`,
+        [row.id, statusId, now]
+      );
+    }
+    await recordChange(
+      {
+        entityType: 'mission',
+        entityId: row.id,
+        operation: 'update',
+        entityRevision: row.revision,
+        projectId: row.project_id,
+        missionId: row.id,
+        workspaceId: row.workspace_id,
+        changedFields: toMark.map(s => `${s}_seen`)
+      },
+      tx
+    );
+  });
 }
 
 export async function getMissionDetail(missionRef: string): Promise<MissionDetailDto> {
@@ -3722,6 +3793,7 @@ async function patchMissionFieldsTx(id: string, body: UpdateMissionBody): Promis
       changed.push('assigned_workspace_user_id');
     }
     let scheduleTriggerStatusType: StatusType | null = null;
+    let returnedToExecute = false;
     if (body.statusId !== undefined) {
       const statusRow = await getWorkspaceStatus(tx, existing.workspace_id, body.statusId);
       fields.push('status_id = ?', 'status_type = ?');
@@ -3734,6 +3806,9 @@ async function patchMissionFieldsTx(id: string, body: UpdateMissionBody): Promis
         // Only an actual transition into this status should spawn a scheduled
         // duplicate — re-saving the same status (e.g. a no-op PATCH) must not.
         scheduleTriggerStatusType = statusRow.type as StatusType;
+        if (statusRow.type === 'execute' && existing.status_type !== 'execute') {
+          returnedToExecute = true;
+        }
       }
     }
     if (body.acceptanceCriteria !== undefined) {
@@ -3787,6 +3862,11 @@ async function patchMissionFieldsTx(id: string, body: UpdateMissionBody): Promis
     }
 
     const now = nowIso();
+    if (returnedToExecute) {
+      fields.push('returned_to_execute_at = ?');
+      setParams.push(now);
+      changed.push('returned_to_execute_at');
+    }
     const tagsChanged = body.tagIds !== undefined;
     if (tagsChanged) {
       await syncMissionTags(tx, {
@@ -3905,6 +3985,11 @@ async function moveMissionProjectTx({
     }
 
     const now = nowIso();
+    if (statusRow.type === 'execute' && existing.status_type !== 'execute') {
+      fields.push('returned_to_execute_at = ?');
+      setParams.push(now);
+      changed.push('returned_to_execute_at');
+    }
     const revision = existing.revision + 1;
     await cascadeMissionProjectId(tx, {
       workspaceId: existing.workspace_id,
@@ -4067,6 +4152,11 @@ export async function reorderBoardColumn(
         setClauses.push('status_id = ?', 'status_type = ?');
         setParams.push(statusId, statusRow.type);
         changed.push('status_id', 'status_type');
+        if (statusRow.type === 'execute' && existing.status_type !== 'execute') {
+          setClauses.push('returned_to_execute_at = ?');
+          setParams.push(now);
+          changed.push('returned_to_execute_at');
+        }
       }
 
       const revision = existing.revision + 1;
@@ -4630,6 +4720,18 @@ function selectMyMissionsSql(pairPlaceholders: string): string {
             WHERE o.mission_id = t.id AND o.deleted_at IS NULL
               AND o.state IN ('draft', 'future') AND TRIM(o.instruction_text) != '')
             AS has_pending_objective_with_instructions,
+         (SELECT COUNT(*) > 0 FROM mission_events me
+            WHERE me.mission_id = t.id AND me.type = 'ask'
+              AND me.created_at > COALESCE(
+                (SELECT mss.seen_at FROM mission_status_seen mss
+                   WHERE mss.mission_id = t.id AND mss.status_id = 'blocking_question'), ''))
+            AS has_unseen_blocking_question,
+         (CASE WHEN t.returned_to_execute_at IS NOT NULL
+                    AND t.returned_to_execute_at > COALESCE(
+                      (SELECT mss.seen_at FROM mission_status_seen mss
+                         WHERE mss.mission_id = t.id AND mss.status_id = 'returned_to_execute'), '')
+               THEN 1 ELSE 0 END)
+            AS has_unseen_returned_to_execute,
          (SELECT o.resource_key FROM objectives o
             WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'draft'
             LIMIT 1) AS draft_objective_resource_key

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { parse as parseYaml } from 'yaml';
 
@@ -57,9 +57,13 @@ test('packaged CLI validates a manifest without node_modules', () => {
   try {
     cpSync(path.join(packageRoot, 'bin'), path.join(packagedRoot, 'bin'), { recursive: true });
     cpSync(path.join(packageRoot, 'dist', 'index.js'), path.join(packagedRoot, 'dist', 'index.js'));
-    cpSync(path.join(packageRoot, 'dist', 'contract'), path.join(packagedRoot, 'dist', 'contract'), {
-      recursive: true
-    });
+    cpSync(
+      path.join(packageRoot, 'dist', 'contract'),
+      path.join(packagedRoot, 'dist', 'contract'),
+      {
+        recursive: true
+      }
+    );
     writeFileSync(path.join(packagedRoot, 'package.json'), '{"type":"module"}\n');
 
     const result = spawnSync(

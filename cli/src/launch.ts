@@ -31,6 +31,7 @@ export type LaunchOptions = {
   terminalLauncher?: string | null;
   terminalLaunchPlacement?: TerminalLaunchSettings['terminalLaunchPlacement'];
   terminalLaunchChord?: string | null;
+  terminalLaunchBackground?: boolean;
   dryRun?: boolean;
 };
 
@@ -337,6 +338,7 @@ export async function buildLaunchPlan({
     terminalLauncher: options.terminalLauncher,
     terminalLaunchPlacement: options.terminalLaunchPlacement,
     terminalLaunchChord: options.terminalLaunchChord,
+    terminalLaunchBackground: options.terminalLaunchBackground,
     terminalScriptPath,
     extraEnv: launchEnv
   });

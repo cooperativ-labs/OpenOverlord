@@ -469,6 +469,20 @@ export interface MissionDto {
    */
   hasPendingObjectiveWithInstructions: boolean;
   /**
+   * True when the mission has a blocking question (an `ask` mission event) that
+   * was raised more recently than the mission was last opened. Drives the mission
+   * card's orange blocking-question indicator; clears once the mission is opened
+   * (see `mission_status_seen`).
+   */
+  hasUnseenBlockingQuestion: boolean;
+  /**
+   * True when the mission was moved back into an execute-type status from
+   * review/complete/blocked more recently than the user last opened it. Drives the
+   * mission card's returned-to-execute indicator; clears once the mission is
+   * opened (see `mission_status_seen`).
+   */
+  hasUnseenReturnedToExecute: boolean;
+  /**
    * `objectives.resource_key` on the mission's current `draft` objective, or
    * `null` when the draft inherits the project primary resource.
    */
@@ -841,6 +855,12 @@ export interface TerminalProfileDto {
   placement: 'window' | 'tab' | 'chord';
   /** Typed shortcut such as `cmd+d` when placement is `chord`. */
   chord: string | null;
+  /**
+   * When true, open the terminal without stealing keyboard focus. macOS only;
+   * ignored for the `chord` placement, which must foreground the app to deliver
+   * its keystroke.
+   */
+  background: boolean;
 }
 
 export interface LaunchSettingsDto {

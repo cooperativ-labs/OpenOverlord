@@ -15,6 +15,7 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import { acceleratorToTerminalChord, terminalChordToAccelerator } from '@/lib/accelerator';
 import {
   DEFAULT_EDITOR_SCHEME,
@@ -67,7 +68,8 @@ function profileToDraft(profile: TerminalProfileDto) {
       : INLINE_LAUNCHER,
     customLauncher: profile.launcher && !preset ? profile.launcher : '',
     placement: profile.placement,
-    chord: profile.chord ?? ''
+    chord: profile.chord ?? '',
+    background: profile.background
   };
 }
 
@@ -75,12 +77,14 @@ function normalizeProfile({
   launcherChoice,
   customLauncher,
   placement,
-  chord
+  chord,
+  background
 }: {
   launcherChoice: string;
   customLauncher: string;
   placement: TerminalProfileDto['placement'];
   chord: string;
+  background: boolean;
 }): TerminalProfileDto {
   const launcher =
     launcherChoice === INLINE_LAUNCHER
@@ -88,10 +92,14 @@ function normalizeProfile({
       : launcherChoice === CUSTOM_LAUNCHER
         ? customLauncher.trim() || null
         : launcherChoice;
+  const resolvedPlacement = launcher ? placement : 'window';
   return {
     launcher,
-    placement: launcher ? placement : 'window',
-    chord: launcher && placement === 'chord' ? chord.trim() || null : null
+    placement: resolvedPlacement,
+    chord: launcher && placement === 'chord' ? chord.trim() || null : null,
+    // The `chord` placement must foreground the app to deliver its keystroke, so
+    // background mode only applies to window/tab launches.
+    background: Boolean(launcher) && resolvedPlacement !== 'chord' && background
   };
 }
 
@@ -113,6 +121,7 @@ export function IdePage({ open }: IdePageProps) {
   const [customLauncher, setCustomLauncher] = useState('');
   const [placement, setPlacement] = useState<TerminalProfileDto['placement']>('window');
   const [chord, setChord] = useState('');
+  const [background, setBackground] = useState(false);
   const [terminalError, setTerminalError] = useState<string | null>(null);
   const [agentError, setAgentError] = useState<string | null>(null);
   const [terminalButtonState, setTerminalButtonState] = useState<ButtonLoadingState>('default');
@@ -131,6 +140,7 @@ export function IdePage({ open }: IdePageProps) {
     setCustomLauncher(next.customLauncher);
     setPlacement(next.placement);
     setChord(next.chord);
+    setBackground(next.background);
   }, [launchSettings.data?.terminalProfile]);
 
   if (!open) return null;
@@ -149,12 +159,19 @@ export function IdePage({ open }: IdePageProps) {
   }
 
   const savedProfile = launchSettings.data?.terminalProfile ?? null;
-  const draftProfile = normalizeProfile({ launcherChoice, customLauncher, placement, chord });
+  const draftProfile = normalizeProfile({
+    launcherChoice,
+    customLauncher,
+    placement,
+    chord,
+    background
+  });
   const terminalIsDirty =
     savedProfile !== null &&
     (savedProfile.launcher !== draftProfile.launcher ||
       savedProfile.placement !== draftProfile.placement ||
-      savedProfile.chord !== draftProfile.chord);
+      savedProfile.chord !== draftProfile.chord ||
+      savedProfile.background !== draftProfile.background);
   const requiresCustomLauncher =
     launcherChoice === CUSTOM_LAUNCHER && draftProfile.launcher === null;
   const agents = [...(catalog.data?.agents ?? [])].sort((a, b) => a.label.localeCompare(b.label));
@@ -362,6 +379,24 @@ export function IdePage({ open }: IdePageProps) {
               Click the button and press the shortcut your terminal uses to split or open a new
               pane, for example ⌘ D in iTerm2.
             </p>
+          </div>
+        ) : null}
+
+        {draftProfile.launcher !== null && placement !== 'chord' ? (
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-0.5">
+              <Label htmlFor="execution-target-background">Open in the background</Label>
+              <p className="text-xs text-muted-foreground">
+                Launch the terminal without stealing keyboard focus (macOS). Not available for
+                keyboard-shortcut placement, which must foreground the terminal to send its
+                shortcut.
+              </p>
+            </div>
+            <Switch
+              id="execution-target-background"
+              checked={background}
+              onCheckedChange={next => setBackground(Boolean(next))}
+            />
           </div>
         ) : null}
 

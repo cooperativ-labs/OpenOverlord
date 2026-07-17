@@ -95,7 +95,13 @@ declare global {
     };
     openExternal: (url: string) => Promise<boolean>;
     revealInFinder: (path: string) => Promise<boolean>;
-    showNotification?: (payload: { title: string; body: string; tag?: string }) => Promise<boolean>;
+    showNotification?: (payload: {
+      title: string;
+      body: string;
+      tag?: string;
+      /** URL of a bundled audio asset to play with the toast; omitted → platform default. */
+      soundUrl?: string;
+    }) => Promise<boolean>;
     setNativeThemeSource?: (source: 'light' | 'dark' | 'system') => Promise<boolean>;
     quickTask?: {
       getHotkey: () => Promise<{ accelerator: string; defaultAccelerator: string }>;
