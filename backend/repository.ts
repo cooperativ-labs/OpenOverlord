@@ -2904,6 +2904,28 @@ export async function deleteProject(id: string): Promise<void> {
 
 // ---- Missions -------------------------------------------------------------
 
+const missionHasUnseenBlockingQuestionSql = `
+         (SELECT COUNT(*) > 0 FROM mission_events me
+            WHERE me.mission_id = t.id AND me.type = 'ask'
+              AND (
+                NOT EXISTS (SELECT 1 FROM mission_status_seen mss
+                  WHERE mss.mission_id = t.id AND mss.status_id = 'blocking_question')
+                OR me.created_at > (SELECT mss.seen_at FROM mission_status_seen mss
+                  WHERE mss.mission_id = t.id AND mss.status_id = 'blocking_question')
+              ))
+            AS has_unseen_blocking_question`;
+
+const missionHasUnseenReturnedToExecuteSql = `
+         (CASE WHEN t.returned_to_execute_at IS NOT NULL
+                    AND (
+                      NOT EXISTS (SELECT 1 FROM mission_status_seen mss
+                        WHERE mss.mission_id = t.id AND mss.status_id = 'returned_to_execute')
+                      OR t.returned_to_execute_at > (SELECT mss.seen_at FROM mission_status_seen mss
+                        WHERE mss.mission_id = t.id AND mss.status_id = 'returned_to_execute')
+                    )
+               THEN 1 ELSE 0 END)
+            AS has_unseen_returned_to_execute`;
+
 const selectMissionsSql = `
   SELECT t.id, t.workspace_id, t.project_id, t.display_id, t.sequence_number, t.title,
          t.status_id, t.status_type, t.board_position, t.priority,
@@ -2927,18 +2949,8 @@ const selectMissionsSql = `
             WHERE o.mission_id = t.id AND o.deleted_at IS NULL
               AND o.state IN ('draft', 'future') AND TRIM(o.instruction_text) != '')
             AS has_pending_objective_with_instructions,
-         (SELECT COUNT(*) > 0 FROM mission_events me
-            WHERE me.mission_id = t.id AND me.type = 'ask'
-              AND me.created_at > COALESCE(
-                (SELECT mss.seen_at FROM mission_status_seen mss
-                   WHERE mss.mission_id = t.id AND mss.status_id = 'blocking_question'), ''))
-            AS has_unseen_blocking_question,
-         (CASE WHEN t.returned_to_execute_at IS NOT NULL
-                    AND t.returned_to_execute_at > COALESCE(
-                      (SELECT mss.seen_at FROM mission_status_seen mss
-                         WHERE mss.mission_id = t.id AND mss.status_id = 'returned_to_execute'), '')
-               THEN 1 ELSE 0 END)
-            AS has_unseen_returned_to_execute,
+${missionHasUnseenBlockingQuestionSql},
+${missionHasUnseenReturnedToExecuteSql},
          (SELECT o.resource_key FROM objectives o
             WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'draft'
             LIMIT 1) AS draft_objective_resource_key
@@ -3014,18 +3026,8 @@ async function searchMissionsInWorkspace({
                  WHERE o.mission_id = t.id AND o.deleted_at IS NULL
                    AND o.state IN ('draft', 'future') AND TRIM(o.instruction_text) != '')
                  AS has_pending_objective_with_instructions,
-              (SELECT COUNT(*) > 0 FROM mission_events me
-                 WHERE me.mission_id = t.id AND me.type = 'ask'
-                   AND me.created_at > COALESCE(
-                     (SELECT mss.seen_at FROM mission_status_seen mss
-                        WHERE mss.mission_id = t.id AND mss.status_id = 'blocking_question'), ''))
-                 AS has_unseen_blocking_question,
-              (CASE WHEN t.returned_to_execute_at IS NOT NULL
-                         AND t.returned_to_execute_at > COALESCE(
-                           (SELECT mss.seen_at FROM mission_status_seen mss
-                              WHERE mss.mission_id = t.id AND mss.status_id = 'returned_to_execute'), '')
-                    THEN 1 ELSE 0 END)
-                 AS has_unseen_returned_to_execute,
+${missionHasUnseenBlockingQuestionSql},
+${missionHasUnseenReturnedToExecuteSql},
               (SELECT o.resource_key FROM objectives o
                  WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'draft'
                  LIMIT 1) AS draft_objective_resource_key,
@@ -4720,18 +4722,8 @@ function selectMyMissionsSql(pairPlaceholders: string): string {
             WHERE o.mission_id = t.id AND o.deleted_at IS NULL
               AND o.state IN ('draft', 'future') AND TRIM(o.instruction_text) != '')
             AS has_pending_objective_with_instructions,
-         (SELECT COUNT(*) > 0 FROM mission_events me
-            WHERE me.mission_id = t.id AND me.type = 'ask'
-              AND me.created_at > COALESCE(
-                (SELECT mss.seen_at FROM mission_status_seen mss
-                   WHERE mss.mission_id = t.id AND mss.status_id = 'blocking_question'), ''))
-            AS has_unseen_blocking_question,
-         (CASE WHEN t.returned_to_execute_at IS NOT NULL
-                    AND t.returned_to_execute_at > COALESCE(
-                      (SELECT mss.seen_at FROM mission_status_seen mss
-                         WHERE mss.mission_id = t.id AND mss.status_id = 'returned_to_execute'), '')
-               THEN 1 ELSE 0 END)
-            AS has_unseen_returned_to_execute,
+${missionHasUnseenBlockingQuestionSql},
+${missionHasUnseenReturnedToExecuteSql},
          (SELECT o.resource_key FROM objectives o
             WHERE o.mission_id = t.id AND o.deleted_at IS NULL AND o.state = 'draft'
             LIMIT 1) AS draft_objective_resource_key

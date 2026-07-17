@@ -103,7 +103,7 @@ function ExpandableSummary({ text, tone }: { text: string; tone: string }) {
         <button
           type="button"
           onClick={() => setExpanded(prev => !prev)}
-          className="justify-self-start text-[11px] font-medium text-(--color-ink-dim) hover:text-(--color-ink)"
+          className="justify-self-start text-[11px] font-medium text-sky-600 hover:text-sky-500 dark:text-sky-400 dark:hover:text-sky-300"
         >
           {expanded ? 'Show less' : 'Show more'}
         </button>
