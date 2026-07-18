@@ -79,7 +79,10 @@ describe('hasRunnerQueueError', () => {
 
 describe('runnerQueueErrorMessage', () => {
   it('returns an Error message', () => {
-    assert.equal(runnerQueueErrorMessage(new Error('Authentication required')), 'Authentication required');
+    assert.equal(
+      runnerQueueErrorMessage(new Error('Authentication required')),
+      'Authentication required'
+    );
   });
 
   it('returns null for empty errors', () => {

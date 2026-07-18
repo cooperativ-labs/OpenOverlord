@@ -30,7 +30,7 @@ interface ServiceStatus {
   currentPollIntervalMs?: number | null;
 }
 
-const SERVICE_INSTALL_COMMAND = 'ovld runner service install --start';
+const SERVICE_INSTALL_COMMAND = 'ovld runner service install';
 const FOREGROUND_COMMAND = 'ovld runner start';
 
 function relativeTime(iso: string | null | undefined): string {

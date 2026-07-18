@@ -1,6 +1,6 @@
 {
   "name": "@overlord/webapp",
-  "version": "0.2607171335.0",
+  "version": "0.2607180941.0",
   "private": true,
   "type": "module",
   "description": "Overlord React SPA that consumes the Overlord backend REST and realtime API.",
