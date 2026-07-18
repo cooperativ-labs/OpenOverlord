@@ -212,26 +212,30 @@ export async function requireAuthenticatedSession(
     try {
       const nonBrowser = usesNonBrowserAuthSurface(req);
 
-      // 1. Browser session auth (Better Auth cookies). The CLI protocol/runner
-      //    surface never carries cookies, so skip the session lookup for it.
-      if (!nonBrowser) {
-        const session = await resolveSessionFromBrowserRequest({ auth, req });
-        if (session) {
-          setActiveProfileId(session.user.id);
-          // `null` means the profile has no active workspace membership at all
-          // (e.g. a brand-new signup with no invite). The request proceeds
-          // authenticated but with no active workspace; RBAC gates below
-          // (`requirePermission`/`actorCan`) reject it uniformly since they
-          // treat a null actor as having no roles. A mismatched
-          // `requestedWorkspaceId` (the client asked for a workspace it isn't
-          // a member of) throws `ApiError(403)` instead of falling through.
-          const requestedWorkspaceId = getRequestedWorkspaceId(req);
-          const membership = await ensureWorkspaceUser(session.user.id, requestedWorkspaceId);
-          setActiveWorkspaceContext(membership?.workspace ?? null);
-          setActiveWorkspaceUser(membership?.workspaceUserId ?? null);
-          next();
-          return;
-        }
+      // 1. Browser / SPA session auth (Better Auth cookies or bearer session
+      //    tokens). Desktop remote and hosted web send `Authorization: Bearer
+      //    <session>` for every `/api/*` call — including `/api/runner/status`
+      //    from the sidebar. Skipping session resolution on the CLI
+      //    protocol/runner path prefixes would reject those clients with
+      //    "Authentication required" even when logged in; USER_TOKEN bearers
+      //    (`out_…`) still return null from session resolution and fall through
+      //    to step 2. Loopback trust remains gated on `nonBrowser` below.
+      const session = await resolveSessionFromBrowserRequest({ auth, req });
+      if (session) {
+        setActiveProfileId(session.user.id);
+        // `null` means the profile has no active workspace membership at all
+        // (e.g. a brand-new signup with no invite). The request proceeds
+        // authenticated but with no active workspace; RBAC gates below
+        // (`requirePermission`/`actorCan`) reject it uniformly since they
+        // treat a null actor as having no roles. A mismatched
+        // `requestedWorkspaceId` (the client asked for a workspace it isn't
+        // a member of) throws `ApiError(403)` instead of falling through.
+        const requestedWorkspaceId = getRequestedWorkspaceId(req);
+        const membership = await ensureWorkspaceUser(session.user.id, requestedWorkspaceId);
+        setActiveWorkspaceContext(membership?.workspace ?? null);
+        setActiveWorkspaceUser(membership?.workspaceUserId ?? null);
+        next();
+        return;
       }
 
       // 2. USER_TOKEN bearer auth (any surface). Tokens authenticate the owning
