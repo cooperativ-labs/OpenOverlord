@@ -64,7 +64,7 @@ export function ObjectiveResourcePicker({
               disabled={disabled}
               className={cn(
                 'inline-flex h-8 items-center gap-1 rounded-md border border-input bg-background px-2 text-xs text-foreground shadow-sm transition-colors',
-                'max-w-[230px] @max-[460px]/objective-toolbar:px-2',
+                'max-w-[230px] @max-[360px]/objective-toolbar:px-2',
                 disabled
                   ? 'cursor-not-allowed opacity-60'
                   : 'cursor-pointer hover:bg-accent hover:text-accent-foreground',
@@ -73,10 +73,10 @@ export function ObjectiveResourcePicker({
               aria-label={triggerLabel}
             >
               <FolderOpen className="h-3.5 w-3.5 shrink-0" />
-              <span className="max-w-[160px] truncate @max-[460px]/objective-toolbar:hidden">
+              <span className="max-w-[120px] truncate @max-[360px]/objective-toolbar:hidden">
                 {currentLabel}
               </span>
-              <ChevronDown className="h-3 w-3 shrink-0 @max-[460px]/objective-toolbar:hidden" />
+              <ChevronDown className="h-3 w-3 shrink-0 @max-[360px]/objective-toolbar:hidden" />
             </DropdownMenuTrigger>
           }
         />

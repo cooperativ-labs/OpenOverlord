@@ -14,7 +14,7 @@ import {
 import { api } from '@/lib/api';
 import { useCopyToClipboard } from '@/lib/hooks/use-copy-to-clipboard';
 import { keys, useRunnerStatus } from '@/lib/queries';
-import { hasRunnerQueueError } from '@/lib/runner-status';
+import { hasRunnerQueueError, runnerQueueErrorMessage } from '@/lib/runner-status';
 import { cn } from '@/lib/utils';
 
 /** Shape of the parsed CLI `runner service status --json` payload. */
@@ -254,9 +254,18 @@ export function RunnerStatusModal({
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
-  const runner = useRunnerStatus({ enabled: open, refetchInterval: open ? 5_000 : undefined });
+  // Share the sidebar's always-on query — do not pass `enabled: open`, which would
+  // thrash the shared Query options to disabled whenever the modal is closed.
+  const runner = useRunnerStatus({ refetchInterval: open ? 5_000 : 15_000 });
   const queue = runner.data?.queue ?? [];
-  const queueError = hasRunnerQueueError(runner);
+  const queueError = hasRunnerQueueError({
+    isLoadingError: runner.isLoadingError,
+    isFetching: runner.isFetching,
+    data: runner.data,
+    errorUpdateCount: runner.errorUpdateCount
+  });
+  const queueErrorDetail =
+    runnerQueueErrorMessage(runner.error) ?? runnerQueueErrorMessage(runner.failureReason);
 
   const clear = useMutation({
     mutationFn: () => api.clearRunnerQueue({}),
@@ -302,9 +311,14 @@ export function RunnerStatusModal({
               </div>
             </div>
             {queueError ? (
-              <p className="text-xs text-muted-foreground">
-                Could not load the runner queue right now.
-              </p>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">
+                  Could not load the runner queue right now.
+                </p>
+                {queueErrorDetail ? (
+                  <p className="text-xs text-destructive break-words">{queueErrorDetail}</p>
+                ) : null}
+              </div>
             ) : queue.length === 0 ? (
               <p className="text-xs text-muted-foreground">No execution requests are queued.</p>
             ) : (

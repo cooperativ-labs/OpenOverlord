@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { RunnerStatusModal } from '@/components/runner/RunnerStatusModal';
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { useRunnerServiceStatus, useRunnerStatus } from '@/lib/queries';
-import { hasRunnerQueueError } from '@/lib/runner-status';
+import { hasRunnerQueueError, runnerQueueErrorMessage } from '@/lib/runner-status';
 import { cn } from '@/lib/utils';
 
 type RunnerState = 'active' | 'ready' | 'idle' | 'error';
@@ -54,20 +54,30 @@ export function RunnerStatusBox() {
   const runner = useRunnerStatus();
   const service = useRunnerServiceStatus();
   const activeCount = runner.data?.activeCount ?? 0;
+  const queueError = hasRunnerQueueError({
+    isLoadingError: runner.isLoadingError,
+    isFetching: runner.isFetching,
+    data: runner.data,
+    errorUpdateCount: runner.errorUpdateCount
+  });
   const serviceRunning = service.data?.running === 'running';
   const serviceError = Boolean(service.data?.lastError);
   const state = deriveState({
-    isError: hasRunnerQueueError(runner),
+    isError: queueError,
     serviceError,
     activeCount,
     serviceRunning
   });
-  // Prefer the concrete service error text in the tooltip so a hover hints at
-  // what's wrong (e.g. "authentication required") before opening the modal.
+  // Prefer the concrete service or queue error text in the tooltip so a hover
+  // hints at what's wrong (e.g. "authentication required") before opening the modal.
+  const queueErrorDetail =
+    runnerQueueErrorMessage(runner.error) ?? runnerQueueErrorMessage(runner.failureReason);
   const tooltip =
     state === 'error' && serviceError
       ? (service.data?.lastError ?? STATE_LABEL.error)
-      : STATE_LABEL[state];
+      : state === 'error' && queueErrorDetail
+        ? queueErrorDetail
+        : STATE_LABEL[state];
 
   return (
     <>
