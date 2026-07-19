@@ -35,6 +35,7 @@ import type {
   MyMissionsResponse,
   ObjectiveAttachmentDto,
   PreviewScheduleBody,
+  ProjectDto,
   ProjectTagDto,
   RemoveWorktreeBody,
   ReorderFutureObjectivesBody,
@@ -819,11 +820,30 @@ export function useCreateProject() {
   });
 }
 
+function patchProjectInQueryCaches({
+  qc,
+  updated
+}: {
+  qc: QueryClient;
+  updated: ProjectDto;
+}): void {
+  qc.setQueryData(keys.project(updated.id), updated);
+  qc.setQueryData(keys.projects(updated.workspaceId), (prev: ProjectDto[] | undefined) =>
+    prev?.map(project => (project.id === updated.id ? updated : project))
+  );
+  qc.setQueryData(keys.projects(), (prev: ProjectDto[] | undefined) =>
+    prev?.map(project => (project.id === updated.id ? updated : project))
+  );
+}
+
 export function useUpdateProject(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: UpdateProjectBody) => api.updateProject(id, body),
-    onSuccess: () => invalidateAll(qc)
+    onSuccess: updated => {
+      patchProjectInQueryCaches({ qc, updated });
+      invalidateAll(qc);
+    }
   });
 }
 

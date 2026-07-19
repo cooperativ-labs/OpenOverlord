@@ -70,7 +70,7 @@ export function ProjectSettingsModal({
           onNavigateToIntegrations={() => setActiveNav('Integrations')}
         />
       )}
-      {activeNav === 'Launch' && <LaunchPage open={open} project={project} />}
+      {activeNav === 'Launch' && <LaunchPage open={open} projectId={project.id} />}
       {activeNav === 'Resources' && <ResourcesPage open={open} projectId={project.id} />}
       {activeNav === 'Tags' && <TagsPage projectId={project.id} />}
       {activeNav === 'Integrations' && <IntegrationsPage open={open} project={project} />}

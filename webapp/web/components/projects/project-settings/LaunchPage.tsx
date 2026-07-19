@@ -5,9 +5,7 @@ import { Label } from '@/components/ui/label';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Textarea } from '@/components/ui/textarea';
-import { useUpdateProject } from '@/lib/queries';
-
-import type { ProjectDto } from '../../../../shared/contract.ts';
+import { useProject, useUpdateProject } from '@/lib/queries';
 
 /** Serialize a launch env-var map to editable `KEY=VALUE` lines (sorted by name). */
 function envVarsToText(vars: Record<string, string> | undefined): string {
@@ -46,17 +44,18 @@ function parsePreLaunchLines(value: string): string[] {
 
 type LaunchPageProps = {
   open: boolean;
-  project: ProjectDto;
+  projectId: string;
 };
 
-export function LaunchPage({ open, project }: LaunchPageProps) {
-  const updateProject = useUpdateProject(project.id);
-  const [preLaunch, setPreLaunch] = useState((project.preLaunchCommands ?? []).join('\n'));
-  const [savedPreLaunch, setSavedPreLaunch] = useState(
-    (project.preLaunchCommands ?? []).join('\n')
-  );
-  const [envVars, setEnvVars] = useState(envVarsToText(project.launchEnvVars));
-  const [savedEnvVars, setSavedEnvVars] = useState(envVarsToText(project.launchEnvVars));
+export function LaunchPage({ open, projectId }: LaunchPageProps) {
+  const projectQ = useProject(projectId);
+  const updateProject = useUpdateProject(projectId);
+
+  const savedPreLaunchText = (projectQ.data?.preLaunchCommands ?? []).join('\n');
+  const savedEnvVarsText = envVarsToText(projectQ.data?.launchEnvVars);
+
+  const [preLaunch, setPreLaunch] = useState(savedPreLaunchText);
+  const [envVars, setEnvVars] = useState(savedEnvVarsText);
   const [preLaunchSaveState, setPreLaunchSaveState] = useState<ButtonLoadingState>('default');
   const [envVarsSaveState, setEnvVarsSaveState] = useState<ButtonLoadingState>('default');
   const [preLaunchError, setPreLaunchError] = useState<string | null>(null);
@@ -67,27 +66,27 @@ export function LaunchPage({ open, project }: LaunchPageProps) {
 
   useEffect(() => {
     if (!open) return;
-    setPreLaunch((project.preLaunchCommands ?? []).join('\n'));
-    setSavedPreLaunch((project.preLaunchCommands ?? []).join('\n'));
-    setEnvVars(envVarsToText(project.launchEnvVars));
-    setSavedEnvVars(envVarsToText(project.launchEnvVars));
+    setPreLaunch(savedPreLaunchText);
+    setEnvVars(savedEnvVarsText);
+  }, [open, savedPreLaunchText, savedEnvVarsText]);
+
+  useEffect(() => {
+    if (!open) return;
     setPreLaunchSaveState('default');
     setEnvVarsSaveState('default');
     setPreLaunchError(null);
     setEnvVarsError(null);
-  }, [open, project]);
+  }, [open, projectId]);
 
   async function handleSavePreLaunch() {
     const nextLines = parsePreLaunchLines(preLaunch);
-    if (nextLines.join('\n') === parsePreLaunchLines(savedPreLaunch).join('\n')) return;
+    if (nextLines.join('\n') === parsePreLaunchLines(savedPreLaunchText).join('\n')) return;
 
     setPreLaunchSaveState('loading');
     setPreLaunchError(null);
 
     try {
       await updateProject.mutateAsync({ preLaunchCommands: nextLines });
-      setSavedPreLaunch(nextLines.join('\n'));
-      setPreLaunch(nextLines.join('\n'));
       setPreLaunchSaveState('success');
     } catch (error) {
       setPreLaunchSaveState('error');
@@ -99,15 +98,13 @@ export function LaunchPage({ open, project }: LaunchPageProps) {
 
   async function handleSaveEnvVars() {
     const nextVars = parseEnvVarLines(envVars);
-    if (envVarsToText(nextVars) === envVarsToText(parseEnvVarLines(savedEnvVars))) return;
+    if (envVarsToText(nextVars) === envVarsToText(parseEnvVarLines(savedEnvVarsText))) return;
 
     setEnvVarsSaveState('loading');
     setEnvVarsError(null);
 
     try {
       await updateProject.mutateAsync({ launchEnvVars: nextVars });
-      setSavedEnvVars(envVarsToText(nextVars));
-      setEnvVars(envVarsToText(nextVars));
       setEnvVarsSaveState('success');
     } catch (error) {
       setEnvVarsSaveState('error');
