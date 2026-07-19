@@ -108,7 +108,12 @@ function routeChange(change: EntityChangeDto): QueryKey[] | null {
     case 'mission_event': {
       const missionId = missionIdFor(change);
       if (!missionId) return null;
-      return [keys.missionEvents(missionId)];
+      return [keys.missionEvents(missionId), keys.missionDeliveries(missionId)];
+    }
+    case 'delivery': {
+      const missionId = missionIdFor(change);
+      if (!missionId) return null;
+      return [keys.missionDeliveries(missionId)];
     }
     case 'agent_session':
     case 'execution_request': {

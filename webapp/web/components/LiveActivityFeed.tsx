@@ -5,18 +5,20 @@ import {
   CheckCircle2,
   FileText,
   HelpCircle,
+  ListChecks,
   type LucideIcon,
   MessageSquare,
   Package,
   Rocket,
+  Scale,
   ShieldQuestion
 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { AuthenticatedAvatarImage, Avatar, AvatarFallback } from '@/components/ui/avatar';
 
-import type { MissionEventDto, MissionEventType } from '../../shared/contract.ts';
-import { useMissionEvents } from '../lib/queries.ts';
+import type { DeliveryDto, MissionEventDto, MissionEventType } from '../../shared/contract.ts';
+import { useMissionDeliveries, useMissionEvents } from '../lib/queries.ts';
 
 import { Markdown } from './Markdown.tsx';
 import { Badge, Spinner } from './ui.tsx';
@@ -157,13 +159,100 @@ function ExpandableSummary({ text, tone }: { text: string; tone: string }) {
   );
 }
 
-function ActivityEntry({ event }: { event: MissionEventDto }) {
+function DeliveryDetails({ missionId, deliveryId }: { missionId: string; deliveryId: string }) {
+  const deliveriesQ = useMissionDeliveries(missionId, true);
+  const delivery = deliveriesQ.data?.find(candidate => candidate.id === deliveryId);
+
+  if (deliveriesQ.isLoading) {
+    return (
+      <div className="py-2">
+        <Spinner />
+      </div>
+    );
+  }
+  if (deliveriesQ.isError || !delivery) {
+    return <p className="text-sm text-(--color-ink-dim)">Could not load delivery details.</p>;
+  }
+
+  return <DeliveryPresentation delivery={delivery} />;
+}
+
+function DeliveryPresentation({ delivery }: { delivery: DeliveryDto }) {
+  const presentation = delivery.report.presentation;
+  return (
+    <div className="grid gap-3 rounded-sm bg-white p-3 shadow-md dark:bg-black">
+      {presentation.status === 'pending' ? (
+        <p className="text-xs text-(--color-ink-dim)" role="status">
+          Adding delivery details…
+        </p>
+      ) : null}
+      <Markdown text={presentation.markdown} />
+      {presentation.humanActions.length > 0 ? (
+        <section
+          aria-labelledby={`delivery-actions-${delivery.id}`}
+          className="rounded-md border border-sky-300 bg-sky-50 p-3 dark:border-sky-500/50 dark:bg-sky-500/10"
+        >
+          <h4
+            id={`delivery-actions-${delivery.id}`}
+            className="flex items-center gap-1.5 text-sm font-semibold text-sky-950 dark:text-sky-100"
+          >
+            <ListChecks className="size-4" aria-hidden="true" />
+            Follow-up actions
+          </h4>
+          <ul className="mt-2 grid gap-2 text-sm text-sky-950 dark:text-sky-100">
+            {presentation.humanActions.map(action => (
+              <li key={action.id}>
+                <span className="font-medium">{action.action}</span>
+                {action.reason ? (
+                  <span className="block text-sky-800 dark:text-sky-200">{action.reason}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {presentation.tradeoffsMade.length > 0 ? (
+        <section
+          aria-labelledby={`delivery-tradeoffs-${delivery.id}`}
+          className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-500/50 dark:bg-amber-500/10"
+        >
+          <h4
+            id={`delivery-tradeoffs-${delivery.id}`}
+            className="flex items-center gap-1.5 text-sm font-semibold text-amber-950 dark:text-amber-100"
+          >
+            <Scale className="size-4" aria-hidden="true" />
+            Tradeoffs made
+          </h4>
+          <ul className="mt-2 grid gap-3 text-sm text-amber-950 dark:text-amber-100">
+            {presentation.tradeoffsMade.map(tradeoff => (
+              <li key={tradeoff.id}>
+                <span className="font-medium">{tradeoff.decision}</span>
+                <span className="block text-amber-800 dark:text-amber-200">
+                  {tradeoff.rationale}
+                </span>
+                {tradeoff.alternativesConsidered.length > 0 ? (
+                  <span className="mt-1 block text-xs text-amber-700 dark:text-amber-300">
+                    Considered: {tradeoff.alternativesConsidered.join(', ')}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function ActivityEntry({ event, missionId }: { event: MissionEventDto; missionId: string }) {
   const { icon: Icon, label } = eventMeta(event.type);
   const isUserFollowUp = event.type === 'user_follow_up';
   // Blocking questions posted via `ovld protocol ask` land as `ask` events. Give
   // them a subtle amber/orange outline + wash so they stand out as needing a reply.
   const isBlockingQuestion = event.type === 'ask';
+  const isDelivery = event.type === 'delivery' && Boolean(event.deliveryId);
   const userLabel = actorLabel(event);
+  const [deliveryOpen, setDeliveryOpen] = useState(false);
 
   return (
     <article
@@ -221,10 +310,26 @@ function ActivityEntry({ event }: { event: MissionEventDto }) {
           </span>
         </div>
         {event.summary ? (
-          <ExpandableSummary
-            text={event.summary}
-            tone={isUserFollowUp ? 'text-sky-700 dark:text-sky-300' : 'text-(--color-ink-dim)'}
-          />
+          isDelivery ? (
+            <div className="grid gap-2">
+              <button
+                type="button"
+                aria-expanded={deliveryOpen}
+                onClick={() => setDeliveryOpen(open => !open)}
+                className="text-left text-sm text-(--color-ink-dim) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+              >
+                {event.summary}
+              </button>
+              {deliveryOpen && event.deliveryId ? (
+                <DeliveryDetails missionId={missionId} deliveryId={event.deliveryId} />
+              ) : null}
+            </div>
+          ) : (
+            <ExpandableSummary
+              text={event.summary}
+              tone={isUserFollowUp ? 'text-sky-700 dark:text-sky-300' : 'text-(--color-ink-dim)'}
+            />
+          )
         ) : (
           <p className="text-sm italic text-(--color-ink-dim)">No summary.</p>
         )}
@@ -275,7 +380,7 @@ export function LiveActivityFeed({ missionId }: { missionId: string }) {
   return (
     <div className="grid min-w-0 gap-3">
       {events.map(event => (
-        <ActivityEntry key={event.id} event={event} />
+        <ActivityEntry key={event.id} event={event} missionId={missionId} />
       ))}
     </div>
   );

@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '14'
+contractVersion: '18'
 
 components:
   protocol:
@@ -17,6 +17,8 @@ components:
       - 'session lifecycle: attach → (update|heartbeat)* → (ask|deliver)'
       - 'context assembly format from attach'
       - 'delivery payload structure and validation rules'
+      - 'versioned delivery-report evidence normalization and deterministic fallback presentation'
+      - 'transactional enqueue of overlord.delivery.compose.v1 worker jobs from deliverSession and recordWork'
       - 'request envelope: per-flag fileInputs map (at most one stdin payload) and change-rationale file_path/filePath alias normalization'
       - 'changed-file and change-rationale recording protocol'
       - 'idempotency key scope naming: protocol.*'
@@ -36,6 +38,8 @@ components:
       - 'table definitions, column types, indexes, foreign keys, CHECK constraints'
       - 'organizations table (grouping layer above workspaces) and the required workspaces.organization_id FK; workspaces remain the sole RBAC layer; slugs are unique per organization, not instance-wide'
       - 'controlled vocabularies (closed and open sets)'
+      - 'versioned deliveryReport payload storage in deliveries.payload_json; summary remains immutable agent-authored source text'
+      - 'worker_jobs durable background queue including core type overlord.delivery.compose.v1'
       - 'project_resources as project-scoped logical identities and project_resource_sources as the sole target/source materialization descriptors (local checkout paths, Git, bundles, or opaque virtual handles); existing resource rows are intentionally discarded by the contract-v4 migration rather than carried through a legacy compatibility shape'
       - 'virtual execution target core tables (execution_target_registrations, project_environment_definitions, project_resource_sources, execution_request_snapshots, execution_request_grants, execution_request_observations, mission_target_resources) and additive execution_requests snapshot/failure/gateway columns; immutable snapshot (payload_json + SHA-256 payload_digest) created in the same transaction as the queued request and never updated; grant records store hashes/opaque IDs, never bearer values'
       - 'soft-delete and revision semantics'
@@ -119,6 +123,7 @@ components:
     owns:
       - 'URL paths and HTTP method contracts'
       - 'request/response DTO shapes (camelCase, derived from logical schema)'
+      - 'delivery read projection: GET /api/missions/:id/deliveries returns normalized DeliveryDto records and delivery mission events expose an additive deliveryId without raw payload JSON'
       - 'admin-only workspace objective CSV export (GET /api/workspaces/:id/objectives.csv) as a text/csv attachment'
       - 'read-only derived mission branch metadata (MissionBranchDto) from missions.active_branch, predicted via the service layer copy of the branch-planning algorithm (backend/branch-planning.ts) pinned to contract/branch-planning-vectors.json, then merged with latest client branch observations when available'
       - 'mission branch base metadata resolution: project-configured base first, then the primary resource main worktree checkout for pending branches, with prepared branches tied to the runner-recorded baseBranch payload'
@@ -130,6 +135,8 @@ components:
       - 'SQL Studio launch metadata exposed through /api/meta'
       - 'webhook subscription management (/api/webhooks*: list/create, update/soft-delete, rotate-secret, test, deliveries, redeliver), gated by webhook:* permissions'
       - 'in-process webhook dispatcher (backend/webhook-dispatcher.ts), a RealtimeHub-style singleton polling loop claiming outbox_messages rows and delivering HMAC-signed HTTP POSTs; SSRF guards (https-only, private-network block) apply to external endpoints, with an OVERLORD_WEBHOOK_INTERNAL_HOSTS allowlist (plus implicit localhost in Local edition) exempting colocated consumers'
+      - 'full mission.delivered webhook envelopes include the normalized delivery.report projection without exposing raw deliveries.payload_json; thin envelopes remain identifier/link-only'
+      - 'in-process delivery composition worker (backend/delivery-compose-worker.ts) claiming overlord.delivery.compose.v1 worker_jobs, calling the compose-delivery automation, and updating deliveryReport.presentation with entity_changes(entity_type=delivery)'
       - 'organization management endpoints: list organizations for the caller, update an organization (org-admin gated), list/add/remove organization admins (add/remove maintains the invariant that an org admin is ADMIN of every constituent workspace)'
       - 'shared onboarding endpoint (POST /api/onboarding, zero-membership users only): creates an organization, a default workspace, membership, and ADMIN role in one transaction; used verbatim by the web onboarding screen and the ovld org-setup CLI command'
       - 'project APIs support explicit target workspace context for multi-workspace organization UIs: CreateProjectBody.workspaceId and GET /api/workspaces/:id/statuses'
@@ -175,6 +182,7 @@ components:
       - 'Automation interface and built-in automation registry'
       - 'Gemini provider configuration and client lifecycle'
       - 'reference summarization automations and objective title automation'
+      - 'compose-delivery automation: schema-constrained Gemini presentation for delivery reports with null fallback'
       - 'fire-and-forget automation helpers with caller-supplied persistence callbacks'
       - 'downstream automation loading via OVERLORD_AUTOMATIONS_MODULE (custom-automation extension point)'
     dependsOn: []

@@ -11,9 +11,9 @@ The same operations are available from the CLI, the hosted API, and the
 This page is the lifecycle you follow while **executing** a mission.
 
 <Aside type="danger">
-**Attach first, deliver last.** Attaching is itself the go-ahead to start work —
-do not attach and then wait for further confirmation. Only `connect` and
-`load-context` are for inspection without acting.
+  **Attach first, deliver last.** Attaching is itself the go-ahead to start work — do not attach and
+  then wait for further confirmation. Only `connect` and `load-context` are for inspection without
+  acting.
 </Aside>
 
 ## The lifecycle at a glance
@@ -38,9 +38,9 @@ user asks you to create, inspect, or run Overlord work. Create or inspect, and
 only attach when the user explicitly says to execute.
 
 <Aside type="tip">
-Discussing or opening a mission should **submit** its draft objective
-(`ovld protocol discuss-objective`), signalling active discussion. Only an
-explicit "do this" / "execute it" should make you **attach** and start work.
+  Discussing or opening a mission should **submit** its draft objective (`ovld protocol
+  discuss-objective`), signalling active discussion. Only an explicit "do this" / "execute it"
+  should make you **attach** and start work.
 </Aside>
 
 ## Attach
@@ -125,16 +125,28 @@ ovld protocol deliver --session-key <sessionKey> --mission-id coo:312 \
 ```
 
 <Aside type="tip">
-The `--summary` is the first thing the reviewer reads. Write it as a short
-narrative — what you did and what's next — not a command list.
+  The `--summary` is the first thing the reviewer reads. Write it as a short narrative — what you
+  did and what's next — not a command list.
 </Aside>
+
+### Structured delivery evidence
+
+Include optional `deliveryReport.agentReport` evidence in `--payload-json` or
+`--payload-file` when it helps the reviewer: `humanActions`, `tradeoffsMade`,
+`knownRisks`, `deferredWork`, and `assumptions`. Use empty arrays when there is
+nothing to report. Human actions must be real user follow-up work — never Git
+operations or routine testing/review.
+
+Delivery remains immediate: Overlord stores a deterministic report first, then
+may compose a clearer presentation asynchronously. The original summary is
+never replaced.
 
 ### Changed files are captured for you
 
 You do **not** enumerate changed files by hand. The CLI records a VCS baseline
 at attach and, at deliver, computes the run-attributable delta (current
 `git status` minus the baseline) and sends it automatically. Your job is the
-**rationale** — *why* each meaningful change was made — not the *which*.
+**rationale** — _why_ each meaningful change was made — not the _which_.
 
 Each change-rationale entry requires exactly these fields:
 
@@ -190,9 +202,9 @@ The working tree may hold changes from **other agents, missions, or
 objectives** running in the same checkout. Those are **not yours to undo.**
 
 <Aside type="danger">
-Never revert, restore, or delete another agent's work to make delivery succeed —
-no `git checkout`/`restore`/`reset` of edits you didn't make, no deleting
-unfamiliar files, no `ovld protocol revert` on another objective's checkpoint.
+  Never revert, restore, or delete another agent's work to make delivery succeed — no `git
+  checkout`/`restore`/`reset` of edits you didn't make, no deleting unfamiliar files, no `ovld
+  protocol revert` on another objective's checkpoint.
 </Aside>
 
 If `deliver` fails with `missing_rationale` for a file you did not change, or
@@ -247,23 +259,23 @@ ovld protocol add-objectives --mission-id coo:312 \
 
 ## Command quick reference
 
-| Command | Purpose |
-| --- | --- |
-| `attach` | Start a session, return full context. Begin work. |
-| `connect` | Lightweight session without full context assembly. |
-| `load-context` | Read mission context without a session (inspection only). |
-| `discover-project` | Resolve the project from cwd, id, or directory. |
-| `search-missions` | Find missions by query, state, project. |
-| `discuss-objective` | Submit a draft objective for discussion (no session). |
-| `create` / `prompt` | Create a draft / create-and-attach a mission. |
-| `add-objectives` | Append ordered objectives to a mission. |
-| `update` | Post progress, decisions, and optional rationales. |
-| `heartbeat` | Liveness ping, no feed event. |
-| `ask` | Post a blocking question and stop. |
-| `deliver` | Finish: summary, artifacts, rationales, mark complete. |
-| `changes` | Local preflight of changed-file attribution. |
-| `resume-follow-up` | Reopen a delivered objective for follow-up. |
-| `read-context` / `write-context` | Read or store persistent shared context. |
+| Command                          | Purpose                                                   |
+| -------------------------------- | --------------------------------------------------------- |
+| `attach`                         | Start a session, return full context. Begin work.         |
+| `connect`                        | Lightweight session without full context assembly.        |
+| `load-context`                   | Read mission context without a session (inspection only). |
+| `discover-project`               | Resolve the project from cwd, id, or directory.           |
+| `search-missions`                | Find missions by query, state, project.                   |
+| `discuss-objective`              | Submit a draft objective for discussion (no session).     |
+| `create` / `prompt`              | Create a draft / create-and-attach a mission.             |
+| `add-objectives`                 | Append ordered objectives to a mission.                   |
+| `update`                         | Post progress, decisions, and optional rationales.        |
+| `heartbeat`                      | Liveness ping, no feed event.                             |
+| `ask`                            | Post a blocking question and stop.                        |
+| `deliver`                        | Finish: summary, artifacts, rationales, mark complete.    |
+| `changes`                        | Local preflight of changed-file attribution.              |
+| `resume-follow-up`               | Reopen a delivered objective for follow-up.               |
+| `read-context` / `write-context` | Read or store persistent shared context.                  |
 
 For the full CLI surface — management commands, the runner, project linking —
 see the [CLI reference](/cli/). Never invent protocol subcommands; run

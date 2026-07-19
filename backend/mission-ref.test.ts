@@ -13,8 +13,13 @@ describe('mission reference resolution', () => {
     const { seedAuthenticatedOperator } = await import('./test-helpers.ts');
     const workspaceUserId = seedAuthenticatedOperator({ db, workspaceId: WORKSPACE.id });
     setActiveWorkspaceUser(workspaceUserId);
-    const { createProject, createMission, getMissionDetail, listMissionEvents } =
-      await import('./repository.ts');
+    const {
+      createProject,
+      createMission,
+      getMissionDetail,
+      listMissionDeliveries,
+      listMissionEvents
+    } = await import('./repository.ts');
 
     const project = await createProject({ name: 'Mission Ref Test' });
     const created = await createMission({
@@ -61,6 +66,52 @@ describe('mission reference resolution', () => {
     assert.equal(followUp?.actor?.displayName, 'Jane Operator');
     assert.equal(followUp?.actor?.handle, 'jane');
     assert.equal(followUp?.actor?.avatarUrl, '/avatars/jane.png');
+
+    const deliveryId = newId();
+    const deliveredAt = nowIso();
+    db.prepare(
+      `INSERT INTO deliveries
+         (id, workspace_id, project_id, mission_id, objective_id, session_id,
+          summary, payload_json, verification_summary, follow_up_notes,
+          delivered_at, delivered_by_workspace_user_id, created_at, updated_at, revision)
+       VALUES (?, ?, ?, ?, ?, NULL, ?, '{}', NULL, NULL, ?, ?, ?, ?, 1)`
+    ).run(
+      deliveryId,
+      WORKSPACE.id,
+      project.id,
+      created.id,
+      created.objectives[0]?.id,
+      'Legacy delivery summary',
+      deliveredAt,
+      workspaceUserId,
+      deliveredAt,
+      deliveredAt
+    );
+    db.prepare(
+      `INSERT INTO mission_events
+         (id, workspace_id, project_id, mission_id, objective_id, session_id,
+          type, phase, summary, payload_json, source, actor_workspace_user_id, created_at)
+       VALUES (?, ?, ?, ?, ?, NULL, 'delivery', 'deliver', ?, ?, 'agent', ?, ?)`
+    ).run(
+      newId(),
+      WORKSPACE.id,
+      project.id,
+      created.id,
+      created.objectives[0]?.id,
+      'Legacy delivery summary',
+      JSON.stringify({ deliveryId }),
+      workspaceUserId,
+      deliveredAt
+    );
+
+    const deliveries = await listMissionDeliveries(created.displayId);
+    assert.equal(deliveries[0]?.id, deliveryId);
+    assert.equal(deliveries[0]?.report.presentation.markdown, 'Legacy delivery summary');
+    assert.deepEqual(deliveries[0]?.report.presentation.humanActions, []);
+    const deliveryEvent = (await listMissionEvents(created.displayId)).find(
+      event => event.deliveryId === deliveryId
+    );
+    assert.equal(deliveryEvent?.deliveryId, deliveryId);
   });
 
   it('assigns new missions to the creator by default, unless explicitly unassigned', async () => {

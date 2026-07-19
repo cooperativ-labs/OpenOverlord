@@ -77,6 +77,7 @@ import {
   initDatabase,
   WORKSPACE
 } from './db.ts';
+import { deliveryComposeWorker } from './delivery-compose-worker.ts';
 import {
   beginDesktopGitHubOAuth,
   browserOAuthCallbackUrl,
@@ -134,6 +135,7 @@ import {
   getProjectRepository,
   listArtifacts,
   listMissionBranches,
+  listMissionDeliveries,
   listMissionEvents,
   listMissionFileChanges,
   listMissions,
@@ -465,6 +467,7 @@ function handle(
         if (options.mutates) {
           realtime.pollNow();
           webhookDispatcher.pollNow();
+          deliveryComposeWorker.pollNow();
         }
         if (!res.headersSent) res.json(result ?? { ok: true });
       } catch (err) {
@@ -516,6 +519,7 @@ if (mcpEnabled) {
       await handleMcpPost(req, res, next);
       realtime.pollNow();
       webhookDispatcher.pollNow();
+      deliveryComposeWorker.pollNow();
     })().catch(next);
   });
 }
@@ -1386,6 +1390,10 @@ app.get(
   handle(req => listMissionEvents(req.params.id))
 );
 app.get(
+  '/api/missions/:id/deliveries',
+  handle(req => listMissionDeliveries(req.params.id))
+);
+app.get(
   '/api/missions/:id/artifacts',
   handle(req => listArtifacts(req.params.id))
 );
@@ -1781,6 +1789,7 @@ async function start(): Promise<void> {
 
   realtime.start();
   webhookDispatcher.start();
+  deliveryComposeWorker.start();
 
   const server = app.listen(bindPort, bindHost, () => {
     const databaseLabel =

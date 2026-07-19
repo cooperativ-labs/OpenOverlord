@@ -137,6 +137,145 @@ describe('deliverSession mechanical change capture', () => {
     await db.close();
   });
 
+  it('stores normalized delivery evidence with a deterministic fallback and filters Git and QA actions', async () => {
+    const { db, ctx } = await setup();
+    const { mission } = await submittedMission(ctx, 'Delivery Evidence');
+    const attached = await attachSession({ ctx, missionId: mission.displayId });
+
+    const delivered = await deliverSession({
+      ctx,
+      missionId: mission.displayId,
+      sessionKey: attached.sessionKey,
+      summary: 'Implemented the durable delivery evidence pipeline.',
+      payloadJson: {
+        deliveryReport: {
+          schemaVersion: 1,
+          agentReport: {
+            humanActions: [
+              {
+                action: 'Add the production Gemini credential before enabling composition.',
+                reason: 'Phase 3 composition needs an operator-managed provider credential.',
+                category: 'environment',
+                blocking: false
+              },
+              { action: 'git push the feature branch', category: 'other' },
+              { action: 'Review the code', category: 'other' },
+              { action: 'Run the test suite', category: 'other' }
+            ],
+            tradeoffsMade: [
+              {
+                decision: 'Persist a deterministic fallback before AI composition.',
+                alternativesConsidered: [
+                  'Block delivery on Gemini',
+                  'Require agents to compose display Markdown'
+                ],
+                rationale: 'Delivery must remain durable when a provider is unavailable.',
+                impact: 'Phase 1 displays agent-authored summary text until composition ships.'
+              }
+            ],
+            knownRisks: ['AI composition is intentionally deferred to Phase 3.'],
+            deferredWork: ['Delivery detail UI is Phase 2.'],
+            assumptions: ['The existing payload_json field remains the delivery extension point.']
+          }
+        }
+      }
+    });
+
+    const row = (await ctx.db.get(`SELECT payload_json FROM deliveries WHERE id = ?`, [
+      delivered.deliveryId
+    ])) as { payload_json: string };
+    const payload = JSON.parse(row.payload_json) as {
+      deliveryReport: {
+        schemaVersion: number;
+        agentReport: { humanActions: Array<{ action: string; source: string }> };
+        presentation: {
+          status: string;
+          markdown: string;
+          humanActions: Array<{ action: string }>;
+          tradeoffsMade: Array<{ decision: string; alternativesConsidered: string[] }>;
+        };
+      };
+    };
+
+    assert.equal(payload.deliveryReport.schemaVersion, 1);
+    assert.deepEqual(payload.deliveryReport.agentReport.humanActions, [
+      {
+        id: 'human-action-1',
+        action: 'Add the production Gemini credential before enabling composition.',
+        reason: 'Phase 3 composition needs an operator-managed provider credential.',
+        category: 'environment',
+        blocking: false,
+        source: 'agent'
+      }
+    ]);
+    assert.equal(payload.deliveryReport.presentation.status, 'pending');
+    assert.equal(
+      payload.deliveryReport.presentation.markdown,
+      'Implemented the durable delivery evidence pipeline.'
+    );
+    assert.deepEqual(payload.deliveryReport.presentation.humanActions, [
+      payload.deliveryReport.agentReport.humanActions[0]
+    ]);
+    assert.deepEqual(payload.deliveryReport.presentation.tradeoffsMade[0]?.alternativesConsidered, [
+      'Block delivery on Gemini',
+      'Require agents to compose display Markdown'
+    ]);
+
+    const composeJob = (await ctx.db.get(
+      `SELECT type, status, payload_json FROM worker_jobs
+         WHERE type = 'overlord.delivery.compose.v1'
+         ORDER BY created_at DESC LIMIT 1`
+    )) as { type: string; status: string; payload_json: string } | undefined;
+    assert.ok(composeJob);
+    assert.equal(composeJob.status, 'queued');
+    assert.equal(JSON.parse(composeJob.payload_json).deliveryId, delivered.deliveryId);
+
+    await db.close();
+  });
+
+  it('rejects malformed or oversized delivery evidence without completing the objective', async () => {
+    const { db, ctx } = await setup();
+    const { mission, objectiveId } = await submittedMission(ctx, 'Invalid Delivery Evidence');
+    const attached = await attachSession({ ctx, missionId: mission.displayId });
+
+    await assert.rejects(
+      () =>
+        deliverSession({
+          ctx,
+          missionId: mission.displayId,
+          sessionKey: attached.sessionKey,
+          summary: 'This should not deliver.',
+          payloadJson: { deliveryReport: { schemaVersion: 2 } }
+        }),
+      /Invalid deliveryReport/
+    );
+    await assert.rejects(
+      () =>
+        deliverSession({
+          ctx,
+          missionId: mission.displayId,
+          sessionKey: attached.sessionKey,
+          summary: 'This should not deliver either.',
+          payloadJson: {
+            deliveryReport: {
+              agentReport: {
+                knownRisks: Array.from({ length: 13 }, (_, index) => `Risk ${index + 1}`)
+              }
+            }
+          }
+        }),
+      /Invalid deliveryReport/
+    );
+
+    const objective = (await ctx.db.get(`SELECT state FROM objectives WHERE id = ?`, [
+      objectiveId
+    ])) as {
+      state: string;
+    };
+    assert.equal(objective.state, 'executing');
+    await db.close();
+  });
+
   it('records blocking question mission events in the durable change feed', async () => {
     const { db, ctx } = await setup();
     const { mission, objectiveId } = await submittedMission(ctx, 'Ask Feed');

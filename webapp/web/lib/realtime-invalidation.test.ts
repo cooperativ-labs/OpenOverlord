@@ -83,13 +83,18 @@ test('deduplicates workflow invalidations across objective, request, and session
   ]);
 });
 
-test('routes mission events and attachments to scoped queries', () => {
+test('routes mission events, deliveries, and attachments to scoped queries', () => {
   const { client, calls } = fakeClient();
 
   const mode = invalidateRealtimeChanges(client, [
     change({
       entityType: 'mission_event',
       entityId: 'event-1',
+      changedFields: []
+    }),
+    change({
+      entityType: 'delivery',
+      entityId: 'delivery-1',
       changedFields: []
     }),
     change({
@@ -103,6 +108,7 @@ test('routes mission events and attachments to scoped queries', () => {
   assert.equal(mode, 'targeted');
   assert.deepEqual(calls, [
     ['mission', 'mission-1', 'events'],
+    ['mission', 'mission-1', 'deliveries'],
     ['objective', 'objective-1', 'attachments']
   ]);
 });

@@ -173,7 +173,33 @@ const toolHandlers: Record<string, ToolHandler> = {
         '--session-key': requiredString(args, 'sessionKey'),
         '--summary': requiredString(args, 'summary'),
         ...(args.noFileChanges === true ? { '--no-file-changes': true } : {}),
-        ...(Array.isArray(args.changeRationales) ? { '--change-rationales-file': true } : {})
+        ...(Array.isArray(args.changeRationales) ? { '--change-rationales-file': true } : {}),
+        ...(Array.isArray(args.humanActions) ||
+        Array.isArray(args.tradeoffsMade) ||
+        Array.isArray(args.knownRisks) ||
+        Array.isArray(args.deferredWork) ||
+        Array.isArray(args.assumptions)
+          ? {
+              '--payload-json': JSON.stringify({
+                deliveryReport: {
+                  schemaVersion: 1,
+                  agentReport: {
+                    ...(Array.isArray(args.humanActions)
+                      ? { humanActions: args.humanActions }
+                      : {}),
+                    ...(Array.isArray(args.tradeoffsMade)
+                      ? { tradeoffsMade: args.tradeoffsMade }
+                      : {}),
+                    ...(Array.isArray(args.knownRisks) ? { knownRisks: args.knownRisks } : {}),
+                    ...(Array.isArray(args.deferredWork)
+                      ? { deferredWork: args.deferredWork }
+                      : {}),
+                    ...(Array.isArray(args.assumptions) ? { assumptions: args.assumptions } : {})
+                  }
+                }
+              })
+            }
+          : {})
       },
       fileInputs: Array.isArray(args.changeRationales)
         ? { '--change-rationales-file': JSON.stringify(args.changeRationales) }

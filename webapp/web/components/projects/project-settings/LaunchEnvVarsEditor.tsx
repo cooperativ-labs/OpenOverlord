@@ -1,22 +1,22 @@
 import { Plus, Trash2 } from 'lucide-react';
 import {
+  type ClipboardEvent,
   forwardRef,
   useEffect,
   useImperativeHandle,
   useRef,
-  useState,
-  type ClipboardEvent
+  useState
 } from 'react';
 
 import {
   createEnvVarRow,
   DEFAULT_ENV_VAR_KEY,
+  type EnvVarRow,
   envVarsEqual,
   envVarsFromRows,
   isEnvVarPasteText,
   mergeEnvVarPasteIntoRows,
-  rowsFromEnvVars,
-  type EnvVarRow
+  rowsFromEnvVars
 } from '@/components/projects/project-settings/launch-settings-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,15 +40,7 @@ type LaunchEnvVarsEditorProps = {
 
 export const LaunchEnvVarsEditor = forwardRef<LaunchEnvVarsEditorHandle, LaunchEnvVarsEditorProps>(
   function LaunchEnvVarsEditor(
-    {
-      savedEnvVars,
-      disabled = false,
-      saveState,
-      setSaveState,
-      error,
-      setError,
-      onSave
-    },
+    { savedEnvVars, disabled = false, saveState, setSaveState, error, setError, onSave },
     ref
   ) {
     const [rows, setRows] = useState<EnvVarRow[]>(() => rowsFromEnvVars(savedEnvVars));

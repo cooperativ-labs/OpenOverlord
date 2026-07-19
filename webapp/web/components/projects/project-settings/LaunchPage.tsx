@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 
+import { parsePreLaunchLines } from '@/components/projects/project-settings/launch-settings-form';
 import {
   LaunchEnvVarsEditor,
   type LaunchEnvVarsEditorHandle
 } from '@/components/projects/project-settings/LaunchEnvVarsEditor';
-import { parsePreLaunchLines } from '@/components/projects/project-settings/launch-settings-form';
 import { LaunchVariableLibrary } from '@/components/projects/project-settings/LaunchVariableLibrary';
 import { Label } from '@/components/ui/label';
 import type { ButtonLoadingState } from '@/components/ui/loading-button';
@@ -34,7 +34,8 @@ export function LaunchPage({ open, projectId }: LaunchPageProps) {
   const preLaunchRef = useRef<HTMLTextAreaElement | null>(null);
 
   const preLaunchDirty =
-    parsePreLaunchLines(preLaunch).join('\n') !== parsePreLaunchLines(savedPreLaunchText).join('\n');
+    parsePreLaunchLines(preLaunch).join('\n') !==
+    parsePreLaunchLines(savedPreLaunchText).join('\n');
 
   useEffect(() => {
     if (!open) return;

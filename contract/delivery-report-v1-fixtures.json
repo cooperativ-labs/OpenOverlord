@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "description": "Conformance fixtures for the contract-v15 deterministic delivery report.",
+  "cases": [
+    {
+      "name": "complete-agent-report",
+      "summary": "Implemented resilient delivery reporting.",
+      "deliveryReport": {
+        "schemaVersion": 1,
+        "agentReport": {
+          "humanActions": [
+            {
+              "action": "Set GEMINI_API_KEY before enabling delivery composition.",
+              "reason": "The later composition worker needs a provider credential.",
+              "category": "environment",
+              "blocking": false
+            }
+          ],
+          "tradeoffsMade": [
+            {
+              "decision": "Commit a deterministic report before AI composition.",
+              "alternativesConsidered": [
+                "Block delivery on the model",
+                "Make agents compose presentation Markdown"
+              ],
+              "rationale": "Provider availability must not delay an objective delivery.",
+              "impact": "The first release renders the agent summary directly."
+            }
+          ],
+          "knownRisks": ["Composition worker is deferred."],
+          "deferredWork": ["Delivery detail UI is not included."],
+          "assumptions": ["deliveries.payload_json remains the extension point."]
+        }
+      },
+      "expectedHumanActionCount": 1,
+      "expectedTradeoffCount": 1
+    },
+    {
+      "name": "explicit-empty-arrays",
+      "summary": "No follow-up evidence applies.",
+      "deliveryReport": {
+        "schemaVersion": 1,
+        "agentReport": {
+          "humanActions": [],
+          "tradeoffsMade": [],
+          "knownRisks": [],
+          "deferredWork": [],
+          "assumptions": []
+        }
+      },
+      "expectedHumanActionCount": 0,
+      "expectedTradeoffCount": 0
+    },
+    {
+      "name": "legacy-summary-only",
+      "summary": "Legacy delivery summary.",
+      "expectedHumanActionCount": 0,
+      "expectedTradeoffCount": 0
+    },
+    {
+      "name": "prohibited-git-and-qa-actions",
+      "summary": "Filtered delivery actions.",
+      "deliveryReport": {
+        "agentReport": {
+          "human_actions": [
+            { "action": "git push the branch" },
+            { "action": "Open a pull request" },
+            { "action": "Review the code" },
+            { "action": "Run the tests" }
+          ]
+        }
+      },
+      "expectedHumanActionCount": 0,
+      "expectedTradeoffCount": 0
+    },
+    {
+      "name": "malformed-oversized-model-output",
+      "summary": "Invalid output must fail validation.",
+      "deliveryReport": {
+        "schemaVersion": 1,
+        "agentReport": {
+          "knownRisks": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"]
+        }
+      },
+      "valid": false
+    }
+  ]
+}

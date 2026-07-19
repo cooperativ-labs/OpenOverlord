@@ -1,6 +1,8 @@
+import type { DeliveryReportPayloadV1 } from '@overlord/contract';
 import { bindBool } from '@overlord/database';
 
 import type { ServiceContext } from './context.js';
+import { readDeliveryReport } from './delivery-report.js';
 import { newId, nowIso } from './util.js';
 
 /**
@@ -141,6 +143,8 @@ export interface WebhookEnvelope {
     summary?: string;
     verificationSummary?: string | null;
     followUpNotes?: string | null;
+    /** Full-mode normalized projection; raw deliveries.payload_json is never exposed. */
+    report?: DeliveryReportPayloadV1;
     artifacts?: Array<{
       type: string;
       label: string;
@@ -291,7 +295,8 @@ export async function buildWebhookEnvelope(
 
   if (entity.deliveryId) {
     const delivery = (await ctx.db.get(
-      `SELECT id, summary, verification_summary, follow_up_notes FROM deliveries WHERE id = ? AND workspace_id = ?`,
+      `SELECT id, summary, verification_summary, follow_up_notes, payload_json
+         FROM deliveries WHERE id = ? AND workspace_id = ?`,
       [entity.deliveryId, ctx.workspace.id]
     )) as
       | {
@@ -299,6 +304,7 @@ export async function buildWebhookEnvelope(
           summary: string;
           verification_summary: string | null;
           follow_up_notes: string | null;
+          payload_json: string | null;
         }
       | undefined;
     if (delivery) {
@@ -312,11 +318,24 @@ export async function buildWebhookEnvelope(
         external_url: string | null;
       }>;
 
+      let payload: { deliveryReport?: unknown } | null = null;
+      try {
+        payload = delivery.payload_json
+          ? (JSON.parse(delivery.payload_json) as { deliveryReport?: unknown })
+          : null;
+      } catch {
+        // A legacy or malformed internal payload uses the same deterministic read projection.
+      }
+
       envelope.delivery = {
         id: delivery.id,
         summary: delivery.summary,
         verificationSummary: delivery.verification_summary,
         followUpNotes: delivery.follow_up_notes,
+        report: readDeliveryReport({
+          summary: delivery.summary,
+          deliveryReport: payload?.deliveryReport
+        }),
         artifacts: artifactRows.map(row => ({
           type: row.type,
           label: row.label,

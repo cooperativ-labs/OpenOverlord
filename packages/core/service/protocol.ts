@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import { resolveMissionId, resolveProjectId } from './context.js';
+import { buildDeliveryReport, markDeliveryPresentationPending } from './delivery-report.js';
 import { ServiceError } from './errors.js';
 import { createExecutionRequest, linkExecutionRequestToSession } from './execution-requests.js';
 import { ensureActingDeviceTarget } from './execution-targets.js';
@@ -39,6 +40,7 @@ import {
 } from './projects.js';
 import { generateSessionKey, hashSessionKey, newId, nowIso } from './util.js';
 import { enqueueWebhookEvent } from './webhook-events.js';
+import { enqueueDeliveryComposeJob } from './worker-jobs.js';
 
 export type SessionSummary = {
   id: string;
@@ -100,7 +102,14 @@ Change-rationale format (deliver requires this exact shape):
   artifact. Example single entry:
     {"file_path":"src/api.ts","label":"Add retry","summary":"Added retry with backoff.","why":"Transient failures.","impact":"Requests retry up to 3x."}
   Changed files are detected for you (VCS baseline at attach vs. \`git status\` at deliver); you
-  only supply the rationale per file. If the run changed no files, deliver with \`--no-file-changes\`.`;
+  only supply the rationale per file. If the run changed no files, deliver with \`--no-file-changes\`.
+
+Delivery evidence:
+  Every delivery should also provide a \`deliveryReport.agentReport\` in \`--payload-json\` or
+  \`--payload-file\`: \`humanActions\`, \`tradeoffsMade\`, \`knownRisks\`, \`deferredWork\`, and
+  \`assumptions\`. Use empty arrays when none apply. Human actions are only concrete work a
+  human must perform outside completed agent work; never include Git actions or routine review/testing.
+  Tradeoffs must describe an implementation decision, alternatives considered, and why it was chosen.`;
 
 function resolveActiveObjective(objectives: ObjectiveSummary[]): ObjectiveSummary {
   const active =
@@ -1512,6 +1521,12 @@ export async function deliverSession({
 
   const normalizedRationales = normalizeChangeRationales(changeRationales);
   const normalizedSkips = normalizeSkipRationaleFor(skipRationaleFor);
+  const deliveryReport = markDeliveryPresentationPending(
+    buildDeliveryReport({
+      summary: trimmedSummary,
+      deliveryReport: payloadJson?.deliveryReport
+    })
+  );
   const skipPathSet = new Set(normalizedSkips.map(entry => entry.filePath));
 
   for (const skip of normalizedSkips) {
@@ -1688,6 +1703,7 @@ export async function deliverSession({
         trimmedSummary,
         JSON.stringify({
           ...(payloadJson ?? {}),
+          deliveryReport,
           ...(noFileChanges ? { noFileChanges: true } : {}),
           ...(normalizedSkips.length > 0
             ? {
@@ -1818,6 +1834,7 @@ export async function deliverSession({
         deliveryId
       }
     });
+    await enqueueDeliveryComposeJob({ ctx: txCtx, deliveryId, now });
 
     await txCtx.db.run(
       `UPDATE objectives SET state = 'complete', completed_at = ?, updated_at = ?, revision = revision + 1
@@ -2123,7 +2140,8 @@ export async function recordWork({
   objective,
   title,
   artifacts = [],
-  changeRationales = []
+  changeRationales = [],
+  payloadJson
 }: {
   ctx: ServiceContext;
   projectId?: string | null;
@@ -2132,6 +2150,7 @@ export async function recordWork({
   title?: string | null;
   artifacts?: Array<{ type: string; label: string; content?: string | null; url?: string | null }>;
   changeRationales?: ChangeRationaleInput[];
+  payloadJson?: Record<string, unknown> | null;
 }): Promise<{ mission: MissionSummary; deliveryId: string }> {
   const trimmedSummary = summary.trim();
   if (!trimmedSummary) {
@@ -2152,6 +2171,12 @@ export async function recordWork({
 
   const now = nowIso();
   const deliveryId = newId();
+  const deliveryReport = markDeliveryPresentationPending(
+    buildDeliveryReport({
+      summary: trimmedSummary,
+      deliveryReport: payloadJson?.deliveryReport
+    })
+  );
   const objectiveId = created.objectives[0]?.id;
   if (!objectiveId) {
     throw new ServiceError('Failed to create objective for record-work', 'internal_error', 500);
@@ -2164,7 +2189,7 @@ export async function recordWork({
            (id, workspace_id, project_id, mission_id, objective_id, session_id,
             summary, payload_json, delivered_at, delivered_by_workspace_user_id,
             created_at, updated_at, revision)
-         VALUES (?, ?, ?, ?, ?, NULL, ?, '{}', ?, ?, ?, ?, 1)`,
+         VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 1)`,
       [
         deliveryId,
         ctx.workspace.id,
@@ -2172,6 +2197,7 @@ export async function recordWork({
         created.mission.id,
         objectiveId,
         trimmedSummary,
+        JSON.stringify({ ...(payloadJson ?? {}), deliveryReport }),
         now,
         ctx.actorWorkspaceUserId,
         now,
@@ -2256,6 +2282,7 @@ export async function recordWork({
       projectId: resolvedProjectId,
       entity: { missionId: created.mission.id, objectiveId, deliveryId }
     });
+    await enqueueDeliveryComposeJob({ ctx: txCtx, deliveryId, now });
   });
   return { mission: created.mission, deliveryId };
 }

@@ -38,8 +38,10 @@
   "dependencies": {
     "@overlord/auth": "workspace:*",
     "@overlord/automations": "workspace:*",
+    "@overlord/contract": "workspace:*",
     "@overlord/database": "workspace:*",
-    "kysely": "^0.29.2"
+    "kysely": "^0.29.2",
+    "zod": "^4.3.6"
   },
   "license": "MIT"
 }

@@ -71,25 +71,25 @@ ground from the system's point of view, plus everything before and after.
      endpoint to resolve every logical resource linked to the project for this
      execution target — not just the one being launched into. Each resource
      carries a `resourceKey`, a `path` (populated only if that resource is
-     actually checked out on *this* machine, otherwise explicitly marked
+     actually checked out on _this_ machine, otherwise explicitly marked
      unavailable), and a connection `state`.
    - **Environment variables.** The spawned process inherits the runner's full
      environment (which is how the ambient `OVERLORD_USER_TOKEN` reaches the
      agent) plus these launch-specific vars:
 
-     | Variable | Contents |
-     | --- | --- |
-     | `MISSION_ID` / `OVERLORD_MISSION_ID` | The mission being worked. |
-     | `OVERLORD_BACKEND_URL` | Which backend the agent's CLI/MCP calls should hit. |
-     | `OVERLORD_EXECUTION_REQUEST_ID` | Set when the launch is execution-request-driven; forwarded on `attach` so the resulting session links back to this exact request. |
-     | `OVERLORD_WORKING_DIRECTORY` | Absolute path the agent terminal cds into. |
-     | `OVERLORD_CONTEXT_FILE` | Absolute path of the markdown briefing under `.overlord/tmp/`. |
-     | `OVERLORD_TMPDIR` / `TMPDIR` / `TMP` / `TEMP` | Project-scoped scratch directory. |
-     | `OVERLORD_PROJECT_RESOURCES` | JSON array of every linked resource and its resolved path/state, set only when the project has resources. This is the plural manifest — see [Project resources at launch](#project-resources-at-launch) below. |
-     | `OVERLORD_PROJECT_RESOURCES_PATHS` | Space-separated connected resource paths (for CLI args). |
-     | `OVERLORD_PROJECT_RESOURCES_PATHS_CSV` | Same paths, comma-separated (for CSV-style env vars such as agent-pod allowlists). |
-     | `OVERLORD_PRIMARY_RESOURCE_PATH` | Path of the primary (else current) connected resource, or empty. |
-     | *project `launchEnvVars`* | User-defined `NAME=value` pairs from Project Settings, with `{VAR}` placeholders already substituted. |
+     | Variable                                      | Contents                                                                                                                                                                                                       |
+     | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+     | `MISSION_ID` / `OVERLORD_MISSION_ID`          | The mission being worked.                                                                                                                                                                                      |
+     | `OVERLORD_BACKEND_URL`                        | Which backend the agent's CLI/MCP calls should hit.                                                                                                                                                            |
+     | `OVERLORD_EXECUTION_REQUEST_ID`               | Set when the launch is execution-request-driven; forwarded on `attach` so the resulting session links back to this exact request.                                                                              |
+     | `OVERLORD_WORKING_DIRECTORY`                  | Absolute path the agent terminal cds into.                                                                                                                                                                     |
+     | `OVERLORD_CONTEXT_FILE`                       | Absolute path of the markdown briefing under `.overlord/tmp/`.                                                                                                                                                 |
+     | `OVERLORD_TMPDIR` / `TMPDIR` / `TMP` / `TEMP` | Project-scoped scratch directory.                                                                                                                                                                              |
+     | `OVERLORD_PROJECT_RESOURCES`                  | JSON array of every linked resource and its resolved path/state, set only when the project has resources. This is the plural manifest — see [Project resources at launch](#project-resources-at-launch) below. |
+     | `OVERLORD_PROJECT_RESOURCES_PATHS`            | Space-separated connected resource paths (for CLI args).                                                                                                                                                       |
+     | `OVERLORD_PROJECT_RESOURCES_PATHS_CSV`        | Same paths, comma-separated (for CSV-style env vars such as agent-pod allowlists).                                                                                                                             |
+     | `OVERLORD_PRIMARY_RESOURCE_PATH`              | Path of the primary (else current) connected resource, or empty.                                                                                                                                               |
+     | _project `launchEnvVars`_                     | User-defined `NAME=value` pairs from Project Settings, with `{VAR}` placeholders already substituted.                                                                                                          |
 
    - **Launch preparation.** After `cd` and env exports, the terminal runs the
      project's `preLaunchCommands` (also with `{VAR}` already substituted), then
@@ -140,6 +140,9 @@ ground from the system's point of view, plus everything before and after.
      agent) has a change-rationale.
    - Writes the `deliveries`, `artifacts`, and `change_rationales` rows and a
      `delivery`-type mission event.
+   - Normalizes optional delivery evidence (human actions, tradeoffs, risks,
+     deferred work, and assumptions), stores a deterministic presentation, and
+     queues optional AI composition without delaying the delivery transaction.
    - Enqueues the `mission.delivered` webhook event.
    - Moves the objective to `complete` and enqueues `objective.completed`.
    - Moves the `agent_sessions` row to `delivered` / `review` phase, and the
@@ -184,14 +187,14 @@ inside `buildLaunchPlan` — after the working directory, context file, tmp dir,
 and project resources are known, and **before** the terminal exports env or runs
 prep commands.
 
-| Stage | What exists | Usable in `{VAR}`? |
-| --- | --- | --- |
-| Queue / claim (steps 2–3) | Execution request, agent/model, project settings snapshot (`preLaunchCommands`, `launchEnvVars`) | No — values are still templates |
-| Branch / worktree prep (step 4) | Resolved working directory (checkout or worktree) | Not yet — substitution has not run |
-| Plan build (start of step 5) | Mission briefing file, resource manifest, Overlord launch env, derived path helpers | **Yes** — this is when `{VAR}` resolves |
-| Terminal env export (step 5) | All plan-build vars + substituted user `launchEnvVars` exported into the process | N/A — already resolved; shell uses `$NAME` for user vars |
-| Pre-launch commands (step 5) | Same env; commands run with literals (placeholders already gone) | No further `{VAR}` pass |
-| Attach (step 6) | Full attach payload: `objective`, history, artifacts, attachments, `projectResources`, `sessionKey`, … | **No** — attach fields are not launch-prep placeholders |
+| Stage                           | What exists                                                                                            | Usable in `{VAR}`?                                       |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
+| Queue / claim (steps 2–3)       | Execution request, agent/model, project settings snapshot (`preLaunchCommands`, `launchEnvVars`)       | No — values are still templates                          |
+| Branch / worktree prep (step 4) | Resolved working directory (checkout or worktree)                                                      | Not yet — substitution has not run                       |
+| Plan build (start of step 5)    | Mission briefing file, resource manifest, Overlord launch env, derived path helpers                    | **Yes** — this is when `{VAR}` resolves                  |
+| Terminal env export (step 5)    | All plan-build vars + substituted user `launchEnvVars` exported into the process                       | N/A — already resolved; shell uses `$NAME` for user vars |
+| Pre-launch commands (step 5)    | Same env; commands run with literals (placeholders already gone)                                       | No further `{VAR}` pass                                  |
+| Attach (step 6)                 | Full attach payload: `objective`, history, artifacts, attachments, `projectResources`, `sessionKey`, … | **No** — attach fields are not launch-prep placeholders  |
 
 Syntax rules:
 
@@ -218,17 +221,16 @@ backend repo and a separate frontend repo). Two things are true at once:
   objective.
 - **The data available to the agent is plural.** Both `OVERLORD_PROJECT_RESOURCES`
   (env var, set at launch) and the `projectResources` field of the `attach`
-  response (set at attach) list *every* resource linked to the project, each
+  response (set at attach) list _every_ resource linked to the project, each
   with its own `resourceKey` and `path` — not just the one being launched
   into.
 
 <Aside type="caution">
-A sibling resource's `path` is only populated if that resource is actually
-checked out/connected on the same machine running the launch. If it's linked
-in the project but not present locally, its entry comes through with a `null`
-path and a `state` marking it unavailable, rather than a real filesystem path.
-Treat siblings as **read-only context** unless a future objective explicitly
-launches into them.
+  A sibling resource's `path` is only populated if that resource is actually checked out/connected
+  on the same machine running the launch. If it's linked in the project but not present locally, its
+  entry comes through with a `null` path and a `state` marking it unavailable, rather than a real
+  filesystem path. Treat siblings as **read-only context** unless a future objective explicitly
+  launches into them.
 </Aside>
 
 ## Related

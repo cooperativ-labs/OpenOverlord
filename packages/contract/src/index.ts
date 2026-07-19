@@ -791,7 +791,123 @@ export interface MissionEventDto {
   actor: MissionEventActorDto | null;
   /** Optional external link associated with the event. */
   externalUrl: string | null;
+  /** Present only for a delivery event; identifies its immutable delivery record. */
+  deliveryId?: string | null;
   createdAt: string;
+}
+
+// ---- Delivery reports (coo:364, contract v15) -----------------------------
+
+/** Sources allowed to support a persisted delivery-report item. */
+export type DeliveryEvidenceSource = 'agent' | 'change_rationale' | 'deterministic_rule';
+
+/** User-facing grouping for a concrete post-delivery action. */
+export type HumanActionCategory =
+  | 'environment'
+  | 'database'
+  | 'deployment'
+  | 'codegen'
+  | 'packaging'
+  | 'external_service'
+  | 'other';
+
+/** Raw agent-provided action evidence accepted in a delivery envelope. */
+export interface HumanActionInputV1 {
+  action: string;
+  reason?: string;
+  category?: HumanActionCategory;
+  blocking?: boolean;
+}
+
+/** Raw agent-provided implementation-decision evidence accepted in a delivery envelope. */
+export interface TradeoffMadeInputV1 {
+  decision: string;
+  alternativesConsidered?: string[];
+  rationale: string;
+  impact?: string;
+}
+
+/** A normalized action with stable provenance for display and later composition. */
+export interface HumanActionV1 extends Required<Pick<HumanActionInputV1, 'action'>> {
+  id: string;
+  reason?: string;
+  category: HumanActionCategory;
+  blocking?: boolean;
+  source: DeliveryEvidenceSource;
+  sourceRef?: string;
+}
+
+/** A normalized implementation decision with stable provenance. */
+export interface TradeoffMadeV1 {
+  id: string;
+  decision: string;
+  alternativesConsidered: string[];
+  rationale: string;
+  impact?: string;
+  source: Extract<DeliveryEvidenceSource, 'agent' | 'change_rationale'>;
+  sourceRef?: string;
+}
+
+/** Authoritative, agent-supplied delivery facts. Omitted arrays normalize to `[]`. */
+export interface DeliveryAgentReportInputV1 {
+  humanActions?: HumanActionInputV1[];
+  tradeoffsMade?: TradeoffMadeInputV1[];
+  knownRisks?: string[];
+  deferredWork?: string[];
+  assumptions?: string[];
+}
+
+/** Normalized agent evidence persisted with the delivery. */
+export interface DeliveryAgentReportV1 {
+  humanActions: HumanActionV1[];
+  tradeoffsMade: TradeoffMadeV1[];
+  knownRisks: string[];
+  deferredWork: string[];
+  assumptions: string[];
+}
+
+/**
+ * Read-side delivery presentation. New deliveries start as `pending` (with
+ * deterministic content) when a compose job is enqueued; the worker may later
+ * set `composed` or `fallback`. Legacy/read-time synthesis uses `deterministic`.
+ */
+export interface DeliveryPresentationV1 {
+  status: 'deterministic' | 'pending' | 'composed' | 'fallback';
+  markdown: string;
+  humanActions: HumanActionV1[];
+  tradeoffsMade: TradeoffMadeV1[];
+  knownRisks: string[];
+  deferredWork: string[];
+  assumptions: string[];
+  generatedBy: 'deterministic' | 'gemini';
+  generatedAt?: string;
+  model?: string;
+}
+
+/** Versioned payload stored below `deliveries.payload_json.deliveryReport`. */
+export interface DeliveryReportPayloadV1 {
+  schemaVersion: 1;
+  agentReport: DeliveryAgentReportV1;
+  presentation: DeliveryPresentationV1;
+}
+
+/**
+ * An authorized, normalized delivery record returned from
+ * `GET /api/missions/:id/deliveries`. The REST API never exposes the raw
+ * persisted payload; legacy records receive a deterministic V1 report here.
+ */
+export interface DeliveryDto {
+  id: string;
+  missionId: string;
+  objectiveId: string;
+  sessionId: string | null;
+  summary: string;
+  verificationSummary: string | null;
+  followUpNotes: string | null;
+  report: DeliveryReportPayloadV1;
+  deliveredAt: string;
+  agentIdentifier: string | null;
+  modelIdentifier: string | null;
 }
 
 // ---- Mission file changes ----

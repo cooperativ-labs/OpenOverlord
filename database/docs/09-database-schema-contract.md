@@ -1187,24 +1187,24 @@ Storage object deletes are soft deletes. Services should enqueue provider cleanu
 
 Final or follow-up delivery review boundary.
 
-| Column                           | Type         | Required | Notes                                                                                          |
-| -------------------------------- | ------------ | -------- | ---------------------------------------------------------------------------------------------- |
-| `id`                             | Id           | yes      |                                                                                                |
-| `workspace_id`                   | Id           | yes      | FK to `workspaces`.                                                                            |
-| `project_id`                     | Id           | yes      | FK to `projects`.                                                                              |
-| `mission_id`                     | Id           | yes      | FK to `missions`.                                                                              |
-| `objective_id`                   | Id           | yes      | FK to `objectives`.                                                                            |
-| `session_id`                     | Id           | no       | FK to `agent_sessions`; null for `record-work` deliveries created without an attached session. |
-| `summary`                        | text         | yes      | Narrative delivery summary.                                                                    |
-| `verification_summary`           | text         | no       | Tests/checks run.                                                                              |
-| `follow_up_notes`                | text         | no       | Known remaining work.                                                                          |
-| `payload_json`                   | Json         | yes      | Structured delivery payload.                                                                   |
-| `delivered_by_workspace_user_id` | Id           | no       | FK to `workspace_users`.                                                                       |
-| `delivered_at`                   | TimestampUTC | yes      |                                                                                                |
-| `created_at`                     | TimestampUTC | yes      |                                                                                                |
-| `updated_at`                     | TimestampUTC | yes      |                                                                                                |
-| `deleted_at`                     | TimestampUTC | no       | Tombstone, rarely used.                                                                        |
-| `revision`                       | integer      | yes      |                                                                                                |
+| Column                           | Type         | Required | Notes                                                                                                                                                                      |
+| -------------------------------- | ------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                             | Id           | yes      |                                                                                                                                                                            |
+| `workspace_id`                   | Id           | yes      | FK to `workspaces`.                                                                                                                                                        |
+| `project_id`                     | Id           | yes      | FK to `projects`.                                                                                                                                                          |
+| `mission_id`                     | Id           | yes      | FK to `missions`.                                                                                                                                                          |
+| `objective_id`                   | Id           | yes      | FK to `objectives`.                                                                                                                                                        |
+| `session_id`                     | Id           | no       | FK to `agent_sessions`; null for `record-work` deliveries created without an attached session.                                                                             |
+| `summary`                        | text         | yes      | Narrative delivery summary.                                                                                                                                                |
+| `verification_summary`           | text         | no       | Tests/checks run.                                                                                                                                                          |
+| `follow_up_notes`                | text         | no       | Known remaining work.                                                                                                                                                      |
+| `payload_json`                   | Json         | yes      | Structured delivery payload. Versioned `deliveryReport` stores normalized evidence and deterministic presentation; `summary` remains immutable agent-authored source text. Raw payload JSON is never a REST response; `GET /api/missions/:id/deliveries` projects a normalized `DeliveryDto` and synthesizes a deterministic V1 report for legacy records. |
+| `delivered_by_workspace_user_id` | Id           | no       | FK to `workspace_users`.                                                                                                                                                   |
+| `delivered_at`                   | TimestampUTC | yes      |                                                                                                                                                                            |
+| `created_at`                     | TimestampUTC | yes      |                                                                                                                                                                            |
+| `updated_at`                     | TimestampUTC | yes      |                                                                                                                                                                            |
+| `deleted_at`                     | TimestampUTC | no       | Tombstone, rarely used.                                                                                                                                                    |
+| `revision`                       | integer      | yes      |                                                                                                                                                                            |
 
 Indexes:
 
@@ -1417,6 +1417,13 @@ Indexes:
 ### `worker_jobs`
 
 General background job queue for non-agent side effects. Agent execution should use `execution_requests`.
+
+Core-documented job type `overlord.delivery.compose.v1` is used for asynchronous
+delivery-presentation composition. Its `payload_json` carries `{ "deliveryId": "<id>" }`
+only. Protocol delivery (`deliverSession` / `recordWork`) enqueues one job in the same
+transaction as the delivery insert; the backend composition worker claims, retries with
+lock expiry, and updates only `deliveries.payload_json.deliveryReport.presentation`.
+Delivery success never waits on the worker or Gemini.
 
 | Column          | Type         | Required | Notes                                                    |
 | --------------- | ------------ | -------- | -------------------------------------------------------- |
@@ -2063,7 +2070,7 @@ Closed values:
 
 Open extension values:
 
-- `workspaces.kind`, `profiles.kind`, `execution_targets.type`, `project_resources.type`, `storage_buckets.storage_backend`, `artifacts.type`, `mission_events.source`, `entity_changes.entity_type`, `entity_changes.source`, `outbox_messages.topic`, `worker_jobs.type`, RBAC permission names, connector identifiers, and `webhook_subscriptions.event_types_json` values (the webhook event catalog).
+- `workspaces.kind`, `profiles.kind`, `execution_targets.type`, `project_resources.type`, `storage_buckets.storage_backend`, `artifacts.type`, `mission_events.source`, `entity_changes.entity_type`, `entity_changes.source`, `outbox_messages.topic`, `worker_jobs.type` (including core-documented `overlord.delivery.compose.v1`), RBAC permission names, connector identifiers, and `webhook_subscriptions.event_types_json` values (the webhook event catalog).
 - `execution_targets.type` documents `local`, `ssh`, and now `virtual` as core values. A `virtual` target is realized by an external gateway over the Virtual Target Queue Surface.
 - Virtual execution target open vocabularies: `execution_target_registrations.gateway_key` (namespaced adapter key, e.g. `racecar` — **not** an `execution_targets.type`), `execution_target_registrations.health` (`healthy`, `degraded`, `unreachable`, `unknown`), `project_resource_sources.source_kind` (`git`, `local_checkout`, `source_bundle`, …), `execution_request_observations.kind` (`progress`, `launch`, `failure`, `lifecycle_resource`, …), `execution_request_grants.kind` (`launch`, `attachment`, `download`, `credential_reference`, …), `execution_requests.failure_code` (typed, e.g. `source_incompatible`), `execution_requests.failure_phase` (`claim`, `source`, `environment`, `launch`, …), and `mission_target_resources.kind` (`car`, `environment`, `run`, …).
 - Extension values must be namespaced unless they are accepted into core documentation.

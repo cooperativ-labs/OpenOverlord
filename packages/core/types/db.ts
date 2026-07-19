@@ -525,6 +525,25 @@ export interface OutboxMessages {
   workspace_id: string;
 }
 
+export interface WorkerJobs {
+  attempt_count: Generated<number>;
+  created_at: string;
+  deleted_at: string | null;
+  id: string | null;
+  last_error: string | null;
+  locked_by: string | null;
+  locked_until: string | null;
+  max_attempts: Generated<number>;
+  payload_json: string;
+  priority: Generated<number>;
+  revision: Generated<number>;
+  run_after: string;
+  status: Generated<string>;
+  type: string;
+  updated_at: string;
+  workspace_id: string;
+}
+
 export interface Profiles {
   created_at: string;
   deleted_at: string | null;
@@ -1047,6 +1066,7 @@ export interface DB {
   verification: Verification;
   webhook_delivery_attempts: WebhookDeliveryAttempts;
   webhook_subscriptions: WebhookSubscriptions;
+  worker_jobs: WorkerJobs;
   workspace_images: WorkspaceImages;
   workspace_invitations: WorkspaceInvitations;
   workspace_statuses: WorkspaceStatuses;

@@ -219,6 +219,7 @@ Supported event types:
 - `skip-rationale-for-json` / `skip-rationale-for-file` (per-file rationale overrides for changes the agent did not make)
 - `payload-json`
 - `payload-file`
+- `payload-json.deliveryReport` / `payload-file.deliveryReport` (optional versioned agent evidence)
 - optional file-change coverage checks
 
 Delivery rules:
@@ -231,6 +232,12 @@ Delivery rules:
 - Delivery moves the mission to review unless another explicit status is requested later.
 - Delivery may trigger auto-advance for the next objective.
 - After delivery, implementation work must not continue until follow-up execution is explicitly started.
+- `payload-json` / `payload-file` may include `deliveryReport: { schemaVersion: 1, agentReport }`.
+  `agentReport` accepts `humanActions`, `tradeoffsMade`, `knownRisks`, `deferredWork`,
+  and `assumptions`; each missing array becomes `[]`. Human actions are for concrete
+  work outside the agent's completed changes and must never include Git actions or
+  routine review/testing. The protocol stores a deterministic presentation immediately;
+  delivery does not wait for an AI provider.
 
 ### Server-Side Reconciliation And Self-Servicing Errors
 

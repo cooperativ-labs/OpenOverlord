@@ -1,4 +1,16 @@
 export type {
+  ComposeDeliveryDraft,
+  ComposeDeliveryEvidenceItem,
+  ComposeDeliveryInput
+} from './compose-delivery/index.js';
+export {
+  buildComposeDeliveryPrompt,
+  COMPOSE_DELIVERY_RESPONSE_SCHEMA,
+  composeDeliveryTool,
+  composeDeliveryWithGemini,
+  resetGeminiClientForTests as resetComposeDeliveryGeminiClientForTests
+} from './compose-delivery/index.js';
+export type {
   AutoAdvanceDecision,
   EnsureDraftSlotPlan,
   ManageObjectiveLifecycleInput,

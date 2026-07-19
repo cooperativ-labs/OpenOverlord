@@ -94,10 +94,7 @@ export function normalizeEnvVars(vars: Record<string, string>): Record<string, s
   return normalized;
 }
 
-export function envVarsEqual(
-  left: Record<string, string>,
-  right: Record<string, string>
-): boolean {
+export function envVarsEqual(left: Record<string, string>, right: Record<string, string>): boolean {
   return JSON.stringify(normalizeEnvVars(left)) === JSON.stringify(normalizeEnvVars(right));
 }
 
@@ -117,12 +114,15 @@ export function parseEnvVarPaste(text: string): EnvVarRow[] | null {
 }
 
 export function isEnvVarPasteText(text: string): boolean {
-  return text.includes('=') && text.split(/\r?\n/).some(line => {
-    const trimmed = line.trim();
-    if (!trimmed) return false;
-    const eq = trimmed.indexOf('=');
-    return eq > 0 && trimmed.slice(0, eq).trim().length > 0;
-  });
+  return (
+    text.includes('=') &&
+    text.split(/\r?\n/).some(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+      const eq = trimmed.indexOf('=');
+      return eq > 0 && trimmed.slice(0, eq).trim().length > 0;
+    })
+  );
 }
 
 export function mergeEnvVarPasteIntoRows({

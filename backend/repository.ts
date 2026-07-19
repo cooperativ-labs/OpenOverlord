@@ -14,6 +14,7 @@ import { bindBool, type DatabaseClient } from '@overlord/database';
 import os from 'node:os';
 import path from 'node:path';
 
+import { readDeliveryReport } from '../packages/core/service/delivery-report.ts';
 import { ensureActingDeviceTarget } from '../packages/core/service/execution-targets.ts';
 import { resolveBackendResourceProvider } from '../packages/core/service/local-target/index.ts';
 import type { TargetMetadata } from '../packages/core/service/local-target/types.ts';
@@ -45,6 +46,8 @@ import type {
   CreateUserTokenBody,
   CreateUserTokenResultDto,
   CreateWorkspaceStatusBody,
+  DeliveryDto,
+  DeliveryReportPayloadV1,
   FileChangeDto,
   GenerateCommitMessageResultDto,
   MissionBranchDto,
@@ -3392,6 +3395,7 @@ interface MissionEventRow {
   actor_handle: string | null;
   actor_metadata_json: string | null;
   external_url: string | null;
+  payload_json: string | null;
   created_at: string;
 }
 
@@ -3407,7 +3411,7 @@ export async function listMissionEvents(
   const mission = await getMissionRow(missionRef, undefined, PERMISSIONS.EVENT_READ);
   const rows = (await requireDatabaseClient().all(
     `SELECT me.id, me.mission_id, me.objective_id, me.type, me.phase, me.summary,
-              me.source, me.actor_workspace_user_id, me.external_url, me.created_at,
+              me.source, me.actor_workspace_user_id, me.external_url, me.payload_json, me.created_at,
               p.display_name AS actor_display_name,
               p.handle AS actor_handle,
               p.metadata_json AS actor_metadata_json
@@ -3443,7 +3447,82 @@ export async function listMissionEvents(
           }
         : null,
     externalUrl: row.external_url,
+    ...(row.type === 'delivery'
+      ? { deliveryId: deliveryIdFromEventPayload(row.payload_json) }
+      : {}),
     createdAt: row.created_at
+  }));
+}
+
+function deliveryIdFromEventPayload(payloadJson: string | null): string | null {
+  if (!payloadJson) return null;
+  try {
+    const payload = JSON.parse(payloadJson) as { deliveryId?: unknown };
+    return typeof payload.deliveryId === 'string' && payload.deliveryId.trim()
+      ? payload.deliveryId
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function deliveryReportFromPayload(
+  payloadJson: string | null,
+  summary: string
+): DeliveryReportPayloadV1 {
+  if (!payloadJson) return readDeliveryReport({ summary, deliveryReport: undefined });
+  try {
+    const payload = JSON.parse(payloadJson) as { deliveryReport?: unknown };
+    return readDeliveryReport({ summary, deliveryReport: payload.deliveryReport });
+  } catch {
+    return readDeliveryReport({ summary, deliveryReport: undefined });
+  }
+}
+
+interface DeliveryRow {
+  id: string;
+  mission_id: string;
+  objective_id: string;
+  session_id: string | null;
+  summary: string;
+  verification_summary: string | null;
+  follow_up_notes: string | null;
+  payload_json: string | null;
+  delivered_at: string;
+  agent_identifier: string | null;
+  model_identifier: string | null;
+}
+
+/** Returns delivery records without exposing their arbitrary persisted payload JSON. */
+export async function listMissionDeliveries(
+  missionRef: string,
+  limit = 200
+): Promise<DeliveryDto[]> {
+  const mission = await getMissionRow(missionRef, undefined, PERMISSIONS.MISSION_READ);
+  const rows = (await requireDatabaseClient().all(
+    `SELECT d.id, d.mission_id, d.objective_id, d.session_id, d.summary,
+            d.verification_summary, d.follow_up_notes, d.payload_json, d.delivered_at,
+            s.agent_identifier, s.model_identifier
+       FROM deliveries d
+       LEFT JOIN agent_sessions s ON s.id = d.session_id AND s.deleted_at IS NULL
+      WHERE d.mission_id = ? AND d.workspace_id = ? AND d.deleted_at IS NULL
+      ORDER BY d.delivered_at DESC, d.id DESC
+      LIMIT ?`,
+    [mission.id, mission.workspace_id, limit]
+  )) as DeliveryRow[];
+
+  return rows.map(row => ({
+    id: row.id,
+    missionId: row.mission_id,
+    objectiveId: row.objective_id,
+    sessionId: row.session_id,
+    summary: row.summary,
+    verificationSummary: row.verification_summary,
+    followUpNotes: row.follow_up_notes,
+    report: deliveryReportFromPayload(row.payload_json, row.summary),
+    deliveredAt: row.delivered_at,
+    agentIdentifier: row.agent_identifier,
+    modelIdentifier: row.model_identifier
   }));
 }
 

@@ -277,6 +277,9 @@ deliver:
     --mission-id <id>
     --summary or --summary-file <path|->
     or: --payload-json / --payload-file <path|-> with { summary, artifacts, changeRationales }
+    The payload may also include deliveryReport: { schemaVersion: 1, agentReport: {
+      humanActions, tradeoffsMade, knownRisks, deferredWork, assumptions } }. Use empty arrays
+    when none apply. Human actions exclude Git operations and routine review/testing.
   Optional:
     --artifacts-json / --artifacts-file <path|->
     --change-rationales-json / --change-rationales-file <path|->

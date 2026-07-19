@@ -188,7 +188,7 @@ const tools = [
     name: 'overlord_deliver_session',
     title: 'Deliver mission session',
     description:
-      'Deliver an attached session with explicit summary and optional change rationales.',
+      'Deliver an attached session with explicit summary, optional change rationales, and optional human-action/tradeoff evidence.',
     inputSchema: objectSchema(
       {
         missionId: stringProperty('Mission UUID or workspace display id.'),
@@ -201,7 +201,19 @@ const tools = [
         changeRationales: {
           type: 'array',
           description: 'Explicit change rationale objects, if files were changed.'
-        }
+        },
+        humanActions: {
+          type: 'array',
+          description:
+            'Concrete actions a human must perform; exclude Git operations and routine review/testing.'
+        },
+        tradeoffsMade: {
+          type: 'array',
+          description: 'Implementation decisions, alternatives considered, and rationale.'
+        },
+        knownRisks: { type: 'array', description: 'Residual risks or limitations.' },
+        deferredWork: { type: 'array', description: 'Intentionally deferred work.' },
+        assumptions: { type: 'array', description: 'Material implementation assumptions.' }
       },
       ['missionId', 'sessionKey', 'summary']
     )
@@ -294,6 +306,28 @@ function callOverlordTool(name, args) {
       ...(args.noFileChanges === true ? { 'no-file-changes': true } : {}),
       ...(Array.isArray(args.changeRationales)
         ? { 'change-rationales-json': args.changeRationales }
+        : {}),
+      ...(Array.isArray(args.humanActions) ||
+      Array.isArray(args.tradeoffsMade) ||
+      Array.isArray(args.knownRisks) ||
+      Array.isArray(args.deferredWork) ||
+      Array.isArray(args.assumptions)
+        ? {
+            payload: {
+              deliveryReport: {
+                schemaVersion: 1,
+                agentReport: {
+                  ...(Array.isArray(args.humanActions) ? { humanActions: args.humanActions } : {}),
+                  ...(Array.isArray(args.tradeoffsMade)
+                    ? { tradeoffsMade: args.tradeoffsMade }
+                    : {}),
+                  ...(Array.isArray(args.knownRisks) ? { knownRisks: args.knownRisks } : {}),
+                  ...(Array.isArray(args.deferredWork) ? { deferredWork: args.deferredWork } : {}),
+                  ...(Array.isArray(args.assumptions) ? { assumptions: args.assumptions } : {})
+                }
+              }
+            }
+          }
         : {})
     });
   }
@@ -328,7 +362,7 @@ process.stdin.on('data', async chunk => {
         result: {
           protocolVersion: PROTOCOL_VERSION,
           capabilities: { tools: { listChanged: false } },
-          serverInfo: { name: 'overlord-codex', version: '0.3.3' }
+          serverInfo: { name: 'overlord-codex', version: '0.3.4' }
         }
       });
       continue;

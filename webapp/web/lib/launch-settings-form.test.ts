@@ -40,10 +40,13 @@ describe('launch-settings-form', () => {
     const rows = parseEnvVarPaste(
       'FOO=bar\nAGENT_POD_EXTRA_ALLOWED_PATHS={OVERLORD_PROJECT_RESOURCES_PATHS_CSV}'
     );
-    assert.deepEqual(rows?.map(row => ({ key: row.key, value: row.value })), [
-      { key: 'FOO', value: 'bar' },
-      { key: 'AGENT_POD_EXTRA_ALLOWED_PATHS', value: '{OVERLORD_PROJECT_RESOURCES_PATHS_CSV}' }
-    ]);
+    assert.deepEqual(
+      rows?.map(row => ({ key: row.key, value: row.value })),
+      [
+        { key: 'FOO', value: 'bar' },
+        { key: 'AGENT_POD_EXTRA_ALLOWED_PATHS', value: '{OVERLORD_PROJECT_RESOURCES_PATHS_CSV}' }
+      ]
+    );
   });
 
   it('merges single-line paste into the active row', () => {
@@ -56,10 +59,13 @@ describe('launch-settings-form', () => {
       rowIndex: 1,
       text: 'NEW=next'
     });
-    assert.deepEqual(merged?.map(row => ({ key: row.key, value: row.value })), [
-      { key: 'OLD', value: 'value' },
-      { key: 'NEW', value: 'next' }
-    ]);
+    assert.deepEqual(
+      merged?.map(row => ({ key: row.key, value: row.value })),
+      [
+        { key: 'OLD', value: 'value' },
+        { key: 'NEW', value: 'next' }
+      ]
+    );
   });
 
   it('replaces all rows when pasting multiple lines', () => {
@@ -69,10 +75,13 @@ describe('launch-settings-form', () => {
       rowIndex: 0,
       text: 'ONE=1\nTWO=2'
     });
-    assert.deepEqual(merged?.map(row => ({ key: row.key, value: row.value })), [
-      { key: 'ONE', value: '1' },
-      { key: 'TWO', value: '2' }
-    ]);
+    assert.deepEqual(
+      merged?.map(row => ({ key: row.key, value: row.value })),
+      [
+        { key: 'ONE', value: '1' },
+        { key: 'TWO', value: '2' }
+      ]
+    );
   });
 
   it('compares env var maps regardless of key order', () => {

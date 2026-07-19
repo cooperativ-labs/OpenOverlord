@@ -53,12 +53,12 @@ The response's `secret` field is the only time the raw secret is returned.
 
 ## 3. Event catalog
 
-| Event type | Fires when |
-| --- | --- |
-| `mission.delivered` | An agent delivers work for review (`ovld protocol deliver` or `record-work`). |
-| `mission.status_changed` | A mission moves between workspace statuses, including board drags in the web UI. |
-| `objective.completed` | An objective reaches `complete`. |
-| `mission.blocked` | An agent posts a blocking question (`ovld protocol ask`) — use this to page a human. |
+| Event type               | Fires when                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------ |
+| `mission.delivered`      | An agent delivers work for review (`ovld protocol deliver` or `record-work`).        |
+| `mission.status_changed` | A mission moves between workspace statuses, including board drags in the web UI.     |
+| `objective.completed`    | An objective reaches `complete`.                                                     |
+| `mission.blocked`        | An agent posts a blocking question (`ovld protocol ask`) — use this to page a human. |
 
 This is a namespaced, open vocabulary (see `CONTRACT.md`) — forks and extensions may add their own
 `acme:custom.event` values without a contract change. Namespaced values won't appear in a
@@ -70,32 +70,42 @@ Every delivery has the same envelope shape; `type` tells you which event it is.
 
 ```jsonc
 {
-  "id": "5b1e...",                       // stable delivery id — dedupe retries on this
+  "id": "5b1e...", // stable delivery id — dedupe retries on this
   "apiVersion": "2026-07-01",
   "type": "mission.delivered",
   "occurredAt": "2026-07-03T18:04:11.000Z",
-  "workspace": { "id": "…", "name": "Cooperativ" },     // name present in `full` mode only
-  "project": { "id": "…", "name": "OpenOverlord" },      // name present in `full` mode only
+  "workspace": { "id": "…", "name": "Cooperativ" }, // name present in `full` mode only
+  "project": { "id": "…", "name": "OpenOverlord" }, // name present in `full` mode only
   "mission": {
     // displayId ("<slug>:<sequence>") is unique per workspace, not globally —
     // a hosted instance can have several organizations, each with several
     // workspaces, so two different missions can share a displayId if they're
     // in different workspaces. Scope any lookup by `workspace.id` above, not
     // `displayId` alone.
-    "id": "…", "displayId": "coo:115",
-    "title": "Develop Mission Data Webhooks/API",         // full mode only
+    "id": "…",
+    "displayId": "coo:115",
+    "title": "Develop Mission Data Webhooks/API", // full mode only
     "status": { "id": "…", "type": "review", "label": "In review" }, // full mode only
-    "priority": "normal", "createdAt": "…"                 // full mode only
+    "priority": "normal",
+    "createdAt": "…" // full mode only
   },
   "objective": { "id": "…", "position": 1, "title": "…", "state": "complete" },
   "session": { "id": "…", "agentIdentifier": "claude-code", "modelIdentifier": "claude-sonnet-5" },
   "delivery": {
     "id": "…",
-    "summary": "…",                       // full mode only
+    "summary": "…", // full mode only
+    "report": {
+      // full mode only; normalized delivery report
+      "schemaVersion": 1,
+      "agentReport": { "humanActions": [], "tradeoffsMade": [] },
+      "presentation": { "status": "composed", "markdown": "…" }
+    },
     "artifacts": [{ "type": "next_steps", "label": "…", "content": "…" }]
   },
   "changedFiles": [{ "filePath": "lib/api.ts", "vcsStatus": "modified" }],
-  "changeRationales": [{ "filePath": "lib/api.ts", "label": "…", "summary": "…", "why": "…", "impact": "…" }],
+  "changeRationales": [
+    { "filePath": "lib/api.ts", "label": "…", "summary": "…", "why": "…", "impact": "…" }
+  ],
   "missionEvents": [{ "id": "…", "type": "update", "summary": "…", "createdAt": "…" }],
   "links": {
     "mission": "/api/missions/6f0fc5b0-…",
@@ -106,11 +116,15 @@ Every delivery has the same envelope shape; `type` tells you which event it is.
 }
 ```
 
-- **`thin` mode** sends only ids and `links` — the fields marked "full mode only" above, plus
-  `changedFiles`/`changeRationales`/`missionEvents`, are omitted entirely. Nothing about a mission
-  ever rests on a third-party endpoint unless it pulls with a valid token.
+- **`thin` mode** sends only ids and `links` — the fields marked "full mode only" above,
+  including `delivery.report`, plus `changedFiles`/`changeRationales`/`missionEvents`, are
+  omitted entirely. Nothing about a mission ever rests on a third-party endpoint unless it pulls
+  with a valid token.
 - **`full` mode** sends the snapshot above. Long arrays are capped (currently 50 entries) with a
   `"truncated": true` marker; use the pull path (§5) for the rest.
+- `delivery.report` is the normalized, versioned read projection: legacy deliveries receive a
+  deterministic report, while newly composed deliveries carry their current presentation. Raw
+  `deliveries.payload_json` and internal worker metadata are never included.
 - `objective`/`session`/`delivery` are present only when the firing event carries them (e.g.
   `mission.status_changed` has no `delivery`).
 
@@ -204,10 +218,10 @@ built as ordinary external software. See that directory's own README for setup.
 
 ## 10. Troubleshooting
 
-| Symptom | Likely cause |
-| --- | --- |
-| Endpoint URL rejected at save time | Not `https://`, or resolves to a private/loopback address and isn't on `OVERLORD_WEBHOOK_INTERNAL_HOSTS`. |
-| Subscription shows "Failing" | Check the delivery log drawer for the response status/error on recent attempts. |
-| Subscription auto-disabled | 20 consecutive failures — fix the endpoint, then re-enable it. |
-| Signature never verifies | Confirm you're hashing the raw, unparsed body, and using the `t` from the header (not your own clock) in the signed string. |
-| `full` payload missing fields you expected | The subscription owner may no longer have `mission:read` in that workspace — payloads are always built with the *creator's* permissions, never more. |
+| Symptom                                    | Likely cause                                                                                                                                         |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Endpoint URL rejected at save time         | Not `https://`, or resolves to a private/loopback address and isn't on `OVERLORD_WEBHOOK_INTERNAL_HOSTS`.                                            |
+| Subscription shows "Failing"               | Check the delivery log drawer for the response status/error on recent attempts.                                                                      |
+| Subscription auto-disabled                 | 20 consecutive failures — fix the endpoint, then re-enable it.                                                                                       |
+| Signature never verifies                   | Confirm you're hashing the raw, unparsed body, and using the `t` from the header (not your own clock) in the signed string.                          |
+| `full` payload missing fields you expected | The subscription owner may no longer have `mission:read` in that workspace — payloads are always built with the _creator's_ permissions, never more. |

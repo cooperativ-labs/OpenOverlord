@@ -37,6 +37,7 @@ import type {
   CreateWebhookSubscriptionResultDto,
   CreateWorkspaceBody,
   CreateWorkspaceStatusBody,
+  DeliveryDto,
   ExecutionRequestDto,
   FileChangeDto,
   GenerateCommitMessageBody,
@@ -491,6 +492,8 @@ export const api = {
     request<PurgeWorktreesResultDto>('POST', '/api/worktrees/purge-merged', body),
   listMissionEvents: (id: string) =>
     request<MissionEventDto[]>('GET', `/api/missions/${id}/events`),
+  listMissionDeliveries: (id: string) =>
+    request<DeliveryDto[]>('GET', `/api/missions/${id}/deliveries`),
   listMissionArtifacts: (id: string) =>
     request<ArtifactDto[]>('GET', `/api/missions/${id}/artifacts`),
   listMissionFileChanges: (id: string) =>

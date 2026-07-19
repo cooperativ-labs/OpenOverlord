@@ -26,6 +26,7 @@ import type {
   CreateWebhookSubscriptionBody,
   CreateWorkspaceBody,
   CreateWorkspaceStatusBody,
+  DeliveryDto,
   InviteWorkspaceMemberBody,
   LaunchObjectiveBody,
   LaunchPreferenceDto,
@@ -130,6 +131,7 @@ export const keys = {
   missionBranches: (id: string) => ['mission', id, 'branches'] as const,
   worktrees: ['worktrees'] as const,
   missionEvents: (id: string) => ['mission', id, 'events'] as const,
+  missionDeliveries: (id: string) => ['mission', id, 'deliveries'] as const,
   missionArtifacts: (id: string) => ['mission', id, 'artifacts'] as const,
   missionFileChanges: (id: string) => ['mission', id, 'file-changes'] as const,
   objectiveAttachments: (objectiveId: string) => ['objective', objectiveId, 'attachments'] as const,
@@ -439,6 +441,14 @@ export const useWorktrees = () => {
 // bespoke wiring here.
 export const useMissionEvents = (id: string) =>
   useQuery({ queryKey: keys.missionEvents(id), queryFn: () => api.listMissionEvents(id) });
+
+/** Delivery records are fetched only after a delivery activity entry is opened. */
+export const useMissionDeliveries = (id: string, enabled: boolean) =>
+  useQuery<DeliveryDto[]>({
+    queryKey: keys.missionDeliveries(id),
+    queryFn: () => api.listMissionDeliveries(id),
+    enabled
+  });
 
 export const useMissionArtifacts = (id: string) =>
   useQuery({ queryKey: keys.missionArtifacts(id), queryFn: () => api.listMissionArtifacts(id) });

@@ -178,7 +178,7 @@ export const hostedMcpToolDefinitions: ToolDefinition[] = [
     name: 'overlord_deliver_session',
     title: 'Deliver mission session',
     description:
-      'Use this only when the user-requested mission work is complete. It delivers the attached session with an explicit summary and optional file-change rationales.',
+      'Use this only when the user-requested mission work is complete. It delivers the attached session with an explicit summary, optional file-change rationales, and optional authoritative human-action/tradeoff evidence.',
     inputSchema: objectSchema(
       {
         missionId: stringProperty('Mission UUID or workspace display id.'),
@@ -191,7 +191,36 @@ export const hostedMcpToolDefinitions: ToolDefinition[] = [
         changeRationales: {
           type: 'array',
           description: 'Explicit change rationale objects, if files were changed.'
-        }
+        },
+        humanActions: {
+          type: 'array',
+          description:
+            'Concrete actions a human must perform outside completed agent work. Exclude Git operations and routine review/testing.',
+          items: objectSchema({
+            action: stringProperty('The required human action.'),
+            reason: stringProperty('Why the action is required.'),
+            category: stringProperty(
+              'environment, database, deployment, codegen, packaging, external_service, or other.'
+            ),
+            blocking: { type: 'boolean', description: 'Whether this blocks the intended outcome.' }
+          })
+        },
+        tradeoffsMade: {
+          type: 'array',
+          description: 'Implementation decisions and why the chosen approach was preferred.',
+          items: objectSchema({
+            decision: stringProperty('The chosen implementation decision.'),
+            alternativesConsidered: {
+              type: 'array',
+              items: stringProperty('Alternative considered.')
+            },
+            rationale: stringProperty('Why this approach was chosen.'),
+            impact: stringProperty('Resulting limitation or consequence.')
+          })
+        },
+        knownRisks: { type: 'array', items: stringProperty('Residual risk or limitation.') },
+        deferredWork: { type: 'array', items: stringProperty('Intentionally deferred work.') },
+        assumptions: { type: 'array', items: stringProperty('Material implementation assumption.') }
       },
       ['missionId', 'sessionKey', 'summary']
     ),

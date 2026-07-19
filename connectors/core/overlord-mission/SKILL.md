@@ -22,6 +22,12 @@ Use this mode when the prompt already contains a mission ID or explicitly says t
 6. If blocked, call `ovld protocol ask --session-key <sessionKey> --mission-id <mission_id> --question "..."` and stop.
 7. Deliver last with `ovld protocol deliver --session-key <sessionKey> --mission-id <mission_id> --summary "..."`, including `changeRationales` only for meaningful behavioral file changes made as part of this mission.
 
+At delivery, provide `deliveryReport.agentReport` through `--payload-json` / `--payload-file`: use
+`humanActions`, `tradeoffsMade`, `knownRisks`, `deferredWork`, and `assumptions`, with empty arrays
+when none apply. Human actions are concrete work a user must perform outside completed agent work;
+never include Git operations or routine review/testing. Tradeoffs record the implementation decision,
+alternatives considered, and rationale. These fields improve review visibility but never block delivery.
+
 For full command syntax, flags, phase values, and event types see **CLI Command Reference** below.
 
 ## Missions vs Objectives
@@ -163,6 +169,33 @@ EOF
 ```
 
 If `heartbeat` succeeds but `deliver` or `update` fails, the session is likely fine — retry with large JSON on stdin instead of inline `--*-json`.
+
+### Delivery Evidence
+
+Send agent-authored facts in the delivery payload; Overlord stores an immediate deterministic
+presentation, so do not wait for or invoke an AI provider.
+
+```json
+{
+  "deliveryReport": {
+    "schemaVersion": 1,
+    "agentReport": {
+      "humanActions": [],
+      "tradeoffsMade": [],
+      "knownRisks": [],
+      "deferredWork": [],
+      "assumptions": []
+    }
+  }
+}
+```
+
+Only list a human action when a person must perform a concrete non-Git step outside the
+agent's completed work (for example, add a secret, run a production migration, deploy, or
+configure an external integration). Never list committing, pushing, opening a pull request,
+reviewing code, or ordinary tests. A tradeoff must state the decision, alternatives considered,
+and rationale. Missing evidence is normalized to empty arrays for compatibility, but agents
+should report it when applicable.
 
 ### Preflight: check your changes before delivering
 

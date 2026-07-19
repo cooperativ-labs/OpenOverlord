@@ -2900,8 +2900,10 @@ __metadata:
   dependencies:
     "@overlord/auth": "workspace:*"
     "@overlord/automations": "workspace:*"
+    "@overlord/contract": "workspace:*"
     "@overlord/database": "workspace:*"
     kysely: "npm:^0.29.2"
+    zod: "npm:^4.3.6"
   languageName: unknown
   linkType: soft
 

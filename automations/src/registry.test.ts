@@ -15,10 +15,12 @@ describe('automations registry', () => {
     assert.deepEqual(automationIds, [
       'manage-objective-lifecycle',
       'summarize-text',
-      'summarize-objective-title'
+      'summarize-objective-title',
+      'compose-delivery'
     ]);
     assert.equal(getAutomation('summarize-text')?.label, 'Summarize text');
     assert.equal(getAutomation('manage-objective-lifecycle')?.label, 'Manage objective lifecycle');
+    assert.equal(getAutomation('compose-delivery')?.label, 'Compose delivery presentation');
   });
 
   it('rejects duplicate automation registration', () => {

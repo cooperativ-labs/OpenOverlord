@@ -29,23 +29,23 @@ custom automations with `registerAutomation` during module initialization.
 
 ## Package Entry Points
 
-| Import path | Safe for browser SPA? | Contents |
-| --- | --- | --- |
-| `@overlord/automations` | No (pulls Gemini client) | Full barrel: registry, title summarizer, objective-manager, scheduling-engine |
-| `@overlord/automations/objective-manager` | Yes | Pure objective lifecycle helpers (`deriveObjectiveLifecycleView`, etc.) |
-| `@overlord/automations/scheduling-engine` | Yes | Schedule date generation and schedule types |
+| Import path                               | Safe for browser SPA?    | Contents                                                                      |
+| ----------------------------------------- | ------------------------ | ----------------------------------------------------------------------------- |
+| `@overlord/automations`                   | No (pulls Gemini client) | Full barrel: registry, title summarizer, objective-manager, scheduling-engine |
+| `@overlord/automations/objective-manager` | Yes                      | Pure objective lifecycle helpers (`deriveObjectiveLifecycleView`, etc.)       |
+| `@overlord/automations/scheduling-engine` | Yes                      | Schedule date generation and schedule types                                   |
 
 Browser / Electron renderer code must use the subpath exports when it only needs lifecycle or
 scheduling helpers so Vite does not bundle `@google/genai` into the SPA.
 
 ## Built-In Automations
 
-| Automation ID | Purpose |
-| --- | --- |
-| `summarize-text` | Generic Gemini summarization with optional length cap |
-| `summarize-objective-title` | Short action-oriented title from objective instruction text |
+| Automation ID      | Purpose                                                                                                                                                                                      |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `summarize-text`   | Generic Gemini summarization with optional length cap                                                                                                                                        |
+| `compose-delivery` | Schema-constrained Gemini polish of delivery Markdown + structured callouts; the backend worker logs bounded queued/composed/fallback/failed timing and model metrics without prompt content |
 
-Both automations return `null` when `GEMINI_API_KEY` is unset or the provider call fails.
+Both summarization automations and `compose-delivery` return `null` when `GEMINI_API_KEY` is unset or the provider call fails.
 
 ## Objective Title Automation
 
@@ -84,11 +84,11 @@ void generateAndSetObjectiveTitle({
 
 Environment variables (see [`.env.local.example`](../../.env.local.example) and [`.env.prod.example`](../../.env.prod.example)):
 
-| Variable | Required | Default | Purpose |
-| --- | --- | --- | --- |
-| `GEMINI_API_KEY` | No | — | Enables Gemini-backed automations when set |
-| `GEMINI_MODEL` | No | `gemini-2.5-flash-lite` | Model identifier for summarization calls |
-| `OVERLORD_AUTOMATIONS_MODULE` | No | — | Comma-separated downstream automation bundle(s) loaded at boot (see [Downstream Automations](#downstream-automations)) |
+| Variable                      | Required | Default                 | Purpose                                                                                                                |
+| ----------------------------- | -------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `GEMINI_API_KEY`              | No       | —                       | Enables Gemini-backed automations when set                                                                             |
+| `GEMINI_MODEL`                | No       | `gemini-2.5-flash-lite` | Model identifier for summarization calls                                                                               |
+| `OVERLORD_AUTOMATIONS_MODULE` | No       | —                       | Comma-separated downstream automation bundle(s) loaded at boot (see [Downstream Automations](#downstream-automations)) |
 
 ## Layout
 

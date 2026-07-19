@@ -253,6 +253,67 @@ function parseJsonInput<T>(
   }
 }
 
+type DeliveryPayloadEnvelope = {
+  summary?: string;
+  artifacts?: ArtifactInput[];
+  changeRationales?: ChangeRationaleInput[];
+  verificationSummary?: string | null;
+  followUpNotes?: string | null;
+  payloadJson?: Record<string, unknown>;
+};
+
+/**
+ * `--payload-json` is the portable delivery envelope. Individual delivery flags
+ * remain authoritative when both forms are present, preserving older clients.
+ */
+function parseDeliveryPayloadEnvelope(body: ProtocolRequestBody): DeliveryPayloadEnvelope {
+  const input = parseJsonInput<unknown>(body, '--payload-json', '--payload-file');
+  if (input === undefined) return {};
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    throw new ApiError(400, 'Delivery payload must be a JSON object');
+  }
+
+  const {
+    summary,
+    artifacts,
+    changeRationales,
+    verificationSummary,
+    followUpNotes,
+    ...payloadJson
+  } = input as Record<string, unknown>;
+  if (summary !== undefined && typeof summary !== 'string') {
+    throw new ApiError(400, 'Delivery payload summary must be a string');
+  }
+  if (artifacts !== undefined && !Array.isArray(artifacts)) {
+    throw new ApiError(400, 'Delivery payload artifacts must be an array');
+  }
+  if (changeRationales !== undefined && !Array.isArray(changeRationales)) {
+    throw new ApiError(400, 'Delivery payload changeRationales must be an array');
+  }
+  if (
+    verificationSummary !== undefined &&
+    verificationSummary !== null &&
+    typeof verificationSummary !== 'string'
+  ) {
+    throw new ApiError(400, 'Delivery payload verificationSummary must be a string or null');
+  }
+  if (followUpNotes !== undefined && followUpNotes !== null && typeof followUpNotes !== 'string') {
+    throw new ApiError(400, 'Delivery payload followUpNotes must be a string or null');
+  }
+  return {
+    ...(typeof summary === 'string' ? { summary } : {}),
+    ...(Array.isArray(artifacts) ? { artifacts: artifacts as ArtifactInput[] } : {}),
+    ...(Array.isArray(changeRationales)
+      ? { changeRationales: changeRationales as ChangeRationaleInput[] }
+      : {}),
+    ...(verificationSummary === null || typeof verificationSummary === 'string'
+      ? { verificationSummary }
+      : {}),
+    ...(followUpNotes === null || typeof followUpNotes === 'string' ? { followUpNotes } : {}),
+    payloadJson
+  };
+}
+
 function csvFlag(body: ProtocolRequestBody, name: string): string[] | undefined {
   const value = strFlag(body, name);
   if (value === undefined) return undefined;
@@ -383,19 +444,21 @@ const handlers: Record<string, Handler> = {
       question: resolveInput(body, '--question', '--question-file') ?? ''
     }),
 
-  deliver: (ctx, body) =>
-    deliverSession({
+  deliver: (ctx, body) => {
+    const envelope = parseDeliveryPayloadEnvelope(body);
+    const artifacts = parseJsonInput<ArtifactInput[]>(body, '--artifacts', '--artifacts-file');
+    const changeRationales = parseJsonInput<ChangeRationaleInput[]>(
+      body,
+      '--change-rationales-json',
+      '--change-rationales-file'
+    );
+    return deliverSession({
       ctx,
       missionId: requireFlag(body, '--mission-id'),
       sessionKey: requireFlag(body, '--session-key'),
-      summary: resolveInput(body, '--summary', '--summary-file') ?? '',
-      artifacts: parseJsonInput<ArtifactInput[]>(body, '--artifacts', '--artifacts-file') ?? [],
-      changeRationales:
-        parseJsonInput<ChangeRationaleInput[]>(
-          body,
-          '--change-rationales-json',
-          '--change-rationales-file'
-        ) ?? [],
+      summary: resolveInput(body, '--summary', '--summary-file') ?? envelope.summary ?? '',
+      artifacts: artifacts ?? envelope.artifacts ?? [],
+      changeRationales: changeRationales ?? envelope.changeRationales ?? [],
       changedFiles: parseJsonInput<ChangedFileInput[]>(
         body,
         '--changed-files-json',
@@ -413,14 +476,12 @@ const handlers: Record<string, Handler> = {
         '--observed-dirty-paths-json',
         '--observed-dirty-paths-file'
       ),
-      payloadJson: parseJsonInput<Record<string, unknown>>(
-        body,
-        '--payload-json',
-        '--payload-file'
-      ),
-      verificationSummary: strFlag(body, '--verification-summary') ?? null,
-      followUpNotes: strFlag(body, '--follow-up-notes') ?? null
-    }),
+      payloadJson: envelope.payloadJson,
+      verificationSummary:
+        strFlag(body, '--verification-summary') ?? envelope.verificationSummary ?? null,
+      followUpNotes: strFlag(body, '--follow-up-notes') ?? envelope.followUpNotes ?? null
+    });
+  },
 
   'hook-event': (ctx, body) =>
     recordHookEvent({
@@ -501,21 +562,25 @@ const handlers: Record<string, Handler> = {
         >(body, '--objectives-json', '--objectives-file') ?? []
     }),
 
-  'record-work': (ctx, body) =>
-    recordWork({
+  'record-work': (ctx, body) => {
+    const envelope = parseDeliveryPayloadEnvelope(body);
+    const artifacts = parseJsonInput<ArtifactInput[]>(body, '--artifacts', '--artifacts-file');
+    const changeRationales = parseJsonInput<ChangeRationaleInput[]>(
+      body,
+      '--change-rationales-json',
+      '--change-rationales-file'
+    );
+    return recordWork({
       ctx,
       projectId: strFlag(body, '--project-id') ?? null,
-      summary: resolveInput(body, '--summary', '--summary-file') ?? '',
+      summary: resolveInput(body, '--summary', '--summary-file') ?? envelope.summary ?? '',
       objective: objectiveText(body),
       title: strFlag(body, '--title') ?? null,
-      artifacts: parseJsonInput<ArtifactInput[]>(body, '--artifacts', '--artifacts-file') ?? [],
-      changeRationales:
-        parseJsonInput<ChangeRationaleInput[]>(
-          body,
-          '--change-rationales-json',
-          '--change-rationales-file'
-        ) ?? []
-    }),
+      artifacts: artifacts ?? envelope.artifacts ?? [],
+      changeRationales: changeRationales ?? envelope.changeRationales ?? [],
+      payloadJson: envelope.payloadJson
+    });
+  },
 
   // Shared context ---------------------------------------------------------
   'read-context': (ctx, body) =>

@@ -1398,7 +1398,7 @@ export async function runManagementCommand({
         events: `/api/missions/${encodeURIComponent(missionId)}/events`,
         artifacts: `/api/missions/${encodeURIComponent(missionId)}/artifacts`,
         rationales: `/api/missions/${encodeURIComponent(missionId)}/file-changes`,
-        deliveries: `/api/missions/${encodeURIComponent(missionId)}/events`
+        deliveries: `/api/missions/${encodeURIComponent(missionId)}/deliveries`
       };
       const path = sub ? pathBySub[sub] : undefined;
       if (!path) {
