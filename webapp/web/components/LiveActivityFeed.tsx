@@ -316,7 +316,7 @@ function ActivityEntry({ event, missionId }: { event: MissionEventDto; missionId
                 type="button"
                 aria-expanded={deliveryOpen}
                 onClick={() => setDeliveryOpen(open => !open)}
-                className="text-left text-sm text-(--color-ink-dim) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                className="cursor-pointer text-left text-sm text-(--color-ink-dim) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
               >
                 {event.summary}
               </button>
