@@ -184,7 +184,7 @@ async function generateComposeJson(params: {
 
   try {
     const response = await client.models.generateContent({
-      model: config.model,
+      model: 'gemini-3.1-flash-lite',
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         systemInstruction,
