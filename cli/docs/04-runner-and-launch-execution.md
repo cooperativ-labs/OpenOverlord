@@ -165,16 +165,52 @@ requests.
 - Export `MISSION_ID`, `OVERLORD_MISSION_ID`, and the resolved `OVERLORD_BACKEND_URL`
   into launched agent terminals so connector hooks can publish prompt and permission
   activity to the same mission/backend.
+- Export `OVERLORD_WORKING_DIRECTORY` (substitution map) and
+  `OVERLORD_CONTEXT_FILE` for the written briefing path under `.overlord/tmp/`.
 - Export `OVERLORD_PROJECT_RESOURCES` as JSON for the launching execution target.
   The value mirrors attach context's project resource manifest: one entry per
   logical resource key with label, primary/current flags, local path when known,
   and availability state. Hooks and pre-commands may use it for context, but the
   launched session remains rooted in the resolved working directory.
+- Derive convenience path variables for `{VAR}` substitution:
+  `OVERLORD_PROJECT_RESOURCES_PATHS` (space-separated),
+  `OVERLORD_PROJECT_RESOURCES_PATHS_CSV` (comma-separated), and
+  `OVERLORD_PRIMARY_RESOURCE_PATH`. The documented catalog lives in
+  `@overlord/contract` (`LAUNCH_VARIABLES`) and is listed in Project Settings →
+  General.
 - Pass concise prompt text or context-file references to the agent.
 - Preserve model/thinking/flags.
 - Support `--branch <name>` and `--no-worktree` with the same semantics as the
   runner path.
 - Support `--pre-command <wrapper>` through an interactive shell where needed.
+- Run the project's **pre-launch commands** inside the launch environment after
+  the terminal enters the working directory and exports the launch env, but
+  before the agent process starts. These are ordered shell command lines
+  configured per project (`ProjectDto.preLaunchCommands`, stored under the
+  `overlord.preLaunchCommands` key in `projects.settings_json`) and are the
+  generic hook for project-specific launch preparation — e.g. granting an agent
+  pod extra file access before the agent runs. The runner claim response carries
+  them for the runner path; a manual `ovld launch` fetches them from the
+  mission's project. Each line may reference launch variables with `{VAR_NAME}`
+  placeholders (e.g. `{OVERLORD_PROJECT_RESOURCES_PATHS}`, plus every exported
+  Overlord launch env var) that are substituted at plan-build time; unknown
+  placeholders are left verbatim so a not-yet-wired variable stays visible. The
+  set of exposed variables is intentionally open-ended and grows as more launch
+  context is wired in — see `LAUNCH_VARIABLES` and the mission-launch-lifecycle
+  docs for what is available at plan-build vs attach.
+- Export the project's **launch environment variables** into the launch
+  environment before both the pre-launch commands and the agent run. These are
+  user-defined `NAME=value` pairs configured per project
+  (`ProjectDto.launchEnvVars`, stored under the `overlord.launchEnvVars` key in
+  `projects.settings_json`) — the generic hook for handing the agent (or a
+  pre-launch command) extra environment, e.g.
+  `AGENT_POD_EXTRA_ALLOWED_PATHS={OVERLORD_PROJECT_RESOURCES_PATHS_CSV}`. The
+  runner claim response carries them for the runner path; a manual `ovld launch`
+  fetches them from the mission's project. Each *value* may reference the same
+  `{VAR_NAME}` launch variables as pre-launch commands and is substituted at
+  launch time (unknown placeholders left verbatim); because they are `export`ed
+  before the pre-launch commands, those commands can also read them via shell
+  `$NAME`.
 - Open the agent in a new terminal window when a launcher is configured via
   the stored terminal profile (or `--terminal <launcher>`); `--no-terminal` forces an
   inline launch. Built-in macOS launchers `iTerm2` and `Terminal` drive

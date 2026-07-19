@@ -52,6 +52,9 @@ links to the authoritative spec on GitHub.
 
 ## How a mission flows through the system
 
+For the detailed, step-by-step version of this section — including exactly
+what data moves at each hop — see [From "Run" to delivery](/docs-for-agents/mission-launch-lifecycle/).
+
 1. **Create.** A mission and its ordered objectives are created (CLI, app, API,
    or MCP) against a resolved **project**. The domain module owns this state.
 2. **Queue.** Requesting execution enqueues an **execution request** for an
@@ -87,6 +90,8 @@ Throughout, the **auth** module resolves identity and enforces RBAC, and the
 
 ## Related
 
+- [From "Run" to delivery](/docs-for-agents/mission-launch-lifecycle/) — the
+  detailed launch-to-delivery sequence, with the data sent at each step.
 - [The agent protocol](/docs-for-agents/agent-protocol/) — the lifecycle in
   module 3, from the agent's point of view.
 - [Authentication & troubleshooting](/docs-for-agents/authentication/) — modules

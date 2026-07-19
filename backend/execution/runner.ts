@@ -28,7 +28,11 @@ import {
 import { ApiError } from '../errors.ts';
 import { clientDeviceFromBody } from '../http/client-device.ts';
 import { requireWorkspacePermission } from '../rbac.ts';
-import { callerWorkspaceMemberships } from '../repository.ts';
+import {
+  callerWorkspaceMemberships,
+  readProjectLaunchEnvVars,
+  readProjectPreLaunchCommands
+} from '../repository.ts';
 
 type ClientDeviceBody = {
   deviceFingerprint?: string | null;
@@ -236,9 +240,36 @@ export async function claimRunnerRequest({
       if (error instanceof ServiceError && error.code === 'project_not_found') continue;
       throw error;
     }
-    if (request) return { request: serviceSummaryToDto(request) };
+    if (request) {
+      const dto = serviceSummaryToDto(request);
+      const settings = await claimProjectLaunchSettings(ctx.db, request.projectId);
+      dto.preLaunchCommands = settings.preLaunchCommands;
+      dto.launchEnvVars = settings.launchEnvVars;
+      return { request: dto };
+    }
   }
   return { request: null };
+}
+
+/**
+ * The project's configured launch-preparation settings (see
+ * `ProjectDto.preLaunchCommands` and `ProjectDto.launchEnvVars`), resolved for
+ * the claimed request so the runner can inject them into the launch environment
+ * before the agent starts. Best-effort: a missing project or unreadable settings
+ * yields empty values and never blocks a claim.
+ */
+async function claimProjectLaunchSettings(
+  db: DatabaseClient,
+  projectId: string
+): Promise<{ preLaunchCommands: string[]; launchEnvVars: Record<string, string> }> {
+  const row = await db.get<{ settings_json: string }>(
+    `SELECT settings_json FROM projects WHERE id = ? AND deleted_at IS NULL`,
+    [projectId]
+  );
+  return {
+    preLaunchCommands: row ? readProjectPreLaunchCommands(row.settings_json) : [],
+    launchEnvVars: row ? readProjectLaunchEnvVars(row.settings_json) : {}
+  };
 }
 
 export async function updateRunnerRequestStatus({

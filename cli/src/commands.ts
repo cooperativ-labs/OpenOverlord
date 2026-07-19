@@ -535,6 +535,23 @@ function asRecord(value: unknown): JsonRecord {
   return value && typeof value === 'object' ? (value as JsonRecord) : {};
 }
 
+/** Coerce an unknown API/claim value to a clean list of pre-launch command strings. */
+function parsePreLaunchCommandsValue(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+}
+
+/** Coerce an unknown API/claim value to a clean name→value launch env-var map. */
+function parseLaunchEnvVarsValue(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const vars: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (key.trim() && typeof raw === 'string') vars[key] = raw;
+  }
+  return vars;
+}
+
 async function readWorktreeBranchAutomationEnabled(runtime: CliRuntime): Promise<boolean> {
   try {
     const settings = await runtime.backend.get<LaunchSettingsShape>('/api/launch-settings');
@@ -1249,6 +1266,25 @@ export async function runManagementCommand({
       const executionTargetId = await resolvePreferredExecutionTargetId({
         backend: scopedRuntime.backend
       });
+      // Per-project pre-launch commands and launch env vars run/apply before the
+      // agent starts. Resolved from the mission's project so a manual launch
+      // behaves like a runner one.
+      const missionProjectId = asRecord(mission).projectId;
+      const projectLaunchSettings =
+        typeof missionProjectId === 'string'
+          ? await scopedRuntime.backend
+              .get<unknown>(`/api/projects/${encodeURIComponent(missionProjectId)}`)
+              .then(project => ({
+                preLaunchCommands: parsePreLaunchCommandsValue(asRecord(project).preLaunchCommands),
+                launchEnvVars: parseLaunchEnvVarsValue(asRecord(project).launchEnvVars)
+              }))
+              .catch(() => ({
+                preLaunchCommands: [] as string[],
+                launchEnvVars: {} as Record<string, string>
+              }))
+          : { preLaunchCommands: [] as string[], launchEnvVars: {} as Record<string, string> };
+      const preLaunchCommands = projectLaunchSettings.preLaunchCommands;
+      const launchEnvVars = projectLaunchSettings.launchEnvVars;
       const prepared = await prepareMissionBranch({
         runtime: scopedRuntime,
         options: {
@@ -1276,6 +1312,8 @@ export async function runManagementCommand({
           thinking: flagValue(parsed.flags, '--thinking'),
           flags: repeatedFlagValues(rest, '--flag'),
           preCommand: flagValue(parsed.flags, '--pre-command'),
+          preLaunchCommands: preLaunchCommands.length > 0 ? preLaunchCommands : undefined,
+          launchEnvVars: Object.keys(launchEnvVars).length > 0 ? launchEnvVars : undefined,
           executionTargetId: executionTargetId ?? undefined,
           ...terminal,
           dryRun
@@ -1534,6 +1572,12 @@ async function runRunnerCommand({
             : [],
           preCommand:
             typeof launchConfig.preCommand === 'string' ? launchConfig.preCommand : undefined,
+          preLaunchCommands: Array.isArray(requestRecord.preLaunchCommands)
+            ? requestRecord.preLaunchCommands.filter(
+                (value): value is string => typeof value === 'string'
+              )
+            : undefined,
+          launchEnvVars: parseLaunchEnvVarsValue(requestRecord.launchEnvVars),
           executionRequestId: requestId,
           executionTargetId: executionTargetId || undefined,
           ...terminal,

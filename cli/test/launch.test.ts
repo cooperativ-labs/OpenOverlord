@@ -84,6 +84,49 @@ test('buildLaunchPlan exports mission context for terminal prompt hooks', async 
   assert.ok(launchScript.includes(`'codex'`));
 });
 
+test('buildLaunchPlan substitutes and exports launch env vars before pre-launch commands and the agent', async () => {
+  const workingDirectory = mkdtempSync(path.join('/tmp', 'ovld-launch-envvars-'));
+  const plan = await buildLaunchPlan({
+    runtime: runtime(),
+    options: {
+      agent: 'codex',
+      missionId: 'coo:11',
+      workingDirectory,
+      terminalLauncher: 'Terminal',
+      launchEnvVars: {
+        AGENT_POD_EXTRA_ALLOWED_PATHS: 'mission-{MISSION_ID}',
+        STATIC_VALUE: 'plain'
+      },
+      preLaunchCommands: ['echo preparing'],
+      executionRequestId: 'request-124'
+    }
+  });
+
+  // Placeholders in env-var values resolve against the launch context and land in plan.env.
+  assert.equal(plan.env.AGENT_POD_EXTRA_ALLOWED_PATHS, 'mission-coo:11');
+  assert.equal(plan.env.STATIC_VALUE, 'plain');
+  // Overlord's own launch env is preserved alongside user vars.
+  assert.equal(plan.env.MISSION_ID, 'coo:11');
+
+  const launchScriptPath = path.join(
+    workingDirectory,
+    '.overlord',
+    'tmp',
+    'launch-coo-11-request-124.sh'
+  );
+  const launchScript = readFileSync(launchScriptPath, 'utf8');
+  assert.ok(launchScript.includes(`export AGENT_POD_EXTRA_ALLOWED_PATHS='mission-coo:11'`));
+  assert.ok(launchScript.includes(`export STATIC_VALUE='plain'`));
+
+  // Ordering: env exports run before the pre-launch commands, which run before the agent.
+  const exportIdx = launchScript.indexOf('export AGENT_POD_EXTRA_ALLOWED_PATHS');
+  const preLaunchIdx = launchScript.indexOf('echo preparing');
+  const agentIdx = launchScript.indexOf(`'codex'`);
+  assert.ok(exportIdx !== -1 && preLaunchIdx !== -1 && agentIdx !== -1);
+  assert.ok(exportIdx < preLaunchIdx);
+  assert.ok(preLaunchIdx < agentIdx);
+});
+
 test('buildLaunchPlan passes PI model and thinking separately with a context file input', async () => {
   const workingDirectory = mkdtempSync(path.join('/tmp', 'ovld-launch-pi-'));
   const plan = await buildLaunchPlan({

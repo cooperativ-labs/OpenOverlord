@@ -3,6 +3,11 @@ import { chmodSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { resolveAgentBinary } from './agent-binaries.js';
+import {
+  buildPreLaunchVariables,
+  substituteLaunchEnvVars,
+  substitutePreLaunchVariables
+} from './pre-launch.js';
 import { ensureProjectTmpDir, pruneStaleProjectTmp } from './project-tmp.js';
 import type { CliRuntime } from './runtime.js';
 import {
@@ -21,6 +26,20 @@ export type LaunchOptions = {
   thinking?: string | null;
   flags?: string[];
   preCommand?: string | null;
+  /**
+   * Per-project pre-launch command lines run inside the launch environment
+   * after the terminal enters the working directory but before the agent
+   * starts. `{VAR_NAME}` placeholders are substituted from the resolved launch
+   * context at plan build time.
+   */
+  preLaunchCommands?: string[] | null;
+  /**
+   * Per-project user-defined environment variables exported into the launch
+   * environment before the agent (and the pre-launch commands) run. `{VAR_NAME}`
+   * placeholders in each value are substituted from the resolved launch context
+   * at plan build time.
+   */
+  launchEnvVars?: Record<string, string> | null;
   executionRequestId?: string | null;
   executionTargetId?: string | null;
   /**
@@ -294,6 +313,35 @@ export async function buildLaunchPlan({
     projectResources
   });
 
+  // The `{VAR_NAME}` substitution map is derived from Overlord's own launch env
+  // plus convenience variables — not from user-defined env vars — so `{VAR}`
+  // always means launch context and user vars are referenced with shell `$VAR`.
+  // See `LAUNCH_VARIABLES` in `@overlord/contract` for the documented catalog.
+  const launchVariables = buildPreLaunchVariables({
+    launchEnv,
+    projectResources,
+    workingDirectory: options.workingDirectory,
+    contextFile,
+    tmpDir
+  });
+
+  // Resolve `{VAR_NAME}` placeholders in the project's pre-launch commands
+  // against the launch context so the runner/terminal runs literal, ready-to-go
+  // command lines.
+  const preLaunchCommands =
+    options.preLaunchCommands && options.preLaunchCommands.length > 0
+      ? substitutePreLaunchVariables(options.preLaunchCommands, launchVariables)
+      : [];
+
+  // Resolve `{VAR_NAME}` placeholders in the project's user-defined env vars and
+  // layer them onto Overlord's launch env so they are exported before both the
+  // pre-launch commands and the agent (e.g. `AGENT_POD_EXTRA_ALLOWED_PATHS`).
+  const resolvedEnvVars =
+    options.launchEnvVars && Object.keys(options.launchEnvVars).length > 0
+      ? substituteLaunchEnvVars(options.launchEnvVars, launchVariables)
+      : {};
+  const exportedEnv = { ...launchEnv, ...resolvedEnvVars };
+
   const prompt =
     launchContext.length > 4000
       ? `Read the Overlord context file at ${contextFile}, attach to mission ${context.displayId}, then immediately execute its current objective. Do not wait for more instructions.`
@@ -324,7 +372,8 @@ export async function buildLaunchPlan({
         args: command.args,
         workingDirectory: options.workingDirectory,
         preCommand: options.preCommand,
-        extraEnv: launchEnv
+        extraEnv: exportedEnv,
+        preLaunchCommands
       })
     );
     chmodSync(terminalScriptPath, 0o700);
@@ -340,7 +389,8 @@ export async function buildLaunchPlan({
     terminalLaunchChord: options.terminalLaunchChord,
     terminalLaunchBackground: options.terminalLaunchBackground,
     terminalScriptPath,
-    extraEnv: launchEnv
+    extraEnv: exportedEnv,
+    preLaunchCommands
   });
 
   return {
@@ -349,7 +399,7 @@ export async function buildLaunchPlan({
     contextFile,
     workingDirectory: options.workingDirectory,
     execution,
-    env: launchEnv
+    env: exportedEnv
   };
 }
 

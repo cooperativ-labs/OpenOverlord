@@ -77,6 +77,7 @@ export default defineConfig({
             { label: 'Overview', slug: 'docs-for-agents' },
             { label: 'Onboarding a new user', slug: 'docs-for-agents/onboarding' },
             { label: 'The agent protocol', slug: 'docs-for-agents/agent-protocol' },
+            { label: 'From "Run" to delivery', slug: 'docs-for-agents/mission-launch-lifecycle' },
             { label: 'Authentication & troubleshooting', slug: 'docs-for-agents/authentication' },
             { label: 'Architecture', slug: 'docs-for-agents/architecture' },
             { label: 'MCP access', slug: 'docs-for-agents/mcp' },

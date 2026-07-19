@@ -174,6 +174,8 @@ interface ProjectRow {
 
 const PROJECT_COLOR_SETTINGS_KEY = 'overlord.color';
 const PROJECT_DEFAULT_BRANCH_SETTINGS_KEY = 'overlord.defaultBranch';
+const PROJECT_PRE_LAUNCH_COMMANDS_SETTINGS_KEY = 'overlord.preLaunchCommands';
+const PROJECT_LAUNCH_ENV_VARS_SETTINGS_KEY = 'overlord.launchEnvVars';
 
 function readProjectStringSetting(settingsJson: string, key: string): string | null {
   try {
@@ -193,6 +195,55 @@ function readProjectColor(settingsJson: string): string | null {
 // "not configured"; callers fall back to the repo default (`main`).
 function readProjectDefaultBranch(settingsJson: string): string | null {
   return readProjectStringSetting(settingsJson, PROJECT_DEFAULT_BRANCH_SETTINGS_KEY);
+}
+
+// Normalize an unknown settings value to a clean `string[]` of non-empty,
+// trimmed command lines. Anything that is not an array of strings yields `[]`.
+function normalizePreLaunchCommands(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const commands: string[] = [];
+  for (const entry of value) {
+    if (typeof entry === 'string' && entry.trim()) commands.push(entry.trim());
+  }
+  return commands;
+}
+
+// Normalize an unknown settings value to a clean `Record<string, string>` of
+// launch env vars. Keys are trimmed and blank keys dropped; values are coerced
+// to strings and preserved verbatim (an empty value is legitimate).
+function normalizeLaunchEnvVars(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const vars: Record<string, string> = {};
+  for (const [rawKey, rawValue] of Object.entries(value as Record<string, unknown>)) {
+    const key = rawKey.trim();
+    if (!key) continue;
+    if (typeof rawValue === 'string') vars[key] = rawValue;
+  }
+  return vars;
+}
+
+// The project's configured pre-launch command lines (see
+// `ProjectDto.preLaunchCommands`). Exported for the Runner Layer, which reads
+// them directly from a claimed request's project settings row.
+export function readProjectPreLaunchCommands(settingsJson: string): string[] {
+  try {
+    const parsed = JSON.parse(settingsJson) as Record<string, unknown>;
+    return normalizePreLaunchCommands(parsed[PROJECT_PRE_LAUNCH_COMMANDS_SETTINGS_KEY]);
+  } catch {
+    return [];
+  }
+}
+
+// The project's configured launch environment variables (see
+// `ProjectDto.launchEnvVars`). Exported for the Runner Layer, which reads them
+// directly from a claimed request's project settings row.
+export function readProjectLaunchEnvVars(settingsJson: string): Record<string, string> {
+  try {
+    const parsed = JSON.parse(settingsJson) as Record<string, unknown>;
+    return normalizeLaunchEnvVars(parsed[PROJECT_LAUNCH_ENV_VARS_SETTINGS_KEY]);
+  } catch {
+    return {};
+  }
 }
 
 // Conservative branch-name validation for the user-entered default branch. The
@@ -216,7 +267,12 @@ function buildProjectSettingsJson({ color }: { color?: string }): string {
 
 function mergeProjectSettingsJson(
   existingJson: string,
-  updates: { color?: string | null; defaultBranch?: string | null }
+  updates: {
+    color?: string | null;
+    defaultBranch?: string | null;
+    preLaunchCommands?: string[];
+    launchEnvVars?: Record<string, string>;
+  }
 ): string {
   let parsed: Record<string, unknown>;
   try {
@@ -236,6 +292,20 @@ function mergeProjectSettingsJson(
       parsed[PROJECT_DEFAULT_BRANCH_SETTINGS_KEY] = updates.defaultBranch;
     } else {
       delete parsed[PROJECT_DEFAULT_BRANCH_SETTINGS_KEY];
+    }
+  }
+  if (updates.preLaunchCommands !== undefined) {
+    if (updates.preLaunchCommands.length > 0) {
+      parsed[PROJECT_PRE_LAUNCH_COMMANDS_SETTINGS_KEY] = updates.preLaunchCommands;
+    } else {
+      delete parsed[PROJECT_PRE_LAUNCH_COMMANDS_SETTINGS_KEY];
+    }
+  }
+  if (updates.launchEnvVars !== undefined) {
+    if (Object.keys(updates.launchEnvVars).length > 0) {
+      parsed[PROJECT_LAUNCH_ENV_VARS_SETTINGS_KEY] = updates.launchEnvVars;
+    } else {
+      delete parsed[PROJECT_LAUNCH_ENV_VARS_SETTINGS_KEY];
     }
   }
   return JSON.stringify(parsed);
@@ -484,7 +554,9 @@ function toProjectDto(r: ProjectRow): ProjectDto {
     updatedAt: r.updated_at,
     revision: r.revision,
     missionCount: r.mission_count,
-    position: r.position ?? 0
+    position: r.position ?? 0,
+    preLaunchCommands: readProjectPreLaunchCommands(r.settings_json),
+    launchEnvVars: readProjectLaunchEnvVars(r.settings_json)
   };
 }
 
@@ -2792,9 +2864,15 @@ export async function updateProject(id: string, body: UpdateProjectBody): Promis
       setParams.push(body.status);
       changed.push('status');
     }
-    // Both `color` and `defaultBranch` live in `settings_json`; merge them into a
-    // single update so a request that sets both doesn't clobber one with the other.
-    const settingsUpdates: { color?: string | null; defaultBranch?: string | null } = {};
+    // `color`, `defaultBranch`, `preLaunchCommands`, and `launchEnvVars` all live
+    // in `settings_json`; merge them into a single update so a request that sets
+    // several doesn't clobber one with the other.
+    const settingsUpdates: {
+      color?: string | null;
+      defaultBranch?: string | null;
+      preLaunchCommands?: string[];
+      launchEnvVars?: Record<string, string>;
+    } = {};
     if (body.color !== undefined) {
       const color = body.color ? normalizeHexColor(body.color) : null;
       if (body.color && !color) {
@@ -2809,7 +2887,28 @@ export async function updateProject(id: string, body: UpdateProjectBody): Promis
       }
       settingsUpdates.defaultBranch = branch;
     }
-    if (settingsUpdates.color !== undefined || settingsUpdates.defaultBranch !== undefined) {
+    if (body.preLaunchCommands !== undefined) {
+      if (!Array.isArray(body.preLaunchCommands)) {
+        throw new ApiError(400, 'preLaunchCommands must be an array of command strings.');
+      }
+      settingsUpdates.preLaunchCommands = normalizePreLaunchCommands(body.preLaunchCommands);
+    }
+    if (body.launchEnvVars !== undefined) {
+      if (
+        !body.launchEnvVars ||
+        typeof body.launchEnvVars !== 'object' ||
+        Array.isArray(body.launchEnvVars)
+      ) {
+        throw new ApiError(400, 'launchEnvVars must be an object of name/value strings.');
+      }
+      settingsUpdates.launchEnvVars = normalizeLaunchEnvVars(body.launchEnvVars);
+    }
+    if (
+      settingsUpdates.color !== undefined ||
+      settingsUpdates.defaultBranch !== undefined ||
+      settingsUpdates.preLaunchCommands !== undefined ||
+      settingsUpdates.launchEnvVars !== undefined
+    ) {
       fields.push('settings_json = ?');
       setParams.push(mergeProjectSettingsJson(existing.settings_json, settingsUpdates));
       changed.push('settings_json');

@@ -1,0 +1,242 @@
+---
+title: From "Run" to delivery
+description: The full sequence of events and data when a mission launches, step by step.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+This page walks the entire path a mission takes from a user clicking **Run** in
+the app to the delivered work landing on the review surface — every hop, and
+what data moves at each one. [Architecture](/docs-for-agents/architecture/)
+gives the seven-step summary; this is the expansion, with file-level detail for
+anyone debugging or extending the launch path. [The agent protocol](/docs-for-agents/agent-protocol/)
+covers steps 6–9 from the agent's point of view; this page covers the same
+ground from the system's point of view, plus everything before and after.
+
+<Steps>
+
+1. ### The user clicks Run
+
+   The web app calls `POST /api/objectives/:id/launch` with the chosen agent,
+   model, and reasoning effort. This is a request to run one **objective** —
+   one agent pass — not the whole mission.
+
+2. ### The backend validates and queues
+
+   In a single transaction, the backend:
+
+   - Confirms the objective is in a launchable state (`draft`, `submitted`, or
+     `launching`) and that no other objective on the same mission is already
+     active — only one objective per mission runs at a time.
+   - Resolves the **execution target**: which of the project's linked
+     resources (repos/checkouts) this objective runs against, and confirms
+     that resource is actually connected on some runner.
+   - Persists the chosen `assigned_agent` / `model` / `reasoning_effort` onto
+     the objective and flips its state to `launching`.
+   - Resolves the effective launch config (any project-level pre-command or
+     agent flags).
+   - Writes a new **execution request** row with status `queued`, plus the
+     corresponding mission-event and entity-change records.
+
+   Nothing has started running yet — an execution request is a job sitting in
+   a queue, scoped to a workspace/project.
+
+3. ### A runner claims the request
+
+   A runner (a small process running wherever you want missions to execute —
+   your laptop, a dedicated box, a pod) polls `POST /api/runner/claim` with its
+   project scope and a device fingerprint. The backend atomically claims the
+   oldest matching queued request for that runner so two runners can never
+   grab the same request. The runner immediately reports back `launching`
+   status for the claimed request.
+
+4. ### The branch is prepared (if enabled)
+
+   If worktree/branch automation is on for the project, the runner prepares a
+   branch or worktree for the objective before starting the agent, then
+   records the prepared branch back to the mission (`active_branch`).
+
+5. ### The runner builds and sends the launch payload
+
+   This is the step where the most data gets assembled, all inside the CLI's
+   `launchAgent` / `buildLaunchPlan`:
+
+   - **Mission context.** The runner fetches the mission, its event history,
+     artifacts, and any objective attachments, and assembles a markdown
+     briefing — including an explicit directive to start the objective
+     immediately and only stop to ask a question when genuinely blocked. This
+     is written to a temp file (`.overlord/tmp/mission-<id>.md`) that gets
+     passed to the agent as its system-prompt file.
+   - **Project resources.** The runner calls the protocol's `load-context`
+     endpoint to resolve every logical resource linked to the project for this
+     execution target — not just the one being launched into. Each resource
+     carries a `resourceKey`, a `path` (populated only if that resource is
+     actually checked out on *this* machine, otherwise explicitly marked
+     unavailable), and a connection `state`.
+   - **Environment variables.** The spawned process inherits the runner's full
+     environment (which is how the ambient `OVERLORD_USER_TOKEN` reaches the
+     agent) plus these launch-specific vars:
+
+     | Variable | Contents |
+     | --- | --- |
+     | `MISSION_ID` / `OVERLORD_MISSION_ID` | The mission being worked. |
+     | `OVERLORD_BACKEND_URL` | Which backend the agent's CLI/MCP calls should hit. |
+     | `OVERLORD_EXECUTION_REQUEST_ID` | Set when the launch is execution-request-driven; forwarded on `attach` so the resulting session links back to this exact request. |
+     | `OVERLORD_WORKING_DIRECTORY` | Absolute path the agent terminal cds into. |
+     | `OVERLORD_CONTEXT_FILE` | Absolute path of the markdown briefing under `.overlord/tmp/`. |
+     | `OVERLORD_TMPDIR` / `TMPDIR` / `TMP` / `TEMP` | Project-scoped scratch directory. |
+     | `OVERLORD_PROJECT_RESOURCES` | JSON array of every linked resource and its resolved path/state, set only when the project has resources. This is the plural manifest — see [Project resources at launch](#project-resources-at-launch) below. |
+     | `OVERLORD_PROJECT_RESOURCES_PATHS` | Space-separated connected resource paths (for CLI args). |
+     | `OVERLORD_PROJECT_RESOURCES_PATHS_CSV` | Same paths, comma-separated (for CSV-style env vars such as agent-pod allowlists). |
+     | `OVERLORD_PRIMARY_RESOURCE_PATH` | Path of the primary (else current) connected resource, or empty. |
+     | *project `launchEnvVars`* | User-defined `NAME=value` pairs from Project Settings, with `{VAR}` placeholders already substituted. |
+
+   - **Launch preparation.** After `cd` and env exports, the terminal runs the
+     project's `preLaunchCommands` (also with `{VAR}` already substituted), then
+     starts the agent. See [Launch variable library](#launch-variable-library)
+     for what `{VAR}` can resolve to at this step versus later at attach.
+
+   - **The command itself.** The runner maps the chosen agent key to a concrete
+     CLI invocation (for example, Claude Code becomes
+     `claude --append-system-prompt-file <context-file> [--model] [--effort] <launch-message>`)
+     and spawns it — either inline or via a terminal-launcher script, in the
+     working directory of the resolved execution-target resource.
+
+   On success the runner reports `launched` back to the backend; on failure it
+   reports `failed` with the error, and the objective does not proceed.
+
+6. ### The agent attaches
+
+   The freshly launched agent runs `ovld protocol attach` (directly, or via the
+   MCP `overlord_attach_session` tool, which shells to the same command).
+   Attaching is itself the transactional go-ahead to start work: the backend
+   sets the objective to `executing`, ensures the next draft objective exists,
+   moves the mission into execute phase, opens an `agent_sessions` row, and —
+   if `OVERLORD_EXECUTION_REQUEST_ID` was forwarded — links that session back
+   to the execution request from step 2.
+
+   The attach response is the full context payload described in
+   [The agent protocol](/docs-for-agents/agent-protocol/#attach): the current
+   objective, previous/future objectives, history, artifacts, attachments,
+   shared state, the same `projectResources` array from step 5, and
+   `agentInstructions`. In a git workspace, attach also records a VCS baseline
+   and a local checkpoint so changed-file attribution works automatically at
+   delivery — this is independent of the launch env vars and happens fresh
+   every attach.
+
+7. ### The agent works and reports
+
+   The agent posts narrative updates (`ovld protocol update`) or lightweight
+   heartbeats while it works, and can post a blocking question
+   (`ovld protocol ask`) and stop if it needs a human decision. None of this
+   changes the objective's terminal state.
+
+8. ### The agent delivers
+
+   `ovld protocol deliver` closes out the objective in one transaction:
+
+   - Validates the summary and enforces that every changed file (computed as
+     the delta from the attach-time VCS baseline, not hand-reported by the
+     agent) has a change-rationale.
+   - Writes the `deliveries`, `artifacts`, and `change_rationales` rows and a
+     `delivery`-type mission event.
+   - Enqueues the `mission.delivered` webhook event.
+   - Moves the objective to `complete` and enqueues `objective.completed`.
+   - Moves the `agent_sessions` row to `delivered` / `review` phase, and the
+     mission to `review`.
+
+9. ### Auto-advance (optional)
+
+   Immediately after delivery, if the mission has `auto_advance` enabled and a
+   next `draft` objective exists, the backend inherits the agent/model/effort
+   from the objective that just delivered (where unset), sets the next
+   objective to `launching`, and calls the same execution-request creation
+   used in step 2 — re-entering this whole chain for the next objective. If
+   `auto_advance` is off, the next objective is left `awaiting_approval`
+   instead.
+
+10. ### Webhooks fan out the delivery
+
+    Each enqueued webhook event (`mission.delivered`, `objective.completed`,
+    and any others matching the mission's transitions) is written to a durable
+    outbox table, not sent synchronously from the request that created it. A
+    separate dispatcher polls the outbox roughly every second, claims a batch,
+    signs each payload (HMAC), and `POST`s it to every subscription that
+    matches the event type and project. Failed deliveries retry with backoff
+    and auto-disable after repeated failures. See [Webhooks](/docs-for-agents/webhooks/)
+    for the payload shape and how to consume it.
+
+11. ### Review reads the durable records back
+
+    Nothing in review is derived live from the agent's session — the review
+    surface reads the `deliveries`, `artifacts`, `change_rationales`, and
+    changed-files records written in step 8, checking rationale coverage
+    against the actual changed files.
+
+</Steps>
+
+## Launch variable library
+
+Project Settings → General exposes two launch-preparation editors
+(`preLaunchCommands` and `launchEnvVars`) and an **Available launch variables**
+library. Both editors accept `{VAR_NAME}` placeholders. Substitution runs once
+inside `buildLaunchPlan` — after the working directory, context file, tmp dir,
+and project resources are known, and **before** the terminal exports env or runs
+prep commands.
+
+| Stage | What exists | Usable in `{VAR}`? |
+| --- | --- | --- |
+| Queue / claim (steps 2–3) | Execution request, agent/model, project settings snapshot (`preLaunchCommands`, `launchEnvVars`) | No — values are still templates |
+| Branch / worktree prep (step 4) | Resolved working directory (checkout or worktree) | Not yet — substitution has not run |
+| Plan build (start of step 5) | Mission briefing file, resource manifest, Overlord launch env, derived path helpers | **Yes** — this is when `{VAR}` resolves |
+| Terminal env export (step 5) | All plan-build vars + substituted user `launchEnvVars` exported into the process | N/A — already resolved; shell uses `$NAME` for user vars |
+| Pre-launch commands (step 5) | Same env; commands run with literals (placeholders already gone) | No further `{VAR}` pass |
+| Attach (step 6) | Full attach payload: `objective`, history, artifacts, attachments, `projectResources`, `sessionKey`, … | **No** — attach fields are not launch-prep placeholders |
+
+Syntax rules:
+
+- `{VAR}` always means Overlord launch context (see `LAUNCH_VARIABLES` in
+  `@overlord/contract`).
+- User-defined launch env vars are referenced with shell `$NAME` after export —
+  not with `{NAME}`.
+- Unknown `{VAR}` tokens are left verbatim so mistypes stay visible in the
+  launched command/env.
+
+The built-in catalog (also shown in the Project Settings library) includes
+mission/backend ids, working directory, context file, tmp paths, the JSON
+resource manifest, space- and comma-separated resource paths, and the primary
+resource path. The set is intentionally open-ended and grows as more plan-build
+context is wired in.
+
+## Project resources at launch
+
+A mission's project can span more than one linked resource (for example, a
+backend repo and a separate frontend repo). Two things are true at once:
+
+- **The working directory is single-valued.** The agent's terminal only ever
+  `cd`s into the one resource resolved as the execution target for this
+  objective.
+- **The data available to the agent is plural.** Both `OVERLORD_PROJECT_RESOURCES`
+  (env var, set at launch) and the `projectResources` field of the `attach`
+  response (set at attach) list *every* resource linked to the project, each
+  with its own `resourceKey` and `path` — not just the one being launched
+  into.
+
+<Aside type="caution">
+A sibling resource's `path` is only populated if that resource is actually
+checked out/connected on the same machine running the launch. If it's linked
+in the project but not present locally, its entry comes through with a `null`
+path and a `state` marking it unavailable, rather than a real filesystem path.
+Treat siblings as **read-only context** unless a future objective explicitly
+launches into them.
+</Aside>
+
+## Related
+
+- [Architecture](/docs-for-agents/architecture/) — the condensed, seven-step
+  version of this same flow, with links to the contract-pinned specs each step
+  is drawn from (modules 4 and 3 cover launch and protocol in full).
+- [The agent protocol](/docs-for-agents/agent-protocol/) — steps 6–9 above,
+  written for the agent following them rather than the system executing them.
+- [Webhooks](/docs-for-agents/webhooks/) — the payload envelope and delivery
+  guarantees for step 10.

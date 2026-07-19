@@ -1,9 +1,11 @@
 /**
  * Typed API contract shared between the REST server (`server/`) and the React
  * SPA (`web/`). DTO field names are the camelCase form of the logical schema
- * columns (see database/docs/09-database-schema-contract.md). This file is
- * types only so it can be `import type`-d from either runtime without a runtime
- * dependency.
+ * columns (see database/docs/09-database-schema-contract.md). Most exports are
+ * types only so they can be `import type`-d without a runtime dependency; the
+ * launch-variable catalog (`LAUNCH_VARIABLES` and friends) is the intentional
+ * runtime exception shared by the CLI substitution engine and the Project
+ * Settings UI.
  *
  * Scope note: this build covers projects, missions, and objectives — the entities
  * the web interface lets users add and modify — plus the objective launch
@@ -11,6 +13,14 @@
  * preferences, and execution-request queueing. Runner claiming/launching and
  * deliveries remain CLI-only and are intentionally absent here.
  */
+
+export {
+  ATTACH_CONTEXT_FIELDS,
+  LAUNCH_VARIABLE_NAMES,
+  LAUNCH_VARIABLES,
+  type LaunchVariableAvailability,
+  type LaunchVariableDefinition
+} from './launch-variables.js';
 
 // ---- Closed status vocabularies (from the schema CHECK constraints) ----
 
@@ -256,6 +266,26 @@ export interface ProjectDto {
    * densely (1, 2, 3, …) whenever the workspace's projects are reordered.
    */
   position: number;
+  /**
+   * Ordered shell command lines run in the agent's launch environment after the
+   * terminal enters the working directory and exports the launch env, but before
+   * the agent process starts (stored under `overlord.preLaunchCommands` in
+   * project settings; `[]` when none). Each line may reference launch context
+   * with `{VAR_NAME}` placeholders (e.g. `{OVERLORD_PROJECT_RESOURCES_PATHS}`)
+   * that the launch flow substitutes; unknown placeholders are left verbatim.
+   * The generic hook for project-specific launch preparation — e.g. granting an
+   * agent pod extra file access before the agent runs.
+   */
+  preLaunchCommands: string[];
+  /**
+   * User-defined environment variables exported into the agent's launch
+   * environment before the agent (and the pre-launch commands) run (stored under
+   * `overlord.launchEnvVars` in project settings; `{}` when none). Each value may
+   * reference launch context with `{VAR_NAME}` placeholders (e.g.
+   * `AGENT_POD_EXTRA_ALLOWED_PATHS={OVERLORD_PROJECT_RESOURCES_PATHS}`) that the
+   * launch flow substitutes; unknown placeholders are left verbatim.
+   */
+  launchEnvVars: Record<string, string>;
 }
 
 /**
@@ -1047,6 +1077,18 @@ export interface UpdateProjectBody {
    * `null` or an empty string clears it (falling back to `main`).
    */
   defaultBranch?: string | null;
+  /**
+   * Ordered shell command lines run in the launch environment before the agent
+   * starts (see `ProjectDto.preLaunchCommands`). Replaces the stored list; an
+   * empty array clears it. Blank/whitespace-only lines are dropped server-side.
+   */
+  preLaunchCommands?: string[];
+  /**
+   * User-defined launch environment variables (see `ProjectDto.launchEnvVars`).
+   * Replaces the stored map; an empty object clears it. Entries with a
+   * blank/whitespace-only name are dropped server-side.
+   */
+  launchEnvVars?: Record<string, string>;
 }
 
 /**

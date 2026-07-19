@@ -20,6 +20,26 @@ The MCP server exposes the mission workflow to remote agent runtimes. Use it for
 - posting updates and deliverables
 - integrating Overlord into a broader orchestration system
 
+## Available tools
+
+The hosted server advertises these mission-lifecycle tools:
+
+| Tool | What it does |
+| --- | --- |
+| `overlord_resolve_project` | Resolves a project the user identifies by id, slug, name, or repository metadata. |
+| `overlord_search_missions` | Lists or searches missions in the connected workspace. |
+| `overlord_load_mission_context` | Shows one mission's objectives, history, artifacts, and shared context. |
+| `overlord_create_mission` | Creates a draft mission in an explicit project (never chooses a project for you). |
+| `overlord_add_objectives` | Appends draft objectives to an existing mission. |
+| `overlord_attach_session` | Starts requested work on a mission and opens an MCP session. |
+| `overlord_update_session` | Posts progress, decisions, or discussion updates to an attached session. |
+| `overlord_deliver_session` | Delivers completed work for an attached session. |
+
+Read tools may also render Overlord MCP Apps widgets (`ui://overlord/*`) for project
+selection, mission lists, objective viewers, and file-change summaries. Hosted MCP
+does not expose local filesystem, runner, or branch actions — those stay on the
+desktop CLI and connectors.
+
 ## Who it is for
 
 - cloud agents

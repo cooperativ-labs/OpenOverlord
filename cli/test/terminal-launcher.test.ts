@@ -225,6 +225,49 @@ test('a pre-command is wrapped inside the new terminal window', () => {
   assert.ok(script.includes(`mise exec -- 'claude'`));
 });
 
+test('pre-launch commands run before an inline agent through a shell', () => {
+  const exec = resolveLaunchExecution({
+    ...AGENT,
+    preLaunchCommands: ['agent-pod file-access set /repo/a /repo/b']
+  });
+  assert.equal(exec.useShell, true);
+  assert.equal(exec.terminal, null);
+  assert.deepEqual(exec.args, []);
+  assert.ok(exec.command.startsWith('agent-pod file-access set /repo/a /repo/b; '));
+  assert.ok(exec.command.includes(`'claude'`));
+});
+
+test('blank pre-launch commands leave the inline launch as a direct spawn', () => {
+  const exec = resolveLaunchExecution({ ...AGENT, preLaunchCommands: ['', '   '] });
+  assert.equal(exec.useShell, false);
+  assert.equal(exec.command, 'claude');
+  assert.deepEqual(exec.args, AGENT.args);
+});
+
+test('pre-launch commands run after env exports and before the agent in a terminal', () => {
+  const exec = resolveLaunchExecution({
+    ...AGENT,
+    terminalLauncher: 'iTerm2',
+    extraEnv: { MISSION_ID: 'coo:11' },
+    preLaunchCommands: ['agent-pod file-access set /repo/a']
+  });
+  const script = exec.args[1] ?? '';
+  const exportIndex = script.indexOf(`export MISSION_ID='coo:11'`);
+  const preLaunchIndex = script.indexOf('agent-pod file-access set /repo/a');
+  const agentIndex = script.indexOf(`'claude'`);
+  assert.ok(exportIndex >= 0 && preLaunchIndex >= 0 && agentIndex >= 0);
+  assert.ok(exportIndex < preLaunchIndex, 'exports precede pre-launch commands');
+  assert.ok(preLaunchIndex < agentIndex, 'pre-launch commands precede the agent');
+});
+
+test('multiple pre-launch commands are chained with semicolons', () => {
+  const exec = resolveLaunchExecution({
+    ...AGENT,
+    preLaunchCommands: ['echo one', 'echo two']
+  });
+  assert.ok(exec.command.startsWith('echo one; echo two; '));
+});
+
 /** Count `tell`/`end tell` and `if`/`end if` balance for a generated script. */
 function blockBalance(script: string): { tell: number; if: number } {
   let tell = 0;

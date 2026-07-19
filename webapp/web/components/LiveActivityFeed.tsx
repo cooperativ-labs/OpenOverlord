@@ -11,13 +11,14 @@ import {
   Rocket,
   ShieldQuestion
 } from 'lucide-react';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { AuthenticatedAvatarImage, Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 import type { MissionEventDto, MissionEventType } from '../../shared/contract.ts';
 import { useMissionEvents } from '../lib/queries.ts';
 
+import { Markdown } from './Markdown.tsx';
 import { Badge, Spinner } from './ui.tsx';
 
 /**
@@ -65,48 +66,92 @@ function actorInitials(label: string): string {
 }
 
 /**
- * Renders an event summary that clamps to a few lines by default so long
- * updates don't overwhelm the feed. When the text is tall enough to be
- * truncated, the whole block becomes tappable: tap to expand to full text,
- * tap again to collapse. Short summaries that fit are left as plain text.
+ * Renders an event summary. By default the text is shown clamped and *plain*
+ * (no markdown formatting) so the feed stays clean and visually consistent
+ * regardless of how each summary was authored. Clicking the summary lifts it
+ * into a "detail" card — white/black background, `rounded-sm`, `shadow-md` —
+ * where the markdown in the text is actually rendered with formatting.
+ * Clicking anywhere outside the card returns it to the default plain state.
  */
 function ExpandableSummary({ text, tone }: { text: string; tone: string }) {
-  const ref = useRef<HTMLParagraphElement>(null);
+  const measureRef = useRef<HTMLParagraphElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [isClamped, setIsClamped] = useState(false);
 
   useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
+    const el = measureRef.current;
+    if (!el || expanded) return;
     // Compare full content height against the collapsed (clamped) height to
-    // decide whether an expand affordance is warranted. Measured while the
-    // `line-clamp` class is applied (expanded === false).
-    if (!expanded) {
-      setIsClamped(el.scrollHeight > el.clientHeight + 1);
-    }
+    // decide whether the summary is long enough to warrant an expand hint.
+    setIsClamped(el.scrollHeight > el.clientHeight + 1);
   }, [text, expanded]);
 
-  const canToggle = isClamped || expanded;
+  // Collapse back to the default state when the user clicks/taps outside the
+  // expanded detail card, or presses Escape.
+  useEffect(() => {
+    if (!expanded) return;
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
+        setExpanded(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExpanded(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [expanded]);
 
+  if (expanded) {
+    return (
+      <div
+        ref={cardRef}
+        role="button"
+        tabIndex={0}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setExpanded(false);
+          }
+        }}
+        className="cursor-pointer rounded-sm bg-white p-3 shadow-md dark:bg-black"
+      >
+        <Markdown text={text} />
+      </div>
+    );
+  }
+
+  // `isClamped` is retained purely to drive the subtle "Show more" affordance
+  // below; the whole summary is clickable regardless so any event can be
+  // lifted into its formatted detail card.
   return (
     <div className="grid gap-0.5">
       <p
-        ref={ref}
-        onClick={canToggle ? () => setExpanded(prev => !prev) : undefined}
-        className={`whitespace-pre-wrap wrap-anywhere text-sm ${tone}${
-          expanded ? '' : ' line-clamp-4'
-        }${canToggle ? ' cursor-pointer' : ''}`}
+        ref={measureRef}
+        onClick={() => setExpanded(true)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setExpanded(true);
+          }
+        }}
+        className={`line-clamp-4 cursor-pointer whitespace-pre-wrap wrap-anywhere text-sm ${tone}`}
       >
         {text}
       </p>
-      {canToggle && (
-        <button
-          type="button"
-          onClick={() => setExpanded(prev => !prev)}
-          className="justify-self-start text-[11px] font-medium text-sky-600 hover:text-sky-500 dark:text-sky-400 dark:hover:text-sky-300"
-        >
-          {expanded ? 'Show less' : 'Show more'}
-        </button>
+      {isClamped && (
+        <span className="justify-self-start text-[11px] font-medium text-sky-600 dark:text-sky-400">
+          Show more
+        </span>
       )}
     </div>
   );

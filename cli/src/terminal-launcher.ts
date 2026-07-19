@@ -98,23 +98,37 @@ function agentShellCommand({
 }
 
 /**
+ * Prefix the agent invocation with the project's pre-launch command lines,
+ * chained with `;` so each runs (regardless of the previous one's exit status)
+ * in the same shell that then starts the agent. Blank lines are dropped.
+ */
+function withPreLaunchCommands(agentCommand: string, preLaunchCommands?: string[] | null): string {
+  const pre = (preLaunchCommands ?? []).map(command => command.trim()).filter(Boolean);
+  return pre.length > 0 ? `${pre.join('; ')}; ${agentCommand}` : agentCommand;
+}
+
+/**
  * The command run *inside* a freshly opened terminal window. A new window does
  * not inherit our process cwd/env, so we cd into the project and re-export the
- * TMPDIR family before invoking the agent.
+ * TMPDIR family before invoking the agent. Any project pre-launch commands run
+ * after the exports and before the agent.
  */
 function terminalInnerCommand({
   workingDirectory,
   agentCommand,
-  extraEnv = {}
+  extraEnv = {},
+  preLaunchCommands
 }: {
   workingDirectory: string;
   agentCommand: string;
   extraEnv?: Record<string, string>;
+  preLaunchCommands?: string[] | null;
 }): string {
   const exports = Object.entries({ ...tmpEnvFor(workingDirectory), ...extraEnv })
     .map(([key, value]) => `export ${key}=${shellQuote(value)}`)
     .join('; ');
-  return `cd ${shellQuote(workingDirectory)} && ${exports}; ${agentCommand}`;
+  const invocation = withPreLaunchCommands(agentCommand, preLaunchCommands);
+  return `cd ${shellQuote(workingDirectory)} && ${exports}; ${invocation}`;
 }
 
 export function terminalLaunchScriptContent({
@@ -122,16 +136,18 @@ export function terminalLaunchScriptContent({
   args,
   workingDirectory,
   preCommand,
-  extraEnv = {}
+  extraEnv = {},
+  preLaunchCommands
 }: {
   command: string;
   args: string[];
   workingDirectory: string;
   preCommand?: string | null;
   extraEnv?: Record<string, string>;
+  preLaunchCommands?: string[] | null;
 }): string {
   const agentCommand = agentShellCommand({ command, args, preCommand });
-  return `#!/usr/bin/env bash\n${terminalInnerCommand({ workingDirectory, agentCommand, extraEnv })}\n`;
+  return `#!/usr/bin/env bash\n${terminalInnerCommand({ workingDirectory, agentCommand, extraEnv, preLaunchCommands })}\n`;
 }
 
 function terminalScriptCommand(scriptPath: string): string {
@@ -359,13 +375,15 @@ export function resolveLaunchExecution({
   terminalLaunchChord,
   terminalScriptPath,
   terminalLaunchBackground = false,
-  extraEnv = {}
+  extraEnv = {},
+  preLaunchCommands
 }: {
   command: string;
   args: string[];
   workingDirectory: string;
   preCommand?: string | null;
   extraEnv?: Record<string, string>;
+  preLaunchCommands?: string[] | null;
 } & TerminalLaunchSettings): LaunchExecution {
   const agentCommand = agentShellCommand({ command, args, preCommand });
   const genericAgentCommand = agentShellCommand({
@@ -375,17 +393,28 @@ export function resolveLaunchExecution({
     extraEnv,
     includeEnvPrefix: true
   });
+  const hasPreLaunch = (preLaunchCommands ?? []).some(entry => entry.trim().length > 0);
   const launcher = terminalLauncher?.trim();
   const placement = terminalLaunchPlacement ?? 'window';
   const chordClause = resolveChordClause(terminalLaunchChord);
 
   if (!launcher) {
-    return preCommand?.trim()
-      ? { command: agentCommand, args: [], useShell: true, terminal: null, display: agentCommand }
-      : { command, args, useShell: false, terminal: null, display: agentCommand };
+    // Pre-launch commands (like a pre-command wrapper) require a shell so the
+    // commands and the agent share one invocation; without either, run the
+    // binary directly.
+    if (!preCommand?.trim() && !hasPreLaunch) {
+      return { command, args, useShell: false, terminal: null, display: agentCommand };
+    }
+    const inline = withPreLaunchCommands(agentCommand, preLaunchCommands);
+    return { command: inline, args: [], useShell: true, terminal: null, display: inline };
   }
 
-  const inner = terminalInnerCommand({ workingDirectory, agentCommand, extraEnv });
+  const inner = terminalInnerCommand({
+    workingDirectory,
+    agentCommand,
+    extraEnv,
+    preLaunchCommands
+  });
   const terminalInner = terminalScriptPath?.trim()
     ? terminalScriptCommand(terminalScriptPath.trim())
     : inner;
@@ -426,7 +455,7 @@ export function resolveLaunchExecution({
 
   const genericTerminalCommand = terminalScriptPath?.trim()
     ? terminalScriptCommand(terminalScriptPath.trim())
-    : genericAgentCommand;
+    : withPreLaunchCommands(genericAgentCommand, preLaunchCommands);
 
   const full =
     placement === 'window'
