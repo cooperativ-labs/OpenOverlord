@@ -177,7 +177,7 @@ requests.
   `OVERLORD_PROJECT_RESOURCES_PATHS_CSV` (comma-separated), and
   `OVERLORD_PRIMARY_RESOURCE_PATH`. The documented catalog lives in
   `@overlord/contract` (`LAUNCH_VARIABLES`) and is listed in Project Settings →
-  General.
+  Launch.
 - Pass concise prompt text or context-file references to the agent.
 - Preserve model/thinking/flags.
 - Support `--branch <name>` and `--no-worktree` with the same semantics as the

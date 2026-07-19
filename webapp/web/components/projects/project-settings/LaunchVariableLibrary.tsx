@@ -98,7 +98,7 @@ type LaunchVariableLibraryProps = {
 };
 
 /**
- * Project Settings surface for the built-in `{VAR}` launch-variable catalog.
+ * Project Settings → Launch surface for the built-in `{VAR}` launch-variable catalog.
  * Lists what Overlord can substitute during launch preparation, and what only
  * appears later at attach time (so users do not expect attach fields in env vars).
  */
