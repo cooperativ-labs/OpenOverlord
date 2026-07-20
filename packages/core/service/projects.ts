@@ -28,6 +28,8 @@ export type ProjectSummary = {
   updatedAt: string;
 };
 
+export type ProjectResourceAccessMode = 'read' | 'read_write';
+
 export type ProjectResourceSummary = {
   id: string;
   projectId: string;
@@ -36,9 +38,23 @@ export type ProjectResourceSummary = {
   label: string | null;
   path: string;
   isPrimary: boolean;
+  accessMode: ProjectResourceAccessMode;
   status: string;
   executionTargetId?: string | null;
 };
+
+/**
+ * Resolve the effective access mode for a resource write. Primary resources are
+ * always `read_write`; a non-primary resource defaults to `read` when unspecified
+ * (coo:368).
+ */
+export function resolveResourceAccessMode(
+  isPrimary: boolean,
+  requested?: ProjectResourceAccessMode | null
+): ProjectResourceAccessMode {
+  if (isPrimary) return 'read_write';
+  return requested === 'read_write' ? 'read_write' : 'read';
+}
 
 export const PRIMARY_RESOURCE_REPAIR_HINT =
   'Run `ovld add-cwd` from your project checkout or link a directory in project settings.';
@@ -222,7 +238,8 @@ export async function addProjectResource({
   directoryPath,
   resourceKey,
   label,
-  isPrimary = false
+  isPrimary = false,
+  accessMode
 }: {
   ctx: ServiceContext;
   projectId: string;
@@ -230,10 +247,12 @@ export async function addProjectResource({
   resourceKey?: string | null;
   label?: string | null;
   isPrimary?: boolean;
+  accessMode?: ProjectResourceAccessMode | null;
 }): Promise<ProjectResourceSummary> {
   const resolvedProjectId = await resolveProjectId(ctx, projectId);
   const resolvedPath = path.resolve(directoryPath);
   const resolvedResourceKey = deriveProjectResourceKey({ resourceKey, label, directoryPath });
+  const resolvedAccessMode = resolveResourceAccessMode(isPrimary, accessMode);
   const executionTargetId = (await ensureActingDeviceTarget({ ctx })).executionTargetId;
   const now = nowIso();
   const id = newId();
@@ -248,9 +267,9 @@ export async function addProjectResource({
 
   await ctx.db.run(
     `INSERT INTO project_resources
-         (id, workspace_id, project_id, resource_key, label, is_primary, status,
+         (id, workspace_id, project_id, resource_key, label, is_primary, access_mode, status,
           metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, ?, ?, 'active', '{}', ?, ?, 1)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', '{}', ?, ?, 1)`,
     [
       id,
       ctx.workspace.id,
@@ -258,6 +277,7 @@ export async function addProjectResource({
       resolvedResourceKey,
       label?.trim() || path.basename(resolvedPath),
       bindBool(ctx.db.dialect, isPrimary),
+      resolvedAccessMode,
       now,
       now
     ]
@@ -283,14 +303,21 @@ export async function addProjectResource({
   // backend resolves an in-process provider and writes; a hosted backend resolves
   // an unavailable provider and writes nothing (the CLI/Desktop client owns the
   // write on its own machine).
-  await backendResourceProvider(ctx, executionTargetId).writeProjectMetadata({
-    directoryPath: resolvedPath,
-    projectId: resolvedProjectId,
-    resourceId: id,
-    resourceKey: resolvedResourceKey,
-    executionTargetId,
-    isPrimary
-  });
+  //
+  // coo:368: `read` (reference) resources are intentionally NOT linked into
+  // `.overlord/project.json` — they are navigable/readable context, not the
+  // project's working checkout, so a reader walking up from a directory never
+  // resolves this project from a read-only resource.
+  if (resolvedAccessMode === 'read_write') {
+    await backendResourceProvider(ctx, executionTargetId).writeProjectMetadata({
+      directoryPath: resolvedPath,
+      projectId: resolvedProjectId,
+      resourceId: id,
+      resourceKey: resolvedResourceKey,
+      executionTargetId,
+      isPrimary
+    });
+  }
 
   await recordChange({
     ctx,
@@ -310,6 +337,7 @@ export async function addProjectResource({
     label: label?.trim() || path.basename(resolvedPath),
     path: resolvedPath,
     isPrimary,
+    accessMode: resolvedAccessMode,
     status: 'active'
   };
 }
@@ -324,7 +352,7 @@ export async function listProjectResources({
   const resolvedProjectId = await resolveProjectId(ctx, projectId);
   const rows = (await ctx.db.all(
     `SELECT pr.id, pr.project_id, prs.execution_target_id, pr.resource_key, prs.source_kind,
-            prs.descriptor_json, pr.label, pr.is_primary, pr.status
+            prs.descriptor_json, pr.label, pr.is_primary, pr.access_mode, pr.status
        FROM project_resources pr
        LEFT JOIN project_resource_sources prs ON prs.resource_id = pr.id AND prs.deleted_at IS NULL
        WHERE pr.project_id = ? AND pr.deleted_at IS NULL
@@ -375,7 +403,7 @@ async function findProjectResourceRow({
 
   return (await ctx.db.get(
     `SELECT pr.id, pr.project_id, prs.execution_target_id, pr.resource_key, prs.source_kind,
-            prs.descriptor_json, pr.label, pr.is_primary, pr.status
+            prs.descriptor_json, pr.label, pr.is_primary, pr.access_mode, pr.status
        FROM project_resources pr
        LEFT JOIN project_resource_sources prs ON prs.resource_id = pr.id AND prs.deleted_at IS NULL
       WHERE ${conditions.join(' AND ')}
@@ -450,8 +478,13 @@ type ProjectResourceRow = {
   descriptor_json: string | null;
   label: string | null;
   is_primary: boolean | number;
+  access_mode: string | null;
   status: string;
 };
+
+function normalizeAccessMode(value: string | null | undefined): ProjectResourceAccessMode {
+  return value === 'read' ? 'read' : 'read_write';
+}
 
 function rowToProjectResourceSummary(
   ctx: ServiceContext,
@@ -477,6 +510,7 @@ function rowToProjectResourceSummary(
     label: row.label,
     path: resourcePath,
     isPrimary: isTruthyFlag(row.is_primary),
+    accessMode: normalizeAccessMode(row.access_mode),
     status
   }));
 }
@@ -617,7 +651,7 @@ export async function resolveCwdProjectResource({
       if (raw?.projectId === resolvedProjectId) {
         const row = (await ctx.db.get(
           `SELECT pr.id, pr.project_id, prs.execution_target_id, pr.resource_key, prs.source_kind,
-                  prs.descriptor_json, pr.label, pr.is_primary, pr.status
+                  prs.descriptor_json, pr.label, pr.is_primary, pr.access_mode, pr.status
              FROM project_resources pr
              LEFT JOIN project_resource_sources prs ON prs.resource_id = pr.id AND prs.deleted_at IS NULL
             WHERE pr.id = ? AND pr.project_id = ? AND pr.deleted_at IS NULL

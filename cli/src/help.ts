@@ -46,9 +46,9 @@ Organizations:
 
 Projects:
   ${primaryCommand} create-project --name "<name>" [--directory <path>|--no-directory]
-  ${primaryCommand} add-cwd [--directory <path>] [--project-id <id>] [--key <resourceKey>] [--primary true|false]
+  ${primaryCommand} add-cwd [--directory <path>] [--project-id <id>] [--key <resourceKey>] [--primary true|false] [--access read|read_write]
                                                  (prompts to pick a project when --project-id is omitted)
-  ${primaryCommand} add-url --url <git-url> --project-id <id> [--key <resourceKey>] [--primary true|false]
+  ${primaryCommand} add-url --url <git-url> --project-id <id> [--key <resourceKey>] [--primary true|false] [--access read|read_write]
 
 Missions:
   ${primaryCommand} create "<objective>" [--objectives-json '[...]'] [--json]

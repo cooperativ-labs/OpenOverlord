@@ -2,11 +2,15 @@ import type { ServiceContext } from './context.js';
 import { resolveProjectId } from './context.js';
 import { loadTargetResourceObservations } from './target-resource-observations.js';
 
+export type ProjectResourceAccessMode = 'read' | 'read_write';
+
 export type ProjectResourceManifestEntry = {
   resourceKey: string;
   label: string | null;
   isPrimary: boolean;
   isCurrent: boolean;
+  /** Read vs read & write permission (coo:368). Primary resources are `read_write`. */
+  accessMode: ProjectResourceAccessMode;
   path: string | null;
   state: string;
 };
@@ -17,6 +21,7 @@ type ResourceLike = {
   label: string | null;
   path: string;
   isPrimary: boolean;
+  accessMode: ProjectResourceAccessMode;
   executionTargetId: string | null;
 };
 
@@ -77,11 +82,14 @@ export function buildProjectResourceManifestEntries({
         (row.executionTargetId === executionTargetId || row.executionTargetId === null);
       const observationState = row.id ? observationStatesByResourceId.get(row.id) : undefined;
 
+      const isPrimary = primaryKey !== null ? resourceKey === primaryKey : row.isPrimary;
       return {
         resourceKey,
         label: row.label,
-        isPrimary: primaryKey !== null ? resourceKey === primaryKey : row.isPrimary,
+        isPrimary,
         isCurrent: resourceKey === resolvedCurrent,
+        // Primary resources are always read & write (coo:368).
+        accessMode: isPrimary ? 'read_write' : row.accessMode,
         path: executionTargetId && hasTargetRow ? row.path : null,
         state: observationState ?? 'unknown'
       };
@@ -108,7 +116,7 @@ export async function buildProjectResourceManifest({
   const resolvedProjectId = await resolveProjectId(ctx, projectId);
   const rows = (await ctx.db.all(
     `SELECT pr.id, pr.resource_key, pr.label, prs.source_kind, prs.descriptor_json,
-            pr.is_primary, prs.execution_target_id
+            pr.is_primary, pr.access_mode, prs.execution_target_id
        FROM project_resources pr
        LEFT JOIN project_resource_sources prs ON prs.resource_id = pr.id AND prs.deleted_at IS NULL
       WHERE pr.project_id = ? AND pr.deleted_at IS NULL
@@ -121,6 +129,7 @@ export async function buildProjectResourceManifest({
     source_kind: string | null;
     descriptor_json: string | null;
     is_primary: boolean | number;
+    access_mode: string | null;
     execution_target_id: string | null;
   }>;
 
@@ -138,6 +147,7 @@ export async function buildProjectResourceManifest({
       }
     })(),
     isPrimary: isTruthyPrimary(row.is_primary),
+    accessMode: row.access_mode === 'read' ? 'read' : 'read_write',
     executionTargetId: row.execution_target_id
   }));
 

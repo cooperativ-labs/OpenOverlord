@@ -440,6 +440,7 @@ interface ProjectResourceRow {
   resource_key: string;
   label: string | null;
   is_primary: number;
+  access_mode: string | null;
   status: string;
   created_at: string;
   updated_at: string;
@@ -603,6 +604,11 @@ async function toProjectResourceDto(
     label: r.label,
     path: sourcePath(source),
     isPrimary: isTruthyFlag(r.is_primary),
+    accessMode: isTruthyFlag(r.is_primary)
+      ? 'read_write'
+      : r.access_mode === 'read'
+        ? 'read'
+        : 'read_write',
     status: merged.status as ProjectResourceDto['status'],
     observedAt: merged.observedAt,
     observationSource: merged.observedAt ? 'client' : null,
@@ -664,7 +670,7 @@ async function getProjectResourceRow(
   await getProject(projectId, db, permission);
   const row = (await db.get(
     `SELECT id, workspace_id, project_id, resource_key, label,
-              is_primary, status, created_at, updated_at, revision
+              is_primary, access_mode, status, created_at, updated_at, revision
          FROM project_resources
         WHERE id = ? AND project_id = ? AND deleted_at IS NULL`,
     [resourceId, projectId]
@@ -2321,7 +2327,7 @@ export async function listProjectResources(projectId: string): Promise<ProjectRe
   });
   const rows = (await db.all(
     `SELECT id, workspace_id, project_id, resource_key, label,
-              is_primary, status, created_at, updated_at, revision
+              is_primary, access_mode, status, created_at, updated_at, revision
          FROM project_resources
         WHERE project_id = ? AND deleted_at IS NULL
         ORDER BY status ASC, is_primary DESC, label ASC, resource_key ASC`,
@@ -2400,9 +2406,17 @@ async function insertProjectResource(
     ? (body.executionTargetId ?? null)
     : await resolveResourceExecutionTargetId(db, project.workspaceId, body.executionTargetId);
 
+  const willBePrimary = body.isPrimary !== false;
+  // coo:368: primary resources are always read & write; a non-primary resource
+  // defaults to `read` when the caller does not explicitly request `read_write`.
+  const resolvedAccessMode = willBePrimary
+    ? 'read_write'
+    : body.accessMode === 'read_write'
+      ? 'read_write'
+      : 'read';
+
   const now = nowIso();
-  if (body.isPrimary !== false)
-    await clearPrimaryResourcesForTarget(db, { projectId: project.id, now });
+  if (willBePrimary) await clearPrimaryResourcesForTarget(db, { projectId: project.id, now });
 
   const existing = (await db.get(
     `SELECT id FROM project_resources WHERE project_id = ? AND resource_key = ? AND deleted_at IS NULL`,
@@ -2412,23 +2426,29 @@ async function insertProjectResource(
   if (!existing) {
     await db.run(
       `INSERT INTO project_resources
-         (id, workspace_id, project_id, resource_key, label, is_primary, status, metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, ?, ?, 'active', '{}', ?, ?, 1)`,
+         (id, workspace_id, project_id, resource_key, label, is_primary, access_mode, status, metadata_json, created_at, updated_at, revision)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', '{}', ?, ?, 1)`,
       [
         resourceId,
         project.workspaceId,
         project.id,
         resourceKey,
         body.label ?? null,
-        bindBool(DATABASE_DIALECT, body.isPrimary !== false),
+        bindBool(DATABASE_DIALECT, willBePrimary),
+        resolvedAccessMode,
         now,
         now
       ]
     );
-  } else if (body.isPrimary !== false) {
+  } else if (willBePrimary) {
     await db.run(
-      `UPDATE project_resources SET is_primary = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`,
-      [bindBool(DATABASE_DIALECT, true), now, resourceId]
+      `UPDATE project_resources SET is_primary = ?, access_mode = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`,
+      [bindBool(DATABASE_DIALECT, true), 'read_write', now, resourceId]
+    );
+  } else if (body.accessMode !== undefined) {
+    await db.run(
+      `UPDATE project_resources SET access_mode = ?, updated_at = ?, revision = revision + 1 WHERE id = ?`,
+      [resolvedAccessMode, now, resourceId]
     );
   }
   const descriptor = JSON.stringify(sourceUrl ? { url: sourceUrl } : { path: resourcePath });
@@ -2470,7 +2490,12 @@ async function insertProjectResource(
       operation: 'insert',
       entityRevision: 1,
       projectId: project.id,
-      changedFields: [sourceUrl ? 'source_url' : 'path', 'resource_key', 'is_primary'],
+      changedFields: [
+        sourceUrl ? 'source_url' : 'path',
+        'resource_key',
+        'is_primary',
+        'access_mode'
+      ],
       workspaceId: project.workspaceId,
       actorWorkspaceUserId: options.actorWorkspaceUserId
     },
@@ -2490,7 +2515,7 @@ export async function createProjectResource(
 
     const row = (await tx.get(
       `SELECT id, workspace_id, project_id, resource_key, label,
-                is_primary, status, created_at, updated_at, revision
+                is_primary, access_mode, status, created_at, updated_at, revision
            FROM project_resources
           WHERE id = ?`,
       [id]
@@ -2539,19 +2564,40 @@ export async function updateProjectResource(
       }
     }
 
-    if (body.isPrimary === true && !isTruthyFlag(existing.is_primary)) {
+    const becomingPrimary = body.isPrimary === true && !isTruthyFlag(existing.is_primary);
+    if (becomingPrimary) {
       await clearPrimaryResourcesForTarget(tx, {
         projectId,
         now
       });
+      // coo:368: a primary resource is always read & write, so promoting a
+      // resource to primary also upgrades its access mode.
       await tx.run(
         `UPDATE project_resources
-            SET is_primary = ?, updated_at = ?, revision = ?
+            SET is_primary = ?, access_mode = ?, updated_at = ?, revision = ?
           WHERE id = ?`,
-        [bindBool(DATABASE_DIALECT, true), now, revision + 1, resourceId]
+        [bindBool(DATABASE_DIALECT, true), 'read_write', now, revision + 1, resourceId]
       );
       revision += 1;
       changedFields.push('is_primary');
+      changedFields.push('access_mode');
+    }
+
+    // A standalone access-mode change is honored only when the resource is not
+    // (and is not becoming) primary — primary resources are pinned to read_write.
+    const staysPrimary = becomingPrimary || isTruthyFlag(existing.is_primary);
+    if (body.accessMode !== undefined && !staysPrimary) {
+      const nextAccessMode = body.accessMode === 'read_write' ? 'read_write' : 'read';
+      if (nextAccessMode !== (existing.access_mode === 'read' ? 'read' : 'read_write')) {
+        revision += 1;
+        await tx.run(
+          `UPDATE project_resources
+              SET access_mode = ?, updated_at = ?, revision = ?
+            WHERE id = ?`,
+          [nextAccessMode, now, revision, resourceId]
+        );
+        changedFields.push('access_mode');
+      }
     }
 
     if (changedFields.length > 0) {
@@ -2631,7 +2677,7 @@ async function getProjectRepositoryResource(
   const db = requireDatabaseClient();
   const row = (await db.get(
     `SELECT id, workspace_id, project_id, resource_key, label,
-            is_primary, status, created_at, updated_at, revision
+            is_primary, access_mode, status, created_at, updated_at, revision
        FROM project_resources
       WHERE project_id = ? AND status = 'active' AND deleted_at IS NULL
       ORDER BY CASE WHEN resource_key = ? THEN 0 ELSE 1 END, is_primary DESC, created_at ASC LIMIT 1`,

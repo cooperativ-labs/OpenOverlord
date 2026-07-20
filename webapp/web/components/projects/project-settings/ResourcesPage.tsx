@@ -62,9 +62,25 @@ import { cn } from '@/lib/utils';
 
 import type {
   EligibleExecutionTargetDto,
+  ProjectResourceAccessMode,
   ProjectResourceDto,
   ProjectResourceSourceDto
 } from '../../../../shared/contract.ts';
+
+const ACCESS_MODE_OPTIONS: { value: ProjectResourceAccessMode; label: string }[] = [
+  { value: 'read', label: 'Read' },
+  { value: 'read_write', label: 'Read & write' }
+];
+
+function accessModeLabel(mode: ProjectResourceAccessMode): string {
+  return mode === 'read' ? 'Read' : 'Read & write';
+}
+
+function accessModeHelpText(mode: ProjectResourceAccessMode): string {
+  return mode === 'read'
+    ? 'Reference resource: agents can read/navigate it, but it is not offered in the resource picker and is not linked into .overlord/project.json.'
+    : 'Full access: offered in the resource picker and linked as a working directory.';
+}
 
 type ResourcesPageProps = {
   open: boolean;
@@ -188,7 +204,10 @@ function SourceRow({
           executionTargetId: source.executionTargetId,
           isPrimary: resource.isPrimary
         });
-        await writeLocalProjectMetadata({ directoryPath: trimmed, projectId, resource: created });
+        // coo:368: `read` (reference) resources are never linked into project.json.
+        if (created.accessMode !== 'read') {
+          await writeLocalProjectMetadata({ directoryPath: trimmed, projectId, resource: created });
+        }
       }
       setIsEditing(false);
       onSaved();
@@ -412,7 +431,10 @@ function AddSourceForm({
         executionTargetId,
         isPrimary: resource.isPrimary
       });
-      await writeLocalProjectMetadata({ directoryPath: trimmed, projectId, resource: created });
+      // coo:368: `read` (reference) resources are never linked into project.json.
+      if (created.accessMode !== 'read') {
+        await writeLocalProjectMetadata({ directoryPath: trimmed, projectId, resource: created });
+      }
       setDirectoryPath('');
       onAdded();
     } catch (err) {
@@ -618,6 +640,11 @@ function AddResourceDialog({
   const [repoUrl, setRepoUrl] = useState('');
   const [targetValue, setTargetValue] = useState(defaultTargetValue);
   const [makePrimary, setMakePrimary] = useState(isFirstResource);
+  // coo:368: primary resources are always read & write; a non-primary resource
+  // defaults to `read`.
+  const [accessMode, setAccessMode] = useState<ProjectResourceAccessMode>(
+    isFirstResource ? 'read_write' : 'read'
+  );
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canBrowseDirectories =
@@ -633,8 +660,13 @@ function AddResourceDialog({
     setRepoUrl('');
     setTargetValue(defaultTargetValue);
     setMakePrimary(isFirstResource);
+    setAccessMode(isFirstResource ? 'read_write' : 'read');
     setError(null);
   }, [open, defaultTargetValue, isFirstResource]);
+
+  // Keep the access mode consistent with the primary toggle: a primary resource
+  // is always read & write.
+  const effectiveAccessMode: ProjectResourceAccessMode = makePrimary ? 'read_write' : accessMode;
 
   const trimmedKey = resourceKey.trim();
   const duplicateKey = trimmedKey.length > 0 && existingResourceKeys.includes(trimmedKey);
@@ -674,7 +706,8 @@ function AddResourceDialog({
         await createResource.mutateAsync({
           sourceUrl: trimmedUrl,
           resourceKey: trimmedKey || null,
-          isPrimary
+          isPrimary,
+          accessMode: effectiveAccessMode
         });
         onCreated();
         onOpenChange(false);
@@ -696,9 +729,14 @@ function AddResourceDialog({
         directoryPath: trimmed,
         resourceKey: trimmedKey || null,
         executionTargetId,
-        isPrimary
+        isPrimary,
+        accessMode: effectiveAccessMode
       });
-      await writeLocalProjectMetadata({ directoryPath: trimmed, projectId, resource: created });
+      // coo:368: `read` (reference) resources are never linked into
+      // `.overlord/project.json`.
+      if (created.accessMode !== 'read') {
+        await writeLocalProjectMetadata({ directoryPath: trimmed, projectId, resource: created });
+      }
       onCreated();
       onOpenChange(false);
     } catch (err) {
@@ -873,6 +911,48 @@ function AddResourceDialog({
             />
           </div>
 
+          <div className="grid gap-1.5">
+            <Label className="text-xs">Permission</Label>
+            <div
+              role="radiogroup"
+              aria-label="Resource permission"
+              className="inline-flex rounded-md border p-0.5"
+            >
+              {ACCESS_MODE_OPTIONS.map(option => {
+                const active = effectiveAccessMode === option.value;
+                // A primary resource is pinned to read & write.
+                const locked = makePrimary && option.value === 'read';
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    disabled={locked}
+                    onClick={() => {
+                      setAccessMode(option.value);
+                      setError(null);
+                    }}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                      active
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:text-foreground',
+                      locked && 'cursor-not-allowed opacity-40'
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {makePrimary
+                ? 'Primary resources are always read & write.'
+                : accessModeHelpText(effectiveAccessMode)}
+            </p>
+          </div>
+
           {error ? <p className="text-xs text-destructive">{error}</p> : null}
         </div>
         <DialogFooter>
@@ -1010,6 +1090,20 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
       await updateResource.mutateAsync({ resourceId: resource.id, body: { isPrimary: true } });
     } catch (error) {
       setRowError(error instanceof Error ? error.message : 'Failed to update primary resource.');
+    }
+  }
+
+  async function handleSetAccessMode(
+    resource: ProjectResourceDto,
+    accessMode: ProjectResourceAccessMode
+  ) {
+    // Primary resources are pinned to read & write; nothing to toggle.
+    if (resource.isPrimary || resource.accessMode === accessMode) return;
+    setRowError(null);
+    try {
+      await updateResource.mutateAsync({ resourceId: resource.id, body: { accessMode } });
+    } catch (error) {
+      setRowError(error instanceof Error ? error.message : 'Failed to update resource permission.');
     }
   }
 
@@ -1171,6 +1265,9 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
                         Primary
                       </Badge>
                     ) : null}
+                    <Badge variant="outline" className="shrink-0 font-normal">
+                      {accessModeLabel(resource.accessMode)}
+                    </Badge>
                     <Badge
                       variant={resource.status === 'missing' ? 'destructive' : 'outline'}
                       className="shrink-0 font-normal"
@@ -1243,6 +1340,45 @@ export function ResourcesPage({ open, projectId }: ResourcesPageProps) {
                       </Button>
                     ) : null}
                   </div>
+                </div>
+
+                <div className="grid gap-1.5 sm:max-w-md">
+                  <Label className="text-xs">Permission</Label>
+                  <div
+                    role="radiogroup"
+                    aria-label={`Permission for ${resource.resourceKey}`}
+                    className="inline-flex w-fit rounded-md border p-0.5"
+                  >
+                    {ACCESS_MODE_OPTIONS.map(option => {
+                      const active = resource.accessMode === option.value;
+                      // Primary resources are pinned to read & write.
+                      const locked = resource.isPrimary;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          disabled={locked || updateResource.isPending}
+                          onClick={() => void handleSetAccessMode(resource, option.value)}
+                          className={cn(
+                            'inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                            active
+                              ? 'bg-primary text-primary-foreground'
+                              : 'text-muted-foreground hover:text-foreground',
+                            locked && !active && 'cursor-not-allowed opacity-40'
+                          )}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {resource.isPrimary
+                      ? 'Primary resources are always read & write.'
+                      : accessModeHelpText(resource.accessMode)}
+                  </p>
                 </div>
 
                 <div className="space-y-2">

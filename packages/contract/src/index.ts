@@ -21,6 +21,15 @@ export {
   type LaunchVariableAvailability,
   type LaunchVariableDefinition
 } from './launch-variables.js';
+export {
+  accessModeToResourcePathPermission,
+  formatProjectResourcePathsFromManifest,
+  formatResourcePathWithPermission,
+  type ParsedResourcePathEntry,
+  parseResourcePathEntry,
+  parseResourcePathsCsv,
+  type ResourcePathPermission
+} from './resource-paths.js';
 
 // ---- Closed status vocabularies (from the schema CHECK constraints) ----
 
@@ -333,6 +342,18 @@ export interface ReorderWorkspaceStatusesBody {
 export type ProjectResourceType = 'local_directory' | 'remote_directory' | 'git' | 'source_bundle';
 export type ProjectResourceStatus = 'active' | 'missing' | 'archived';
 
+/**
+ * Read vs read & write permission for a logical project resource (coo:368).
+ *
+ * - `read_write` — full functionality (the historical default): offered in the
+ *   resource picker, writes `.overlord/project.json` when linked, and included in
+ *   the resource paths env. Primary resources are always `read_write`.
+ * - `read` — reference resource: NOT offered in the resource picker and does NOT
+ *   write `.overlord/project.json`, but IS still included in the resource paths
+ *   env (file-path sources only; URL/git sources contribute no path).
+ */
+export type ProjectResourceAccessMode = 'read' | 'read_write';
+
 /** A target-specific (or global) way to materialize a logical project resource. */
 export interface ProjectResourceSourceDto {
   id: string;
@@ -351,11 +372,19 @@ export interface CreateProjectResourceBody {
   label?: string | null;
   isPrimary?: boolean;
   executionTargetId?: string | null;
+  /**
+   * Read vs read & write permission. Omitted defaults to `read_write` for a
+   * primary resource and `read` for a non-primary one. A primary resource is
+   * always coerced to `read_write`.
+   */
+  accessMode?: ProjectResourceAccessMode;
 }
 
 export interface UpdateProjectResourceBody {
   resourceKey?: string | null;
   isPrimary?: boolean;
+  /** A primary resource is always coerced to `read_write`. */
+  accessMode?: ProjectResourceAccessMode;
 }
 
 export interface ProjectResourceDto {
@@ -368,6 +397,8 @@ export interface ProjectResourceDto {
   label: string | null;
   path: string;
   isPrimary: boolean;
+  /** Read vs read & write permission (coo:368). Primary resources are `read_write`. */
+  accessMode: ProjectResourceAccessMode;
   status: ProjectResourceStatus;
   /** When the linked target last reported availability for this resource. */
   observedAt?: string | null;

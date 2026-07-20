@@ -25,6 +25,7 @@ function resource(
     label: partial.label ?? partial.resourceKey,
     path: partial.path ?? `/tmp/${partial.resourceKey}`,
     isPrimary: partial.isPrimary ?? false,
+    accessMode: partial.accessMode ?? 'read_write',
     status: partial.status ?? 'active',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -72,6 +73,16 @@ describe('distinctProjectResourceKeys', () => {
     ]);
 
     assert.deepEqual(keys, ['mobile', 'overlord']);
+  });
+
+  it('excludes read (reference) resources from the picker (coo:368)', () => {
+    const keys = distinctProjectResourceKeys([
+      resource({ resourceKey: 'overlord', isPrimary: true, accessMode: 'read_write' }),
+      resource({ resourceKey: 'docs', accessMode: 'read' }),
+      resource({ resourceKey: 'shared-lib', accessMode: 'read_write' })
+    ]);
+
+    assert.deepEqual(keys, ['overlord', 'shared-lib']);
   });
 });
 

@@ -1,3 +1,5 @@
+import { formatProjectResourcePathsFromManifest } from '@overlord/contract';
+
 /**
  * Per-project launch preparation: pre-launch commands and launch env vars.
  *
@@ -64,19 +66,6 @@ export function substituteLaunchEnvVars(
   return resolved;
 }
 
-/** Non-empty resource filesystem paths from a project-resource manifest array. */
-function resourcePaths(projectResources?: unknown[] | null): string[] {
-  if (!Array.isArray(projectResources)) return [];
-  const paths: string[] = [];
-  for (const entry of projectResources) {
-    if (entry && typeof entry === 'object') {
-      const path = (entry as { path?: unknown }).path;
-      if (typeof path === 'string' && path.trim()) paths.push(path.trim());
-    }
-  }
-  return paths;
-}
-
 /** Absolute path of the primary resource, else the current one, else empty. */
 function primaryResourcePath(projectResources?: unknown[] | null): string {
   if (!Array.isArray(projectResources)) return '';
@@ -124,7 +113,7 @@ export function buildPreLaunchVariables({
   contextFile,
   tmpDir
 }: BuildPreLaunchVariablesInput): Record<string, string> {
-  const paths = resourcePaths(projectResources);
+  const resourcePathsValue = formatProjectResourcePathsFromManifest(projectResources);
   const scratch = typeof tmpDir === 'string' ? tmpDir.trim() : '';
   const cwd = typeof workingDirectory === 'string' ? workingDirectory.trim() : '';
   const contextPath = typeof contextFile === 'string' ? contextFile.trim() : '';
@@ -135,8 +124,8 @@ export function buildPreLaunchVariables({
     OVERLORD_EXECUTION_REQUEST_ID: '',
     OVERLORD_PROJECT_RESOURCES: '',
     ...launchEnv,
-    OVERLORD_PROJECT_RESOURCES_PATHS: paths.join(' '),
-    OVERLORD_PROJECT_RESOURCES_PATHS_CSV: paths.join(','),
+    OVERLORD_PROJECT_RESOURCES_PATHS: resourcePathsValue,
+    OVERLORD_PROJECT_RESOURCES_PATHS_CSV: resourcePathsValue,
     OVERLORD_PRIMARY_RESOURCE_PATH: primaryResourcePath(projectResources),
     OVERLORD_WORKING_DIRECTORY: cwd,
     OVERLORD_CONTEXT_FILE: contextPath,

@@ -53,8 +53,8 @@ export const COMMAND_FLAGS: Record<string, readonly string[]> = {
     '--no-input',
     '--if-needed'
   ],
-  'add-cwd': ['--directory', '--key', '--project-id', '--primary'],
-  'add-url': ['--url', '--project-id', '--key', '--primary'],
+  'add-cwd': ['--directory', '--key', '--project-id', '--primary', '--access'],
+  'add-url': ['--url', '--project-id', '--key', '--primary', '--access'],
   create: ['--objectives-json', '--objective', '--prompt', '--project-id', '--title', '--resource'],
   prompt: [
     '--objectives-json',

@@ -162,3 +162,62 @@ test('createProject can create an initial primary resource atomically', async ()
   assert.equal(rows[0]?.isPrimary, true);
   assert.equal(rows[0]?.executionTargetId, launchSettings.executionTargetId);
 });
+
+test('access mode defaults and primary coercion (coo:368)', async () => {
+  const launchSettings = await getLaunchSettings();
+  const project = await createProject({ name: 'Access mode behavior' });
+
+  // Primary defaults to read & write.
+  const primary = await createProjectResource(project.id, {
+    directoryPath: '/tmp/access-primary',
+    resourceKey: 'primary',
+    executionTargetId: launchSettings.executionTargetId,
+    isPrimary: true
+  });
+  assert.equal(primary.accessMode, 'read_write');
+
+  // Non-primary defaults to read when unspecified.
+  const reference = await createProjectResource(project.id, {
+    directoryPath: '/tmp/access-reference',
+    resourceKey: 'reference',
+    executionTargetId: launchSettings.executionTargetId,
+    isPrimary: false
+  });
+  assert.equal(reference.accessMode, 'read');
+
+  // A primary resource cannot be created as read — it is coerced to read & write.
+  const coerced = await createProjectResource(project.id, {
+    directoryPath: '/tmp/access-coerced',
+    resourceKey: 'coerced',
+    executionTargetId: launchSettings.executionTargetId,
+    isPrimary: true,
+    accessMode: 'read'
+  });
+  assert.equal(coerced.accessMode, 'read_write');
+
+  // A non-primary resource may opt into read & write explicitly.
+  const explicitRw = await createProjectResource(project.id, {
+    directoryPath: '/tmp/access-explicit',
+    resourceKey: 'explicit',
+    executionTargetId: launchSettings.executionTargetId,
+    isPrimary: false,
+    accessMode: 'read_write'
+  });
+  assert.equal(explicitRw.accessMode, 'read_write');
+
+  // Toggling a non-primary resource's access mode is honored.
+  const toggled = await updateProjectResource(project.id, reference.id, {
+    accessMode: 'read_write'
+  });
+  assert.equal(toggled.accessMode, 'read_write');
+  const backToRead = await updateProjectResource(project.id, reference.id, { accessMode: 'read' });
+  assert.equal(backToRead.accessMode, 'read');
+
+  // Promoting a read resource to primary upgrades it to read & write, and a
+  // standalone read request against a primary is ignored.
+  const promoted = await updateProjectResource(project.id, reference.id, { isPrimary: true });
+  assert.equal(promoted.accessMode, 'read_write');
+  assert.equal(promoted.isPrimary, true);
+  const pinned = await updateProjectResource(project.id, reference.id, { accessMode: 'read' });
+  assert.equal(pinned.accessMode, 'read_write');
+});

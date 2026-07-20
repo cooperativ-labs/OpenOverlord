@@ -90,6 +90,26 @@ type SkipRationaleEntry = {
   [key: string]: unknown;
 };
 
+/**
+ * Normalize an `--access` flag into a `{ accessMode }` request fragment (coo:368).
+ * Accepts `read` / `ro` and `read_write` / `read-write` / `rw`; anything else
+ * (including absent) omits the field so the backend applies its default (primary
+ * → read_write, non-primary → read).
+ */
+function resourceAccessModeBody(value: string | true | undefined): {
+  accessMode?: 'read' | 'read_write';
+} {
+  if (typeof value !== 'string') return {};
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'read' || normalized === 'ro') return { accessMode: 'read' };
+  if (normalized === 'read_write' || normalized === 'read-write' || normalized === 'rw') {
+    return { accessMode: 'read_write' };
+  }
+  throw new CliError({
+    message: `Invalid --access "${value}". Use "read" or "read_write".`
+  });
+}
+
 function writeProjectJsonFromResource({
   directory,
   projectId,
@@ -101,6 +121,9 @@ function writeProjectJsonFromResource({
 }): void {
   const record = asRecord(resource);
   if (typeof record.id !== 'string') return;
+  // coo:368: `read` (reference) resources are never linked into
+  // `.overlord/project.json` — only read & write resources are.
+  if (record.accessMode === 'read') return;
   writeProjectJson({
     directoryPath: directory,
     projectId,
@@ -1107,7 +1130,8 @@ export async function runManagementCommand({
         body: {
           directoryPath: directory,
           ...(resourceKey ? { resourceKey } : {}),
-          isPrimary: flagValue(parsed.flags, '--primary') !== 'false'
+          isPrimary: flagValue(parsed.flags, '--primary') !== 'false',
+          ...resourceAccessModeBody(flagValue(parsed.flags, '--access'))
         }
       });
       writeProjectJsonFromResource({ directory, projectId, resource });
@@ -1125,7 +1149,8 @@ export async function runManagementCommand({
         body: {
           sourceUrl,
           resourceKey: flagValue(parsed.flags, '--key'),
-          isPrimary: flagValue(parsed.flags, '--primary') !== 'false'
+          isPrimary: flagValue(parsed.flags, '--primary') !== 'false',
+          ...resourceAccessModeBody(flagValue(parsed.flags, '--access'))
         }
       });
       if (json) printJson({ resource });

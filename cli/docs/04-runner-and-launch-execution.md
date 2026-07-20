@@ -173,8 +173,9 @@ requests.
   and availability state. Hooks and pre-commands may use it for context, but the
   launched session remains rooted in the resolved working directory.
 - Derive convenience path variables for `{VAR}` substitution:
-  `OVERLORD_PROJECT_RESOURCES_PATHS` (space-separated),
-  `OVERLORD_PROJECT_RESOURCES_PATHS_CSV` (comma-separated), and
+  `OVERLORD_PROJECT_RESOURCES_PATHS` (comma-separated paths with explicit `:rw`/`:ro`
+  permission suffixes per resource `accessMode`),
+  `OVERLORD_PROJECT_RESOURCES_PATHS_CSV` (alias of the above, kept for backward compatibility), and
   `OVERLORD_PRIMARY_RESOURCE_PATH`. The documented catalog lives in
   `@overlord/contract` (`LAUNCH_VARIABLES`) and is listed in Project Settings →
   Launch.

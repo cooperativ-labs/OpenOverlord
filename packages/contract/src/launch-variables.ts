@@ -112,26 +112,27 @@ export const LAUNCH_VARIABLES: readonly LaunchVariableDefinition[] = [
   {
     name: 'OVERLORD_PROJECT_RESOURCES',
     description:
-      'JSON array of every project resource for this execution target (resourceKey, path, state, flags). Set only when the project has resources.',
-    example: '[{"resourceKey":"primary","path":"/repo/a","state":"ready","isPrimary":true}]',
+      'JSON array of every project resource for this execution target (resourceKey, path, state, flags, accessMode). Set only when the project has resources.',
+    example:
+      '[{"resourceKey":"primary","path":"/repo/a","state":"ready","isPrimary":true,"accessMode":"read_write"}]',
     availableAt: ['plan_build', 'terminal_env'],
     format: 'JSON array'
   },
   {
     name: 'OVERLORD_PROJECT_RESOURCES_PATHS',
     description:
-      'Space-separated absolute paths of connected project resources (entries without a local path are omitted). Ideal as distinct CLI arguments.',
-    example: '/repo/a /repo/b',
+      'Comma-separated absolute paths of connected project resources with explicit `:rw` or `:ro` permission suffixes (entries without a local path are omitted). `read_write` resources emit `:rw`; reference (`read`) resources emit `:ro`.',
+    example: '/repo/a:rw,/repo/b:ro',
     availableAt: ['plan_build', 'terminal_env'],
-    format: 'space-separated paths'
+    format: 'comma-separated paths with :rw/:ro suffix'
   },
   {
     name: 'OVERLORD_PROJECT_RESOURCES_PATHS_CSV',
     description:
-      'Comma-separated absolute paths of connected project resources. Useful for env vars that expect a CSV list (e.g. AGENT_POD_EXTRA_ALLOWED_PATHS).',
-    example: '/repo/a,/repo/b',
+      'Alias of OVERLORD_PROJECT_RESOURCES_PATHS, kept for backward compatibility. Same comma-separated `:rw`/`:ro`-suffixed paths. Useful for env vars that expect a CSV list (e.g. AGENT_POD_EXTRA_ALLOWED_PATHS).',
+    example: '/repo/a:rw,/repo/b:ro',
     availableAt: ['plan_build', 'terminal_env'],
-    format: 'comma-separated paths'
+    format: 'comma-separated paths with :rw/:ro suffix'
   },
   {
     name: 'OVERLORD_PRIMARY_RESOURCE_PATH',

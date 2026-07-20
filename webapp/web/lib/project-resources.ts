@@ -114,10 +114,20 @@ export function firstObjectiveCreatePayload(
   return key ? { objectives: [{ objective, resourceKey: key }] } : { firstObjective: objective };
 }
 
+/**
+ * Distinct resource keys offered in the resource picker. `read` (reference)
+ * resources are intentionally excluded — they are readable context, not a working
+ * directory a mission can be bound to and run in (coo:368). Primary resources are
+ * always `read_write`, so they are never filtered out here.
+ */
 export function distinctProjectResourceKeys(resources: ProjectResourceDto[]): string[] {
   const keys = new Set<string>();
   for (const resource of resources) {
-    if (resource.status !== 'archived' && resource.resourceKey.trim()) {
+    if (
+      resource.status !== 'archived' &&
+      resource.accessMode !== 'read' &&
+      resource.resourceKey.trim()
+    ) {
       keys.add(resource.resourceKey);
     }
   }
