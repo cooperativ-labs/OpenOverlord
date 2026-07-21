@@ -6,7 +6,8 @@ import {
   Copy,
   FastForward,
   GitBranch,
-  Loader2
+  Loader2,
+  Paperclip
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -50,7 +51,8 @@ export function ObjectiveCollapsibleItem({
   // Display labels come from the objective's own workspace's catalog (coo:324).
   const projectQuery = useProject(objective.projectId);
   const catalogQuery = useAgentCatalog(projectQuery.data?.workspaceId);
-  const { data: attachments = [] } = useObjectiveAttachments(objective.id, { enabled: open });
+  const { data: attachments = [] } = useObjectiveAttachments(objective.id);
+  const hasAttachments = attachments.length > 0;
 
   const isExecuting = objective.state === 'executing';
   const isPendingDelivery = objective.state === 'pending_delivery';
@@ -118,12 +120,33 @@ export function ObjectiveCollapsibleItem({
                     <TooltipContent side="top">{agentTooltip}</TooltipContent>
                   </Tooltip>
                 ) : null}
-                <p
-                  className="truncate text-sm font-medium"
-                  title={`${timestampLabel} ${objectiveTimestamp}`}
-                >
-                  {objective.title ?? `Objective ${index + 1}`}
-                </p>
+                <div className="flex min-w-0 items-center gap-1">
+                  <p
+                    className="truncate text-sm font-medium"
+                    title={`${timestampLabel} ${objectiveTimestamp}`}
+                  >
+                    {objective.title ?? `Objective ${index + 1}`}
+                  </p>
+                  {hasAttachments ? (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <span className="inline-flex shrink-0">
+                            <Paperclip
+                              className="h-3 w-3 text-muted-foreground"
+                              aria-label={`${attachments.length} attachment${attachments.length === 1 ? '' : 's'}`}
+                            />
+                          </span>
+                        }
+                      />
+                      <TooltipContent side="top">
+                        {attachments.length === 1
+                          ? '1 attachment'
+                          : `${attachments.length} attachments`}
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : null}
+                </div>
               </div>
               <ChevronDown
                 className={cn(
@@ -188,7 +211,7 @@ export function ObjectiveCollapsibleItem({
               }
             />
           </div>
-          {attachments.length > 0 ? (
+          {hasAttachments ? (
             <ObjectiveAttachmentList attachments={attachments} readOnly className="mt-1 -ml-2" />
           ) : null}
         </CollapsibleContent>
