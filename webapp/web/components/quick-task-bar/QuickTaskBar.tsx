@@ -49,10 +49,6 @@ import {
   resolveProjectId,
   type StagedFile
 } from './quick-task-helpers.ts';
-import {
-  readStoredDefaultProjectId,
-  writeStoredDefaultProjectId
-} from './quick-task-page-state.ts';
 import { ResourcePickerPanel } from './ResourcePickerPanel.tsx';
 import { StagedFilesRow } from './StagedFilesRow.tsx';
 
@@ -89,7 +85,7 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
 
   const [objective, setObjective] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState(() =>
-    resolveProjectId(projects, defaultProjectId ?? readStoredDefaultProjectId())
+    resolveProjectId(projects, defaultProjectId)
   );
   const [stagedFiles, setStagedFiles] = useState<StagedFile[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -342,8 +338,6 @@ export function QuickTaskBar({ defaultProjectId = null }: QuickTaskBarProps) {
       if (!createdObjective) {
         throw new Error('Mission was created without an objective.');
       }
-
-      writeStoredDefaultProjectId(selectedProject.id);
 
       if (shouldLaunch) {
         await launchObjective.mutateAsync({

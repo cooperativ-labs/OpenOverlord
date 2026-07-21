@@ -18,7 +18,6 @@ import {
   DialogTitle
 } from '../components/ui/dialog.tsx';
 import { api } from '../lib/api.ts';
-import { readLastUsedProjectId, writeLastUsedProjectId } from '../lib/last-used-project.ts';
 import {
   readMyMissionsWorkspaceFilter,
   writeMyMissionsWorkspaceFilter
@@ -310,12 +309,12 @@ export function MyMissionsPage() {
   );
 
   const defaultCreateProjectId = useMemo(() => {
-    const lastUsedProjectId = readLastUsedProjectId();
-    if (lastUsedProjectId && projects.some(project => project.id === lastUsedProjectId)) {
-      return lastUsedProjectId;
+    const defaultProjectId = meta.data?.defaultProjectId;
+    if (defaultProjectId && projects.some(project => project.id === defaultProjectId)) {
+      return defaultProjectId;
     }
     return projects[0]?.id ?? '';
-  }, [projects]);
+  }, [meta.data?.defaultProjectId, projects]);
 
   // Every merged column key gets a slot (even empty ones) so cards can be dropped
   // into currently-empty columns.
@@ -465,7 +464,6 @@ export function MyMissionsPage() {
         ...(statusId ? { statusId } : {}),
         ...(tagIds.length > 0 ? { tagIds } : {})
       });
-      writeLastUsedProjectId(targetProjectId);
       return { missionId: detail.id };
     },
     [createMission, defaultCreateProjectId, projects, activeWorkspaceId, merged.byKey]

@@ -37,6 +37,7 @@ import type {
   CreateWebhookSubscriptionResultDto,
   CreateWorkspaceBody,
   CreateWorkspaceStatusBody,
+  DefaultProjectPreferenceDto,
   DeliveryDto,
   ExecutionRequestDto,
   FileChangeDto,
@@ -270,6 +271,12 @@ export const api = {
 
   getProfile: () => request<ProfileDto>('GET', '/api/profile'),
   updateProfile: (body: UpdateProfileBody) => request<ProfileDto>('PATCH', '/api/profile', body),
+  getDefaultProject: () =>
+    request<DefaultProjectPreferenceDto>('GET', '/api/profile/default-project'),
+  setDefaultProject: (projectId: string) =>
+    request<DefaultProjectPreferenceDto>('PUT', '/api/profile/default-project', { projectId }),
+  clearDefaultProject: () =>
+    request<DefaultProjectPreferenceDto>('DELETE', '/api/profile/default-project'),
 
   /**
    * Core upload service: stream a single image File to a storage bucket and get
@@ -312,8 +319,6 @@ export const api = {
   listWorkspaces: () => request<WorkspaceDto[]>('GET', '/api/workspaces'),
   createWorkspace: (body: CreateWorkspaceBody) =>
     request<WorkspaceDto>('POST', '/api/workspaces', body),
-  activateWorkspace: (id: string) =>
-    request<WorkspaceDto[]>('POST', `/api/workspaces/${id}/activate`),
   updateWorkspace: (id: string, body: UpdateWorkspaceBody) =>
     request<WorkspaceDto>('PATCH', `/api/workspaces/${id}`, body),
   deleteWorkspace: (id: string) => request<WorkspaceDto[]>('DELETE', `/api/workspaces/${id}`),

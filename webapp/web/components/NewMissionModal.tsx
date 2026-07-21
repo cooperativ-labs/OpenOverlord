@@ -20,7 +20,6 @@ import {
 } from '@/components/ui/dropdown-menu.tsx';
 import { api } from '@/lib/api.ts';
 import { buildDueDatetime } from '@/lib/due-datetime.ts';
-import { readLastUsedProjectId, writeLastUsedProjectId } from '@/lib/last-used-project.ts';
 import {
   executionTargetAvailability,
   objectiveResourceConnection
@@ -30,6 +29,7 @@ import {
   useAgentCatalog,
   useAllProjects,
   useCreateMission,
+  useDefaultProject,
   useLaunchObjective,
   useLaunchPreference,
   useLaunchSettings,
@@ -75,6 +75,7 @@ export function NewMissionModal({
   );
   const workspaces = useAccessibleWorkspaces();
   const createMission = useCreateMission();
+  const defaultProjectQ = useDefaultProject();
   const launchObjective = useLaunchObjective();
   const updateObjective = useUpdateObjective();
   const settingsQ = useLaunchSettings();
@@ -87,10 +88,7 @@ export function NewMissionModal({
   const [pendingAction, setPendingAction] = useState<'save' | 'run' | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const fallbackProjectId = useMemo(() => {
-    const lastUsed = readLastUsedProjectId();
-    return lastUsed && projects.some(project => project.id === lastUsed) ? lastUsed : null;
-  }, [projects]);
+  const fallbackProjectId = defaultProjectQ.data?.projectId ?? null;
 
   const selectedProjectId =
     projectId ||
@@ -246,7 +244,6 @@ export function NewMissionModal({
           })
         });
       }
-      writeLastUsedProjectId(selectedProjectId);
       const createdObjective = detail.objectives[0];
       if (!createdObjective) {
         throw new Error('Mission was created without an objective.');

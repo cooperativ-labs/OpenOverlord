@@ -35,40 +35,6 @@ import { emailOTPSenderFromEnv, verificationEmailSenderFromEnv } from './email-v
 import { ApiError } from './errors.ts';
 import { grantWorkspaceAdminRole } from './workspaces.ts';
 
-/**
- * Cookie the client automatically resends to pick which of the profile's
- * memberships is active. Set by the `/api/workspaces/:id/activate` and
- * workspace-creation routes (`backend/index.ts`); read here and validated
- * against the profile's own `workspace_users` rows below — never trusted
- * blindly, since a forged value must still resolve to an actual membership or
- * the request is rejected with 403 rather than silently falling back.
- */
-export const ACTIVE_WORKSPACE_COOKIE = 'overlord_active_workspace';
-export const ACTIVE_WORKSPACE_HEADER = 'x-overlord-active-workspace';
-
-function getCookieValue(req: Request, name: string): string | null {
-  const header = req.headers.cookie;
-  if (!header) return null;
-  for (const part of header.split(';')) {
-    const eq = part.indexOf('=');
-    if (eq === -1) continue;
-    if (part.slice(0, eq).trim() !== name) continue;
-    const value = part.slice(eq + 1).trim();
-    try {
-      return decodeURIComponent(value);
-    } catch {
-      return value;
-    }
-  }
-  return null;
-}
-
-export function getRequestedWorkspaceId(req: Request): string | null {
-  const headerValue = req.header(ACTIVE_WORKSPACE_HEADER)?.trim();
-  if (headerValue) return headerValue;
-  return getCookieValue(req, ACTIVE_WORKSPACE_COOKIE);
-}
-
 const authBaseUrl = resolveAuthBaseUrl();
 process.env.BETTER_AUTH_URL ??= authBaseUrl;
 
@@ -158,34 +124,28 @@ async function resolveMembership(
  * active `workspace_users` row in. Membership is created solely via an
  * explicit workspace creation or invitation-acceptance flow.
  *
- * `requestedWorkspaceId` (from `ACTIVE_WORKSPACE_COOKIE` /
- * `X-Overlord-Active-Workspace`) lets a profile with more than one membership
- * pick which workspace this request targets. When it points at a *live*
- * workspace, the caller must hold an active membership there or the request
- * is rejected with 403 — the IDOR guard that stops a crafted workspace id
- * from scoping a request to a workspace the caller does not belong to. When
- * it points at a workspace that no longer exists (deleted or re-keyed after
- * the preference was persisted), it is a stale preference, not an attack:
- * fall back to the default membership instead of wedging every request from
- * that session. With no requested id, the profile's oldest active membership
- * in a live workspace is used. Returns `null` when the profile has no active
- * workspace membership at all.
+ * This is a compatibility fallback for legacy unscoped handlers only; it is
+ * never selected from request transport. Resource and workspace-scoped
+ * handlers resolve their own membership. Returns `null` when the profile has
+ * no active workspace membership at all.
  */
 export async function ensureWorkspaceUser(
   profileId: string,
-  requestedWorkspaceId?: string | null
+  explicitWorkspaceId?: string | null
 ): Promise<WorkspaceMembership | null> {
-  if (requestedWorkspaceId) {
-    const workspace = await loadWorkspaceRow(requestedWorkspaceId);
+  // This optional internal argument is retained for resource-scoped callers and
+  // conformance tests. Authentication never populates it from request headers
+  // or cookies.
+  if (explicitWorkspaceId) {
+    const workspace = await loadWorkspaceRow(explicitWorkspaceId);
     if (workspace) {
-      const membershipId = await findActiveMembershipId(requestedWorkspaceId, profileId);
+      const membershipId = await findActiveMembershipId(explicitWorkspaceId, profileId);
       if (!membershipId) {
         throw new ApiError(403, 'Not an active member of the requested workspace');
       }
       return resolveMembership(membershipId, workspace);
     }
   }
-
   const defaultMembership = await requireDatabaseClient().get<{ id: string; workspace_id: string }>(
     `SELECT wu.id, wu.workspace_id FROM workspace_users wu
        JOIN workspaces w ON w.id = wu.workspace_id AND w.deleted_at IS NULL
@@ -227,11 +187,8 @@ export async function requireAuthenticatedSession(
         // (e.g. a brand-new signup with no invite). The request proceeds
         // authenticated but with no active workspace; RBAC gates below
         // (`requirePermission`/`actorCan`) reject it uniformly since they
-        // treat a null actor as having no roles. A mismatched
-        // `requestedWorkspaceId` (the client asked for a workspace it isn't
-        // a member of) throws `ApiError(403)` instead of falling through.
-        const requestedWorkspaceId = getRequestedWorkspaceId(req);
-        const membership = await ensureWorkspaceUser(session.user.id, requestedWorkspaceId);
+        // treat a null actor as having no roles.
+        const membership = await ensureWorkspaceUser(session.user.id);
         setActiveWorkspaceContext(membership?.workspace ?? null);
         setActiveWorkspaceUser(membership?.workspaceUserId ?? null);
         next();
@@ -256,10 +213,7 @@ export async function requireAuthenticatedSession(
         setActiveProfileId(verified.profileId);
         // `membership.workspace` is already backed by a live workspace row —
         // `ensureWorkspaceUser` resolved it moments ago — so it is used directly.
-        const membership = await ensureWorkspaceUser(
-          verified.profileId,
-          getRequestedWorkspaceId(req)
-        );
+        const membership = await ensureWorkspaceUser(verified.profileId);
         const scopeGrants = await listActiveTokenScopeGrants(authDomainDatabase(), verified.id);
         setActiveWorkspaceContext(membership?.workspace ?? null);
         setActiveTokenAuth({

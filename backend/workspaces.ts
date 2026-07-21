@@ -1467,16 +1467,3 @@ export async function removeWorkspaceMember(
     );
   });
 }
-
-/** Switch the active workspace and return the refreshed workspace list. */
-export async function activateWorkspace(id: string): Promise<WorkspaceDto[]> {
-  // Validate that the *calling* profile — not just some member of `id` — has
-  // an active membership before switching. This is per-user: it changes this
-  // caller's own active workspace (this request's context, persisted for
-  // future requests via the route's `ACTIVE_WORKSPACE_COOKIE`), never a
-  // process-wide default that would affect other tenants' sessions.
-  await requireWorkspaceMember(id);
-  if (!(await setActiveWorkspace(id))) throw new ApiError(404, 'Workspace not found');
-  syncSqlStudioForWorkspace({ enabled: await readSqlStudioEnabled({ workspaceId: id }) });
-  return listWorkspaces();
-}

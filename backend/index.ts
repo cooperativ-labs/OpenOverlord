@@ -61,7 +61,6 @@ import {
   syncSqlStudioForWorkspace
 } from './sql-studio/sql-studio-manager.ts';
 import {
-  ACTIVE_WORKSPACE_COOKIE,
   auth,
   authNodeHandler,
   getAllowedBrowserOrigins,
@@ -119,6 +118,7 @@ import {
   createProjectTag,
   createUserToken,
   createWorkspaceStatus,
+  clearDefaultProjectPreference,
   deleteMission,
   deleteObjective,
   deleteProject,
@@ -130,6 +130,7 @@ import {
   generateMissionTitle,
   getMissionDetail,
   getMissionSchedule,
+  getDefaultProjectPreference,
   getProfile,
   getProject,
   getProjectRepository,
@@ -162,6 +163,7 @@ import {
   reorderWorkspaceStatuses,
   revokeUserToken,
   searchMissions,
+  setDefaultProjectPreference,
   updateMission,
   updateObjective,
   updateProfile,
@@ -198,7 +200,6 @@ import {
 import { readSqlStudioEnabled } from './workspace-settings.ts';
 import {
   acceptWorkspaceInvitation,
-  activateWorkspace,
   createOrganizationOnboarding,
   createWorkspace,
   deleteWorkspace,
@@ -297,7 +298,6 @@ app.use(
       'Authorization',
       'Content-Type',
       'X-Upload-Filename',
-      'X-Overlord-Active-Workspace',
       'X-Overlord-Device-Fingerprint',
       'X-Overlord-Device-Label',
       'X-Overlord-Device-Platform'
@@ -426,25 +426,6 @@ app.use((req, res, next) => {
 app.get('/api/auth-providers', (_req, res) => {
   res.json({ email: true, github: githubOAuthConfigFromEnv() !== null });
 });
-
-/**
- * Persist which workspace a browser session defaults to on future requests
- * (the per-user replacement for the old process-global active workspace —
- * see `ensureWorkspaceUser`/`ACTIVE_WORKSPACE_COOKIE` in `backend/auth.ts`).
- * `httpOnly` + `sameSite: 'lax'` since this is a same-site preference, not a
- * credential; membership is still re-validated from `workspace_users` on every
- * request, so a forged/stale value only ever downgrades to a 403 or the
- * caller's default membership, never an escalation.
- */
-function setActiveWorkspaceCookie(res: Response, workspaceId: string): void {
-  res.cookie(ACTIVE_WORKSPACE_COOKIE, workspaceId, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: res.req.secure,
-    path: '/',
-    maxAge: 400 * 24 * 60 * 60 * 1000
-  });
-}
 
 // Small wrapper so handlers can throw ApiError / Error and get a clean response.
 // Also triggers an immediate realtime poll after mutations for snappy echoes.
@@ -590,7 +571,6 @@ app.post(
   handle(
     async (req, res) => {
       const result = await createOrganizationOnboarding(req.body);
-      setActiveWorkspaceCookie(res, result.id);
       realtime.refreshAll();
       return buildMeta();
     },
@@ -667,7 +647,6 @@ app.post(
           workspaceUserId: getActorWorkspaceUserId()
         });
       const result = await createWorkspace(req.body);
-      setActiveWorkspaceCookie(res, result.id);
       realtime.refreshAll();
       return result;
     },
@@ -693,10 +672,6 @@ app.delete(
   handle(
     async (req, res) => {
       const result = await deleteWorkspace(req.params.id);
-      // Deleting may switch the active workspace: re-point this session's
-      // preference cookie so it never keeps referencing the deleted workspace.
-      const active = result.find(workspace => workspace.isActive);
-      if (active) setActiveWorkspaceCookie(res, active.id);
       // Resync all subscribers.
       realtime.refreshAll();
       return result;
@@ -755,7 +730,6 @@ app.post(
   handle(
     async (req, res) => {
       const result = await acceptWorkspaceInvitation(req.body);
-      setActiveWorkspaceCookie(res, result.id);
       realtime.refreshAll();
       return result;
     },
@@ -772,18 +746,6 @@ app.get(
       res.send(exportFile.content);
     },
     { requires: PERMISSIONS.WORKSPACE_READ }
-  )
-);
-app.post(
-  '/api/workspaces/:id/activate',
-  handle(
-    async (req, res) => {
-      const result = await activateWorkspace(req.params.id);
-      setActiveWorkspaceCookie(res, req.params.id);
-      realtime.refreshAll();
-      return result;
-    },
-    { mutates: true, requires: PERMISSIONS.WORKSPACE_ACTIVATE }
   )
 );
 // Per-workspace project listing, now that the sidebar can render every
@@ -877,6 +839,24 @@ app.get(
 app.patch(
   '/api/profile',
   handle(req => updateProfile(req.body), {
+    mutates: true,
+    requires: PERMISSIONS.PROFILE_SELF_UPDATE
+  })
+);
+app.get(
+  '/api/profile/default-project',
+  handle(() => getDefaultProjectPreference(), { requires: PERMISSIONS.PROFILE_SELF_READ })
+);
+app.put(
+  '/api/profile/default-project',
+  handle(
+    req => setDefaultProjectPreference(String(req.body?.projectId ?? '')),
+    { mutates: true, requires: PERMISSIONS.PROFILE_SELF_UPDATE }
+  )
+);
+app.delete(
+  '/api/profile/default-project',
+  handle(() => clearDefaultProjectPreference(), {
     mutates: true,
     requires: PERMISSIONS.PROFILE_SELF_UPDATE
   })
@@ -1303,13 +1283,9 @@ app.get(
   handle(req => listMissions(req.params.id))
 );
 
-// Extension routers must run behind `requireAuthenticatedSession` exactly like
-// every `/api` route: it establishes the per-request context and resolves the
-// caller's active workspace from the `X-Overlord-Active-Workspace` header/cookie
-// (see `setActiveWorkspaceContext` in `backend/auth.ts`). Without it these routes
-// fall back to the process-global default workspace, so linking a project that
-// lives in any non-default workspace scopes the lookup to the wrong tenant and
-// 404s ("Project not found") even though the project exists.
+// Extension routers run behind `requireAuthenticatedSession` exactly like every
+// `/api` route. Authentication resolves the profile; extension resource routes
+// derive their workspace from the named project or mission before authorization.
 app.use('/ext/everhour', requireAuthenticatedSession, createEverhourExtensionRouter(handle));
 app.use('/ext/github', requireAuthenticatedSession, createGitHubExtensionRouter(handle));
 app.patch(

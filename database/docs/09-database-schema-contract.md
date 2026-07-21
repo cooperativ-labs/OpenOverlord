@@ -647,7 +647,7 @@ Stores user-specific project preferences without overloading project resource di
 | `workspace_id`      | Id           | yes      | FK to `workspaces`.                                     |
 | `project_id`        | Id           | yes      | FK to `projects`.                                       |
 | `workspace_user_id` | Id           | yes      | FK to `workspace_users`.                                |
-| `preferences_json`  | Json         | yes      | UI preferences, recently used options, and local hints. |
+| `preferences_json`  | Json         | yes      | UI preferences, recently used options, and local hints. `overlord.defaultProject: true` is the account-wide default-project marker: at most one readable active row per profile may carry it across all of that profile's memberships; it grants no access and stale/inaccessible markers read as no default. |
 | `created_at`        | TimestampUTC | yes      |                                                         |
 | `updated_at`        | TimestampUTC | yes      |                                                         |
 | `deleted_at`        | TimestampUTC | no       | Tombstone.                                              |
@@ -2325,8 +2325,9 @@ Recommended boundary:
   - `POST /api/virtual-targets/v1/missions/:id/actions` — authorizes an explicit `start`/`stop`/`archive`/`delete`/`enqueue`/`retry`/`dequeue` action and delegates it to the target. Target output becomes an observation and cannot change mission completion.
 - `/missions/:id/branch/action` accepts additive `resourceKey`, defaulting to the project's primary resource, so branch actions target the intended repository in multi-resource projects.
 - `/uploads/:bucketKey` (core upload service) accepts raw image bytes, persists them to the `storage_buckets` backend, records the matching object table row (e.g. `user_images`), and returns the stored descriptor; `/storage/:bucketKey/:storageKey` first authorizes by the logical storage location (`user_image:read`, `workspace_image:read`, or `attachment:read`), then serves bytes only after an exact active metadata lookup for `(storage_bucket_id, storage_key)`.
-- `/sync/changes?after=<seq>` for realtime catch-up and local DB sync, returning `SyncChangesDto { changes, cursor, hasMore }` in ascending `entity_changes.seq` order.
-- `/realtime` SSE/WebSocket endpoint backed by `entity_changes` (with compatibility alias `/api/stream`); compact change DTOs include `changedFields: string[]` parsed from `entity_changes.changed_fields_json`.
+- `/api/profile/default-project` (`GET`, `PUT { projectId }`, `DELETE`) is the authenticated profile-navigation preference surface. It returns `{ projectId: string | null }`; writes authorize the named project, atomically clear the marker from all profile memberships, then mark the selected row. `/api/meta.defaultProjectId` is additive bootstrap metadata. This preference never scopes a request or grants access.
+- `/sync/changes?after=<seq>` for realtime catch-up and local DB sync, returning `SyncChangesDto { changes, cursor, hasMore }` in ascending `entity_changes.seq` order. The server scans the global sequence in bounded windows, filters to the caller's current readable workspace memberships before projection, and advances `cursor` to the last scanned sequence even if no rows were visible.
+- `/realtime` SSE/WebSocket endpoint backed by `entity_changes` (with compatibility alias `/api/stream`); compact change DTOs include `changedFields: string[]` parsed from `entity_changes.changed_fields_json` and `workspaceId`. Connection admission requires at least one readable membership; navigation state is not transport scope.
 - `/api/webhooks` (list/create), `/api/webhooks/:id` (update/soft-delete), `/api/webhooks/:id/rotate-secret`, `/api/webhooks/:id/test`, `/api/webhooks/:id/deliveries` (paginated attempt log), `/api/webhooks/:id/deliveries/:outboxId/redeliver` — workspace-scoped webhook subscription management, gated by `webhook:*` permissions.
 - `/api/onboarding` (`POST`, zero-membership users only) — creates an organization, a default (`general`) workspace, the caller's membership, and the `ADMIN` role in one transaction; shared verbatim by the web onboarding screen and `ovld org-setup`. `/api/organizations` (list for caller), `/api/organizations/:id` (update, org-admin gated), `/api/organizations/:id/admins` (list/add/remove, org-admin gated) — "org admin" is derived (`ADMIN` in every constituent workspace), not a stored role. `/api/workspaces/:id/projects` (or `?workspaceId=`) for per-workspace project listing now that the sidebar can render several workspaces of one organization at once.
 - `/api/workspaces/:id/execution-targets` (`GET`) — an authenticated workspace-member projection of every non-deleted target in the specified workspace, including target identity/type/status, safe owner display metadata, reachability, and active-member access count. It never returns `connection_json`, credentials, or mutable access information; project launch selection continues to use the acting member's eligible-target surface.
@@ -2334,7 +2335,7 @@ Recommended boundary:
 REST handlers should:
 
 - Authenticate to a user/token/session identity.
-- Authorize by domain permission.
+- Resolve authorization from an explicit workspace path/body, the named resource's workspace, or each membership in an account-wide operation. They must not read a workspace header or cookie as request scope.
 - Run service-layer state transitions in transactions.
 - Append `mission_events` and `entity_changes`.
 - Use `idempotency_keys` for retried writes.

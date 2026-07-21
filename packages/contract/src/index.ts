@@ -180,6 +180,13 @@ export interface MetaDto {
   workspaces: WorkspaceDto[];
   /** The server's default-scope workspace (preference echo for protocol/CLI); `null` pre-onboarding. */
   workspace: WorkspaceDto | null;
+  /** Account-wide navigation/create preference; it never scopes authorization. */
+  defaultProjectId: string | null;
+}
+
+/** Authenticated profile's account-wide navigation/create preference. */
+export interface DefaultProjectPreferenceDto {
+  projectId: string | null;
 }
 
 /**

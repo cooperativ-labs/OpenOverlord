@@ -465,7 +465,7 @@ test('admins can promote and demote members, but cannot remove or demote the las
 });
 
 test('an invited MEMBER can switch (activate) between the workspaces they belong to', async () => {
-  // Regression: the `/api/workspaces/:id/activate` route is gated by
+  // Regression: workspace-scoped routes are gated by
   // `WORKSPACE_ACTIVATE`. Before the fix the default MEMBER role lacked that
   // grant, so an invited member could see a workspace in their switcher but
   // every activate call 403'd — the switch appeared to fail and they were left

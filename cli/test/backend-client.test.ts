@@ -154,7 +154,7 @@ default_agent = "claude"
   }
 });
 
-test('forWorkspace sends the active-workspace header', async () => {
+test('backend requests do not send workspace-selection headers', async () => {
   const home = mkdtempSync(path.join(tmpdir(), 'overlord-backend-client-workspace-'));
   const previousHome = process.env.OVLD_HOME;
   const previousEnv = isolateBackendClientEnv();
@@ -177,8 +177,8 @@ backend_url = "https://cloud.overlord.test"
   }) as typeof fetch;
 
   try {
-    await createBackendClient().forWorkspace('workspace-b').get('/api/meta');
-    assert.equal(capturedHeaders?.get('x-overlord-active-workspace'), 'workspace-b');
+    await createBackendClient().get('/api/meta');
+    assert.equal(capturedHeaders?.has('x-overlord-active-workspace'), false);
   } finally {
     globalThis.fetch = originalFetch;
     restoreBackendClientEnv(previousEnv);

@@ -910,32 +910,10 @@ export async function runProtocolCommand({
       })
   };
 
-  let result: unknown;
-  if (subcommand === 'search-missions' && !flagValue(parsed.flags, '--project-id')) {
-    const workspaces = await runtime.backend.get<Array<{ id: string }>>('/api/workspaces');
-    const perWorkspace = await Promise.all(
-      workspaces.map(workspace =>
-        runtime.backend.forWorkspace(workspace.id).post<unknown[]>({
-          path: '/api/protocol/search-missions',
-          body: protocolBody
-        })
-      )
-    );
-    const limit = Number.parseInt(flagValue(parsed.flags, '--limit') ?? '25', 10);
-    result = perWorkspace
-      .flat()
-      .sort((left, right) => {
-        const leftUpdated = String(asRecord(left).updatedAt ?? '');
-        const rightUpdated = String(asRecord(right).updatedAt ?? '');
-        return rightUpdated.localeCompare(leftUpdated);
-      })
-      .slice(0, Number.isFinite(limit) ? limit : 25);
-  } else {
-    result = await runtime.backend.post<unknown>({
-      path: `/api/protocol/${encodeURIComponent(subcommand)}`,
-      body: protocolBody
-    });
-  }
+  const result = await runtime.backend.post<unknown>({
+    path: `/api/protocol/${encodeURIComponent(subcommand)}`,
+    body: protocolBody
+  });
 
   // Record the dirty-file baseline once a work session begins, so deliver can
   // subtract pre-existing/concurrent changes from this run's reported delta.
@@ -1283,11 +1261,7 @@ export async function runManagementCommand({
       const mission = await runtime.backend.get<unknown>(
         `/api/missions/${encodeURIComponent(missionId)}`
       );
-      const missionWorkspaceId = asRecord(mission).workspaceId;
-      const scopedRuntime: CliRuntime =
-        typeof missionWorkspaceId === 'string'
-          ? { ...runtime, backend: runtime.backend.forWorkspace(missionWorkspaceId) }
-          : runtime;
+      const scopedRuntime: CliRuntime = runtime;
       const terminal = await resolveTerminalLaunchSettings({
         runtime: scopedRuntime,
         flags: parsed.flags
@@ -1377,33 +1351,10 @@ export async function runManagementCommand({
       if (projectId) params.set('projectId', projectId);
       if (limit) params.set('limit', limit);
       let missions: unknown[];
-      if (projectId) {
-        const project = await runtime.backend.get<{ workspaceId: string }>(
-          `/api/projects/${encodeURIComponent(projectId)}`
-        );
-        const result = await runtime.backend
-          .forWorkspace(project.workspaceId)
-          .get<{ missions: unknown[] }>(`/api/missions/search?${params}`);
-        missions = result.missions;
-      } else {
-        const workspaces = await runtime.backend.get<Array<{ id: string }>>('/api/workspaces');
-        const results = await Promise.all(
-          workspaces.map(workspace =>
-            runtime.backend
-              .forWorkspace(workspace.id)
-              .get<{ missions: unknown[] }>(`/api/missions/search?${params}`)
-          )
-        );
-        const parsedLimit = Number.parseInt(limit ?? '25', 10);
-        missions = results
-          .flatMap(result => result.missions)
-          .sort((left, right) =>
-            String(asRecord(right).updatedAt ?? '').localeCompare(
-              String(asRecord(left).updatedAt ?? '')
-            )
-          )
-          .slice(0, Number.isFinite(parsedLimit) ? parsedLimit : 25);
-      }
+      const result = await runtime.backend.get<{ missions: unknown[] }>(
+        `/api/missions/search?${params}`
+      );
+      missions = result.missions;
       if (json) printJson({ missions });
       else {
         for (const mission of missions) {

@@ -1,7 +1,6 @@
 import {
   apiFetchCredentials,
   clearInMemoryAuthTokens,
-  getActiveWorkspaceHeader,
   getAuthorizationHeader,
   isRemoteBackend,
   resolveApiUrl
@@ -17,18 +16,9 @@ function applyAuthorizationHeader(headers: Headers): boolean {
   return true;
 }
 
-function applyActiveWorkspaceHeader(headers: Headers): void {
-  const activeWorkspaceHeader = getActiveWorkspaceHeader();
-  if (!activeWorkspaceHeader) return;
-  for (const [key, value] of Object.entries(activeWorkspaceHeader)) {
-    headers.set(key, value);
-  }
-}
-
 export async function fetchApi(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   const sentAuthorization = applyAuthorizationHeader(headers);
-  applyActiveWorkspaceHeader(headers);
   for (const [key, value] of Object.entries(await remoteBackendDeviceHeaders())) {
     headers.set(key, value);
   }

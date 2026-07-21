@@ -336,11 +336,8 @@ export function McpPage({ onNavigateToBackend, onNavigateToTokens }: McpPageProp
               <code className="rounded bg-background px-1 py-0.5 font-mono text-xs">
                 Authorization: Bearer &lt;token&gt;
               </code>
-              . Include your active workspace with{' '}
-              <code className="rounded bg-background px-1 py-0.5 font-mono text-xs">
-                X-Overlord-Active-Workspace
-              </code>{' '}
-              when the client allows custom headers.
+              . Project and mission tools derive their workspace from the named resource; no
+              workspace-selection header is required.
             </p>
           </div>
           {onNavigateToTokens ? (

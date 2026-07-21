@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '20'
+contractVersion: '21'
 
 components:
   protocol:
@@ -131,7 +131,7 @@ components:
       - 'REST auth integration points'
       - 'desktop OAuth handoff: browser-only GET /api/auth/desktop/github starts only the configured GitHub provider with the fixed desktop callback, so Better Auth writes its OAuth state cookie in the system browser; GET /api/auth/desktop/callback derives a short-lived opaque ticket from an authenticated browser session and redirects only to overlord://auth/callback; POST /api/auth/desktop/exchange consumes it once and returns a Better Auth session token only to the Electron main process'
       - 'hosted-web OAuth handoff: browser-only GET /api/auth/browser/callback accepts only a configured trusted web origin, derives a short-lived opaque ticket from an authenticated browser session, and redirects to that origin; POST /api/auth/browser/exchange consumes it once and returns a Better Auth session token to the web client without placing a credential in the callback URL'
-      - 'SSE/WebSocket realtime endpoint (GET /realtime, compatibility GET /api/stream) and GET /sync/changes?after=<seq> catch-up read'
+      - 'SSE/WebSocket realtime endpoint (GET /realtime, compatibility GET /api/stream) and GET /sync/changes?after=<seq> catch-up read; both aggregate current readable memberships, filter before EntityChangeDto projection, expose workspaceId, and advance the global cursor past filtered rows'
       - 'SQL Studio launch metadata exposed through /api/meta'
       - 'webhook subscription management (/api/webhooks*: list/create, update/soft-delete, rotate-secret, test, deliveries, redeliver), gated by webhook:* permissions'
       - 'in-process webhook dispatcher (backend/webhook-dispatcher.ts), a RealtimeHub-style singleton polling loop claiming outbox_messages rows and delivering HMAC-signed HTTP POSTs; SSRF guards (https-only, private-network block) apply to external endpoints, with an OVERLORD_WEBHOOK_INTERNAL_HOSTS allowlist (plus implicit localhost in Local edition) exempting colocated consumers'
@@ -140,9 +140,9 @@ components:
       - 'organization management endpoints: list organizations for the caller, update an organization (org-admin gated), list/add/remove organization admins (add/remove maintains the invariant that an org admin is ADMIN of every constituent workspace)'
       - 'shared onboarding endpoint (POST /api/onboarding, zero-membership users only): creates an organization, a default workspace, membership, and ADMIN role in one transaction; used verbatim by the web onboarding screen and the ovld org-setup CLI command'
       - 'project APIs support explicit target workspace context for multi-workspace organization UIs: CreateProjectBody.workspaceId and GET /api/workspaces/:id/statuses'
-      - "workspace agent catalog management for workspaces.settings_json.agentCatalog: active-workspace routes (GET/PUT /api/agent-catalog, POST /api/agent-catalog/refresh) plus workspace-scoped equivalents (GET/PUT /api/workspaces/:id/agent-catalog, POST /api/workspaces/:id/agent-catalog/refresh) authorized against the target workspace's own membership (launch:read to view, launch:configure to mutate; non-membership reads as 404)"
-      - "workspace launch-settings management: active-workspace routes (GET /api/launch-settings, PATCH /api/launch-settings/agents/:agentKey, /terminal-profile, /worktree-branch-automation) plus workspace-scoped equivalents under /api/workspaces/:id/launch-settings, authorized against the target workspace's own membership (launch:read to view, launch:configure to mutate; non-membership reads as 404)"
-      - "resource-owned REST and extension operations derive the named resource's workspace and the caller's matching workspace_users membership before authorization, persistence, external-provider access, and entity_changes attribution; active workspace is only a navigation or create default"
+      - "workspace agent catalog and launch-settings management uses only workspace-scoped routes under /api/workspaces/:id, authorized against the target workspace's own membership (launch:read to view, launch:configure to mutate; non-membership reads as 404)"
+      - "authenticated default-project preference routes GET/PUT/DELETE /api/profile/default-project use the account-wide project_user_preferences.preferences_json.overlord.defaultProject marker; it grants no access and defaultProjectId is additive on /api/meta"
+      - "resource-owned REST and extension operations derive the named resource's workspace and the caller's matching workspace_users membership before authorization, persistence, external-provider access, and entity_changes attribution; account-wide reads aggregate authorized memberships server-side and parentless creates name a workspace when ambiguous"
       - "workspace execution-target projection: GET /api/workspaces/:id/execution-targets returns all non-deleted target identity/status/owner display metadata, reachability, and active workspace-member access count to an authenticated member; never connection_json, credentials, target registration, creation, or access mutation; project selection remains limited to the acting member's eligible targets. Workspace admins may rename a target label via PATCH /api/workspaces/:id/execution-targets/:targetId { label }"
       - 'storage routes for the organization-images bucket key (/api/storage/organization-images/…) with a PUBLIC organization_image:read grant'
       - 'hosted MCP OAuth endpoints: POST /oauth/register, POST /oauth/token, POST /oauth/revoke, GET /oauth/authorize, POST /oauth/authorize/request, POST /oauth/authorize/approve'
@@ -364,8 +364,7 @@ interactionSurfaces:
     rules:
       - 'MCP handlers must resolve the caller through the Auth Layer before listing or invoking tools'
       - 'Missing or failed authentication returns an OAuth-compatible WWW-Authenticate: Bearer challenge'
-      - 'The active workspace is resolved by the Auth Layer from the bearer credential plus X-Overlord-Active-Workspace when supplied'
-      - 'MCP must not silently select another workspace after auth'
+      - 'MCP authentication resolves the profile/credential without selecting an ambient workspace; resource operations derive scope and account-wide tools aggregate authorized memberships'
       - 'OAuth approval creates mission_lifecycle-scoped USER_TOKEN access tokens and does not issue refresh tokens through contract version 2'
       - 'OAuth resource parameters, when supplied, are bound through approval and token exchange to the canonical hosted /mcp resource; mismatches return invalid_target'
 
@@ -388,9 +387,8 @@ interactionSurfaces:
     transport: configured-better-auth-adapter-and-direct-query
     rules:
       - 'Auth tables (user, session, account, verification, apikey) are auth-internal; no other component reads them directly'
-      - 'Identity bridge reads workspace_users and profiles where profiles.id matches the Better Auth user id'
-      - 'Active workspace preferences from the overlord_active_workspace cookie or X-Overlord-Active-Workspace header are accepted only after validating the authenticated profile has an active workspace_users membership'
-      - 'Role resolution reads role_assignments by workspace_user_id and workspace_id'
+      - 'Identity bridge reads profiles where profiles.id matches the Better Auth user id, then resolves workspace_users only for explicit resource/workspace scope or account-wide aggregation'
+      - 'Role resolution reads role_assignments by resource-derived or explicit workspace_user_id and workspace_id; no cookie or request header selects membership'
       - 'Auth Layer must not write to core domain tables (missions, projects, etc.) itself'
       - 'Exception: the deleteUser beforeDelete hook invokes a backend-supplied onDeleteUser(userId) callback (see backend/account-deletion.ts) to hard-purge the RESTRICT children of profiles and workspace_users (workspace_users, user_tokens, user_images, role_assignments, workspace_user_execution_targets, project_user_preferences) before the auth user row is hard-deleted; the write happens in the caller-supplied callback, not in Auth Layer code, mirroring the serviceToAutomations delegation pattern'
 
@@ -426,7 +424,7 @@ interactionSurfaces:
     rules:
       - 'The shell must not fork or modify the SPA'
       - 'Local mode: Better Auth session cookies work natively on the shared loopback origin; the shell injects no headers and stores no tokens for in-app requests'
-      - 'Remote mode (cross-origin): only the active profile Better Auth session bearer token (safeStorage/keychain) is injected into the SPA API and realtime clients instead of cross-site cookies; the desktop never reads or mints USER_TOKENs for in-app requests, while spawned CLI/headless clients retain their separate USER_TOKEN credential. The SPA may send X-Overlord-Active-Workspace for the selected workspace, which the backend validates against workspace_users before scoping the request'
+      - 'Remote mode (cross-origin): only the active profile Better Auth session bearer token (safeStorage/keychain) is injected into the SPA API and realtime clients instead of cross-site cookies; the desktop never reads or mints USER_TOKENs for in-app requests, while spawned CLI/headless clients retain their separate USER_TOKEN credential. Selected workspace remains client-side navigation state and is never sent as request scope'
       - 'Navigation stays scoped to the shell origin in both modes; the remote REST + wss origins are added to CSP connect-src per the active profile'
       - 'Desktop-only affordances are exposed only via the feature-detected window.overlord preload bridge'
       - 'Remote social OAuth uses an opaque, single-use, short-lived handoff ticket between the backend callback and Electron main; the custom URL and renderer never receive a session, bearer, GitHub access token, or client secret'

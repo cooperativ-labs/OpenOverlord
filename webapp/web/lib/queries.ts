@@ -103,6 +103,7 @@ export const keys = {
   webhookDeliveries: (id: string) => ['webhooks', id, 'deliveries'] as const,
   organizations: ['organizations'] as const,
   organizationAdmins: (id: string) => ['organization', id, 'admins'] as const,
+  defaultProject: ['profile', 'default-project'] as const,
   workspaces: ['workspaces'] as const,
   workspaceMembers: (id: string) => ['workspace', id, 'members'] as const,
   workspaceExecutionTargets: (id: string) => ['workspace', id, 'execution-targets'] as const,
@@ -159,16 +160,36 @@ function invalidateAll(qc: QueryClient) {
   invalidateNonEverhourQueries(qc);
 }
 
-function persistActiveWorkspaceFromList(workspaces: WorkspaceDto[]) {
-  const active = workspaces.find(workspace => workspace.isActive);
-  if (active) persistActiveWorkspaceId(active.id);
-}
-
 // ---- Queries -------------------------------------------------------------
 
 export const useMeta = () => useQuery({ queryKey: keys.meta, queryFn: api.meta });
 
 export const useProfile = () => useQuery({ queryKey: keys.profile, queryFn: api.getProfile });
+
+export const useDefaultProject = () =>
+  useQuery({ queryKey: keys.defaultProject, queryFn: api.getDefaultProject });
+
+export function useSetDefaultProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (projectId: string) => api.setDefaultProject(projectId),
+    onSuccess: preference => {
+      qc.setQueryData(keys.defaultProject, preference);
+      void qc.invalidateQueries({ queryKey: keys.meta });
+    }
+  });
+}
+
+export function useClearDefaultProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.clearDefaultProject,
+    onSuccess: preference => {
+      qc.setQueryData(keys.defaultProject, preference);
+      void qc.invalidateQueries({ queryKey: keys.meta });
+    }
+  });
+}
 
 /**
  * Live runner queue status for the sidebar runner box. Polls on a light
@@ -595,15 +616,11 @@ export function useActivateOrganization() {
     mutationFn: async (organizationId: string) => {
       persistActiveOrganizationId(organizationId);
       const workspaces = await api.listWorkspaces();
-      const target =
-        workspaces.find(
-          workspace => workspace.organizationId === organizationId && workspace.isActive
-        ) ?? workspaces.find(workspace => workspace.organizationId === organizationId);
-      if (!target) throw new Error('No workspace found in this organization');
-      return api.activateWorkspace(target.id);
+      const hasWorkspace = workspaces.some(workspace => workspace.organizationId === organizationId);
+      if (!hasWorkspace) throw new Error('No workspace found in this organization');
+      return workspaces;
     },
-    onSuccess: data => {
-      persistActiveWorkspaceFromList(data);
+    onSuccess: () => {
       invalidateAll(qc);
     }
   });
@@ -737,18 +754,6 @@ export function useCreateWorkspace() {
   });
 }
 
-export function useActivateWorkspace() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => api.activateWorkspace(id),
-    // Switching workspace changes what every scoped query returns.
-    onSuccess: data => {
-      persistActiveWorkspaceFromList(data);
-      invalidateAll(qc);
-    }
-  });
-}
-
 export function useUpdateWorkspace() {
   const qc = useQueryClient();
   return useMutation({
@@ -763,9 +768,7 @@ export function useDeleteWorkspace() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.deleteWorkspace(id),
-    // Deleting may switch the active workspace, so the whole cache is stale.
-    onSuccess: data => {
-      persistActiveWorkspaceFromList(data);
+    onSuccess: () => {
       invalidateAll(qc);
     }
   });

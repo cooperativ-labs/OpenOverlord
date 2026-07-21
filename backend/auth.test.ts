@@ -11,7 +11,6 @@ const dbModule = await import('./db.ts');
 const { db, initDatabase, setActiveWorkspaceUser } = dbModule;
 await initDatabase();
 const { ensureWorkspaceUser } = await import('./auth.ts');
-const { getRequestedWorkspaceId } = await import('./auth.ts');
 const { DEFAULT_TEST_ORGANIZATION_ID, seedAuthenticatedOperator } =
   await import('./test-helpers.ts');
 const { createWorkspace } = await import('./workspaces.ts');
@@ -59,7 +58,7 @@ test('ensureWorkspaceUser does not auto-join a second signed-up account into any
   );
 });
 
-test('ensureWorkspaceUser resolves an explicitly requested workspace the profile belongs to', async () => {
+test('ensureWorkspaceUser resolves a member without request transport', async () => {
   const second = await createWorkspace({
     organizationId: DEFAULT_TEST_ORGANIZATION_ID,
     name: 'Explicit Request Workspace'
@@ -78,61 +77,13 @@ test('ensureWorkspaceUser resolves an explicitly requested workspace the profile
     new Date().toISOString()
   );
 
-  const membership = await ensureWorkspaceUser('multi-workspace-user', second.id);
+  const membership = await ensureWorkspaceUser('multi-workspace-user');
   assert.equal(membership?.workspaceUserId, 'multi-workspace-user-membership');
   assert.equal(membership?.workspace.id, second.id);
 });
 
-test('getRequestedWorkspaceId accepts the bearer-client header before the browser cookie', () => {
-  const req = {
-    headers: { cookie: 'overlord_active_workspace=cookie-workspace' },
-    header(name: string) {
-      return name.toLowerCase() === 'x-overlord-active-workspace' ? 'header-workspace' : undefined;
-    }
-  };
-
-  assert.equal(getRequestedWorkspaceId(req as never), 'header-workspace');
-});
-
-test('getRequestedWorkspaceId falls back to the browser cookie', () => {
-  const req = {
-    headers: { cookie: 'overlord_active_workspace=cookie-workspace' },
-    header() {
-      return undefined;
-    }
-  };
-
-  assert.equal(getRequestedWorkspaceId(req as never), 'cookie-workspace');
-});
-
-test('ensureWorkspaceUser rejects a requested workspace the profile is not a member of', async () => {
-  // A live workspace the operator does not belong to: the IDOR guard 403s.
-  insertUnaffiliatedProfile('other-tenant-user');
-  const now = new Date().toISOString();
-  db.prepare(
-    `INSERT INTO workspaces (id, organization_id, slug, name, kind, settings_json, created_at, updated_at, revision)
-     VALUES ('other-tenant-workspace', ?, 'other-tenant', 'Other Tenant', 'local', '{}', ?, ?, 1)`
-  ).run(DEFAULT_TEST_ORGANIZATION_ID, now, now);
-  db.prepare(
-    `INSERT INTO workspace_users
-       (id, workspace_id, profile_id, member_key, status, metadata_json, created_at, updated_at, revision)
-     VALUES (?, 'other-tenant-workspace', 'other-tenant-user', 'auth:other-tenant-user', 'active', '{}', ?, ?, 1)`
-  ).run('other-tenant-membership', now, now);
-
-  await assert.rejects(
-    () => ensureWorkspaceUser('operator-user', 'other-tenant-workspace'),
-    (err: unknown) => {
-      assert.ok(err instanceof Error);
-      assert.equal((err as { status?: number }).status, 403);
-      return true;
-    }
-  );
-});
-
-test('ensureWorkspaceUser treats a requested workspace that no longer exists as a stale preference', async () => {
-  // A deleted/re-keyed workspace id in the cookie must not wedge the session:
-  // it falls back to the profile's default membership instead of erroring.
-  const membership = await ensureWorkspaceUser('operator-user', 'some-workspace-that-was-deleted');
+test('ensureWorkspaceUser uses its compatibility membership without a request preference', async () => {
+  const membership = await ensureWorkspaceUser('operator-user');
   assert.equal(membership?.workspace.id, 'local-workspace');
 });
 

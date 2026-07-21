@@ -275,13 +275,6 @@ export function apiFetchCredentials(): RequestCredentials {
   return resolveAuthorizationToken() ? 'omit' : 'include';
 }
 
-export function getActiveWorkspaceHeader(): Record<string, string> | undefined {
-  if (!resolveAuthorizationToken()) return undefined;
-  const workspaceId = readActiveWorkspaceId();
-  if (!workspaceId) return undefined;
-  return { 'X-Overlord-Active-Workspace': workspaceId };
-}
-
 export function clearInMemoryAuthTokens(): void {
   sessionToken = null;
   clearBrowserSessionToken();

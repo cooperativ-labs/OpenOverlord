@@ -45,6 +45,7 @@ import type {
   CreateProjectTagBody,
   CreateUserTokenBody,
   CreateUserTokenResultDto,
+  DefaultProjectPreferenceDto,
   CreateWorkspaceStatusBody,
   DeliveryDto,
   DeliveryReportPayloadV1,
@@ -6092,6 +6093,193 @@ async function toProfileDto(row: UserRow): Promise<ProfileDto> {
 
 export async function getProfile(): Promise<ProfileDto> {
   return toProfileDto(await loadOperatorUserRow());
+}
+
+const DEFAULT_PROJECT_PREFERENCE_NAMESPACE = 'overlord';
+const DEFAULT_PROJECT_PREFERENCE_KEY = 'defaultProject';
+
+type ProjectPreferenceRow = {
+  id: string;
+  workspace_id: string;
+  project_id: string;
+  workspace_user_id: string;
+  preferences_json: string;
+  revision: number;
+};
+
+function parseProjectPreferenceJson(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function hasDefaultProjectMarker(preferences: Record<string, unknown>): boolean {
+  const namespace = preferences[DEFAULT_PROJECT_PREFERENCE_NAMESPACE];
+  return (
+    namespace !== null &&
+    typeof namespace === 'object' &&
+    !Array.isArray(namespace) &&
+    (namespace as Record<string, unknown>)[DEFAULT_PROJECT_PREFERENCE_KEY] === true
+  );
+}
+
+function withDefaultProjectMarker(
+  preferences: Record<string, unknown>,
+  isDefault: boolean
+): Record<string, unknown> {
+  const next = { ...preferences };
+  const existingNamespace = next[DEFAULT_PROJECT_PREFERENCE_NAMESPACE];
+  const namespace =
+    existingNamespace !== null &&
+    typeof existingNamespace === 'object' &&
+    !Array.isArray(existingNamespace)
+      ? { ...(existingNamespace as Record<string, unknown>) }
+      : {};
+  if (isDefault) namespace[DEFAULT_PROJECT_PREFERENCE_KEY] = true;
+  else delete namespace[DEFAULT_PROJECT_PREFERENCE_KEY];
+  if (Object.keys(namespace).length === 0) delete next[DEFAULT_PROJECT_PREFERENCE_NAMESPACE];
+  else next[DEFAULT_PROJECT_PREFERENCE_NAMESPACE] = namespace;
+  return next;
+}
+
+async function listProjectPreferenceRowsForProfile(
+  profileId: string,
+  db: DatabaseClient
+): Promise<ProjectPreferenceRow[]> {
+  return (await db.all(
+    `SELECT pup.id, pup.workspace_id, pup.project_id, pup.workspace_user_id,
+            pup.preferences_json, pup.revision
+       FROM project_user_preferences pup
+       JOIN workspace_users wu
+         ON wu.id = pup.workspace_user_id
+        AND wu.profile_id = ?
+        AND wu.status = 'active'
+        AND wu.deleted_at IS NULL
+       JOIN workspaces w ON w.id = pup.workspace_id AND w.deleted_at IS NULL
+      WHERE pup.deleted_at IS NULL`,
+    [profileId]
+  )) as ProjectPreferenceRow[];
+}
+
+/**
+ * Read the account-wide default-project marker. A marker is navigation state,
+ * not authority: an archived, deleted, or no-longer-readable project returns
+ * `null` without mutating the stored preference.
+ */
+export async function getDefaultProjectPreference(): Promise<DefaultProjectPreferenceDto> {
+  const db = requireDatabaseClient();
+  const profileId = await resolveActiveProfileId(db);
+  if (!profileId) return { projectId: null };
+  const rows = await listProjectPreferenceRowsForProfile(profileId, db);
+  for (const row of rows) {
+    if (!hasDefaultProjectMarker(parseProjectPreferenceJson(row.preferences_json))) continue;
+    const project = await db.get<{ id: string }>(
+      `SELECT p.id
+         FROM projects p
+         JOIN workspace_users wu
+           ON wu.id = ?
+          AND wu.workspace_id = p.workspace_id
+          AND wu.profile_id = ?
+          AND wu.status = 'active'
+          AND wu.deleted_at IS NULL
+        WHERE p.id = ? AND p.workspace_id = ? AND p.status = 'active' AND p.deleted_at IS NULL`,
+      [row.workspace_user_id, profileId, row.project_id, row.workspace_id]
+    );
+    if (project) return { projectId: project.id };
+  }
+  return { projectId: null };
+}
+
+async function updateDefaultProjectPreference(projectId: string | null): Promise<DefaultProjectPreferenceDto> {
+  return requireDatabaseClient().transaction(async tx => {
+    const profileId = await resolveActiveProfileId(tx);
+    if (!profileId) throw new ApiError(401, 'Authentication required');
+
+    let selectedScope: { workspaceId: string; workspaceUserId: string } | null = null;
+    if (projectId) {
+      selectedScope = await requireProjectPermission({
+        projectId,
+        permission: PERMISSIONS.PROJECT_READ,
+        db: tx
+      });
+      const activeProject = await tx.get<{ id: string }>(
+        `SELECT id FROM projects
+          WHERE id = ? AND workspace_id = ? AND status = 'active' AND deleted_at IS NULL`,
+        [projectId, selectedScope.workspaceId]
+      );
+      if (!activeProject) throw new ApiError(404, 'Project not found');
+    }
+
+    const now = nowIso();
+    const rows = await listProjectPreferenceRowsForProfile(profileId, tx);
+    let selectedRow = projectId
+      ? rows.find(
+          row =>
+            row.project_id === projectId && row.workspace_user_id === selectedScope?.workspaceUserId
+        )
+      : undefined;
+
+    for (const row of rows) {
+      const shouldBeDefault =
+        projectId !== null &&
+        row.project_id === projectId &&
+        row.workspace_user_id === selectedScope?.workspaceUserId;
+      const preferences = parseProjectPreferenceJson(row.preferences_json);
+      if (hasDefaultProjectMarker(preferences) === shouldBeDefault) continue;
+      await tx.run(
+        `UPDATE project_user_preferences
+            SET preferences_json = ?, updated_at = ?, revision = revision + 1
+          WHERE id = ? AND revision = ?`,
+        [JSON.stringify(withDefaultProjectMarker(preferences, shouldBeDefault)), now, row.id, row.revision]
+      );
+    }
+
+    if (projectId && selectedScope && !selectedRow) {
+      selectedRow = {
+        id: newId(),
+        workspace_id: selectedScope.workspaceId,
+        project_id: projectId,
+        workspace_user_id: selectedScope.workspaceUserId,
+        preferences_json: '{}',
+        revision: 1
+      };
+      await tx.run(
+        `INSERT INTO project_user_preferences
+           (id, workspace_id, project_id, workspace_user_id, preferences_json,
+            created_at, updated_at, revision)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          selectedRow.id,
+          selectedRow.workspace_id,
+          selectedRow.project_id,
+          selectedRow.workspace_user_id,
+          JSON.stringify(withDefaultProjectMarker({}, true)),
+          now,
+          now,
+          1
+        ]
+      );
+    }
+
+    return { projectId };
+  });
+}
+
+export async function setDefaultProjectPreference(
+  projectId: string
+): Promise<DefaultProjectPreferenceDto> {
+  const normalized = projectId.trim();
+  if (!normalized) throw new ApiError(400, 'projectId is required');
+  return updateDefaultProjectPreference(normalized);
+}
+
+export async function clearDefaultProjectPreference(): Promise<DefaultProjectPreferenceDto> {
+  return updateDefaultProjectPreference(null);
 }
 
 export async function updateProfile(body: UpdateProfileBody): Promise<ProfileDto> {

@@ -5,8 +5,6 @@ import { CliError } from './errors.js';
 
 export type BackendClient = {
   baseUrl: string;
-  /** Return a client whose requests select one validated workspace membership. */
-  forWorkspace: (workspaceId: string) => BackendClient;
   health: () => Promise<{ ok: boolean; [key: string]: unknown }>;
   get: <T>(path: string) => Promise<T>;
   post: <T>({ path, body }: { path: string; body?: unknown }) => Promise<T>;
@@ -135,7 +133,7 @@ function errorMessageFromJson(value: unknown): string | null {
   return parts.join(' — ');
 }
 
-export function createBackendClient({ workspaceId }: { workspaceId?: string } = {}): BackendClient {
+export function createBackendClient(): BackendClient {
   const baseUrl = normalizeBaseUrl(resolveBackendUrl(loadConfig()));
   const clientDevice = clientDeviceIdentity();
 
@@ -167,7 +165,6 @@ export function createBackendClient({ workspaceId }: { workspaceId?: string } = 
           'x-overlord-device-label': clientDevice.deviceLabel,
           'x-overlord-device-platform': clientDevice.devicePlatform,
           ...auth.headers,
-          ...(workspaceId ? { 'X-Overlord-Active-Workspace': workspaceId } : {}),
           ...extraHeaders
         },
         body:
@@ -213,7 +210,6 @@ export function createBackendClient({ workspaceId }: { workspaceId?: string } = 
 
   return {
     baseUrl,
-    forWorkspace: nextWorkspaceId => createBackendClient({ workspaceId: nextWorkspaceId }),
     health: () => request({ method: 'GET', path: '/api/health' }),
     get: path => request({ method: 'GET', path }),
     post: ({ path, body }) => request({ method: 'POST', path, body }),

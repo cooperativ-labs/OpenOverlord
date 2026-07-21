@@ -7,8 +7,7 @@ import { Button } from '@/components/ui/button';
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx';
 import { DRAG_REGION, getDesktopChrome, NO_DRAG_REGION } from '@/lib/desktop-chrome';
-import { readLastUsedProjectId } from '@/lib/last-used-project.ts';
-import { useProjects } from '@/lib/queries.ts';
+import { useMeta, useProjects } from '@/lib/queries.ts';
 
 import { MissionSearch } from './nav-header/MissionSearch.tsx';
 
@@ -38,6 +37,7 @@ export function NavHeader() {
   const { state } = useSidebar();
   const { projectId } = useParams({ strict: false }) as { projectId?: string };
   const projectsQ = useProjects();
+  const meta = useMeta();
   const [isNewMissionOpen, setIsNewMissionOpen] = useState(false);
   const hasProjects = (projectsQ.data?.length ?? 0) > 0;
   const [isMac] = useState(isMacPlatform);
@@ -124,7 +124,7 @@ export function NavHeader() {
       <NewMissionModal
         open={isNewMissionOpen}
         onClose={() => setIsNewMissionOpen(false)}
-        defaultProjectId={projectId ?? readLastUsedProjectId()}
+        defaultProjectId={projectId ?? meta.data?.defaultProjectId ?? null}
       />
     </header>
   );
