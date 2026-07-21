@@ -520,9 +520,7 @@ export async function resolveLaunchConfig({
         return {
           config: {
             preCommand: typeof cast.preCommand === 'string' ? cast.preCommand : '',
-            flags: Array.isArray(cast.flags)
-              ? cast.flags.filter((f): f is string => typeof f === 'string')
-              : []
+            flags: normalizeAgentLaunchFlags(cast.flags)
           },
           source: 'objective'
         };
