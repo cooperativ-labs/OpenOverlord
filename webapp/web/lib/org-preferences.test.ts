@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 
 import {
-  readMyMissionsWorkspaceFilter,
-  writeMyMissionsWorkspaceFilter
+  readMyMissionsProjectFilter,
+  writeMyMissionsProjectFilter
 } from './org-preferences.ts';
 
 const originalWindow = globalThis.window;
@@ -23,24 +23,24 @@ afterEach(() => {
   (globalThis as { window?: Window }).window = originalWindow;
 });
 
-test('persists My Missions workspace filters per backend and organization', () => {
+test('persists My Missions project filters per backend and organization', () => {
   const storage = installStorage({ 'overlord:active-backend-key': 'backend-a' });
 
-  writeMyMissionsWorkspaceFilter('org-a', ['workspace-a', 'workspace-b', 'workspace-a']);
+  writeMyMissionsProjectFilter('org-a', ['project-a', 'project-b', 'project-a']);
 
-  assert.deepEqual(readMyMissionsWorkspaceFilter('org-a'), ['workspace-a', 'workspace-b']);
-  assert.deepEqual(readMyMissionsWorkspaceFilter('org-b'), []);
+  assert.deepEqual(readMyMissionsProjectFilter('org-a'), ['project-a', 'project-b']);
+  assert.deepEqual(readMyMissionsProjectFilter('org-b'), []);
   assert.equal(
-    storage.get('overlord:my-missions-workspace-filter:backend-a:org-a'),
-    '["workspace-a","workspace-b"]'
+    storage.get('overlord:my-missions-project-filter:backend-a:org-a'),
+    '["project-a","project-b"]'
   );
 });
 
-test('ignores malformed stored workspace filters', () => {
+test('ignores malformed stored project filters', () => {
   installStorage({
     'overlord:active-backend-key': 'backend-a',
-    'overlord:my-missions-workspace-filter:backend-a:org-a': '{not-json'
+    'overlord:my-missions-project-filter:backend-a:org-a': '{not-json'
   });
 
-  assert.deepEqual(readMyMissionsWorkspaceFilter('org-a'), []);
+  assert.deepEqual(readMyMissionsProjectFilter('org-a'), []);
 });

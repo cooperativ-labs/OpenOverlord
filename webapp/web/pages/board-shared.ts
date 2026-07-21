@@ -74,17 +74,17 @@ export function getStatusFilterLabel(
   return `${selectedStatusIds.length} statuses`;
 }
 
-export function getWorkspaceFilterLabel(
-  selectedWorkspaceIds: string[],
-  workspaces: Array<{ id: string; name: string }>
+export type MissionProjectFilterOption = { id: string; name: string; color: string | null };
+
+export function getProjectFilterLabel(
+  selectedProjectIds: string[],
+  projectOptions: MissionProjectFilterOption[]
 ): string {
-  if (selectedWorkspaceIds.length === 0) return 'All';
-  if (selectedWorkspaceIds.length === 1) {
-    return (
-      workspaces.find(workspace => workspace.id === selectedWorkspaceIds[0])?.name ?? 'Workspace'
-    );
+  if (selectedProjectIds.length === 0) return 'All';
+  if (selectedProjectIds.length === 1) {
+    return projectOptions.find(project => project.id === selectedProjectIds[0])?.name ?? 'Project';
   }
-  return `${selectedWorkspaceIds.length} workspaces`;
+  return `${selectedProjectIds.length} projects`;
 }
 
 const BOARD_VIEWS: BoardView[] = ['board', 'list', 'calendar'];

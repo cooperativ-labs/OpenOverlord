@@ -19,8 +19,8 @@ import {
 } from '../components/ui/dialog.tsx';
 import { api } from '../lib/api.ts';
 import {
-  readMyMissionsWorkspaceFilter,
-  writeMyMissionsWorkspaceFilter
+  readMyMissionsProjectFilter,
+  writeMyMissionsProjectFilter
 } from '../lib/org-preferences.ts';
 import { firstObjectiveCreatePayload } from '../lib/project-resources.ts';
 import {
@@ -45,7 +45,7 @@ import { MissionListView } from './MissionListView.tsx';
 import { MissionStatusFilterDropdown } from './MissionStatusFilterDropdown.tsx';
 import { MissionsViewToggle } from './MissionsViewToggle.tsx';
 import { MissionTagFilterDropdown } from './MissionTagFilterDropdown.tsx';
-import { MissionWorkspaceFilterDropdown } from './MissionWorkspaceFilterDropdown.tsx';
+import { MissionProjectFilterDropdown } from './MissionProjectFilterDropdown.tsx';
 import {
   buildMergedStatusColumns,
   groupMissionsByMergedColumn,
@@ -115,8 +115,8 @@ export function MyMissionsPage() {
   const [view, setView] = useState<BoardView>(() => readStoredView());
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedStatusKeys, setSelectedStatusKeys] = useState<string[]>([]);
-  const [selectedWorkspaceIds, setSelectedWorkspaceIds] = useState<string[]>([]);
-  const [workspaceFilterOrganizationId, setWorkspaceFilterOrganizationId] = useState<string | null>(
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [projectFilterOrganizationId, setProjectFilterOrganizationId] = useState<string | null>(
     null
   );
   const [dropError, setDropError] = useState<{ statusName: string; workspaceName: string } | null>(
@@ -166,14 +166,21 @@ export function MyMissionsPage() {
     return map;
   }, [missions]);
 
-  // Only workspaces the caller actually has missions in are worth filtering by.
+  // Only projects the caller actually has missions in are worth filtering by.
   // Derived from the unfiltered set so the option list is stable as filters change.
-  const workspaceFilterOptions = useMemo(() => {
-    const represented = new Set(missions.map(mission => mission.workspaceId));
-    return workspaces
-      .filter(workspace => represented.has(workspace.id))
-      .map(workspace => ({ id: workspace.id, name: workspace.name }));
-  }, [missions, workspaces]);
+  const projectFilterOptions = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string; color: string | null }>();
+    for (const mission of missions) {
+      if (!byId.has(mission.projectId)) {
+        byId.set(mission.projectId, {
+          id: mission.projectId,
+          name: mission.projectName,
+          color: mission.projectColor
+        });
+      }
+    }
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [missions]);
 
   const statusFilterOptions = useMemo(
     () => merged.columns.map(column => ({ id: column.key, name: column.name, type: column.type })),
@@ -205,58 +212,55 @@ export function MyMissionsPage() {
   }, [selectedStatusKeys, merged.columns]);
 
   useEffect(() => {
-    setSelectedWorkspaceIds(
-      activeOrganizationId ? readMyMissionsWorkspaceFilter(activeOrganizationId) : []
+    setSelectedProjectIds(
+      activeOrganizationId ? readMyMissionsProjectFilter(activeOrganizationId) : []
     );
-    setWorkspaceFilterOrganizationId(activeOrganizationId);
+    setProjectFilterOrganizationId(activeOrganizationId);
   }, [activeOrganizationId]);
 
   useEffect(() => {
     if (
-      workspaceFilterOrganizationId !== activeOrganizationId ||
+      projectFilterOrganizationId !== activeOrganizationId ||
       !myMissionsQ.data ||
-      selectedWorkspaceIds.length === 0
+      selectedProjectIds.length === 0
     ) {
       return;
     }
-    const validIds = new Set(workspaceFilterOptions.map(workspace => workspace.id));
-    const next = selectedWorkspaceIds.filter(id => validIds.has(id));
-    if (next.length !== selectedWorkspaceIds.length) {
-      setSelectedWorkspaceIds(next);
-      if (activeOrganizationId) writeMyMissionsWorkspaceFilter(activeOrganizationId, next);
+    const validIds = new Set(projectFilterOptions.map(project => project.id));
+    const next = selectedProjectIds.filter(id => validIds.has(id));
+    if (next.length !== selectedProjectIds.length) {
+      setSelectedProjectIds(next);
+      if (activeOrganizationId) writeMyMissionsProjectFilter(activeOrganizationId, next);
     }
   }, [
     activeOrganizationId,
     myMissionsQ.data,
-    selectedWorkspaceIds,
-    workspaceFilterOptions,
-    workspaceFilterOrganizationId
+    selectedProjectIds,
+    projectFilterOptions,
+    projectFilterOrganizationId
   ]);
 
-  const updateSelectedWorkspaceIds = useCallback(
+  const updateSelectedProjectIds = useCallback(
     (update: (current: string[]) => string[]) => {
-      setSelectedWorkspaceIds(current => {
+      setSelectedProjectIds(current => {
         const next = update(current);
-        if (activeOrganizationId && workspaceFilterOrganizationId === activeOrganizationId) {
-          writeMyMissionsWorkspaceFilter(activeOrganizationId, next);
+        if (activeOrganizationId && projectFilterOrganizationId === activeOrganizationId) {
+          writeMyMissionsProjectFilter(activeOrganizationId, next);
         }
         return next;
       });
     },
-    [activeOrganizationId, workspaceFilterOrganizationId]
+    [activeOrganizationId, projectFilterOrganizationId]
   );
 
   const selectedTagIdSet = useMemo(() => new Set(selectedTagIds), [selectedTagIds]);
   const selectedStatusKeySet = useMemo(() => new Set(selectedStatusKeys), [selectedStatusKeys]);
-  const selectedWorkspaceIdSet = useMemo(
-    () => new Set(selectedWorkspaceIds),
-    [selectedWorkspaceIds]
-  );
+  const selectedProjectIdSet = useMemo(() => new Set(selectedProjectIds), [selectedProjectIds]);
 
   const filteredMissions = useMemo(() => {
     let result = missions;
-    if (selectedWorkspaceIds.length > 0) {
-      result = result.filter(mission => selectedWorkspaceIdSet.has(mission.workspaceId));
+    if (selectedProjectIds.length > 0) {
+      result = result.filter(mission => selectedProjectIdSet.has(mission.projectId));
     }
     if (selectedStatusKeys.length > 0) {
       result = result.filter(mission => {
@@ -273,8 +277,8 @@ export function MyMissionsPage() {
   }, [
     missions,
     merged.keyByStatusId,
-    selectedWorkspaceIds.length,
-    selectedWorkspaceIdSet,
+    selectedProjectIds.length,
+    selectedProjectIdSet,
     selectedStatusKeys.length,
     selectedStatusKeySet,
     selectedTagIds.length,
@@ -283,8 +287,8 @@ export function MyMissionsPage() {
 
   const isTagFilterActive = selectedTagIds.length > 0;
   const isStatusFilterActive = selectedStatusKeys.length > 0;
-  const isWorkspaceFilterActive = selectedWorkspaceIds.length > 0;
-  const isFilterActive = isTagFilterActive || isStatusFilterActive || isWorkspaceFilterActive;
+  const isProjectFilterActive = selectedProjectIds.length > 0;
+  const isFilterActive = isTagFilterActive || isStatusFilterActive || isProjectFilterActive;
 
   const visibleStatusColumns = useMemo(
     () =>
@@ -297,8 +301,8 @@ export function MyMissionsPage() {
   const clearFilters = useCallback(() => {
     setSelectedTagIds([]);
     setSelectedStatusKeys([]);
-    updateSelectedWorkspaceIds(() => []);
-  }, [updateSelectedWorkspaceIds]);
+    updateSelectedProjectIds(() => []);
+  }, [updateSelectedProjectIds]);
 
   // Bucket every mission into its merged column (like-named statuses across
   // workspaces collapse into one). Any mission whose status isn't an active
@@ -566,15 +570,15 @@ export function MyMissionsPage() {
               onChange={handleViewChange}
               views={['board', 'list']}
             />
-            <MissionWorkspaceFilterDropdown
-              workspaces={workspaceFilterOptions}
-              selectedWorkspaceIds={selectedWorkspaceIds}
-              onClear={() => updateSelectedWorkspaceIds(() => [])}
-              onToggle={workspaceId =>
-                updateSelectedWorkspaceIds(current =>
-                  current.includes(workspaceId)
-                    ? current.filter(id => id !== workspaceId)
-                    : [...current, workspaceId]
+            <MissionProjectFilterDropdown
+              projects={projectFilterOptions}
+              selectedProjectIds={selectedProjectIds}
+              onClear={() => updateSelectedProjectIds(() => [])}
+              onToggle={projectId =>
+                updateSelectedProjectIds(current =>
+                  current.includes(projectId)
+                    ? current.filter(id => id !== projectId)
+                    : [...current, projectId]
                 )
               }
             />
