@@ -4,6 +4,10 @@ import path from 'node:path';
 
 import { resolveAgentBinary } from './agent-binaries.js';
 import {
+  agentLaunchFlagsToArgv,
+  type AgentLaunchFlagDto
+} from '@overlord/contract';
+import {
   buildPreLaunchVariables,
   substituteLaunchEnvVars,
   substitutePreLaunchVariables
@@ -24,7 +28,7 @@ export type LaunchOptions = {
   workingDirectory: string;
   model?: string | null;
   thinking?: string | null;
-  flags?: string[];
+  flags?: AgentLaunchFlagDto[];
   preCommand?: string | null;
   /**
    * Per-project pre-launch command lines run inside the launch environment
@@ -229,16 +233,17 @@ function buildAgentCommand({
   agent: string;
   model?: string | null;
   thinking?: string | null;
-  flags?: string[];
+  flags?: AgentLaunchFlagDto[];
   prompt: string;
   contextFile: string;
   launchMessage: string;
 }): { command: string; args: string[] } {
+  const flagArgs = agentLaunchFlagsToArgv(flags);
   if (agent === 'codex') {
     const args = [];
     if (model) args.push('--model', model);
     if (thinking) args.push('-c', `model_reasoning_effort="${thinking}"`);
-    args.push(...flags, prompt);
+    args.push(...flagArgs, prompt);
     return { command: 'codex', args };
   }
 
@@ -246,7 +251,7 @@ function buildAgentCommand({
     const args = ['--append-system-prompt-file', contextFile];
     if (model) args.push('--model', model);
     if (thinking) args.push('--effort', thinking);
-    args.push(...flags, launchMessage);
+    args.push(...flagArgs, launchMessage);
     return { command: 'claude', args };
   }
 
@@ -254,13 +259,13 @@ function buildAgentCommand({
     const args = [];
     if (model) args.push('--model', model);
     if (thinking) args.push('--thinking', thinking);
-    args.push(...flags, `@${contextFile}`, launchMessage);
+    args.push(...flagArgs, `@${contextFile}`, launchMessage);
     return { command: 'pi', args };
   }
 
   const args = [];
   if (model) args.push('--model', model);
-  args.push(...flags, prompt);
+  args.push(...flagArgs, prompt);
   return { command: resolveAgentBinary(agent), args };
 }
 

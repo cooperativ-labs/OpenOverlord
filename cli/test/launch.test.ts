@@ -137,7 +137,7 @@ test('buildLaunchPlan passes PI model and thinking separately with a context fil
       workingDirectory,
       model: 'zai/glm-5.2',
       thinking: 'high',
-      flags: ['--approve']
+      flags: [{ name: '--approve' }]
     }
   });
 

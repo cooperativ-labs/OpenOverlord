@@ -32,7 +32,11 @@ import {
   useUpdateTerminalProfile
 } from '@/lib/queries';
 
-import type { TerminalProfileDto } from '../../../shared/contract.ts';
+import {
+  agentLaunchFlagKey,
+  type AgentLaunchConfigDto,
+  type TerminalProfileDto
+} from '../../../shared/contract.ts';
 
 type IdePageProps = {
   open: boolean;
@@ -210,10 +214,7 @@ export function IdePage({ open }: IdePageProps) {
     }
   }
 
-  async function commitAgentConfig(
-    agentKey: string,
-    config: { preCommand: string; flags: string[] }
-  ) {
+  async function commitAgentConfig(agentKey: string, config: AgentLaunchConfigDto) {
     setAgentError(null);
     try {
       await updateAgentLaunchConfig.mutateAsync({ agentKey, body: config });
@@ -471,7 +472,7 @@ export function IdePage({ open }: IdePageProps) {
                 </p>
               </div>
               <AgentLaunchFooter
-                key={`${agent.key}:${config.preCommand}:${config.flags.join('\u0000')}`}
+                key={`${agent.key}:${config.preCommand}:${config.flags.map(agentLaunchFlagKey).join('\u0000')}`}
                 agentKey={agent.key}
                 preCommand={config.preCommand}
                 flags={config.flags}

@@ -14,6 +14,8 @@
  * deliveries remain CLI-only and are intentionally absent here.
  */
 
+import type { AgentLaunchFlagDto } from './agent-launch-flags.js';
+
 export {
   ATTACH_CONTEXT_FIELDS,
   LAUNCH_VARIABLE_NAMES,
@@ -30,6 +32,14 @@ export {
   parseResourcePathsCsv,
   type ResourcePathPermission
 } from './resource-paths.js';
+export {
+  agentLaunchFlagKey,
+  agentLaunchFlagsToArgv,
+  type AgentLaunchFlagDto,
+  formatAgentLaunchFlagText,
+  normalizeAgentLaunchFlags,
+  parseAgentLaunchFlagText
+} from './agent-launch-flags.js';
 
 // ---- Closed status vocabularies (from the schema CHECK constraints) ----
 
@@ -1023,7 +1033,7 @@ export interface UpdateAgentCatalogBody {
 /** Per-agent launch mechanics: shell pre-command and extra CLI flags. */
 export interface AgentLaunchConfigDto {
   preCommand: string;
-  flags: string[];
+  flags: AgentLaunchFlagDto[];
 }
 
 export interface TerminalProfileDto {
@@ -1518,7 +1528,7 @@ export interface LaunchObjectiveBody {
 
 export interface UpdateAgentLaunchConfigBody {
   preCommand?: string;
-  flags?: string[];
+  flags?: AgentLaunchFlagDto[];
 }
 
 export type UpdateLaunchPreferenceBody = Partial<LaunchPreferenceDto>;

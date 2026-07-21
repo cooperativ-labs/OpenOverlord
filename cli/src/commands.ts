@@ -6,6 +6,11 @@ import {
   executeLocalTargetMutation,
   parseMutationFromMetadata
 } from '@overlord/core/service/local-target-mutation-runner';
+import {
+  type AgentLaunchFlagDto,
+  normalizeAgentLaunchFlags,
+  parseAgentLaunchFlagText
+} from '@overlord/contract';
 import { existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -507,17 +512,18 @@ type LaunchSettingsShape = {
   worktreeBranchAutomationEnabled?: unknown;
 };
 
-function repeatedFlagValues(args: string[], name: string): string[] {
-  const values: string[] = [];
+function repeatedLaunchFlags(args: string[], name: string): AgentLaunchFlagDto[] {
+  const flags: AgentLaunchFlagDto[] = [];
   for (let index = 0; index < args.length; index += 1) {
     if (args[index] !== name) continue;
     const value = args[index + 1];
     if (value !== undefined) {
-      values.push(value);
+      const parsed = parseAgentLaunchFlagText(value);
+      if (parsed) flags.push(parsed);
       index += 1;
     }
   }
-  return values;
+  return flags;
 }
 
 async function resolveTerminalLaunchSettings({
@@ -1335,7 +1341,7 @@ export async function runManagementCommand({
           workingDirectory: prepared.workingDirectory,
           model: flagValue(parsed.flags, '--model'),
           thinking: flagValue(parsed.flags, '--thinking'),
-          flags: repeatedFlagValues(rest, '--flag'),
+          flags: repeatedLaunchFlags(rest, '--flag'),
           preCommand: flagValue(parsed.flags, '--pre-command'),
           preLaunchCommands: preLaunchCommands.length > 0 ? preLaunchCommands : undefined,
           launchEnvVars: Object.keys(launchEnvVars).length > 0 ? launchEnvVars : undefined,
@@ -1592,9 +1598,7 @@ async function runRunnerCommand({
             typeof requestRecord.requestedReasoningEffort === 'string'
               ? requestRecord.requestedReasoningEffort
               : undefined,
-          flags: Array.isArray(launchConfig.flags)
-            ? launchConfig.flags.filter((value): value is string => typeof value === 'string')
-            : [],
+          flags: normalizeAgentLaunchFlags(launchConfig.flags),
           preCommand:
             typeof launchConfig.preCommand === 'string' ? launchConfig.preCommand : undefined,
           preLaunchCommands: Array.isArray(requestRecord.preLaunchCommands)

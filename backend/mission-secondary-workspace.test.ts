@@ -572,15 +572,24 @@ describe('workspace-scoped operations resolve against the resource workspace, no
     const { getLaunchSettings, updateAgentLaunchConfig, launchObjective } =
       await import('./execution/launch.ts');
 
-    const expectedConfig = { preCommand: 'echo secondary', flags: ['--secondary'] };
+    const expectedConfig = {
+      preCommand: 'echo secondary',
+      flags: [{ name: '--secondary' }]
+    };
 
     // Saving through the surface scoped to the objective's workspace B.
     const saved = await updateAgentLaunchConfig('codex', expectedConfig, fixture.secondary.id);
-    assert.deepEqual(saved.agentConfigs.codex, expectedConfig);
+    assert.deepEqual(saved.agentConfigs.codex, {
+      preCommand: 'echo secondary',
+      flags: [{ name: '--secondary', value: null }]
+    });
 
     // Reading the surface back scoped to B returns it.
     const readB = await getLaunchSettings(fixture.secondary.id);
-    assert.deepEqual(readB.agentConfigs.codex, expectedConfig);
+    assert.deepEqual(readB.agentConfigs.codex, {
+      preCommand: 'echo secondary',
+      flags: [{ name: '--secondary', value: null }]
+    });
 
     // End-to-end: `launchObjective` builds the objective's own (secondary)
     // workspace context, so the queued request carries the saved config — not the
@@ -592,7 +601,7 @@ describe('workspace-scoped operations resolve against the resource workspace, no
       expectedConfig.preCommand,
       'the queued request must carry the pre-command resolved from the objective workspace'
     );
-    assert.deepEqual(queued.launchConfig.flags, expectedConfig.flags);
+    assert.deepEqual(queued.launchConfig.flags, [{ name: '--secondary', value: null }]);
   });
 
   it('resolves a project execution target through the project workspace (Phase 2)', async () => {

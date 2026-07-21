@@ -1,4 +1,5 @@
 import { PERMISSIONS } from '@overlord/auth';
+import { normalizeAgentLaunchFlags } from '@overlord/contract';
 import type { DatabaseClient } from '@overlord/database';
 
 import type { ServiceContext } from '../../packages/core/service/context.ts';
@@ -178,9 +179,7 @@ function serviceSummaryToDto(row: ExecutionRequestSummary): Record<string, unkno
     requestedReasoningEffort: row.requestedReasoningEffort,
     launchConfig: {
       preCommand: typeof row.launchFlags.preCommand === 'string' ? row.launchFlags.preCommand : '',
-      flags: Array.isArray(row.launchFlags.flags)
-        ? row.launchFlags.flags.filter((flag): flag is string => typeof flag === 'string')
-        : []
+      flags: normalizeAgentLaunchFlags(row.launchFlags.flags)
     },
     metadata: row.metadata,
     status: row.status,

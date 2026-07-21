@@ -14,6 +14,7 @@ import {
   getProjectExecutionTargetSelection,
   listEligibleProjectExecutionTargets,
   listWorkspaceExecutionTargets,
+  parseAgentConfigs,
   PROJECT_EXECUTION_TARGET_PREFERENCE_KEY,
   renameWorkspaceExecutionTarget,
   resolveLaunchExecutionTarget,
@@ -439,6 +440,25 @@ describe('execution target lifecycle', () => {
       () => deleteWorkspaceExecutionTarget({ ctx, executionTargetId: caller.executionTargetId }),
       (error: unknown) =>
         error instanceof ServiceError && error.code === 'execution_target_has_active_queue'
+    );
+  });
+
+  it('parseAgentConfigs normalizes legacy string flags into name/value pairs', () => {
+    assert.deepEqual(
+      parseAgentConfigs(
+        JSON.stringify({
+          claude: {
+            preCommand: 'nvm use 20',
+            flags: ['--verbose', '--permission-mode auto']
+          }
+        })
+      ),
+      {
+        claude: {
+          preCommand: 'nvm use 20',
+          flags: [{ name: '--verbose' }, { name: '--permission-mode', value: 'auto' }]
+        }
+      }
     );
   });
 });

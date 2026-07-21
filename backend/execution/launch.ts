@@ -17,6 +17,7 @@
  *   `execution_requests.launch_flags_json` for the runner to consume verbatim.
  */
 import { type Permission, PERMISSIONS } from '@overlord/auth';
+import { normalizeAgentLaunchFlags } from '@overlord/contract';
 import type { ServiceContext } from '@overlord/core/service/context';
 import type { TerminalProfile } from '@overlord/core/service/terminal-profile-types';
 import type { DatabaseClient } from '@overlord/database';
@@ -498,7 +499,7 @@ export async function updateAgentLaunchConfig(
           : (target.agentConfigs[key]?.preCommand ?? ''),
       flags:
         body.flags !== undefined
-          ? body.flags.map(f => f.trim()).filter(f => f.length > 0)
+          ? normalizeAgentLaunchFlags(body.flags)
           : (target.agentConfigs[key]?.flags ?? [])
     };
     const configs = { ...target.agentConfigs, [key]: next };
@@ -692,7 +693,7 @@ function parseLaunchConfig(json: string): AgentLaunchConfigDto {
     const parsed = JSON.parse(json) as { preCommand?: unknown; flags?: unknown };
     return {
       preCommand: typeof parsed.preCommand === 'string' ? parsed.preCommand : '',
-      flags: Array.isArray(parsed.flags) ? parsed.flags.filter(f => typeof f === 'string') : []
+      flags: normalizeAgentLaunchFlags(parsed.flags)
     };
   } catch {
     return { preCommand: '', flags: [] };
@@ -743,9 +744,7 @@ function executionSummaryToDto(r: ExecutionRequestSummary): ExecutionRequestDto 
     requestedReasoningEffort: r.requestedReasoningEffort,
     launchConfig: {
       preCommand: typeof r.launchFlags.preCommand === 'string' ? r.launchFlags.preCommand : '',
-      flags: Array.isArray(r.launchFlags.flags)
-        ? r.launchFlags.flags.filter((f): f is string => typeof f === 'string')
-        : []
+      flags: normalizeAgentLaunchFlags(r.launchFlags.flags)
     },
     status: r.status as ExecutionRequestStatus,
     requestedSource: r.requestedSource,
@@ -1048,7 +1047,7 @@ export async function launchObjective(
         ...(parsed[executionTargetId] ?? {}),
         [agentKey]: {
           preCommand: body.launchConfigOverride.preCommand ?? '',
-          flags: body.launchConfigOverride.flags ?? []
+          flags: normalizeAgentLaunchFlags(body.launchConfigOverride.flags)
         }
       };
       launchConfigJson = JSON.stringify(parsed);

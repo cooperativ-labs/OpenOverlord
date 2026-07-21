@@ -376,7 +376,7 @@ describe('deliverSession mechanical change capture', () => {
       JSON.stringify({
         agentCatalog: {
           agents: {
-            claude: { launchDefaults: { preCommand: 'nvm use 20', flags: ['--verbose'] } }
+            claude: { launchDefaults: { preCommand: 'nvm use 20', flags: [{ name: '--verbose' }] } }
           }
         }
       }),
@@ -413,10 +413,10 @@ describe('deliverSession mechanical change capture', () => {
     assert.equal(request.requested_agent, 'claude');
     const flags = JSON.parse(request.launch_flags_json) as {
       preCommand?: string;
-      flags?: string[];
+      flags?: Array<{ name: string; value?: string | null }>;
     };
     assert.equal(flags.preCommand, 'nvm use 20');
-    assert.deepEqual(flags.flags, ['--verbose']);
+    assert.deepEqual(flags.flags, [{ name: '--verbose', value: null }]);
 
     await db.close();
   });

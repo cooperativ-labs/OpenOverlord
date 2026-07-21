@@ -1,4 +1,5 @@
 import type { DatabaseClient } from '@overlord/database';
+import { normalizeAgentLaunchFlags, type AgentLaunchFlagDto } from '@overlord/contract';
 
 import { isCoLocatedBackend } from './local-target/index.js';
 import { recordChange } from './change-feed.js';
@@ -17,7 +18,7 @@ export const PROJECT_EXECUTION_TARGET_PREFERENCE_KEY = 'selectedExecutionTargetI
 
 export type AgentLaunchConfig = {
   preCommand: string;
-  flags: string[];
+  flags: AgentLaunchFlagDto[];
 };
 
 export type LaunchExecutionTargetResolution = {
@@ -441,7 +442,7 @@ export function parseAgentConfigs(json: string): Record<string, AgentLaunchConfi
     const config = value as { preCommand?: unknown; flags?: unknown };
     configs[key] = {
       preCommand: typeof config.preCommand === 'string' ? config.preCommand : '',
-      flags: Array.isArray(config.flags) ? config.flags.filter(f => typeof f === 'string') : []
+      flags: normalizeAgentLaunchFlags(config.flags)
     };
   }
   return configs;
@@ -477,9 +478,7 @@ async function readWorkspaceAgentLaunchDefault(
   if (!launchDefaults || typeof launchDefaults !== 'object') return null;
   return {
     preCommand: typeof launchDefaults.preCommand === 'string' ? launchDefaults.preCommand : '',
-    flags: Array.isArray(launchDefaults.flags)
-      ? launchDefaults.flags.filter((f): f is string => typeof f === 'string')
-      : []
+    flags: normalizeAgentLaunchFlags(launchDefaults.flags)
   };
 }
 

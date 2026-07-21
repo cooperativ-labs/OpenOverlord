@@ -111,7 +111,7 @@ When `--project-id` is omitted on an interactive terminal, the CLI prompts to pi
 
 | Command | Description | Positional args | Flags |
 | ------- | ----------- | --------------- | ----- |
-| `ovld launch` | Spawn an agent locally with assembled mission context | `agent` | `--mission-id <id>` (required), `--working-directory <path>`, `--model <id>`, `--thinking <level>`, `--branch <name>`, `--no-worktree`, `--pre-command <wrapper>`, `--terminal <launcher>`, `--no-terminal`, `--flag <value>` (repeatable passthrough), `--dry-run`, `--json` |
+| `ovld launch` | Spawn an agent locally with assembled mission context | `agent` | `--mission-id <id>` (required), `--working-directory <path>`, `--model <id>`, `--thinking <level>`, `--branch <name>`, `--no-worktree`, `--pre-command <wrapper>`, `--terminal <launcher>`, `--no-terminal`, `--flag <name-or-name=value>` (repeatable passthrough; e.g. `--flag --permission-mode=auto`), `--dry-run`, `--json` |
 | `ovld restart` | Resume when the agent supports native resume | `agent` | Same as `launch` |
 | `ovld run` | Compatibility alias for `launch` | `agent`, `missionId` (positional) | Same as `launch` (also accepts `--agent`) |
 | `ovld connect` | Compatibility alias for `launch` | `agent`, `missionId` (positional) | Same as `launch` |
