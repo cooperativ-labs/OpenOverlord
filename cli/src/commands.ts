@@ -1,4 +1,9 @@
 import {
+  type AgentLaunchFlagDto,
+  normalizeAgentLaunchFlags,
+  parseAgentLaunchFlagText
+} from '@overlord/contract';
+import {
   readProjectJsonLink,
   writeProjectJson
 } from '@overlord/core/service/local-target/project-metadata';
@@ -6,11 +11,6 @@ import {
   executeLocalTargetMutation,
   parseMutationFromMetadata
 } from '@overlord/core/service/local-target-mutation-runner';
-import {
-  type AgentLaunchFlagDto,
-  normalizeAgentLaunchFlags,
-  parseAgentLaunchFlagText
-} from '@overlord/contract';
 import { existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

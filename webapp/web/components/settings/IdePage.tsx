@@ -33,8 +33,8 @@ import {
 } from '@/lib/queries';
 
 import {
-  agentLaunchFlagKey,
   type AgentLaunchConfigDto,
+  agentLaunchFlagKey,
   type TerminalProfileDto
 } from '../../../shared/contract.ts';
 

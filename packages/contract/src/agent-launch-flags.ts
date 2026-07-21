@@ -57,8 +57,7 @@ export function normalizeAgentLaunchFlags(input: unknown): AgentLaunchFlagDto[] 
     if (typeof record.name !== 'string') continue;
     const name = record.name.trim();
     if (!name) continue;
-    const value =
-      typeof record.value === 'string' ? record.value.trim() || null : null;
+    const value = typeof record.value === 'string' ? record.value.trim() || null : null;
     flags.push({ name, value });
   }
   return flags;

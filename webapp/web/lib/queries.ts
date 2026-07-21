@@ -616,7 +616,9 @@ export function useActivateOrganization() {
     mutationFn: async (organizationId: string) => {
       persistActiveOrganizationId(organizationId);
       const workspaces = await api.listWorkspaces();
-      const hasWorkspace = workspaces.some(workspace => workspace.organizationId === organizationId);
+      const hasWorkspace = workspaces.some(
+        workspace => workspace.organizationId === organizationId
+      );
       if (!hasWorkspace) throw new Error('No workspace found in this organization');
       return workspaces;
     },

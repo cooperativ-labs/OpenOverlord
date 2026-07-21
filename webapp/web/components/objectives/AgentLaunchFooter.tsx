@@ -10,10 +10,10 @@ import {
 } from 'react';
 
 import {
-  agentLaunchFlagKey,
-  formatAgentLaunchFlagText,
   type AgentLaunchConfigDto,
-  type AgentLaunchFlagDto
+  type AgentLaunchFlagDto,
+  agentLaunchFlagKey,
+  formatAgentLaunchFlagText
 } from '../../../shared/contract.ts';
 import {
   filterRecentAgentLaunchFlags,
@@ -88,10 +88,7 @@ export function AgentLaunchFooter({
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        draftContainerRef.current &&
-        !draftContainerRef.current.contains(event.target as Node)
-      ) {
+      if (draftContainerRef.current && !draftContainerRef.current.contains(event.target as Node)) {
         setIsSuggestionOpen(false);
       }
     };

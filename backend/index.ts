@@ -110,6 +110,7 @@ import { requirePermission } from './rbac.ts';
 import { readChangesAfter, realtime } from './realtime.ts';
 import {
   ApiError,
+  clearDefaultProjectPreference,
   clearMissionSchedule,
   createMission,
   createObjective,
@@ -118,7 +119,6 @@ import {
   createProjectTag,
   createUserToken,
   createWorkspaceStatus,
-  clearDefaultProjectPreference,
   deleteMission,
   deleteObjective,
   deleteProject,
@@ -128,9 +128,9 @@ import {
   deleteWorkspaceStatus,
   generateCommitMessage,
   generateMissionTitle,
+  getDefaultProjectPreference,
   getMissionDetail,
   getMissionSchedule,
-  getDefaultProjectPreference,
   getProfile,
   getProject,
   getProjectRepository,
@@ -849,10 +849,10 @@ app.get(
 );
 app.put(
   '/api/profile/default-project',
-  handle(
-    req => setDefaultProjectPreference(String(req.body?.projectId ?? '')),
-    { mutates: true, requires: PERMISSIONS.PROFILE_SELF_UPDATE }
-  )
+  handle(req => setDefaultProjectPreference(String(req.body?.projectId ?? '')), {
+    mutates: true,
+    requires: PERMISSIONS.PROFILE_SELF_UPDATE
+  })
 );
 app.delete(
   '/api/profile/default-project',

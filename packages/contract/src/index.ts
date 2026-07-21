@@ -17,6 +17,14 @@
 import type { AgentLaunchFlagDto } from './agent-launch-flags.js';
 
 export {
+  type AgentLaunchFlagDto,
+  agentLaunchFlagKey,
+  agentLaunchFlagsToArgv,
+  formatAgentLaunchFlagText,
+  normalizeAgentLaunchFlags,
+  parseAgentLaunchFlagText
+} from './agent-launch-flags.js';
+export {
   ATTACH_CONTEXT_FIELDS,
   LAUNCH_VARIABLE_NAMES,
   LAUNCH_VARIABLES,
@@ -32,14 +40,6 @@ export {
   parseResourcePathsCsv,
   type ResourcePathPermission
 } from './resource-paths.js';
-export {
-  agentLaunchFlagKey,
-  agentLaunchFlagsToArgv,
-  type AgentLaunchFlagDto,
-  formatAgentLaunchFlagText,
-  normalizeAgentLaunchFlags,
-  parseAgentLaunchFlagText
-} from './agent-launch-flags.js';
 
 // ---- Closed status vocabularies (from the schema CHECK constraints) ----
 

@@ -90,9 +90,8 @@ test('filters recent flags by display text', () => {
     { name: '--model', value: 'opus' }
   ];
 
-  assert.deepEqual(
-    filterRecentAgentLaunchFlags({ flags, query: 'permission' }),
-    [{ name: '--permission-mode', value: 'auto' }]
-  );
+  assert.deepEqual(filterRecentAgentLaunchFlags({ flags, query: 'permission' }), [
+    { name: '--permission-mode', value: 'auto' }
+  ]);
   assert.deepEqual(filterRecentAgentLaunchFlags({ flags, query: '' }), flags);
 });

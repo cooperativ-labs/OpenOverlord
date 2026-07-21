@@ -1,5 +1,5 @@
+import { type AgentLaunchFlagDto, normalizeAgentLaunchFlags } from '@overlord/contract';
 import type { DatabaseClient } from '@overlord/database';
-import { normalizeAgentLaunchFlags, type AgentLaunchFlagDto } from '@overlord/contract';
 
 import { isCoLocatedBackend } from './local-target/index.js';
 import { recordChange } from './change-feed.js';

@@ -1,12 +1,9 @@
+import { type AgentLaunchFlagDto, agentLaunchFlagsToArgv } from '@overlord/contract';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { resolveAgentBinary } from './agent-binaries.js';
-import {
-  agentLaunchFlagsToArgv,
-  type AgentLaunchFlagDto
-} from '@overlord/contract';
 import {
   buildPreLaunchVariables,
   substituteLaunchEnvVars,

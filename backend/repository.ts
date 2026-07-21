@@ -45,8 +45,8 @@ import type {
   CreateProjectTagBody,
   CreateUserTokenBody,
   CreateUserTokenResultDto,
-  DefaultProjectPreferenceDto,
   CreateWorkspaceStatusBody,
+  DefaultProjectPreferenceDto,
   DeliveryDto,
   DeliveryReportPayloadV1,
   FileChangeDto,
@@ -6195,7 +6195,9 @@ export async function getDefaultProjectPreference(): Promise<DefaultProjectPrefe
   return { projectId: null };
 }
 
-async function updateDefaultProjectPreference(projectId: string | null): Promise<DefaultProjectPreferenceDto> {
+async function updateDefaultProjectPreference(
+  projectId: string | null
+): Promise<DefaultProjectPreferenceDto> {
   return requireDatabaseClient().transaction(async tx => {
     const profileId = await resolveActiveProfileId(tx);
     if (!profileId) throw new ApiError(401, 'Authentication required');
@@ -6235,7 +6237,12 @@ async function updateDefaultProjectPreference(projectId: string | null): Promise
         `UPDATE project_user_preferences
             SET preferences_json = ?, updated_at = ?, revision = revision + 1
           WHERE id = ? AND revision = ?`,
-        [JSON.stringify(withDefaultProjectMarker(preferences, shouldBeDefault)), now, row.id, row.revision]
+        [
+          JSON.stringify(withDefaultProjectMarker(preferences, shouldBeDefault)),
+          now,
+          row.id,
+          row.revision
+        ]
       );
     }
 

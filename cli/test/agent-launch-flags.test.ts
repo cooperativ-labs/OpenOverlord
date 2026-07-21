@@ -1,12 +1,11 @@
-import assert from 'node:assert/strict';
-import test from 'node:test';
-
 import {
   agentLaunchFlagsToArgv,
   formatAgentLaunchFlagText,
   normalizeAgentLaunchFlags,
   parseAgentLaunchFlagText
 } from '@overlord/contract';
+import assert from 'node:assert/strict';
+import test from 'node:test';
 
 test('parseAgentLaunchFlagText accepts boolean and positional flags', () => {
   assert.deepEqual(parseAgentLaunchFlagText('--verbose'), { name: '--verbose' });
@@ -26,7 +25,10 @@ test('normalizeAgentLaunchFlags coerces legacy string arrays and structured obje
     { name: '--permission-mode', value: 'auto' }
   ]);
   assert.deepEqual(
-    normalizeAgentLaunchFlags([{ name: '--permission-mode', value: 'auto' }, { name: '--verbose' }]),
+    normalizeAgentLaunchFlags([
+      { name: '--permission-mode', value: 'auto' },
+      { name: '--verbose' }
+    ]),
     [
       { name: '--permission-mode', value: 'auto' },
       { name: '--verbose', value: null }
@@ -36,10 +38,7 @@ test('normalizeAgentLaunchFlags coerces legacy string arrays and structured obje
 
 test('agentLaunchFlagsToArgv emits separate argv tokens for positional values', () => {
   assert.deepEqual(
-    agentLaunchFlagsToArgv([
-      { name: '--permission-mode', value: 'auto' },
-      { name: '--verbose' }
-    ]),
+    agentLaunchFlagsToArgv([{ name: '--permission-mode', value: 'auto' }, { name: '--verbose' }]),
     ['--permission-mode', 'auto', '--verbose']
   );
 });
