@@ -7,6 +7,7 @@ import { describe, it } from 'node:test';
 
 import { createServiceContext } from './context.js';
 import { ServiceError } from './errors.js';
+import { recordResolvedLaunchConfigEvent } from './execution-requests.js';
 import { ensureCallerDeviceTarget, ensureClientDeviceTarget } from './execution-targets.js';
 import { createMissionWithObjectives } from './missions.js';
 import {
@@ -17,6 +18,7 @@ import {
   parseAgentConfigs,
   PROJECT_EXECUTION_TARGET_PREFERENCE_KEY,
   renameWorkspaceExecutionTarget,
+  resolveClaimLaunchConfig,
   resolveLaunchExecutionTarget,
   resolveProjectExecutionTargetForLaunch,
   updateProjectExecutionTargetSelection
@@ -300,6 +302,227 @@ describe('project execution target selection', () => {
     )) as { preferences_json: string };
     const prefs = JSON.parse(row.preferences_json) as Record<string, string>;
     assert.equal(prefs[PROJECT_EXECUTION_TARGET_PREFERENCE_KEY], caller.executionTargetId);
+  });
+});
+
+describe('resolveClaimLaunchConfig', () => {
+  it('returns the queue-time snapshot unchanged when it carries pre-command or flags', async () => {
+    const { ctx } = await setup();
+    const caller = await ensureCallerDeviceTarget({ ctx });
+    // Seed a different per-target config to prove it is NOT consulted when the
+    // snapshot already carries mechanics (preserves explicit queue-time resolution).
+    await ctx.db.run(
+      `UPDATE user_execution_target_preferences SET agent_configs_json = ? WHERE id = ?`,
+      [
+        JSON.stringify({ codex: { preCommand: 'device-config', flags: ['--device'] } }),
+        caller.preferenceId
+      ]
+    );
+    const project = await createProject({ ctx, name: 'Snapshot Wins' });
+    const mission = await createMissionWithObjectives({
+      ctx,
+      projectId: project.id,
+      objectives: [{ objective: 'x' }]
+    });
+    const snapshot = { preCommand: 'from-snapshot', flags: [{ name: '--snap' }] };
+
+    const resolved = await resolveClaimLaunchConfig({
+      ctx,
+      snapshot,
+      agentKey: 'codex',
+      claimingExecutionTargetId: caller.executionTargetId,
+      objectiveId: mission.objectives[0]!.id
+    });
+
+    assert.deepEqual(resolved, snapshot);
+  });
+
+  it('recovers the user per-target config at claim time when the snapshot is empty', async () => {
+    const { ctx } = await setup();
+    const caller = await ensureCallerDeviceTarget({ ctx });
+    await ctx.db.run(
+      `UPDATE user_execution_target_preferences SET agent_configs_json = ? WHERE id = ?`,
+      [
+        JSON.stringify({ codex: { preCommand: 'nvm use 20', flags: ['--permission-mode auto'] } }),
+        caller.preferenceId
+      ]
+    );
+    const project = await createProject({ ctx, name: 'Claim Recovers' });
+    const mission = await createMissionWithObjectives({
+      ctx,
+      projectId: project.id,
+      objectives: [{ objective: 'x' }]
+    });
+
+    const resolved = await resolveClaimLaunchConfig({
+      ctx,
+      snapshot: { preCommand: '', flags: [] },
+      agentKey: 'codex',
+      claimingExecutionTargetId: caller.executionTargetId,
+      objectiveId: mission.objectives[0]!.id
+    });
+
+    assert.deepEqual(resolved, {
+      preCommand: 'nvm use 20',
+      flags: [{ name: '--permission-mode', value: 'auto' }]
+    });
+  });
+
+  it('prefers an objective override for the claiming target over the user config', async () => {
+    const { ctx } = await setup();
+    const caller = await ensureCallerDeviceTarget({ ctx });
+    await ctx.db.run(
+      `UPDATE user_execution_target_preferences SET agent_configs_json = ? WHERE id = ?`,
+      [JSON.stringify({ codex: { preCommand: 'user-config', flags: [] } }), caller.preferenceId]
+    );
+    const project = await createProject({ ctx, name: 'Override Wins' });
+    const mission = await createMissionWithObjectives({
+      ctx,
+      projectId: project.id,
+      objectives: [{ objective: 'x' }]
+    });
+    const objectiveId = mission.objectives[0]!.id;
+    await ctx.db.run(`UPDATE objectives SET launch_config_json = ? WHERE id = ?`, [
+      JSON.stringify({
+        [caller.executionTargetId]: {
+          codex: { preCommand: 'override', flags: [{ name: '--yolo' }] }
+        }
+      }),
+      objectiveId
+    ]);
+
+    const resolved = await resolveClaimLaunchConfig({
+      ctx,
+      snapshot: { preCommand: '', flags: [] },
+      agentKey: 'codex',
+      claimingExecutionTargetId: caller.executionTargetId,
+      objectiveId
+    });
+
+    assert.deepEqual(resolved, {
+      preCommand: 'override',
+      flags: [{ name: '--yolo', value: null }]
+    });
+  });
+
+  it('returns the empty snapshot when the claiming target or agent is unknown', async () => {
+    const { ctx } = await setup();
+    const project = await createProject({ ctx, name: 'Unknown Target' });
+    const mission = await createMissionWithObjectives({
+      ctx,
+      projectId: project.id,
+      objectives: [{ objective: 'x' }]
+    });
+    const objectiveId = mission.objectives[0]!.id;
+    const empty = { preCommand: '', flags: [] };
+
+    assert.deepEqual(
+      await resolveClaimLaunchConfig({
+        ctx,
+        snapshot: empty,
+        agentKey: 'codex',
+        claimingExecutionTargetId: null,
+        objectiveId
+      }),
+      empty
+    );
+
+    const caller = await ensureCallerDeviceTarget({ ctx });
+    assert.deepEqual(
+      await resolveClaimLaunchConfig({
+        ctx,
+        snapshot: empty,
+        agentKey: null,
+        claimingExecutionTargetId: caller.executionTargetId,
+        objectiveId
+      }),
+      empty
+    );
+  });
+});
+
+describe('recordResolvedLaunchConfigEvent', () => {
+  async function latestLaunchParamsEvent(
+    ctx: Awaited<ReturnType<typeof createServiceContext>>,
+    missionId: string
+  ): Promise<{ summary: string; payload_json: string; type: string; phase: string }> {
+    return (await ctx.db.get(
+      `SELECT summary, payload_json, type, phase FROM mission_events
+          WHERE mission_id = ? AND summary LIKE 'Launch parameters%'
+          ORDER BY created_at DESC LIMIT 1`,
+      [missionId]
+    )) as { summary: string; payload_json: string; type: string; phase: string };
+  }
+
+  it('records the injected pre-command and flags as a mission event', async () => {
+    const { ctx } = await setup();
+    const project = await createProject({ ctx, name: 'Launch Params Event' });
+    const mission = await createMissionWithObjectives({
+      ctx,
+      projectId: project.id,
+      objectives: [{ objective: 'x' }]
+    });
+    const launchConfig = {
+      preCommand: 'nvm use 20',
+      flags: [
+        { name: '--permission-mode', value: 'auto' },
+        { name: '--verbose', value: null }
+      ]
+    };
+
+    await recordResolvedLaunchConfigEvent({
+      ctx,
+      request: {
+        id: 'exec-req-1',
+        projectId: project.id,
+        missionId: mission.mission.id,
+        objectiveId: mission.objectives[0]!.id,
+        requestedAgent: 'claude'
+      },
+      launchConfig
+    });
+
+    const event = await latestLaunchParamsEvent(ctx, mission.mission.id);
+    assert.match(event.summary, /Launch parameters for claude:/);
+    assert.match(event.summary, /pre-command `nvm use 20`/);
+    assert.match(event.summary, /flags `--permission-mode auto --verbose`/);
+    assert.equal(event.type, 'status_change');
+    assert.equal(event.phase, 'execute');
+    const payload = JSON.parse(event.payload_json) as {
+      executionRequestId: string;
+      launchConfig: typeof launchConfig;
+    };
+    assert.equal(payload.executionRequestId, 'exec-req-1');
+    assert.deepEqual(payload.launchConfig, launchConfig);
+  });
+
+  it('records "no pre-command or flags" when the resolved config is empty', async () => {
+    const { ctx } = await setup();
+    const project = await createProject({ ctx, name: 'Empty Launch Params Event' });
+    const mission = await createMissionWithObjectives({
+      ctx,
+      projectId: project.id,
+      objectives: [{ objective: 'x' }]
+    });
+
+    await recordResolvedLaunchConfigEvent({
+      ctx,
+      request: {
+        id: 'exec-req-2',
+        projectId: project.id,
+        missionId: mission.mission.id,
+        objectiveId: mission.objectives[0]!.id,
+        requestedAgent: 'codex'
+      },
+      launchConfig: { preCommand: '', flags: [] }
+    });
+
+    const event = await latestLaunchParamsEvent(ctx, mission.mission.id);
+    assert.match(event.summary, /Launch parameters for codex: no pre-command or flags\./);
+    const payload = JSON.parse(event.payload_json) as {
+      launchConfig: { preCommand: string; flags: unknown[] };
+    };
+    assert.deepEqual(payload.launchConfig, { preCommand: '', flags: [] });
   });
 });
 

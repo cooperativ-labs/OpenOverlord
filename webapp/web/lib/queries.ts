@@ -37,6 +37,7 @@ import type {
   ObjectiveAttachmentDto,
   PreviewScheduleBody,
   ProjectDto,
+  ProjectListLifecycle,
   ProjectTagDto,
   RemoveWorktreeBody,
   ReorderFutureObjectivesBody,
@@ -108,8 +109,10 @@ export const keys = {
   workspaceMembers: (id: string) => ['workspace', id, 'members'] as const,
   workspaceExecutionTargets: (id: string) => ['workspace', id, 'execution-targets'] as const,
   workspaceInvitations: (id: string) => ['workspace', id, 'invitations'] as const,
-  projects: (workspaceId?: string) =>
-    workspaceId ? (['workspace', workspaceId, 'projects'] as const) : (['projects'] as const),
+  projects: (workspaceId?: string, lifecycle: ProjectListLifecycle = 'active') =>
+    workspaceId
+      ? (['workspace', workspaceId, 'projects', lifecycle] as const)
+      : (['projects', lifecycle] as const),
   project: (id: string) => ['project', id] as const,
   workspaceStatuses: (workspaceId?: string | null) =>
     workspaceId
@@ -301,15 +304,15 @@ export const useWorkspaceInvitations = (id: string | null) =>
     enabled: Boolean(id)
   });
 
-export const useProjects = (workspaceId?: string) => {
+export const useProjects = (workspaceId?: string, lifecycle: ProjectListLifecycle = 'active') => {
   const meta = useMeta();
   const targetWorkspaceId = workspaceId ?? meta.data?.workspace?.id;
 
   return useQuery({
-    queryKey: keys.projects(targetWorkspaceId),
+    queryKey: keys.projects(targetWorkspaceId, lifecycle),
     queryFn: () => {
       if (!targetWorkspaceId) return Promise.resolve([]);
-      return api.listProjectsForWorkspace(targetWorkspaceId);
+      return api.listProjectsForWorkspace(targetWorkspaceId, lifecycle);
     },
     enabled: Boolean(targetWorkspaceId)
   });

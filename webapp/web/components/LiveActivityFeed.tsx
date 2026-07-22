@@ -15,6 +15,12 @@ import {
 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger
+} from '@/components/ui/accordion';
 import { AuthenticatedAvatarImage, Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 import type { DeliveryDto, MissionEventDto, MissionEventType } from '../../shared/contract.ts';
@@ -159,28 +165,46 @@ function ExpandableSummary({ text, tone }: { text: string; tone: string }) {
   );
 }
 
-function DeliveryDetails({ missionId, deliveryId }: { missionId: string; deliveryId: string }) {
+function DeliveryDetails({
+  missionId,
+  deliveryId,
+  summaryText
+}: {
+  missionId: string;
+  deliveryId: string;
+  summaryText: string;
+}) {
   const deliveriesQ = useMissionDeliveries(missionId, true);
   const delivery = deliveriesQ.data?.find(candidate => candidate.id === deliveryId);
 
   if (deliveriesQ.isLoading) {
     return (
-      <div className="py-2">
+      <div className="relative z-10 origin-top-left scale-110 rounded-lg bg-white p-3 shadow-md dark:bg-black">
         <Spinner />
       </div>
     );
   }
   if (deliveriesQ.isError || !delivery) {
-    return <p className="text-sm text-(--color-ink-dim)">Could not load delivery details.</p>;
+    return (
+      <p className="relative z-10 origin-top-left scale-110 rounded-lg bg-white p-3 text-sm text-(--color-ink-dim) shadow-md dark:bg-black">
+        Could not load delivery details.
+      </p>
+    );
   }
 
-  return <DeliveryPresentation delivery={delivery} />;
+  return <DeliveryPresentation delivery={delivery} summaryText={summaryText} />;
 }
 
-function DeliveryPresentation({ delivery }: { delivery: DeliveryDto }) {
+function DeliveryPresentation({
+  delivery,
+  summaryText
+}: {
+  delivery: DeliveryDto;
+  summaryText: string;
+}) {
   const presentation = delivery.report.presentation;
   return (
-    <div className="grid gap-3 rounded-sm bg-white p-3 shadow-md dark:bg-black">
+    <div className="relative z-10 grid origin-top-left scale-110 gap-3 rounded-lg bg-white p-3 shadow-md dark:bg-black">
       {presentation.status === 'pending' ? (
         <p className="text-xs text-(--color-ink-dim)" role="status">
           Adding delivery details…
@@ -240,6 +264,72 @@ function DeliveryPresentation({ delivery }: { delivery: DeliveryDto }) {
           </ul>
         </section>
       ) : null}
+      <Accordion className="border-t border-(--color-ink-dim)/15 pt-1">
+        <AccordionItem value="summary" className="border-none">
+          <AccordionTrigger className="py-2 text-xs font-medium text-(--color-ink-dim) hover:no-underline">
+            Delivery summary
+          </AccordionTrigger>
+          <AccordionContent>
+            <p className="whitespace-pre-wrap text-sm text-(--color-ink-dim)">{summaryText}</p>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
+    </div>
+  );
+}
+
+/**
+ * Delivery events show a plain summary line by default. Clicking it swaps in the
+ * AI-generated deliver card in place of that text; the summary moves into an
+ * accordion at the bottom of the card. Click outside or press Escape to collapse.
+ */
+function DeliveryExpandable({
+  missionId,
+  deliveryId,
+  summary
+}: {
+  missionId: string;
+  deliveryId: string;
+  summary: string;
+}) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="cursor-pointer text-left text-sm text-(--color-ink-dim) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+      >
+        {summary}
+      </button>
+    );
+  }
+
+  return (
+    <div ref={cardRef}>
+      <DeliveryDetails missionId={missionId} deliveryId={deliveryId} summaryText={summary} />
     </div>
   );
 }
@@ -252,7 +342,6 @@ function ActivityEntry({ event, missionId }: { event: MissionEventDto; missionId
   const isBlockingQuestion = event.type === 'ask';
   const isDelivery = event.type === 'delivery' && Boolean(event.deliveryId);
   const userLabel = actorLabel(event);
-  const [deliveryOpen, setDeliveryOpen] = useState(false);
 
   return (
     <article
@@ -310,20 +399,12 @@ function ActivityEntry({ event, missionId }: { event: MissionEventDto; missionId
           </span>
         </div>
         {event.summary ? (
-          isDelivery ? (
-            <div className="grid gap-2">
-              <button
-                type="button"
-                aria-expanded={deliveryOpen}
-                onClick={() => setDeliveryOpen(open => !open)}
-                className="cursor-pointer text-left text-sm text-(--color-ink-dim) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
-              >
-                {event.summary}
-              </button>
-              {deliveryOpen && event.deliveryId ? (
-                <DeliveryDetails missionId={missionId} deliveryId={event.deliveryId} />
-              ) : null}
-            </div>
+          isDelivery && event.deliveryId ? (
+            <DeliveryExpandable
+              missionId={missionId}
+              deliveryId={event.deliveryId}
+              summary={event.summary}
+            />
           ) : (
             <ExpandableSummary
               text={event.summary}

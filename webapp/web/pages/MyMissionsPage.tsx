@@ -42,10 +42,10 @@ import {
 } from './board-shared.ts';
 import type { BoardColumnStatus } from './BoardColumn.tsx';
 import { MissionListView } from './MissionListView.tsx';
+import { MissionProjectFilterDropdown } from './MissionProjectFilterDropdown.tsx';
 import { MissionStatusFilterDropdown } from './MissionStatusFilterDropdown.tsx';
 import { MissionsViewToggle } from './MissionsViewToggle.tsx';
 import { MissionTagFilterDropdown } from './MissionTagFilterDropdown.tsx';
-import { MissionProjectFilterDropdown } from './MissionProjectFilterDropdown.tsx';
 import {
   buildMergedStatusColumns,
   groupMissionsByMergedColumn,

@@ -14,7 +14,7 @@ import { isExplicitRuntimeEnv, resolveLayeredEnv } from '../cli/src/env.ts';
 import { handleMcpPost, mcpServerInfo } from '../mcp/server.ts';
 import { ServiceError } from '../packages/core/service/errors.ts';
 import type { LocalTargetBridgeCall } from '../packages/core/service/local-target/desktop-bridge.ts';
-import type { StoredImageDto } from '../webapp/shared/contract.ts';
+import type { ProjectListLifecycle, StoredImageDto } from '../webapp/shared/contract.ts';
 
 import { postMissionBranchObservations } from './branching/mission-branch-observations.ts';
 import { postExecutionTargetObservations } from './branching/target-resource-observations.ts';
@@ -754,7 +754,7 @@ app.get(
 // caller's currently active workspace) inside `listProjectsForWorkspace`.
 app.get(
   '/api/workspaces/:id/projects',
-  handle(req => listProjectsForWorkspace(req.params.id))
+  handle(req => listProjectsForWorkspace(req.params.id, undefined, parseProjectListLifecycle(req)))
 );
 app.get(
   '/api/workspaces/:id/statuses',
@@ -1072,6 +1072,13 @@ function parseSeqCursor(value: unknown): number | null {
   return Math.floor(parsed);
 }
 
+function parseProjectListLifecycle(req: Request): ProjectListLifecycle {
+  const value = Array.isArray(req.query.lifecycle) ? req.query.lifecycle[0] : req.query.lifecycle;
+  if (value === undefined) return 'active';
+  if (value === 'active' || value === 'archived' || value === 'all') return value;
+  throw new ApiError(400, 'lifecycle must be one of: active, archived, all');
+}
+
 function streamRealtime(req: Request, res: Response): void {
   void (async () => {
     try {
@@ -1125,7 +1132,7 @@ app.get(
 
 app.get(
   '/api/projects',
-  handle(() => listProjects())
+  handle(req => listProjects(undefined, parseProjectListLifecycle(req)))
 );
 app.post(
   '/api/projects',

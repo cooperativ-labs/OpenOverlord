@@ -542,6 +542,71 @@ export async function resolveLaunchConfig({
   return { config: { preCommand: '', flags: [] }, source: 'none' };
 }
 
+/** Whether a launch config carries any pre-command or flags to apply. */
+export function isAgentLaunchConfigEmpty(config: AgentLaunchConfig): boolean {
+  return config.preCommand.trim().length === 0 && config.flags.length === 0;
+}
+
+/**
+ * Resolve the effective launch config (pre-command + flags) to hand a runner when
+ * it *claims* a request, not (only) when the request was queued.
+ *
+ * The queue-time snapshot in `execution_requests.launch_flags_json` is
+ * authoritative whenever it carries anything — it preserves an explicit
+ * per-objective override or a resolved user/workspace config. But a request queued
+ * while the project's execution target was ambiguous (multiple eligible targets and
+ * no explicit selection → `resolveLaunchExecutionTarget` returns a null target and
+ * empty `agentConfigs`) captured *no* launch mechanics, so the snapshot is empty and
+ * the user's pre-command/flags would silently never apply.
+ *
+ * In that empty case, re-resolve here against the target that actually won the
+ * claim — mirroring how per-project pre-launch commands and launch env vars are
+ * resolved fresh at claim time. This keeps every launch setting (pre-command,
+ * flags, pre-launch commands, env vars) resolving at the same point, so flags and
+ * pre-command apply as reliably regardless of which runner — a foreground
+ * `ovld runner start` or the persistent runner service — claims the work.
+ *
+ * When the snapshot is non-empty, or the agent/claiming target is unknown, the
+ * snapshot is returned unchanged.
+ */
+export async function resolveClaimLaunchConfig({
+  ctx,
+  snapshot,
+  agentKey,
+  claimingExecutionTargetId,
+  objectiveId
+}: {
+  ctx: ServiceContext;
+  snapshot: AgentLaunchConfig;
+  agentKey: string | null;
+  claimingExecutionTargetId: string | null;
+  objectiveId: string;
+}): Promise<AgentLaunchConfig> {
+  if (!isAgentLaunchConfigEmpty(snapshot)) return snapshot;
+
+  const key = agentKey?.trim();
+  const targetId = claimingExecutionTargetId?.trim() || null;
+  if (!key || !targetId) return snapshot;
+
+  const objective = (await ctx.db.get(
+    `SELECT launch_config_json FROM objectives WHERE id = ? AND deleted_at IS NULL`,
+    [objectiveId]
+  )) as { launch_config_json: string | null } | undefined;
+
+  const userConfigs = await readAgentConfigsForExecutionTarget({
+    ctx,
+    executionTargetId: targetId
+  });
+  const resolved = await resolveLaunchConfig({
+    ctx,
+    objectiveLaunchConfigJson: objective?.launch_config_json ?? null,
+    executionTargetId: targetId,
+    agentKey: key,
+    userConfigs
+  });
+  return resolved.config;
+}
+
 export async function readAgentConfigsForExecutionTarget({
   ctx,
   executionTargetId

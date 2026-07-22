@@ -65,6 +65,7 @@ import type {
   ProfileDto,
   ProjectDto,
   ProjectExecutionTargetDto,
+  ProjectListLifecycle,
   ProjectRepositoryDto,
   ProjectResourceDto,
   ProjectTagDto,
@@ -347,9 +348,10 @@ export const api = {
   acceptWorkspaceInvitation: (body: AcceptWorkspaceInvitationBody) =>
     request<WorkspaceDto>('POST', '/api/invitations/accept', body),
 
-  listProjects: () => request<ProjectDto[]>('GET', '/api/projects'),
-  listProjectsForWorkspace: (workspaceId: string) =>
-    request<ProjectDto[]>('GET', `/api/workspaces/${workspaceId}/projects`),
+  listProjects: (lifecycle: ProjectListLifecycle = 'active') =>
+    request<ProjectDto[]>('GET', `/api/projects?lifecycle=${lifecycle}`),
+  listProjectsForWorkspace: (workspaceId: string, lifecycle: ProjectListLifecycle = 'active') =>
+    request<ProjectDto[]>('GET', `/api/workspaces/${workspaceId}/projects?lifecycle=${lifecycle}`),
   listWorkspaceStatusesForWorkspace: (workspaceId: string) =>
     request<WorkspaceStatusDto[]>('GET', `/api/workspaces/${workspaceId}/statuses`),
   getProject: (id: string) => request<ProjectDto>('GET', `/api/projects/${id}`),

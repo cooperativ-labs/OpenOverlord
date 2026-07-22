@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '21'
+contractVersion: '22'
 
 components:
   protocol:
@@ -140,6 +140,7 @@ components:
       - 'organization management endpoints: list organizations for the caller, update an organization (org-admin gated), list/add/remove organization admins (add/remove maintains the invariant that an org admin is ADMIN of every constituent workspace)'
       - 'shared onboarding endpoint (POST /api/onboarding, zero-membership users only): creates an organization, a default workspace, membership, and ADMIN role in one transaction; used verbatim by the web onboarding screen and the ovld org-setup CLI command'
       - 'project APIs support explicit target workspace context for multi-workspace organization UIs: CreateProjectBody.workspaceId and GET /api/workspaces/:id/statuses'
+      - 'project list lifecycle filtering: GET /api/projects and GET /api/workspaces/:id/projects default to active projects and accept lifecycle=active|archived|all; lifecycle selection never changes project-read authorization'
       - "workspace agent catalog and launch-settings management uses only workspace-scoped routes under /api/workspaces/:id, authorized against the target workspace's own membership (launch:read to view, launch:configure to mutate; non-membership reads as 404)"
       - "authenticated default-project preference routes GET/PUT/DELETE /api/profile/default-project use the account-wide project_user_preferences.preferences_json.overlord.defaultProject marker; it grants no access and defaultProjectId is additive on /api/meta"
       - "resource-owned REST and extension operations derive the named resource's workspace and the caller's matching workspace_users membership before authorization, persistence, external-provider access, and entity_changes attribution; account-wide reads aggregate authorized memberships server-side and parentless creates name a workspace when ambiguous"

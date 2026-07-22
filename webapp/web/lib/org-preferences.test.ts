@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 
-import {
-  readMyMissionsProjectFilter,
-  writeMyMissionsProjectFilter
-} from './org-preferences.ts';
+import { readMyMissionsProjectFilter, writeMyMissionsProjectFilter } from './org-preferences.ts';
 
 const originalWindow = globalThis.window;
 

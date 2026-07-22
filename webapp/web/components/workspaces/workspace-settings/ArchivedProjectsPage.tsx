@@ -1,5 +1,5 @@
 import { Archive, Loader2, RotateCcw } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { useProjects, useUnarchiveProject } from '@/lib/queries';
@@ -10,15 +10,12 @@ type ArchivedProjectsPageProps = {
 };
 
 export function ArchivedProjectsPage({ workspaceId }: ArchivedProjectsPageProps) {
-  const projects = useProjects(workspaceId);
+  const projects = useProjects(workspaceId, 'archived');
   const unarchiveProject = useUnarchiveProject();
   const [unarchivingId, setUnarchivingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const archivedProjects = useMemo(
-    () => (projects.data ?? []).filter(project => project.status === 'archived'),
-    [projects.data]
-  );
+  const archivedProjects = projects.data ?? [];
 
   async function handleUnarchive(projectId: string) {
     setUnarchivingId(projectId);

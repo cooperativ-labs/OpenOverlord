@@ -1,5 +1,5 @@
 import { PERMISSIONS } from '@overlord/auth';
-import { normalizeAgentLaunchFlags } from '@overlord/contract';
+import { type AgentLaunchFlagDto, normalizeAgentLaunchFlags } from '@overlord/contract';
 import type { DatabaseClient } from '@overlord/database';
 
 import type { ServiceContext } from '../../packages/core/service/context.ts';
@@ -13,10 +13,12 @@ import {
   listExecutionRequests,
   markExecutionFailed,
   markExecutionLaunched,
-  markExecutionLaunching
+  markExecutionLaunching,
+  recordResolvedLaunchConfigEvent
 } from '../../packages/core/service/execution-requests.ts';
 import type { CapabilityResult } from '../../packages/core/service/local-target/types.ts';
 import { completeLocalTargetMutationRequest } from '../../packages/core/service/local-target-mutations.ts';
+import { resolveClaimLaunchConfig } from '../../packages/core/service/project-execution-target.ts';
 import { recordRunnerBranchEvent } from '../branching/branch-activity.ts';
 import {
   buildWebappServiceContextForWorkspace,
@@ -241,6 +243,34 @@ export async function claimRunnerRequest({
     }
     if (request) {
       const dto = serviceSummaryToDto(request);
+      // Resolve pre-command/flags against the target that won the claim, filling
+      // in any config that a queue-time ambiguous target could not capture, so
+      // launch mechanics resolve at the same point as the pre-launch commands and
+      // env vars below (best-effort: fall back to the queue-time snapshot).
+      let launchConfig: { preCommand: string; flags: AgentLaunchFlagDto[] } = {
+        preCommand:
+          typeof request.launchFlags.preCommand === 'string' ? request.launchFlags.preCommand : '',
+        flags: normalizeAgentLaunchFlags(request.launchFlags.flags)
+      };
+      try {
+        launchConfig = await resolveClaimLaunchConfig({
+          ctx,
+          snapshot: launchConfig,
+          agentKey: request.requestedAgent,
+          claimingExecutionTargetId: request.claimedByExecutionTargetId,
+          objectiveId: request.objectiveId
+        });
+      } catch {
+        // Keep the snapshot `serviceSummaryToDto` already produced.
+      }
+      dto.launchConfig = launchConfig;
+      // Record the exact params handed to the runner so the injected launch config
+      // is always visible on the mission timeline (best-effort — never fail a claim).
+      try {
+        await recordResolvedLaunchConfigEvent({ ctx, request, launchConfig });
+      } catch {
+        // Audit event is best-effort; a claim must still succeed without it.
+      }
       const settings = await claimProjectLaunchSettings(ctx.db, request.projectId);
       dto.preLaunchCommands = settings.preLaunchCommands;
       dto.launchEnvVars = settings.launchEnvVars;

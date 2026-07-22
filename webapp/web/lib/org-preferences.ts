@@ -133,10 +133,7 @@ export function readMyMissionsProjectFilter(organizationId: string): string[] {
 }
 
 /** Persist the device-local My Missions project filter for one organization. */
-export function writeMyMissionsProjectFilter(
-  organizationId: string,
-  projectIds: string[]
-): void {
+export function writeMyMissionsProjectFilter(organizationId: string, projectIds: string[]): void {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(

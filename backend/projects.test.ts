@@ -23,7 +23,8 @@ const {
   listProjectsForWorkspace,
   listWorkspaceStatuses,
   listWorkspaceStatusesForWorkspace,
-  reorderProjects
+  reorderProjects,
+  updateProject
 } = await import('./repository.ts');
 const { createWorkspace } = await import('./workspaces.ts');
 const { ApiError } = await import('./errors.ts');
@@ -94,6 +95,32 @@ test('reordering projects rejects duplicate ids in the requested order', async (
   ]);
 });
 
+test('project lists default to active projects and expose archived lifecycle explicitly', async () => {
+  const active = await createProject({ name: 'Active list project' });
+  const archived = await createProject({ name: 'Archived list project' });
+  await updateProject(archived.id, { status: 'archived' });
+
+  const activeIds = new Set((await listProjects()).map(project => project.id));
+  assert.equal(activeIds.has(active.id), true);
+  assert.equal(activeIds.has(archived.id), false);
+
+  const archivedIds = new Set(
+    (await listProjectsForWorkspace(primaryWorkspaceId, undefined, 'archived')).map(
+      project => project.id
+    )
+  );
+  assert.equal(archivedIds.has(active.id), false);
+  assert.equal(archivedIds.has(archived.id), true);
+
+  const allIds = new Set(
+    (await listProjectsForWorkspace(primaryWorkspaceId, undefined, 'all')).map(
+      project => project.id
+    )
+  );
+  assert.equal(allIds.has(active.id), true);
+  assert.equal(allIds.has(archived.id), true);
+});
+
 test('createProject honors an explicit non-active workspace target', async () => {
   const secondary = await createWorkspace({
     organizationId: DEFAULT_TEST_ORGANIZATION_ID,
@@ -111,8 +138,8 @@ test('createProject honors an explicit non-active workspace target', async () =>
   assert.equal(created.workspaceId, secondary.id);
   assert.deepEqual(
     (await listProjects()).map(project => project.id).includes(created.id),
-    false,
-    'active workspace project list should not include the secondary project'
+    true,
+    'account-wide project list should include an accessible secondary-workspace project'
   );
   assert.deepEqual(
     (await listProjectsForWorkspace(secondary.id)).map(project => project.id),

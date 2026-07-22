@@ -1,3 +1,5 @@
+import { type AgentLaunchFlagDto, formatAgentLaunchFlagText } from '@overlord/contract';
+
 import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import { resolveMissionId, resolveProjectId } from './context.js';
@@ -172,6 +174,51 @@ async function appendExecutionRequestEvent({
       nowIso()
     ]
   );
+}
+
+/**
+ * Record, as a mission event, the launch parameters a runner was actually handed
+ * for a claimed request — the resolved pre-command and flags (see
+ * `resolveClaimLaunchConfig`) plus the agent — so the exact params injected into a
+ * launch are always auditable from the mission timeline, not merely inferred from
+ * whatever the queue-time snapshot happened to hold. Emitted right after a claim
+ * resolves the config; keep the call best-effort so it never fails a claim.
+ */
+export async function recordResolvedLaunchConfigEvent({
+  ctx,
+  request,
+  launchConfig
+}: {
+  ctx: ServiceContext;
+  request: Pick<
+    ExecutionRequestSummary,
+    'id' | 'projectId' | 'missionId' | 'objectiveId' | 'requestedAgent'
+  >;
+  launchConfig: { preCommand: string; flags: AgentLaunchFlagDto[] };
+}): Promise<void> {
+  const preCommand = launchConfig.preCommand.trim();
+  const flagText = launchConfig.flags.map(formatAgentLaunchFlagText).filter(Boolean);
+  const parts: string[] = [];
+  if (preCommand) parts.push(`pre-command \`${preCommand}\``);
+  if (flagText.length > 0) parts.push(`flags \`${flagText.join(' ')}\``);
+  const agentLabel = request.requestedAgent?.trim() || 'agent';
+  const summary =
+    parts.length > 0
+      ? `Launch parameters for ${agentLabel}: ${parts.join(', ')}.`
+      : `Launch parameters for ${agentLabel}: no pre-command or flags.`;
+  await appendExecutionRequestEvent({
+    ctx,
+    row: {
+      id: request.id,
+      project_id: request.projectId,
+      mission_id: request.missionId,
+      objective_id: request.objectiveId
+    },
+    summary,
+    payload: {
+      launchConfig: { preCommand: launchConfig.preCommand, flags: launchConfig.flags }
+    }
+  });
 }
 
 async function recordExecutionRequestUpdate({

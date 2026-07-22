@@ -65,6 +65,7 @@ import type {
   PreviewScheduleBody,
   ProfileDto,
   ProjectDto,
+  ProjectListLifecycle,
   ProjectRepositoryDto,
   ProjectResourceDto,
   ProjectTagDto,
@@ -1678,6 +1679,14 @@ const selectProjectsSql = `
   WHERE p.workspace_id = ? AND p.deleted_at IS NULL
 `;
 
+function projectListLifecyclePredicate(lifecycle: ProjectListLifecycle): string {
+  return lifecycle === 'all' ? '' : ' AND p.status = ?';
+}
+
+function projectListLifecycleParams(lifecycle: ProjectListLifecycle): string[] {
+  return lifecycle === 'all' ? [] : [lifecycle];
+}
+
 async function callerAuthorizedWorkspaceScopes(
   permission: Permission,
   db: DatabaseClient
@@ -1690,7 +1699,8 @@ async function callerAuthorizedWorkspaceScopes(
 }
 
 export async function listProjects(
-  db: DatabaseClient = requireDatabaseClient()
+  db: DatabaseClient = requireDatabaseClient(),
+  lifecycle: ProjectListLifecycle = 'active'
 ): Promise<ProjectDto[]> {
   // This is an index, not an active-workspace settings view. A caller can work
   // in every workspace they actively belong to, so aggregate those workspaces
@@ -1699,9 +1709,10 @@ export async function listProjects(
   const rows = (
     await Promise.all(
       scopes.map(scope =>
-        db.all(`${selectProjectsSql} ORDER BY p.status ASC, p.position ASC, p.created_at ASC`, [
-          scope.workspaceId
-        ])
+        db.all(
+          `${selectProjectsSql}${projectListLifecyclePredicate(lifecycle)} ORDER BY p.status ASC, p.position ASC, p.created_at ASC`,
+          [scope.workspaceId, ...projectListLifecycleParams(lifecycle)]
+        )
       )
     )
   ).flat() as unknown as ProjectRow[];
@@ -1723,7 +1734,8 @@ export async function listProjects(
  */
 export async function listProjectsForWorkspace(
   workspaceId: string,
-  db: DatabaseClient = requireDatabaseClient()
+  db: DatabaseClient = requireDatabaseClient(),
+  lifecycle: ProjectListLifecycle = 'active'
 ): Promise<ProjectDto[]> {
   await requireWorkspacePermission({
     workspaceId,
@@ -1733,8 +1745,8 @@ export async function listProjectsForWorkspace(
   });
 
   const rows = (await db.all(
-    `${selectProjectsSql} ORDER BY p.status ASC, p.position ASC, p.created_at ASC`,
-    [workspaceId]
+    `${selectProjectsSql}${projectListLifecyclePredicate(lifecycle)} ORDER BY p.status ASC, p.position ASC, p.created_at ASC`,
+    [workspaceId, ...projectListLifecycleParams(lifecycle)]
   )) as ProjectRow[];
   return rows.map(toProjectDto);
 }

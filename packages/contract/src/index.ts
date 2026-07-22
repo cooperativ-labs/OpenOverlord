@@ -44,6 +44,8 @@ export {
 // ---- Closed status vocabularies (from the schema CHECK constraints) ----
 
 export type ProjectLifecycle = 'active' | 'archived';
+/** Lifecycle subset accepted by project-list REST endpoints. */
+export type ProjectListLifecycle = ProjectLifecycle | 'all';
 
 export type StatusType = 'draft' | 'execute' | 'review' | 'complete' | 'blocked' | 'cancelled';
 

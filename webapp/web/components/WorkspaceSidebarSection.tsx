@@ -45,7 +45,7 @@ export function WorkspaceSidebarSection({
   organizationId,
   onOpenWorkspaceSettings
 }: WorkspaceSidebarSectionProps) {
-  const projects = useProjects(workspace.id);
+  const projects = useProjects(workspace.id, 'all');
   const reorderProjects = useReorderProjects(workspace.id);
   const params = useParams({ strict: false }) as { projectId?: string };
   const [expanded, setExpanded] = useState(() =>
