@@ -59,6 +59,7 @@ test('createUserToken with mission_lifecycle scope persists grants and surfaces 
   assert.equal(token.scope, 'mission_lifecycle');
   assert.ok(token.scopeGrants.includes('mission:*'));
   assert.ok(token.scopeGrants.includes('execution_request:claim'));
+  assert.ok(token.scopeGrants.includes('project:create'));
   assert.ok(!token.scopeGrants.includes('project:delete'));
 
   // The list endpoint reflects the same scope.
@@ -91,6 +92,7 @@ test('an active token cannot be deleted without first being revoked', async () =
 test('a mission_lifecycle token is denied admin/destructive actions but allowed mission/runner work', async () => {
   const scopeGrants = [
     'project:read',
+    'project:create',
     'mission:*',
     'objective:*',
     'session:*',
@@ -111,6 +113,8 @@ test('a mission_lifecycle token is denied admin/destructive actions but allowed 
   assert.equal(await actorCan('mission:create', activeScope()), true);
   assert.equal(await actorCan('objective:update', activeScope()), true);
   assert.equal(await actorCan('execution_request:claim', activeScope()), true);
+  assert.equal(await actorCan('project:create', activeScope()), true);
+  assert.equal(await actorCan('project:update', activeScope()), false);
   assert.equal(await actorCan('project:delete', activeScope()), false);
   assert.equal(await actorCan('user:create', activeScope()), false);
   assert.equal(await actorCan('user_token:self:create', activeScope()), false);

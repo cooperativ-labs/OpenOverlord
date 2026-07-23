@@ -40,12 +40,15 @@ test('mission_lifecycle scope permits mission/objective/runner work', () => {
   assert.equal(effectiveCan([Role.ADMIN], scope, PERMISSIONS.EXECUTION_REQUEST_CLAIM), true);
   assert.equal(effectiveCan([Role.ADMIN], scope, PERMISSIONS.EVENT_CREATE), true);
   assert.equal(effectiveCan([Role.ADMIN], scope, PERMISSIONS.WORKSPACE_READ), true);
+  // Project creation is permitted so agents can spin up a new project to work in.
+  assert.equal(effectiveCan([Role.ADMIN], scope, PERMISSIONS.PROJECT_CREATE), true);
 });
 
 test('mission_lifecycle scope denies admin/destructive actions even for an ADMIN user', () => {
   const scope = scopeGrantsForPreset('mission_lifecycle');
   assert.equal(effectiveCan([Role.ADMIN], scope, PERMISSIONS.PROJECT_DELETE), false);
-  assert.equal(effectiveCan([Role.ADMIN], scope, PERMISSIONS.PROJECT_CREATE), false);
+  // project:create is granted (see the permit test); project:update/delete stay denied.
+  assert.equal(effectiveCan([Role.ADMIN], scope, PERMISSIONS.PROJECT_UPDATE), false);
   assert.equal(effectiveCan([Role.ADMIN], scope, PERMISSIONS.USER_CREATE), false);
   assert.equal(effectiveCan([Role.ADMIN], scope, PERMISSIONS.ROLE_ASSIGN), false);
   // A scoped token must not be able to mint further tokens.

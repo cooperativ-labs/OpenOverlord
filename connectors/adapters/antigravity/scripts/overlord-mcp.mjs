@@ -90,6 +90,23 @@ const tools = [
     })
   },
   {
+    name: 'overlord_create_project',
+    title: 'Create Overlord project',
+    description:
+      'Create a new Overlord project. If the caller belongs to more than one workspace and none is given, returns a workspace_selection_required result listing the workspaces for the user to choose.',
+    inputSchema: objectSchema(
+      {
+        name: stringProperty('New project name.'),
+        workspaceId: stringProperty(
+          'Workspace to create the project in (id, slug, or name). Required only when the caller belongs to multiple workspaces.'
+        ),
+        description: stringProperty('Optional project description.'),
+        slug: stringProperty('Optional project slug; defaults to a slug derived from the name.')
+      },
+      ['name']
+    )
+  },
+  {
     name: 'overlord_search_missions',
     title: 'Search Overlord missions',
     description: 'Search missions in the OAuth-bound workspace.',
@@ -238,6 +255,18 @@ function callOverlordTool(name, args) {
         ? { 'project-id': requiredString(args, 'projectId') }
         : {}),
       ...(optionalString(args, 'directory') ? { directory: requiredString(args, 'directory') } : {})
+    });
+  }
+  if (name === 'overlord_create_project') {
+    return runProtocol('create-project', {
+      name: requiredString(args, 'name'),
+      ...(optionalString(args, 'workspaceId')
+        ? { 'workspace-id': requiredString(args, 'workspaceId') }
+        : {}),
+      ...(optionalString(args, 'description')
+        ? { description: requiredString(args, 'description') }
+        : {}),
+      ...(optionalString(args, 'slug') ? { slug: requiredString(args, 'slug') } : {})
     });
   }
   if (name === 'overlord_search_missions') {

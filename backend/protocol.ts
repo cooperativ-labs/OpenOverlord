@@ -2,7 +2,10 @@ import { type Permission, PERMISSIONS } from '@overlord/auth';
 
 import type { ServiceContext } from '../packages/core/service/context.ts';
 import { listAttachments } from '../packages/core/service/missions.ts';
-import { discoverProject } from '../packages/core/service/projects.ts';
+import {
+  createProject as createProjectService,
+  discoverProject
+} from '../packages/core/service/projects.ts';
 import {
   addObjectivesToMission,
   askQuestion,
@@ -35,6 +38,7 @@ import {
 import { ApiError } from './errors.ts';
 import { requirePermission, requireWorkspacePermission } from './rbac.ts';
 import { callerWorkspaceMemberships } from './repository.ts';
+import { listWorkspaces } from './workspaces.ts';
 
 // ---- Protocol command dispatch -------------------------------------------
 //
@@ -382,6 +386,76 @@ type ChangedFileInput = {
 
 type Handler = (ctx: ServiceContext, body: ProtocolRequestBody) => unknown;
 
+// ---- create-project (parentless workspace resolution) --------------------
+
+type WorkspaceChoice = { id: string; name: string; slug: string };
+
+/**
+ * Create a project over the protocol/MCP surface. Project creation is
+ * "parentless" — no mission/project reference resolves the workspace — so when
+ * the caller belongs to more than one workspace and did not name one via
+ * `--workspace-id`, this returns a structured `workspace_selection_required`
+ * result listing the caller's workspaces instead of silently defaulting. The
+ * agent/UI must then ask the user which workspace to use and retry. Per-target
+ * RBAC is enforced here (not by the dispatcher) so the selection flow runs
+ * before any permission check binds to a default workspace.
+ */
+async function createProjectFromProtocol(body: ProtocolRequestBody): Promise<unknown> {
+  const name = requireFlag(body, '--name');
+  const memberships = await callerWorkspaceMemberships();
+  if (memberships.length === 0) {
+    throw new ApiError(403, 'No active workspace membership; create or join a workspace first.');
+  }
+
+  const memberWorkspaceIds = new Set(memberships.map(m => m.workspaceId));
+  const workspaces: WorkspaceChoice[] = (await listWorkspaces())
+    .filter(w => memberWorkspaceIds.has(w.id))
+    .map(w => ({ id: w.id, name: w.name, slug: w.slug }));
+
+  const requested = strFlag(body, '--workspace-id')?.trim();
+  let target: WorkspaceChoice | undefined;
+  if (requested) {
+    const needle = requested.toLowerCase();
+    target = workspaces.find(
+      w => w.id === requested || w.slug.toLowerCase() === needle || w.name.toLowerCase() === needle
+    );
+    if (!target) {
+      throw new ApiError(404, `Workspace not found or not a member: ${requested}`);
+    }
+  } else if (workspaces.length === 1) {
+    target = workspaces[0];
+  } else {
+    return {
+      status: 'workspace_selection_required',
+      message:
+        'You belong to more than one workspace. Ask the user which workspace to create the ' +
+        'project in, then retry with workspaceId set to the chosen id, slug, or name.',
+      workspaces
+    };
+  }
+
+  const workspaceUserId = await requireWorkspacePermission({
+    workspaceId: target.id,
+    permission: PERMISSIONS.PROJECT_CREATE,
+    notFoundMessage: 'Workspace not found or no active membership'
+  });
+  const ctx: ServiceContext = {
+    ...(await buildWebappServiceContextForWorkspace(
+      target.id,
+      serviceDatabaseClient(),
+      workspaceUserId
+    )),
+    source: 'protocol'
+  };
+  const project = await createProjectService({
+    ctx,
+    name,
+    description: strFlag(body, '--description') ?? null,
+    slug: strFlag(body, '--slug') ?? null
+  });
+  return { status: 'created', project, workspace: target };
+}
+
 // ---- subcommand handlers -------------------------------------------------
 
 const handlers: Record<string, Handler> = {
@@ -635,6 +709,11 @@ const handlers: Record<string, Handler> = {
       workingDirectory: strFlag(body, '--directory') ?? null
     }),
 
+  // Parentless project creation. Resolves/validates the target workspace itself
+  // (see `createProjectFromProtocol`) so it can return a `workspace_selection_required`
+  // result when the caller has multiple memberships instead of defaulting.
+  'create-project': (_ctx, body) => createProjectFromProtocol(body),
+
   // Predates the real `organizations` table/hierarchy (coo:135) — despite the
   // name, this returns only the caller's current *workspace* context (never
   // an organization row), kept as-is to avoid a breaking protocol rename.
@@ -672,6 +751,9 @@ const SUBCOMMAND_PERMISSIONS: Record<string, Permission | null> = {
   'attachment-download-url': PERMISSIONS.ARTIFACT_READ,
   'auth-status': null,
   'discover-project': PERMISSIONS.PROJECT_READ,
+  // Enforced per-target inside the handler (requireWorkspacePermission) so the
+  // multi-workspace selection flow runs before any default-workspace gate.
+  'create-project': null,
   'list-organizations': PERMISSIONS.PROJECT_READ
 };
 

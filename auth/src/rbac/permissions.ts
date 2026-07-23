@@ -122,9 +122,10 @@ export type KnownPermission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
  *  - `full` carries no scope rows, so the token inherits the full permissions of
  *    its creating user's roles.
  *  - `mission_lifecycle` restricts the token to everything a runner/agent needs to
- *    drive a mission — workspace, project (read-only), mission, objective, session,
- *    event, artifact, attachment, and execution-request work — and deliberately
- *    excludes project create/update/delete and user/role/connector
+ *    drive a mission — workspace, project (read + create), mission, objective, session,
+ *    event, artifact, attachment, and execution-request work. Project *create* is
+ *    permitted so agents (including hosted MCP) can spin up a new project to work in;
+ *    it deliberately still excludes project update/delete and user/role/connector
  *    administration and `user_token:self:*` (a scoped token must not be able to mint
  *    further tokens).
  *
@@ -137,6 +138,7 @@ export type TokenScope = 'full' | 'mission_lifecycle';
 export const MISSION_LIFECYCLE_GRANTS: readonly string[] = [
   'workspace:read',
   'project:read',
+  'project:create',
   'mission:*',
   'objective:*',
   'session:*',

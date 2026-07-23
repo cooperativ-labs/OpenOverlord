@@ -57,6 +57,10 @@ function formatTimestamp(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 }
 
+/** Scaled deliver card: width accounts for 110% scale; callers add left/right escape margins. */
+const DELIVERY_CARD_EMPHASIS_CLASS =
+  'relative z-10 w-[calc((100%-1rem)/1.1)] max-w-[calc((100%-1rem)/1.1)] origin-top-left scale-110 rounded-lg bg-white shadow-md dark:bg-black';
+
 function actorLabel(event: MissionEventDto): string {
   return event.actor?.displayName?.trim() || event.actor?.handle || 'User';
 }
@@ -179,14 +183,14 @@ function DeliveryDetails({
 
   if (deliveriesQ.isLoading) {
     return (
-      <div className="relative z-10 origin-top-left scale-110 rounded-lg bg-white p-3 shadow-md dark:bg-black">
+      <div className={`${DELIVERY_CARD_EMPHASIS_CLASS} p-3`}>
         <Spinner />
       </div>
     );
   }
   if (deliveriesQ.isError || !delivery) {
     return (
-      <p className="relative z-10 origin-top-left scale-110 rounded-lg bg-white p-3 text-sm text-(--color-ink-dim) shadow-md dark:bg-black">
+      <p className={`${DELIVERY_CARD_EMPHASIS_CLASS} p-3 text-sm text-(--color-ink-dim)`}>
         Could not load delivery details.
       </p>
     );
@@ -204,7 +208,7 @@ function DeliveryPresentation({
 }) {
   const presentation = delivery.report.presentation;
   return (
-    <div className="relative z-10 grid origin-top-left scale-110 gap-3 rounded-lg bg-white p-3 shadow-md dark:bg-black">
+    <div className={`${DELIVERY_CARD_EMPHASIS_CLASS} grid gap-3 p-3`}>
       {presentation.status === 'pending' ? (
         <p className="text-xs text-(--color-ink-dim)" role="status">
           Adding delivery details…
@@ -328,7 +332,7 @@ function DeliveryExpandable({
   }
 
   return (
-    <div ref={cardRef}>
+    <div ref={cardRef} className="-ml-4 overflow-visible">
       <DeliveryDetails missionId={missionId} deliveryId={deliveryId} summaryText={summary} />
     </div>
   );

@@ -294,6 +294,9 @@ app.use(
       callback(new Error(`Origin ${origin} is not allowed by CORS`));
     },
     credentials: true,
+    // Cache successful browser preflights. Browsers cap this value as appropriate
+    // (for example, Chrome at two hours) while non-browser clients are unaffected.
+    maxAge: 86_400,
     allowedHeaders: [
       'Authorization',
       'Content-Type',

@@ -207,7 +207,7 @@ requests.
   pre-launch command) extra environment, e.g.
   `AGENT_POD_EXTRA_ALLOWED_PATHS={OVERLORD_PROJECT_RESOURCES_PATHS_CSV}`. The
   runner claim response carries them for the runner path; a manual `ovld launch`
-  fetches them from the mission's project. Each *value* may reference the same
+  fetches them from the mission's project. Each _value_ may reference the same
   `{VAR_NAME}` launch variables as pre-launch commands and is substituted at
   launch time (unknown placeholders left verbatim); because they are `export`ed
   before the pre-launch commands, those commands can also read them via shell
@@ -258,16 +258,16 @@ Manual Run:
 persistent runner service removes that requirement by installing an OS-level user
 service that runs the supervisor loop in the background.
 
-- `ovld runner supervise` is the long-lived loop. Each poll delegates to the same
+- `ovld runner supervise` is the long-lived loop. Each claim delegates to the same
   one-shot claim-and-launch implementation used by `ovld runner once` — claim,
   resource resolution, branch/worktree preparation, and terminal launch behavior
   are never duplicated.
-- **Adaptive polling**: poll every 3 seconds while any job launched within the
-  last two hours, and every 10 seconds after two hours with no launched job.
-  Backoff is keyed on the "last launched job" clock (not "last poll with work"),
-  so a long run of empty polls does not keep the runner hot. Each interval adds
-  ~10% jitter so many local runners do not wake in lockstep against a shared
-  backend.
+- **Hosted long-polling**: against Postgres, an idle claim waits for a queue
+  notification for up to 25 seconds and the runner immediately reconnects after
+  an empty timeout or wake. The wait uses a dedicated backend listener, never a
+  pooled query connection, and every wake re-runs the normal authorized atomic
+  claim. SQLite retains the adaptive 3s/5s fallback cadence keyed on the last
+  launched job, with jitter, because it has no cross-process queue notification.
 - **Host integration**: macOS uses a user `launchd` LaunchAgent
   (`~/Library/LaunchAgents/io.overlord.runner.plist`); Linux uses a
   `systemd --user` unit (`~/.config/systemd/user/overlord-runner.service`).
@@ -294,14 +294,14 @@ service that runs the supervisor loop in the background.
   registers under **Overlord** rather than the plain `node` binary's **Node.js
   Foundation** signature. A CLI-only install with no desktop app present falls back
   to the `node` binary and registers under "Node.js Foundation"; `ovld runner
-  service status` reports the resolved `publisher` and, when applicable, a
+service status` reports the resolved `publisher` and, when applicable, a
   `reinstallHint` to re-register it under Overlord by reinstalling with the desktop
   app present.
 
 ## Acceptance Criteria
 
 - `ovld runner once` can pick up a queued objective and launch the requested agent locally.
-- `ovld runner supervise` polls adaptively and delegates to the same claim-and-launch path as `ovld runner once`.
+- `ovld runner supervise` uses Postgres queue long-polls (or the SQLite fallback cadence) and delegates to the same claim-and-launch path as `ovld runner once`.
 - `ovld runner service install` registers a background service that survives terminal exit on macOS and Linux.
 - `ovld runner status` explains why a queued request is or is not claimable.
 - A missing primary directory produces a clear repair command.

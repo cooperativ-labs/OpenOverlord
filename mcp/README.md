@@ -56,6 +56,7 @@ the webapp domain as the MCP resource.
 The current tool catalog is mission-first:
 
 - `overlord_resolve_project`
+- `overlord_create_project`
 - `overlord_search_missions`
 - `overlord_create_mission`
 - `overlord_load_mission_context`

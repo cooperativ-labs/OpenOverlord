@@ -4,7 +4,7 @@
 # IMPORTANT: Update this file and CONTRACT.md together when adding components or surfaces.
 # Increment contractVersion when any stable interface changes.
 
-contractVersion: '22'
+contractVersion: '24'
 
 components:
   protocol:
@@ -104,7 +104,7 @@ components:
       - 'mission branch base resolution for runner preparation: project-configured base first, then the repository main worktree checkout, then the repo default'
       - 'deterministic branch/worktree planning algorithm (cli/src/branch-planning.ts), co-owned with the service layer and pinned to contract/branch-planning-vectors.json'
       - 'ovld runner commands'
-      - 'persistent runner service: ovld runner supervise (adaptive-polling loop delegating to the same claim-and-launch path as ovld runner once) and ovld runner service <install|start|stop|restart|status|uninstall> managing an OS-level user service (macOS launchd io.overlord.runner, Linux systemd --user overlord-runner.service); 3s/10s adaptive backoff keyed on last-launched-job with ~10% jitter; local diagnostic state in ~/.ovld/runner-service.json; owner-only service files; Windows deferred'
+      - 'persistent runner service: ovld runner supervise delegates to the same claim-and-launch path as ovld runner once; Postgres runners reconnect queue long-polls immediately after an empty wake/25s timeout while SQLite retains an adaptive polling fallback; ovld runner service <install|start|stop|restart|status|uninstall> manages an OS-level user service (macOS launchd io.overlord.runner, Linux systemd --user overlord-runner.service); local diagnostic state in ~/.ovld/runner-service.json; owner-only service files; Windows deferred'
       - 'execution target selection logic'
       - 'runner queue REST operations used by ovld runner: GET /api/runner/status, POST /api/runner/claim, POST /api/runner/clear, POST /api/runner/requests/:id/launching, POST /api/runner/requests/:id/launched, POST /api/runner/requests/:id/failed'
       - 'branch-preparation acknowledgement through POST /api/missions/:id/branch-prepared'
@@ -142,7 +142,7 @@ components:
       - 'project APIs support explicit target workspace context for multi-workspace organization UIs: CreateProjectBody.workspaceId and GET /api/workspaces/:id/statuses'
       - 'project list lifecycle filtering: GET /api/projects and GET /api/workspaces/:id/projects default to active projects and accept lifecycle=active|archived|all; lifecycle selection never changes project-read authorization'
       - "workspace agent catalog and launch-settings management uses only workspace-scoped routes under /api/workspaces/:id, authorized against the target workspace's own membership (launch:read to view, launch:configure to mutate; non-membership reads as 404)"
-      - "authenticated default-project preference routes GET/PUT/DELETE /api/profile/default-project use the account-wide project_user_preferences.preferences_json.overlord.defaultProject marker; it grants no access and defaultProjectId is additive on /api/meta"
+      - 'authenticated default-project preference routes GET/PUT/DELETE /api/profile/default-project use the account-wide project_user_preferences.preferences_json.overlord.defaultProject marker; it grants no access and defaultProjectId is additive on /api/meta'
       - "resource-owned REST and extension operations derive the named resource's workspace and the caller's matching workspace_users membership before authorization, persistence, external-provider access, and entity_changes attribution; account-wide reads aggregate authorized memberships server-side and parentless creates name a workspace when ambiguous"
       - "workspace execution-target projection: GET /api/workspaces/:id/execution-targets returns all non-deleted target identity/status/owner display metadata, reachability, and active workspace-member access count to an authenticated member; never connection_json, credentials, target registration, creation, or access mutation; project selection remains limited to the acting member's eligible targets. Workspace admins may rename a target label via PATCH /api/workspaces/:id/execution-targets/:targetId { label }"
       - 'storage routes for the organization-images bucket key (/api/storage/organization-images/…) with a PUBLIC organization_image:read grant'
@@ -299,13 +299,14 @@ interactionSurfaces:
       - 'UserPromptSubmit follow-up capture records user_follow_up activity without requiring a live session and without reopening execution'
 
   runnerToRest:
-    description: 'CLI runner polls/claims/updates execution requests through backend APIs, then launches agents locally'
+    description: 'CLI runner claims/updates execution requests through backend APIs, then launches agents locally'
     from: runner
     to: rest
     transport: http-json
     rules:
       - 'Runner queue endpoints are GET /api/runner/status, POST /api/runner/claim, POST /api/runner/clear, POST /api/runner/requests/:id/launching, POST /api/runner/requests/:id/launched, POST /api/runner/requests/:id/failed, and POST /api/missions/:id/branch-prepared'
       - 'Backend claim endpoint must perform atomic compare-and-set on execution_requests'
+      - 'Postgres claim waits use a dedicated non-pooled LISTEN connection for at most 25 seconds after an empty initial claim; queue notifications are wake hints only, followed by the same scoped authorized atomic claim. The additive response longPoll flag is true for this capability; SQLite responds immediately with longPoll false.'
       - 'Backend claim must set claimed_by_device_id, claimed_by_execution_target_id when known, and claim_expires_at'
       - 'Backend state transitions must append mission_events and entity_changes in the same transaction'
       - 'Allowed transitions are queued → claimed → launching → launched|failed; active requests may be cleared; stale claims and launched-without-attach requests may move to expired; other terminal statuses are sinks unless a new request is explicitly queued'

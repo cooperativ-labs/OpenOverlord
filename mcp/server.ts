@@ -96,6 +96,20 @@ const toolHandlers: Record<string, ToolHandler> = {
           : {})
       })
     ),
+  overlord_create_project: args =>
+    runProtocolSubcommand(
+      'create-project',
+      protocolBody({
+        '--name': requiredString(args, 'name'),
+        ...(optionalString(args, 'workspaceId')
+          ? { '--workspace-id': requiredString(args, 'workspaceId') }
+          : {}),
+        ...(optionalString(args, 'description')
+          ? { '--description': requiredString(args, 'description') }
+          : {}),
+        ...(optionalString(args, 'slug') ? { '--slug': requiredString(args, 'slug') } : {})
+      })
+    ),
   overlord_search_missions: args =>
     runProtocolSubcommand(
       'search-missions',

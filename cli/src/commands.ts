@@ -1452,7 +1452,7 @@ async function runRunnerCommand({
     });
   }
 
-  const runOnce = async (): Promise<boolean> => {
+  const runOnce = async (): Promise<{ launched: boolean; longPoll: boolean }> => {
     const claim = await runtime.backend.post<unknown>({
       path: '/api/runner/claim',
       body: {
@@ -1461,7 +1461,8 @@ async function runRunnerCommand({
       }
     });
     const request = asRecord(claim).request;
-    if (!request) return false;
+    const longPoll = asRecord(claim).longPoll === true;
+    if (!request) return { launched: false, longPoll };
     const requestRecord = asRecord(request);
     const requestId = String(requestRecord.id);
     const projectId = String(requestRecord.projectId ?? '');
@@ -1498,7 +1499,7 @@ async function runRunnerCommand({
         });
         if (json) printJson({ request, mutationResult });
         else console.log(`Completed ${mutation.kind} for ${requestRecord.missionId}`);
-        return true;
+        return { launched: true, longPoll };
       }
 
       // The execution request's agent is decided upstream from the objective row,
@@ -1573,7 +1574,7 @@ async function runRunnerCommand({
       } else {
         console.log(`Launched ${requestedAgent} for ${requestRecord.missionId}`);
       }
-      return true;
+      return { launched: true, longPoll };
     } catch (error) {
       await runtime.backend.post({
         path: `/api/runner/requests/${requestId}/failed`,
@@ -1584,8 +1585,8 @@ async function runRunnerCommand({
   };
 
   if (sub === 'once') {
-    const launched = await runOnce();
-    if (!launched) {
+    const result = await runOnce();
+    if (!result.launched) {
       if (json) printJson({ launched: false });
       else console.log('No claimable execution requests.');
     }
@@ -1600,8 +1601,10 @@ async function runRunnerCommand({
   const intervalMs = Number.parseInt(flagValue(parsed.flags, '--poll-interval-ms') ?? '3000', 10);
   if (!json) console.log(`Runner started. Polling every ${intervalMs}ms for execution requests.`);
   while (true) {
-    await runOnce();
-    await new Promise(resolve => setTimeout(resolve, intervalMs));
+    const result = await runOnce();
+    // A hosted claim either waited for work or advertises that the next claim
+    // can do so. Reconnect directly; SQLite retains this foreground fallback.
+    if (!result.longPoll) await new Promise(resolve => setTimeout(resolve, intervalMs));
   }
 }
 
@@ -1616,16 +1619,16 @@ async function runRunnerSupervisor({
   runOnce,
   json
 }: {
-  runOnce: () => Promise<boolean>;
+  runOnce: () => Promise<{ launched: boolean; longPoll: boolean }>;
   json: boolean;
 }): Promise<void> {
   if (!json) console.log('Runner supervisor started. Adaptive polling for execution requests.');
   for (;;) {
     const now = new Date();
-    let launched = false;
+    let result = { launched: false, longPoll: false };
     let lastError: string | null = null;
     try {
-      launched = await runOnce();
+      result = await runOnce();
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
     }
@@ -1634,20 +1637,24 @@ async function runRunnerSupervisor({
     // each poll so the cadence tracks "user is actively in the app right now".
     const focus = readDesktopFocusState();
     const base = selectBasePollIntervalMs({
-      lastLaunchedAt: launched ? now.toISOString() : state.lastLaunchedAt,
+      lastLaunchedAt: result.launched ? now.toISOString() : state.lastLaunchedAt,
       lastDesktopFocusAt: focus.lastFocusedAt,
       now: now.getTime()
     });
     patchRunnerServiceState({
       lastHeartbeatAt: now.toISOString(),
-      lastClaimedAt: launched ? now.toISOString() : state.lastClaimedAt,
-      lastLaunchedAt: launched ? now.toISOString() : state.lastLaunchedAt,
+      lastClaimedAt: result.launched ? now.toISOString() : state.lastClaimedAt,
+      lastLaunchedAt: result.launched ? now.toISOString() : state.lastLaunchedAt,
       // Reflect the latest poll's outcome so a resolved failure (e.g. an auth
       // error from before the user logged in) clears instead of sticking.
       lastError: nextRunnerLastError(lastError),
       currentPollIntervalMs: base
     });
-    await new Promise(resolve => setTimeout(resolve, applyPollJitter(base)));
+    // Postgres holds idle claims for the bounded long-poll; sleeping here would
+    // reintroduce the egress-heavy polling gap after every timeout/wake.
+    if (!result.longPoll) {
+      await new Promise(resolve => setTimeout(resolve, applyPollJitter(base)));
+    }
   }
 }
 

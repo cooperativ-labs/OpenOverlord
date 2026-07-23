@@ -58,6 +58,30 @@ export const hostedMcpToolDefinitions: ToolDefinition[] = [
     _meta: widget('ui://overlord/project-selector.html')
   },
   {
+    name: 'overlord_create_project',
+    title: 'Create Overlord project',
+    description:
+      'Use this only when the user explicitly asks to create a new Overlord project (workspace project). ' +
+      'If the user belongs to more than one workspace and none is specified, this returns a ' +
+      "'workspace_selection_required' result listing the workspaces — ask the user which one, then " +
+      'call again with workspaceId set to the chosen id, slug, or name.',
+    inputSchema: objectSchema(
+      {
+        name: stringProperty('New project name.'),
+        workspaceId: stringProperty(
+          'Workspace to create the project in (id, slug, or name). Required only when the caller belongs to multiple workspaces.'
+        ),
+        description: stringProperty('Optional project description.'),
+        slug: stringProperty('Optional project slug; defaults to a slug derived from the name.')
+      },
+      ['name']
+    ),
+    outputSchema: protocolOutputSchema(
+      "The created project (status 'created'), or a 'workspace_selection_required' result listing candidate workspaces."
+    ),
+    annotations: writeAction
+  },
+  {
     name: 'overlord_search_missions',
     title: 'Search Overlord missions',
     description:

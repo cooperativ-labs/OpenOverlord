@@ -22,6 +22,7 @@ import { resolveClaimLaunchConfig } from '../../packages/core/service/project-ex
 import { recordRunnerBranchEvent } from '../branching/branch-activity.ts';
 import {
   buildWebappServiceContextForWorkspace,
+  DATABASE_DIALECT,
   getClientDeviceIdentity,
   newId,
   nowIso,
@@ -36,6 +37,8 @@ import {
   readProjectLaunchEnvVars,
   readProjectPreLaunchCommands
 } from '../repository.ts';
+
+import { createRunnerQueueListener } from './runner-queue-notify.ts';
 
 type ClientDeviceBody = {
   deviceFingerprint?: string | null;
@@ -220,64 +223,88 @@ export async function claimRunnerRequest({
   clientDevice?: ClientDeviceBody;
 } = {}): Promise<{
   request: Record<string, unknown> | null;
+  longPoll: boolean;
 }> {
-  // Claim across every workspace the caller belongs to across organizations.
-  // Iterate in membership order and return the first workspace that yields a
-  // claimable request; subsequent polls drain the remaining workspaces.
-  for (const scope of await resolveRunnerScopes(projectId)) {
-    const ctx = await workspaceServiceContext(
-      scope.workspaceId,
-      scope.workspaceUserId,
-      clientDevice
-    );
-    let request;
-    try {
-      request = await claimNextExecutionRequest({
-        ctx,
-        projectId,
-        clientDevice: clientDeviceFromBody(clientDevice)
-      });
-    } catch (error) {
-      if (error instanceof ServiceError && error.code === 'project_not_found') continue;
-      throw error;
-    }
-    if (request) {
-      const dto = serviceSummaryToDto(request);
-      // Resolve pre-command/flags against the target that won the claim, filling
-      // in any config that a queue-time ambiguous target could not capture, so
-      // launch mechanics resolve at the same point as the pre-launch commands and
-      // env vars below (best-effort: fall back to the queue-time snapshot).
-      let launchConfig: { preCommand: string; flags: AgentLaunchFlagDto[] } = {
-        preCommand:
-          typeof request.launchFlags.preCommand === 'string' ? request.launchFlags.preCommand : '',
-        flags: normalizeAgentLaunchFlags(request.launchFlags.flags)
-      };
+  const claimNow = async (): Promise<Record<string, unknown> | null> => {
+    // Claim across every workspace the caller belongs to across organizations.
+    // Iterate in membership order and return the first workspace that yields a
+    // claimable request; subsequent polls drain the remaining workspaces.
+    for (const scope of await resolveRunnerScopes(projectId)) {
+      const ctx = await workspaceServiceContext(
+        scope.workspaceId,
+        scope.workspaceUserId,
+        clientDevice
+      );
+      let request;
       try {
-        launchConfig = await resolveClaimLaunchConfig({
+        request = await claimNextExecutionRequest({
           ctx,
-          snapshot: launchConfig,
-          agentKey: request.requestedAgent,
-          claimingExecutionTargetId: request.claimedByExecutionTargetId,
-          objectiveId: request.objectiveId
+          projectId,
+          clientDevice: clientDeviceFromBody(clientDevice)
         });
-      } catch {
-        // Keep the snapshot `serviceSummaryToDto` already produced.
+      } catch (error) {
+        if (error instanceof ServiceError && error.code === 'project_not_found') continue;
+        throw error;
       }
-      dto.launchConfig = launchConfig;
-      // Record the exact params handed to the runner so the injected launch config
-      // is always visible on the mission timeline (best-effort — never fail a claim).
-      try {
-        await recordResolvedLaunchConfigEvent({ ctx, request, launchConfig });
-      } catch {
-        // Audit event is best-effort; a claim must still succeed without it.
+      if (request) {
+        const dto = serviceSummaryToDto(request);
+        // Resolve pre-command/flags against the target that won the claim, filling
+        // in any config that a queue-time ambiguous target could not capture, so
+        // launch mechanics resolve at the same point as the pre-launch commands and
+        // env vars below (best-effort: fall back to the queue-time snapshot).
+        let launchConfig: { preCommand: string; flags: AgentLaunchFlagDto[] } = {
+          preCommand:
+            typeof request.launchFlags.preCommand === 'string'
+              ? request.launchFlags.preCommand
+              : '',
+          flags: normalizeAgentLaunchFlags(request.launchFlags.flags)
+        };
+        try {
+          launchConfig = await resolveClaimLaunchConfig({
+            ctx,
+            snapshot: launchConfig,
+            agentKey: request.requestedAgent,
+            claimingExecutionTargetId: request.claimedByExecutionTargetId,
+            objectiveId: request.objectiveId
+          });
+        } catch {
+          // Keep the snapshot `serviceSummaryToDto` already produced.
+        }
+        dto.launchConfig = launchConfig;
+        // Record the exact params handed to the runner so the injected launch config
+        // is always visible on the mission timeline (best-effort — never fail a claim).
+        try {
+          await recordResolvedLaunchConfigEvent({ ctx, request, launchConfig });
+        } catch {
+          // Audit event is best-effort; a claim must still succeed without it.
+        }
+        const settings = await claimProjectLaunchSettings(ctx.db, request.projectId);
+        dto.preLaunchCommands = settings.preLaunchCommands;
+        dto.launchEnvVars = settings.launchEnvVars;
+        return dto;
       }
-      const settings = await claimProjectLaunchSettings(ctx.db, request.projectId);
-      dto.preLaunchCommands = settings.preLaunchCommands;
-      dto.launchEnvVars = settings.launchEnvVars;
-      return { request: dto };
     }
+    return null;
+  };
+
+  const request = await claimNow();
+  if (request) return { request, longPoll: DATABASE_DIALECT === 'postgres' };
+  // SQLite has no cross-process queue notification primitive. Its callers keep
+  // the portable fallback cadence instead of reconnecting in a tight loop.
+  if (DATABASE_DIALECT !== 'postgres') return { request: null, longPoll: false };
+
+  const listener = await createRunnerQueueListener();
+  if (!listener) return { request: null, longPoll: false };
+  try {
+    // Close the claim-to-LISTEN race before beginning the bounded wait.
+    const afterListen = await claimNow();
+    if (afterListen) return { request: afterListen, longPoll: true };
+    await listener.wait();
+    // Notification is only a wake hint; another runner may have won the row.
+    return { request: await claimNow(), longPoll: true };
+  } finally {
+    await listener.close();
   }
-  return { request: null };
 }
 
 /**
