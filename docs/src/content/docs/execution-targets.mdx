@@ -29,6 +29,21 @@ identity is the fingerprint, so two VMs on one host are two targets.
 
 **Local targets** register automatically when the CLI or desktop app runs on the
 machine — the device fingerprint, transport, and hostname are recorded for you.
+The first launch, queue claim, or `ovld add-cwd` provisions the target as a side
+effect.
+
+To register a machine **up front**, before any of that work happens, announce it
+explicitly:
+
+```bash
+ovld add-et --name "CI runner 01"
+```
+
+`ovld add-et` provisions (or reuses) this machine's local execution target and
+sets `--name` as its display label; re-running with a new name renames the same
+target. It is workspace-scoped — when you belong to one workspace it registers
+there, otherwise pass `--workspace-id <id-or-name>` (or the command lists your
+workspaces and asks you to choose).
 
 **Remote targets** can be configured before the machine that will run the work
 has registered: the web app creates the target and its resource directories,

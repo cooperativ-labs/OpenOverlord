@@ -33,6 +33,7 @@ const KNOWN_COMMANDS = new Set([
   'org-setup',
   'add-cwd',
   'add-url',
+  'add-et',
   'create',
   'prompt',
   'attach',

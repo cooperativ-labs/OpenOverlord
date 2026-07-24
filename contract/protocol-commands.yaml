@@ -314,6 +314,18 @@ managementSurfaces:
     examples:
       - 'ovld create-project --name <name>'
       - 'ovld add-cwd --project-id <id-or-name>'
+  executionTargets:
+    description: >-
+      Standalone execution-target registration. The top-level CLI command
+      `ovld add-et --name <name>` forwards to the parentless `register-target`
+      protocol handler (`POST /api/protocol/register-target`), which provisions or
+      reuses the acting machine's local execution target for the resolved workspace
+      and applies `--name` as its label. Workspace resolution and the
+      `workspace_selection_required` fallback mirror `create-project`; gated by
+      per-workspace `execution_request:claim`.
+    examples:
+      - 'ovld add-et --name <name>'
+      - 'ovld add-et --name <name> --workspace-id <id-or-name>'
 
 authAndDiscovery:
   authStatus:

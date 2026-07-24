@@ -6,6 +6,7 @@ import { recordChange } from './change-feed.js';
 import type { ServiceContext } from './context.js';
 import { ServiceError } from './errors.js';
 import {
+  ensureActingDeviceTarget,
   findActingDeviceExecutionTargetId,
   isBackendHostFingerprint,
   isBrowserDevicePlatform
@@ -816,4 +817,50 @@ export async function renameWorkspaceExecutionTarget({
     throw new ServiceError('Execution target not found', 'not_found', 404);
   }
   return updated;
+}
+
+export type RegisteredExecutionTarget = {
+  executionTargetId: string;
+  deviceId: string;
+  label: string;
+  targetFingerprint: string;
+};
+
+/**
+ * Register (announce) the acting machine as an execution target for `ctx`'s
+ * workspace, independent of any launch, claim, or resource-linking activity.
+ *
+ * Provisioning a device/target already happens implicitly as a side effect of
+ * those flows (via {@link ensureActingDeviceTarget}); this exposes the same
+ * provisioning as a first-class, idempotent action so a device can make itself
+ * known up front. Re-registering the same device returns the existing target.
+ * When `label` is supplied it is applied to the target's display name (creating
+ * or renaming), so `ovld add-et --name <name>` names the target.
+ */
+export async function registerActingExecutionTarget({
+  ctx,
+  label
+}: {
+  ctx: ServiceContext;
+  label?: string | null;
+}): Promise<RegisteredExecutionTarget> {
+  const target = await ensureActingDeviceTarget({ ctx });
+  let finalLabel = target.deviceLabel;
+
+  const desired = typeof label === 'string' ? label.trim() : '';
+  if (desired && desired !== finalLabel) {
+    const renamed = await renameWorkspaceExecutionTarget({
+      ctx,
+      executionTargetId: target.executionTargetId,
+      label: desired
+    });
+    finalLabel = renamed.label;
+  }
+
+  return {
+    executionTargetId: target.executionTargetId,
+    deviceId: target.deviceId,
+    label: finalLabel,
+    targetFingerprint: target.targetFingerprint
+  };
 }

@@ -50,6 +50,10 @@ Projects:
                                                  (prompts to pick a project when --project-id is omitted)
   ${primaryCommand} add-url --url <git-url> --project-id <id> [--key <resourceKey>] [--primary true|false] [--access read|read_write]
 
+Execution targets:
+  ${primaryCommand} add-et --name "<name>" [--workspace-id <id-or-name>] [--json]
+                                                 (announce this machine as an execution target)
+
 Missions:
   ${primaryCommand} create "<objective>" [--objectives-json '[...]'] [--json]
   ${primaryCommand} prompt "<objective>" [--json]

@@ -1141,6 +1141,52 @@ export async function runManagementCommand({
       else console.log(`Linked ${sourceUrl} to project ${projectId}`);
       return;
     }
+    case 'add-et': {
+      // Announce the acting machine as an execution target, independent of any
+      // launch/claim/resource-linking activity. Routes through the parentless
+      // `register-target` protocol handler; the backend client attaches this
+      // device's fingerprint/label headers automatically, so the server
+      // provisions (or reuses) the target for THIS machine.
+      const name = flagValue(parsed.flags, '--name') ?? parsed.positional.join(' ');
+      const protocolFlags: Record<string, string> = {};
+      if (name) protocolFlags['--name'] = name;
+      const workspaceId = flagValue(parsed.flags, '--workspace-id');
+      if (workspaceId) protocolFlags['--workspace-id'] = workspaceId;
+
+      const result = await runtime.backend.post<unknown>({
+        path: '/api/protocol/register-target',
+        body: { args: rest, positional: parsed.positional, flags: protocolFlags, fileInputs: {} }
+      });
+      const record = asRecord(result);
+
+      if (record.status === 'workspace_selection_required') {
+        if (json) {
+          printJson({ result });
+        } else {
+          const workspaces = Array.isArray(record.workspaces) ? record.workspaces : [];
+          console.log(
+            'You belong to more than one workspace. Re-run with --workspace-id set to one of:'
+          );
+          for (const entry of workspaces) {
+            const ws = asRecord(entry);
+            console.log(`  - ${ws.name ?? ws.id} (${ws.slug ?? ws.id})`);
+          }
+        }
+        return;
+      }
+
+      if (json) {
+        printJson({ result });
+      } else {
+        const target = asRecord(record.executionTarget);
+        const ws = asRecord(record.workspace);
+        console.log(
+          `Registered execution target ${target.label ?? name ?? ''} ` +
+            `(${target.executionTargetId ?? 'unknown'}) in workspace ${ws.name ?? ws.id ?? ''}`
+        );
+      }
+      return;
+    }
     case 'create':
     case 'prompt': {
       const objectivesJson = flagValue(parsed.flags, '--objectives-json');

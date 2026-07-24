@@ -17,6 +17,7 @@ import {
   listWorkspaceExecutionTargets,
   parseAgentConfigs,
   PROJECT_EXECUTION_TARGET_PREFERENCE_KEY,
+  registerActingExecutionTarget,
   renameWorkspaceExecutionTarget,
   resolveClaimLaunchConfig,
   resolveLaunchExecutionTarget,
@@ -628,6 +629,47 @@ describe('execution target lifecycle', () => {
       () => renameWorkspaceExecutionTarget({ ctx, executionTargetId: targetId, label: '   ' }),
       (error: unknown) => error instanceof ServiceError && error.code === 'validation_error'
     );
+  });
+
+  it('registers the acting machine as an execution target with the given name', async () => {
+    const { ctx, db } = await setup();
+
+    const registered = await registerActingExecutionTarget({ ctx, label: 'ci-runner-01' });
+
+    assert.ok(registered.executionTargetId);
+    assert.equal(registered.label, 'ci-runner-01');
+
+    const row = (await db.get(`SELECT label, type, status FROM execution_targets WHERE id = ?`, [
+      registered.executionTargetId
+    ])) as { label: string; type: string; status: string };
+    assert.equal(row.label, 'ci-runner-01');
+    assert.equal(row.type, 'local');
+    assert.equal(row.status, 'active');
+  });
+
+  it('re-registering the same machine is idempotent and can rename', async () => {
+    const { ctx, db } = await setup();
+
+    const first = await registerActingExecutionTarget({ ctx, label: 'first-name' });
+    const second = await registerActingExecutionTarget({ ctx, label: 'second-name' });
+
+    assert.equal(second.executionTargetId, first.executionTargetId);
+    assert.equal(second.label, 'second-name');
+
+    const count = (await db.get(
+      `SELECT COUNT(*) AS n FROM execution_targets WHERE workspace_id = ? AND deleted_at IS NULL`,
+      [ctx.workspace.id]
+    )) as { n: number };
+    assert.equal(count.n, 1);
+  });
+
+  it('registers with the device default label when no name is given', async () => {
+    const { ctx } = await setup();
+
+    const registered = await registerActingExecutionTarget({ ctx });
+
+    assert.ok(registered.executionTargetId);
+    assert.ok(registered.label.trim().length > 0);
   });
 
   it('blocks delete when active queue rows reference the target', async () => {

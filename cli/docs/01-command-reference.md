@@ -90,6 +90,18 @@ When `--project-id` is omitted on an interactive terminal, the CLI prompts to pi
 
 ---
 
+## Execution targets
+
+| Command | Description | Positional args | Flags |
+| ------- | ----------- | --------------- | ----- |
+| `ovld add-et` | Announce this machine as an execution target | `"<name>"` (optional; alias for `--name`) | `--name <name>`, `--workspace-id <id-or-name>`, `--json` |
+
+`ovld add-et` registers the current machine as an execution target up front, without waiting for a launch, claim, or resource link to provision it as a side effect. The backend identifies the machine from the CLI's device headers and provisions (or reuses, idempotently) its `local` execution target; `--name` sets the target's display label. Re-running with a new `--name` renames the same target.
+
+Registration is workspace-scoped and "parentless" (no project/mission identifies the workspace). When you belong to exactly one workspace it registers there; pass `--workspace-id <id-or-name>` to choose. If you belong to more than one workspace and omit `--workspace-id`, the command lists your workspaces and asks you to re-run with one selected (JSON callers receive `{ "status": "workspace_selection_required", "workspaces": [...] }`).
+
+---
+
 ## Missions (human commands)
 
 | Command | Description | Positional args | Flags |
