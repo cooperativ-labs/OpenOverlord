@@ -58,10 +58,7 @@ test('register-target is idempotent and renames the same machine target', async 
   assert.equal(first.status, 'registered');
   assert.equal(second.status, 'registered');
   if (first.status !== 'registered' || second.status !== 'registered') return;
-  assert.equal(
-    second.executionTarget.executionTargetId,
-    first.executionTarget.executionTargetId
-  );
+  assert.equal(second.executionTarget.executionTargetId, first.executionTarget.executionTargetId);
   assert.equal(second.executionTarget.label, 'runner-b');
 });
 

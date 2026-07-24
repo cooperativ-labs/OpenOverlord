@@ -2,6 +2,7 @@ import { type Permission, PERMISSIONS } from '@overlord/auth';
 
 import type { ServiceContext } from '../packages/core/service/context.ts';
 import { listAttachments } from '../packages/core/service/missions.ts';
+import { registerActingExecutionTarget } from '../packages/core/service/project-execution-target.ts';
 import {
   createProject as createProjectService,
   discoverProject
@@ -27,7 +28,6 @@ import {
   updateSession,
   writeSharedContext
 } from '../packages/core/service/protocol.ts';
-import { registerActingExecutionTarget } from '../packages/core/service/project-execution-target.ts';
 import { hashSessionKey } from '../packages/core/service/util.ts';
 
 import {

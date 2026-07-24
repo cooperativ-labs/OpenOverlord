@@ -19,6 +19,7 @@ For behavioral specs and acceptance criteria, see the other docs in this folder.
 | `OVERLORD_USER_TOKEN`, `OVLD_USER_TOKEN`, `USER_TOKEN` | Backend auth (checked in that order) |
 | `OVERLORD_BACKEND_URL`, `OVERLORD_BACKEND_URL_DEV` | Backend URL resolution |
 | `OVERLORD_EXECUTION_REQUEST_ID` | `protocol attach` (links to runner request) |
+| `OVERLORD_DEVICE_LABEL` | Optional override for this machine's execution-target display name (defaults to hostname; does not change the device fingerprint) |
 | `SESSION_KEY` | Protocol commands that require `--session-key` (also cached per working directory + mission) |
 | `OVLD_HOME` | Relocate `~/.ovld` credentials and config |
 | `OVERLORD_WEB_HOST`, `OVERLORD_WEB_PORT`, `OVERLORD_SQLITE_PATH` | `ovld serve` defaults |

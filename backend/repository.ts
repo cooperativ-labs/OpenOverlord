@@ -2679,6 +2679,59 @@ export async function deleteProjectResource(projectId: string, resourceId: strin
   });
 }
 
+/**
+ * Disconnect one materialization descriptor while preserving its logical project
+ * resource. A resource without sources is intentionally valid: it can be
+ * reconnected on another execution target or through a different source kind.
+ */
+export async function deleteProjectResourceSource(
+  projectId: string,
+  resourceId: string,
+  sourceId: string
+): Promise<void> {
+  await requireDatabaseClient().transaction(async tx => {
+    const resource = await getProjectResourceRow(
+      tx,
+      projectId,
+      resourceId,
+      PERMISSIONS.PROJECT_UPDATE
+    );
+    const source = (await tx.get(
+      `SELECT id FROM project_resource_sources
+        WHERE id = ? AND project_id = ? AND resource_id = ? AND deleted_at IS NULL`,
+      [sourceId, projectId, resourceId]
+    )) as { id: string } | undefined;
+    if (!source) throw new ApiError(404, 'Project resource source not found');
+
+    const now = nowIso();
+    const revision = resource.revision + 1;
+    await tx.run(
+      `UPDATE project_resource_sources
+          SET deleted_at = ?, updated_at = ?, revision = revision + 1
+        WHERE id = ?`,
+      [now, now, sourceId]
+    );
+    await tx.run(
+      `UPDATE project_resources
+          SET updated_at = ?, revision = ?
+        WHERE id = ?`,
+      [now, revision, resourceId]
+    );
+    await recordChange(
+      {
+        entityType: 'project_resource',
+        entityId: resourceId,
+        operation: 'update',
+        entityRevision: revision,
+        projectId,
+        changedFields: ['sources'],
+        workspaceId: resource.workspace_id
+      },
+      tx
+    );
+  });
+}
+
 async function getProjectRepositoryResource(
   projectId: string,
   executionTargetId: string | null,

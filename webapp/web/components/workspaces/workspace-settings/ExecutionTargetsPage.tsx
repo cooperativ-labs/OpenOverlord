@@ -106,24 +106,72 @@ export function ExecutionTargetsPage({ workspaceId }: { workspaceId: string }) {
   const operator = (members.data ?? []).find(member => member.isOperator);
   const canManageTargets = operator?.isAdmin ?? false;
 
-  const [deleteTargetRow, setDeleteTargetRow] = useState<WorkspaceExecutionTargetDto | null>(null);
+  const [selectedTargetIds, setSelectedTargetIds] = useState<Set<string>>(new Set());
+  const [deleteTargetRows, setDeleteTargetRows] = useState<WorkspaceExecutionTargetDto[]>([]);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteState, setDeleteState] = useState<ButtonLoadingState>('default');
 
+  const targetIds = targets.data?.map(target => target.id) ?? [];
+  const selectedTargetCount = targetIds.filter(id => selectedTargetIds.has(id)).length;
+  const allTargetsSelected = targetIds.length > 0 && selectedTargetCount === targetIds.length;
+
+  function toggleTargetSelection(targetId: string, checked: boolean) {
+    setSelectedTargetIds(current => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(targetId);
+      } else {
+        next.delete(targetId);
+      }
+      return next;
+    });
+  }
+
+  function toggleAllTargetSelections(checked: boolean) {
+    setSelectedTargetIds(checked ? new Set(targetIds) : new Set());
+  }
+
   async function handleDeleteTarget() {
-    if (!deleteTargetRow) return;
+    if (!deleteTargetRows.length) return;
 
     setDeleteState('loading');
     setDeleteError(null);
-    try {
-      await deleteTarget.mutateAsync(deleteTargetRow.id);
+    const results = await Promise.allSettled(
+      deleteTargetRows.map(target => deleteTarget.mutateAsync(target.id))
+    );
+    const failedTargets = deleteTargetRows.filter(
+      (_, index) => results[index].status === 'rejected'
+    );
+
+    setSelectedTargetIds(current => {
+      const next = new Set(current);
+      for (const target of deleteTargetRows) {
+        if (!failedTargets.includes(target)) next.delete(target.id);
+      }
+      return next;
+    });
+
+    if (!failedTargets.length) {
       setDeleteState('success');
-      setDeleteTargetRow(null);
+      setDeleteTargetRows([]);
       setTimeout(() => setDeleteState('default'), 1200);
-    } catch (error) {
-      setDeleteState('error');
-      setDeleteError(error instanceof Error ? error.message : 'Failed to delete execution target.');
+      return;
     }
+
+    const firstFailure = results.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected'
+    );
+    setDeleteState('error');
+    setDeleteTargetRows(failedTargets);
+    setDeleteError(
+      failedTargets.length === 1
+        ? firstFailure?.reason instanceof Error
+          ? firstFailure.reason.message
+          : 'Failed to delete execution target.'
+        : `Failed to delete ${failedTargets.length} execution targets. ${
+            firstFailure?.reason instanceof Error ? firstFailure.reason.message : ''
+          }`.trim()
+    );
   }
 
   if (targets.isLoading) {
@@ -166,12 +214,54 @@ export function ExecutionTargetsPage({ workspaceId }: { workspaceId: string }) {
           </p>
         </div>
 
+        {canManageTargets ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 px-3 py-2">
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={allTargetsSelected}
+                ref={input => {
+                  if (input) input.indeterminate = selectedTargetCount > 0 && !allTargetsSelected;
+                }}
+                onChange={event => toggleAllTargetSelections(event.target.checked)}
+              />
+              Select all ({selectedTargetCount}/{targetIds.length})
+            </label>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={selectedTargetCount === 0}
+              onClick={() => {
+                setDeleteError(null);
+                setDeleteState('default');
+                setDeleteTargetRows(
+                  (targets.data ?? []).filter(target => selectedTargetIds.has(target.id))
+                );
+              }}
+            >
+              <Trash2 className="size-4" />
+              Delete selected ({selectedTargetCount})
+            </Button>
+          </div>
+        ) : null}
+
         <Accordion multiple className="overflow-hidden rounded-lg border px-4">
           {targets.data.map(target => {
             const sharedWithOthers = target.activeMemberAccessCount > 1;
             return (
               <AccordionItem key={target.id} value={target.id}>
                 <div className="flex items-center gap-1">
+                  {canManageTargets ? (
+                    <input
+                      type="checkbox"
+                      checked={selectedTargetIds.has(target.id)}
+                      aria-label={`Select ${target.label}`}
+                      className="size-4 shrink-0"
+                      onClick={event => event.stopPropagation()}
+                      onChange={event => toggleTargetSelection(target.id, event.target.checked)}
+                    />
+                  ) : null}
                   <AccordionTrigger className="flex-1 hover:no-underline">
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="truncate">{target.label}</span>
@@ -198,7 +288,8 @@ export function ExecutionTargetsPage({ workspaceId }: { workspaceId: string }) {
                       aria-label={`Delete ${target.label}`}
                       onClick={() => {
                         setDeleteError(null);
-                        setDeleteTargetRow(target);
+                        setDeleteState('default');
+                        setDeleteTargetRows([target]);
                       }}
                     >
                       <Trash2 className="size-4" />
@@ -236,10 +327,10 @@ export function ExecutionTargetsPage({ workspaceId }: { workspaceId: string }) {
       </div>
 
       <Dialog
-        open={deleteTargetRow !== null}
+        open={deleteTargetRows.length > 0}
         onOpenChange={open => {
           if (!open) {
-            setDeleteTargetRow(null);
+            setDeleteTargetRows([]);
             setDeleteError(null);
             setDeleteState('default');
           }
@@ -247,21 +338,25 @@ export function ExecutionTargetsPage({ workspaceId }: { workspaceId: string }) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete execution target?</DialogTitle>
+            <DialogTitle>
+              Delete {deleteTargetRows.length === 1 ? 'execution target' : 'execution targets'}?
+            </DialogTitle>
             <DialogDescription>
-              {deleteTargetRow
-                ? `Remove "${deleteTargetRow.label}" from this workspace. Linked resources on this target will be unlinked, and project target selections pointing here will be cleared. Historical runs are kept.`
+              {deleteTargetRows.length
+                ? deleteTargetRows.length === 1
+                  ? `Remove "${deleteTargetRows[0].label}" from this workspace. Linked resources on this target will be unlinked, and project target selections pointing here will be cleared. Historical runs are kept.`
+                  : `Remove ${deleteTargetRows.length} selected targets from this workspace. Linked resources on each target will be unlinked, and project target selections pointing to them will be cleared. Historical runs are kept.`
                 : null}
             </DialogDescription>
           </DialogHeader>
           {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setDeleteTargetRow(null)}>
+            <Button type="button" variant="outline" onClick={() => setDeleteTargetRows([])}>
               Cancel
             </Button>
             <LoadingButton
               buttonState={deleteState}
-              text="Delete target"
+              text={deleteTargetRows.length === 1 ? 'Delete target' : 'Delete targets'}
               loadingText="Deleting…"
               successText="Deleted"
               errorText="Delete failed"

@@ -51,6 +51,7 @@ import { writeLocalProjectMetadata } from '@/lib/project-metadata';
 import {
   useCreateProjectResource,
   useDeleteProjectResource,
+  useDeleteProjectResourceSource,
   useLaunchSettings,
   useProject,
   useProjectResources,
@@ -158,6 +159,7 @@ function SourceRow({
 }) {
   const { copied, copy } = useCopyToClipboard();
   const createResource = useCreateProjectResource(projectId);
+  const deleteSource = useDeleteProjectResourceSource(projectId);
   const value = sourceDescriptorValue(source);
   const isGit = source.sourceKind === 'git';
   const [isEditing, setIsEditing] = useState(false);
@@ -173,6 +175,16 @@ function SourceRow({
   function cancelEditing() {
     setIsEditing(false);
     setError(null);
+  }
+
+  async function handleDelete() {
+    setError(null);
+    try {
+      await deleteSource.mutateAsync({ resourceId: resource.id, sourceId: source.id });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove source.');
+    }
   }
 
   // Editing re-runs the create/upsert with the source's own execution target and
@@ -308,6 +320,18 @@ function SourceRow({
       >
         <Pencil className="size-3.5" />
       </Button>
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
+        disabled={deleteSource.isPending}
+        onClick={() => void handleDelete()}
+        aria-label={`Remove source ${value || sourceKindLabel(source.sourceKind)}`}
+      >
+        <Trash2 className="size-3.5" />
+      </Button>
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </li>
   );
 }

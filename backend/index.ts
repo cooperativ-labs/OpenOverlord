@@ -123,6 +123,7 @@ import {
   deleteObjective,
   deleteProject,
   deleteProjectResource,
+  deleteProjectResourceSource,
   deleteProjectTag,
   deleteRevokedUserToken,
   deleteWorkspaceStatus,
@@ -1253,6 +1254,16 @@ app.delete(
   handle(
     req => {
       deleteProjectResource(req.params.id, req.params.resourceId);
+      return { ok: true as const };
+    },
+    { mutates: true }
+  )
+);
+app.delete(
+  '/api/projects/:id/resources/:resourceId/sources/:sourceId',
+  handle(
+    async req => {
+      await deleteProjectResourceSource(req.params.id, req.params.resourceId, req.params.sourceId);
       return { ok: true as const };
     },
     { mutates: true }

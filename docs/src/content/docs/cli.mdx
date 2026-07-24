@@ -142,6 +142,7 @@ input (`-`) for larger payloads.
 | `OVERLORD_USER_TOKEN`, `OVLD_USER_TOKEN`, `USER_TOKEN` | Authentication token, checked in that order. |
 | `OVERLORD_BACKEND_URL`, `OVERLORD_BACKEND_URL_DEV` | Backend URL fallback. |
 | `OVERLORD_EXECUTION_REQUEST_ID` | Link an agent protocol attach to a runner request. |
+| `OVERLORD_DEVICE_LABEL` | Override the human-facing device name for this machine's execution target. Optional; falls back to the hostname. Does not affect the device fingerprint. |
 | `SESSION_KEY` | Session-key fallback for protocol commands. |
 | `OVLD_HOME` | Relocate the CLI's credentials and configuration. |
 | `OVERLORD_WEB_HOST`, `OVERLORD_WEB_PORT`, `OVERLORD_SQLITE_PATH` | Defaults for `ovld serve`. |

@@ -976,6 +976,15 @@ export function useDeleteProjectResource(projectId: string) {
   });
 }
 
+export function useDeleteProjectResourceSource(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ resourceId, sourceId }: { resourceId: string; sourceId: string }) =>
+      api.deleteProjectResourceSource(projectId, resourceId, sourceId),
+    onSuccess: () => invalidateAll(qc)
+  });
+}
+
 export function useUpdateProjectTag(projectId: string) {
   const qc = useQueryClient();
   return useMutation({

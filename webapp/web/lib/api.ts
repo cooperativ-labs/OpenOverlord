@@ -417,6 +417,11 @@ export const api = {
     ),
   deleteProjectResource: (projectId: string, resourceId: string) =>
     request<{ ok: true }>('DELETE', `/api/projects/${projectId}/resources/${resourceId}`),
+  deleteProjectResourceSource: (projectId: string, resourceId: string, sourceId: string) =>
+    request<{ ok: true }>(
+      'DELETE',
+      `/api/projects/${projectId}/resources/${resourceId}/sources/${sourceId}`
+    ),
   recordTargetResourceObservations: (
     executionTargetId: string,
     body: RecordTargetResourceObservationsBody

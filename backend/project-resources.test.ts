@@ -15,6 +15,7 @@ const {
   createProject,
   createProjectResource,
   deleteProjectResource,
+  deleteProjectResourceSource,
   getProjectRepository,
   listProjectResources,
   updateProjectResource
@@ -101,6 +102,30 @@ test('createProjectResource accepts a global local checkout source', async () =>
   assert.equal(resource.sources.length, 1);
   assert.equal(resource.sources[0]?.executionTargetId, null);
   assert.equal(resource.sources[0]?.descriptor.path, '/tmp/project-global-local');
+});
+
+test('deleteProjectResourceSource removes only the selected source', async () => {
+  const project = await createProject({ name: 'Remove resource source' });
+  const resource = await createProjectResource(project.id, {
+    directoryPath: '/tmp/remove-source-global',
+    resourceKey: 'remove-source',
+    executionTargetId: null,
+    isPrimary: false
+  });
+  const withSecondSource = await createProjectResource(project.id, {
+    directoryPath: '/tmp/remove-source-local',
+    resourceKey: 'remove-source',
+    isPrimary: false
+  });
+  const sourceToRemove = withSecondSource.sources.find(source => source.executionTargetId !== null);
+  assert.ok(sourceToRemove);
+
+  await deleteProjectResourceSource(project.id, resource.id, sourceToRemove.id);
+
+  const remaining = (await listProjectResources(project.id)).find(row => row.id === resource.id);
+  assert.ok(remaining);
+  assert.equal(remaining.sources.length, 1);
+  assert.equal(remaining.sources[0]?.executionTargetId, null);
 });
 
 test('getProjectRepository selects the resource matching the requested key', async () => {
