@@ -234,6 +234,33 @@ const tools = [
       },
       ['missionId', 'sessionKey', 'summary']
     )
+  },
+  {
+    name: 'overlord_record_work',
+    title: 'Record completed work as a mission',
+    description:
+      'Record work already completed in this chat as a mission that lands in review — one call, no attach/deliver cycle. Records file-change rationales and runs the delivery through the standard Gemini summarizer.',
+    inputSchema: objectSchema(
+      {
+        projectId: stringProperty('Overlord project id, slug, or name.'),
+        objective: stringProperty('What was asked and done, phrased as a completed objective.'),
+        summary: stringProperty('Reviewer-facing narrative of what changed and why.'),
+        title: stringProperty('Optional mission title.'),
+        changeRationales: {
+          type: 'array',
+          description: 'One entry per meaningful file change (filePath, label, summary, why, impact).'
+        },
+        changedFiles: {
+          type: 'array',
+          description: 'Optional extra touched files without a full rationale.'
+        },
+        artifacts: {
+          type: 'array',
+          description: 'Optional artifacts: next_steps, test_results, decision, note, or url.'
+        }
+      },
+      ['projectId', 'objective', 'summary']
+    )
   }
 ];
 
@@ -358,6 +385,21 @@ function callOverlordTool(name, args) {
             }
           }
         : {})
+    });
+  }
+  if (name === 'overlord_record_work') {
+    return runProtocol('record-work', {
+      'project-id': requiredString(args, 'projectId'),
+      payload: {
+        objective: requiredString(args, 'objective'),
+        summary: requiredString(args, 'summary'),
+        ...(optionalString(args, 'title') ? { title: requiredString(args, 'title') } : {}),
+        ...(Array.isArray(args.changeRationales)
+          ? { changeRationales: args.changeRationales }
+          : {}),
+        ...(Array.isArray(args.changedFiles) ? { changedFiles: args.changedFiles } : {}),
+        ...(Array.isArray(args.artifacts) ? { artifacts: args.artifacts } : {})
+      }
     });
   }
   if (name === 'attach') {

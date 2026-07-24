@@ -218,7 +218,27 @@ const toolHandlers: Record<string, ToolHandler> = {
       fileInputs: Array.isArray(args.changeRationales)
         ? { '--change-rationales-file': JSON.stringify(args.changeRationales) }
         : undefined
-    })
+    }),
+  overlord_record_work: args => {
+    // record-work takes its whole envelope on stdin so objective/summary/title
+    // and the file-change arrays travel as one JSON object — the same shape the
+    // shared reference documents for the CLI's `--payload-file -`.
+    const payload: Record<string, unknown> = {
+      objective: requiredString(args, 'objective'),
+      summary: requiredString(args, 'summary'),
+      ...(optionalString(args, 'title') ? { title: requiredString(args, 'title') } : {}),
+      ...(Array.isArray(args.changeRationales) ? { changeRationales: args.changeRationales } : {}),
+      ...(Array.isArray(args.changedFiles) ? { changedFiles: args.changedFiles } : {}),
+      ...(Array.isArray(args.artifacts) ? { artifacts: args.artifacts } : {})
+    };
+    return runProtocolSubcommand('record-work', {
+      flags: {
+        '--project-id': requiredString(args, 'projectId'),
+        '--payload-file': true
+      },
+      fileInputs: { '--payload-file': JSON.stringify(payload) }
+    });
+  }
 };
 
 const tools: ToolEntry[] = hostedMcpToolDefinitions.map(definition => {

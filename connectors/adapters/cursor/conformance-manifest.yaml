@@ -42,6 +42,7 @@ connector:
     - "scripts/overlord-mcp.mjs"
     - "skills/overlord-mission/SKILL.md"
     - "skills/overlord-mission/reference/cli.md"
+    - "skills/overlord-mission/reference/record-work.md"
     - "skills/overlord-mission/reference/context.md"
     - "skills/overlord-mission/reference/devices.md"
     - "skills/overlord-mission/reference/mcp.md"

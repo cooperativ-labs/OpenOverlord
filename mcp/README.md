@@ -64,6 +64,7 @@ The current tool catalog is mission-first:
 - `overlord_attach_session`
 - `overlord_update_session`
 - `overlord_deliver_session`
+- `overlord_record_work` — record work already finished in chat as one review-column mission (completed objective, file-change rationales, Gemini delivery summary), no attach/deliver cycle
 
 Widgets are attached to project resolution, mission search, mission-context,
 and delivery results:

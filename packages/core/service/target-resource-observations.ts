@@ -96,24 +96,38 @@ async function assertResourcesBelongToTarget({
   observations: TargetResourceObservationInput[];
 }): Promise<void> {
   for (const observation of observations) {
+    // The per-target linkage moved from project_resources.execution_target_id to
+    // project_resource_sources (virtual execution targets, migration
+    // 20260712000000). A resource may now have several sources: some scoped to a
+    // specific execution target and some global (NULL target). The resource is
+    // acceptable for this target when it has a source scoped to it or a global
+    // source; an unsourced resource stays permissive (matching the old
+    // NULL-target-allowed behavior). Only a resource bound exclusively to other
+    // targets is a mismatch.
     const resource = await ctx.db.get<{
       id: string;
-      execution_target_id: string | null;
+      has_match: number;
+      source_count: number;
     }>(
-      `SELECT id, execution_target_id
-         FROM project_resources
-        WHERE id = ?
-          AND workspace_id = ?
-          AND deleted_at IS NULL`,
-      [observation.resourceId, ctx.workspace.id]
+      `SELECT pr.id,
+              MAX(CASE
+                    WHEN prs.execution_target_id = ? OR prs.execution_target_id IS NULL
+                    THEN 1 ELSE 0
+                  END) AS has_match,
+              COUNT(prs.id) AS source_count
+         FROM project_resources pr
+         LEFT JOIN project_resource_sources prs
+           ON prs.resource_id = pr.id AND prs.deleted_at IS NULL
+        WHERE pr.id = ?
+          AND pr.workspace_id = ?
+          AND pr.deleted_at IS NULL
+        GROUP BY pr.id`,
+      [executionTargetId, observation.resourceId, ctx.workspace.id]
     );
     if (!resource) {
       throw new ServiceError('Resource not found', 'resource_not_found', 404);
     }
-    if (
-      resource.execution_target_id !== null &&
-      resource.execution_target_id !== executionTargetId
-    ) {
+    if (Number(resource.source_count) > 0 && Number(resource.has_match) === 0) {
       throw new ServiceError(
         'Resource is not linked to this execution target',
         'resource_target_mismatch',

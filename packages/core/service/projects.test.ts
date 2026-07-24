@@ -54,7 +54,7 @@ describe('deriveProjectResourceKey', () => {
 });
 
 describe('addProjectResource', () => {
-  it('stores the local execution target and only rewrites primaries within that target', async () => {
+  it('stores the local execution target and rewrites the primary project-wide across targets', async () => {
     const { db, ctx } = await createSeededServiceContext({ source: 'cli' });
     const project = await createProject({ ctx, name: 'Execution target resources' });
     const localTarget = await ensureCallerDeviceTarget({ ctx });
@@ -76,23 +76,63 @@ describe('addProjectResource', () => {
       ['other-target', ctx.workspace.id, otherDeviceId, ctx.actorWorkspaceUserId, now, now]
     );
 
-    await db.run(
-      `INSERT INTO project_resources
-         (id, workspace_id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status,
-          metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, 'old-local', 'local_directory', 'Old local', '/tmp/old-local', 1, 'active',
-               '{}', ?, ?, 1)`,
-      ['old-local-resource', ctx.workspace.id, project.id, localTarget.executionTargetId, now, now]
-    );
+    // Per-target linkage lives on project_resource_sources since the virtual
+    // execution targets migration (20260712000000); project_resources no longer
+    // carries execution_target_id, type, or path. Seed two pre-existing primaries
+    // whose sources point at different targets to prove primary is project-wide.
+    const insertPrimaryResourceWithSource = async ({
+      id,
+      resourceKey,
+      label,
+      sourceTargetId,
+      dirPath
+    }: {
+      id: string;
+      resourceKey: string;
+      label: string;
+      sourceTargetId: string;
+      dirPath: string;
+    }): Promise<void> => {
+      await db.run(
+        `INSERT INTO project_resources
+           (id, workspace_id, project_id, resource_key, label, is_primary, status,
+            metadata_json, created_at, updated_at, revision)
+         VALUES (?, ?, ?, ?, ?, 1, 'active', '{}', ?, ?, 1)`,
+        [id, ctx.workspace.id, project.id, resourceKey, label, now, now]
+      );
+      await db.run(
+        `INSERT INTO project_resource_sources
+           (id, workspace_id, project_id, resource_id, execution_target_id, source_kind,
+            descriptor_json, created_at, updated_at, revision)
+         VALUES (?, ?, ?, ?, ?, 'local_checkout', ?, ?, ?, 1)`,
+        [
+          `${id}-source`,
+          ctx.workspace.id,
+          project.id,
+          id,
+          sourceTargetId,
+          JSON.stringify({ path: dirPath }),
+          now,
+          now
+        ]
+      );
+    };
 
-    await db.run(
-      `INSERT INTO project_resources
-         (id, workspace_id, project_id, execution_target_id, resource_key, type, label, path, is_primary, status,
-          metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, 'other-target', 'local_directory', 'Other target', '/tmp/other-target', 1, 'active',
-               '{}', ?, ?, 1)`,
-      ['other-target-resource', ctx.workspace.id, project.id, 'other-target', now, now]
-    );
+    await insertPrimaryResourceWithSource({
+      id: 'old-local-resource',
+      resourceKey: 'old-local',
+      label: 'Old local',
+      sourceTargetId: localTarget.executionTargetId,
+      dirPath: '/tmp/old-local'
+    });
+
+    await insertPrimaryResourceWithSource({
+      id: 'other-target-resource',
+      resourceKey: 'other-target',
+      label: 'Other target',
+      sourceTargetId: 'other-target',
+      dirPath: '/tmp/other-target'
+    });
 
     // Never point a test resource at the real checkout: addProjectResource
     // writes .overlord/project.json into the directory it links.
@@ -108,10 +148,12 @@ describe('addProjectResource', () => {
     assert.equal(added.resourceKey, path.basename(addedDir).toLowerCase());
 
     const rows = (await db.all(
-      `SELECT id, execution_target_id, is_primary
-           FROM project_resources
-          WHERE project_id = ?
-          ORDER BY id ASC`,
+      `SELECT pr.id, prs.execution_target_id, pr.is_primary
+           FROM project_resources pr
+           LEFT JOIN project_resource_sources prs
+             ON prs.resource_id = pr.id AND prs.deleted_at IS NULL
+          WHERE pr.project_id = ?
+          ORDER BY pr.id ASC`,
       [project.id]
     )) as Array<{
       id: string;
@@ -119,6 +161,9 @@ describe('addProjectResource', () => {
       is_primary: number;
     }>;
 
+    // Primary is a project-wide property of the logical resource: adding a new
+    // primary clears every other primary regardless of which target its source
+    // points at, so both pre-existing primaries drop to 0.
     assert.deepEqual(rows, [
       { id: added.id, execution_target_id: localTarget.executionTargetId, is_primary: 1 },
       {
@@ -126,7 +171,7 @@ describe('addProjectResource', () => {
         execution_target_id: localTarget.executionTargetId,
         is_primary: 0
       },
-      { id: 'other-target-resource', execution_target_id: 'other-target', is_primary: 1 }
+      { id: 'other-target-resource', execution_target_id: 'other-target', is_primary: 0 }
     ]);
 
     await db.close();

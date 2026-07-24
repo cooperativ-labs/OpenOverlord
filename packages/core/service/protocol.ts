@@ -2141,6 +2141,7 @@ export async function recordWork({
   title,
   artifacts = [],
   changeRationales = [],
+  changedFiles = [],
   payloadJson
 }: {
   ctx: ServiceContext;
@@ -2150,6 +2151,7 @@ export async function recordWork({
   title?: string | null;
   artifacts?: Array<{ type: string; label: string; content?: string | null; url?: string | null }>;
   changeRationales?: ChangeRationaleInput[];
+  changedFiles?: Array<{ filePath: string; vcsStatus?: string | null }>;
   payloadJson?: Record<string, unknown> | null;
 }): Promise<{ mission: MissionSummary; deliveryId: string }> {
   const trimmedSummary = summary.trim();
@@ -2228,7 +2230,8 @@ export async function recordWork({
       );
     }
 
-    for (const rationale of normalizeChangeRationales(changeRationales)) {
+    const normalizedRationales = normalizeChangeRationales(changeRationales);
+    for (const rationale of normalizedRationales) {
       await txCtx.db.run(
         `INSERT INTO change_rationales
              (id, workspace_id, project_id, mission_id, objective_id, delivery_id,
@@ -2248,6 +2251,49 @@ export async function recordWork({
           rationale.impact,
           JSON.stringify(rationale.hunks ?? []),
           bindBool(txCtx.db.dialect, true),
+          now,
+          now
+        ]
+      );
+    }
+
+    // Populate `changed_files` so the review file panel and its rationale coverage
+    // match any other completed delivery. record-work has no agent session, so
+    // these rows carry a NULL session_id/resource_id. The file set is the union of
+    // explicitly-reported changed files and every rationale's file path; the
+    // rationale-derived rows join back to their rationale as `covered`, while
+    // explicit-only paths surface as `missing_rationale` exactly like a live
+    // delivery. `vcs_status` prefers an explicit status, else the rationale's.
+    const changedFileStatus = new Map<string, string | null>();
+    for (const rationale of normalizedRationales) {
+      const normalizedPath = rationale.filePath.replace(/\\/g, '/');
+      if (!changedFileStatus.has(normalizedPath)) changedFileStatus.set(normalizedPath, null);
+    }
+    for (const file of changedFiles) {
+      const normalizedPath = file.filePath.replace(/\\/g, '/');
+      if (!normalizedPath.trim()) continue;
+      changedFileStatus.set(
+        normalizedPath,
+        file.vcsStatus ?? changedFileStatus.get(normalizedPath) ?? null
+      );
+    }
+    for (const [normalizedPath, vcsStatus] of changedFileStatus) {
+      await txCtx.db.run(
+        `INSERT INTO changed_files
+             (id, workspace_id, project_id, mission_id, objective_id, session_id, resource_id,
+              file_path, vcs_status, current_diff_state, first_observed_at, last_observed_at,
+              last_observed_event_id, observed_metadata_json, created_at, updated_at, revision)
+           VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, 'present', ?, ?, NULL, '{}', ?, ?, 1)`,
+        [
+          newId(),
+          ctx.workspace.id,
+          resolvedProjectId,
+          created.mission.id,
+          objectiveId,
+          normalizedPath,
+          vcsStatus,
+          now,
+          now,
           now,
           now
         ]

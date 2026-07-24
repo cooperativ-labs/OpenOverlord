@@ -82,10 +82,11 @@ Use this mode when the conversation starts normally and the user asks the agent 
 5. If the user wants to establish a persistent session with a mission by ID, run `ovld protocol attach --mission-id <mission_id>`.
 6. If the user wants to find a mission but does not know the ID, run `ovld protocol search-missions --query "..." --status next-up,execute` and ask the user to confirm.
 7. If you need to understand project routing before prompting, use `ovld protocol discover-project`.
-8. If you need other lifecycle commands or flags, run `ovld protocol help` and use the real subcommand list instead of guessing.
-9. Once you attach to a mission, switch back to Mode 1 and follow the full mission lifecycle.
+8. If the user wants to **record work that is already finished** in this chat (for example, something you just built in a chat app) as a completed mission, run `ovld protocol record-work` (or the hosted `overlord_record_work` MCP tool). This creates a mission with one completed objective, records the file changes with rationales, lands it in the review column, and runs the standard Gemini delivery summary — all in one call, with no `attach`/`deliver`. Do **not** use it for in-progress work. The exact submission format is in [reference/record-work.md](reference/record-work.md).
+9. If you need other lifecycle commands or flags, run `ovld protocol help` and use the real subcommand list instead of guessing.
+10. Once you attach to a mission, switch back to Mode 1 and follow the full mission lifecycle.
 
-For mission creation examples, project discovery, and `--objectives-json` format see **CLI Command Reference** below.
+For mission creation examples, project discovery, and `--objectives-json` format see **CLI Command Reference** below. For recording already-completed work, see [reference/record-work.md](reference/record-work.md).
 
 ## CLI Command Reference
 
@@ -299,7 +300,8 @@ When creating missions from within a repository:
 - Follow-up `create` calls under an active session inherit the current mission's project by default, but `--project-id` can override that when the follow-up belongs in a different project.
 - Create multiple missions when each prompt represents a different feature or goal.
 - Add objectives to the same mission when each prompt is a sequential step toward the same feature or goal; use `ovld protocol add-objectives --mission-id <mission_id> --objectives-json '[{"objective":"..."}]'`.
-- `create`, `prompt`, and `record-work` require `--objectives-json` or `--objectives-file` with an ordered array of `{ "objective": "...", "title": "...", "autoAdvance": true }` objects. A single objective is just an array with one item.
+- `create` and `prompt` require `--objectives-json` or `--objectives-file` with an ordered array of `{ "objective": "...", "title": "...", "autoAdvance": true }` objects. A single objective is just an array with one item.
+- `record-work` is different: it creates exactly one **completed** objective. It takes a single `--objective` (or positional / an `objective` field in `--payload-json`) plus a `--summary` and the file-change data — not `--objectives-json`. See [reference/record-work.md](reference/record-work.md).
 - `create`, `prompt`, `create-mission`, and `record-work` accept `--assigned-to <member>` to set the mission's human owner. Accepts a username, an email, a user-id UUID, or the `orgid:username` member ID. When omitted, the assignee defaults to the mission creator.
 
 ```bash
@@ -414,6 +416,7 @@ Field shape, inline vs stdin piping, and `record-change-rationales` syntax are i
 ## Reference
 
 - [reference/cli.md](reference/cli.md) — Full protocol command syntax, flags, phases, mission creation, and project discovery
+- [reference/record-work.md](reference/record-work.md) — Recording already-completed chat work as a review mission: the exact CLI/MCP submission format for `record-work` / `overlord_record_work`
 - [reference/mcp.md](reference/mcp.md) — MCP tool naming, key casing, hosted vs local shim defaults
 - [reference/devices.md](reference/devices.md) — Device fingerprints, project resources, and `--for-human`
 - [reference/context.md](reference/context.md) — Shared state, attachments, and large artifact policy

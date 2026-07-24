@@ -164,8 +164,8 @@ When creating missions from within a repository:
 - Follow-up `create` calls under an active session inherit the current mission's project by default, but `--project-id` can override that when the follow-up belongs in a different project.
 - Create multiple missions when each prompt represents a different feature or goal.
 - Add objectives to the same mission when each prompt is a sequential step toward the same feature or goal; use `ovld protocol add-objectives --mission-id <mission_id> --objectives-json '[{"objective":"..."}]'`.
-- `create`, `prompt`, and `record-work` require `--objectives-json` or `--objectives-file` with an ordered array of `{ "objective": "...", "title": "...", "autoAdvance": true }` objects. A single objective is just an array with one item.
-- `create`, `prompt`, `create-mission`, and `record-work` accept `--assigned-to <member>` to set the mission's human owner. Accepts a username, an email, a user-id UUID, or the `orgid:username` member ID. When omitted, the assignee defaults to the mission creator.
+- `create` and `prompt` require `--objectives-json` or `--objectives-file` with an ordered array of `{ "objective": "...", "title": "...", "autoAdvance": true }` objects. A single objective is just an array with one item.
+- `record-work` creates exactly one **completed** objective from a single `--objective` (or positional / an `objective` field in `--payload-json`) plus a `--summary` and file-change data — it does not take `--objectives-json`. See [record-work.md](record-work.md).
 
 ```bash
 ovld protocol create --agent <agent-identifier> --objectives-json '[{"objective":"Capture follow-up work from this repository"}]'
@@ -178,6 +178,29 @@ ovld protocol prompt --agent <agent-identifier> --objectives-json '[{"objective"
 ```bash
 ovld protocol add-objectives --mission-id 1:899 --objectives-json '[{"objective":"Implement the API"},{"objective":"Add CLI docs"}]'
 ```
+
+### Record Completed Work
+
+Record already-finished chat work as a completed review mission in one call — no
+`attach`/`deliver`. Creates a mission with one completed objective, records the file
+changes with rationales, lands it in review, and runs the Gemini delivery summary.
+
+```bash
+ovld protocol record-work --payload-file - <<'EOF'
+{
+  "objective": "Add a CSV export button to the reports page.",
+  "summary": "Added a CSV export control and the serializer behind it.",
+  "changeRationales": [
+    { "file_path": "src/reports/export.ts", "label": "CSV serializer",
+      "summary": "New CSV serializer.", "why": "Users need offline reports.",
+      "impact": "Reports can be exported as CSV." }
+  ]
+}
+EOF
+```
+
+The full submission format (fields, MCP equivalent, `changedFiles`) is in
+[record-work.md](record-work.md).
 
 ### Local Durability For New Missions
 

@@ -256,8 +256,14 @@ Requirements:
 - Create a completed objective.
 - Store a delivery summary.
 - Store artifacts and change rationales if provided.
+- Record a `changed_files` row for every rationale's file path (shown "covered" in review) plus any explicit `--changed-files-json` entries (shown "missing_rationale"), so the review file panel matches a normal delivery.
 - Store delivery and changed-file records without requiring an `agent_sessions` row; session attribution is null for `record-work`.
+- Enqueue the standard delivery compose job so the Gemini delivery summary runs exactly as it does for a normal `deliver`.
+- Accept the whole submission as a single `--payload-json` / `--payload-file` envelope (`{ objective, summary, title, changeRationales, changedFiles, artifacts }`), with explicit flags overriding envelope fields.
 - Do not use it for in-progress work.
+
+The exact submission format is documented in the shared connector reference at
+`connectors/core/overlord-mission/reference/record-work.md`.
 
 ## Acceptance Criteria
 

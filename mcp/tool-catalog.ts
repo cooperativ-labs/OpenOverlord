@@ -253,5 +253,66 @@ export const hostedMcpToolDefinitions: ToolDefinition[] = [
     ),
     annotations: writeAction,
     _meta: widget('ui://overlord/file-changes.html')
+  },
+  {
+    name: 'overlord_record_work',
+    title: 'Record completed work as a mission',
+    description:
+      'Use this to log work already finished in this chat as a completed Overlord mission — one call, no attach/deliver cycle. ' +
+      'It creates a mission and a single completed objective, records the file changes and their rationales, lands the mission in ' +
+      'the review column, and runs the delivery through the standard Gemini summarizer so it reads like any other delivered mission. ' +
+      'Provide an objective (what was asked/done), a reviewer-facing summary, and one changeRationale per meaningful file change. ' +
+      'Only use this when the work is genuinely complete; use overlord_create_mission for work still to be done.',
+    inputSchema: objectSchema(
+      {
+        projectId: stringProperty(
+          'Overlord project id, slug, or name. Hosted MCP never chooses a project implicitly.'
+        ),
+        objective: stringProperty(
+          'What was asked and done, phrased as a completed objective (1-3 sentences).'
+        ),
+        summary: stringProperty('Reviewer-facing narrative of what changed and why.'),
+        title: stringProperty(
+          'Optional mission title; defaults to a title derived from the objective.'
+        ),
+        changeRationales: {
+          type: 'array',
+          description:
+            'One entry per meaningful file change. Each: filePath, label, summary, why, impact (all strings).',
+          items: objectSchema(
+            {
+              filePath: stringProperty('Repository-relative path of the changed file.'),
+              label: stringProperty('Short reviewer title for the change.'),
+              summary: stringProperty('What changed in this file.'),
+              why: stringProperty('Why the change was made.'),
+              impact: stringProperty('Behavioral impact of the change.')
+            },
+            ['filePath', 'label', 'summary', 'why', 'impact']
+          )
+        },
+        changedFiles: {
+          type: 'array',
+          description:
+            'Optional extra touched files without a full rationale (surface as missing_rationale in review).',
+          items: objectSchema(
+            {
+              filePath: stringProperty('Repository-relative path.'),
+              vcsStatus: stringProperty('Optional VCS status such as M, A, or D.')
+            },
+            ['filePath']
+          )
+        },
+        artifacts: {
+          type: 'array',
+          description: 'Optional artifacts: next_steps, test_results, decision, note, or url.'
+        }
+      },
+      ['projectId', 'objective', 'summary']
+    ),
+    outputSchema: protocolOutputSchema(
+      'The created review-column mission and the delivery id whose Gemini summary is composing.'
+    ),
+    annotations: writeAction,
+    _meta: widget('ui://overlord/file-changes.html')
   }
 ];

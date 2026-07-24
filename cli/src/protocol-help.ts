@@ -213,19 +213,30 @@ prompt:
 
 record-work:
   Purpose:
-    Record work already completed in chat as a mission in review without a session.
-    Use instead of create + attach + deliver when logging past work.
+    Record work already completed in chat as a completed mission in review, in one
+    call — no attach/deliver cycle. Creates a mission with a single completed
+    objective, records the file changes and their rationales, lands it in the review
+    column, and runs the delivery through the standard Gemini summarizer so it reads
+    like any other delivered mission. Use instead of create + attach + deliver.
   Required:
-    --objective "<text>" (or positional objective text)
+    --objective "<text>" (or positional, or an "objective" field in --payload-json)
     --summary or --summary-file <path|->
   Optional:
     --title <text>
     --project-id <id>
     --artifacts-json / --artifacts-file <path|->
     --change-rationales-json / --change-rationales-file <path|->
+    --changed-files-json / --changed-files-file <path|->
+    --payload-json / --payload-file <path|->   (single envelope; see Notes)
   Notes:
+    Efficient form: stream one JSON object on stdin via \`--payload-file -\` carrying
+    { objective, summary, title?, changeRationales, changedFiles?, artifacts? }.
+    Explicit flags always win over fields inside --payload-json.
     Change-rationale entries use the same shape documented under \`deliver\`
     (file_path, label, summary, why, impact; summary is named "summary", not "rationale").
+    Every rationale's file_path is recorded as a changed file (shown "covered" in
+    review); add --changed-files-json for touched files without a rationale. The
+    full submission format lives in reference/record-work.md.
 
 update:
   Purpose:

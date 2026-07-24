@@ -31,30 +31,59 @@ describe('target resource observations', () => {
     const now = nowIso();
     const resourceId = 'resource-obs-test';
 
-    await db.run(
-      `INSERT INTO project_resources
-         (id, workspace_id, project_id, execution_target_id, resource_key, type, label, path,
-          is_primary, status, metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, 'primary', 'local_directory', NULL, ?, 1, 'active', '{}', ?, ?, 1)`,
-      [resourceId, ctx.workspace.id, project.id, target.executionTargetId, resourceDir, now, now]
-    );
+    // The per-target linkage lives on project_resource_sources since the virtual
+    // execution targets migration (20260712000000); project_resources no longer
+    // carries execution_target_id, type, or path.
+    const insertResourceWithSource = async ({
+      id,
+      resourceKey,
+      isPrimary,
+      dirPath
+    }: {
+      id: string;
+      resourceKey: string;
+      isPrimary: number;
+      dirPath: string;
+    }): Promise<void> => {
+      await db.run(
+        `INSERT INTO project_resources
+           (id, workspace_id, project_id, resource_key, label,
+            is_primary, status, metadata_json, created_at, updated_at, revision)
+         VALUES (?, ?, ?, ?, NULL, ?, 'active', '{}', ?, ?, 1)`,
+        [id, ctx.workspace.id, project.id, resourceKey, isPrimary, now, now]
+      );
+      await db.run(
+        `INSERT INTO project_resource_sources
+           (id, workspace_id, project_id, resource_id, execution_target_id, source_kind,
+            descriptor_json, created_at, updated_at, revision)
+         VALUES (?, ?, ?, ?, ?, 'local_checkout', ?, ?, ?, 1)`,
+        [
+          `${id}-source`,
+          ctx.workspace.id,
+          project.id,
+          id,
+          target.executionTargetId,
+          JSON.stringify({ path: dirPath }),
+          now,
+          now
+        ]
+      );
+    };
+
+    await insertResourceWithSource({
+      id: resourceId,
+      resourceKey: 'primary',
+      isPrimary: 1,
+      dirPath: resourceDir
+    });
 
     const missingId = 'resource-obs-missing';
-    await db.run(
-      `INSERT INTO project_resources
-         (id, workspace_id, project_id, execution_target_id, resource_key, type, label, path,
-          is_primary, status, metadata_json, created_at, updated_at, revision)
-       VALUES (?, ?, ?, ?, 'missing', 'local_directory', NULL, ?, 0, 'active', '{}', ?, ?, 1)`,
-      [
-        missingId,
-        ctx.workspace.id,
-        project.id,
-        target.executionTargetId,
-        path.join(tmpdir(), 'missing-resource-obs'),
-        now,
-        now
-      ]
-    );
+    await insertResourceWithSource({
+      id: missingId,
+      resourceKey: 'missing',
+      isPrimary: 0,
+      dirPath: path.join(tmpdir(), 'missing-resource-obs')
+    });
 
     const observedAt = new Date().toISOString();
     const result = await recordTargetResourceObservations({

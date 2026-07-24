@@ -638,21 +638,48 @@ const handlers: Record<string, Handler> = {
 
   'record-work': (ctx, body) => {
     const envelope = parseDeliveryPayloadEnvelope(body);
+    // record-work is often driven from a single streamed JSON envelope, so
+    // `objective`, `title`, and `changedFiles` may arrive either as flags or as
+    // fields inside `--payload-json`/`--payload-file`. Pull them out of the
+    // leftover payload here (flags always win) and keep the rest (e.g.
+    // `deliveryReport`) as the stored delivery payload.
+    const {
+      objective: payloadObjective,
+      title: payloadTitle,
+      changedFiles: payloadChangedFiles,
+      ...restPayload
+    } = envelope.payloadJson ?? {};
     const artifacts = parseJsonInput<ArtifactInput[]>(body, '--artifacts', '--artifacts-file');
     const changeRationales = parseJsonInput<ChangeRationaleInput[]>(
       body,
       '--change-rationales-json',
       '--change-rationales-file'
     );
+    const changedFiles = parseJsonInput<ChangedFileInput[]>(
+      body,
+      '--changed-files-json',
+      '--changed-files-file'
+    );
+    const objective =
+      strFlag(body, '--objective') ??
+      ((body.positional ?? []).join(' ').trim() || undefined) ??
+      (typeof payloadObjective === 'string' ? payloadObjective : undefined);
+    if (!objective || !objective.trim()) {
+      throw new ApiError(
+        400,
+        'Missing objective text (use --objective, a positional argument, or an "objective" field in --payload-json)'
+      );
+    }
     return recordWork({
       ctx,
       projectId: strFlag(body, '--project-id') ?? null,
       summary: resolveInput(body, '--summary', '--summary-file') ?? envelope.summary ?? '',
-      objective: objectiveText(body),
-      title: strFlag(body, '--title') ?? null,
+      objective,
+      title: strFlag(body, '--title') ?? (typeof payloadTitle === 'string' ? payloadTitle : null),
       artifacts: artifacts ?? envelope.artifacts ?? [],
       changeRationales: changeRationales ?? envelope.changeRationales ?? [],
-      payloadJson: envelope.payloadJson
+      changedFiles: changedFiles ?? (Array.isArray(payloadChangedFiles) ? payloadChangedFiles : []),
+      payloadJson: restPayload
     });
   },
 
